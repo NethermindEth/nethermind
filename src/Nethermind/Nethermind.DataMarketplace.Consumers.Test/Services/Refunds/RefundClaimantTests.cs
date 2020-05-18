@@ -59,7 +59,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Refunds
             _transactionVerifier.VerifyAsync(Arg.Any<NdmTransaction>())
                 .Returns(new TransactionVerifierResult(true, 1, 1));
             _gasPriceService = Substitute.For<IGasPriceService>();
-            _timestamper = new Timestamper();
+            _timestamper = Timestamper.Default;
             _refundClaimant = new RefundClaimant(_refundService, _ndmBridge, _depositRepository,
                 _transactionVerifier, _gasPriceService, _timestamper, LimboLogs.Instance);
         }

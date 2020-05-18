@@ -37,19 +37,26 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
 {
-    [TestFixture]
+    [TestFixture(true)]
+    [TestFixture(false)]
     [Todo(Improve.Refactor, "Check why fixture test cases did not work")]
     public class TransactionProcessorTests
     {
+        private bool _isEip155Enabled;
         private ISpecProvider _specProvider;
         private IEthereumEcdsa _ethereumEcdsa;
         private TransactionProcessor _transactionProcessor;
         private StateProvider _stateProvider;
 
+        public TransactionProcessorTests(bool eip155Enabled)
+        {
+            _isEip155Enabled = eip155Enabled;
+            _specProvider = eip155Enabled ? (ISpecProvider)GoerliSpecProvider.Instance : MainnetSpecProvider.Instance;
+        }
+        
         [SetUp]
         public void Setup()
         {
-            _specProvider = MainnetSpecProvider.Instance;
             StateDb stateDb = new StateDb();
             _stateProvider = new StateProvider(stateDb, new MemDb(), LimboLogs.Instance);
             _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
@@ -59,7 +66,7 @@ namespace Nethermind.Evm.Test
             StorageProvider storageProvider = new StorageProvider(stateDb, _stateProvider, LimboLogs.Instance);
             VirtualMachine virtualMachine = new VirtualMachine(_stateProvider, storageProvider, Substitute.For<IBlockhashProvider>(), _specProvider, LimboLogs.Instance);
             _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, storageProvider, virtualMachine, LimboLogs.Instance);
-            _ethereumEcdsa = new EthereumEcdsa(_specProvider, LimboLogs.Instance);
+            _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId, LimboLogs.Instance);
         }
 
         [TestCase(true, true)]
@@ -68,7 +75,7 @@ namespace Nethermind.Evm.Test
         [TestCase(false, false)]
         public void Can_process_simple_transaction(bool withStateDiff, bool withTrace)
         {
-            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, 1).WithGasLimit(100000).TestObject;
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithGasLimit(100000).TestObject;
 
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
@@ -84,14 +91,21 @@ namespace Nethermind.Evm.Test
         [TestCase(false, false)]
         public void Sets_state_root_on_receipts_before_eip658(bool withStateDiff, bool withTrace)
         {
-            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, 1).WithGasLimit(100000).TestObject;
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithGasLimit(100000).TestObject;
 
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
             BlockReceiptsTracer tracer = BuildTracer(block, tx, withTrace, withTrace);
             Execute(tracer, tx, block);
 
-            Assert.NotNull(tracer.TxReceipts[0].PostTransactionState);
+            if (_isEip155Enabled) // we use eip155 check just as a proxy on 658
+            {
+                Assert.Null(tracer.TxReceipts[0].PostTransactionState);
+            }
+            else
+            {
+                Assert.NotNull(tracer.TxReceipts[0].PostTransactionState);
+            }
         }
 
         [TestCase(true, true)]
@@ -100,7 +114,7 @@ namespace Nethermind.Evm.Test
         [TestCase(false, false)]
         public void Can_handle_quick_fail_on_intrinsic_gas(bool withStateDiff, bool withTrace)
         {
-            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, 1).WithGasLimit(20000).TestObject;
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithGasLimit(20000).TestObject;
 
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
@@ -116,7 +130,7 @@ namespace Nethermind.Evm.Test
         [TestCase(false, false)]
         public void Can_handle_quick_fail_on_missing_sender(bool withStateDiff, bool withTrace)
         {
-            Transaction tx = Build.A.Transaction.Signed(_ethereumEcdsa, TestItem.PrivateKeyA, 1).WithGasLimit(100000).TestObject;
+            Transaction tx = Build.A.Transaction.Signed(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithGasLimit(100000).TestObject;
 
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
@@ -132,7 +146,7 @@ namespace Nethermind.Evm.Test
         [TestCase(false, false)]
         public void Can_handle_quick_fail_on_non_existing_sender_account(bool withStateDiff, bool withTrace)
         {
-            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB, 1).WithGasLimit(100000).TestObject;
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB, _isEip155Enabled).WithGasLimit(100000).TestObject;
 
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
@@ -148,7 +162,7 @@ namespace Nethermind.Evm.Test
         [TestCase(false, false)]
         public void Can_handle_quick_fail_on_invalid_nonce(bool withStateDiff, bool withTrace)
         {
-            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, 1).WithGasLimit(100000).WithNonce(100).TestObject;
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithGasLimit(100000).WithNonce(100).TestObject;
 
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
@@ -164,7 +178,7 @@ namespace Nethermind.Evm.Test
         [TestCase(false, false)]
         public void Can_handle_quick_fail_on_not_enough_balance(bool withStateDiff, bool withTrace)
         {
-            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, 1).WithGasLimit(100000).TestObject;
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithGasLimit(100000).TestObject;
             tx.Value = 2.Ether();
 
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
@@ -181,7 +195,7 @@ namespace Nethermind.Evm.Test
         [TestCase(false, false)]
         public void Can_handle_quick_fail_on_above_block_gas_limit(bool withStateDiff, bool withTrace)
         {
-            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, 1).WithGasLimit(100000).TestObject;
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithGasLimit(100000).TestObject;
 
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(20000).TestObject;
 
@@ -197,7 +211,7 @@ namespace Nethermind.Evm.Test
         [TestCase(false, false)]
         public void Will_not_cause_quick_fail_above_block_gas_limit_during_calls(bool withStateDiff, bool withTrace)
         {
-            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, 1).WithGasLimit(100000).TestObject;
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithGasLimit(100000).TestObject;
 
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(20000).TestObject;
 
@@ -211,7 +225,7 @@ namespace Nethermind.Evm.Test
         public void Balance_is_not_changed_on_call_and_restore()
         {
             long gasLimit = 100000;
-            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, 1).WithValue(1.Ether() - (UInt256)gasLimit).WithGasPrice(1).WithGasLimit(gasLimit).TestObject;
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithValue(1.Ether() - (UInt256)gasLimit).WithGasPrice(1).WithGasLimit(gasLimit).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
 
             _transactionProcessor.CallAndRestore(tx, block.Header, NullTxTracer.Instance);
@@ -227,7 +241,7 @@ namespace Nethermind.Evm.Test
                 .WithValue(0.Ether())
                 .WithGasPrice(1)
                 .WithGasLimit(gasLimit)
-                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyD, 1)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyD, _isEip155Enabled)
                 .TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
 
@@ -240,7 +254,7 @@ namespace Nethermind.Evm.Test
         public void Nonce_is_not_changed_on_call_and_restore()
         {
             long gasLimit = 100000;
-            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, 1).WithValue(1.Ether() - (UInt256)gasLimit).WithGasPrice(1).WithGasLimit(gasLimit).TestObject;
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithValue(1.Ether() - (UInt256)gasLimit).WithGasPrice(1).WithGasLimit(gasLimit).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
 
             _transactionProcessor.CallAndRestore(tx, block.Header, NullTxTracer.Instance);
@@ -252,7 +266,7 @@ namespace Nethermind.Evm.Test
         public void Can_estimate_simple()
         {
             long gasLimit = 100000;
-            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, 1).WithGasLimit(gasLimit).TestObject;
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithGasLimit(gasLimit).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
 
             EstimateGasTracer tracer = new EstimateGasTracer();
@@ -277,7 +291,7 @@ namespace Nethermind.Evm.Test
 
             long gasLimit = 100000;
 
-            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, 1).WithInit(initByteCode).WithGasLimit(gasLimit).TestObject;
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithInit(initByteCode).WithGasLimit(gasLimit).TestObject;
             Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(tx).WithGasLimit(2 * gasLimit).TestObject;
 
             IntrinsicGasCalculator gasCalculator = new IntrinsicGasCalculator();
@@ -312,8 +326,8 @@ namespace Nethermind.Evm.Test
 
             long gasLimit = 100000;
 
-            Transaction initTx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, 1).WithInit(initByteCode).WithGasLimit(gasLimit).TestObject;
-            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, 1).WithInit(byteCode).WithGasLimit(gasLimit).WithNonce(1).TestObject;
+            Transaction initTx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithInit(initByteCode).WithGasLimit(gasLimit).TestObject;
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithInit(byteCode).WithGasLimit(gasLimit).WithNonce(1).TestObject;
             Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(tx).WithGasLimit(2 * gasLimit).TestObject;
 
             IntrinsicGasCalculator gasCalculator = new IntrinsicGasCalculator();
@@ -376,7 +390,7 @@ namespace Nethermind.Evm.Test
 
             long gasLimit = 100000;
 
-            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, 1).WithInit(initByteCode).WithGasLimit(gasLimit).TestObject;
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithInit(initByteCode).WithGasLimit(gasLimit).TestObject;
             Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(tx).WithGasLimit(2 * gasLimit).TestObject;
 
             IntrinsicGasCalculator gasCalculator = new IntrinsicGasCalculator();
@@ -415,7 +429,7 @@ namespace Nethermind.Evm.Test
 
             long gasLimit = 200000;
 
-            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, 1).WithInit(initByteCode).WithGasLimit(gasLimit).TestObject;
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithInit(initByteCode).WithGasLimit(gasLimit).TestObject;
             Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(tx).WithGasLimit(2 * gasLimit).TestObject;
 
             IntrinsicGasCalculator gasCalculator = new IntrinsicGasCalculator();
@@ -451,8 +465,8 @@ namespace Nethermind.Evm.Test
 
             long gasLimit = 100000;
 
-            Transaction initTx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, 1).WithInit(initByteCode).WithGasLimit(gasLimit).TestObject;
-            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, 1).WithInit(byteCode).WithGasLimit(gasLimit).WithNonce(1).TestObject;
+            Transaction initTx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithInit(initByteCode).WithGasLimit(gasLimit).TestObject;
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithInit(byteCode).WithGasLimit(gasLimit).WithNonce(1).TestObject;
             Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(tx).WithGasLimit(2 * gasLimit).TestObject;
 
             IntrinsicGasCalculator gasCalculator = new IntrinsicGasCalculator();
@@ -476,11 +490,11 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Disables_Eip158_for_system_transactions()
         {
-            _stateProvider.CreateAccount(TestItem.PrivateKeyA.Address, 0.Ether());
-            _stateProvider.Commit(_specProvider.GetSpec(1));
-
             var blockNumber = MainnetSpecProvider.SpuriousDragonBlockNumber + 1;
-            Transaction tx = Build.A.SystemTransaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, blockNumber)
+            _stateProvider.CreateAccount(TestItem.PrivateKeyA.Address, 0.Ether());
+            IReleaseSpec spec = _specProvider.GetSpec(blockNumber);
+            _stateProvider.Commit(spec);
+            Transaction tx = Build.A.SystemTransaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled)
                 .WithGasPrice(0)
                 .WithValue(0)
                 .TestObject;

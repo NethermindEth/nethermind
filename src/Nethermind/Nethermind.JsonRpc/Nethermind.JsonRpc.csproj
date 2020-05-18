@@ -29,5 +29,6 @@
     <ProjectReference Include="..\Nethermind.PubSub\Nethermind.PubSub.csproj" />
     <ProjectReference Include="..\Nethermind.Wallet\Nethermind.Wallet.csproj" />
     <ProjectReference Include="..\Nethermind.Baseline\Nethermind.Baseline.csproj" />
+    <ProjectReference Include="..\Nethermind.WebSockets\Nethermind.WebSockets.csproj" />
   </ItemGroup>
 </Project>

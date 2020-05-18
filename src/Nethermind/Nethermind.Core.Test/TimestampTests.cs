@@ -29,7 +29,7 @@ namespace Nethermind.Core.Test
         public void epoch_timestamp_in_seconds_and_milliseconds_should_be_valid()
         {
             var utcNow = DateTime.UtcNow;
-            var timestamper = new Timestamper(utcNow);
+            ITimestamper timestamper = new Timestamper(utcNow);
             var epochSeconds = timestamper.EpochSeconds;
             var epochMilliseconds = timestamper.EpochMilliseconds;
             var unixUtcUntilNowSeconds = (ulong) utcNow.Subtract(Jan1St1970).TotalSeconds;

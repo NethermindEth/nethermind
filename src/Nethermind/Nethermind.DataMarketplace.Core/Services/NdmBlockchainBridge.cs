@@ -27,11 +27,13 @@ namespace Nethermind.DataMarketplace.Core.Services
 {
     public class NdmBlockchainBridge : INdmBlockchainBridge
     {
+        private readonly ITxPoolBridge _txPoolBridge;
         private readonly IBlockchainBridge _blockchainBridge;
         private readonly ITxPool _txPool;
 
-        public NdmBlockchainBridge(IBlockchainBridge blockchainBridge, ITxPool txPool)
+        public NdmBlockchainBridge(ITxPoolBridge txPoolBridge, IBlockchainBridge blockchainBridge, ITxPool txPool)
         {
+            _txPoolBridge = txPoolBridge ?? throw new ArgumentNullException(nameof(txPoolBridge));
             _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
         }
@@ -99,6 +101,6 @@ namespace Nethermind.DataMarketplace.Core.Services
         }
 
         public Task<Keccak?> SendOwnTransactionAsync(Transaction transaction)
-            => Task.FromResult<Keccak?>(_blockchainBridge.SendTransaction(transaction, TxHandlingOptions.ManagedNonce | TxHandlingOptions.PersistentBroadcast));
+            => Task.FromResult<Keccak?>(_txPoolBridge.SendTransaction(transaction, TxHandlingOptions.ManagedNonce | TxHandlingOptions.PersistentBroadcast));
     }
 }

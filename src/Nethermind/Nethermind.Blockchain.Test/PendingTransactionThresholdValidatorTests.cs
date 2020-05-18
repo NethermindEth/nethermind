@@ -34,7 +34,7 @@ namespace Nethermind.Blockchain.Test
         {
             var utcNow = DateTime.UtcNow;
             var validator = GetValidator();
-            var timestamp = new Timestamper(utcNow);
+            ITimestamper timestamp = new Timestamper(utcNow);
             var transaction1 = GetTransaction(utcNow, 5);
             var transaction2 = GetTransaction(utcNow, 15);
             var transaction3 = GetTransaction(utcNow, 25);
@@ -49,7 +49,7 @@ namespace Nethermind.Blockchain.Test
         {
             var utcNow = DateTime.UtcNow;
             var validator = GetValidator();
-            var timestamp = new Timestamper(utcNow);
+            ITimestamper timestamp = new Timestamper(utcNow);
             var transaction1 = GetTransaction(utcNow, 5);
             var transaction2 = GetTransaction(utcNow, 600);
             var transaction3 = GetTransaction(utcNow, 1000);

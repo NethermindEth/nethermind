@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Linq;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Specs;
@@ -34,7 +35,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void Initialize()
         {
             _wallet = new DevWallet(new WalletConfig(),  LimboLogs.Instance);
-            IEthereumEcdsa ethereumEcdsa = new EthereumEcdsa(MainnetSpecProvider.Instance, LimboLogs.Instance);
+            IEthereumEcdsa ethereumEcdsa = new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance);
             _bridge = new PersonalBridge(ethereumEcdsa, _wallet);
         }
 

@@ -31,6 +31,22 @@ namespace Nethermind.Core2.Types
             _bytes = new byte[Length];
         }
 
+        public static Bytes32 Wrap(byte[] bytes)
+        {
+            return new Bytes32(bytes);
+        }
+        
+        private Bytes32(byte[] bytes)
+        {
+            if (bytes.Length != Length)
+            {
+                throw new ArgumentOutOfRangeException(nameof(bytes), bytes.Length,
+                    $"{nameof(Bytes32)} must have exactly {Length} bytes");
+            }
+
+            _bytes = bytes;
+        }
+        
         public Bytes32(ReadOnlySpan<byte> span)
         {
             if (span.Length != Length)
@@ -70,6 +86,7 @@ namespace Nethermind.Core2.Types
 
         public Bytes32 Xor(Bytes32 other)
         {
+            // if used much - optimize, for now leave this way
             return new Bytes32(other.AsSpan().Xor(AsSpan()));
         }
 

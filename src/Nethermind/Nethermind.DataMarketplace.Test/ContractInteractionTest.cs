@@ -91,6 +91,7 @@ namespace Nethermind.DataMarketplace.Test
         protected Address _providerAccount;
         protected DevWallet _wallet;
         protected BlockchainBridge _bridge;
+        protected TxPoolBridge _txPoolBridge;
         protected INdmBlockchainBridge _ndmBridge;
         protected IStateProvider _state;
         protected INdmConfig _ndmConfig;
@@ -125,10 +126,10 @@ namespace Nethermind.DataMarketplace.Test
             TxReceipt receipt = DeployContract(Bytes.FromHexString(ContractData.GetInitCode(_feeAccount)));
             ((NdmConfig) _ndmConfig).ContractAddress = receipt.ContractAddress.ToString();
             _contractAddress = receipt.ContractAddress;
-            _txPool = new TxPool.TxPool(new InMemoryTxStorage(), new Timestamper(),
-                new EthereumEcdsa(specProvider, _logManager), specProvider, new TxPoolConfig(), _state, _logManager);
+            _txPool = new TxPool.TxPool(new InMemoryTxStorage(), Timestamper.Default,
+                new EthereumEcdsa(specProvider.ChainId, _logManager), specProvider, new TxPoolConfig(), _state, _logManager);
 
-            _ndmBridge = new NdmBlockchainBridge(_bridge, _txPool);
+            _ndmBridge = new NdmBlockchainBridge(_bridge, _bridge, _txPool);
         }
 
         protected TxReceipt DeployContract(byte[] initCode)
@@ -144,7 +145,7 @@ namespace Nethermind.DataMarketplace.Test
             return receipt;
         }
 
-        public class BlockchainBridge : IBlockchainBridge
+        public class BlockchainBridge : IBlockchainBridge, ITxPoolBridge
         {
             private readonly TransactionProcessor _processor;
             private readonly IReleaseSpec _spec;
@@ -189,7 +190,7 @@ namespace Nethermind.DataMarketplace.Test
                 _spec = spec;
                 _receiptsTracer = new BlockReceiptsTracer();
                 _processor = processor;
-                _tx = Build.A.Transaction.SignedAndResolved(new EthereumEcdsa(MainnetSpecProvider.Instance, LimboLogs.Instance), TestItem.PrivateKeyA, 2).TestObject;
+                _tx = Build.A.Transaction.SignedAndResolved(new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance), TestItem.PrivateKeyA).TestObject;
                 _headBlock = Build.A.Block.WithNumber(1).WithTransactions(Enumerable.Repeat(_tx, 100).ToArray()).TestObject;
 
                 _receiptsTracer.SetOtherTracer(GethTracer);

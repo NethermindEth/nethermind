@@ -45,7 +45,7 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.State;
 using Nethermind.State.Repositories;
-using Nethermind.Store.Bloom;
+using Nethermind.Db.Blooms;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
 using Metrics = Nethermind.Trie.Metrics;
@@ -262,7 +262,7 @@ namespace Nethermind.PerfTest
             var stateProvider = new StateProvider(stateDb, codeDb, _logManager);
             var storageProvider = new StorageProvider(stateDb, stateProvider, _logManager);
 
-            var ethereumSigner = new EthereumEcdsa(specProvider, _logManager);
+            var ethereumSigner = new EthereumEcdsa(specProvider.ChainId, _logManager);
 
             var transactionPool = new TxPool.TxPool(
                 NullTxStorage.Instance,
@@ -277,7 +277,7 @@ namespace Nethermind.PerfTest
             var blockTree = new UnprocessedBlockTreeWrapper(new BlockTree(blocksDb, headersDb, blockInfosDb, blockInfoRepository, specProvider, transactionPool, new BloomStorage(new BloomConfig(), dbProvider.HeadersDb, new InMemoryDictionaryFileStoreFactory()), _logManager));
             var receiptStorage = new InMemoryReceiptStorage();
 
-            IBlockDataRecoveryStep recoveryStep = new TxSignaturesRecoveryStep(ethereumSigner, transactionPool, _logManager);
+            IBlockDataRecoveryStep recoveryStep = new TxSignaturesRecoveryStep(specProvider, ethereumSigner, transactionPool, _logManager);
 
             /* blockchain processing */
             var blockhashProvider = new BlockhashProvider(blockTree, LimboLogs.Instance);

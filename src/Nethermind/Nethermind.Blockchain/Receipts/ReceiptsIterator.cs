@@ -31,8 +31,8 @@ namespace Nethermind.Blockchain.Receipts
         public ReceiptsIterator(in Span<byte> receiptsData, IDbWithSpan blocksDb)
         {
             _decoderContext = new Rlp.ValueDecoderContext(receiptsData);
+            _length = receiptsData.Length == 0 ? 0 : _decoderContext.ReadSequenceLength();
             _blocksDb = blocksDb;
-            _length = _decoderContext.ReadSequenceLength();;
         }
 
         public bool TryGetNext(out TxReceiptStructRef current)

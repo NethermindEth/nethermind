@@ -71,7 +71,7 @@ namespace Nethermind.HashLib.Crypto.SHA3
 
         private int _blockSize;
 
-        protected override void TransformBlock(Span<byte> a_data, int a_index)
+        protected override void TransformBlock(ReadOnlySpan<byte> a_data, int a_index)
         {
             // TODO: review discussions on whether it is always safe (should be)
             ReadOnlySpan<ulong> data = MemoryMarshal.Cast<byte, ulong>(a_data.Slice(a_index, _blockSize));

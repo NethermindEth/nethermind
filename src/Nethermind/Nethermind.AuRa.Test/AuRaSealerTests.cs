@@ -90,7 +90,7 @@ namespace Nethermind.AuRa.Test
             
             block = await _auRaSealer.SealBlock(block, CancellationToken.None);
             
-            var ecdsa = new EthereumEcdsa(new MordenSpecProvider(), LimboLogs.Instance);
+            var ecdsa = new EthereumEcdsa(ChainId.Morden, LimboLogs.Instance);
             var signature = new Signature(block.Header.AuRaSignature);
             signature.V += Signature.VOffset;
             var recoveredAddress = ecdsa.RecoverAddress(signature, block.Header.CalculateHash(RlpBehaviors.ForSealing));

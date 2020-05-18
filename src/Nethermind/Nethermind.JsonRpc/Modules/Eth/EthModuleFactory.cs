@@ -26,7 +26,7 @@ using Nethermind.Db;
 using Nethermind.Facade;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
-using Nethermind.Store.Bloom;
+using Nethermind.Db.Blooms;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Newtonsoft.Json;
@@ -83,7 +83,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             ReadOnlyBlockTree readOnlyTree = new ReadOnlyBlockTree(_blockTree);
             IReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
             ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, readOnlyTree, _specProvider, _logManager);
-            
+
             var blockchainBridge = new BlockchainBridge(
                 readOnlyTxProcessingEnv.StateReader,
                 readOnlyTxProcessingEnv.StateProvider,
@@ -97,11 +97,14 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 readOnlyTxProcessingEnv.TransactionProcessor,
                 _ethereumEcdsa,
                 _bloomStorage,
+                _specProvider,
                 _logManager,
                 _isMining,
                 _rpcConfig.FindLogBlockDepthLimit);
             
-            return new EthModule(_rpcConfig, blockchainBridge, _logManager);
+            TxPoolBridge txPoolBridge = new TxPoolBridge(_txPool, _wallet, _specProvider.ChainId);
+            
+            return new EthModule(_rpcConfig, blockchainBridge, txPoolBridge, _logManager);
         }
 
         public static List<JsonConverter> Converters = new List<JsonConverter>

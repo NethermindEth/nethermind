@@ -29,7 +29,7 @@ using Nethermind.JsonRpc;
 using Nethermind.Monitoring.Config;
 using Nethermind.Network.Config;
 using Nethermind.PubSub.Kafka;
-using Nethermind.Store.Bloom;
+using Nethermind.Db.Blooms;
 using Nethermind.TxPool;
 using NUnit.Framework;
 
@@ -57,7 +57,7 @@ namespace Nethermind.Runner.Test
         [TestCase("validators", true, true)]
         [TestCase("poacore_validator.cfg", true, true)]
         [TestCase("xdai_validator.cfg", true, true)]
-        [TestCase("spaceneth.cfg", false, false)]
+        [TestCase("spaceneth", false, false)]
         [TestCase("archive", false, false, false)]
         [TestCase("beam", true, true, true)]
         [TestCase("fast", true, true)]
@@ -71,7 +71,7 @@ namespace Nethermind.Runner.Test
         [TestCase("archive", true)]
         [TestCase("fast", true)]
         [TestCase("beam", true)]
-        [TestCase("spaceneth.cfg", false)]
+        [TestCase("spaceneth", false)]
         [TestCase("ndm_consumer_goerli.cfg", true)]
         [TestCase("ndm_consumer_local.cfg", true)]
         [TestCase("ndm_consumer_mainnet_proxy.cfg", false)]
@@ -89,7 +89,7 @@ namespace Nethermind.Runner.Test
         [TestCase("sokol", "ws://localhost:3000/api")]
         [TestCase("poacore", "ws://localhost:3000/api")]
         [TestCase("xdai", "ws://localhost:3000/api")]
-        [TestCase("spaceneth.cfg", "ws://localhost:3000/api")]
+        [TestCase("spaceneth", "ws://localhost:3000/api")]
         [TestCase("volta", "ws://localhost:3000/api")]
         public void Ethstats_values_are_correct(string configWildcard, string host)
         {
@@ -120,9 +120,9 @@ namespace Nethermind.Runner.Test
             Test<IInitConfig, string>(configWildcard, c => c.GenesisHash, genesisHash);
         }
 
-        [TestCase("spaceneth.cfg", true)]
+        [TestCase("spaceneth", true)]
         [TestCase("validators", true)]
-        [TestCase("^validators ^spaceneth.cfg", false)]
+        [TestCase("^validators ^spaceneth", false)]
         public void Mining_defaults_are_correct(string configWildcard, bool defaultValue = false)
         {
             Test<IInitConfig, bool>(configWildcard, c => c.IsMining, defaultValue);
@@ -181,7 +181,7 @@ namespace Nethermind.Runner.Test
             Test<ITxPoolConfig, int>(configWildcard, c => c.Size, poolSize);
         }
 
-        [TestCase("^spaceneth.cfg", false)]
+        [TestCase("^spaceneth", false)]
         public void Json_defaults_are_correct(string configWildcard, bool jsonEnabled)
         {
             Test<IJsonRpcConfig, bool>(configWildcard, c => c.Enabled, jsonEnabled);
@@ -227,8 +227,8 @@ namespace Nethermind.Runner.Test
             Test<IBloomConfig, bool>(configWildcard, c => c.MigrationStatistics, false);
         }
 
-        [TestCase("^spaceneth.cfg", "nethermind_db")]
-        [TestCase("spaceneth.cfg", "spaceneth_db")]
+        [TestCase("^spaceneth", "nethermind_db")]
+        [TestCase("spaceneth", "spaceneth_db")]
         public void Base_db_path_is_set(string configWildcard, string startWith)
         {
             Test<IInitConfig, string>(configWildcard, c => c.BaseDbPath, (cf, p) => p.Should().StartWith(startWith));
@@ -352,6 +352,7 @@ namespace Nethermind.Runner.Test
             "xdai_archive.cfg",
             "xdai_validator.cfg",
             "spaceneth.cfg",
+            "spaceneth_persistent.cfg",
             "volta.cfg",
             "volta_archive.cfg",
         };
@@ -395,6 +396,10 @@ namespace Nethermind.Runner.Test
         [ConfigFileGroup("rinkeby")]
         private IEnumerable<string> RinkebyConfigs
             => Configs.Where(config => config.Contains("rinkeby"));
+        
+        [ConfigFileGroup("spaceneth")]
+        private IEnumerable<string> SpacenethConfigs
+            => Configs.Where(config => config.Contains("spaceneth"));
 
         [ConfigFileGroup("mainnet")]
         private IEnumerable<string> MainnetConfigs

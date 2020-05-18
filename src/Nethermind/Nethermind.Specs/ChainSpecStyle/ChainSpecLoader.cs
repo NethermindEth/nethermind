@@ -38,6 +38,7 @@ namespace Nethermind.Specs.ChainSpecStyle
         public ChainSpecLoader(IJsonSerializer serializer)
         {
             _serializer = serializer;
+            _serializer.RegisterConverter(new StepDurationJsonConverter());
         }
 
         public ChainSpec Load(byte[] data) => Load(System.Text.Encoding.UTF8.GetString(data));
@@ -185,6 +186,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                     Validators = LoadValidator(chainSpecJson.Engine.AuthorityRound.Validator),
                     RandomnessContractAddress = chainSpecJson.Engine.AuthorityRound.RandomnessContractAddress,
                     BlockGasLimitContractTransitions = chainSpecJson.Engine.AuthorityRound.BlockGasLimitContractTransitions,
+                    TwoThirdsMajorityTransition = chainSpecJson.Engine.AuthorityRound.TwoThirdsMajorityTransition ?? long.MaxValue,
                 };
             }
             else if (chainSpecJson.Engine?.Clique != null)

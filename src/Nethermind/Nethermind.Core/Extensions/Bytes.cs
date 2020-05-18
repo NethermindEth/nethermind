@@ -295,10 +295,20 @@ namespace Nethermind.Core.Extensions
 
         public static BigInteger ToUnsignedBigInteger(this Span<byte> bytes)
         {
+            return ToUnsignedBigInteger((ReadOnlySpan<byte>) bytes);
+        }
+
+        public static BigInteger ToUnsignedBigInteger(this ReadOnlySpan<byte> bytes)
+        {
             return new BigInteger(bytes, true, true);
         }
 
         public static uint ReadEthUInt32(this Span<byte> bytes)
+        {
+            return ReadEthUInt32((ReadOnlySpan<byte>) bytes);
+        }
+
+        public static uint ReadEthUInt32(this ReadOnlySpan<byte> bytes)
         {
             if (bytes.Length > 4)
             {
@@ -332,8 +342,12 @@ namespace Nethermind.Core.Extensions
             return BinaryPrimitives.ReadUInt32LittleEndian(fourBytes);
         }
 
-
         public static int ReadEthInt32(this Span<byte> bytes)
+        {
+            return ReadEthInt32((ReadOnlySpan<byte>) bytes);
+        }
+
+        public static int ReadEthInt32(this ReadOnlySpan<byte> bytes)
         {
             if (bytes.Length > 4)
             {
@@ -351,6 +365,11 @@ namespace Nethermind.Core.Extensions
         }
 
         public static ulong ReadEthUInt64(this Span<byte> bytes)
+        {
+            return ReadEthUInt64((ReadOnlySpan<byte>) bytes);
+        }
+
+        public static ulong ReadEthUInt64(this ReadOnlySpan<byte> bytes)
         {
             if (bytes.Length > 8)
             {
@@ -743,7 +762,7 @@ namespace Nethermind.Core.Extensions
 
             return bytes;
         }
-        
+
         [SuppressMessage("ReSharper", "NonReadonlyMemberInGetHashCode")]
         public static int GetSimplifiedHashCode(this byte[] bytes)
         {
@@ -756,7 +775,7 @@ namespace Nethermind.Core.Extensions
 
             return (fnvPrime * bytes.Length * (((fnvPrime * (bytes[0] + 7)) ^ (bytes[^1] + 23)) + 11)) ^ (bytes[(bytes.Length - 1) / 2] + 53);
         }
-        
+
         [SuppressMessage("ReSharper", "NonReadonlyMemberInGetHashCode")]
         public static int GetSimplifiedHashCode(this Span<byte> bytes)
         {

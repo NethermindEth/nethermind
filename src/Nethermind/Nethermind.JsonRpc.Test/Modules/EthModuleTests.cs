@@ -581,14 +581,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void Eth_get_transaction_receipt_returns_null_on_missing_receipt()
         {
-            IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-
-            bridge.GetReceipt(Arg.Any<Keccak>()).Returns((TxReceipt) null);
-
-            IEthModule module = new EthModule(new JsonRpcConfig(), bridge, LimboLogs.Instance);
-
             string serialized = _test.TestEthRpc("eth_getTransactionReceipt", TestItem.KeccakA.ToString());
-
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":null,\"id\":67}", serialized);
         }
 
@@ -610,24 +603,19 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void Eth_chain_id()
         {
-            IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-            bridge.GetChainId().Returns(1);
-
-            IEthModule module = new EthModule(new JsonRpcConfig(), bridge, LimboLogs.Instance);
-
             string serialized = _test.TestEthRpc("eth_chainid");
-
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x1\",\"id\":67}", serialized);
         }
 
         [Test]
         public async Task Send_transaction_with_signature_will_not_try_to_sign()
         {
+            ITxPoolBridge txPoolBridge = Substitute.For<ITxPoolBridge>();
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-            bridge.SendTransaction(null, TxHandlingOptions.PersistentBroadcast).ReturnsForAnyArgs(TestItem.KeccakA);
+            txPoolBridge.SendTransaction(null, TxHandlingOptions.PersistentBroadcast).ReturnsForAnyArgs(TestItem.KeccakA);
 
-            _test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
-            Transaction tx = Build.A.Transaction.Signed(new EthereumEcdsa(MainnetSpecProvider.Instance, LimboLogs.Instance), TestItem.PrivateKeyA, 10000000).TestObject;
+            _test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).WithTxPoolBridge(txPoolBridge).Build();
+            Transaction tx = Build.A.Transaction.Signed(new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance), TestItem.PrivateKeyA).TestObject;
             string serialized = _test.TestEthRpc("eth_sendRawTransaction", Rlp.Encode(tx, RlpBehaviors.None).Bytes.ToHexString());
 
             bridge.DidNotReceiveWithAnyArgs().Sign(null);

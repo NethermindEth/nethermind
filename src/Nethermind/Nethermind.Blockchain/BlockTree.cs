@@ -33,7 +33,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
-using Nethermind.Store.Bloom;
+using Nethermind.Db.Blooms;
 using Nethermind.TxPool;
 
 namespace Nethermind.Blockchain
@@ -931,15 +931,16 @@ namespace Nethermind.Blockchain
             {
                 _txPool.RemoveTransaction(block.Transactions[i].Hash, block.Number);
             }
-
+            
             // the hash will only be the same during perf test runs / modified DB states
             if (hashOfThePreviousMainBlock != null && hashOfThePreviousMainBlock != block.Hash)
             {
                 Block previous = FindBlock(hashOfThePreviousMainBlock, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                bool isEip155Enabled = _specProvider.GetSpec(previous.Number).IsEip155Enabled;
                 for (int i = 0; i < previous?.Transactions.Length; i++)
                 {
                     Transaction tx = previous.Transactions[i];
-                    _txPool.AddTransaction(tx, previous.Number, TxHandlingOptions.None);
+                    _txPool.AddTransaction(tx, isEip155Enabled ? TxHandlingOptions.None : TxHandlingOptions.PreEip155Signing);
                 }
             }
 

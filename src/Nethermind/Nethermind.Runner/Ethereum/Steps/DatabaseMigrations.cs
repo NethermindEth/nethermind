@@ -28,7 +28,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Runner.Ethereum.Steps.Migrations;
-using Nethermind.Store.Bloom;
+using Nethermind.Db.Blooms;
 using Timer = System.Timers.Timer;
 
 namespace Nethermind.Runner.Ethereum.Steps
