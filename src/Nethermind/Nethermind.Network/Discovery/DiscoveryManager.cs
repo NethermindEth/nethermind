@@ -220,23 +220,6 @@ namespace Nethermind.Network.Discovery
             if (message.DestinationAddress == null || message.FarAddress == null)
             {
                 if (_logger.IsDebug) _logger.Debug($"Received a ping message with empty address, message: {message}");
-                Console.WriteLine($"Received a ping message with empty address, message: {message}");
-                return false;
-            }
-            Console.WriteLine("ADRESSES ->");
-            Console.WriteLine($"Master node IP: {_nodeTable.MasterNode.Address.Address}");
-            Console.WriteLine($"External IP : {_ipResolver.ExternalIp}");
-            Console.WriteLine($"Local IP : {_ipResolver.LocalIp}");
-            Console.WriteLine($"Ping destination is {message.DestinationAddress.Address}");
-
-            bool pingDestinationIsMasterNode = Bytes.AreEqual(_nodeTable.MasterNode.Address.Address.MapToIPv6().GetAddressBytes(), message.DestinationAddress?.Address.MapToIPv6().GetAddressBytes()); 
-            bool pingDestinationIsLocalIp = Bytes.AreEqual(_ipResolver.LocalIp.GetAddressBytes(), message.DestinationAddress?.Address.GetAddressBytes());
-            
-
-            if (!pingDestinationIsMasterNode && !pingDestinationIsLocalIp)
-            {
-                if (_logger.IsDebug) _logger.Debug($"Received a message with incorrect destination address, message: {message}");
-                Console.WriteLine($"Received a message with incorrect destination address, message: {message.DestinationAddress?.Address.MapToIPv6()}, master node adress is {_nodeTable.MasterNode.Address.Address.MapToIPv6()}");
                 return false;
             }
             
