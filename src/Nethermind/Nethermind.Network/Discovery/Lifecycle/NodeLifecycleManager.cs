@@ -60,7 +60,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
         public Node ManagedNode { get; }
         public NodeLifecycleState State { get; private set; }
         public INodeStats NodeStats { get; }
-        public bool IsBonded => (_sentPing && _receivedPong) || (_receivedPing && _sentPong);
+        public bool IsBonded => (_sentPing && _receivedPong) && (_receivedPing && _sentPong);
 
         public event EventHandler<NodeLifecycleState> OnStateChanged;
 
@@ -95,6 +95,8 @@ namespace Nethermind.Network.Discovery.Lifecycle
             else
             {
                 // ignore spoofed message
+                _receivedPong = false;
+                return;
             }
         }
 
@@ -179,6 +181,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
         {
             PongMessage msg = _discoveryMessageFactory.CreateOutgoingMessage<PongMessage>(ManagedNode);
             msg.PingMdc = discoveryMessage.Mdc;
+
             _discoveryManager.SendMessage(msg);
             NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryPongOut);
             _sentPong = true;
@@ -192,7 +195,8 @@ namespace Nethermind.Network.Discovery.Lifecycle
         {
             if (!IsBonded)
             {
-                if (_logger.IsWarn) _logger.Warn("Sending NEIGHBOURS before bonding");
+                if (_logger.IsWarn) _logger.Warn("Attempt to send NEIGHBOURS before bonding");
+                return;
             }
 
             NeighborsMessage msg = _discoveryMessageFactory.CreateOutgoingMessage<NeighborsMessage>(ManagedNode);

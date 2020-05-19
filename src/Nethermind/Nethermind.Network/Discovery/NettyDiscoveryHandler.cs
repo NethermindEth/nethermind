@@ -94,7 +94,6 @@ namespace Nethermind.Network.Discovery
                 }
             });
         }
-
         protected override void ChannelRead0(IChannelHandlerContext ctx, DatagramPacket packet)
         {
             IByteBuffer content = packet.Content;
@@ -197,19 +196,19 @@ namespace Nethermind.Network.Discovery
 
             return true;
         }
-
-        private static void ReportMessageByType(DiscoveryMessage message)
+        
+        private void ReportMessageByType(DiscoveryMessage message)
         {
-            if (message is PingMessage pingMessage)
-            {
-                if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(pingMessage.FarAddress.Address.ToString(), "HANDLER disc v4", $"Ping {pingMessage.SourceAddress.Address} -> {pingMessage.DestinationAddress.Address}");
-            }
-            else
-            {
-                if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(message.FarAddress.Address.ToString(), "HANDLER disc v4", message.MessageType.ToString());
-            }
+                if (message is PingMessage pingMessage)
+                {
+                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(pingMessage.FarAddress.Address.ToString(), "HANDLER disc v4", $"PING {pingMessage.SourceAddress.Address} -> {pingMessage.DestinationAddress.Address}");    
+                }
+                else
+                {
+                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(message.FarAddress.Address.ToString(), "HANDLER disc v4", message.MessageType.ToString());    
+                }
         }
-
+        
         public event EventHandler OnChannelActivated;
     }
 }

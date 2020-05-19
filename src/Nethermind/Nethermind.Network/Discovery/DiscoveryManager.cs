@@ -43,6 +43,7 @@ namespace Nethermind.Network.Discovery
         private readonly ConcurrentDictionary<Keccak, INodeLifecycleManager> _nodeLifecycleManagers = new ConcurrentDictionary<Keccak, INodeLifecycleManager>();
         private readonly INodeTable _nodeTable;
         private readonly INetworkStorage _discoveryStorage;
+        private readonly IIPResolver _ipResolver;
 
         private readonly ConcurrentDictionary<MessageTypeKey, TaskCompletionSource<DiscoveryMessage>> _waitingEvents = new ConcurrentDictionary<MessageTypeKey, TaskCompletionSource<DiscoveryMessage>>();
         private IMessageSender _messageSender;
@@ -52,7 +53,8 @@ namespace Nethermind.Network.Discovery
             INodeTable nodeTable,
             INetworkStorage discoveryStorage,
             IDiscoveryConfig discoveryConfig,
-            ILogManager logManager)
+            ILogManager logManager,
+            IIPResolver ipResolver)
         {
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _discoveryConfig = discoveryConfig ?? throw new ArgumentNullException(nameof(discoveryConfig));
@@ -60,6 +62,7 @@ namespace Nethermind.Network.Discovery
             _nodeTable = nodeTable ?? throw new ArgumentNullException(nameof(nodeTable));
             _discoveryStorage = discoveryStorage ?? throw new ArgumentNullException(nameof(discoveryStorage));
             _nodeLifecycleManagerFactory.DiscoveryManager = this;
+            _ipResolver = ipResolver;
         }
 
         public IMessageSender MessageSender
@@ -72,7 +75,6 @@ namespace Nethermind.Network.Discovery
             try
             {
                 if (_logger.IsTrace) _logger.Trace($"Received msg: {message}");
-
                 MessageType msgType = message.MessageType;
 
                 Node node = new Node(message.FarPublicKey, message.FarAddress);
@@ -155,7 +157,6 @@ namespace Nethermind.Network.Discovery
         public void SendMessage(DiscoveryMessage discoveryMessage)
         {
             if (_logger.IsTrace) _logger.Trace($"Sending msg: {discoveryMessage}");
-            
             try
             {
                 if (discoveryMessage is PingMessage pingMessage)
@@ -208,15 +209,9 @@ namespace Nethermind.Network.Discovery
 
         private bool ValidatePingAddress(PingMessage message)
         {
-            if (message.DestinationAddress == null || message.SourceAddress == null || message.FarAddress == null)
+            if (message.DestinationAddress == null || message.FarAddress == null)
             {
                 if (_logger.IsDebug) _logger.Debug($"Received a ping message with empty address, message: {message}");
-                return false;
-            }
-
-            if (!Bytes.AreEqual(_nodeTable.MasterNode.Address.Address.MapToIPv6().GetAddressBytes(), message.DestinationAddress?.Address.MapToIPv6().GetAddressBytes()))
-            {
-                if (_logger.IsDebug) _logger.Debug($"Received a message with incorrect destination address, message: {message}");
                 return false;
             }
             
