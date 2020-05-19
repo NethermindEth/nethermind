@@ -24,6 +24,6 @@ namespace Nethermind.Consensus.AuRa
     {
         void PreProcess(Block block, ProcessingOptions options = ProcessingOptions.None);
         void PostProcess(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None);
-        void SetFinalizationManager(IBlockFinalizationManager finalizationManager, in bool forSealing = false);
+        void SetFinalizationManager(IBlockFinalizationManager finalizationManager, BlockHeader parentHeader);
     }
 }

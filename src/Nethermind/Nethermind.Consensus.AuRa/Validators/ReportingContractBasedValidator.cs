@@ -37,8 +37,9 @@ namespace Nethermind.Consensus.AuRa.Validators
             IValidatorStore validatorStore,
             IValidSealerStrategy validSealerStrategy,
             ILogManager logManager,
-            long startBlockNumber) 
-            : base(validator, stateProvider, abiEncoder, transactionProcessor, readOnlyTransactionProcessorSource, blockTree, receiptFinder, validatorStore, validSealerStrategy, logManager, startBlockNumber)
+            long startBlockNumber,
+            bool forSealing = false) 
+            : base(validator, stateProvider, abiEncoder, transactionProcessor, readOnlyTransactionProcessorSource, blockTree, receiptFinder, validatorStore, validSealerStrategy, logManager, startBlockNumber, forSealing)
         {
         }
     }

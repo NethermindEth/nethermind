@@ -28,23 +28,25 @@ namespace Nethermind.Consensus.AuRa.Validators
         private readonly IValidSealerStrategy _validSealerStrategy;
         private readonly ILogger _logger;
         
-        protected AuRaValidatorProcessorExtension(AuRaParameters.Validator validator, IValidSealerStrategy validSealerStrategy, IValidatorStore validatorStore, ILogManager logManager, long startBlockNumber)
+        protected AuRaValidatorProcessorExtension(AuRaParameters.Validator validator, IValidSealerStrategy validSealerStrategy, IValidatorStore validatorStore, ILogManager logManager, long startBlockNumber, bool forSealing)
         {
             if (validator == null) throw new ArgumentNullException(nameof(validator));
             ValidatorStore = validatorStore ?? throw new ArgumentNullException(nameof(validatorStore));
             _validSealerStrategy = validSealerStrategy ?? throw new ArgumentNullException(nameof(validSealerStrategy));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             InitBlockNumber = startBlockNumber;
+            ForSealing = forSealing;
         }
         
         public Address[] Validators { get; protected set; }
         
         protected long InitBlockNumber { get; }
+        protected bool ForSealing { get; }
         protected IValidatorStore ValidatorStore { get; }
 
-        public virtual void SetFinalizationManager(IBlockFinalizationManager finalizationManager, in bool forSealing)
+        public virtual void SetFinalizationManager(IBlockFinalizationManager finalizationManager, BlockHeader parentHeader)
         {
-            if (finalizationManager != null && !forSealing && InitBlockNumber == AuRaValidatorProcessorFactory.DefaultStartBlockNumber)
+            if (finalizationManager != null && !ForSealing && InitBlockNumber == AuRaValidatorProcessorFactory.DefaultStartBlockNumber)
             {
                 ValidatorStore.SetValidators(InitBlockNumber, Validators);
             }

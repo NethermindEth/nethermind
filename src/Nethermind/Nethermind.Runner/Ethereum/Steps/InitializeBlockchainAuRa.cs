@@ -134,7 +134,16 @@ namespace Nethermind.Runner.Ethereum.Steps
             
             _context.ValidatorStore = new ValidatorStore(_context.DbProvider.BlockInfosDb);
             
-            IAuRaValidatorProcessorExtension validatorProcessorExtension = new AuRaValidatorProcessorFactory(_context.StateProvider, _context.AbiEncoder, _context.TransactionProcessor, GetReadOnlyTransactionProcessorSource(), _context.BlockTree, _context.ReceiptStorage, _context.ValidatorStore, _context.LogManager)
+            IAuRaValidatorProcessorExtension validatorProcessorExtension = new AuRaValidatorProcessorFactory(
+                    _context.StateProvider, 
+                    _context.AbiEncoder, 
+                    _context.TransactionProcessor, 
+                    GetReadOnlyTransactionProcessorSource(), 
+                    _context.BlockTree, 
+                    _context.ReceiptStorage, 
+                    _context.ValidatorStore, 
+                    _context.LogManager,
+                    false)
                 .CreateValidatorProcessor(_context.ChainSpec.AuRa.Validators);
 
             AuRaStepCalculator auRaStepCalculator = new AuRaStepCalculator(_context.ChainSpec.AuRa.StepDuration, _context.Timestamper, _context.LogManager);

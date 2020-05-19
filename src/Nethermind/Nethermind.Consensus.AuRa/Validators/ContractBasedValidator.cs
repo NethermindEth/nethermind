@@ -46,8 +46,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         private IBlockFinalizationManager _blockFinalizationManager;
         private readonly IBlockTree _blockTree;
         private readonly IReceiptFinder _receiptFinder;
-        private bool _validatorUsedForSealing;
-
+        
         protected Address ContractAddress { get; }
         protected IAbiEncoder AbiEncoder { get; }
         protected ValidatorContract ValidatorContract => _validatorContract ??= CreateValidatorContract(ContractAddress);
@@ -65,7 +64,8 @@ namespace Nethermind.Consensus.AuRa.Validators
             IValidatorStore validatorStore,
             IValidSealerStrategy validSealerStrategy,
             ILogManager logManager,
-            long startBlockNumber) : base(validator, validSealerStrategy, validatorStore, logManager, startBlockNumber)
+            long startBlockNumber,
+            bool forSealing = false) : base(validator, validSealerStrategy, validatorStore, logManager, startBlockNumber, forSealing)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             ContractAddress = validator.Addresses?.FirstOrDefault() ?? throw new ArgumentException("Missing contract address for AuRa validator.", nameof(validator.Addresses));
@@ -78,7 +78,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             SetPendingValidators(LoadPendingValidators());
         }
 
-        public override void SetFinalizationManager(IBlockFinalizationManager finalizationManager, in bool forSealing)
+        public override void SetFinalizationManager(IBlockFinalizationManager finalizationManager, BlockHeader parentHeader)
         {
             if (_blockFinalizationManager != null)
             {
@@ -86,15 +86,14 @@ namespace Nethermind.Consensus.AuRa.Validators
             }
 
             _blockFinalizationManager = finalizationManager;
-            _validatorUsedForSealing = forSealing;
-            
-            if (!forSealing && _blockFinalizationManager != null)
+
+            if (!ForSealing && _blockFinalizationManager != null)
             {
                 _blockFinalizationManager.BlocksFinalized += OnBlocksFinalized;
                 if (_blockTree.Head != null)
                 {
-                    Validators = LoadValidatorsFromContract(_blockTree.Head?.Header);
-                    base.SetFinalizationManager(finalizationManager, forSealing);
+                    Validators = LoadValidatorsFromContract(parentHeader);
+                    base.SetFinalizationManager(finalizationManager, parentHeader ?? _blockTree.Head.Header);
                 }
             }
         }
@@ -111,7 +110,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             var isProcessingBlock = !isProducingBlock;
             var isInitBlock = InitBlockNumber == block.Number;
             var shouldLoadValidators = Validators == null || isProducingBlock;
-            var mainChainProcessing = !_validatorUsedForSealing && isProcessingBlock;
+            var mainChainProcessing = !ForSealing && isProcessingBlock;
             
             if (shouldLoadValidators)
             {
@@ -263,7 +262,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                     CurrentPendingValidators.AreFinalized = true;
                     Validators = CurrentPendingValidators.Addresses;
                     SetPendingValidators(CurrentPendingValidators, true);
-                    if (!_validatorUsedForSealing)
+                    if (!ForSealing)
                     {
                         ValidatorStore.SetValidators(e.FinalizingBlock.Number, Validators);
                         if (_logger.IsInfo) _logger.Info($"Finalizing validators for transition within contract signalled at block {CurrentPendingValidators.BlockNumber}. after block {e.FinalizingBlock.ToString(BlockHeader.Format.Short)}.");

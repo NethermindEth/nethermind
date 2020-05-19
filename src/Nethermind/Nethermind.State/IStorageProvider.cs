@@ -39,5 +39,7 @@ namespace Nethermind.State
         void Commit(IStorageTracer stateTracer);
         
         int TakeSnapshot();
+
+        void RecreateStorage(Address address);
     }
 }
