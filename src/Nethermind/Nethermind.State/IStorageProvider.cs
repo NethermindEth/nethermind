@@ -28,8 +28,6 @@ namespace Nethermind.State
 
         void Reset();
         
-        void Destroy(Address address);
-        
         void CommitTrees();
         
         void Restore(int snapshot);
@@ -40,6 +38,6 @@ namespace Nethermind.State
         
         int TakeSnapshot();
 
-        void RecreateStorage(Address address);
+        void ClearStorage(Address address);
     }
 }

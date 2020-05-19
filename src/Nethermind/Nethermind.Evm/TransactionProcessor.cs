@@ -255,6 +255,7 @@ namespace Nethermind.Evm
                     foreach (Address toBeDestroyed in substate.DestroyList)
                     {
                         if (_logger.IsTrace) _logger.Trace($"Destroying account {toBeDestroyed}");
+                        _storageProvider.ClearStorage(toBeDestroyed);
                         _stateProvider.DeleteAccount(toBeDestroyed);
                         if (txTracer.IsTracingRefunds) txTracer.ReportRefund(RefundOf.Destroy);
                     }
