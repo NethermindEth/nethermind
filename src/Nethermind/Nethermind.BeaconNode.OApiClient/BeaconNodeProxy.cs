@@ -108,7 +108,7 @@ namespace Nethermind.BeaconNode.OApiClient
         }
 
         public Task<ApiResponse<Attestation>> NewAttestationAsync(BlsPublicKey validatorPublicKey,
-            bool proofOfCustodyBit, Slot targetSlot, Shard targetShard,
+            bool proofOfCustodyBit, Slot slot, Shard shard,
             CancellationToken cancellationToken)
         {
             throw new System.NotImplementedException();

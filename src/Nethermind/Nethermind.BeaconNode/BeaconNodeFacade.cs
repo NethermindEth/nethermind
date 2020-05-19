@@ -30,6 +30,7 @@ namespace Nethermind.BeaconNode
 {
     public class BeaconNodeFacade : IBeaconNodeApi
     {
+        private readonly AttestationProducer _attestationProducer;
         private readonly BlockProducer _blockProducer;
         private readonly IClientVersion _clientVersion;
         private readonly IForkChoice _forkChoice;
@@ -45,7 +46,8 @@ namespace Nethermind.BeaconNode
             IStore store,
             INetworkPeering networkPeering,
             ValidatorAssignments validatorAssignments,
-            BlockProducer blockProducer)
+            BlockProducer blockProducer,
+            AttestationProducer attestationProducer)
         {
             _logger = logger;
             _clientVersion = clientVersion;
@@ -54,6 +56,7 @@ namespace Nethermind.BeaconNode
             _networkPeering = networkPeering;
             _validatorAssignments = validatorAssignments;
             _blockProducer = blockProducer;
+            _attestationProducer = attestationProducer;
         }
 
         public async Task<ApiResponse<ulong>> GetGenesisTimeAsync(CancellationToken cancellationToken)
@@ -134,11 +137,21 @@ namespace Nethermind.BeaconNode
         }
 
         public async Task<ApiResponse<Attestation>> NewAttestationAsync(BlsPublicKey validatorPublicKey,
-            bool proofOfCustodyBit, Slot targetSlot, Shard targetShard,
+            bool proofOfCustodyBit, Slot slot, Shard shard,
             CancellationToken cancellationToken)
         {
-            await Task.Delay(0);
-            return ApiResponse.Create(StatusCode.Success, Attestation.Zero);
+            try
+            {
+                Attestation unsignedAttestation = await _attestationProducer
+                    .NewAttestationAsync(validatorPublicKey, proofOfCustodyBit, slot, shard, cancellationToken)
+                    .ConfigureAwait(false);
+                return ApiResponse.Create(StatusCode.Success, unsignedAttestation);
+            }
+            catch (Exception ex)
+            {
+                if (_logger.IsWarn()) Log.ApiErrorNewAttestation(_logger, ex);
+                throw;
+            }
         }
 
         public async Task<ApiResponse<BeaconBlock>> NewBlockAsync(Slot slot, BlsSignature randaoReveal,
