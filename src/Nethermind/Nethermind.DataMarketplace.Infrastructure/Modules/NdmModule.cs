@@ -69,7 +69,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
                 logManager,
                 false,
                 jsonRpcConfig.FindLogBlockDepthLimit);
-            var txPoolBridge = new TxPoolBridge(services.TransactionPool, services.Wallet, services.SpecProvider.ChainId);
+            var txPoolBridge = new TxPoolBridge(services.TransactionPool, services.Wallet, services.Timestamper, services.SpecProvider.ChainId);
             var dataAssetRlpDecoder = new DataAssetDecoder();
             var encoder = new AbiEncoder();
 

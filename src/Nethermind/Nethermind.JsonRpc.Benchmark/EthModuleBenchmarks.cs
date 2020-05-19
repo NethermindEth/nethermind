@@ -113,7 +113,7 @@ namespace Nethermind.JsonRpc.Benchmark
                 LimboLogs.Instance,
                 false);
             
-            TxPoolBridge txPoolBridge = new TxPoolBridge(NullTxPool.Instance, NullWallet.Instance, specProvider.ChainId);
+            TxPoolBridge txPoolBridge = new TxPoolBridge(NullTxPool.Instance, NullWallet.Instance, Timestamper.Default, specProvider.ChainId);
             
             _ethModule = new EthModule(new JsonRpcConfig(), bridge, txPoolBridge, LimboLogs.Instance);
         }
