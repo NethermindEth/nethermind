@@ -2405,7 +2405,6 @@ namespace Nethermind.Evm
 
                         Address inheritor = stack.PopAddress();
                         vmState.DestroyList.Add(env.ExecutingAccount);
-                        _storage.Destroy(env.ExecutingAccount);
 
                         UInt256 ownerBalance = _state.GetBalance(env.ExecutingAccount);
                         if (_txTracer.IsTracingActions) _txTracer.ReportSelfDestruct(env.ExecutingAccount, ownerBalance, inheritor);
