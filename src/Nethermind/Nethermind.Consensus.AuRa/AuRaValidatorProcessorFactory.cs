@@ -39,6 +39,7 @@ namespace Nethermind.Consensus.AuRa
         private readonly IReceiptFinder _receiptFinder;
         private readonly IValidatorStore _validatorStore;
         private readonly ILogManager _logManager;
+        private readonly bool _forSealing;
 
         public AuRaValidatorProcessorFactory(IStateProvider stateProvider,
             IAbiEncoder abiEncoder,
@@ -47,7 +48,8 @@ namespace Nethermind.Consensus.AuRa
             IBlockTree blockTree,
             IReceiptFinder receiptFinder,
             IValidatorStore validatorStore,
-            ILogManager logManager)
+            ILogManager logManager,
+            bool forSealing = false)
         {
             _stateProvider = stateProvider;
             _abiEncoder = abiEncoder;
@@ -57,6 +59,7 @@ namespace Nethermind.Consensus.AuRa
             _receiptFinder = receiptFinder;
             _validatorStore = validatorStore;
             _logManager = logManager;
+            _forSealing = forSealing;
         }
 
         public IAuRaValidatorProcessorExtension CreateValidatorProcessor(AuRaParameters.Validator validator, long? startBlock = null)
@@ -65,10 +68,10 @@ namespace Nethermind.Consensus.AuRa
             long startBlockNumber = startBlock ?? DefaultStartBlockNumber;
             return validator.ValidatorType switch
             {
-                AuRaParameters.ValidatorType.List => (IAuRaValidatorProcessorExtension) new ListBasedValidator(validator, auRaSealerValidator, _validatorStore, _logManager, startBlockNumber),
-                AuRaParameters.ValidatorType.Contract => new ContractBasedValidator(validator, _stateProvider, _abiEncoder, _transactionProcessor, _readOnlyReadOnlyTransactionProcessorSource, _blockTree, _receiptFinder, _validatorStore, auRaSealerValidator, _logManager, startBlockNumber),
-                AuRaParameters.ValidatorType.ReportingContract => new ReportingContractBasedValidator(validator, _stateProvider, _abiEncoder, _transactionProcessor, _readOnlyReadOnlyTransactionProcessorSource, _blockTree, _receiptFinder, _validatorStore, auRaSealerValidator, _logManager, startBlockNumber),
-                AuRaParameters.ValidatorType.Multi => new MultiValidator(validator, this, _blockTree, _validatorStore, _logManager),
+                AuRaParameters.ValidatorType.List => (IAuRaValidatorProcessorExtension) new ListBasedValidator(validator, auRaSealerValidator, _validatorStore, _logManager, startBlockNumber, _forSealing),
+                AuRaParameters.ValidatorType.Contract => new ContractBasedValidator(validator, _stateProvider, _abiEncoder, _transactionProcessor, _readOnlyReadOnlyTransactionProcessorSource, _blockTree, _receiptFinder, _validatorStore, auRaSealerValidator, _logManager, startBlockNumber, _forSealing),
+                AuRaParameters.ValidatorType.ReportingContract => new ReportingContractBasedValidator(validator, _stateProvider, _abiEncoder, _transactionProcessor, _readOnlyReadOnlyTransactionProcessorSource, _blockTree, _receiptFinder, _validatorStore, auRaSealerValidator, _logManager, startBlockNumber, _forSealing),
+                AuRaParameters.ValidatorType.Multi => new MultiValidator(validator, this, _blockTree, _validatorStore, _logManager, _forSealing),
                 _ => throw new ArgumentOutOfRangeException()
             };
         }

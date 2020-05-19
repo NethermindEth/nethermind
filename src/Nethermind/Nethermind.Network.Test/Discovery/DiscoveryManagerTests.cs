@@ -91,7 +91,7 @@ namespace Nethermind.Network.Test.Discovery
             //receiving ping
             var address = new IPEndPoint(IPAddress.Parse(_host), _port);
             _discoveryManager.OnIncomingMessage(new PingMessage {FarAddress = address, FarPublicKey = _publicKey, DestinationAddress = _nodeTable.MasterNode.Address, SourceAddress = address});
-            Thread.Sleep(200);
+            Thread.Sleep(500);
 
             // expecting to send pong
             _messageSender.Received(1).SendMessage(Arg.Is<PongMessage>(m => m.FarAddress.Address.ToString() == _host && m.FarAddress.Port == _port));

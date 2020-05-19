@@ -43,9 +43,10 @@ namespace Nethermind.Runner.Ethereum.Steps
         private IBlockFinalizationManager InitFinalizationManager(IAuRaBlockProcessorExtension auRaBlockProcessorExtension)
         {
             if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
+            if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
             
             AuRaBlockFinalizationManager finalizationManager = new AuRaBlockFinalizationManager(_context.BlockTree, _context.ChainLevelInfoRepository, _context.MainBlockProcessor, _context.ValidatorStore, new ValidSealerStrategy(), _context.LogManager, _context.ChainSpec.AuRa.TwoThirdsMajorityTransition);
-            auRaBlockProcessorExtension.SetFinalizationManager(finalizationManager);
+            auRaBlockProcessorExtension.SetFinalizationManager(finalizationManager, _context.BlockTree.Head?.Header);
             return finalizationManager;
         }
     }
