@@ -8,7 +8,7 @@ namespace Nethermind.Cli.Modules
         }
 
         [CliFunction("baseline", "deploy")]
-        public string deploy(string address) => NodeManager.Post<string>("baseline_deploy", CliParseAddress(address)).Result;
+        public string deploy(string address, string contractType) => NodeManager.Post<string>("baseline_deploy", CliParseAddress(address), contractType).Result;
 
         [CliFunction("baseline", "addLeaf")]
         public string addLeaf() => NodeManager.Post<string>("baseline_addLeaf").Result;
