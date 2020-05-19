@@ -24,7 +24,7 @@ namespace Nethermind.JsonRpc.Modules.Baseline
     {
         ResultWrapper<string> baseline_addLeaf();
         ResultWrapper<string> baseline_addLeaves();
-        ResultWrapper<Keccak> baseline_deploy(Address address);
+        ResultWrapper<Keccak> baseline_deploy(Address address, string contractType);
         ResultWrapper<string> baseline_getSiblings();
     }
 }

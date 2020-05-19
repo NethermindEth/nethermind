@@ -37,6 +37,7 @@ namespace Nethermind.JsonRpc.Modules.Baseline
         {
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
+            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
         }
         
