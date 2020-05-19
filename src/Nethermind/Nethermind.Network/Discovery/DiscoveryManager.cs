@@ -75,7 +75,6 @@ namespace Nethermind.Network.Discovery
             try
             {
                 if (_logger.IsTrace) _logger.Trace($"Received msg: {message}");
-                Console.WriteLine($"Recieved discovery message:  {message}");
                 MessageType msgType = message.MessageType;
 
                 Node node = new Node(message.FarPublicKey, message.FarAddress);
@@ -158,7 +157,6 @@ namespace Nethermind.Network.Discovery
         public void SendMessage(DiscoveryMessage discoveryMessage)
         {
             if (_logger.IsTrace) _logger.Trace($"Sending msg: {discoveryMessage}");
-            Console.WriteLine($"Sending msg: {discoveryMessage}");
             try
             {
                 if (discoveryMessage is PingMessage pingMessage)
