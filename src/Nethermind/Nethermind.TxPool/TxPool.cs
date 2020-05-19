@@ -200,7 +200,10 @@ namespace Nethermind.TxPool
             bool isEip155Enabled = (handlingOptions & TxHandlingOptions.PreEip155Signing) == TxHandlingOptions.None;
             bool managedNonce = (handlingOptions & TxHandlingOptions.ManagedNonce) == TxHandlingOptions.ManagedNonce;
             bool isPersistentBroadcast = (handlingOptions & TxHandlingOptions.PersistentBroadcast) == TxHandlingOptions.PersistentBroadcast;
-            if(_logger.IsTrace) _logger.Trace($"Adding transaction {tx.ToString("  ")} - EIP155: {isEip155Enabled} | managed nonce: {managedNonce} | persistent brodcast {isPersistentBroadcast}");
+            if (isPersistentBroadcast)
+            {
+                if (_logger.IsTrace) _logger.Trace($"Adding transaction {tx.ToString("  ")} - EIP155: {isEip155Enabled} | managed nonce: {managedNonce} | persistent brodcast {isPersistentBroadcast}");
+            }
 
             if (_fadingOwnTransactions.ContainsKey(tx.Hash))
             {
