@@ -121,7 +121,7 @@ namespace Nethermind.BeaconNode.Test.EpochProcessing
             RunProcessRewardsAndPenalties(testServiceProvider, state);
 
             // Assert
-            var pendingAttestations = attestations.Select(x => new PendingAttestation(x.AggregationBits, x.Data, Slot.None, ValidatorIndex.None));
+            var pendingAttestations = attestations.Select(x => new PendingAttestation(x.AggregationBits, x.Data, Slot.Zero, ValidatorIndex.Zero));
             var attestingIndices = beaconStateTransition.GetUnslashedAttestingIndices(state, pendingAttestations).ToList();
 
             attestingIndices.Count.ShouldBeGreaterThan(0);

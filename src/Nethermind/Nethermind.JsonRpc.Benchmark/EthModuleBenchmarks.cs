@@ -36,8 +36,7 @@ using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Repositories;
-using Nethermind.Store;
-using Nethermind.Store.Bloom;
+using Nethermind.Db.Blooms;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using BlockTree = Nethermind.Blockchain.BlockTree;
@@ -88,7 +87,7 @@ namespace Nethermind.JsonRpc.Benchmark
             BlockchainProcessor blockchainProcessor = new BlockchainProcessor(
                 blockTree,
                 blockProcessor,
-                new TxSignaturesRecoveryStep(new EthereumEcdsa(specProvider, LimboLogs.Instance), NullTxPool.Instance, LimboLogs.Instance),
+                new TxSignaturesRecoveryStep(specProvider, new EthereumEcdsa(specProvider.ChainId, LimboLogs.Instance), NullTxPool.Instance, LimboLogs.Instance),
                 LimboLogs.Instance,
                 false);
 
@@ -108,12 +107,15 @@ namespace Nethermind.JsonRpc.Benchmark
                 NullFilterManager.Instance, 
                 new DevWallet(new WalletConfig(), LimboLogs.Instance), 
                 transactionProcessor, 
-                new EthereumEcdsa(MainnetSpecProvider.Instance, LimboLogs.Instance),
+                new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance),
                 bloomStorage,
+                specProvider,
                 LimboLogs.Instance,
                 false);
             
-            _ethModule = new EthModule(new JsonRpcConfig(), bridge, LimboLogs.Instance);
+            TxPoolBridge txPoolBridge = new TxPoolBridge(NullTxPool.Instance, NullWallet.Instance, specProvider.ChainId);
+            
+            _ethModule = new EthModule(new JsonRpcConfig(), bridge, txPoolBridge, LimboLogs.Instance);
         }
 
         [Benchmark]

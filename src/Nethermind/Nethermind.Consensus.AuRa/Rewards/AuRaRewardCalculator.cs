@@ -103,39 +103,10 @@ namespace Nethermind.Consensus.AuRa.Rewards
             for (int index = 0; index < addresses.Length; index++)
             {
                 var address = addresses[index];
-                blockRewards[index] = new BlockReward(address, rewards[index], GetBlockRewardType(address, beneficiaries, kinds, index));
+                blockRewards[index] = new BlockReward(address, rewards[index], BlockRewardType.External);
             }
 
             return blockRewards;
-        }
-
-        private BlockRewardType GetBlockRewardType(Address address, Address[] beneficiaries, ushort[] kinds, int index)
-        {
-            bool TryGetKind(int indexIn, ref ushort kindOut)
-            {
-                if (beneficiaries[indexIn] == address)
-                {
-                    kindOut = kinds[indexIn];
-                    return true;
-                }
-
-                return false;
-            }
-            
-            bool indexInBounds = index < beneficiaries.Length;
-            ushort kind = BenefactorKind.External;
-            if (!indexInBounds || !TryGetKind(index, ref kind))
-            {
-                for (int i = 0; i < beneficiaries.Length; i++)
-                {
-                    if (TryGetKind(i, ref kind))
-                    {
-                        break;
-                    }
-                }
-            }
-
-            return BenefactorKind.ToBlockRewardType(kind);
         }
 
         public static IRewardCalculatorSource GetSource(AuRaParameters auRaParameters, IAbiEncoder abiEncoder) => new AuRaRewardCalculatorSource(auRaParameters, abiEncoder);

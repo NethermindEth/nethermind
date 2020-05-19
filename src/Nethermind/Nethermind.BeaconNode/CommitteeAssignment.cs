@@ -22,7 +22,7 @@ namespace Nethermind.BeaconNode
     public class CommitteeAssignment
     {
         public static CommitteeAssignment None =
-            new CommitteeAssignment(new ValidatorIndex[0], CommitteeIndex.None, Slot.None);
+            new CommitteeAssignment(new ValidatorIndex[0], CommitteeIndex.Zero, Slot.Zero);
 
         private readonly List<ValidatorIndex> _committee;
 

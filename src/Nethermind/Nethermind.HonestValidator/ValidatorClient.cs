@@ -254,6 +254,8 @@ namespace Nethermind.HonestValidator
             {
                 Activity activity = new Activity("process-proposal-duty");
                 activity.Start();
+                using var activityScope = _logger.BeginScope("[TraceId, {TraceId}], [SpanId, {SpanId}]",
+                    activity.TraceId, activity.SpanId);
                 try
                 {
 
@@ -309,6 +311,8 @@ namespace Nethermind.HonestValidator
         {
             Activity activity = new Activity("update-duties");
             activity.Start();
+            using var activityScope = _logger.BeginScope("[TraceId, {TraceId}], [SpanId, {SpanId}]",
+                activity.TraceId, activity.SpanId);
             try
             {
                 IList<BlsPublicKey> publicKeys = _validatorKeyProvider.GetPublicKeys();
@@ -327,14 +331,14 @@ namespace Nethermind.HonestValidator
                 {
                     Slot? currentProposalSlot =
                         _validatorState.ProposalSlot.GetValueOrDefault(validatorDuty.ValidatorPublicKey);
-                    if (validatorDuty.BlockProposalSlot != Slot.None &&
+                    if (validatorDuty.BlockProposalSlot.HasValue &&
                         validatorDuty.BlockProposalSlot != currentProposalSlot)
                     {
                         _validatorState.SetProposalDuty(validatorDuty.ValidatorPublicKey,
-                            validatorDuty.BlockProposalSlot);
+                            validatorDuty.BlockProposalSlot.Value);
                         if (_logger.IsInfo())
                             Log.ValidatorDutyProposalChanged(_logger, validatorDuty.ValidatorPublicKey, epoch,
-                                validatorDuty.BlockProposalSlot, null);
+                                validatorDuty.BlockProposalSlot.Value, null);
                     }
                 }
 
@@ -344,15 +348,16 @@ namespace Nethermind.HonestValidator
                         _validatorState.AttestationSlot.GetValueOrDefault(validatorDuty.ValidatorPublicKey);
                     Shard? currentAttestationShard =
                         _validatorState.AttestationShard.GetValueOrDefault(validatorDuty.ValidatorPublicKey);
-                    if (validatorDuty.AttestationSlot != currentAttestationSlot ||
-                        validatorDuty.AttestationShard != currentAttestationShard)
+                    if (validatorDuty.AttestationSlot.HasValue &&
+                        (validatorDuty.AttestationSlot != currentAttestationSlot ||
+                        validatorDuty.AttestationShard != currentAttestationShard))
                     {
                         _validatorState.SetAttestationDuty(validatorDuty.ValidatorPublicKey,
-                            validatorDuty.AttestationSlot,
+                            validatorDuty.AttestationSlot.Value,
                             validatorDuty.AttestationShard);
                         if (_logger.IsDebug())
                             LogDebug.ValidatorDutyAttestationChanged(_logger, validatorDuty.ValidatorPublicKey, epoch,
-                                validatorDuty.AttestationSlot, validatorDuty.AttestationShard, null);
+                                validatorDuty.AttestationSlot.Value, validatorDuty.AttestationShard, null);
                     }
                 }
             }
@@ -374,6 +379,8 @@ namespace Nethermind.HonestValidator
 
             Activity activity = new Activity("update-fork-version");
             activity.Start();
+            using var activityScope = _logger.BeginScope("[TraceId, {TraceId}], [SpanId, {SpanId}]",
+                activity.TraceId, activity.SpanId);
             try
             {
                 var forkResponse = await _beaconNodeApi.GetNodeForkAsync(cancellationToken).ConfigureAwait(false);
@@ -400,6 +407,8 @@ namespace Nethermind.HonestValidator
         {
             Activity activity = new Activity("update-sync-status");
             activity.Start();
+            using var activityScope = _logger.BeginScope("[TraceId, {TraceId}], [SpanId, {SpanId}]",
+                activity.TraceId, activity.SpanId);
             try
             {
                 var syncingResponse = await _beaconNodeApi.GetSyncingAsync(cancellationToken).ConfigureAwait(false);

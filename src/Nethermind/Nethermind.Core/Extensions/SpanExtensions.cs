@@ -22,24 +22,23 @@ namespace Nethermind.Core.Extensions
 {
     public static class SpanExtensions
     {
-        public static string ToHexString(this Span<byte> span, bool withZeroX)
+        public static string ToHexString(this in Span<byte> span, bool withZeroX)
         {
             return ToHexString(span, withZeroX, false, false);
         }
         
-        public static string ToHexString(this Span<byte> span)
+        public static string ToHexString(this in Span<byte> span)
         {
             return ToHexString(span, false, false, false);
         }
         
-        public static string ToHexString(this Span<byte> span, bool withZeroX, bool noLeadingZeros, bool withEip55Checksum)
+        public static string ToHexString(this in Span<byte> span, bool withZeroX, bool noLeadingZeros, bool withEip55Checksum)
         {
             return ToHexViaLookup(span, withZeroX, noLeadingZeros, withEip55Checksum);
         }
         
         [DebuggerStepThrough]
-        private static string ToHexViaLookup(Span<byte> span, bool withZeroX, bool skipLeadingZeros,
-            bool withEip55Checksum)
+        private static string ToHexViaLookup(in Span<byte> span, bool withZeroX, bool skipLeadingZeros, bool withEip55Checksum)
         {
             int leadingZeros = skipLeadingZeros ? CountLeadingZeros(span) : 0;
             char[] result = new char[span.Length * 2 + (withZeroX ? 2 : 0) - leadingZeros];
@@ -100,7 +99,7 @@ namespace Nethermind.Core.Extensions
             return result;
         }
         
-        private static int CountLeadingZeros(Span<byte> span)
+        private static int CountLeadingZeros(in Span<byte> span)
         {
             int leadingZeros = 0;
             for (int i = 0; i < span.Length; i++)
@@ -124,6 +123,8 @@ namespace Nethermind.Core.Extensions
             }
 
             return leadingZeros;
-        }        
+        }
+
+        public static bool IsNullOrEmpty<T>(this in Span<T> span) => span == null || span.Length == 0;
     }
 }

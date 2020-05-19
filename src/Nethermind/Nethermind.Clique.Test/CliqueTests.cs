@@ -26,7 +26,7 @@ using Nethermind.Db;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Store;
+using Nethermind.Db.Blooms;
 using Nethermind.Wallet;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
@@ -72,7 +72,7 @@ namespace Nethermind.Clique.Test
             MemDb db = new MemDb();
             CliqueConfig config = new CliqueConfig();
             
-            _ecdsa = new EthereumEcdsa(RinkebySpecProvider.Instance, LimboLogs.Instance); 
+            _ecdsa = new EthereumEcdsa(ChainId.Rinkeby, LimboLogs.Instance); 
             _snapshotManager = new SnapshotManager(config, db, _blockTree, _ecdsa, LimboLogs.Instance);
             _clique = new CliqueSealer(new BasicWallet(key), config, _snapshotManager, key.Address, LimboLogs.Instance);
             _sealValidator = new CliqueSealValidator(config, _snapshotManager, LimboLogs.Instance);

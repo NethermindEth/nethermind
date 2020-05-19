@@ -14,12 +14,15 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using FluentAssertions;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Specs;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Receipts
@@ -27,13 +30,43 @@ namespace Nethermind.Blockchain.Test.Receipts
     [TestFixture]
     public class PersistentReceiptStorageTests
     {
+        private MemColumnsDb<ReceiptsColumns> _receiptsDb;
+        private PersistentReceiptStorage _storage;
+
+        [SetUp]
+        public void SetUp()
+        {
+            _receiptsDb = new MemColumnsDb<ReceiptsColumns>();
+            _storage = new PersistentReceiptStorage(_receiptsDb, MainnetSpecProvider.Instance, new ReceiptsRecovery()) {MigratedBlockNumber = 0};
+            _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks).Set(Keccak.Zero, Bytes.Empty);
+        }
+
         [Test]
         public void Returns_null_for_missing_tx()
         {
-            MemColumnsDb<ReceiptsColumns> receiptsDb = new MemColumnsDb<ReceiptsColumns>();
-            PersistentReceiptStorage persistentReceiptStorage = new PersistentReceiptStorage(receiptsDb, MainnetSpecProvider.Instance, new ReceiptsRecovery());
-            Keccak blockHash = persistentReceiptStorage.FindBlockHash(Keccak.Zero);
+            Keccak blockHash = _storage.FindBlockHash(Keccak.Zero);
             blockHash.Should().BeNull();
+        }
+
+        [Test]
+        public void ReceiptsIterator_doesnt_throw_on_empty_span()
+        {
+            _storage.TryGetReceiptsIterator(1, Keccak.Zero, out var iterator);
+            iterator.TryGetNext(out _).Should().BeFalse();
+        }
+        
+        [Test]
+        public void ReceiptsIterator_doesnt_throw_on_null()
+        {
+            _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks).Set(Keccak.Zero, null);
+            _storage.TryGetReceiptsIterator(1, Keccak.Zero, out var iterator);
+            iterator.TryGetNext(out _).Should().BeFalse();
+        }
+        
+        [Test]
+        public void Get_returns_empty_on_empty_span()
+        {
+            _storage.Get(Keccak.Zero).Should().BeEquivalentTo(Array.Empty<TxReceipt>());
         }
     }
 }

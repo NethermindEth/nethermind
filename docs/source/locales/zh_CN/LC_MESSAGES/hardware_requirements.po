@@ -1,0 +1,69 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) 2018, Demerzel Solutions Limited
+# This file is distributed under the same license as the nethermind package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2020.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: nethermind \n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2020-05-14 17:16+0100\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.8.0\n"
+
+#: ../../source/hardware_requirements.rst:2
+msgid "Hardware Requirements"
+msgstr ""
+
+#: ../../source/hardware_requirements.rst:4
+msgid ""
+"Generally the faster IO operations the better. For this reason Digital "
+"Ocean and UpCloud are so far the best cloud providers we have tested when"
+" running Nethermind nodes."
+msgstr ""
+
+#: ../../source/hardware_requirements.rst:7
+msgid "Goerli Fast Sync"
+msgstr ""
+
+#: ../../source/hardware_requirements.rst:7
+msgid "8GB disk space | 1GB RAM | 1 Core CPU"
+msgstr ""
+
+#: ../../source/hardware_requirements.rst:10
+msgid "Mainnet Fast Sync"
+msgstr ""
+
+#: ../../source/hardware_requirements.rst:10
+msgid "100GB to 200GB disk space | 4GB RAM |2 Cores CPU"
+msgstr ""
+
+#: ../../source/hardware_requirements.rst:13
+msgid "Rinkeby Fast Sync"
+msgstr ""
+
+#: ../../source/hardware_requirements.rst:13
+msgid "30GB | 4GB RAM | 2 Cores CPU"
+msgstr ""
+
+#: ../../source/hardware_requirements.rst:16
+msgid "Mainnet Full Archive"
+msgstr ""
+
+#: ../../source/hardware_requirements.rst:16
+msgid "4TB disk space | 16GB RAM | 4 Cores CPU"
+msgstr ""
+
+#: ../../source/hardware_requirements.rst:18
+msgid ""
+"After startup the node will display the estimated max memory usage but "
+"not everything is accounted for and some block processing / some fast "
+"sync temporary caches may go above these values."
+msgstr ""
+

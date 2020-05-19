@@ -21,8 +21,8 @@ namespace Nethermind.Core2.Api
 {
     public class ValidatorDuty
     {
-        public ValidatorDuty(BlsPublicKey validatorPublicKey, Slot attestationSlot, Shard attestationShard,
-            Slot blockProposalSlot)
+        public ValidatorDuty(BlsPublicKey validatorPublicKey, Slot? attestationSlot, Shard attestationShard,
+            Slot? blockProposalSlot)
         {
             ValidatorPublicKey = validatorPublicKey;
             AttestationSlot = attestationSlot;
@@ -31,8 +31,8 @@ namespace Nethermind.Core2.Api
         }
 
         public Shard AttestationShard { get; }
-        public Slot AttestationSlot { get; }
-        public Slot BlockProposalSlot { get; }
+        public Slot? AttestationSlot { get; }
+        public Slot? BlockProposalSlot { get; }
         public BlsPublicKey ValidatorPublicKey { get; }
     }
 }

@@ -35,7 +35,7 @@ using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
 using Nethermind.State;
 using Nethermind.State.Repositories;
-using Nethermind.Store.Bloom;
+using Nethermind.Db.Blooms;
 using Nethermind.Synchronization.BeamSync;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
@@ -80,9 +80,9 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.DbProvider.CodeDb,
                 _context.LogManager);
 
-            _context.EthereumEcdsa = new EthereumEcdsa(_context.SpecProvider, _context.LogManager);
+            _context.EthereumEcdsa = new EthereumEcdsa(_context.SpecProvider.ChainId, _context.LogManager);
             _context.TxPool = new TxPool.TxPool(
-                new PersistentTxStorage(_context.DbProvider.PendingTxsDb, _context.SpecProvider),
+                new PersistentTxStorage(_context.DbProvider.PendingTxsDb),
                 Timestamper.Default,
                 _context.EthereumEcdsa,
                 _context.SpecProvider,
@@ -124,7 +124,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context.ReceiptStorage = initConfig.StoreReceipts ? (IReceiptStorage?) new PersistentReceiptStorage(_context.DbProvider.ReceiptsDb, _context.SpecProvider, new ReceiptsRecovery()) : NullReceiptStorage.Instance;
             _context.ReceiptFinder = new FullInfoReceiptFinder(_context.ReceiptStorage, new ReceiptsRecovery(), _context.BlockTree);
 
-            _context.RecoveryStep = new TxSignaturesRecoveryStep(_context.EthereumEcdsa, _context.TxPool, _context.LogManager);
+            _context.RecoveryStep = new TxSignaturesRecoveryStep(_context.SpecProvider, _context.EthereumEcdsa, _context.TxPool, _context.LogManager);
 
             _context.StorageProvider = new StorageProvider(
                 _context.DbProvider.StateDb,

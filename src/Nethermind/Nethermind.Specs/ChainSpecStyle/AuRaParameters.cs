@@ -65,6 +65,8 @@ namespace Nethermind.Specs.ChainSpecStyle
         public long ValidateStepTransition { get; set; }
 		
         public Validator Validators { get; set; }
+
+        public long TwoThirdsMajorityTransition { get; set; }
         
         public IDictionary<long, Address> RandomnessContractAddress { get; set; }
         

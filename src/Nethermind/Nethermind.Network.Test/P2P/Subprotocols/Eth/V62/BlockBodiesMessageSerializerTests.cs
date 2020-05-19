@@ -33,7 +33,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         {
             BlockHeader header = Build.A.BlockHeader.TestObject;
             Address to = Build.An.Address.FromNumber(1).TestObject;
-            Transaction tx = Build.A.Transaction.WithTo(to).SignedAndResolved(new EthereumEcdsa(RopstenSpecProvider.Instance, LimboLogs.Instance), TestItem.PrivateKeyA, 1).TestObject;
+            Transaction tx = Build.A.Transaction.WithTo(to).SignedAndResolved(new EthereumEcdsa(ChainId.Ropsten, LimboLogs.Instance), TestItem.PrivateKeyA).TestObject;
             tx.SenderAddress = null;
             BlockBodiesMessage message = new BlockBodiesMessage();
             message.Bodies = new [] {new BlockBody(new [] {tx}, new [] {header})};

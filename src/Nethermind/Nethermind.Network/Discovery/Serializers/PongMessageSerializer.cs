@@ -49,9 +49,8 @@ namespace Nethermind.Network.Discovery.Serializers
 
             // GetAddress(rlp.DecodeByteArray(), rlp.DecodeInt());
             rlp.DecodeByteArray();
-            rlp.DecodeInt();
-
-            rlp.DecodeInt(); // UDP port
+            rlp.DecodeInt(); // UDP port (we ignore and take it from Netty)
+            rlp.DecodeInt(); // TCP port
             byte[] token = rlp.DecodeByteArray();
             long expirationTime = rlp.DecodeLong();
 

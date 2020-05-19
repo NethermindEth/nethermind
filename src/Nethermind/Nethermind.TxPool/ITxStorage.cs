@@ -23,7 +23,7 @@ namespace Nethermind.TxPool
     {
         Transaction Get(Keccak hash);
         Transaction[] GetAll();
-        void Add(Transaction transaction, long blockNumber);
+        void Add(Transaction transaction);
         void Delete(Keccak hash);
     }
 }

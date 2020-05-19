@@ -84,6 +84,15 @@ namespace Nethermind.Network.Discovery
                     return;
                 }
 
+                if (message is PingMessage pingMessage)
+                {
+                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(pingMessage.FarAddress.Address.MapToIPv4().ToString(), "MANAGER disc v4", $"Ping {pingMessage.SourceAddress.Address} -> {pingMessage.DestinationAddress.Address}");
+                }
+                else
+                {
+                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(message.FarAddress.Address.MapToIPv4().ToString(), "MANAGER disc v4", message.MessageType.ToString());
+                }
+                
                 switch (msgType)
                 {
                     case MessageType.Neighbors:
@@ -105,15 +114,6 @@ namespace Nethermind.Network.Discovery
                     default:
                         _logger.Error($"Unsupported msgType: {msgType}");
                         return;
-                }
-
-                if (message is PingMessage pingMessage)
-                {
-                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(pingMessage.FarAddress.Address.ToString(), "MANAGER disc v4", $"PING {pingMessage.SourceAddress.Address} -> {pingMessage.DestinationAddress.Address}");
-                }
-                else
-                {
-                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(message.FarAddress.Address.ToString(), "MANAGER disc v4", message.MessageType.ToString());
                 }
 
                 NotifySubscribersOnMsgReceived(msgType, nodeManager.ManagedNode, message);
@@ -161,11 +161,11 @@ namespace Nethermind.Network.Discovery
             {
                 if (discoveryMessage is PingMessage pingMessage)
                 {
-                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportOutgoingMessage(pingMessage.FarAddress.Address.ToString(), "HANDLER disc v4", $"PING {pingMessage.SourceAddress.Address} -> {pingMessage.DestinationAddress.Address}");
+                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportOutgoingMessage(pingMessage.FarAddress.Address.MapToIPv4().ToString(), "HANDLER disc v4", $"Ping {pingMessage.SourceAddress.Address} -> {pingMessage.DestinationAddress.Address}");
                 }
                 else
                 {
-                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportOutgoingMessage(discoveryMessage.FarAddress.Address.ToString(), "disc v4", discoveryMessage.MessageType.ToString());
+                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportOutgoingMessage(discoveryMessage.FarAddress.Address.MapToIPv4().ToString(), "HANDLER disc v4", discoveryMessage.MessageType.ToString());
                 }
 
                 _messageSender.SendMessage(discoveryMessage);

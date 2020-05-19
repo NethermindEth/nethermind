@@ -29,7 +29,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using Nethermind.State.Repositories;
-using Nethermind.Store.Bloom;
+using Nethermind.Db.Blooms;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -50,16 +50,22 @@ namespace Nethermind.Core.Test.Builders
 
         public BlockTreeBuilder(Block genesisBlock)
         {
-            MemDb blocksDb = new MemDb();
-            MemDb headersDb = new MemDb();
+            BlocksDb = new MemDb();
+            HeadersDb = new MemDb();
+            BlockInfoDb = new MemDb();
+            
             // so we automatically include in all tests my questionable decision of storing Head block header at 00...
-            blocksDb.Set(Keccak.Zero, Rlp.Encode(Build.A.BlockHeader.TestObject).Bytes);
-
+            BlocksDb.Set(Keccak.Zero, Rlp.Encode(Build.A.BlockHeader.TestObject).Bytes);
             _genesisBlock = genesisBlock;
-            var blockInfoDb = new MemDb();
-            ChainLevelInfoRepository = new ChainLevelInfoRepository(blockInfoDb);
-            TestObjectInternal = new BlockTree(blocksDb, headersDb, blockInfoDb, ChainLevelInfoRepository, RopstenSpecProvider.Instance, Substitute.For<ITxPool>(), Substitute.For<IBloomStorage>(), LimboLogs.Instance);
+            ChainLevelInfoRepository = new ChainLevelInfoRepository(BlockInfoDb);
+            TestObjectInternal = new BlockTree(BlocksDb, HeadersDb, BlockInfoDb, ChainLevelInfoRepository, RopstenSpecProvider.Instance, Substitute.For<ITxPool>(), Substitute.For<IBloomStorage>(), LimboLogs.Instance);
         }
+
+        public MemDb BlocksDb { get; set; }
+
+        public MemDb HeadersDb { get; set; }
+
+        public MemDb BlockInfoDb { get; set; }
 
         public ChainLevelInfoRepository ChainLevelInfoRepository { get; private set; }
 
@@ -128,8 +134,8 @@ namespace Nethermind.Core.Test.Builders
             {
                 Transaction[] transactions = new[]
                 {
-                    Build.A.Transaction.WithValue(1).WithData(Rlp.Encode(blockIndex).Bytes).Signed(_ecdsa, TestItem.PrivateKeyA, blockIndex + 1).TestObject,
-                    Build.A.Transaction.WithValue(2).WithData(Rlp.Encode(blockIndex + 1).Bytes).Signed(_ecdsa, TestItem.PrivateKeyA, blockIndex + 1).TestObject
+                    Build.A.Transaction.WithValue(1).WithData(Rlp.Encode(blockIndex).Bytes).Signed(_ecdsa, TestItem.PrivateKeyA, _specProvider.GetSpec(blockIndex + 1).IsEip155Enabled).TestObject,
+                    Build.A.Transaction.WithValue(2).WithData(Rlp.Encode(blockIndex + 1).Bytes).Signed(_ecdsa, TestItem.PrivateKeyA, _specProvider.GetSpec(blockIndex + 1).IsEip155Enabled).TestObject
                 };
 
                 currentBlock = Build.A.Block
@@ -219,7 +225,7 @@ namespace Nethermind.Core.Test.Builders
         public BlockTreeBuilder WithTransactions(IReceiptStorage receiptStorage, ISpecProvider specProvider, Func<Block, Transaction, IEnumerable<LogEntry>> logsForBlockBuilder = null)
         {
             _specProvider = specProvider;
-            _ecdsa = new EthereumEcdsa(specProvider, LimboLogs.Instance);
+            _ecdsa = new EthereumEcdsa(specProvider.ChainId, LimboLogs.Instance);
             _receiptStorage = receiptStorage;
             _logCreationFunction = logsForBlockBuilder;
             return this;

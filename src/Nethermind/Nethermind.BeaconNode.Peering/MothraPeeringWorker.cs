@@ -185,6 +185,8 @@ namespace Nethermind.BeaconNode.Peering
         {
             Activity activity = new Activity("gossip-received");
             activity.Start();
+            using var activityScope = _logger.BeginScope("[TraceId, {TraceId}], [SpanId, {SpanId}]",
+                activity.TraceId, activity.SpanId);
             try
             {
                 // TODO: handle other topics
@@ -220,6 +222,8 @@ namespace Nethermind.BeaconNode.Peering
         {
             Activity activity = new Activity("discovered-peer");
             activity.Start();
+            using var activityScope = _logger.BeginScope("[TraceId, {TraceId}], [SpanId, {SpanId}]",
+                activity.TraceId, activity.SpanId);
             string peerId = Encoding.UTF8.GetString(peerUtf8);
             try
             {
@@ -242,6 +246,8 @@ namespace Nethermind.BeaconNode.Peering
         {
             Activity activity = new Activity("rpc-received");
             activity.Start();
+            using var activityScope = _logger.BeginScope("[TraceId, {TraceId}], [SpanId, {SpanId}]",
+                activity.TraceId, activity.SpanId);
             try
             {
                 string peerId = Encoding.UTF8.GetString(peerUtf8);

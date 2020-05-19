@@ -32,26 +32,36 @@ namespace Nethermind.DataMarketplace.Test.Services
         private INdmBlockchainBridge _ndmBridge;
         private IBlockchainBridge _blockchainBridge;
         private ITxPool _txPool;
+        private ITxPoolBridge _txPoolBridge;
 
         [SetUp]
         public void Setup()
         {
             _blockchainBridge = Substitute.For<IBlockchainBridge>();
+            _txPoolBridge = Substitute.For<ITxPoolBridge>();
+            _txPoolBridge = Substitute.For<ITxPoolBridge>();
             _txPool = Substitute.For<ITxPool>();
-            _ndmBridge = new NdmBlockchainBridge(_blockchainBridge, _txPool);
+            _ndmBridge = new NdmBlockchainBridge(_txPoolBridge, _blockchainBridge, _txPool);
         }
 
         [Test]
         public void constructor_should_throw_exception_if_blockchain_bridge_argument_is_null()
         {
-            Action act = () => _ndmBridge = new NdmBlockchainBridge(null, _txPool);
+            Action act = () => _ndmBridge = new NdmBlockchainBridge(Substitute.For<ITxPoolBridge>(), null, _txPool);
+            act.Should().Throw<ArgumentNullException>();
+        }
+        
+        [Test]
+        public void constructor_should_throw_exception_if_txpool_bridge_argument_is_null()
+        {
+            Action act = () => _ndmBridge = new NdmBlockchainBridge(null, Substitute.For<IBlockchainBridge>(), _txPool);
             act.Should().Throw<ArgumentNullException>();
         }
         
         [Test]
         public void constructor_should_throw_exception_if_tx_pool_argument_is_null()
         {
-            Action act = () => _ndmBridge = new NdmBlockchainBridge(_blockchainBridge, null);
+            Action act = () => _ndmBridge = new NdmBlockchainBridge(_txPoolBridge, _blockchainBridge, null);
             act.Should().Throw<ArgumentNullException>();
         }
 
@@ -223,9 +233,9 @@ namespace Nethermind.DataMarketplace.Test.Services
         {
             var transaction = Build.A.Transaction.TestObject;
             var hash = TestItem.KeccakA;
-            _blockchainBridge.SendTransaction(transaction, TxHandlingOptions.PersistentBroadcast | TxHandlingOptions.ManagedNonce).Returns(hash);
+            _txPoolBridge.SendTransaction(transaction, TxHandlingOptions.PersistentBroadcast | TxHandlingOptions.ManagedNonce).Returns(hash);
             var result = await _ndmBridge.SendOwnTransactionAsync(transaction);
-            _blockchainBridge.Received().SendTransaction(transaction, TxHandlingOptions.PersistentBroadcast | TxHandlingOptions.ManagedNonce);
+            _txPoolBridge.Received().SendTransaction(transaction, TxHandlingOptions.PersistentBroadcast | TxHandlingOptions.ManagedNonce);
             result.Should().Be(hash);
         }
     }

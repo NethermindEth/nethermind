@@ -27,12 +27,10 @@ namespace Nethermind.TxPool.Storages
     public class PersistentTxStorage : ITxStorage
     {
         private readonly IDb _database;
-        private readonly ISpecProvider _specProvider;
 
-        public PersistentTxStorage(IDb database, ISpecProvider specProvider)
+        public PersistentTxStorage(IDb database)
         {
             _database = database;
-            _specProvider = specProvider;
         }
 
         public Transaction Get(Keccak hash)
@@ -56,22 +54,16 @@ namespace Nethermind.TxPool.Storages
         }
 
         private static Transaction Decode(byte[] bytes)
-            => bytes == null
-                ? null
-                : Rlp.Decode<Transaction>(new Rlp(bytes));
+            => bytes == null ? null : Rlp.Decode<Transaction>(new Rlp(bytes));
 
-        public void Add(Transaction transaction, long blockNumber)
+        public void Add(Transaction transaction)
         {
             if (transaction == null)
             {
                 throw new ArgumentNullException(nameof(transaction));
             }
-
-            var spec = _specProvider.GetSpec(blockNumber);
-            _database.Set(transaction.Hash,
-                Rlp.Encode(transaction, spec.IsEip658Enabled
-                    ? RlpBehaviors.Eip658Receipts
-                    : RlpBehaviors.None).Bytes);
+            
+            _database.Set(transaction.Hash, Rlp.Encode(transaction, RlpBehaviors.None).Bytes);
         }
 
         public void Delete(Keccak hash)

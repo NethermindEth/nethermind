@@ -2,7 +2,7 @@
   "profiles": {
     "Nethermind.BeaconNode.Host": {
       "commandName": "Project",
-      "commandLineArgs": "--QuickStart:GenesisTime 1578009600 --QuickStart:ValidatorCount 64 --Peering:BootNodes xxx",
+      "commandLineArgs": "--QuickStart:GenesisTime 1578009600 --QuickStart:ValidatorCount 64",
       "environmentVariables": {
         "DOTNET_ENVIRONMENT": "Development"
       }

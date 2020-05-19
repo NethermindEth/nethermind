@@ -29,7 +29,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.Store.Bloom;
+using Nethermind.Db.Blooms;
 using NSubstitute;
 using NUnit.Framework;
 

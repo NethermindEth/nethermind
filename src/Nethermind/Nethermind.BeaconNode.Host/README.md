@@ -11,7 +11,7 @@ Note that the Eth 2.0 impelmentation is only an alpha version and still in initi
 * .NET Core 3.0 development tools
 * On Linux and OSX, you also need GMP installed (big number library)
 
-Enable trust of the ASP.NET Core development certificate (you can ignore in a browser, but the validator client will reject the connection). On Windows or Max, dotnet will take care of this; on Linux you will need to follow distribution specific instructions (see .NET Core guidance).
+Enable trust of the ASP.NET Core development certificate (you can ignore in a browser, but the validator client will reject the connection). On Windows or Max, dotnet will take care of this; on Linux you will need to follow distribution specific instructions (see section below on separate validator).
 
 ```
 dotnet dev-certs https --trust
@@ -40,9 +40,10 @@ Run, as above, then open a browser to ```https://localhost:8230/node/version``` 
 Other GET queries:
 
 * genesis time: ```https://localhost:8230/node/genesis_time```
+* syncing: ```https://localhost:8230/node/syncing```
 * fork: ```https://localhost:8230/node/fork```
-* validator duties: ```https://localhost:8230/validator/duties?validator_pubkeys=0xa1c76af1545d7901214bb6be06be5d9e458f8e989c19373a920f0018327c83982f6a2ac138260b8def732cb366411ddc&validator_pubkeys=0x94f0c8535601596eb2165adb28ebe495891a3e4ea77ef501e7790cccb281827d377a5a8d4c200e3595d3f38f8633b480&validator_pubkeys=0x81283b7a20e1ca460ebd9bbd77005d557370cabb1f9a44f530c4c4c66230f675f8df8b4c2818851aa7d77a80ca5a4a5e&epoch=0```
-* get an unsigned block: ```https://localhost:8230/validator/block?slot=1&randao_reveal=0xa3426b6391a29c88f2280428d5fdae9e20f4c75a8d38d0714e3aa5b9e55594dbd555c4bc685191e83d39158c3be9744d06adc34b21d2885998a206e3b3fd435eab424cf1c01b8fd562deb411348a601e83d7332d8774d1fd3bf8b88d7a33c67c```
+* validator duties: ```https://localhost:8230/validator/duties?validator_pubkeys=0xab8d3a9bcc160e518fac0756d3e192c74789588ed4a2b1debf0c78f78479ca8edb05b12ce21103076df6af4eb8756ff9&validator_pubkeys=0xa3a32b0f8b4ddb83f1a0a853d81dd725dfe577d4f4c3db8ece52ce2b026eca84815c1a7e8e92a4de3d755733bf7e4a9b&epoch=0```
+* get an unsigned block: ```https://localhost:8230/validator/block?slot=2&randao_reveal=0x0x82198aed997488a8f153394345ff0fae280f678e0a6f2d7843a0298f2d447c91d119766781d9cbeefe62f3a0baaf62d2054f8754254c28b48582a81cf2dbe0eaa6230d245f22754979d004d6a1ba26276d3be54006e287d0f75d93b5045741f9```
 
 Note: With QuickStart validator count 64, validators index 20, with public key 0xa1c76af1..., is the validator for slot 1. The corresponding randao signature for fork 0x00000000, at epoch 0, that must be used is 0xa3426b63... (other values will fail validation).
 
@@ -125,6 +126,63 @@ $offset = [Math]::Floor((1578009600 - [DateTimeOffset]::UtcNow.ToUnixTimeSeconds
 ```
 
 Note that it is possible to run ranges of validators both in-process and as separate validator processes, or even have multiple validator ranges in multiple validator processes.
+
+#### HTTPS On Linux
+
+The separate validator and beacon node tests use communication over HTTPS and require valid certificates (self-signed for development).
+
+On Linux the dotnet generated development certificate has key usage but without the signing flag, so can't be verified on Ubuntu (as certificate authority) due to a current bug in OpenSSL.
+
+```
+dotnet dev-certs https --export-path dotnet_dev_cert.pfx --password dev1234
+openssl pkcs12 -in dotnet_dev_cert.pfx -password pass:dev1234 -nokeys -clcerts -out dotnet_dev_cert.crt
+openssl x509 -text -noout -in dotnet_dev_cert.crt
+openssl verify -trusted dotnet_dev_cert.crt dotnet_dev_cert.crt
+```
+
+Work around is to generate a basic certificate without key usage (or with key usage that includes signing):
+
+--
+openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout nethermind_dotnet_dev_cert.key -out nethermind_dotnet_dev_cert.crt -subj "/CN=localhost"
+openssl verify -trusted nethermind_dotnet_dev_cert.crt nethermind_dotnet_dev_cert.crt
+--
+
+Install this into the Ubuntu certificate store (different distributions may vary):
+
+```
+sudo cp ./nethermind_dotnet_dev_cert.crt /usr/local/share/ca-certificates
+sudo update-ca-certificates --verbose
+```
+
+Create a PFX for .NET to use:
+
+```
+openssl pkcs12 -export -passout pass: -out nethermind_dotnet_dev_cert.pfx -inkey nethermind_dotnet_dev_cert.key -in nethermind_dotnet_dev_cert.crt
+```
+
+Configure this in appsettings.json for Kestrel to use as the default certificate.
+
+```json
+  "Kestrel": {
+    "Endpoints": {
+      "HttpsDefaultCert": {
+        "Url": "https://localhost:8230"
+      }
+    },
+    "Certificates": {
+      "Default": {
+        "Path": "Certificates/nethermind_dotnet_dev_cert.pfx",
+        "Password": ""
+      }
+    }
+  }
+```
+
+With the beacon node running you can the certificate is validated as self-signed (and the honest validator client will work):
+
+```
+openssl s_client -connect localhost:8230
+```
 
 ### Quick start clock
 

@@ -61,7 +61,7 @@ namespace Nethermind.Network.Benchmarks
             _ser.Register(new StatusMessageSerializer());
             NodeStatsManager stats = new NodeStatsManager(new StatsConfig(), LimboLogs.Instance);
 
-            var ecdsa = new EthereumEcdsa(MainnetSpecProvider.Instance, LimboLogs.Instance);
+            var ecdsa = new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance);
             TxPool.TxPool txPool = new TxPool.TxPool(NullTxStorage.Instance, Timestamper.Default, ecdsa, MainnetSpecProvider.Instance, new TxPoolConfig(), Substitute.For<IStateProvider>(), LimboLogs.Instance);
             ISyncServer syncSrv = Substitute.For<ISyncServer>();
             BlockHeader head = Build.A.BlockHeader.WithNumber(1).TestObject;
@@ -81,7 +81,7 @@ namespace Nethermind.Network.Benchmarks
 
             _handler.HandleMessage(_zeroPacket);
 
-            Transaction tx = Build.A.Transaction.SignedAndResolved(ecdsa, TestItem.PrivateKeyA, 1).TestObject;
+            Transaction tx = Build.A.Transaction.SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
             _txMsg = new TransactionsMessage(new[] {tx});
         }
 

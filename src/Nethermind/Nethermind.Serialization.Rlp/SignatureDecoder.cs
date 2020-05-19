@@ -24,9 +24,9 @@ namespace Nethermind.Serialization.Rlp
     {
         public static Signature DecodeSignature(RlpStream rlpStream)
         {
-            Span<byte> vBytes = rlpStream.DecodeByteArraySpan();
-            Span<byte> rBytes = rlpStream.DecodeByteArraySpan();
-            Span<byte> sBytes = rlpStream.DecodeByteArraySpan();
+            ReadOnlySpan<byte> vBytes = rlpStream.DecodeByteArraySpan();
+            ReadOnlySpan<byte> rBytes = rlpStream.DecodeByteArraySpan();
+            ReadOnlySpan<byte> sBytes = rlpStream.DecodeByteArraySpan();
 
             if (vBytes[0] == 0 || rBytes[0] == 0 || sBytes[0] == 0)
             {

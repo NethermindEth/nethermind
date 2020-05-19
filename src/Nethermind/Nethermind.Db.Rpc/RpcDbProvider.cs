@@ -17,7 +17,7 @@
 using Nethermind.JsonRpc.Client;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
-using Nethermind.Store;
+using Nethermind.Db.Blooms;
 
 namespace Nethermind.Db.Rpc
 {

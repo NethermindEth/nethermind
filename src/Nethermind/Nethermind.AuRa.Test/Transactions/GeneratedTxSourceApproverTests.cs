@@ -18,6 +18,7 @@
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Consensus.AuRa.Transactions;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;

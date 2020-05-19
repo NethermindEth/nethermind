@@ -25,6 +25,7 @@ using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -32,7 +33,7 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
-using Nethermind.Store.Bloom;
+using Nethermind.Db.Blooms;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -1026,7 +1027,7 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(expectedResult, loadedTree.LowestInsertedBody?.Number, "loaded tree");
         }
 
-        [Test, TestCaseSource("SourceOfBSearchTestCases")]
+        [Test, TestCaseSource(nameof(SourceOfBSearchTestCases))]
         public void Loads_best_known_correctly_on_inserts(long beginIndex, long insertedBlocks)
         {
             long expectedResult = insertedBlocks == 0L ? 0L : beginIndex;
@@ -1087,6 +1088,20 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(1, tree.LowestInsertedHeader?.Number, "loaded tree - lowest header");
             Assert.AreEqual(null, tree.LowestInsertedBody?.Number, "loaded tree - lowest body");
             Assert.AreEqual(pivotNumber + 1, loadedTree.BestKnownNumber, "loaded tree");
+        }
+        
+        [Test]
+        public void Loads_best_known_correctly_when_head_before_pivot()
+        {
+            var pivotNumber = 1000;
+            var head = 10;
+            SyncConfig syncConfig = new SyncConfig {PivotNumber = pivotNumber.ToString()};
+
+            var treeBuilder = Build.A.BlockTree().OfChainLength(head + 1);
+            
+            BlockTree loadedTree = new BlockTree(treeBuilder.BlocksDb, treeBuilder.HeadersDb, treeBuilder.BlockInfoDb, treeBuilder.ChainLevelInfoRepository, MainnetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
+            
+            Assert.AreEqual(head, loadedTree.BestKnownNumber, "loaded tree");
         }
 
         [Test]
@@ -1212,8 +1227,9 @@ namespace Nethermind.Blockchain.Test
             txPoolMock.Received().RemoveTransaction(t1.Hash, 1);
         }
 
-        [Test]
-        public void When_block_is_moved_out_of_main_transactions_are_removed_from_tx_pool()
+        [TestCase(true)]
+        [TestCase(false)]
+        public void When_block_is_moved_out_of_main_transactions_are_removed_from_tx_pool(bool isEip155Enabled)
         {
             MemDb blocksDb = new MemDb();
             MemDb headersDb = new MemDb();
@@ -1223,7 +1239,7 @@ namespace Nethermind.Blockchain.Test
             Transaction t2 = Build.A.Transaction.TestObject;
 
             ITxPool txPoolMock = Substitute.For<ITxPool>();
-            BlockTree blockTree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), OlympicSpecProvider.Instance, txPoolMock, NullBloomStorage.Instance, LimboLogs.Instance);
+            BlockTree blockTree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), isEip155Enabled ? (ISpecProvider)GoerliSpecProvider.Instance : OlympicSpecProvider.Instance, txPoolMock, NullBloomStorage.Instance, LimboLogs.Instance);
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1A = Build.A.Block.WithNumber(1).WithDifficulty(2).WithTransactions(t1).WithParent(block0).TestObject;
             Block block1B = Build.A.Block.WithNumber(1).WithDifficulty(3).WithTransactions(t2).WithParent(block0).TestObject;
@@ -1235,7 +1251,7 @@ namespace Nethermind.Blockchain.Test
             blockTree.UpdateMainChain(block1A);
             blockTree.UpdateMainChain(block1B);
 
-            txPoolMock.Received().AddTransaction(t1, 1, TxHandlingOptions.None);
+            txPoolMock.Received().AddTransaction(t1, isEip155Enabled ? TxHandlingOptions.None : TxHandlingOptions.PreEip155Signing);
         }
 
         [Test]

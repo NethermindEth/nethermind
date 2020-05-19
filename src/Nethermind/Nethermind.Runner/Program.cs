@@ -51,6 +51,10 @@ namespace Nethermind.Runner
                 ILogger logger = new NLogLogger("logs.txt");
                 logger.Error(FailureString, e);
             }
+            finally
+            {
+                NLogLogger.Shutdown();
+            }
 
             Console.WriteLine("Press RETURN to exit.");
             Console.ReadLine();

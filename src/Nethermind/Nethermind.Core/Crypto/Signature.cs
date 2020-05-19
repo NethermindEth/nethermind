@@ -59,7 +59,7 @@ namespace Nethermind.Core.Crypto
             V = bytes[64];
         }
 
-        public Signature(Span<byte> r, Span<byte> s, int v)
+        public Signature(ReadOnlySpan<byte> r, ReadOnlySpan<byte> s, int v)
         {
             if (v < VOffset)
             {

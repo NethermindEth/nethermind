@@ -25,6 +25,7 @@ using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
@@ -33,7 +34,7 @@ using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Runner.Ethereum.Subsystems;
 using Nethermind.State;
-using Nethermind.Store;
+using Nethermind.Db.Blooms;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {

@@ -1,0 +1,515 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) 2018, Demerzel Solutions Limited
+# This file is distributed under the same license as the nethermind package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2020.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: nethermind \n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2020-05-14 17:16+0100\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.8.0\n"
+
+#: ../../source/docker.rst:2
+msgid "Docker"
+msgstr ""
+
+#: ../../source/docker.rst:4
+msgid ""
+"Docker repository can be found  `here "
+"<https://hub.docker.com/repository/docker/nethermind/nethermind>`_."
+msgstr ""
+
+#: ../../source/docker.rst:6
+msgid ""
+"We are currently supporting docker images for the following CPU "
+"architectures:"
+msgstr ""
+
+#: ../../source/docker.rst:8
+msgid ""
+"`AMD64 Docker (Debian/Alpine) "
+"<https://nethermind.readthedocs.io/en/latest/docker.html#docker-debian-"
+"alpine>`_."
+msgstr ""
+
+#: ../../source/docker.rst:9
+msgid ""
+"`ARM64 Docker (Debian/Alpine) "
+"<https://nethermind.readthedocs.io/en/latest/docker.html#docker-debian-"
+"alpine-arm64>`_."
+msgstr ""
+
+#: ../../source/docker.rst:10
+msgid ""
+"`ARM32 Docker (Debian) "
+"<https://nethermind.readthedocs.io/en/latest/docker.html#docker-debian-"
+"arm32>`_."
+msgstr ""
+
+#: ../../source/docker.rst:13
+msgid "Docker (Debian/Alpine)"
+msgstr ""
+
+#: ../../source/docker.rst:16
+msgid "Using an existing image"
+msgstr ""
+
+#: ../../source/docker.rst:19
+msgid "Available tags:"
+msgstr ""
+
+#: ../../source/docker.rst:21
+msgid "``latest`` The latest Nethermind Debian based image"
+msgstr ""
+
+#: ../../source/docker.rst:22
+msgid "``alpine`` The latest Nethermind Alpine based image"
+msgstr ""
+
+#: ../../source/docker.rst:23
+msgid ""
+"``{tag}`` e.g. ``1.5.8`` Current or past version of Nethermind Debian "
+"based image `tags history "
+"<https://github.com/NethermindEth/nethermind/tags>`_."
+msgstr ""
+
+#: ../../source/docker.rst:24
+msgid ""
+"``{tag}-alpine`` e.g. ``1.5.8-alpine`` Current or past version of "
+"Nethermind Alpine based image `tags history "
+"<https://github.com/NethermindEth/nethermind/tags>`_."
+msgstr ""
+
+#: ../../source/docker.rst:26
+msgid ""
+"We highly encourage to use a lighter container which is Alpine based, "
+"tagged as ``alpine`` or ``1.5.8-alpine`` (Possible benefit of less memory"
+" consumption)."
+msgstr ""
+
+#: ../../source/docker.rst:29
+msgid "Running Nethermind"
+msgstr ""
+
+#: ../../source/docker.rst:31
+msgid "Docker pull command::"
+msgstr ""
+
+#: ../../source/docker.rst:35
+msgid "In order to start **Nethermind.Runner**, simply run::"
+msgstr ""
+
+#: ../../source/docker.rst:39
+msgid ""
+"You can use ``--help`` to get a list of possible start parameters for "
+"Nethermind or you can find them all `here "
+"<https://github.com/NethermindEth/nethermind/tree/master/src/Nethermind/Nethermind.Runner/configs/>`_."
+" ::"
+msgstr ""
+
+#: ../../source/docker.rst:44
+msgid ""
+"It's possible to modify each configuration property via environment "
+"variable, using a simple convention::"
+msgstr ""
+
+#: ../../source/docker.rst:48 ../../source/docker.rst:81
+msgid "For example::"
+msgstr ""
+
+#: ../../source/docker.rst:52
+msgid ""
+"Environment variables are to be passed before docker image tag while "
+"parameteres should be passed right after the docker image tag."
+msgstr ""
+
+#: ../../source/docker.rst:55
+msgid "JSON RPC"
+msgstr ""
+
+#: ../../source/docker.rst:57
+msgid ""
+"To enable JSON RPC, publish port ``8545`` and set "
+"``NETHERMIND_JSONRPCCONFIG_ENABLED=true`` or ``--JsonRpc.Enabled true``. "
+"To change port simply pass ``NETHERMIND_JSONRPCCONFIG_PORT=8550`` or "
+"``--JsonRpc.Port 8550``."
+msgstr ""
+
+#: ../../source/docker.rst:59
+msgid "If running locally::"
+msgstr ""
+
+#: ../../source/docker.rst:63
+msgid ""
+"If running from a VM you may want to expose JSON RPC to the outer world "
+"via ``NETHERMIND_JSONRPCCONFIG_HOST={hostmachine_ip}`` or "
+"``--JsonRpc.Host {hostmachine_ip}`` (``127.0.0.1`` is set by default). "
+"You may try setting ``--JsonRpc.Host 0.0.0.0`` if you still can not "
+"connect with JSON RPC::"
+msgstr ""
+
+#: ../../source/docker.rst:68 ../../source/docker.rst:237
+msgid "Available configurations"
+msgstr ""
+
+#: ../../source/docker.rst:70
+msgid ""
+"To switch the network, set ``NETHERMIND_CONFIG`` variable (default value "
+"is ``mainnet``) or use ``--config {network}`` flag."
+msgstr ""
+
+#: ../../source/docker.rst:72 ../../source/docker.rst:239
+msgid "``mainnet``"
+msgstr ""
+
+#: ../../source/docker.rst:73 ../../source/docker.rst:240
+msgid "``goerli``"
+msgstr ""
+
+#: ../../source/docker.rst:74 ../../source/docker.rst:241
+msgid "``rinkeby``"
+msgstr ""
+
+#: ../../source/docker.rst:75 ../../source/docker.rst:242
+msgid "``ropsten``"
+msgstr ""
+
+#: ../../source/docker.rst:76 ../../source/docker.rst:243
+msgid "``xdai``"
+msgstr ""
+
+#: ../../source/docker.rst:77 ../../source/docker.rst:244
+msgid "``poacore``"
+msgstr ""
+
+#: ../../source/docker.rst:78 ../../source/docker.rst:245
+msgid "``sokol``"
+msgstr ""
+
+#: ../../source/docker.rst:79 ../../source/docker.rst:246
+msgid "``volta``"
+msgstr ""
+
+#: ../../source/docker.rst:86
+msgid "Volumes"
+msgstr ""
+
+#: ../../source/docker.rst:88
+msgid "To fully override a configuration file, you need to use a volume::"
+msgstr ""
+
+#: ../../source/docker.rst:92
+msgid ""
+"In order to map an internal database to a local volume, you need to map "
+"/nethermind/nethermind_db/::"
+msgstr ""
+
+#: ../../source/docker.rst:96
+msgid "Logs can be mapped with the following command::"
+msgstr ""
+
+#: ../../source/docker.rst:100
+msgid "Keystore::"
+msgstr ""
+
+#: ../../source/docker.rst:104
+msgid "Nlog::"
+msgstr ""
+
+#: ../../source/docker.rst:108
+msgid ""
+"More detailed NLog configuration can be found `here "
+"<https://github.com/NLog/NLog/wiki/Configuration-file>`_."
+msgstr ""
+
+#: ../../source/docker.rst:111 ../../source/docker.rst:190
+msgid "Building an image"
+msgstr ""
+
+#: ../../source/docker.rst:113
+msgid ""
+"`Dockerfile` can be found in the repository `root "
+"<https://github.com/NethermindEth/nethermind>`_ and it comes with 3 "
+"flavors:"
+msgstr ""
+
+#: ../../source/docker.rst:115
+msgid ""
+"`Dockerfile "
+"<https://github.com/NethermindEth/nethermind/blob/master/Dockerfile>`_ - "
+"requires to have a cloned repository in order to build a Debian based "
+"image."
+msgstr ""
+
+#: ../../source/docker.rst:116
+msgid ""
+"`Dockerfile_alpine "
+"<https://github.com/NethermindEth/nethermind/blob/master/Dockerfile_alpine>`_"
+" - requires to have a cloned repository in order to build an Alpine based"
+" image."
+msgstr ""
+
+#: ../../source/docker.rst:117
+msgid ""
+"`Dockerfile_full "
+"<https://github.com/NethermindEth/nethermind/blob/master/Dockerfile_full>`_"
+" - doesn't require to have a cloned repository, as it will download it "
+"during the first step."
+msgstr ""
+
+#: ../../source/docker.rst:120
+msgid "In order to build the images, run either::"
+msgstr ""
+
+#: ../../source/docker.rst:124
+msgid "or::"
+msgstr ""
+
+#: ../../source/docker.rst:128
+msgid "Depending on the chosen version."
+msgstr ""
+
+#: ../../source/docker.rst:130
+msgid "Example usage of the locally created docker-image::"
+msgstr ""
+
+#: ../../source/docker.rst:135
+msgid "Docker (Debian/Alpine ARM64)"
+msgstr ""
+
+#: ../../source/docker.rst:138 ../../source/docker.rst:160
+msgid "Available tags"
+msgstr ""
+
+#: ../../source/docker.rst:140
+msgid "``arm64`` The latest Nethermind ARM64 Debian based image"
+msgstr ""
+
+#: ../../source/docker.rst:141
+msgid "``alpine-arm64`` The latest Nethermind ARM64 Alpine based image"
+msgstr ""
+
+#: ../../source/docker.rst:142
+msgid ""
+"``{tag}-arm64`` e.g. ``1.5.8-arm64`` Current or past version of "
+"Nethermind ARM64 Debian based image `tags history "
+"<https://github.com/NethermindEth/nethermind/tags>`_."
+msgstr ""
+
+#: ../../source/docker.rst:143
+msgid ""
+"``{tag}-alpine-arm64`` e.g. ``1.5.8-alpine-arm64`` Current or past "
+"version of Nethermind ARM64 Alpine based image `tags history "
+"<https://github.com/NethermindEth/nethermind/tags>`_."
+msgstr ""
+
+#: ../../source/docker.rst:145
+msgid ""
+"We highly encourage to use a lighter container which is Alpine based, "
+"tagged as ``alpine-arm64`` or ``1.5.8-alpine-arm64`` (Possible benefit of"
+" less memory consumption)."
+msgstr ""
+
+#: ../../source/docker.rst:147
+msgid ""
+"Running instructions are just like described `here "
+"<https://nethermind.readthedocs.io/en/latest/docker.html#docker-debian-"
+"alpine>`_. The only thing that changes is the ``tag`` specified for ARM64"
+" platform."
+msgstr ""
+
+#: ../../source/docker.rst:150 ../../source/docker.rst:170
+msgid "Dockerfiles"
+msgstr ""
+
+#: ../../source/docker.rst:152
+msgid ""
+"`Dockerfile_arm64 "
+"<https://github.com/NethermindEth/nethermind/blob/master/Dockerfile_arm64>`_"
+" - requires to have a cloned repository in order to build an ARM64 Debian"
+" based image."
+msgstr ""
+
+#: ../../source/docker.rst:154
+msgid ""
+"`Dockerfile_alpine_arm64 "
+"<https://github.com/NethermindEth/nethermind/blob/master/Dockerfile_alpine_arm64>`_"
+" - requires to have a cloned repository in order to build an ARM64 Alpine"
+" based image."
+msgstr ""
+
+#: ../../source/docker.rst:157
+msgid "Docker (Debian ARM32)"
+msgstr ""
+
+#: ../../source/docker.rst:162
+msgid "``arm32`` The latest Nethermind ARM32 Debian based image"
+msgstr ""
+
+#: ../../source/docker.rst:163
+msgid ""
+"``{tag}-arm32`` e.g. ``1.5.8-arm32`` Current or past version of "
+"Nethermind ARM32 Debian based image `tags history "
+"<https://github.com/NethermindEth/nethermind/tags>`_."
+msgstr ""
+
+#: ../../source/docker.rst:165
+msgid ""
+"Running instructions are just like described `here "
+"<https://nethermind.readthedocs.io/en/latest/docker.html#docker-debian-"
+"alpine>`_. The only thing that changes is the ``tag`` specified for ARM32"
+" platform."
+msgstr ""
+
+#: ../../source/docker.rst:167
+msgid ""
+"The arm32 version is not yet available as it is not supported for now "
+"(track here: https://github.com/dotnet/dotnet-docker/issues/1059)."
+msgstr ""
+
+#: ../../source/docker.rst:172
+msgid ""
+"`Dockerfile_arm32 "
+"<https://github.com/NethermindEth/nethermind/blob/master/Dockerfile_arm32>`_"
+" - requires to have a cloned repository in order to build an ARM32 Debian"
+" based image."
+msgstr ""
+
+#: ../../source/docker.rst:175
+msgid "Docker (Alpine ARM64 Customized)"
+msgstr ""
+
+#: ../../source/docker.rst:177
+msgid ""
+"If you wish to run your container as a non-root user, and have almost all"
+" folders configured at single ``/data`` folder inside the container you "
+"may want to use following instructions. This image needs to be built as "
+"it is not being pushed to docker registry."
+msgstr ""
+
+#: ../../source/docker.rst:179
+msgid ""
+"Entrypoint can be found `here "
+"<https://github.com/NethermindEth/nethermind/blob/master/scripts/entrypoint.sh>`_."
+" Dockerfile can be found `here "
+"<https://github.com/NethermindEth/nethermind/blob/master/Dockerfile_custom>`_."
+msgstr ""
+
+#: ../../source/docker.rst:183
+msgid "Prerequisites"
+msgstr ""
+
+#: ../../source/docker.rst:185
+msgid ""
+"Install instructions for the Docker Engine can be found at: "
+"https://docs.docker.com/install"
+msgstr ""
+
+#: ../../source/docker.rst:187
+msgid ""
+"Port ``30303`` has to be accessible if you want incoming connections. "
+"(tcp and udp)"
+msgstr ""
+
+#: ../../source/docker.rst:198
+msgid "Persistent data / configuration"
+msgstr ""
+
+#: ../../source/docker.rst:200
+msgid ""
+"The database and all configuration files are located at ``/data`` inside "
+"the docker container. You need to mount this folder to your host system "
+"for persistence and easy accessibility. The default configuration files "
+"will be copied into the ``/data`` folder after the first start."
+msgstr ""
+
+#: ../../source/docker.rst:204
+msgid ""
+"You can use ``--help`` for this or to get a list of possible start "
+"parameters for Nethermind: ::"
+msgstr ""
+
+#: ../../source/docker.rst:209
+msgid ""
+"The path ``/var/lib/nethermind/mainnet`` is just a recommendation and can"
+" be changed."
+msgstr ""
+
+#: ../../source/docker.rst:211
+msgid ""
+"To use an existing database or configuration, you need to make the files "
+"accessible for the user inside the container. (uid/gid 1337)"
+msgstr ""
+
+#: ../../source/docker.rst:214
+msgid "Examples"
+msgstr ""
+
+#: ../../source/docker.rst:217
+msgid "Sync with mainnet"
+msgstr ""
+
+#: ../../source/docker.rst:223
+msgid "Enable JSON-RPC"
+msgstr ""
+
+#: ../../source/docker.rst:228
+msgid "The default JSON-RPC port is ``8545``."
+msgstr ""
+
+#: ../../source/docker.rst:231
+msgid "Sync another network"
+msgstr ""
+
+#: ../../source/docker.rst:233
+msgid ""
+"To switch the network, set ``NETHERMIND_CONFIG`` variable (default value "
+"is mainnet) or use ``--config`` flag e.g. ``--config goerli``"
+msgstr ""
+
+#: ../../source/docker.rst:253
+msgid "Run as daemon and start on (re)boot"
+msgstr ""
+
+#: ../../source/docker.rst:255
+msgid ""
+"You can give your container a name, run it in the background and enable "
+"automatic restarts."
+msgstr ""
+
+#: ../../source/docker.rst:261
+msgid ""
+"It is recommended to give Nethermind more time to exit gracefully with "
+"``--stop-timeout 30`` in the case of a system shutdown or reboot."
+msgstr ""
+
+#: ../../source/docker.rst:263
+msgid "If you want to see the current progress just use:"
+msgstr ""
+
+#: ../../source/docker.rst:270
+msgid "Updating the image"
+msgstr ""
+
+#: ../../source/docker.rst:272
+msgid ""
+"If you want to update your image, just delete the container and create a "
+"new one with the same parameters."
+msgstr ""
+
+#: ../../source/docker.rst:282
+msgid "Advanced docker usage"
+msgstr ""
+
+#: ../../source/docker.rst:284
+msgid "More information about docker is available at: https://docs.docker.com"
+msgstr ""
+

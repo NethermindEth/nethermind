@@ -15,7 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Net;
 using Microsoft.Extensions.Logging;
+using Nethermind.Core2.Crypto;
+using Nethermind.Core2.Types;
 
 namespace Nethermind.BeaconNode.OApi
 {
@@ -46,6 +49,11 @@ namespace Nethermind.BeaconNode.OApi
 
 
         // 1bxx preliminary
+        
+        public static readonly Action<ILogger, IPAddress, Exception?> NodeVersionRequested =
+            LoggerMessage.Define<IPAddress>(LogLevel.Information,
+                new EventId(1480, nameof(NodeVersionRequested)),
+                "Node version requested by client {RemoteIpAddress}.");
 
         // 2bxx completion
 
@@ -54,11 +62,11 @@ namespace Nethermind.BeaconNode.OApi
                 new EventId(2480, nameof(NewBlockRequested)),
                 "New block requested for slot {Slot} with RANDAO reveal {RandaoReveal}.");
 
-        public static readonly Action<ILogger, ulong, string, string, string, string, string, Exception?> BlockPublished
-            =
-            LoggerMessage.Define<ulong, string, string, string, string, string>(LogLevel.Information,
-                new EventId(2481, nameof(BlockPublished)),
-                "Block received for slot {Slot} with RANDAO reveal {RandaoReveal}, parent {ParentRoot}, state root {StateRoot}, graffiti {Graffiti}, and signature {Signature}");
+        public static readonly Action<ILogger, Slot?, BlsSignature?, Root?, Root?, Bytes32?, BlsSignature?, Exception?>
+            BlockPublished =
+                LoggerMessage.Define<Slot?, BlsSignature?, Root?, Root?, Bytes32?, BlsSignature?>(LogLevel.Information,
+                    new EventId(2481, nameof(BlockPublished)),
+                    "Block received for slot {Slot} with RANDAO reveal {RandaoReveal}, parent {ParentRoot}, state root {StateRoot}, graffiti {Graffiti}, and signature {Signature}");
 
         // 4bxx warning
 

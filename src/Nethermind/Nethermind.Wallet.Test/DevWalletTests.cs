@@ -115,12 +115,15 @@ namespace Nethermind.Wallet.Test
             Assert.AreEqual(count, wallet.GetAccounts().Length);
         }
 
-        [TestCase(DevWalletType.KeyStore)]
-        [TestCase(DevWalletType.Memory)]
-        public void Can_sign_on_networks_with_chain_id(DevWalletType walletType)
+        [TestCase(DevWalletType.KeyStore, 0)]
+        [TestCase(DevWalletType.Memory, 0)]
+        [TestCase(DevWalletType.KeyStore, 1)]
+        [TestCase(DevWalletType.Memory, 1)]
+        [TestCase(DevWalletType.KeyStore, 40000)]
+        [TestCase(DevWalletType.Memory, 40000)]
+        public void Can_sign_on_networks_with_chain_id(DevWalletType walletType, int chainId)
         {
-            const int networkId = 40000;
-            EthereumEcdsa ecdsa = new EthereumEcdsa(new CustomSpecProvider(networkId, (0, MuirGlacier.Instance)), LimboLogs.Instance);
+            EthereumEcdsa ecdsa = new EthereumEcdsa(chainId, LimboLogs.Instance);
             IWallet wallet = SetupWallet(walletType);
 
             for (int i = 1; i <= (walletType == DevWalletType.Memory ? 10 : 3); i++)
@@ -129,10 +132,10 @@ namespace Nethermind.Wallet.Test
                 Transaction tx = new Transaction();
                 tx.SenderAddress = signerAddress;
                 
-                wallet.Sign(tx, networkId);
-                Address recovered = ecdsa.RecoverAddress(tx, networkId);
+                wallet.Sign(tx, chainId);
+                Address recovered = ecdsa.RecoverAddress(tx, true);
                 Assert.AreEqual(signerAddress, recovered, $"{i}");
-                Assert.AreEqual(networkId, tx.Signature.ChainId, "chainId");
+                Assert.AreEqual(chainId, tx.Signature.ChainId, "chainId");
             }
         }
     }
