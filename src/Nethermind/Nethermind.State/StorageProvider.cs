@@ -224,11 +224,6 @@ namespace Nethermind.State
                 }
 
                 _committedThisRound.Add(change.StorageCell);
-                if (!_intraBlockCache.ContainsKey(change.StorageCell))
-                {
-                    // if storage was cleared as a result of self destruct
-                    continue;
-                }
 
                 if (change.ChangeType == ChangeType.Destroy)
                 {
