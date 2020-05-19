@@ -52,7 +52,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             TransactionProcessor processor = new TransactionProcessor(MainnetSpecProvider.Instance, stateProvider, storageProvider, virtualMachine, LimboLogs.Instance);
 
             BlockchainBridge blockchainBridge = new BlockchainBridge(stateReader, stateProvider, storageProvider, blockTree, txPool, new InMemoryReceiptStorage(), NullFilterStore.Instance, NullFilterManager.Instance, wallet, processor, ecdsa, NullBloomStorage.Instance, MainnetSpecProvider.Instance, LimboLogs.Instance, false);
-            TxPoolBridge txPoolBridge = new TxPoolBridge(txPool, wallet, ChainId.Mainnet);
+            TxPoolBridge txPoolBridge = new TxPoolBridge(txPool, wallet, Timestamper.Default, ChainId.Mainnet);
             return new NdmBlockchainBridge(txPoolBridge, blockchainBridge, txPool);
         }
     }
