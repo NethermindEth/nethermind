@@ -200,6 +200,7 @@ namespace Nethermind.TxPool
             bool isEip155Enabled = (handlingOptions & TxHandlingOptions.PreEip155Signing) == TxHandlingOptions.None;
             bool managedNonce = (handlingOptions & TxHandlingOptions.ManagedNonce) == TxHandlingOptions.ManagedNonce;
             bool isPersistentBroadcast = (handlingOptions & TxHandlingOptions.PersistentBroadcast) == TxHandlingOptions.PersistentBroadcast;
+            if(_logger.IsTrace) _logger.Trace($"Adding transaction {tx.ToString("  ")} - EIP155: {isEip155Enabled} | managed nonce: {managedNonce} | persistent brodcast {isPersistentBroadcast}");
 
             if (_fadingOwnTransactions.ContainsKey(tx.Hash))
             {
@@ -282,13 +283,14 @@ namespace Nethermind.TxPool
             return AddTxResult.Added;
         }
 
-        private void HandleOwnTransaction(Transaction transaction, bool isOwn)
+        private void HandleOwnTransaction(Transaction tx, bool isOwn)
         {
             if (isOwn)
             {
-                _ownTransactions.TryAdd(transaction.Hash, transaction);
+                _ownTransactions.TryAdd(tx.Hash, tx);
                 _ownTimer.Enabled = true;
-                if (_logger.IsDebug) _logger.Debug($"Broadcasting own transaction {transaction.Hash} to {_peers.Count} peers");
+                if (_logger.IsDebug) _logger.Debug($"Broadcasting own transaction {tx.Hash} to {_peers.Count} peers");
+                if(_logger.IsTrace) _logger.Trace($"Broadcasting transaction {tx.ToString("  ")}");
             }
         }
 
