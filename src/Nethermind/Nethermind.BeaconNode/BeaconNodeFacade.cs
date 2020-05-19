@@ -133,6 +133,14 @@ namespace Nethermind.BeaconNode
             }
         }
 
+        public async Task<ApiResponse<Attestation>> NewAttestationAsync(BlsPublicKey validatorPublicKey,
+            bool proofOfCustodyBit, Slot targetSlot, Shard targetShard,
+            CancellationToken cancellationToken)
+        {
+            await Task.Delay(0);
+            return ApiResponse.Create(StatusCode.Success, Attestation.Zero);
+        }
+
         public async Task<ApiResponse<BeaconBlock>> NewBlockAsync(Slot slot, BlsSignature randaoReveal,
             CancellationToken cancellationToken)
         {
@@ -147,6 +155,12 @@ namespace Nethermind.BeaconNode
                 if (_logger.IsWarn()) Log.ApiErrorNewBlock(_logger, ex);
                 throw;
             }
+        }
+
+        public Task<ApiResponse> PublishAttestationAsync(Attestation signedAttestation,
+            CancellationToken cancellationToken)
+        {
+            throw new NotImplementedException();
         }
 
         public async Task<ApiResponse> PublishBlockAsync(SignedBeaconBlock signedBlock,

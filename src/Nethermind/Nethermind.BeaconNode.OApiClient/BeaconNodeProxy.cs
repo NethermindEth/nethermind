@@ -107,6 +107,13 @@ namespace Nethermind.BeaconNode.OApiClient
             return ApiResponse.Create((StatusCode) (int) httpResponse.StatusCode, content);
         }
 
+        public Task<ApiResponse<Attestation>> NewAttestationAsync(BlsPublicKey validatorPublicKey,
+            bool proofOfCustodyBit, Slot targetSlot, Shard targetShard,
+            CancellationToken cancellationToken)
+        {
+            throw new System.NotImplementedException();
+        }
+
         public async Task<ApiResponse<BeaconBlock>> NewBlockAsync(Slot slot, BlsSignature randaoReveal,
             CancellationToken cancellationToken)
         {
@@ -136,6 +143,12 @@ namespace Nethermind.BeaconNode.OApiClient
                 await JsonSerializer.DeserializeAsync<BeaconBlock>(contentStream, _jsonSerializerOptions,
                     cancellationToken);
             return ApiResponse.Create((StatusCode) statusCode, content);
+        }
+
+        public Task<ApiResponse> PublishAttestationAsync(Attestation signedAttestation,
+            CancellationToken cancellationToken)
+        {
+            throw new System.NotImplementedException();
         }
 
         public async Task<ApiResponse> PublishBlockAsync(SignedBeaconBlock signedBlock,
