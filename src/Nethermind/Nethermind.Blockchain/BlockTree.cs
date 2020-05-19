@@ -151,10 +151,9 @@ namespace Nethermind.Blockchain
         }
 
         private void LoadBestKnown()
-        {            
-            long headNumber = Head?.Number ?? _syncConfig.PivotNumberParsed;
-            long left = Math.Max(_syncConfig.PivotNumberParsed, headNumber);
-            long right = headNumber + BestKnownSearchLimit;
+        {
+            long left = Head?.Number ?? Math.Max(_syncConfig.PivotNumberParsed, LowestInsertedHeader?.Number ?? 0);
+            long right = left + BestKnownSearchLimit;
 
             bool LevelExists(long blockNumber)
             {
