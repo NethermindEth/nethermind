@@ -2119,6 +2119,10 @@ namespace Nethermind.Evm
                         {
                             _state.UpdateStorageRoot(contractAddress, Keccak.EmptyTreeHash);
                         }
+                        else if (_state.IsDeadAccount(contractAddress))
+                        {
+                            _storage.RecreateStorage(contractAddress);
+                        }
 
                         _state.SubtractFromBalance(env.ExecutingAccount, value, spec);
                         ExecutionEnvironment callEnv = new ExecutionEnvironment();

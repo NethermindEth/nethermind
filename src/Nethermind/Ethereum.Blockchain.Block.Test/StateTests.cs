@@ -40,11 +40,12 @@ namespace Ethereum.Blockchain.Block.Test
                 return;
             }
             
-            if (test.Name.Contains("suicideStorage"))
+            // partial fix
+            if (test.Name.Contains("suicideStorageCheck_Istanbul"))
             {
                 return;
             }
-            
+
             await RunTest(test);
         }
         
