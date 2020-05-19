@@ -55,7 +55,6 @@ namespace Nethermind.Facade
         private readonly IStorageProvider _storageProvider;
         private readonly ITransactionProcessor _transactionProcessor;
         private readonly ILogFinder _logFinder;
-        private readonly ITimestamper _timestamper = Timestamper.Default;
 
         public BlockchainBridge(
             IStateReader stateReader,
