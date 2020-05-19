@@ -153,7 +153,7 @@ namespace Nethermind.Blockchain
         private void LoadBestKnown()
         {            
             long headNumber = Head?.Number ?? _syncConfig.PivotNumberParsed;
-            long left = Math.Max(_syncConfig.PivotNumberParsed, headNumber);
+            long left = Math.Min(_syncConfig.PivotNumberParsed, headNumber);
             long right = headNumber + BestKnownSearchLimit;
 
             bool LevelExists(long blockNumber)

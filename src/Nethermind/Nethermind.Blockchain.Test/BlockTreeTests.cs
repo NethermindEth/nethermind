@@ -1027,7 +1027,7 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(expectedResult, loadedTree.LowestInsertedBody?.Number, "loaded tree");
         }
 
-        [Test, TestCaseSource("SourceOfBSearchTestCases")]
+        [Test, TestCaseSource(nameof(SourceOfBSearchTestCases))]
         public void Loads_best_known_correctly_on_inserts(long beginIndex, long insertedBlocks)
         {
             long expectedResult = insertedBlocks == 0L ? 0L : beginIndex;
@@ -1088,6 +1088,20 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(1, tree.LowestInsertedHeader?.Number, "loaded tree - lowest header");
             Assert.AreEqual(null, tree.LowestInsertedBody?.Number, "loaded tree - lowest body");
             Assert.AreEqual(pivotNumber + 1, loadedTree.BestKnownNumber, "loaded tree");
+        }
+        
+        [Test]
+        public void Loads_best_known_correctly_when_head_before_pivot()
+        {
+            var pivotNumber = 1000;
+            var head = 10;
+            SyncConfig syncConfig = new SyncConfig {PivotNumber = pivotNumber.ToString()};
+
+            var treeBuilder = Build.A.BlockTree().OfChainLength(head + 1);
+            
+            BlockTree loadedTree = new BlockTree(treeBuilder.BlocksDb, treeBuilder.HeadersDb, treeBuilder.BlockInfoDb, treeBuilder.ChainLevelInfoRepository, MainnetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
+            
+            Assert.AreEqual(head, loadedTree.BestKnownNumber, "loaded tree");
         }
 
         [Test]
