@@ -40,6 +40,6 @@ namespace Nethermind.State
         
         int TakeSnapshot();
 
-        void RecreateStorage(Address address);
+        void ClearStorage(Address address);
     }
 }

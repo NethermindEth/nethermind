@@ -256,6 +256,7 @@ namespace Nethermind.Evm
                     {
                         if (_logger.IsTrace) _logger.Trace($"Destroying account {toBeDestroyed}");
                         _stateProvider.DeleteAccount(toBeDestroyed);
+                        _storageProvider.ClearStorage(toBeDestroyed);
                         if (txTracer.IsTracingRefunds) txTracer.ReportRefund(RefundOf.Destroy);
                     }
 

@@ -438,10 +438,19 @@ namespace Nethermind.State
             public byte[] Value { get; }
         }
 
-        public void RecreateStorage(Address address)
+        private HashSet<StorageCell> _cellsToRemove = new HashSet<StorageCell>();
+        
+        public void ClearStorage(Address address)
         {
-            HashSet<StorageCell> cellsToRemove = new HashSet<StorageCell>(_intraBlockCache.Keys.Where(s => s.Address == address).ToArray());
-            foreach (StorageCell storageCell in cellsToRemove)
+            foreach (var cellByAddress in _intraBlockCache)
+            {
+                if (cellByAddress.Key.Address == address)
+                {
+                    _cellsToRemove.Add(cellByAddress.Key);
+                }
+            }
+            
+            foreach (StorageCell storageCell in _cellsToRemove)
             {
                 _intraBlockCache.Remove(storageCell);
                 _originalValues.Remove(storageCell);

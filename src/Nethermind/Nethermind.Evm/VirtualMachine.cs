@@ -2121,7 +2121,7 @@ namespace Nethermind.Evm
                         }
                         else if (_state.IsDeadAccount(contractAddress))
                         {
-                            _storage.RecreateStorage(contractAddress);
+                            _storage.ClearStorage(contractAddress);
                         }
 
                         _state.SubtractFromBalance(env.ExecutingAccount, value, spec);

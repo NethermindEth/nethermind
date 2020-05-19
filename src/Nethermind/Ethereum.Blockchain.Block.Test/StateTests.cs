@@ -39,12 +39,6 @@ namespace Ethereum.Blockchain.Block.Test
                 // it passes but causes the builds to take half an hour
                 return;
             }
-            
-            // partial fix
-            if (test.Name.Contains("suicideStorageCheck_Istanbul"))
-            {
-                return;
-            }
 
             await RunTest(test);
         }
