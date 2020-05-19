@@ -114,7 +114,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                 {
                     if (TryGetLastValidator(previousBlockNumber, out var validatorInfo))
                     {
-                        var parentHeader = _blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.RequireCanonical);
+                        var parentHeader = _blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None);
                         if (validatorInfo.Value.ValidatorType.CanChangeImmediately() || ValidatorWasAlreadyFinalized(validatorInfo))
                         {
                             SetCurrentValidator(validatorInfo, parentHeader);
@@ -156,7 +156,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                 {
                     if (validator.ValidatorType.CanChangeImmediately())
                     {
-                        SetCurrentValidator(block.Number, validator, _blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.RequireCanonical));
+                        SetCurrentValidator(block.Number, validator, _blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None));
                         if (_logger.IsInfo && notProducing) _logger.Info($"Immediately applying chainspec validator change signalled at block {block.ToString(Block.Format.Short)} to {validator.ValidatorType}.");
                     }
                     else if (_logger.IsInfo && notProducing) _logger.Info($"Signal for switch to chainspec {validator.ValidatorType} based validator set at block {block.ToString(Block.Format.Short)}.");
