@@ -33,7 +33,7 @@ using Nethermind.Db.Blooms;
 
 namespace Nethermind.Consensus.AuRa.Validators
 {
-    public class ContractBasedValidator : AuRaValidatorProcessorExtension
+    public class ContractBasedValidator : AuRaValidatorBase, IDisposable
     {
         private readonly ILogger _logger;
         private readonly IStateProvider _stateProvider;
@@ -63,6 +63,8 @@ namespace Nethermind.Consensus.AuRa.Validators
             IReceiptFinder receiptFinder,
             IValidatorStore validatorStore,
             IValidSealerStrategy validSealerStrategy,
+            IBlockFinalizationManager finalizationManager, 
+            BlockHeader parentHeader,
             ILogManager logManager,
             long startBlockNumber,
             bool forSealing = false) : base(validator, validSealerStrategy, validatorStore, logManager, startBlockNumber, forSealing)
@@ -76,29 +78,31 @@ namespace Nethermind.Consensus.AuRa.Validators
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             AbiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
             SetPendingValidators(LoadPendingValidators());
+            SetFinalizationManager(finalizationManager, parentHeader ?? _blockTree.Head?.Header);
         }
 
-        public override void SetFinalizationManager(IBlockFinalizationManager finalizationManager, BlockHeader parentHeader)
+        private void SetFinalizationManager(IBlockFinalizationManager finalizationManager, BlockHeader parentHeader)
         {
-            if (_blockFinalizationManager != null)
-            {
-                _blockFinalizationManager.BlocksFinalized -= OnBlocksFinalized;
-            }
+            _blockFinalizationManager = finalizationManager ?? throw new ArgumentNullException(nameof(finalizationManager));
 
-            _blockFinalizationManager = finalizationManager;
-
-            if (!ForSealing && _blockFinalizationManager != null)
+            if (!ForSealing)
             {
                 _blockFinalizationManager.BlocksFinalized += OnBlocksFinalized;
-                if (_blockTree.Head != null)
+                
+                if (parentHeader != null)
                 {
                     Validators = LoadValidatorsFromContract(parentHeader);
-                    base.SetFinalizationManager(finalizationManager, parentHeader ?? _blockTree.Head.Header);
+                    InitValidatorStore();
                 }
             }
         }
 
-        public override void PreProcess(Block block, ProcessingOptions options = ProcessingOptions.None)
+        public void Dispose()
+        {
+            _blockFinalizationManager.BlocksFinalized -= OnBlocksFinalized;
+        }
+
+        public override void OnStartBlockProcessing(Block block, ProcessingOptions options = ProcessingOptions.None)
         {
             if (block.IsGenesis)
             {
@@ -157,7 +161,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                 }
             }
             
-            base.PreProcess(block, options);
+            base.OnStartBlockProcessing(block, options);
             
             FinalizePendingValidatorsIfNeeded(block.Header, isProcessingBlock);
             
@@ -188,9 +192,9 @@ namespace Nethermind.Consensus.AuRa.Validators
             return pendingValidators;
         }
 
-        public override void PostProcess(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None)
+        public override void OnEndBlockProcessing(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None)
         {
-            base.PostProcess(block, receipts, options);
+            base.OnEndBlockProcessing(block, receipts, options);
             
             if (ValidatorContract.CheckInitiateChangeEvent(block.Header, receipts, out var potentialValidators))
             {
