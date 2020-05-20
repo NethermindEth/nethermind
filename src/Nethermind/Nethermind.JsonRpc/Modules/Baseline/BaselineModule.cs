@@ -64,12 +64,12 @@ namespace Nethermind.JsonRpc.Modules.Baseline
                 _logger.Info($"Contract {contractType} has been deployed");
 
                 return ResultWrapper<Keccak>.Success(txHash);
-            } catch (ArgumentNullException)
+            } catch (System.IO.FileNotFoundException)
             {
                 return ResultWrapper<Keccak>.Fail($"The given contract {contractType} does not exist.");
             } catch (Exception)
             {
-                return ResultWrapper<Keccak>.Fail($"Error while while trying to deply contract {contractType}.");
+                return ResultWrapper<Keccak>.Fail($"Error while while trying to deploy contract {contractType}.");
             } 
         }
 

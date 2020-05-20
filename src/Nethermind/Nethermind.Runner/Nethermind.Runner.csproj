@@ -72,6 +72,9 @@
     <Content Include="configs\*.cfg">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <Content Include="*.bin">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <Content Remove="out\**" />
     <Content Remove="keystore\**" />
     <None Remove="plugins\readme.txt" />
