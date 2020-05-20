@@ -16,6 +16,7 @@
 
 using System;
 using Nethermind.Core.Specs;
+using Nethermind.Core;
 using Nethermind.Facade;
 using Nethermind.Logging;
 using Nethermind.TxPool;
@@ -44,7 +45,7 @@ namespace Nethermind.JsonRpc.Modules.Baseline
         public override IBaselineModule Create()
         {
             
-            TxPoolBridge txPoolBridge = new TxPoolBridge(_txPool, _wallet, _specProvider.ChainId);
+            TxPoolBridge txPoolBridge = new TxPoolBridge(_txPool, _wallet, Timestamper.Default, _specProvider.ChainId);
             
             return new BaselineModule(txPoolBridge, _logManager);
         }
