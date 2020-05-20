@@ -102,7 +102,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             _blockFinalizationManager.BlocksFinalized -= OnBlocksFinalized;
         }
 
-        public override void OnStartBlockProcessing(Block block, ProcessingOptions options = ProcessingOptions.None)
+        public override void OnBlockProcessingStart(Block block, ProcessingOptions options = ProcessingOptions.None)
         {
             if (block.IsGenesis)
             {
@@ -161,7 +161,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                 }
             }
             
-            base.OnStartBlockProcessing(block, options);
+            base.OnBlockProcessingStart(block, options);
             
             FinalizePendingValidatorsIfNeeded(block.Header, isProcessingBlock);
             
@@ -192,9 +192,9 @@ namespace Nethermind.Consensus.AuRa.Validators
             return pendingValidators;
         }
 
-        public override void OnEndBlockProcessing(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None)
+        public override void OnBlockProcessingEnd(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None)
         {
-            base.OnEndBlockProcessing(block, receipts, options);
+            base.OnBlockProcessingEnd(block, receipts, options);
             
             if (ValidatorContract.CheckInitiateChangeEvent(block.Header, receipts, out var potentialValidators))
             {

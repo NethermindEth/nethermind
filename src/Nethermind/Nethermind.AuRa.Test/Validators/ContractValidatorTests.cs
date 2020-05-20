@@ -169,7 +169,7 @@ namespace Nethermind.AuRa.Test.Validators
             _block.Header.Beneficiary = initialValidator;
             var validator = new ContractBasedValidator(_validator, _stateProvider, _abiEncoder, _transactionProcessor, _readOnlyTransactionProcessorSource, _blockTree, _receiptsStorage, _validatorStore, _validSealerStrategy, _blockFinalizationManager, default, _logManager, 1);
             
-            validator.OnStartBlockProcessing(_block);
+            validator.OnBlockProcessingStart(_block);
             
             _stateProvider.Received(1).CreateAccount(Address.SystemUser, UInt256.Zero);
             _stateProvider.Received(1).Commit(Homestead.Instance);
@@ -206,7 +206,7 @@ namespace Nethermind.AuRa.Test.Validators
             
             _block.Header.Number = 1;
             _block.Header.Beneficiary = initialValidator;
-            validator.OnStartBlockProcessing(_block);
+            validator.OnBlockProcessingStart(_block);
 
             // getValidators should have been called
             _transactionProcessor.Received(1)
@@ -530,9 +530,9 @@ namespace Nethermind.AuRa.Test.Validators
                 var txReceipts = test.GetReceipts(_block, _contractAddress, _abiEncoder, SetupAbiAddresses);
                 _block.Header.Bloom = new Bloom(txReceipts.SelectMany(r => r.Logs).ToArray());
                 
-                Action preProcess = () => validator.OnStartBlockProcessing(_block);
+                Action preProcess = () => validator.OnBlockProcessingStart(_block);
                 preProcess.Should().NotThrow<InvalidOperationException>(test.TestName);
-                validator.OnEndBlockProcessing(_block, txReceipts);
+                validator.OnBlockProcessingEnd(_block, txReceipts);
                 var finalizedNumber = blockNumber - validator.Validators.MinSealersForFinalization() + 1;
                 _blockFinalizationManager.BlocksFinalized += Raise.EventWith(
                     new FinalizeEventArgs(_block.Header, Build.A.BlockHeader.WithNumber(finalizedNumber)
@@ -595,7 +595,7 @@ namespace Nethermind.AuRa.Test.Validators
             
             _blockFinalizationManager.GetLastLevelFinalizedBy(blockTree.Head.ParentHash).Returns(lastLevelFinalized);
 
-            validator.OnStartBlockProcessing(blockTree.FindBlock(blockTree.Head.Hash, BlockTreeLookupOptions.None));
+            validator.OnBlockProcessingStart(blockTree.FindBlock(blockTree.Head.Hash, BlockTreeLookupOptions.None));
 
             PendingValidators pendingValidators = null;
             if (expectedBlockValidators.HasValue)

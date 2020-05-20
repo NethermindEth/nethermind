@@ -76,9 +76,9 @@ namespace Nethermind.Consensus.AuRa
         protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options)
         {
             ValidateAuRa(block);
-            AuRaValidator.OnStartBlockProcessing(block, options);
+            AuRaValidator.OnBlockProcessingStart(block, options);
             var receipts = base.ProcessBlock(block, blockTracer, options);
-            AuRaValidator.OnEndBlockProcessing(block, receipts, options);
+            AuRaValidator.OnBlockProcessingEnd(block, receipts, options);
             return receipts;
         }
 
@@ -120,8 +120,8 @@ namespace Nethermind.Consensus.AuRa
         private class NullAuRaValidator : IAuRaValidator
         {
             public Address[] Validators => Array.Empty<Address>();
-            public void OnStartBlockProcessing(Block block, ProcessingOptions options = ProcessingOptions.None) { }
-            public void OnEndBlockProcessing(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None) { }
+            public void OnBlockProcessingStart(Block block, ProcessingOptions options = ProcessingOptions.None) { }
+            public void OnBlockProcessingEnd(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None) { }
         }
     }
 }

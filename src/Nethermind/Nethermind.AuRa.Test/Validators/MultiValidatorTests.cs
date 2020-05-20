@@ -169,7 +169,7 @@ namespace Nethermind.AuRa.Test.Validators
         {
             IAuRaValidator validator = new MultiValidator(_validator, _factory, _blockTree, _validatorStore, _finalizationManager, default, _logManager);
             _block.Header.Number = blockNumber;
-            validator.OnStartBlockProcessing(_block, ProcessingOptions.ProducingBlock);
+            validator.OnBlockProcessingStart(_block, ProcessingOptions.ProducingBlock);
             _innerValidators.Count.Should().Be(2);
             return _innerValidators.Keys.Last();
         }
@@ -187,7 +187,7 @@ namespace Nethermind.AuRa.Test.Validators
             var validatorBlockLevel = (blockNumber - 1)/10*10;
             _finalizationManager.GetFinalizedLevel(validatorBlockLevel).Returns(finalizedLastValidatorBlockLevel ? blockNumber - 2 : (long?) null);
             _block.Header.Number = blockNumber;
-            validator.OnStartBlockProcessing(_block);
+            validator.OnBlockProcessingStart(_block);
             return _innerValidators.Keys.Last();
         }
         
@@ -196,8 +196,8 @@ namespace Nethermind.AuRa.Test.Validators
             for (int i = 1; i < count; i++)
             {
                 _block.Header.Number = i;
-                validator.OnStartBlockProcessing(_block);
-                validator.OnEndBlockProcessing(_block, Array.Empty<TxReceipt>());
+                validator.OnBlockProcessingStart(_block);
+                validator.OnBlockProcessingEnd(_block, Array.Empty<TxReceipt>());
 
                 var finalizedBlock = i - blocksToFinalization;
                 if (finalizedBlock >= 1)
@@ -215,8 +215,8 @@ namespace Nethermind.AuRa.Test.Validators
             {
                 var (innerValidator, calls) = getValidatorWithCallCount(i);
                 
-                innerValidator.Received(calls).OnStartBlockProcessing(Arg.Any<Block>());
-                innerValidator.Received(calls).OnEndBlockProcessing(Arg.Any<Block>(),
+                innerValidator.Received(calls).OnBlockProcessingStart(Arg.Any<Block>());
+                innerValidator.Received(calls).OnBlockProcessingEnd(Arg.Any<Block>(),
                     Array.Empty<TxReceipt>());
             }
         }

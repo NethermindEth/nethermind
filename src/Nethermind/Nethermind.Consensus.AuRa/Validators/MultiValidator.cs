@@ -110,7 +110,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             }
         }
         
-        public void OnStartBlockProcessing(Block block, ProcessingOptions options = ProcessingOptions.None)
+        public void OnBlockProcessingStart(Block block, ProcessingOptions options = ProcessingOptions.None)
         {
             if (!block.IsGenesis)
             {
@@ -149,14 +149,14 @@ namespace Nethermind.Consensus.AuRa.Validators
                 }
             }
 
-            _currentValidator?.OnStartBlockProcessing(block, options);
+            _currentValidator?.OnBlockProcessingStart(block, options);
         }
 
         private bool TryGetValidator(long blockNumber, out AuRaParameters.Validator validator) => _validators.TryGetValue(blockNumber, out validator);
         
-        public void OnEndBlockProcessing(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None)
+        public void OnBlockProcessingEnd(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None)
         {
-            _currentValidator?.OnEndBlockProcessing(block, receipts, options);
+            _currentValidator?.OnBlockProcessingEnd(block, receipts, options);
 
             if (!block.IsGenesis)
             {

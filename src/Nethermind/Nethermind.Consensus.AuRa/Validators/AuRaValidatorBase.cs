@@ -60,7 +60,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             }
         }
 
-        public virtual void OnStartBlockProcessing(Block block, ProcessingOptions options = ProcessingOptions.None)
+        public virtual void OnBlockProcessingStart(Block block, ProcessingOptions options = ProcessingOptions.None)
         {
             if (!options.IsProducingBlock() && !block.IsGenesis)
             {
@@ -73,6 +73,6 @@ namespace Nethermind.Consensus.AuRa.Validators
             }
         }
 
-        public virtual void OnEndBlockProcessing(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None) { }
+        public virtual void OnBlockProcessingEnd(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None) { }
     }
 }
