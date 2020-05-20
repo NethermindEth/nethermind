@@ -21,7 +21,7 @@ namespace Nethermind.Baseline
     {
         public string GetContractBytecode(string contract)
         {   
-            string contractBytecode = File.ReadAllText($"{contract}.bin");
+            string contractBytecode = File.ReadAllText($"baseline/contracts/{contract}.bin");
             return contractBytecode;
         }
     }
