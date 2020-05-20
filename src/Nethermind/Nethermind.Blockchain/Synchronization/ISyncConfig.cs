@@ -33,6 +33,7 @@ namespace Nethermind.Blockchain.Synchronization
         [ConfigItem(Description = "If set to 'true' then the Fast Sync (eth/63) synchronization algorithm will be used.", DefaultValue = "false")]
         bool FastSync { get; set; }
         
+        // Minimum is taken from MultiSyncModeSelector.StickyStateNodesDelta
         [ConfigItem(Description = "Relevant only if 'FastSync' is 'true'. If set to a value, then it will set a minimum height threshold limit up to which FullSync, if already on, will stay on when chain will be behind network. If this limit will be exceeded, it will switch back to FastSync. Please note that last 2 blocks will always be processed in FullSync, so setting it to less than 2 will have no effect.", DefaultValue = "1024")]
         long? FastSyncCatchUpHeightDelta { get; set; }
         
