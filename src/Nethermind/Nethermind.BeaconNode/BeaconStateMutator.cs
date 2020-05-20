@@ -111,7 +111,7 @@ namespace Nethermind.BeaconNode
         /// <summary>
         /// Slash the validator with index ``slashed_index``.
         /// </summary>
-        public void SlashValidator(BeaconState state, ValidatorIndex slashedIndex, ValidatorIndex whistleblowerIndex)
+        public void SlashValidator(BeaconState state, ValidatorIndex slashedIndex, ValidatorIndex? optionalWhistleblowerIndex)
         {
             RewardsAndPenalties rewardsAndPenalties = _rewardsAndPenaltiesOptions.CurrentValue;
             StateListLengths stateListLengths = _stateListLengthOptions.CurrentValue;
@@ -131,10 +131,8 @@ namespace Nethermind.BeaconNode
 
             // Apply proposer and whistleblower rewards
             ValidatorIndex proposerIndex = _beaconStateAccessor.GetBeaconProposerIndex(state);
-            if (whistleblowerIndex == ValidatorIndex.None)
-            {
-                whistleblowerIndex = proposerIndex;
-            }
+            ValidatorIndex whistleblowerIndex = optionalWhistleblowerIndex ?? proposerIndex;
+            
             Gwei whistleblowerReward = validator.EffectiveBalance / rewardsAndPenalties.WhistleblowerRewardQuotient;
             Gwei proposerReward = whistleblowerReward / rewardsAndPenalties.ProposerRewardQuotient;
 

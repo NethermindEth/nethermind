@@ -14,14 +14,11 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
-using Nethermind.Core2.Types;
-
 namespace Nethermind.BeaconNode.OApiClient.Configuration
 {
     public class BeaconNodeConnection
     {
-        public string[] RemoteUrls { get; set; } = new string[0];
         public int ConnectionFailureLoopMillisecondsDelay { get; set; }
+        public string[] RemoteUrls { get; set; } = new string[0];
     }
 }

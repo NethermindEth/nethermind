@@ -50,16 +50,22 @@ namespace Nethermind.Core.Test.Builders
 
         public BlockTreeBuilder(Block genesisBlock)
         {
-            MemDb blocksDb = new MemDb();
-            MemDb headersDb = new MemDb();
+            BlocksDb = new MemDb();
+            HeadersDb = new MemDb();
+            BlockInfoDb = new MemDb();
+            
             // so we automatically include in all tests my questionable decision of storing Head block header at 00...
-            blocksDb.Set(Keccak.Zero, Rlp.Encode(Build.A.BlockHeader.TestObject).Bytes);
-
+            BlocksDb.Set(Keccak.Zero, Rlp.Encode(Build.A.BlockHeader.TestObject).Bytes);
             _genesisBlock = genesisBlock;
-            var blockInfoDb = new MemDb();
-            ChainLevelInfoRepository = new ChainLevelInfoRepository(blockInfoDb);
-            TestObjectInternal = new BlockTree(blocksDb, headersDb, blockInfoDb, ChainLevelInfoRepository, RopstenSpecProvider.Instance, Substitute.For<ITxPool>(), Substitute.For<IBloomStorage>(), LimboLogs.Instance);
+            ChainLevelInfoRepository = new ChainLevelInfoRepository(BlockInfoDb);
+            TestObjectInternal = new BlockTree(BlocksDb, HeadersDb, BlockInfoDb, ChainLevelInfoRepository, RopstenSpecProvider.Instance, Substitute.For<ITxPool>(), Substitute.For<IBloomStorage>(), LimboLogs.Instance);
         }
+
+        public MemDb BlocksDb { get; set; }
+
+        public MemDb HeadersDb { get; set; }
+
+        public MemDb BlockInfoDb { get; set; }
 
         public ChainLevelInfoRepository ChainLevelInfoRepository { get; private set; }
 

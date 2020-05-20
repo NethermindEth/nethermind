@@ -15,24 +15,27 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Linq;
-using Nethermind.Core2;
-using Newtonsoft.Json;
+using Microsoft.Extensions.Logging;
 
 namespace Nethermind.BeaconNode.OApi
 {
-    internal class PrefixedHexByteArrayNewtonsoftJsonConverter : JsonConverter<byte[]>
+    internal static class LogDebug
     {
-        public override void WriteJson(JsonWriter writer, byte[] value, JsonSerializer serializer)
-        {
-            writer.WriteValue(Nethermind.Core2.Bytes.ToHexString(value, withZeroX: true));
-        }
+        // 64xx debug - validator
         
-        public override byte[] ReadJson(JsonReader reader, Type objectType, byte[] existingValue, bool hasExistingValue,
-            JsonSerializer serializer)
-        {
-            string s = (string) reader.Value;
-            return Bytes.FromHexString(s);
-        }
+        public static readonly Action<ILogger, Exception?> NodeGenesisTimeRequested =
+            LoggerMessage.Define(LogLevel.Debug,
+                new EventId(6480, nameof(NodeGenesisTimeRequested)),
+                "Node genesis time requested.");
+        
+        public static readonly Action<ILogger, Exception?> NodeForkRequested =
+            LoggerMessage.Define(LogLevel.Debug,
+                new EventId(6481, nameof(NodeForkRequested)),
+                "Node fork requested.");
+        
+        public static readonly Action<ILogger, Exception?> NodeSyncingRequested =
+            LoggerMessage.Define(LogLevel.Debug,
+                new EventId(6482, nameof(NodeSyncingRequested)),
+                "Node syncing status requested.");
     }
 }

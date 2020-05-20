@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,26 +13,21 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System;
-using System.Linq;
-using Nethermind.Core2;
-using Newtonsoft.Json;
+using Nethermind.Core2.Containers;
 
-namespace Nethermind.BeaconNode.OApiClient
+namespace Nethermind.Core2.Api
 {
-    internal class PrefixedHexByteArrayNewtonsoftJsonConverter : JsonConverter<byte[]>
+    public class ForkInformation
     {
-        public override void WriteJson(JsonWriter writer, byte[] value, JsonSerializer serializer)
+        public ForkInformation(ulong chainId, Fork fork)
         {
-            writer.WriteValue(value.ToHexString(withZeroX: true));
+            ChainId = chainId;
+            Fork = fork;
         }
         
-        public override byte[] ReadJson(JsonReader reader, Type objectType, byte[] existingValue, bool hasExistingValue,
-            JsonSerializer serializer)
-        {
-            string s = reader.Value as string ?? string.Empty;
-            return Bytes.FromHexString(s);
-        }
+        public ulong ChainId { get; }
+        public Fork Fork { get; }
     }
 }

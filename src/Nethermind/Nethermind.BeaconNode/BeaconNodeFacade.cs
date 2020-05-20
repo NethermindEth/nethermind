@@ -180,7 +180,7 @@ namespace Nethermind.BeaconNode
                 }
                 else
                 {
-                    return new ApiResponse(StatusCode.Success);
+                    return new ApiResponse(StatusCode.BroadcastButFailedValidation);
                 }
             }
             catch (Exception ex)
@@ -192,7 +192,8 @@ namespace Nethermind.BeaconNode
 
         public async Task<ApiResponse<IList<ValidatorDuty>>> ValidatorDutiesAsync(
             IList<BlsPublicKey> validatorPublicKeys,
-            Epoch? epoch, CancellationToken cancellationToken)
+            Epoch? epoch,
+            CancellationToken cancellationToken)
         {
             if (validatorPublicKeys.Count < 1)
             {
@@ -205,32 +206,21 @@ namespace Nethermind.BeaconNode
                 return ApiResponse.Create<IList<ValidatorDuty>>(StatusCode.CurrentlySyncing);
             }
 
-            // TODO: Rather than check one by one (each of which loops through potentially all slots for the epoch), optimise by either checking multiple, or better possibly caching or pre-calculating
-            IList<ValidatorDuty> validatorDuties = new List<ValidatorDuty>();
-            foreach (BlsPublicKey validatorPublicKey in validatorPublicKeys)
+            try
             {
-                ValidatorDuty validatorDuty;
-                try
-                {
-                    validatorDuty =
-                        await _validatorAssignments.GetValidatorDutyAsync(validatorPublicKey, epoch ?? Epoch.None)
-                            .ConfigureAwait(false);
-                }
-                catch (ArgumentOutOfRangeException outOfRangeException) when (outOfRangeException.ParamName == "epoch")
-                {
-                    return ApiResponse.Create<IList<ValidatorDuty>>(StatusCode.DutiesNotAvailableForRequestedEpoch);
-                }
-                catch (Exception ex)
-                {
-                    if (_logger.IsWarn()) Log.ApiErrorValidatorDuties(_logger, ex);
-                    throw;
-                }
-
-                validatorDuties.Add(validatorDuty);
+                var validatorDuties = await _validatorAssignments.GetValidatorDutiesAsync(validatorPublicKeys, epoch);
+                ApiResponse<IList<ValidatorDuty>> response = ApiResponse.Create(StatusCode.Success, validatorDuties);
+                return response;
             }
-
-            ApiResponse<IList<ValidatorDuty>> response = ApiResponse.Create(StatusCode.Success, validatorDuties);
-            return response;
+            catch (ArgumentOutOfRangeException outOfRangeException) when (outOfRangeException.ParamName == "epoch")
+            {
+                return ApiResponse.Create<IList<ValidatorDuty>>(StatusCode.DutiesNotAvailableForRequestedEpoch);
+            }
+            catch (Exception ex)
+            {
+                if (_logger.IsWarn()) Log.ApiErrorValidatorDuties(_logger, ex);
+                throw;
+            }
         }
 
         private async Task<BeaconState> GetHeadStateAsync()

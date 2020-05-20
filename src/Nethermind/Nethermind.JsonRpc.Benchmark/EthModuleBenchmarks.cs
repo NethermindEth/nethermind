@@ -37,7 +37,6 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
-using Nethermind.Db.Blooms;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using BlockTree = Nethermind.Blockchain.BlockTree;
@@ -114,7 +113,7 @@ namespace Nethermind.JsonRpc.Benchmark
                 LimboLogs.Instance,
                 false);
             
-            TxPoolBridge txPoolBridge = new TxPoolBridge(NullTxPool.Instance, NullWallet.Instance, specProvider.ChainId);
+            TxPoolBridge txPoolBridge = new TxPoolBridge(NullTxPool.Instance, NullWallet.Instance, Timestamper.Default, specProvider.ChainId);
             
             _ethModule = new EthModule(new JsonRpcConfig(), bridge, txPoolBridge, LimboLogs.Instance);
         }

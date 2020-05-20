@@ -88,7 +88,7 @@ namespace Nethermind.Facade.Test
                 LimboLogs.Instance,
                 false);
             
-            _txPoolBridge = new TxPoolBridge(_txPool, _wallet, ChainId.Mainnet);
+            _txPoolBridge = new TxPoolBridge(_txPool, _wallet, Timestamper.Default, ChainId.Mainnet);
         }
 
         [Test]

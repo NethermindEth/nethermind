@@ -15,6 +15,9 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Text.Json;
+using Nethermind.Core2.Api;
+using Nethermind.Core2.Containers;
+using Nethermind.Core2.Crypto;
 
 namespace Nethermind.Core2.Json
 {
@@ -38,6 +41,19 @@ namespace Nethermind.Core2.Json
             options.Converters.Add(new JsonConverterShard());
             options.Converters.Add(new JsonConverterSlot());
             options.Converters.Add(new JsonConverterValidatorIndex());
+            
+            // Constructor converters
+            options.Converters.Add(new LastConstructorJsonConverter<SyncingStatus>());
+            options.Converters.Add(new LastConstructorJsonConverter<Syncing>());
+            options.Converters.Add(new LastConstructorJsonConverter<ForkInformation>());
+            options.Converters.Add(new LastConstructorJsonConverter<Fork>());
+            options.Converters.Add(new LastConstructorJsonConverter<ValidatorDuty>());
+            options.Converters.Add(new LastConstructorJsonConverter<BeaconBlock>());
+            options.Converters.Add(new LastConstructorJsonConverter<BeaconBlockBody>());
+            options.Converters.Add(new LastConstructorJsonConverter<Eth1Data>());
+            options.Converters.Add(new LastConstructorJsonConverter<Deposit>());
+            options.Converters.Add(new LastConstructorJsonConverter<DepositData>());
+            options.Converters.Add(new LastConstructorJsonConverter<SignedBeaconBlock>());
         }
     }
 }

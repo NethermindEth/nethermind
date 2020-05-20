@@ -79,8 +79,7 @@ namespace Nethermind.Core2.Types
             return Number.ToString();
         }
 
-        // NOTE: ulong.MaxValue is defined as FarFutureEpoch constant, so need a different placeholder for None
-        public static Epoch None => new Epoch(ulong.MaxValue - 1);
+        public static Epoch? None => null;
 
         public static Epoch Zero => new Epoch(0);
         

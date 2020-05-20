@@ -228,6 +228,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             SameKeyGenerator privateKeyProvider = new SameKeyGenerator(_ctx.NodeKey);
             DiscoveryMessageFactory discoveryMessageFactory = new DiscoveryMessageFactory(_ctx.Timestamper);
             NodeIdResolver nodeIdResolver = new NodeIdResolver(_ctx.EthereumEcdsa);
+            IPResolver ipResolver = new IPResolver(_networkConfig, _ctx.LogManager);
 
             IDiscoveryMsgSerializersProvider msgSerializersProvider = new DiscoveryMsgSerializersProvider(
                 _ctx._messageSerializationService,
@@ -261,7 +262,9 @@ namespace Nethermind.Runner.Ethereum.Steps
                 nodeTable,
                 discoveryStorage,
                 discoveryConfig,
-                _ctx.LogManager);
+                _ctx.LogManager,
+                ipResolver 
+                );
 
             NodesLocator nodesLocator = new NodesLocator(
                 nodeTable,

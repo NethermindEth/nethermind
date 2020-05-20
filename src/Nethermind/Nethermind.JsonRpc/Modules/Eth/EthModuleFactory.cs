@@ -20,6 +20,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -102,7 +103,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 _isMining,
                 _rpcConfig.FindLogBlockDepthLimit);
             
-            TxPoolBridge txPoolBridge = new TxPoolBridge(_txPool, _wallet, _specProvider.ChainId);
+            TxPoolBridge txPoolBridge = new TxPoolBridge(_txPool, _wallet, Timestamper.Default, _specProvider.ChainId);
             
             return new EthModule(_rpcConfig, blockchainBridge, txPoolBridge, _logManager);
         }

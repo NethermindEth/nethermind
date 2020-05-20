@@ -107,7 +107,7 @@ namespace Nethermind.AuRa.Test.Validators
         {
             _validator = GetValidator(AuRaParameters.ValidatorType.Contract);
             var validator = new MultiValidator(_validator, _factory, _blockTree, _validatorStore, _logManager);
-            validator.SetFinalizationManager(_finalizationManager);
+            validator.SetFinalizationManager(_finalizationManager, null);
 
             foreach (var blockNumber in _validator.Validators.Keys.Skip(1))
             {
@@ -128,7 +128,7 @@ namespace Nethermind.AuRa.Test.Validators
             IAuRaValidatorProcessorExtension validator = new MultiValidator(_validator, _factory, _blockTree, _validatorStore, _logManager);
             var innerValidatorsFirstBlockCalls = GetInnerValidatorsFirstBlockCalls(_validator);
             var maxCalls = innerValidatorsFirstBlockCalls.Values.Max() + 10;
-            validator.SetFinalizationManager(_finalizationManager);
+            validator.SetFinalizationManager(_finalizationManager, null);
 
             // Act
             ProcessBlocks(maxCalls, validator, blocksToFinalization);
@@ -185,7 +185,7 @@ namespace Nethermind.AuRa.Test.Validators
         {
             _validator = GetValidator(validatorType);
             IAuRaValidatorProcessorExtension validator = new MultiValidator(_validator, _factory, _blockTree, _validatorStore, _logManager);
-            validator.SetFinalizationManager(_finalizationManager);
+            validator.SetFinalizationManager(_finalizationManager, null);
             var validatorBlockLevel = (blockNumber - 1)/10*10;
             _finalizationManager.GetFinalizedLevel(validatorBlockLevel).Returns(finalizedLastValidatorBlockLevel ? blockNumber - 2 : (long?) null);
             _block.Header.Number = blockNumber;

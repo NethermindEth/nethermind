@@ -82,6 +82,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_context.RewardCalculatorSource == null) throw new StepDependencyException(nameof(_context.RewardCalculatorSource));
             if (_context.ValidatorStore == null) throw new StepDependencyException(nameof(_context.ValidatorStore));
             if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
+            if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
             
             var validator = new AuRaValidatorProcessorFactory(
                     readOnlyTxProcessingEnv.StateProvider,
@@ -91,7 +92,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                     readOnlyTxProcessingEnv.BlockTree,
                     _context.ReceiptStorage,
                     _context.ValidatorStore,
-                    _context.LogManager)
+                    _context.LogManager,
+                    true)
                 .CreateValidatorProcessor(_context.ChainSpec.AuRa.Validators);
             
             var blockProducer = new AuRaBlockProcessor(
@@ -111,7 +113,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 GetTxPermissionFilter(readOnlyTxProcessingEnv, readOnlyTransactionProcessorSource, readOnlyTxProcessingEnv.StateProvider),
                 GetGasLimitOverride(readOnlyTxProcessingEnv, readOnlyTransactionProcessorSource, readOnlyTxProcessingEnv.StateProvider));
             
-            validator.SetFinalizationManager(_context.FinalizationManager, true);
+            validator.SetFinalizationManager(_context.FinalizationManager, _context.BlockTree.Head.Header);
 
             return blockProducer;
         }

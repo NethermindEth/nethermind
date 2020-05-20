@@ -2119,6 +2119,10 @@ namespace Nethermind.Evm
                         {
                             _state.UpdateStorageRoot(contractAddress, Keccak.EmptyTreeHash);
                         }
+                        else if (_state.IsDeadAccount(contractAddress))
+                        {
+                            _storage.ClearStorage(contractAddress);
+                        }
 
                         _state.SubtractFromBalance(env.ExecutingAccount, value, spec);
                         ExecutionEnvironment callEnv = new ExecutionEnvironment();
@@ -2401,7 +2405,6 @@ namespace Nethermind.Evm
 
                         Address inheritor = stack.PopAddress();
                         vmState.DestroyList.Add(env.ExecutingAccount);
-                        _storage.Destroy(env.ExecutingAccount);
 
                         UInt256 ownerBalance = _state.GetBalance(env.ExecutingAccount);
                         if (_txTracer.IsTracingActions) _txTracer.ReportSelfDestruct(env.ExecutingAccount, ownerBalance, inheritor);

@@ -29,12 +29,14 @@ namespace Nethermind.Facade
     {
         private readonly ITxPool _txPool;
         private readonly IWallet _wallet;
+        private readonly ITimestamper _timestamper;
         private readonly int _chainId;
 
-        public TxPoolBridge(ITxPool txPool, IWallet wallet, int chainId)
+        public TxPoolBridge(ITxPool txPool, IWallet wallet, ITimestamper timestamper, int chainId)
         {
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
+            _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
             _chainId = chainId;
         }
         
@@ -55,6 +57,7 @@ namespace Nethermind.Facade
             }
 
             tx.Hash = tx.CalculateHash();
+            tx.Timestamp = _timestamper.EpochSeconds;
 
             AddTxResult result = _txPool.AddTransaction(tx, txHandlingOptions);
 

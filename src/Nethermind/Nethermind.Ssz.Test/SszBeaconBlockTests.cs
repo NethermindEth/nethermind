@@ -29,7 +29,7 @@ namespace Nethermind.Ssz.Test
     [TestFixture]
     public class SszBeaconBlockTests
     {
-        [TestCase]
+        [Test]
         public void EmptyBeaconBlockEncode()
         {
             // Arrange
@@ -81,7 +81,7 @@ namespace Nethermind.Ssz.Test
             encoded.ToHexString().ShouldBe(expectedHex);
         }
         
-        [TestCase]
+        [Test]
         public void EmptyBeaconBlockDecode()
         {
             // Arrange
