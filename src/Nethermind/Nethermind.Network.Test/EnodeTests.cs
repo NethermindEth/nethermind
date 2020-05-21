@@ -44,7 +44,7 @@ namespace Nethermind.Network.Test
             var publicKey = new PublicKey("0x000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
             string domain = "www.google.com";
             Enode enode = new Enode($"enode://{publicKey.ToString(false)}@{domain}:{1234}");
-            enode.HostIp.GetAddressBytes().Slice(3).Should().BeEquivalentTo(Dns.GetHostAddresses(domain).First().GetAddressBytes().Slice(0, 3));
+            Dns.GetHostAddresses(domain).Should().Contain(enode.HostIp);
             enode.Port.Should().Be(1234);
             enode.PublicKey.Should().BeEquivalentTo(publicKey);
         }
