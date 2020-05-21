@@ -33,7 +33,7 @@ using Nethermind.Db.Blooms;
 
 namespace Nethermind.Consensus.AuRa.Validators
 {
-    public class ContractBasedValidator : AuRaValidatorProcessorExtension
+    public class ContractBasedValidator : AuRaValidatorBase, IDisposable
     {
         private readonly ILogger _logger;
        
@@ -56,6 +56,8 @@ namespace Nethermind.Consensus.AuRa.Validators
             IReceiptFinder receiptFinder,
             IValidatorStore validatorStore,
             IValidSealerStrategy validSealerStrategy,
+            IBlockFinalizationManager finalizationManager, 
+            BlockHeader parentHeader,
             ILogManager logManager,
             long startBlockNumber,
             bool forSealing = false) : base(validator, validSealerStrategy, validatorStore, logManager, startBlockNumber, forSealing)
@@ -65,31 +67,33 @@ namespace Nethermind.Consensus.AuRa.Validators
             _logger = logManager?.GetClassLogger<ContractBasedValidator>() ?? throw new ArgumentNullException(nameof(logManager));
             ValidatorContract = new ValidatorContract(transactionProcessor, abiEncoder, GetContractAddress(validator), stateProvider, readOnlyTransactionProcessorSource);
             SetPendingValidators(LoadPendingValidators());
+            SetFinalizationManager(finalizationManager, parentHeader ?? _blockTree.Head?.Header);
         }
 
         protected Address GetContractAddress(AuRaParameters.Validator validator) => validator.Addresses?.FirstOrDefault() ?? throw new ArgumentException("Missing contract address for AuRa validator.", nameof(validator.Addresses));
 
-        public override void SetFinalizationManager(IBlockFinalizationManager finalizationManager, BlockHeader parentHeader)
+        private void SetFinalizationManager(IBlockFinalizationManager finalizationManager, BlockHeader parentHeader)
         {
-            if (_blockFinalizationManager != null)
-            {
-                _blockFinalizationManager.BlocksFinalized -= OnBlocksFinalized;
-            }
+            _blockFinalizationManager = finalizationManager ?? throw new ArgumentNullException(nameof(finalizationManager));
 
-            _blockFinalizationManager = finalizationManager;
-
-            if (!ForSealing && _blockFinalizationManager != null)
+            if (!ForSealing)
             {
                 _blockFinalizationManager.BlocksFinalized += OnBlocksFinalized;
-                if (_blockTree.Head != null)
+                
+                if (parentHeader != null)
                 {
                     Validators = LoadValidatorsFromContract(parentHeader);
-                    base.SetFinalizationManager(finalizationManager, parentHeader ?? _blockTree.Head.Header);
+                    InitValidatorStore();
                 }
             }
         }
 
-        public override void PreProcess(Block block, ProcessingOptions options = ProcessingOptions.None)
+        public void Dispose()
+        {
+            _blockFinalizationManager.BlocksFinalized -= OnBlocksFinalized;
+        }
+
+        public override void OnBlockProcessingStart(Block block, ProcessingOptions options = ProcessingOptions.None)
         {
             if (block.IsGenesis)
             {
@@ -148,7 +152,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                 }
             }
             
-            base.PreProcess(block, options);
+            base.OnBlockProcessingStart(block, options);
             
             FinalizePendingValidatorsIfNeeded(block.Header, isProcessingBlock);
             
@@ -179,9 +183,9 @@ namespace Nethermind.Consensus.AuRa.Validators
             return pendingValidators;
         }
 
-        public override void PostProcess(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None)
+        public override void OnBlockProcessingEnd(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None)
         {
-            base.PostProcess(block, receipts, options);
+            base.OnBlockProcessingEnd(block, receipts, options);
             
             if (ValidatorContract.CheckInitiateChangeEvent(block.Header, receipts, out var potentialValidators))
             {

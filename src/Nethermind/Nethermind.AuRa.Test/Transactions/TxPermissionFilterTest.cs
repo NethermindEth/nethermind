@@ -252,9 +252,8 @@ namespace Nethermind.AuRa.Test.Transactions
 
                 TxPermissionFilterCache = new ITxPermissionFilter.Cache();
                 TxPermissionFilter = new TxPermissionFilter(transactionPermissionContract, TxPermissionFilterCache, State, LimboLogs.Instance);
-                
-                return new AuRaBlockProcessor(SpecProvider, Always.Valid, new RewardCalculator(SpecProvider), TxProcessor, StateDb, CodeDb, State, Storage, TxPool, ReceiptStorage, LimboLogs.Instance,
-                    new ListBasedValidator(validator, new ValidSealerStrategy(), Substitute.For<IValidatorStore>(), LimboLogs.Instance, 1), BlockTree, TxPermissionFilter);
+
+                return new AuRaBlockProcessor(SpecProvider, Always.Valid, new RewardCalculator(SpecProvider), TxProcessor, StateDb, CodeDb, State, Storage, TxPool, ReceiptStorage, LimboLogs.Instance, BlockTree, TxPermissionFilter);
             }
 
             protected override Task AddBlocksOnStart() => Task.CompletedTask;

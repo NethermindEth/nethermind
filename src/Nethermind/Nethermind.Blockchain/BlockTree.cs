@@ -19,6 +19,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
@@ -75,7 +76,8 @@ namespace Nethermind.Blockchain
         public long BestKnownNumber { get; private set; }
         public int ChainId => _specProvider.ChainId;
 
-        public bool CanAcceptNewBlocks { get; private set; } = true; // no need to sync it at the moment
+        private int _canAcceptNewBlocksCounter = 0;
+        public bool CanAcceptNewBlocks => _canAcceptNewBlocksCounter == 0;
 
         public BlockTree(
             IDb blockDb,
@@ -692,14 +694,15 @@ namespace Nethermind.Blockchain
             BestSuggestedHeader = Head?.Header;
             BestSuggestedBody = Head;
 
+            BlockAcceptingNewBlocks();
+            
             try
             {
-                CanAcceptNewBlocks = false;
+                DeleteBlocks(invalidBlock.Hash);
             }
             finally
             {
-                DeleteBlocks(invalidBlock.Hash);
-                CanAcceptNewBlocks = true;
+                ReleaseAcceptingNewBlocks();
             }
         }
 
@@ -1273,6 +1276,16 @@ namespace Nethermind.Blockchain
             }
 
             return deleted;
+        }
+        
+        internal void BlockAcceptingNewBlocks()
+        {
+            Interlocked.Increment(ref _canAcceptNewBlocksCounter);
+        }
+        
+        internal void ReleaseAcceptingNewBlocks()
+        {
+            Interlocked.Decrement(ref _canAcceptNewBlocksCounter);
         }
     }
 }
