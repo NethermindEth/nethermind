@@ -18,6 +18,7 @@ using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Transactions;
+using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Logging;
 using Nethermind.TxPool;
 
@@ -30,7 +31,6 @@ namespace Nethermind.Runner.Ethereum.Context
         {
         }
         
-        public IAuRaBlockProcessorExtension? AuRaBlockProcessorExtension { get; set; }
         public IBlockFinalizationManager? FinalizationManager { get; set; }
         public ITxPermissionFilter.Cache? TxFilterCache { get; set; }
         public IGasLimitOverride.Cache? GasLimitOverrideCache { get; set; }

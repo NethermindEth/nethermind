@@ -25,20 +25,28 @@ using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Consensus.AuRa.Validators
 {
-    public class MultiValidator : IAuRaValidatorProcessorExtension
+    public class MultiValidator : IAuRaValidator, IDisposable
     {
-        private readonly IAuRaValidatorProcessorFactory _validatorFactory;
+        private readonly IAuRaValidatorFactory _validatorFactory;
         private readonly IBlockTree _blockTree;
         private readonly IValidatorStore _validatorStore;
         private readonly bool _forSealing;
         private IBlockFinalizationManager _blockFinalizationManager;
         private readonly IDictionary<long, AuRaParameters.Validator> _validators;
         private readonly ILogger _logger;
-        private IAuRaValidatorProcessorExtension _currentValidator;
+        private IAuRaValidator _currentValidator;
         private AuRaParameters.Validator _currentValidatorPrototype;
         private long _lastProcessedBlock = 0;
         
-        public MultiValidator(AuRaParameters.Validator validator, IAuRaValidatorProcessorFactory validatorFactory, IBlockTree blockTree, IValidatorStore validatorStore, ILogManager logManager, bool forSealing = false)
+        public MultiValidator(
+            AuRaParameters.Validator validator,
+            IAuRaValidatorFactory validatorFactory,
+            IBlockTree blockTree,
+            IValidatorStore validatorStore,
+            IBlockFinalizationManager finalizationManager,
+            BlockHeader parentHeader,
+            ILogManager logManager,
+            bool forSealing = false)
         {
             if (validator == null) throw new ArgumentNullException(nameof(validator));
             if (validator.ValidatorType != AuRaParameters.ValidatorType.Multi) throw new ArgumentException("Wrong validator type.", nameof(validator));
@@ -51,6 +59,8 @@ namespace Nethermind.Consensus.AuRa.Validators
             _validators = validator.Validators?.Count > 0
                 ? validator.Validators
                 : throw new ArgumentException("Multi validator cannot be empty.", nameof(validator.Validators));
+            
+            SetFinalizationManager(finalizationManager, parentHeader);
         }
         
         public Address[] Validators => _currentValidator?.Validators;
@@ -100,7 +110,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             }
         }
         
-        public void PreProcess(Block block, ProcessingOptions options = ProcessingOptions.None)
+        public void OnBlockProcessingStart(Block block, ProcessingOptions options = ProcessingOptions.None)
         {
             if (!block.IsGenesis)
             {
@@ -139,14 +149,14 @@ namespace Nethermind.Consensus.AuRa.Validators
                 }
             }
 
-            _currentValidator?.PreProcess(block, options);
+            _currentValidator?.OnBlockProcessingStart(block, options);
         }
 
         private bool TryGetValidator(long blockNumber, out AuRaParameters.Validator validator) => _validators.TryGetValue(blockNumber, out validator);
         
-        public void PostProcess(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None)
+        public void OnBlockProcessingEnd(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None)
         {
-            _currentValidator?.PostProcess(block, receipts, options);
+            _currentValidator?.OnBlockProcessingEnd(block, receipts, options);
 
             if (!block.IsGenesis)
             {
@@ -168,20 +178,14 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         public void SetFinalizationManager(IBlockFinalizationManager finalizationManager, BlockHeader parentHeader)
         {
-            if (_blockFinalizationManager != null)
-            {
-                _blockFinalizationManager.BlocksFinalized -= OnBlocksFinalized;
-            }
+            _blockFinalizationManager = finalizationManager ?? throw new ArgumentNullException(nameof(finalizationManager));
+            _blockFinalizationManager.BlocksFinalized += OnBlocksFinalized;
+            InitCurrentValidator(_blockFinalizationManager.LastFinalizedBlockLevel, parentHeader);
+        }
 
-            _blockFinalizationManager = finalizationManager;
-
-            if (_blockFinalizationManager != null)
-            {
-                _blockFinalizationManager.BlocksFinalized += OnBlocksFinalized;
-                InitCurrentValidator(_blockFinalizationManager.LastFinalizedBlockLevel, parentHeader);
-            }
-
-            _currentValidator?.SetFinalizationManager(finalizationManager, parentHeader);
+        public void Dispose()
+        {
+            _blockFinalizationManager.BlocksFinalized -= OnBlocksFinalized;
         }
 
         private void SetCurrentValidator(KeyValuePair<long, AuRaParameters.Validator> validatorInfo, BlockHeader parentHeader)
@@ -193,9 +197,8 @@ namespace Nethermind.Consensus.AuRa.Validators
         {
             if (validatorPrototype != _currentValidatorPrototype)
             {
-                _currentValidator?.SetFinalizationManager(null, null);
-                _currentValidator = CreateValidator(finalizedAtBlockNumber, validatorPrototype);
-                _currentValidator.SetFinalizationManager(_blockFinalizationManager, parentHeader);
+                (_currentValidator as IDisposable)?.Dispose();
+                _currentValidator = CreateValidator(finalizedAtBlockNumber, validatorPrototype, parentHeader);
                 _currentValidatorPrototype = validatorPrototype;
                 
                 if (!_forSealing)
@@ -212,7 +215,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             }
         }
 
-        private IAuRaValidatorProcessorExtension CreateValidator(long finalizedAtBlockNumber, AuRaParameters.Validator validatorPrototype) => 
-            _validatorFactory.CreateValidatorProcessor(validatorPrototype, finalizedAtBlockNumber + 1);
+        private IAuRaValidator CreateValidator(long finalizedAtBlockNumber, AuRaParameters.Validator validatorPrototype, BlockHeader parentHeader) => 
+            _validatorFactory.CreateValidatorProcessor(validatorPrototype, parentHeader, finalizedAtBlockNumber + 1);
     }
 }
