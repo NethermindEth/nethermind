@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Visitors;
@@ -27,71 +28,86 @@ namespace Nethermind.Blockchain
     {
         public async Task Accept(IBlockTreeVisitor visitor, CancellationToken cancellationToken)
         {
-            long levelNumber = visitor.StartLevelInclusive;
-            long blocksToVisit = visitor.EndLevelExclusive - visitor.StartLevelInclusive;
-            for (long i = 0; i < blocksToVisit; i++)
+            try
             {
-                if (cancellationToken.IsCancellationRequested)
+                if (visitor.PreventsAcceptingNewBlocks)
                 {
-                    break;
+                    Interlocked.Increment(ref _canAcceptNewBlocksCounter);
                 }
 
-                ChainLevelInfo level = LoadLevel(levelNumber);
+                long levelNumber = visitor.StartLevelInclusive;
+                long blocksToVisit = visitor.EndLevelExclusive - visitor.StartLevelInclusive;
+                for (long i = 0; i < blocksToVisit; i++)
                 {
-                    // just start a new scope
-                    LevelVisitOutcome visitOutcome = await visitor.VisitLevelStart(level, cancellationToken);
-                    if ((visitOutcome & LevelVisitOutcome.DeleteLevel) == LevelVisitOutcome.DeleteLevel)
-                    {
-                        _chainLevelInfoRepository.Delete(levelNumber);
-                        level = null;
-                    }
-
-                    if ((visitOutcome & LevelVisitOutcome.StopVisiting) == LevelVisitOutcome.StopVisiting)
+                    if (cancellationToken.IsCancellationRequested)
                     {
                         break;
                     }
-                }
 
-                int numberOfBlocksAtThisLevel = level?.BlockInfos.Length ?? 0;
-                for (int blockIndex = 0; blockIndex < numberOfBlocksAtThisLevel; blockIndex++)
-                {
-                    // if we delete blocks during the process then the number of blocks at this level will be falling and we need to adjust the index
-                    Keccak hash = level!.BlockInfos[blockIndex - (numberOfBlocksAtThisLevel - level.BlockInfos.Length)].BlockHash;
-                    Block block = FindBlock(hash, BlockTreeLookupOptions.None);
-                    if (block == null)
+                    ChainLevelInfo level = LoadLevel(levelNumber);
                     {
-                        BlockHeader header = FindHeader(hash, BlockTreeLookupOptions.None);
-                        if (header == null)
+                        // just start a new scope
+                        LevelVisitOutcome visitOutcome = await visitor.VisitLevelStart(level, cancellationToken);
+                        if ((visitOutcome & LevelVisitOutcome.DeleteLevel) == LevelVisitOutcome.DeleteLevel)
                         {
-                            if (await VisitMissing(visitor, hash, cancellationToken)) break;
+                            _chainLevelInfoRepository.Delete(levelNumber);
+                            level = null;
+                        }
+
+                        if ((visitOutcome & LevelVisitOutcome.StopVisiting) == LevelVisitOutcome.StopVisiting)
+                        {
+                            break;
+                        }
+                    }
+
+                    int numberOfBlocksAtThisLevel = level?.BlockInfos.Length ?? 0;
+                    for (int blockIndex = 0; blockIndex < numberOfBlocksAtThisLevel; blockIndex++)
+                    {
+                        // if we delete blocks during the process then the number of blocks at this level will be falling and we need to adjust the index
+                        Keccak hash = level!.BlockInfos[blockIndex - (numberOfBlocksAtThisLevel - level.BlockInfos.Length)].BlockHash;
+                        Block block = FindBlock(hash, BlockTreeLookupOptions.None);
+                        if (block == null)
+                        {
+                            BlockHeader header = FindHeader(hash, BlockTreeLookupOptions.None);
+                            if (header == null)
+                            {
+                                if (await VisitMissing(visitor, hash, cancellationToken)) break;
+                            }
+                            else
+                            {
+                                if (await VisitHeader(visitor, header, cancellationToken)) break;
+                            }
                         }
                         else
                         {
-                            if (await VisitHeader(visitor, header, cancellationToken)) break;
+                            if (await VisitBlock(visitor, block, cancellationToken)) break;
                         }
                     }
-                    else
+
                     {
-                        if (await VisitBlock(visitor, block, cancellationToken)) break;
+                        LevelVisitOutcome visitOutcome = await visitor.VisitLevelEnd(cancellationToken);
+                        if ((visitOutcome & LevelVisitOutcome.DeleteLevel) == LevelVisitOutcome.DeleteLevel)
+                        {
+                            _chainLevelInfoRepository.Delete(levelNumber);
+                        }
                     }
+
+                    levelNumber++;
                 }
 
-                {
-                    LevelVisitOutcome visitOutcome = await visitor.VisitLevelEnd(cancellationToken);
-                    if ((visitOutcome & LevelVisitOutcome.DeleteLevel) == LevelVisitOutcome.DeleteLevel)
-                    {
-                        _chainLevelInfoRepository.Delete(levelNumber);
-                    }
-                }
+                RecalculateTreeLevels();
 
-                levelNumber++;
+                string resultWord = cancellationToken.IsCancellationRequested ? "Canceled" : "Completed";
+
+                if (_logger.IsDebug) _logger.Debug($"{resultWord} visiting blocks in DB at level {levelNumber} - best known {BestKnownNumber}");
             }
-
-            RecalculateTreeLevels();
-
-            string resultWord = cancellationToken.IsCancellationRequested ? "Canceled" : "Completed";
-
-            if (_logger.IsDebug) _logger.Debug($"{resultWord} visiting blocks in DB at level {levelNumber} - best known {BestKnownNumber}");
+            finally
+            {
+                if (visitor.PreventsAcceptingNewBlocks)
+                {
+                    Interlocked.Decrement(ref _canAcceptNewBlocksCounter);
+                }
+            }
         }
 
         private static async Task<bool> VisitMissing(IBlockTreeVisitor visitor, Keccak hash, CancellationToken cancellationToken)
