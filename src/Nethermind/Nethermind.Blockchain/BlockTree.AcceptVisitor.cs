@@ -28,13 +28,13 @@ namespace Nethermind.Blockchain
     {
         public async Task Accept(IBlockTreeVisitor visitor, CancellationToken cancellationToken)
         {
+            if (visitor.PreventsAcceptingNewBlocks)
+            {
+                BlockAcceptingNewBlocks();
+            }
+            
             try
             {
-                if (visitor.PreventsAcceptingNewBlocks)
-                {
-                    Interlocked.Increment(ref _canAcceptNewBlocksCounter);
-                }
-
                 long levelNumber = visitor.StartLevelInclusive;
                 long blocksToVisit = visitor.EndLevelExclusive - visitor.StartLevelInclusive;
                 for (long i = 0; i < blocksToVisit; i++)
@@ -45,19 +45,17 @@ namespace Nethermind.Blockchain
                     }
 
                     ChainLevelInfo level = LoadLevel(levelNumber);
+                    
+                    LevelVisitOutcome visitOutcome = await visitor.VisitLevelStart(level, cancellationToken);
+                    if ((visitOutcome & LevelVisitOutcome.DeleteLevel) == LevelVisitOutcome.DeleteLevel)
                     {
-                        // just start a new scope
-                        LevelVisitOutcome visitOutcome = await visitor.VisitLevelStart(level, cancellationToken);
-                        if ((visitOutcome & LevelVisitOutcome.DeleteLevel) == LevelVisitOutcome.DeleteLevel)
-                        {
-                            _chainLevelInfoRepository.Delete(levelNumber);
-                            level = null;
-                        }
+                        _chainLevelInfoRepository.Delete(levelNumber);
+                        level = null;
+                    }
 
-                        if ((visitOutcome & LevelVisitOutcome.StopVisiting) == LevelVisitOutcome.StopVisiting)
-                        {
-                            break;
-                        }
+                    if ((visitOutcome & LevelVisitOutcome.StopVisiting) == LevelVisitOutcome.StopVisiting)
+                    {
+                        break;
                     }
 
                     int numberOfBlocksAtThisLevel = level?.BlockInfos.Length ?? 0;
@@ -84,12 +82,10 @@ namespace Nethermind.Blockchain
                         }
                     }
 
+                    visitOutcome = await visitor.VisitLevelEnd(cancellationToken);
+                    if ((visitOutcome & LevelVisitOutcome.DeleteLevel) == LevelVisitOutcome.DeleteLevel)
                     {
-                        LevelVisitOutcome visitOutcome = await visitor.VisitLevelEnd(cancellationToken);
-                        if ((visitOutcome & LevelVisitOutcome.DeleteLevel) == LevelVisitOutcome.DeleteLevel)
-                        {
-                            _chainLevelInfoRepository.Delete(levelNumber);
-                        }
+                        _chainLevelInfoRepository.Delete(levelNumber);
                     }
 
                     levelNumber++;
@@ -105,7 +101,7 @@ namespace Nethermind.Blockchain
             {
                 if (visitor.PreventsAcceptingNewBlocks)
                 {
-                    Interlocked.Decrement(ref _canAcceptNewBlocksCounter);
+                    ReleaseAcceptingNewBlocks();
                 }
             }
         }

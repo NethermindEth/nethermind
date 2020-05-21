@@ -694,14 +694,15 @@ namespace Nethermind.Blockchain
             BestSuggestedHeader = Head?.Header;
             BestSuggestedBody = Head;
 
+            BlockAcceptingNewBlocks();
+            
             try
             {
-                Interlocked.Increment(ref _canAcceptNewBlocksCounter);
                 DeleteBlocks(invalidBlock.Hash);
             }
             finally
             {
-                Interlocked.Decrement(ref _canAcceptNewBlocksCounter);
+                ReleaseAcceptingNewBlocks();
             }
         }
 
@@ -1275,6 +1276,16 @@ namespace Nethermind.Blockchain
             }
 
             return deleted;
+        }
+        
+        internal void BlockAcceptingNewBlocks()
+        {
+            Interlocked.Increment(ref _canAcceptNewBlocksCounter);
+        }
+        
+        internal void ReleaseAcceptingNewBlocks()
+        {
+            Interlocked.Decrement(ref _canAcceptNewBlocksCounter);
         }
     }
 }
