@@ -37,6 +37,7 @@ namespace Nethermind.Runner.Ethereum.Steps
     {
         private readonly EthereumRunnerContext _context;
         private ILogger _logger;
+        private IInitConfig _initConfig;
 
         public LoadGenesisBlock(EthereumRunnerContext context)
         {
@@ -44,10 +45,10 @@ namespace Nethermind.Runner.Ethereum.Steps
             _logger = _context.LogManager.GetClassLogger();
         }
 
-        public Task Execute()
+        public async Task Execute()
         {
-            IInitConfig initConfig = _context.Config<IInitConfig>();
-            Keccak? expectedGenesisHash = string.IsNullOrWhiteSpace(initConfig.GenesisHash) ? null : new Keccak(initConfig.GenesisHash);
+            _initConfig = _context.Config<IInitConfig>();
+            Keccak? expectedGenesisHash = string.IsNullOrWhiteSpace(_initConfig.GenesisHash) ? null : new Keccak(_initConfig.GenesisHash);
 
             if (_context.BlockTree == null)
             {
@@ -61,7 +62,12 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
             
             ValidateGenesisHash(expectedGenesisHash);
-            return Task.CompletedTask;
+            
+            if(!_initConfig.ProcessingEnabled)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Shutting down the blockchain processor due to {nameof(InitConfig)}.{nameof(InitConfig.ProcessingEnabled)} set to false");
+                await (_context.BlockchainProcessor?.StopAsync() ?? Task.CompletedTask);
+            }
         }
 
         protected virtual void Load()
