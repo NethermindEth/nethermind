@@ -36,21 +36,14 @@ namespace Nethermind.Consensus.AuRa.Validators
     public class ContractBasedValidator : AuRaValidatorProcessorExtension
     {
         private readonly ILogger _logger;
-        private readonly IStateProvider _stateProvider;
-        private readonly ITransactionProcessor _transactionProcessor;
-        private readonly IReadOnlyTransactionProcessorSource _readOnlyReadOnlyTransactionProcessorSource;
-
-        private ValidatorContract _validatorContract;
+       
         private PendingValidators _currentPendingValidators;
         private long _lastProcessedBlockNumber = 0;
         private IBlockFinalizationManager _blockFinalizationManager;
         private readonly IBlockTree _blockTree;
         private readonly IReceiptFinder _receiptFinder;
-        
-        protected Address ContractAddress { get; }
-        protected IAbiEncoder AbiEncoder { get; }
-        protected ValidatorContract ValidatorContract => _validatorContract ??= CreateValidatorContract(ContractAddress);
 
+        private ValidatorContract ValidatorContract { get; }
         private PendingValidators CurrentPendingValidators => _currentPendingValidators;
 
         public ContractBasedValidator(
@@ -68,15 +61,13 @@ namespace Nethermind.Consensus.AuRa.Validators
             bool forSealing = false) : base(validator, validSealerStrategy, validatorStore, logManager, startBlockNumber, forSealing)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            ContractAddress = validator.Addresses?.FirstOrDefault() ?? throw new ArgumentException("Missing contract address for AuRa validator.", nameof(validator.Addresses));
-            _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
-            _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
-            _readOnlyReadOnlyTransactionProcessorSource = readOnlyTransactionProcessorSource ?? throw new ArgumentNullException(nameof(readOnlyTransactionProcessorSource));
             _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            AbiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
+            _logger = logManager?.GetClassLogger<ContractBasedValidator>() ?? throw new ArgumentNullException(nameof(logManager));
+            ValidatorContract = new ValidatorContract(transactionProcessor, abiEncoder, GetContractAddress(validator), stateProvider, readOnlyTransactionProcessorSource);
             SetPendingValidators(LoadPendingValidators());
         }
+
+        protected Address GetContractAddress(AuRaParameters.Validator validator) => validator.Addresses?.FirstOrDefault() ?? throw new ArgumentException("Missing contract address for AuRa validator.", nameof(validator.Addresses));
 
         public override void SetFinalizationManager(IBlockFinalizationManager finalizationManager, BlockHeader parentHeader)
         {
@@ -217,9 +208,6 @@ namespace Nethermind.Consensus.AuRa.Validators
                 SetPendingValidators(null, isProcessingBlock);
             }
         }
-        
-        protected virtual ValidatorContract CreateValidatorContract(Address contractAddress) => 
-            new ValidatorContract(_transactionProcessor, AbiEncoder, contractAddress, _stateProvider, _readOnlyReadOnlyTransactionProcessorSource);
         
         private void InitiateChange(Block block, Address[] potentialValidators, bool isProcessingBlock, bool initiateChangeIsImmediatelyFinalized = false)
         {

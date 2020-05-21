@@ -30,8 +30,6 @@ namespace Nethermind.Consensus
     
     public interface ISealValidator
     {
-        void HintValidationRange(Guid guid, long start, long end);
-
         bool ValidateParams(BlockHeader parent, BlockHeader header);
         
         /// <summary>
@@ -41,5 +39,7 @@ namespace Nethermind.Consensus
         /// <param name="force">Unless set to <value>true</value> the validator is allowed to optimize validation away in a safe manner.</param>
         /// <returns><value>True</value> if seal is valid or was not checked, otherwise <value>false</value></returns>
         bool ValidateSeal(BlockHeader header, bool force);
+        
+        public void HintValidationRange(Guid guid, long start, long end) { }
     }
 }

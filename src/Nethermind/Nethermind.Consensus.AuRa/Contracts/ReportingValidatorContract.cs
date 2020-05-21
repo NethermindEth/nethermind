@@ -16,24 +16,51 @@
 
 using Nethermind.Abi;
 using Nethermind.Core;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Serialization.Json.Abi;
 using Nethermind.State;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public class ReportingValidatorContract : ValidatorContract
+    public class ReportingValidatorContract : Contract
     {
-        private new static readonly AbiDefinition Definition = new AbiDefinitionParser().Parse<ReportingValidatorContract>();
+        private readonly Address _nodeAddress;
+        private static readonly AbiDefinition Definition = new AbiDefinitionParser().Parse<ReportingValidatorContract>();
         
         public ReportingValidatorContract(
             ITransactionProcessor transactionProcessor, 
             IAbiEncoder abiEncoder, 
-            Address contractAddress, 
-            IStateProvider stateProvider, 
-            IReadOnlyTransactionProcessorSource readOnlyReadOnlyTransactionProcessorSource) 
-            : base(transactionProcessor, abiEncoder, contractAddress, stateProvider, readOnlyReadOnlyTransactionProcessorSource)
+            Address contractAddress,
+            Address nodeAddress)
+            : base(transactionProcessor, abiEncoder, contractAddress)
         {
+            _nodeAddress = nodeAddress;
         }
+
+        /// <summary>
+        /// Reports that the malicious validator misbehaved at the specified block.
+        /// Called by the node of each honest validator after the specified validator misbehaved.
+        /// <seealso>
+        ///     <cref>https://openethereum.github.io/wiki/Validator-Set.html#reporting-contract</cref>
+        /// </seealso>
+        /// </summary>
+        /// <param name="maliciousMiningAddress">The mining address of the malicious validator.</param>
+        /// <param name="blockNumber">The block number where the misbehavior was observed.</param>
+        /// <param name="proof">Proof of misbehavior.</param>
+        /// <returns>Transaction to be added to pool.</returns>
+        public Transaction ReportMalicious(Address maliciousMiningAddress, UInt256 blockNumber, byte[] proof) => GenerateTransaction<GeneratedTransaction>(Definition.GetFunction(nameof(ReportMalicious)), _nodeAddress, maliciousMiningAddress, blockNumber, proof);
+
+        /// <summary>
+        /// Reports that the benign validator misbehaved at the specified block.
+        /// Called by the node of each honest validator after the specified validator misbehaved.
+        /// <seealso>
+        ///     <cref>https://openethereum.github.io/wiki/Validator-Set.html#reporting-contract</cref>
+        /// </seealso>
+        /// </summary>
+        /// <param name="maliciousMiningAddress">The mining address of the malicious validator.</param>
+        /// <param name="blockNumber">The block number where the misbehavior was observed.</param>
+        /// <returns>Transaction to be added to pool.</returns>
+        public Transaction ReportBenign(Address maliciousMiningAddress, UInt256 blockNumber) => GenerateTransaction<GeneratedTransaction>(Definition.GetFunction(nameof(ReportBenign)), _nodeAddress, maliciousMiningAddress, blockNumber);
     }
 }

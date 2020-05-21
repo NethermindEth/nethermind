@@ -25,7 +25,7 @@ using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Consensus.AuRa.Validators
 {
-    public class MultiValidator : IAuRaValidatorProcessorExtension
+    public class MultiValidator : IAuRaValidatorProcessorExtension, IReportingValidator
     {
         private readonly IAuRaValidatorProcessorFactory _validatorFactory;
         private readonly IBlockTree _blockTree;
@@ -214,5 +214,20 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         private IAuRaValidatorProcessorExtension CreateValidator(long finalizedAtBlockNumber, AuRaParameters.Validator validatorPrototype) => 
             _validatorFactory.CreateValidatorProcessor(validatorPrototype, finalizedAtBlockNumber + 1);
+
+        public void ReportMalicious(Address validator, long block, byte[] proof, IReportingValidator.Cause cause)
+        {
+            _currentValidator.GetReportingValidator().ReportMalicious(validator, block, proof, cause);
+        }
+
+        public void ReportBenign(Address validator, long block, IReportingValidator.Cause cause)
+        {
+            _currentValidator.GetReportingValidator().ReportBenign(validator, block, cause);
+        }
+
+        public void ReportSkipped(BlockHeader header, BlockHeader parent)
+        {
+            _currentValidator.GetReportingValidator().ReportSkipped(header, parent);
+        }
     }
 }

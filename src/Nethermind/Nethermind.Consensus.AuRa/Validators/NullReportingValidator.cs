@@ -13,41 +13,17 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System;
-using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 
-namespace Nethermind.Consensus
+namespace Nethermind.Consensus.AuRa.Validators
 {
-    public class NullSealEngine : ISealer, ISealValidator
+    public class NullReportingValidator : IReportingValidator
     {
-        private NullSealEngine()
-        {
-        }
-
-        public static NullSealEngine Instance { get; } = new NullSealEngine();
-
-        public Task<Block> SealBlock(Block block, CancellationToken cancellationToken)
-        {
-            return Task.FromResult(block);
-        }
-
-        public bool CanSeal(long blockNumber, Keccak parentHash)
-        {
-            return true;
-        }
-        
-        public bool ValidateParams(BlockHeader parent, BlockHeader header)
-        {
-            return true;
-        }
-
-        public bool ValidateSeal(BlockHeader header, bool force)
-        {
-            return true;
-        }
+        public static NullReportingValidator Instance { get; } = new NullReportingValidator();
+        public void ReportMalicious(Address validator, long block, byte[] proof, IReportingValidator.Cause cause) { }
+        public void ReportBenign(Address validator, long block, IReportingValidator.Cause cause) { }
+        public void ReportSkipped(BlockHeader header, BlockHeader parent) { }
     }
 }
