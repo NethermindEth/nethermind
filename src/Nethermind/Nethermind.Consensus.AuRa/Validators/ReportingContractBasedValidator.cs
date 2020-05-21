@@ -32,11 +32,9 @@ namespace Nethermind.Consensus.AuRa.Validators
     {
         private readonly ILogger _logger;
         
-        public ReportingContractBasedValidator(AuRaParameters.Validator validator,
-            IStateProvider stateProvider,
-            IAbiEncoder abiEncoder,
-            ITransactionProcessor transactionProcessor,
-            IReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource,
+        public ReportingContractBasedValidator(
+            ValidatorContract validatorContract,
+            ReportingValidatorContract reportingValidatorContract,
             IBlockTree blockTree,
             IReceiptFinder receiptFinder,
             IValidatorStore validatorStore,
@@ -46,10 +44,10 @@ namespace Nethermind.Consensus.AuRa.Validators
             ILogManager logManager,
             long startBlockNumber,
             bool forSealing = false) 
-            : base(validator, stateProvider, abiEncoder, transactionProcessor, readOnlyTransactionProcessorSource, blockTree, receiptFinder, validatorStore, validSealerStrategy, finalizationManager, parentHeader, logManager, startBlockNumber, forSealing)
+            : base(validatorContract, blockTree, receiptFinder, validatorStore, validSealerStrategy, finalizationManager, parentHeader, logManager, startBlockNumber, forSealing)
         {
             // TODO: Provide proper address
-            ValidatorContract = new ReportingValidatorContract(transactionProcessor, abiEncoder, GetContractAddress(validator), Address.Zero);
+            ValidatorContract = reportingValidatorContract ?? throw new ArgumentNullException(nameof(reportingValidatorContract));
             _logger = logManager?.GetClassLogger<ReportingContractBasedValidator>() ?? throw new ArgumentNullException(nameof(logManager));
         }
 

@@ -32,19 +32,19 @@ namespace Nethermind.Consensus.AuRa
         private readonly IAuRaStepCalculator _stepCalculator;
         private readonly IValidatorStore _validatorStore;
         private readonly IEthereumEcdsa _ecdsa;
-        private readonly IReportingValidator _reportingValidator;
         private readonly ILogger _logger;
         private readonly ReceivedSteps _receivedSteps = new ReceivedSteps();
         
-        public AuRaSealValidator(AuRaParameters parameters, IAuRaStepCalculator stepCalculator, IValidatorStore validatorStore, IEthereumEcdsa ecdsa, IReportingValidator reportingValidator, ILogManager logManager)
+        public AuRaSealValidator(AuRaParameters parameters, IAuRaStepCalculator stepCalculator, IValidatorStore validatorStore, IEthereumEcdsa ecdsa, ILogManager logManager)
         {
             _parameters = parameters ?? throw new ArgumentNullException(nameof(parameters));
             _stepCalculator = stepCalculator ?? throw new ArgumentNullException(nameof(stepCalculator));
             _validatorStore = validatorStore?? throw new ArgumentNullException(nameof(validatorStore));
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
-            _reportingValidator = reportingValidator ?? throw new ArgumentNullException(nameof(reportingValidator));
             _logger = logManager.GetClassLogger<AuRaSealValidator>() ?? throw new ArgumentNullException(nameof(logManager));
         }
+        
+        public IReportingValidator ReportingValidator { get; set; } = NullReportingValidator.Instance;
 
         public bool ValidateParams(BlockHeader parent, BlockHeader header)
         {
@@ -78,7 +78,7 @@ namespace Nethermind.Consensus.AuRa
             if (header.AuRaStep > currentStep + rejectedStepDrift)
             {
                 if (_logger.IsError) _logger.Error($"Block {header.Number}, hash {header.Hash} step {header.AuRaStep} is from the future. Current step is {currentStep}.");
-                _reportingValidator.ReportBenign(header.Beneficiary, header.Number, IReportingValidator.Cause.FutureBlock);
+                ReportingValidator.ReportBenign(header.Beneficiary, header.Number, IReportingValidator.Cause.FutureBlock);
                 return false;
             }
 
@@ -89,7 +89,7 @@ namespace Nethermind.Consensus.AuRa
             
             // if (!ValidateEmptySteps())
             // ReportBenign
-            _reportingValidator.ReportSkipped(header, parent);
+            ReportingValidator.ReportSkipped(header, parent);
             
             // Report malice if the validator produced other sibling blocks in the same step.
             if (_receivedSteps.ContainsOrInsert(header, _validatorStore.GetValidators().Length))

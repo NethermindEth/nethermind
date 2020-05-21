@@ -47,11 +47,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         private PendingValidators CurrentPendingValidators => _currentPendingValidators;
 
         public ContractBasedValidator(
-            AuRaParameters.Validator validator,
-            IStateProvider stateProvider,
-            IAbiEncoder abiEncoder,
-            ITransactionProcessor transactionProcessor,
-            IReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource,
+            ValidatorContract validatorContract,
             IBlockTree blockTree,
             IReceiptFinder receiptFinder,
             IValidatorStore validatorStore,
@@ -60,17 +56,15 @@ namespace Nethermind.Consensus.AuRa.Validators
             BlockHeader parentHeader,
             ILogManager logManager,
             long startBlockNumber,
-            bool forSealing = false) : base(validator, validSealerStrategy, validatorStore, logManager, startBlockNumber, forSealing)
+            bool forSealing = false) : base(validSealerStrategy, validatorStore, logManager, startBlockNumber, forSealing)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
             _logger = logManager?.GetClassLogger<ContractBasedValidator>() ?? throw new ArgumentNullException(nameof(logManager));
-            ValidatorContract = new ValidatorContract(transactionProcessor, abiEncoder, GetContractAddress(validator), stateProvider, readOnlyTransactionProcessorSource);
+            ValidatorContract = validatorContract ?? throw new ArgumentNullException(nameof(validatorContract));
             SetPendingValidators(LoadPendingValidators());
             SetFinalizationManager(finalizationManager, parentHeader ?? _blockTree.Head?.Header);
         }
-
-        protected Address GetContractAddress(AuRaParameters.Validator validator) => validator.Addresses?.FirstOrDefault() ?? throw new ArgumentException("Missing contract address for AuRa validator.", nameof(validator.Addresses));
 
         private void SetFinalizationManager(IBlockFinalizationManager finalizationManager, BlockHeader parentHeader)
         {

@@ -18,6 +18,7 @@ using System;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
 using Nethermind.Evm;
@@ -39,6 +40,7 @@ namespace Nethermind.Consensus.AuRa
         private readonly IValidatorStore _validatorStore;
         private readonly IBlockFinalizationManager _finalizationManager;
         private readonly ILogManager _logManager;
+        private readonly Address _nodeAddress;
         private readonly bool _forSealing;
 
         public AuRaValidatorFactory(IStateProvider stateProvider,
@@ -50,6 +52,7 @@ namespace Nethermind.Consensus.AuRa
             IValidatorStore validatorStore,
             IBlockFinalizationManager finalizationManager,
             ILogManager logManager,
+            Address nodeAddress,
             bool forSealing = false)
         {
             _stateProvider = stateProvider;
@@ -61,11 +64,15 @@ namespace Nethermind.Consensus.AuRa
             _validatorStore = validatorStore;
             _finalizationManager = finalizationManager;
             _logManager = logManager;
+            _nodeAddress = nodeAddress;
             _forSealing = forSealing;
         }
 
         public IAuRaValidator CreateValidatorProcessor(AuRaParameters.Validator validator, BlockHeader parentHeader = null, long? startBlock = null)
         {
+            ValidatorContract GetValidatorContract() => new ValidatorContract(_transactionProcessor, _abiEncoder, validator.GetContractAddress(), _stateProvider, _readOnlyReadOnlyTransactionProcessorSource);
+            ReportingValidatorContract GetReportingValidatorContract() => new ReportingValidatorContract(_transactionProcessor, _abiEncoder, validator.GetContractAddress(), _nodeAddress);
+
             var auRaSealerValidator = new ValidSealerStrategy();
             long startBlockNumber = startBlock ?? AuRaValidatorBase.DefaultStartBlockNumber;
             return validator.ValidatorType switch
@@ -81,11 +88,7 @@ namespace Nethermind.Consensus.AuRa
                 
                 AuRaParameters.ValidatorType.Contract => 
                     new ContractBasedValidator(
-                        validator, 
-                        _stateProvider, 
-                        _abiEncoder, 
-                        _transactionProcessor,
-                        _readOnlyReadOnlyTransactionProcessorSource,
+                        GetValidatorContract(),
                         _blockTree,
                         _receiptFinder,
                         _validatorStore,
@@ -98,11 +101,8 @@ namespace Nethermind.Consensus.AuRa
                 
                 AuRaParameters.ValidatorType.ReportingContract => 
                     new ReportingContractBasedValidator(
-                        validator,
-                        _stateProvider,
-                        _abiEncoder,
-                        _transactionProcessor,
-                        _readOnlyReadOnlyTransactionProcessorSource,
+                        GetValidatorContract(),
+                        GetReportingValidatorContract(),
                         _blockTree,
                         _receiptFinder,
                         _validatorStore,

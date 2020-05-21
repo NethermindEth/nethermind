@@ -31,14 +31,12 @@ namespace Nethermind.Consensus.AuRa.Validators
         private readonly ILogger _logger;
         
         protected AuRaValidatorBase(
-            AuRaParameters.Validator validator,
             IValidSealerStrategy validSealerStrategy,
             IValidatorStore validatorStore,
             ILogManager logManager,
             long startBlockNumber,
             bool forSealing)
         {
-            if (validator == null) throw new ArgumentNullException(nameof(validator));
             ValidatorStore = validatorStore ?? throw new ArgumentNullException(nameof(validatorStore));
             _validSealerStrategy = validSealerStrategy ?? throw new ArgumentNullException(nameof(validSealerStrategy));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));

@@ -52,7 +52,8 @@ namespace Nethermind.AuRa.Test
                 Substitute.For<IReceiptStorage>(),
                 Substitute.For<IValidatorStore>(),
                 Substitute.For<IBlockFinalizationManager>(),
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                Address.Zero);
 
             var validator = new AuRaParameters.Validator()
             {
