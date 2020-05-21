@@ -24,6 +24,7 @@ using Nethermind.Blockchain.Processing;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Config;
+using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -97,6 +98,7 @@ namespace Nethermind.AuRa.Test
                             Timestamper,
                             LimboLogs.Instance,
                             AuRaStepCalculator,
+                            NullReportingValidator.Instance, 
                             auraConfig,
                             NodeAddress);
                     }

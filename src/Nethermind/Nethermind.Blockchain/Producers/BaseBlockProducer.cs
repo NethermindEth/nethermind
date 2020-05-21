@@ -100,7 +100,7 @@ namespace Nethermind.Blockchain.Producers
                 }
                 else
                 {
-                    return _sealer.SealBlock(processedBlock, token).ContinueWith((Func<Task<Block>, bool>) (t =>
+                    return SealBlock(processedBlock, parent, token).ContinueWith((Func<Task<Block>, bool>) (t =>
                     {
                         if (t.IsCompletedSuccessfully)
                         {
@@ -131,6 +131,8 @@ namespace Nethermind.Blockchain.Producers
 
             return Task.FromResult(false);
         }
+
+        protected virtual Task<Block> SealBlock(Block block, BlockHeader parent, CancellationToken token) => _sealer.SealBlock(block, token);
 
         protected virtual Block ProcessPreparedBlock(Block block) => Processor.Process(block, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance);
 

@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -65,11 +66,13 @@ namespace Nethermind.Consensus.AuRa
             else if (header.AuRaStep == parent.AuRaStep)
             {
                 if (_logger.IsWarn) _logger.Warn($"Multiple blocks proposed for step {header.AuRaStep}. Block {header.Number}, hash {header.Hash} is duplicate.");
+                ReportingValidator.ReportMalicious(header.Beneficiary, header.Number, Bytes.Empty, IReportingValidator.MaliciousCause.DuplicateStep);
                 return false;
             }
             else if (header.AuRaStep < parent.AuRaStep && header.Number >= _parameters.ValidateStepTransition)
             {
                 if (_logger.IsError) _logger.Error($"Block {header.Number}, hash {header.Hash} step {header.AuRaStep} is lesser than parents step {parent.AuRaStep}.");
+                ReportingValidator.ReportMalicious(header.Beneficiary, header.Number, Bytes.Empty, IReportingValidator.MaliciousCause.DuplicateStep);
                 return false;
             }
 
@@ -78,7 +81,7 @@ namespace Nethermind.Consensus.AuRa
             if (header.AuRaStep > currentStep + rejectedStepDrift)
             {
                 if (_logger.IsError) _logger.Error($"Block {header.Number}, hash {header.Hash} step {header.AuRaStep} is from the future. Current step is {currentStep}.");
-                ReportingValidator.ReportBenign(header.Beneficiary, header.Number, IReportingValidator.Cause.FutureBlock);
+                ReportingValidator.ReportBenign(header.Beneficiary, header.Number, IReportingValidator.BenignCause.FutureBlock);
                 return false;
             }
 
@@ -89,13 +92,13 @@ namespace Nethermind.Consensus.AuRa
             
             // if (!ValidateEmptySteps())
             // ReportBenign
-            ReportingValidator.ReportSkipped(header, parent);
+            ReportingValidator.TryReportSkipped(header, parent);
             
             // Report malice if the validator produced other sibling blocks in the same step.
             if (_receivedSteps.ContainsOrInsert(header, _validatorStore.GetValidators().Length))
             {
                 if (_logger.IsDebug) _logger.Debug($"Validator {header.Beneficiary} produced sibling blocks in the same step {header.AuRaStep} in block {header.Number}.");
-                // report malicious
+                ReportingValidator.ReportMalicious(header.Beneficiary, header.Number, Bytes.Empty, IReportingValidator.MaliciousCause.SiblingBlocksInSameStep);
             }
             
             if (header.Number >= _parameters.ValidateScoreTransition)

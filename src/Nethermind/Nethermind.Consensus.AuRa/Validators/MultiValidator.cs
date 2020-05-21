@@ -218,19 +218,19 @@ namespace Nethermind.Consensus.AuRa.Validators
         private IAuRaValidator CreateValidator(long finalizedAtBlockNumber, AuRaParameters.Validator validatorPrototype, BlockHeader parentHeader) => 
             _validatorFactory.CreateValidatorProcessor(validatorPrototype, parentHeader, finalizedAtBlockNumber + 1);
 
-        public void ReportMalicious(Address validator, long block, byte[] proof, IReportingValidator.Cause cause)
+        public void ReportMalicious(Address validator, long block, byte[] proof, IReportingValidator.MaliciousCause cause)
         {
             _currentValidator.GetReportingValidator().ReportMalicious(validator, block, proof, cause);
         }
 
-        public void ReportBenign(Address validator, long block, IReportingValidator.Cause cause)
+        public void ReportBenign(Address validator, long block, IReportingValidator.BenignCause cause)
         {
             _currentValidator.GetReportingValidator().ReportBenign(validator, block, cause);
         }
 
-        public void ReportSkipped(BlockHeader header, BlockHeader parent)
+        public void TryReportSkipped(BlockHeader header, BlockHeader parent)
         {
-            _currentValidator.GetReportingValidator().ReportSkipped(header, parent);
+            _currentValidator.GetReportingValidator().TryReportSkipped(header, parent);
         }
     }
 }

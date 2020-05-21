@@ -37,7 +37,7 @@ namespace Nethermind.Runner.Ethereum.Steps
     {
         private readonly AuRaEthereumRunnerContext _context;
         private ReadOnlyTransactionProcessorSource? _readOnlyTransactionProcessorSource;
-        private AuRaSealValidator _sealValidator;
+        private AuRaSealValidator? _sealValidator;
 
         public InitializeBlockchainAuRa(AuRaEthereumRunnerContext context) : base(context)
         {
@@ -74,7 +74,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             
             var auRaValidator = CreateAuRaValidator(processor);
             processor.AuRaValidator = auRaValidator;
-            _sealValidator.ReportingValidator = auRaValidator.GetReportingValidator();
+            _context.ReportingValidator = _sealValidator.ReportingValidator = auRaValidator.GetReportingValidator();
             
             return processor;
         }

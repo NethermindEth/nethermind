@@ -66,7 +66,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                 if (!_validSealerStrategy.IsValidSealer(Validators, block.Beneficiary, auRaStep))
                 {
                     if (_logger.IsError) _logger.Error($"Block from incorrect proposer at block {block.ToString(Block.Format.FullHashAndNumber)}, step {auRaStep} from author {block.Beneficiary}.");
-                    this.GetReportingValidator().ReportBenign(block.Beneficiary, block.Number, IReportingValidator.Cause.IncorrectProposer);
+                    this.GetReportingValidator().ReportBenign(block.Beneficiary, block.Number, IReportingValidator.BenignCause.IncorrectProposer);
                     throw new InvalidBlockException(block.Hash);
                 }
             }

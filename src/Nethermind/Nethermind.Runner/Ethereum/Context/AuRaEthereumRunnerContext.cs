@@ -34,5 +34,6 @@ namespace Nethermind.Runner.Ethereum.Context
         public IBlockFinalizationManager? FinalizationManager { get; set; }
         public ITxPermissionFilter.Cache? TxFilterCache { get; set; }
         public IGasLimitOverride.Cache? GasLimitOverrideCache { get; set; }
+        public IReportingValidator? ReportingValidator { get; set; }
     }
 }

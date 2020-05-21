@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
@@ -53,30 +54,68 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         private ReportingValidatorContract ValidatorContract { get; }
         
-        public void ReportMalicious(Address validator, long block, byte[] proof, IReportingValidator.Cause cause)
+        public void ReportMalicious(Address validator, long block, byte[] proof, IReportingValidator.MaliciousCause cause)
         {
-            throw new System.NotImplementedException();
+            try
+            {
+                if (_logger.IsTrace)
+                {
+                    _logger.Trace($"Reporting malicious misbehaviour (cause: {cause}) at block #{block} from {validator}");
+                }
+
+                
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsError) _logger.Error($"Validator {validator} could not be reported on block {block} with cause {cause}", e);
+            }
+
         }
 
-        public void ReportBenign(Address validator, long block, IReportingValidator.Cause cause)
+        public void ReportBenign(Address validator, long block, IReportingValidator.BenignCause cause)
         {
-            if (_logger.IsTrace)
+            try
             {
-                _logger.Trace($"Reporting benign misbehaviour (cause: {cause}) at block #{block} from {validator}");
+                if (_logger.IsTrace)
+                {
+                    _logger.Trace($"Reporting benign misbehaviour (cause: {cause}) at block #{block} from {validator}");
+                }
+
+                
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsError) _logger.Error($"Validator {validator} could not be reported on block {block} with cause {cause}", e);
             }
         }
 
-        public void ReportSkipped(BlockHeader header, BlockHeader parent)
+        public void TryReportSkipped(BlockHeader header, BlockHeader parent)
         {
-            if (header.AuRaStep > parent.AuRaStep + 1 && header.Number != 1)
+            var areThereSkipped = header.AuRaStep > parent.AuRaStep + 1;
+            var firstBlock = header.Number == 1;
+            if (areThereSkipped && !firstBlock)
             {
                 if (_logger.IsDebug) _logger.Debug($"Author {header.Beneficiary} built block with step gap. current step: {header.Author}, parent step: {parent.AuRaStep}");
-                for (long i = parent.AuRaStep.Value + 1; i < header.AuRaStep.Value; i++)
+                ISet<Address> reported = new HashSet<Address>();
+                for (long step = parent.AuRaStep.Value + 1; step < header.AuRaStep.Value; step++)
                 {
-                    
+                    var skippedValidator = Validators.GetItemRoundRobin(step);
+                    if (skippedValidator != ValidatorContract.NodeAddress)
+                    {
+                        if (reported.Contains(skippedValidator))
+                        {
+                            break;
+                        }
+                        
+                        ReportBenign(skippedValidator, header.Number, IReportingValidator.BenignCause.SkippedStep);
+                        reported.Add(skippedValidator);
+                    }
+                    else
+                    {
+                        if (_logger.IsTrace) _logger.Trace("Primary that skipped is self, not self-reporting.");
+                    }
                 }
             }
-
         }
     }
 }

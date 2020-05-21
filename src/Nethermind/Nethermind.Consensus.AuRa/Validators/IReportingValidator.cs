@@ -21,14 +21,21 @@ namespace Nethermind.Consensus.AuRa.Validators
 {
     public interface IReportingValidator
     {
-        void ReportMalicious(Address validator, long block, byte[] proof, Cause cause);
-        void ReportBenign(Address validator, long block, Cause cause);
-        void ReportSkipped(BlockHeader header, BlockHeader parent);
+        void ReportMalicious(Address validator, long block, byte[] proof, MaliciousCause cause);
+        void ReportBenign(Address validator, long block, BenignCause cause);
+        void TryReportSkipped(BlockHeader header, BlockHeader parent);
         
-        public enum Cause
+        public enum BenignCause
         {
             FutureBlock,
-            IncorrectProposer
+            IncorrectProposer,
+            SkippedStep
+        }
+        
+        public enum MaliciousCause
+        {
+            DuplicateStep,
+            SiblingBlocksInSameStep
         }
     }
 }

@@ -22,8 +22,8 @@ namespace Nethermind.Consensus.AuRa.Validators
     public class NullReportingValidator : IReportingValidator
     {
         public static NullReportingValidator Instance { get; } = new NullReportingValidator();
-        public void ReportMalicious(Address validator, long block, byte[] proof, IReportingValidator.Cause cause) { }
-        public void ReportBenign(Address validator, long block, IReportingValidator.Cause cause) { }
-        public void ReportSkipped(BlockHeader header, BlockHeader parent) { }
+        public void ReportMalicious(Address validator, long block, byte[] proof, IReportingValidator.MaliciousCause cause) { }
+        public void ReportBenign(Address validator, long block, IReportingValidator.BenignCause cause) { }
+        public void TryReportSkipped(BlockHeader header, BlockHeader parent) { }
     }
 }

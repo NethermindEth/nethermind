@@ -21,6 +21,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus.AuRa.Config;
+using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Dirichlet.Numerics;
@@ -32,6 +33,7 @@ namespace Nethermind.Consensus.AuRa
     public class AuRaBlockProducer : BaseLoopBlockProducer
     {
         private readonly IAuRaStepCalculator _auRaStepCalculator;
+        private readonly IReportingValidator _reportingValidator;
         private readonly IAuraConfig _config;
         private readonly Address _nodeAddress;
         private readonly IGasLimitOverride _gasLimitOverride;
@@ -46,12 +48,14 @@ namespace Nethermind.Consensus.AuRa
             ITimestamper timestamper,
             ILogManager logManager,
             IAuRaStepCalculator auRaStepCalculator,
+            IReportingValidator reportingValidator,
             IAuraConfig config,
             Address nodeAddress, 
             IGasLimitOverride gasLimitOverride = null) 
             : base(txSource, processor, sealer, blockTree, blockProcessingQueue, stateProvider, timestamper, logManager, "AuRa")
         {
             _auRaStepCalculator = auRaStepCalculator ?? throw new ArgumentNullException(nameof(auRaStepCalculator));
+            _reportingValidator = reportingValidator ?? throw new ArgumentNullException(nameof(reportingValidator));
             _config = config ?? throw new ArgumentNullException(nameof(config));
             CanProduce = _config.AllowAuRaPrivateChains;
             _nodeAddress = nodeAddress ?? throw new ArgumentNullException(nameof(nodeAddress));
@@ -117,6 +121,13 @@ namespace Nethermind.Consensus.AuRa
             }
             
             return processedBlock;
+        }
+
+        protected override Task<Block> SealBlock(Block block, BlockHeader parent, CancellationToken token)
+        {
+            // if (block.Number < EmptyStepsTransition)
+            _reportingValidator.TryReportSkipped(block.Header, parent);
+            return base.SealBlock(block, parent, token);
         }
     }
 }
