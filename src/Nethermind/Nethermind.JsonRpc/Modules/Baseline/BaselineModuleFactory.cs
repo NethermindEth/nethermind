@@ -21,6 +21,7 @@ using Nethermind.Facade;
 using Nethermind.Logging;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
+using Nethermind.Abi;
 
 namespace Nethermind.JsonRpc.Modules.Baseline
 {
@@ -30,13 +31,16 @@ namespace Nethermind.JsonRpc.Modules.Baseline
         private readonly ITxPool _txPool;
         private readonly IWallet _wallet;
         private readonly ILogManager _logManager;
-
+        private readonly IAbiEncoder _abiEncoder;
+        
         public BaselineModuleFactory(ITxPool txPool,
+            IAbiEncoder abiEncoder,
             IWallet wallet,
             ISpecProvider specProvider,
             ILogManager logManager)
         {
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
+            _abiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
@@ -47,7 +51,7 @@ namespace Nethermind.JsonRpc.Modules.Baseline
             
             TxPoolBridge txPoolBridge = new TxPoolBridge(_txPool, _wallet, Timestamper.Default, _specProvider.ChainId);
             
-            return new BaselineModule(txPoolBridge, _logManager);
+            return new BaselineModule(txPoolBridge, _abiEncoder, _logManager);
         }
     }
 }

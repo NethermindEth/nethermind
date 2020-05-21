@@ -22,27 +22,54 @@ using Nethermind.Logging;
 using Nethermind.TxPool;
 using Nethermind.Facade;
 using Nethermind.Baseline;
+using Nethermind.Abi;
 
 namespace Nethermind.JsonRpc.Modules.Baseline
 {
     public class BaselineModule : IBaselineModule
     {
 
+        private readonly IAbiEncoder _abiEncoder;
         private readonly ILogger _logger;
         private readonly ITxPoolBridge _txPoolBridge;
 
-        public BaselineModule(ITxPoolBridge txPoolBridge, ILogManager logManager)
+        public BaselineModule(ITxPoolBridge txPoolBridge, IAbiEncoder abiEncoder, ILogManager logManager)
         {
+            _abiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _txPoolBridge = txPoolBridge ?? throw new ArgumentNullException(nameof(txPoolBridge));
         }
-        public ResultWrapper<string> baseline_addLeaf()
+        public ResultWrapper<Keccak> baseline_insertLeaf(Address address, Address contractAddress)
         {
-            return ResultWrapper<string>.Success("test");
+            var txData = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, ContractMerkleTree.InsertLeafAbiSig);
+
+            Transaction tx = new Transaction();
+            tx.Value = 0;
+            tx.Data = txData;
+            tx.To = contractAddress;
+            tx.SenderAddress = address;
+            tx.GasLimit = 100000;
+            tx.GasPrice = 0.GWei();
+
+            Keccak txHash = _txPoolBridge.SendTransaction(tx, TxHandlingOptions.ManagedNonce);
+
+            return ResultWrapper<Keccak>.Success(txHash);
         }
-        public ResultWrapper<string> baseline_addLeaves()
+        public ResultWrapper<Keccak> baseline_insertLeaves(Address address, Address contractAddress)
         {
-            return ResultWrapper<string>.Success("test1");
+            var txData = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, ContractMerkleTree.InsertLeavesAbiSig);
+
+            Transaction tx = new Transaction();
+            tx.Value = 0;
+            tx.Data = txData;
+            tx.To = contractAddress;
+            tx.SenderAddress = address;
+            tx.GasLimit = 100000;
+            tx.GasPrice = 0.GWei();
+
+            Keccak txHash = _txPoolBridge.SendTransaction(tx, TxHandlingOptions.ManagedNonce);
+
+            return ResultWrapper<Keccak>.Success(txHash);
         }
 
         public ResultWrapper<Keccak> baseline_deploy(Address address, string contractType)

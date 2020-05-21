@@ -22,8 +22,8 @@ namespace Nethermind.JsonRpc.Modules.Baseline
     [RpcModule(ModuleType.Baseline)]
     public interface IBaselineModule : IModule
     {
-        ResultWrapper<string> baseline_addLeaf();
-        ResultWrapper<string> baseline_addLeaves();
+        ResultWrapper<Keccak> baseline_insertLeaf(Address address, Address contractAddress);
+        ResultWrapper<Keccak> baseline_insertLeaves(Address address, Address contractAddress);
         ResultWrapper<Keccak> baseline_deploy(Address address, string contractType);
         ResultWrapper<string> baseline_getSiblings();
     }
