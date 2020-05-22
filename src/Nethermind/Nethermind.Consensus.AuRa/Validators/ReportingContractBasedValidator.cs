@@ -16,76 +16,88 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.Db.Blooms;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Consensus.AuRa.Validators
 {
-    public class ReportingContractBasedValidator : ContractBasedValidator, IReportingValidator
+    public class ReportingContractBasedValidator : IAuRaValidator, IReportingValidator
     {
+        private delegate Transaction CreateReportTransactionDelegate(Address validator, long block, byte[] proof);
+        
+        private readonly ContractBasedValidator _contractValidator;
+        private readonly IBlockFinder _blockFinder;
         private readonly ILogger _logger;
         
         public ReportingContractBasedValidator(
-            ValidatorContract validatorContract,
+            ContractBasedValidator contractValidator,
             ReportingValidatorContract reportingValidatorContract,
-            IBlockTree blockTree,
-            IReceiptFinder receiptFinder,
-            IValidatorStore validatorStore,
-            IValidSealerStrategy validSealerStrategy,
-            IBlockFinalizationManager finalizationManager, 
-            BlockHeader parentHeader,
-            ILogManager logManager,
-            long startBlockNumber,
-            bool forSealing = false) 
-            : base(validatorContract, blockTree, receiptFinder, validatorStore, validSealerStrategy, finalizationManager, parentHeader, logManager, startBlockNumber, forSealing)
+            long posdaoTransition,
+            // IBlockFinder blockFinder,
+            ILogManager logManager)
         {
-            // TODO: Provide proper address
+            _contractValidator = contractValidator ?? throw new ArgumentNullException(nameof(contractValidator));
+            // _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
             ValidatorContract = reportingValidatorContract ?? throw new ArgumentNullException(nameof(reportingValidatorContract));
             _logger = logManager?.GetClassLogger<ReportingContractBasedValidator>() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         private ReportingValidatorContract ValidatorContract { get; }
         
-        public void ReportMalicious(Address validator, long block, byte[] proof, IReportingValidator.MaliciousCause cause)
+        public void ReportMalicious(Address validator, long blockNumber, byte[] proof, IReportingValidator.MaliciousCause cause)
         {
-            try
-            {
-                if (_logger.IsTrace)
-                {
-                    _logger.Trace($"Reporting malicious misbehaviour (cause: {cause}) at block #{block} from {validator}");
-                }
-
-                
-            }
-            catch (Exception e)
-            {
-                if (_logger.IsError) _logger.Error($"Validator {validator} could not be reported on block {block} with cause {cause}", e);
-            }
-
+            Report("malicious", validator, blockNumber, proof, cause.ToString(), CreateReportMaliciousTransaction);
         }
 
-        public void ReportBenign(Address validator, long block, IReportingValidator.BenignCause cause)
+        private Transaction CreateReportMaliciousTransaction(Address validator, long blockNumber, byte[] proof)
+        {
+            if (!Validators.Contains(validator))
+            {
+                if (_logger.IsWarn) _logger.Warn($"Not reporting {validator} on block {blockNumber}: Not a validator");
+                return null;
+            }
+
+            // self.validators.enqueue_report
+            return ValidatorContract.ReportMalicious(validator, (UInt256) blockNumber, proof);
+        }
+
+        public void ReportBenign(Address validator, long blockNumber, IReportingValidator.BenignCause cause)
+        {
+            Report("benign", validator, blockNumber, Bytes.Empty, cause.ToString(), CreateReportBenignTransaction);
+        }
+
+        private Transaction CreateReportBenignTransaction(Address validator, long blockNumber, byte[] proof) => ValidatorContract.ReportBenign(validator, (UInt256) blockNumber);
+
+        private void Report(string type, Address validator, long blockNumber, byte[] proof, string cause, CreateReportTransactionDelegate createReportTransactionDelegate)
         {
             try
             {
-                if (_logger.IsTrace)
-                {
-                    _logger.Trace($"Reporting benign misbehaviour (cause: {cause}) at block #{block} from {validator}");
-                }
+                if (_logger.IsTrace) _logger.Trace($"Reporting {type} misbehaviour (cause: {cause}) at block #{blockNumber} from {validator}");
 
-                
+                var transaction = createReportTransactionDelegate(validator, blockNumber, proof);
+                if (transaction != null)
+                {
+                    // check posdao_transition transaction.GasPrice = 
+                    
+                    if (_logger.IsWarn) _logger.Warn($"Reported {type} validator {validator} at block {blockNumber}");
+                }
             }
             catch (Exception e)
             {
-                if (_logger.IsError) _logger.Error($"Validator {validator} could not be reported on block {block} with cause {cause}", e);
+                if (_logger.IsError) _logger.Error($"Validator {validator} could not be reported on block {blockNumber} with cause {cause}", e);
             }
         }
 
@@ -116,6 +128,18 @@ namespace Nethermind.Consensus.AuRa.Validators
                     }
                 }
             }
+        }
+
+        public Address[] Validators => _contractValidator.Validators;
+
+        public void OnBlockProcessingStart(Block block, ProcessingOptions options = ProcessingOptions.None)
+        {
+            _contractValidator.OnBlockProcessingStart(block, options);
+        }
+
+        public void OnBlockProcessingEnd(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None)
+        {
+            _contractValidator.OnBlockProcessingEnd(block, receipts, options);
         }
     }
 }

@@ -53,7 +53,8 @@ namespace Nethermind.AuRa.Test
                 Substitute.For<IValidatorStore>(),
                 Substitute.For<IBlockFinalizationManager>(),
                 LimboLogs.Instance,
-                Address.Zero);
+                Address.Zero,
+                long.MaxValue);
 
             var validator = new AuRaParameters.Validator()
             {

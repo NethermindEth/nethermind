@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
@@ -22,6 +23,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.AuRa.Contracts;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
@@ -33,15 +35,16 @@ using Nethermind.Db.Blooms;
 
 namespace Nethermind.Consensus.AuRa.Validators
 {
-    public class ContractBasedValidator : AuRaValidatorBase, IDisposable
+    public class ContractBasedValidator : AuRaValidatorBase, ITxSource, IDisposable
     {
         private readonly ILogger _logger;
        
         private PendingValidators _currentPendingValidators;
         private long _lastProcessedBlockNumber = 0;
         private IBlockFinalizationManager _blockFinalizationManager;
-        private readonly IBlockTree _blockTree;
+        protected IBlockTree BlockTree { get; }
         private readonly IReceiptFinder _receiptFinder;
+        private readonly long _posdaoTransition;
 
         private ValidatorContract ValidatorContract { get; }
         private PendingValidators CurrentPendingValidators => _currentPendingValidators;
@@ -56,14 +59,16 @@ namespace Nethermind.Consensus.AuRa.Validators
             BlockHeader parentHeader,
             ILogManager logManager,
             long startBlockNumber,
+            long posdaoTransition = long.MaxValue,
             bool forSealing = false) : base(validSealerStrategy, validatorStore, logManager, startBlockNumber, forSealing)
         {
-            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            BlockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
+            _posdaoTransition = posdaoTransition;
             _logger = logManager?.GetClassLogger<ContractBasedValidator>() ?? throw new ArgumentNullException(nameof(logManager));
             ValidatorContract = validatorContract ?? throw new ArgumentNullException(nameof(validatorContract));
             SetPendingValidators(LoadPendingValidators());
-            SetFinalizationManager(finalizationManager, parentHeader ?? _blockTree.Head?.Header);
+            SetFinalizationManager(finalizationManager, parentHeader ?? BlockTree.Head?.Header);
         }
 
         private void SetFinalizationManager(IBlockFinalizationManager finalizationManager, BlockHeader parentHeader)
@@ -104,7 +109,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             if (shouldLoadValidators)
             {
                 Validators = isInitBlock 
-                    ? LoadValidatorsFromContract(_blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None)) 
+                    ? LoadValidatorsFromContract(BlockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None)) 
                     : ValidatorStore.GetValidators();
 
                 if (mainChainProcessing)
@@ -158,7 +163,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             PendingValidators pendingValidators = null;
             var lastFinalized = _blockFinalizationManager.GetLastLevelFinalizedBy(blockHash);
             var toBlock = Math.Max(lastFinalized, InitBlockNumber);
-            var block = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.None);
+            var block = BlockTree.FindBlock(blockHash, BlockTreeLookupOptions.None);
             while (block?.Number >= toBlock)
             {
                 var receipts = _receiptFinder.Get(block) ?? Array.Empty<TxReceipt>();
@@ -171,7 +176,7 @@ namespace Nethermind.Consensus.AuRa.Validators
 
                     pendingValidators = new PendingValidators(block.Number, block.Hash, potentialValidators);
                 }
-                block = _blockTree.FindBlock(block.ParentHash, BlockTreeLookupOptions.None);
+                block = BlockTree.FindBlock(block.ParentHash, BlockTreeLookupOptions.None);
             }
 
             return pendingValidators;
@@ -270,6 +275,41 @@ namespace Nethermind.Consensus.AuRa.Validators
             if (canSave)
             {
                 ValidatorStore.PendingValidators = validators;
+            }
+        }
+
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
+        {
+            if (ForSealing)
+            {
+                var newBlockNumber = parent.Number + 1;
+                if (newBlockNumber < _posdaoTransition)
+                {
+                    if (_logger.IsTrace) _logger.Trace("Skipping a call to emitInitiateChange");
+                }
+                else
+                {
+                    bool emitInitChangeCallable = false;
+
+                    try
+                    {
+                        emitInitChangeCallable = ValidatorContract.EmitInitiateChangeCallable(parent);
+                    }
+                    catch (AuRaException e)
+                    {
+                        if (_logger.IsError) _logger.Error($"Call to {nameof(ValidatorContract.EmitInitiateChangeCallable)} failed.", e);
+                    }
+
+                    if (emitInitChangeCallable)
+                    {
+                        if (_logger.IsTrace) _logger.Trace($"New block #{newBlockNumber} issued ― no need to call emitInitiateChange()");
+                    }
+                    else
+                    {
+                        if (_logger.IsTrace) _logger.Trace($"New block #{newBlockNumber} issued ― calling emitInitiateChange()");
+                        yield return ValidatorContract.EmitInitiateChange();
+                    }
+                }
             }
         }
     }

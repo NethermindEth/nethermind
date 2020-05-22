@@ -41,6 +41,7 @@ namespace Nethermind.Consensus.AuRa
         private readonly IBlockFinalizationManager _finalizationManager;
         private readonly ILogManager _logManager;
         private readonly Address _nodeAddress;
+        private readonly long _posdaoTransition;
         private readonly bool _forSealing;
 
         public AuRaValidatorFactory(IStateProvider stateProvider,
@@ -53,6 +54,7 @@ namespace Nethermind.Consensus.AuRa
             IBlockFinalizationManager finalizationManager,
             ILogManager logManager,
             Address nodeAddress,
+            long posdaoTransition,
             bool forSealing = false)
         {
             _stateProvider = stateProvider;
@@ -65,53 +67,51 @@ namespace Nethermind.Consensus.AuRa
             _finalizationManager = finalizationManager;
             _logManager = logManager;
             _nodeAddress = nodeAddress;
+            _posdaoTransition = posdaoTransition;
             _forSealing = forSealing;
         }
 
         public IAuRaValidator CreateValidatorProcessor(AuRaParameters.Validator validator, BlockHeader parentHeader = null, long? startBlock = null)
         {
-            ValidatorContract GetValidatorContract() => new ValidatorContract(_transactionProcessor, _abiEncoder, validator.GetContractAddress(), _stateProvider, _readOnlyReadOnlyTransactionProcessorSource);
+            ValidatorContract GetValidatorContract() => new ValidatorContract(_transactionProcessor, _abiEncoder, validator.GetContractAddress(), _stateProvider, _readOnlyReadOnlyTransactionProcessorSource, _nodeAddress);
             ReportingValidatorContract GetReportingValidatorContract() => new ReportingValidatorContract(_transactionProcessor, _abiEncoder, validator.GetContractAddress(), _nodeAddress);
 
-            var auRaSealerValidator = new ValidSealerStrategy();
+            var validSealerStrategy = new ValidSealerStrategy();
             long startBlockNumber = startBlock ?? AuRaValidatorBase.DefaultStartBlockNumber;
+            
+            ContractBasedValidator GetContractBasedValidator() =>
+                new ContractBasedValidator(
+                    GetValidatorContract(),
+                    _blockTree,
+                    _receiptFinder,
+                    _validatorStore,
+                    validSealerStrategy,
+                    _finalizationManager,
+                    parentHeader,
+                    _logManager,
+                    startBlockNumber,
+                    _posdaoTransition,
+                    _forSealing);
+            
             return validator.ValidatorType switch
             {
                 AuRaParameters.ValidatorType.List => 
                     new ListBasedValidator(
                         validator, 
-                        auRaSealerValidator, 
+                        validSealerStrategy, 
                         _validatorStore, 
                         _logManager,
                         startBlockNumber,
                         _forSealing),
                 
-                AuRaParameters.ValidatorType.Contract => 
-                    new ContractBasedValidator(
-                        GetValidatorContract(),
-                        _blockTree,
-                        _receiptFinder,
-                        _validatorStore,
-                        auRaSealerValidator,
-                        _finalizationManager,
-                        parentHeader,
-                        _logManager,
-                        startBlockNumber,
-                        _forSealing),
+                AuRaParameters.ValidatorType.Contract => GetContractBasedValidator(),
                 
                 AuRaParameters.ValidatorType.ReportingContract => 
                     new ReportingContractBasedValidator(
-                        GetValidatorContract(),
+                        GetContractBasedValidator(),
                         GetReportingValidatorContract(),
-                        _blockTree,
-                        _receiptFinder,
-                        _validatorStore,
-                        auRaSealerValidator,
-                        _finalizationManager,
-                        parentHeader,
-                        _logManager,
-                        startBlockNumber,
-                        _forSealing),
+                        _posdaoTransition,
+                        _logManager),
                 
                 AuRaParameters.ValidatorType.Multi => 
                     new MultiValidator(

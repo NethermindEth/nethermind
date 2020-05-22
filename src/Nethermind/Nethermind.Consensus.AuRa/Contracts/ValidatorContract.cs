@@ -33,6 +33,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
     {
         private readonly IAbiEncoder _abiEncoder;
         private readonly IStateProvider _stateProvider;
+        private readonly Address _nodeAddress;
 
         private static readonly IEqualityComparer<LogEntry> LogEntryEqualityComparer = new LogEntryAddressAndTopicEqualityComparer();
         
@@ -45,11 +46,13 @@ namespace Nethermind.Consensus.AuRa.Contracts
             IAbiEncoder abiEncoder, 
             Address contractAddress, 
             IStateProvider stateProvider,
-            IReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource) 
+            IReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource,
+            Address nodeAddress) 
             : base(transactionProcessor, abiEncoder, contractAddress)
         {
             _abiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
+            _nodeAddress = nodeAddress ?? throw new ArgumentNullException(nameof(nodeAddress));
             Constant = GetConstant(readOnlyTransactionProcessorSource);
         }
 
@@ -117,5 +120,21 @@ namespace Nethermind.Consensus.AuRa.Contracts
         {
             EnsureSystemAccount(_stateProvider);
         }
+
+        /// <summary>
+        /// Returns a boolean flag indicating whether the `emitInitiateChange` function can be called at the moment. Used by a validator's node and `TxPermission` contract (to deny dummy calling).
+        /// </summary>
+        public bool EmitInitiateChangeCallable(BlockHeader parentHeader) => Constant.Call<bool>(parentHeader, Definition.GetFunction(nameof(EmitInitiateChangeCallable)), Address.SystemUser);
+
+
+        /// <summary>
+        /// Emits the `InitiateChange` event to pass a new validator set to the validator nodes.
+        /// Called automatically by one of the current validator's nodes when the `emitInitiateChangeCallable` getter
+        /// returns `true` (when some validator needs to be removed as malicious or the validator set needs to be
+        /// updated at the beginning of a new staking epoch). The new validator set is passed to the validator nodes
+        /// through the `InitiateChange` event and saved for later use by the `finalizeChange` function.
+        /// See https://openethereum.github.io/wiki/Validator-Set.html for more info about the `InitiateChange` event.
+        /// </summary>
+        public Transaction EmitInitiateChange() => GenerateTransaction<GeneratedTransaction>(Definition.GetFunction(nameof(EmitInitiateChange)), _nodeAddress);
     }
 }

@@ -86,6 +86,8 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
             if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
             if (_context.NodeKey == null) throw new StepDependencyException(nameof(_context.NodeKey));
+
+            var chainSpecAuRa = _context.ChainSpec.AuRa;
             
             var validator = new AuRaValidatorFactory(
                     readOnlyTxProcessingEnv.StateProvider,
@@ -98,8 +100,9 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _context.FinalizationManager,
                     _context.LogManager,
                     _context.NodeKey.Address,
+                    chainSpecAuRa.PosdaoTransition,
                     true)
-                .CreateValidatorProcessor(_context.ChainSpec.AuRa.Validators, _context.BlockTree.Head?.Header);
+                .CreateValidatorProcessor(chainSpecAuRa.Validators, _context.BlockTree.Head?.Header);
             
             if (validator is IDisposable disposableValidator)
             {

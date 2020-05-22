@@ -65,6 +65,8 @@ namespace Nethermind.Specs.ChainSpecStyle
         public long ValidateScoreTransition { get; set; }
         
         public long ValidateStepTransition { get; set; }
+        
+        public long PosdaoTransition { get; set; }
 		
         public Validator Validators { get; set; }
 

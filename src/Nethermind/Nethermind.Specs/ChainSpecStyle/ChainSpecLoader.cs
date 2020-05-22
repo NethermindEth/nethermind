@@ -187,6 +187,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                     RandomnessContractAddress = chainSpecJson.Engine.AuthorityRound.RandomnessContractAddress,
                     BlockGasLimitContractTransitions = chainSpecJson.Engine.AuthorityRound.BlockGasLimitContractTransitions,
                     TwoThirdsMajorityTransition = chainSpecJson.Engine.AuthorityRound.TwoThirdsMajorityTransition ?? long.MaxValue,
+                    PosdaoTransition = chainSpecJson.Engine.AuthorityRound.PosdaoTransition ?? long.MaxValue,
                 };
             }
             else if (chainSpecJson.Engine?.Clique != null)
