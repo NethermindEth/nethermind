@@ -36,7 +36,6 @@ namespace Nethermind.AuRa.Test.Contract
 {
     public class AuRaContractGasLimitOverrideTests
     {
-        
         // TestContract: 
         // pragma solidity ^0.5.0;
         // contract TestValidatorSet {
@@ -71,9 +70,22 @@ namespace Nethermind.AuRa.Test.Contract
                 
                 GasLimitOverrideCache = new IGasLimitOverride.Cache();
                 GasLimitOverride = new AuRaContractGasLimitOverride(new[] {gasLimitContract}, GasLimitOverrideCache, false, LimboLogs.Instance);
-                
-                return new AuRaBlockProcessor(SpecProvider, Always.Valid, new RewardCalculator(SpecProvider), TxProcessor, StateDb, CodeDb, State, Storage, TxPool, ReceiptStorage, LimboLogs.Instance,
-                    new ListBasedValidator(validator, new ValidSealerStrategy(), Substitute.For<IValidatorStore>(), LimboLogs.Instance, 1), BlockTree, null, GasLimitOverride);
+
+                return new AuRaBlockProcessor(
+                    SpecProvider,
+                    Always.Valid,
+                    new RewardCalculator(SpecProvider),
+                    TxProcessor,
+                    StateDb,
+                    CodeDb,
+                    State,
+                    Storage,
+                    TxPool,
+                    ReceiptStorage,
+                    LimboLogs.Instance,
+                    BlockTree,
+                    null,
+                    GasLimitOverride);
             }
 
             protected override Task AddBlocksOnStart() => Task.CompletedTask;

@@ -43,6 +43,10 @@ namespace Nethermind.Blockchain.Test
     [TestFixture]
     public class BlockTreeTests
     {
+        private MemDb _blocksInfosDb;
+        private MemDb _headersDb;
+        private MemDb _blocksDb;
+        
         private BlockTree BuildBlockTree()
         {
             _blocksDb = new MemDb();
@@ -1026,6 +1030,33 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(expectedResult, tree.LowestInsertedBody?.Number, "tree");
             Assert.AreEqual(expectedResult, loadedTree.LowestInsertedBody?.Number, "loaded tree");
         }
+        
+        
+        private static object[] SourceOfBSearchTestCases =
+        {
+            new object[] {1L, 0L},
+            new object[] {1L, 1L},
+            new object[] {2L, 0L},
+            new object[] {2L, 1L},
+            new object[] {2L, 2L},
+            new object[] {3L, 0L},
+            new object[] {3L, 1L},
+            new object[] {3L, 2L},
+            new object[] {3L, 3L},
+            new object[] {4L, 0L},
+            new object[] {4L, 1L},
+            new object[] {4L, 2L},
+            new object[] {4L, 3L},
+            new object[] {4L, 4L},
+            new object[] {5L, 0L},
+            new object[] {5L, 1L},
+            new object[] {5L, 2L},
+            new object[] {5L, 3L},
+            new object[] {5L, 4L},
+            new object[] {5L, 5L},
+            new object[] {728000, 0L},
+            new object[] {7280000L, 1L}
+        };
 
         [Test, TestCaseSource(nameof(SourceOfBSearchTestCases))]
         public void Loads_best_known_correctly_on_inserts(long beginIndex, long insertedBlocks)
@@ -1386,35 +1417,83 @@ namespace Nethermind.Blockchain.Test
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
             Assert.Throws<ArgumentException>(() => blockTree.DeleteChainSlice(1000, 52001));
         }
-
-        static object[] SourceOfBSearchTestCases =
+        
+        [Test]
+        public void Cannot_add_blocks_when_blocked()
         {
-            new object[] {1L, 0L},
-            new object[] {1L, 1L},
-            new object[] {2L, 0L},
-            new object[] {2L, 1L},
-            new object[] {2L, 2L},
-            new object[] {3L, 0L},
-            new object[] {3L, 1L},
-            new object[] {3L, 2L},
-            new object[] {3L, 3L},
-            new object[] {4L, 0L},
-            new object[] {4L, 1L},
-            new object[] {4L, 2L},
-            new object[] {4L, 3L},
-            new object[] {4L, 4L},
-            new object[] {5L, 0L},
-            new object[] {5L, 1L},
-            new object[] {5L, 2L},
-            new object[] {5L, 3L},
-            new object[] {5L, 4L},
-            new object[] {5L, 5L},
-            new object[] {728000, 0L},
-            new object[] {7280000L, 1L}
-        };
+            BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
+            blockTree.BlockAcceptingNewBlocks();
+            blockTree.SuggestBlock(Build.A.Block.WithNumber(3).TestObject).Should().Be(AddBlockResult.CannotAccept);
+        }
+        
+        [Test]
+        public void Can_block_and_unblock_adding_blocks()
+        {
+            BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
+            blockTree.CanAcceptNewBlocks.Should().BeTrue();
+            blockTree.BlockAcceptingNewBlocks();
+            blockTree.CanAcceptNewBlocks.Should().BeFalse();
+            blockTree.BlockAcceptingNewBlocks();
+            blockTree.ReleaseAcceptingNewBlocks();
+            blockTree.CanAcceptNewBlocks.Should().BeFalse();
+            blockTree.ReleaseAcceptingNewBlocks();
+            blockTree.CanAcceptNewBlocks.Should().BeTrue();
+        }
+        
+        [Test]
+        public async Task Visitor_can_block_addind_blocks()
+        {
+            BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
+            var manualResetEvent = new ManualResetEvent(false);
+            var acceptTask = blockTree.Accept(new TestBlockTreeVisitor(manualResetEvent), CancellationToken.None);
+            blockTree.CanAcceptNewBlocks.Should().BeFalse();
+            manualResetEvent.Set();
+            await acceptTask;
+        }
 
-        private MemDb _blocksInfosDb;
-        private MemDb _headersDb;
-        private MemDb _blocksDb;
+        private class TestBlockTreeVisitor : IBlockTreeVisitor
+        {
+            private readonly ManualResetEvent _manualResetEvent;
+            private bool _wait = true;
+
+            public TestBlockTreeVisitor(ManualResetEvent manualResetEvent)
+            {
+                _manualResetEvent = manualResetEvent;
+            }
+
+            public bool PreventsAcceptingNewBlocks { get; } = true;
+            public long StartLevelInclusive { get; } = 0;
+            public long EndLevelExclusive { get; } = 3;
+            public async Task<LevelVisitOutcome> VisitLevelStart(ChainLevelInfo chainLevelInfo, CancellationToken cancellationToken)
+            {
+                if (_wait)
+                {
+                    await _manualResetEvent.WaitOneAsync(cancellationToken);
+                    _wait = false;
+                }
+
+                return LevelVisitOutcome.None;
+            }
+
+            public Task<bool> VisitMissing(Keccak hash, CancellationToken cancellationToken)
+            {
+                return Task.FromResult(true);
+            }
+
+            public Task<bool> VisitHeader(BlockHeader header, CancellationToken cancellationToken)
+            {
+                return Task.FromResult(true);
+            }
+
+            public Task<BlockVisitOutcome> VisitBlock(Block block, CancellationToken cancellationToken)
+            {
+                return Task.FromResult(BlockVisitOutcome.None);
+            }
+
+            public Task<LevelVisitOutcome> VisitLevelEnd(CancellationToken cancellationToken)
+            {
+                return Task.FromResult(LevelVisitOutcome.None);
+            }
+        }
     }
 }
