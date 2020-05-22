@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,17 +13,12 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-
-namespace Nethermind.Crypto
+namespace Nethermind.Facade
 {
-    public interface IEthereumEcdsa : IEcdsa
+    public class LogBridge
     {
-        void Sign(PrivateKey privateKey, Transaction tx, bool isEip155Enabled = true);
-        Address RecoverAddress(Transaction tx);
-        Address RecoverAddress(Signature signature, Keccak message);
-        bool Verify(Address sender, Transaction tx);
+        
     }
 }

@@ -62,12 +62,10 @@ namespace Nethermind.Crypto
         /// </summary>
         /// <param name="sender"></param>
         /// <param name="tx"></param>
-        /// <param name="isEip155Enabled">Use <value>true</value> if you are not sure.</param>
         /// <returns></returns>
-        public bool Verify(Address sender, Transaction tx, bool isEip155Enabled)
+        public bool Verify(Address sender, Transaction tx)
         {
-            Keccak hash = Keccak.Compute(Rlp.Encode(tx, true, isEip155Enabled, _chainIdValue).Bytes);
-            Address recovered = RecoverAddress(tx.Signature, hash);
+            Address recovered = RecoverAddress(tx);
             return recovered.Equals(sender);
         }
         
@@ -75,11 +73,10 @@ namespace Nethermind.Crypto
         /// 
         /// </summary>
         /// <param name="tx"></param>
-        /// <param name="isEip155Enabled">Use <value>true</value> if you are not sure.</param>
         /// <returns></returns>
-        public Address RecoverAddress(Transaction tx, bool isEip155Enabled)
+        public Address RecoverAddress(Transaction tx)
         {
-            bool applyEip155 = isEip155Enabled && (tx.Signature.V == _chainIdValue * 2 + 35 || tx.Signature.V == _chainIdValue * 2 + 36);
+            bool applyEip155 = tx.Signature.V == _chainIdValue * 2 + 35 || tx.Signature.V == _chainIdValue * 2 + 36;
             Keccak hash = Keccak.Compute(Rlp.Encode(tx, true, applyEip155, _chainIdValue).Bytes);
             return RecoverAddress(tx.Signature, hash);
         }

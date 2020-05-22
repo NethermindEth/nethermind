@@ -39,7 +39,6 @@ namespace Nethermind.Facade.Test
 {
     public class BlockchainBridgeTests
     {
-        private TxPoolBridge _txPoolBridge;
         private BlockchainBridge _blockchainBridge;
         private IStateReader _stateReader;
         private IStateProvider _stateProvider;
@@ -84,11 +83,8 @@ namespace Nethermind.Facade.Test
                 _transactionProcessor,
                 _ethereumEcdsa,
                 _bloomStorage,
-                _specProvider,
                 LimboLogs.Instance,
                 false);
-            
-            _txPoolBridge = new TxPoolBridge(_txPool, _wallet, Timestamper.Default, ChainId.Mainnet);
         }
 
         [Test]
@@ -117,27 +113,7 @@ namespace Nethermind.Facade.Test
             _blockchainBridge.GetTransaction(TestItem.KeccakA).Should()
                 .BeEquivalentTo((receipt, Build.A.Transaction.WithNonce((UInt256) index).TestObject));
         }
-        
-        [Test]
-        public void get_transaction_returns_pending_transaction_when_found()
-        {
-            UInt256 nonce = 5;
-            _txPool.TryGetPendingTransaction(TestItem.KeccakA, out Arg.Any<Transaction>()).Returns(x =>
-            {
-                x[1] = Build.A.Transaction.WithNonce(nonce).TestObject;
-                return true;
-            });
-            _blockchainBridge.GetTransaction(TestItem.KeccakA).Should().BeEquivalentTo(((TxReceipt) null, Build.A.Transaction.WithNonce(nonce).TestObject));
-        }
-        
-        [Test]
-        public void get_pending_transactions_returns_tx_pool_pending_transactions()
-        {
-            var transactions = Enumerable.Range(0, 10).Select(i => Build.A.Transaction.WithNonce((UInt256) i).TestObject).ToArray();
-            _txPool.GetPendingTransactions().Returns(transactions);
-            _txPoolBridge.GetPendingTransactions().Should().BeEquivalentTo(transactions);
-        }
-        
+
         [Test]
         public void Estimate_gas_returns_the_estimate_from_the_tracer()
         {

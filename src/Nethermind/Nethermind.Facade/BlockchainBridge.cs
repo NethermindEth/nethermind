@@ -24,7 +24,6 @@ using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
@@ -48,7 +47,6 @@ namespace Nethermind.Facade
         private readonly IFilterStore _filterStore;
         private readonly IStateReader _stateReader;
         private readonly IEthereumEcdsa _ecdsa;
-        private readonly ISpecProvider _specProvider;
         private readonly IFilterManager _filterManager;
         private readonly IStateProvider _stateProvider;
         private readonly IReceiptFinder _receiptFinder;
@@ -56,8 +54,7 @@ namespace Nethermind.Facade
         private readonly ITransactionProcessor _transactionProcessor;
         private readonly ILogFinder _logFinder;
 
-        public BlockchainBridge(
-            IStateReader stateReader,
+        public BlockchainBridge(IStateReader stateReader,
             IStateProvider stateProvider,
             IStorageProvider storageProvider,
             IBlockTree blockTree,
@@ -69,7 +66,6 @@ namespace Nethermind.Facade
             ITransactionProcessor transactionProcessor,
             IEthereumEcdsa ecdsa,
             IBloomStorage bloomStorage,
-            ISpecProvider specProvider,
             ILogManager logManager,
             bool isMining,
             int findLogBlockDepthLimit = 1000)
@@ -85,7 +81,6 @@ namespace Nethermind.Facade
             _wallet = wallet ?? throw new ArgumentException(nameof(wallet));
             _transactionProcessor = transactionProcessor ?? throw new ArgumentException(nameof(transactionProcessor));
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             IsMining = isMining;
 
             _logFinder = new LogFinder(_blockTree, _receiptFinder, bloomStorage, logManager, new ReceiptsRecovery(), findLogBlockDepthLimit);
@@ -283,7 +278,7 @@ namespace Nethermind.Facade
             _filterStore.SaveFilter(filter);
             return filter.Id;
         }
-
+        
         public int NewPendingTransactionFilter()
         {
             PendingTransactionFilter filter = _filterStore.CreatePendingTransactionFilter();
@@ -302,7 +297,7 @@ namespace Nethermind.Facade
                 var transaction = block.Transactions[i];
                 if (transaction.SenderAddress == null)
                 {
-                    RecoverTxSender(transaction, block.Number);
+                    RecoverTxSender(transaction);
                 }
             }
         }
@@ -310,10 +305,9 @@ namespace Nethermind.Facade
         public Keccak[] GetPendingTransactionFilterChanges(int filterId) =>
             _filterManager.PollPendingTransactionHashes(filterId);
 
-        public void RecoverTxSender(Transaction tx, long? blockNumber)
+        public void RecoverTxSender(Transaction tx)
         {
-            bool isEip155Enabled = _specProvider.GetSpec(blockNumber ?? _blockTree.BestKnownNumber).IsEip155Enabled;
-            tx.SenderAddress = _ecdsa.RecoverAddress(tx, isEip155Enabled);
+            tx.SenderAddress = _ecdsa.RecoverAddress(tx);
         }
 
         public void RunTreeVisitor(ITreeVisitor treeVisitor, Keccak stateRoot)

@@ -32,6 +32,12 @@ namespace Nethermind.Facade
         private readonly ITimestamper _timestamper;
         private readonly int _chainId;
 
+        /// <summary>
+        /// </summary>
+        /// <param name="txPool">TX pool / mempool that stores all pending transactions.</param>
+        /// <param name="wallet">Wallet for new transactions signing</param>
+        /// <param name="timestamper">Timestamper for stamping the arrinving transactions.</param>
+        /// <param name="chainId">Chain ID to signing transactions for.</param>
         public TxPoolBridge(ITxPool txPool, IWallet wallet, ITimestamper timestamper, int chainId)
         {
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
@@ -39,7 +45,13 @@ namespace Nethermind.Facade
             _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
             _chainId = chainId;
         }
-        
+
+        public Transaction GetPendingTransaction(Keccak txHash)
+        {
+            _txPool.TryGetPendingTransaction(txHash, out var transaction);
+            return transaction;
+        }
+
         public Transaction[] GetPendingTransactions() => _txPool.GetPendingTransactions();
 
         public Keccak SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
