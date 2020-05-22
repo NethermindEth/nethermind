@@ -18,7 +18,7 @@ using Nethermind.Runner.Ethereum.Context;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
-    [RunnerStepDependencies(typeof(InitializeBlockchain), typeof(InitializeFinalizationAuRa))]
+    [RunnerStepDependencies(typeof(InitializeBlockchain))]
     public class StartBlockProcessorAuRa : StartBlockProcessor
     {
         public StartBlockProcessorAuRa(AuRaEthereumRunnerContext context) : base(context)

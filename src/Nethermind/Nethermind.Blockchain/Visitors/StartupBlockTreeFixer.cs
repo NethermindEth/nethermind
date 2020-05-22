@@ -57,6 +57,7 @@ namespace Nethermind.Blockchain.Visitors
             LogPlannedOperation();
         }
 
+        public bool PreventsAcceptingNewBlocks => true;
         public long StartLevelInclusive => _startNumber;
 
         public long EndLevelExclusive => _startNumber + _blocksToLoad;
