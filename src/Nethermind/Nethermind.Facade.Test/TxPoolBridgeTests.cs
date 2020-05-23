@@ -61,8 +61,9 @@ namespace Nethermind.Facade.Test
         {
             UInt256 nonce = 5;
             Transaction transaction = Build.A.Transaction.WithNonce(nonce).TestObject;
+            transaction.Hash = transaction.CalculateHash();
             
-            _txPool.TryGetPendingTransaction(TestItem.KeccakA, out Arg.Any<Transaction>()).Returns(x =>
+            _txPool.TryGetPendingTransaction(transaction.Hash, out Arg.Any<Transaction>()).Returns(x =>
             {
                 // x[1] is the 'out' argument that we are setting here
                 x[1] = transaction;
