@@ -100,8 +100,8 @@ namespace Nethermind.Blockchain.Processing
                 _stateProvider.StateRoot = branchStateRoot;
             }
 
-            var readOnly = (options & ProcessingOptions.ReadOnlyChain) != 0;
-            var processedBlocks = new Block[suggestedBlocks.Count];
+            bool readOnly = (options & ProcessingOptions.ReadOnlyChain) != 0;
+            Block[] processedBlocks = new Block[suggestedBlocks.Count];
             try
             {
                 for (int i = 0; i < suggestedBlocks.Count; i++)
@@ -119,7 +119,6 @@ namespace Nethermind.Blockchain.Processing
 
                 if (readOnly)
                 {
-                    _receiptsTracer.BeforeRestore(_stateProvider);
                     Restore(stateSnapshot, codeSnapshot, snapshotStateRoot);
                 }
                 else
@@ -268,8 +267,8 @@ namespace Nethermind.Blockchain.Processing
                 AuRaStep = bh.AuRaStep,
                 AuRaSignature = bh.AuRaSignature
             };
+            
             return new Block(header, suggestedBlock.Transactions, suggestedBlock.Ommers);
-            ;
         }
 
         private void ApplyMinerRewards(Block block, IBlockTracer tracer)
@@ -283,10 +282,11 @@ namespace Nethermind.Blockchain.Processing
                 ITxTracer txTracer = null;
                 if (tracer.IsTracingRewards)
                 {
+                    // 
                     txTracer = tracer.StartNewTxTrace(null);
                 }
 
-                ApplyMinerReward(block, reward, tracer.IsTracingRewards ? tracer : NullBlockTracer.Instance);
+                ApplyMinerReward(block, reward);
 
                 if (tracer.IsTracingRewards)
                 {
@@ -300,7 +300,7 @@ namespace Nethermind.Blockchain.Processing
             }
         }
 
-        private void ApplyMinerReward(Block block, BlockReward reward, IBlockTracer tracer)
+        private void ApplyMinerReward(Block block, BlockReward reward)
         {
             if (_logger.IsTrace) _logger.Trace($"  {(decimal) reward.Value / (decimal) Unit.Ether:N3}{Unit.EthSymbol} for account at {reward.Address}");
 

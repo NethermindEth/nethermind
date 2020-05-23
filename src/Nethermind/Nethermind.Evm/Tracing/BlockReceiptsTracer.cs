@@ -249,11 +249,6 @@ namespace Nethermind.Evm.Tracing
             _otherTracer.ReportReward(author, rewardType, rewardValue);
         }
 
-        public void BeforeRestore(IStateProvider state)
-        {
-            _otherTracer.BeforeRestore(state);
-        }
-
         public void StartNewBlockTrace(Block block)
         {
             if (_otherTracer == null)
