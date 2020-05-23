@@ -100,7 +100,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             IFilterManager filterManager = new FilterManager(filterStore, blockProcessor, txPool, LimboLogs.Instance);
             _blockchainBridge = new BlockchainBridge(stateReader, _stateProvider, storageProvider, blockTree, txPool, receiptStorage, filterStore, filterManager, NullWallet.Instance, txProcessor, ethereumEcdsa, NullBloomStorage.Instance, specProvider, LimboLogs.Instance, false);
 
-            BlockchainProcessor blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, new TxSignaturesRecoveryStep(specProvider, ethereumEcdsa, txPool, LimboLogs.Instance), LimboLogs.Instance, true);
+            BlockchainProcessor blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, new TxSignaturesRecoveryStep(specProvider, ethereumEcdsa, txPool, LimboLogs.Instance), LimboLogs.Instance, BlockchainProcessor.Options.Default);
             blockchainProcessor.Start();
 
             ManualResetEventSlim resetEvent = new ManualResetEventSlim(false);
@@ -147,12 +147,10 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             resetEvent.Wait(2000);
             _traceModule = new TraceModule(receiptFinder, new Tracer(_stateProvider, blockchainProcessor), _blockchainBridge);
-            _blockTree = blockTree;
         }
 
         private IBlockchainBridge _blockchainBridge;
         private ITraceModule _traceModule;
-        private IBlockTree _blockTree;
         private IStateProvider _stateProvider;
         private ISnapshotableDb _stateDb;
 

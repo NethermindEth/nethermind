@@ -282,7 +282,7 @@ namespace Nethermind.Synchronization.Test
             var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, txProcessor, stateDb, codeDb, stateProvider, storageProvider, txPool, receiptStorage, logManager);
 
             var step = new TxSignaturesRecoveryStep(specProvider, ecdsa, txPool, logManager);
-            var processor = new BlockchainProcessor(tree, blockProcessor, step, logManager, true);
+            var processor = new BlockchainProcessor(tree, blockProcessor, step, logManager, BlockchainProcessor.Options.Default);
 
             var nodeStatsManager = new NodeStatsManager(new StatsConfig(), logManager);
             var syncPeerPool = new SyncPeerPool(tree, nodeStatsManager, 25, logManager);
@@ -292,7 +292,7 @@ namespace Nethermind.Synchronization.Test
             var devEvm = new VirtualMachine(devState, devStorage, blockhashProvider, specProvider, logManager);
             var devTxProcessor = new TransactionProcessor(specProvider, devState, devStorage, devEvm, logManager);
             var devBlockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, devTxProcessor, stateDb, codeDb, devState, devStorage, txPool, receiptStorage, logManager);
-            var devChainProcessor = new BlockchainProcessor(tree, devBlockProcessor, step, logManager, false);
+            var devChainProcessor = new BlockchainProcessor(tree, devBlockProcessor, step, logManager, BlockchainProcessor.Options.NoReceipts);
             var transactionSelector = new TxPoolTxSource(txPool, stateReader, logManager);
             var producer = new DevBlockProducer(transactionSelector, devChainProcessor, stateProvider, tree, processor, txPool, Timestamper.Default, logManager);
             

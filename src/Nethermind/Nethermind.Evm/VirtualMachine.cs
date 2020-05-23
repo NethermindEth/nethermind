@@ -115,6 +115,7 @@ namespace Nethermind.Evm
                     CallResult callResult;
                     if (currentState.IsPrecompile)
                     {
+                        throw new OutOfGasException();
                         if (_txTracer.IsTracingActions)
                         {
                             _txTracer.ReportAction(currentState.GasAvailable, currentState.Env.Value, currentState.From, currentState.To, currentState.Env.InputData, currentState.ExecutionType, true);
@@ -137,6 +138,7 @@ namespace Nethermind.Evm
                     }
                     else
                     {
+                        
                         if (_txTracer.IsTracingActions && !currentState.IsContinuation)
                         {
                             _txTracer.ReportAction(currentState.GasAvailable, currentState.Env.Value, currentState.From, currentState.To, currentState.ExecutionType.IsAnyCreate() ? currentState.Env.CodeInfo.MachineCode : currentState.Env.InputData, currentState.ExecutionType);
