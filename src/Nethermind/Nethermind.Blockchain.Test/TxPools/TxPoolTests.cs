@@ -39,8 +39,6 @@ namespace Nethermind.Blockchain.Test.TxPools
     [TestFixture]
     public class TxPoolTests
     {
-        private Block _genesisBlock;
-        private IBlockTree _remoteBlockTree;
         private ILogManager _logManager;
         private IEthereumEcdsa _ethereumEcdsa;
         private ISpecProvider _specProvider;
@@ -53,8 +51,6 @@ namespace Nethermind.Blockchain.Test.TxPools
         [SetUp]
         public void Setup()
         {
-            _genesisBlock = Build.A.Block.WithNumber(0).TestObject;
-            _remoteBlockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(0).TestObject;
             _logManager = LimboLogs.Instance;
             _specProvider = RopstenSpecProvider.Instance;
             _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId, _logManager);

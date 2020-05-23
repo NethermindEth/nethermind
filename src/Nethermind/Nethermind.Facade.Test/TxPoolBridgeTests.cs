@@ -16,7 +16,6 @@
 
 using System.Linq;
 using FluentAssertions;
-using Nethermind.Blockchain.Filters;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
