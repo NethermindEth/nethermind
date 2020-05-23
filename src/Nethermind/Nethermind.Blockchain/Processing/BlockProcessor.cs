@@ -49,7 +49,19 @@ namespace Nethermind.Blockchain.Processing
         private readonly IRewardCalculator _rewardCalculator;
         private readonly ITransactionProcessor _transactionProcessor;
 
-        public BlockProcessor(ISpecProvider specProvider,
+        /// <summary>
+        /// We use a single receipt tracer for all blocks. Internally receipt tracer forwards most of the calls
+        /// to any block-specific tracers.
+        /// </summary>
+        private BlockReceiptsTracer _receiptsTracer;
+
+        /// <summary>
+        /// State root of the state just before the processing of the current branch begins;
+        /// </summary>
+        private Keccak _currentBranchStateRoot;
+
+        public BlockProcessor(
+            ISpecProvider specProvider,
             IBlockValidator blockValidator,
             IRewardCalculator rewardCalculator,
             ITransactionProcessor transactionProcessor,
@@ -72,33 +84,23 @@ namespace Nethermind.Blockchain.Processing
             _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
             _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
+
             _receiptsTracer = new BlockReceiptsTracer();
         }
 
         public event EventHandler<BlockProcessedEventArgs> BlockProcessed;
+
         public event EventHandler<TxProcessedEventArgs> TransactionProcessed;
 
         public Block[] Process(Keccak branchStateRoot, List<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer)
         {
             if (suggestedBlocks.Count == 0) return Array.Empty<Block>();
 
-            int stateSnapshot = _stateDb.TakeSnapshot();
-            int codeSnapshot = _codeDb.TakeSnapshot();
-            if (stateSnapshot != -1 || codeSnapshot != -1)
-            {
-                if (_logger.IsError) _logger.Error($"Uncommitted state ({stateSnapshot}, {codeSnapshot}) when processing from a branch root {branchStateRoot} starting with block {suggestedBlocks[0].ToString(Block.Format.Short)}");
-            }
-
-            Keccak snapshotStateRoot = _stateProvider.StateRoot;
-
-            if (branchStateRoot != null && _stateProvider.StateRoot != branchStateRoot)
-            {
-                /* discarding the other branch data - chain reorganization */
-                Metrics.Reorganizations++;
-                _storageProvider.Reset();
-                _stateProvider.Reset();
-                _stateProvider.StateRoot = branchStateRoot;
-            }
+            /* We need to save the snapshot state root before reorganization in case the new branch has invalid blocks.
+               In case of invalid blocks on the new branch we will discard the entire branch and come back to 
+               the previous head state.*/
+            CreateCheckpoint();
+            InitBranch(branchStateRoot);
 
             bool readOnly = (options & ProcessingOptions.ReadOnlyChain) != 0;
             Block[] processedBlocks = new Block[suggestedBlocks.Count];
@@ -107,36 +109,76 @@ namespace Nethermind.Blockchain.Processing
                 for (int i = 0; i < suggestedBlocks.Count; i++)
                 {
                     processedBlocks[i] = ProcessOne(suggestedBlocks[i], options, blockTracer);
-                    if (_logger.IsTrace) _logger.Trace($"Committing trees - state root {_stateProvider.StateRoot}");
-                    _stateProvider.CommitTree();
-                    _storageProvider.CommitTrees();
-
-                    if (!readOnly)
-                    {
-                        BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(processedBlocks[i]));
-                    }
                 }
 
                 if (readOnly)
                 {
-                    Restore(stateSnapshot, codeSnapshot, snapshotStateRoot);
+                    DiscardBranch();
                 }
                 else
                 {
-                    _stateDb.Commit();
-                    _codeDb.Commit();
+                    CommitBranch();
+                    for (int i = 0; i < suggestedBlocks.Count; i++)
+                    {
+                        BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(processedBlocks[i]));
+                    }
                 }
 
                 return processedBlocks;
             }
             catch (InvalidBlockException)
             {
-                Restore(stateSnapshot, codeSnapshot, snapshotStateRoot);
+                DiscardBranch();
                 throw;
             }
         }
 
-        private BlockReceiptsTracer _receiptsTracer;
+        private void InitBranch(Keccak branchStateRoot)
+        {
+            /* Please note that we do not reset the state if branch state root is null.
+               That said, I do not remember in what cases we receive null here.*/
+            if (branchStateRoot != null && _stateProvider.StateRoot != branchStateRoot)
+            {
+                /* Discarding the other branch data - chain reorganization.
+                   We cannot use cached values any more because they may have been written
+                   by blocks that are being reorganized out.*/
+                Metrics.Reorganizations++;
+                _storageProvider.Reset();
+                _stateProvider.Reset();
+                _stateProvider.StateRoot = branchStateRoot;
+            }
+        }
+
+        private void CreateCheckpoint()
+        {
+            _currentBranchStateRoot = _stateProvider.StateRoot;
+
+            /* Below is a non-critical assertion that nonetheless should be addressed when it happens. */
+            if (_stateDb.HasUncommittedChanges || _codeDb.HasUncommittedChanges)
+            {
+                if (_logger.IsError) _logger.Error($"Uncommitted state when processing from a branch root {_currentBranchStateRoot}.");
+            }
+        }
+
+        private void CommitBranch()
+        {
+            if (_logger.IsTrace) _logger.Trace($"Committing the branch - {_currentBranchStateRoot} | {_stateProvider.StateRoot}");
+            _stateProvider.CommitTree();
+            _storageProvider.CommitTrees();
+            _stateDb.Commit();
+            _codeDb.Commit();
+        }
+
+        private void DiscardBranch()
+        {
+            if (_logger.IsTrace) _logger.Trace($"Restoring the branch checkpoint - {_currentBranchStateRoot} | {_stateProvider.StateRoot}");
+            _stateDb.Restore(ISnapshotableDb.NoChangesCheckpoint);
+            _codeDb.Restore(ISnapshotableDb.NoChangesCheckpoint);
+            _storageProvider.Reset();
+            _stateProvider.Reset();
+            _stateProvider.StateRoot = _currentBranchStateRoot;
+            if (_logger.IsTrace) _logger.Trace($"Restored the branch checkpoint - {_currentBranchStateRoot} | {_stateProvider.StateRoot}");
+        }
 
         private TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, IBlockTracer blockTracer)
         {
@@ -146,91 +188,62 @@ namespace Nethermind.Blockchain.Processing
             for (int i = 0; i < block.Transactions.Length; i++)
             {
                 Transaction currentTx = block.Transactions[i];
-                if((processingOptions & ProcessingOptions.DoNotVerifyNonce) != 0)
+                if ((processingOptions & ProcessingOptions.DoNotVerifyNonce) != 0)
                 {
                     currentTx.Nonce = _stateProvider.GetNonce(currentTx.SenderAddress);
                 }
-                
+
                 _receiptsTracer.StartNewTxTrace(currentTx.Hash);
                 _transactionProcessor.Execute(currentTx, block.Header, _receiptsTracer);
                 _receiptsTracer.EndTxTrace();
-                
+
                 TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(i, currentTx, _receiptsTracer.TxReceipts[i]));
             }
 
             return _receiptsTracer.TxReceipts;
         }
 
-        private void SetReceiptsRoot(Block block, TxReceipt[] txReceipts)
-        {
-            ReceiptTrie receiptTrie = new ReceiptTrie(block.Number, _specProvider, txReceipts);
-            block.Header.ReceiptsRoot = receiptTrie.RootHash;
-        }
-
-        private void Restore(int stateSnapshot, int codeSnapshot, Keccak snapshotStateRoot)
-        {
-            if (_logger.IsTrace) _logger.Trace($"Reverting blocks {_stateProvider.StateRoot}");
-            _stateDb.Restore(stateSnapshot);
-            _codeDb.Restore(codeSnapshot);
-            _storageProvider.Reset();
-            _stateProvider.Reset();
-            _stateProvider.StateRoot = snapshotStateRoot;
-            if (_logger.IsTrace) _logger.Trace($"Reverted blocks {_stateProvider.StateRoot}");
-        }
-
         private Block ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer)
         {
-            Block block;
-            if (suggestedBlock.IsGenesis)
+            ApplyDaoTransition(suggestedBlock);
+            Block block = PrepareBlockForProcessing(suggestedBlock);
+            TxReceipt[] receipts = ProcessBlock(block, blockTracer, options);
+            ValidateProcessedBlock(suggestedBlock, options, block, receipts);
+            if ((options & ProcessingOptions.StoreReceipts) != 0)
             {
-                ProcessBlock(suggestedBlock, blockTracer, options);
-                block = suggestedBlock;
-            }
-            else
-            {
-                if (_specProvider.DaoBlockNumber.HasValue && _specProvider.DaoBlockNumber.Value == suggestedBlock.Header.Number)
-                {
-                    if (_logger.IsInfo) _logger.Info("Applying DAO transition");
-                    ApplyDaoTransition();
-                }
-
-                block = PrepareBlockForProcessing(suggestedBlock);
-                var receipts = ProcessBlock(block, blockTracer, options);
-
-                if ((options & ProcessingOptions.NoValidation) == 0 && !_blockValidator.ValidateProcessedBlock(block, receipts, suggestedBlock))
-                {
-                    if (_logger.IsError) _logger.Error($"Processed block is not valid {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}");
-                    // if (_logger.IsError) _logger.Error($"State: {_stateProvider.DumpState()}");
-                    throw new InvalidBlockException(suggestedBlock.Hash);
-                }
-
-                if ((options & ProcessingOptions.StoreReceipts) != 0)
-                {
-                    StoreTxReceipts(block, receipts);
-                }
+                StoreTxReceipts(block, receipts);
             }
 
             return block;
         }
 
+        private void ValidateProcessedBlock(Block suggestedBlock, ProcessingOptions options, Block block, TxReceipt[] receipts)
+        {
+            if ((options & ProcessingOptions.NoValidation) == 0 && !_blockValidator.ValidateProcessedBlock(block, receipts, suggestedBlock))
+            {
+                if (_logger.IsError) _logger.Error($"Processed block is not valid {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}");
+                throw new InvalidBlockException(suggestedBlock.Hash);
+            }
+        }
+
         protected virtual TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options)
         {
-            if (!block.IsGenesis)
-            {
-                var receipts = ProcessTransactions(block, options, blockTracer);
-                SetReceiptsRoot(block, receipts);
-                ApplyMinerRewards(block, blockTracer);
+            TxReceipt[] receipts = ProcessTransactions(block, options, blockTracer);
+            SetReceiptsRoot(block, receipts);
+            ApplyMinerRewards(block, blockTracer);
 
-                _stateProvider.Commit(_specProvider.GetSpec(block.Number));
-                _stateProvider.RecalculateStateRoot();
-                block.Header.StateRoot = _stateProvider.StateRoot;
-                block.Header.Hash = block.Header.CalculateHash();
+            _stateProvider.Commit(_specProvider.GetSpec(block.Number));
+            _stateProvider.RecalculateStateRoot();
+            block.Header.StateRoot = _stateProvider.StateRoot;
+            block.Header.Hash = block.Header.CalculateHash();
 
-                return receipts;
-            }
+            return receipts;
+        }
 
-            if (_logger.IsTrace) _logger.Trace($"Processed block {block.ToString(Block.Format.Short)}");
-            return Array.Empty<TxReceipt>();
+        private void SetReceiptsRoot(Block block, TxReceipt[] txReceipts)
+        {
+            ReceiptTrie receiptTrie = new ReceiptTrie(block.Number, _specProvider, txReceipts);
+            block.Header.ReceiptsRoot = receiptTrie.RootHash;
         }
 
         private void StoreTxReceipts(Block block, TxReceipt[] txReceipts)
@@ -267,7 +280,7 @@ namespace Nethermind.Blockchain.Processing
                 AuRaStep = bh.AuRaStep,
                 AuRaSignature = bh.AuRaSignature
             };
-            
+
             return new Block(header, suggestedBlock.Transactions, suggestedBlock.Ommers);
         }
 
@@ -282,7 +295,7 @@ namespace Nethermind.Blockchain.Processing
                 ITxTracer txTracer = null;
                 if (tracer.IsTracingRewards)
                 {
-                    // 
+                    // we need this tracer to be able to track any potential miner account creation
                     txTracer = tracer.StartNewTxTrace(null);
                 }
 
@@ -314,19 +327,23 @@ namespace Nethermind.Blockchain.Processing
             }
         }
 
-        private void ApplyDaoTransition()
+        private void ApplyDaoTransition(Block block)
         {
-            Address withdrawAccount = DaoData.DaoWithdrawalAccount;
-            if (!_stateProvider.AccountExists(withdrawAccount))
+            if (_specProvider.DaoBlockNumber.HasValue && _specProvider.DaoBlockNumber.Value == block.Header.Number)
             {
-                _stateProvider.CreateAccount(withdrawAccount, 0);
-            }
+                if (_logger.IsInfo) _logger.Info("Applying the DAO transition");
+                Address withdrawAccount = DaoData.DaoWithdrawalAccount;
+                if (!_stateProvider.AccountExists(withdrawAccount))
+                {
+                    _stateProvider.CreateAccount(withdrawAccount, 0);
+                }
 
-            foreach (Address daoAccount in DaoData.DaoAccounts)
-            {
-                UInt256 balance = _stateProvider.GetBalance(daoAccount);
-                _stateProvider.AddToBalance(withdrawAccount, balance, Dao.Instance);
-                _stateProvider.SubtractFromBalance(daoAccount, balance, Dao.Instance);
+                foreach (Address daoAccount in DaoData.DaoAccounts)
+                {
+                    UInt256 balance = _stateProvider.GetBalance(daoAccount);
+                    _stateProvider.AddToBalance(withdrawAccount, balance, Dao.Instance);
+                    _stateProvider.SubtractFromBalance(daoAccount, balance, Dao.Instance);
+                }
             }
         }
     }
