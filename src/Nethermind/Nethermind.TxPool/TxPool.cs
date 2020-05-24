@@ -197,12 +197,11 @@ namespace Nethermind.TxPool
 
         public AddTxResult AddTransaction(Transaction tx, TxHandlingOptions handlingOptions)
         {
-            bool isEip155Enabled = (handlingOptions & TxHandlingOptions.PreEip155Signing) == TxHandlingOptions.None;
             bool managedNonce = (handlingOptions & TxHandlingOptions.ManagedNonce) == TxHandlingOptions.ManagedNonce;
             bool isPersistentBroadcast = (handlingOptions & TxHandlingOptions.PersistentBroadcast) == TxHandlingOptions.PersistentBroadcast;
             if (isPersistentBroadcast)
             {
-                if (_logger.IsTrace) _logger.Trace($"Adding transaction {tx.ToString("  ")} - EIP155: {isEip155Enabled} | managed nonce: {managedNonce} | persistent brodcast {isPersistentBroadcast}");
+                if (_logger.IsTrace) _logger.Trace($"Adding transaction {tx.ToString("  ")} - managed nonce: {managedNonce} | persistent brodcast {isPersistentBroadcast}");
             }
 
             if (_fadingOwnTransactions.ContainsKey(tx.Hash))
@@ -248,7 +247,7 @@ namespace Nethermind.TxPool
              */
             if (tx.SenderAddress == null)
             {
-                tx.SenderAddress = _ecdsa.RecoverAddress(tx, isEip155Enabled);
+                tx.SenderAddress = _ecdsa.RecoverAddress(tx);
                 if (tx.SenderAddress == null)
                 {
                     return AddTxResult.PotentiallyUseless;
