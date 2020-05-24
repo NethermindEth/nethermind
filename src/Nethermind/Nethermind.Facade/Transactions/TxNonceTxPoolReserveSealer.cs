@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,30 +13,29 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Crypto;
-using Nethermind.Secp256k1;
+using Nethermind.TxPool;
+using Nethermind.Wallet;
 
-namespace Nethermind.Wallet
+namespace Nethermind.Facade.Transactions
 {
-    public class BasicWallet : IBasicWallet
+    public class TxNonceTxPoolReserveSealer : TxSealer
     {
-        private readonly PrivateKey _privateKey;
+        private readonly ITxPool _txPool;
 
-        public BasicWallet(PrivateKey privateKey)
+        public TxNonceTxPoolReserveSealer(IBasicWallet wallet, ITimestamper timestamper, int chainId, ITxPool txPool) : base(wallet, timestamper, chainId)
         {
-            _privateKey = privateKey ?? throw new ArgumentNullException(nameof(privateKey));
-        }
-        
-        public Signature Sign(Keccak message, Address address)
-        {
-            var rs = Proxy.SignCompact(message.Bytes, _privateKey.KeyBytes, out int v);
-            return new Signature(rs, v);
+            _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
         }
 
-        public bool IsUnlocked(Address address) => _privateKey.Address == address;
+        public override void Seal(Transaction tx)
+        {
+            tx.Nonce = _txPool.ReserveOwnTransactionNonce(tx.SenderAddress);
+            base.Seal(tx);
+        }
     }
 }

@@ -15,10 +15,16 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
+using System.Security;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
+
 namespace Nethermind.TxPool
 {
-    public class ITxSender
+    public interface ITxSender
     {
-        
+        Keccak SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions);
     }
 }

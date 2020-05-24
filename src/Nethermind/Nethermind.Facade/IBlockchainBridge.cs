@@ -26,10 +26,9 @@ using Block = Nethermind.Core.Block;
 
 namespace Nethermind.Facade
 {
-    public interface ITxPoolBridge
+    public interface ITxPoolBridge : ITxSender
     {
         Transaction[] GetPendingTransactions();
-        Keccak SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions);
     }
     
     public interface IBlockchainBridge : IBlockFinder

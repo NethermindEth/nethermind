@@ -22,25 +22,20 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.State;
+using Nethermind.TxPool;
 using Nethermind.Wallet;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
-    public class GeneratedTxSourceApprover : ITxSource
+    public class GeneratedTxSourceSealer : ITxSource
     {
         private readonly ITxSource _innerSource;
-        private readonly IBasicWallet _wallet;
-        private readonly ITimestamper _timestamper;
-        private readonly IStateReader _stateReader;
-        private readonly int _chainId;
+        private readonly IStateTxSealerFactory _stateTxSealerFactory;
 
-        public GeneratedTxSourceApprover(ITxSource innerSource, IBasicWallet wallet, ITimestamper timestamper, IStateReader stateReader, int chainId)
+        public GeneratedTxSourceSealer(ITxSource innerSource, IStateTxSealerFactory stateTxSealerFactory)
         {
-            _innerSource = innerSource ??  throw new ArgumentNullException(nameof(innerSource));
-            _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
-            _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
-            _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
-            _chainId = chainId;
+            _innerSource = innerSource ?? throw new ArgumentNullException(nameof(innerSource));
+            _stateTxSealerFactory = stateTxSealerFactory ?? throw new ArgumentNullException(nameof(stateTxSealerFactory));
         }
         
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit) =>
@@ -48,19 +43,10 @@ namespace Nethermind.Consensus.AuRa.Transactions
             {
                 if (tx is GeneratedTransaction)
                 {
-                    ApproveTx(parent, tx);
+                    _stateTxSealerFactory.CreateTxSealerForState(parent.StateRoot).Seal(tx);
                 }
 
                 return tx;
             });
-
-        private void ApproveTx(BlockHeader parent, Transaction tx)
-        {
-            tx.Nonce = _stateReader.GetNonce(parent.StateRoot, tx.SenderAddress);
-            _wallet.Sign(tx, _chainId);
-            tx.Hash = tx.CalculateHash();
-            tx.Timestamp = _timestamper.EpochSeconds;
-        }
-
     }
 }

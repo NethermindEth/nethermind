@@ -23,6 +23,7 @@ namespace Nethermind.Wallet
     public interface IBasicWallet
     {
         Signature Sign(Keccak message, Address address);
+        bool IsUnlocked(Address address);
         
         void Sign(Transaction tx, int chainId)
         {

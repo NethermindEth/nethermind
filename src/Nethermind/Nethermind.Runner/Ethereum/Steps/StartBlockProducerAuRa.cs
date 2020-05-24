@@ -173,7 +173,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             if (needSigner)
             {
-                txSource = new GeneratedTxSourceApprover(txSource, new BasicWallet(_context.NodeKey), _context.Timestamper, readOnlyTxProcessingEnv.StateReader, _context.BlockTree.ChainId);
+                txSource = new GeneratedTxSourceSealer(txSource, new BasicWallet(_context.NodeKey), _context.Timestamper, readOnlyTxProcessingEnv.StateReader, _context.BlockTree.ChainId);
             }
 
             var txPermissionFilter = GetTxPermissionFilter(readOnlyTxProcessingEnv, readOnlyTransactionProcessorSource);

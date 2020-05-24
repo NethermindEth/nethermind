@@ -148,7 +148,7 @@ namespace Nethermind.Wallet
             }
             else
             {
-                throw new SecurityException("can only sign without passphrase when account is unlocked.");
+                throw new SecurityException("Can only sign without passphrase when account is unlocked.");
             }
 
             var rs = Proxy.SignCompact(message.Bytes, key.KeyBytes, out int v);

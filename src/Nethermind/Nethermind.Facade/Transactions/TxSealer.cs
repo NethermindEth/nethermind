@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,30 +13,35 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
-using Nethermind.Secp256k1;
+using Nethermind.TxPool;
+using Nethermind.Wallet;
 
-namespace Nethermind.Wallet
+namespace Nethermind.Facade.Transactions
 {
-    public class BasicWallet : IBasicWallet
+    public class TxSealer : ITxSealer
     {
-        private readonly PrivateKey _privateKey;
-
-        public BasicWallet(PrivateKey privateKey)
+        private readonly IBasicWallet _wallet;
+        private readonly ITimestamper _timestamper;
+        private readonly int _chainId;
+            
+        public TxSealer(IBasicWallet wallet, ITimestamper timestamper, int chainId)
         {
-            _privateKey = privateKey ?? throw new ArgumentNullException(nameof(privateKey));
-        }
-        
-        public Signature Sign(Keccak message, Address address)
-        {
-            var rs = Proxy.SignCompact(message.Bytes, _privateKey.KeyBytes, out int v);
-            return new Signature(rs, v);
+            _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
+            _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
+            _chainId = chainId;
         }
 
-        public bool IsUnlocked(Address address) => _privateKey.Address == address;
+        public virtual void Seal(Transaction tx)
+        {
+            _wallet.Sign(tx, _chainId);
+            tx.Hash = tx.CalculateHash();
+            tx.Timestamp = _timestamper.EpochSeconds;
+        }
     }
 }
