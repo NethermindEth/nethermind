@@ -16,13 +16,22 @@
 
 using System;
 using Nethermind.Abi;
+using Newtonsoft.Json;
 
-namespace Nethermind.Serialization.Json.Abi
+namespace Nethermind.Consensus.AuRa.Json
 {
-    public interface IAbiDefinitionParser
+    public class AbiTypeConverter : JsonConverter<AbiType>
     {
-        AbiDefinition Parse(string json);
-        AbiDefinition Parse<T>();
-        AbiDefinition Parse(Type type);
+        public override void WriteJson(JsonWriter writer, AbiType value, JsonSerializer serializer)
+        {
+            writer.WriteValue(value.Name);
+        }
+
+        public override AbiType ReadJson(JsonReader reader, Type objectType, AbiType existingValue, bool hasExistingValue, JsonSerializer serializer)
+        {
+            throw new NotSupportedException();
+        }
+
+        public override bool CanRead { get; } = false;
     }
 }
