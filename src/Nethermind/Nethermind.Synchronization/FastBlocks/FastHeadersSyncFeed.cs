@@ -293,6 +293,20 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private int InsertHeaders(HeadersSyncBatch batch)
         {
+            Queue<HeadersSyncBatch> batchesToInsert = new Queue<HeadersSyncBatch>();
+            batchesToInsert.Enqueue(batch);
+            int inserted = 0;
+            while (batchesToInsert.Count > 0)
+            {
+                var batchToInsert = batchesToInsert.Dequeue();
+                inserted += InsertHeaders(batchToInsert, batchesToInsert);
+            }
+
+            return inserted;
+        }
+        
+        private int InsertHeaders(HeadersSyncBatch batch, Queue<HeadersSyncBatch> dependentBatches)
+        {
             if (batch.Response.Length > batch.RequestSize)
             {
                 if (_logger.IsDebug) _logger.Debug($"Peer sent too long response ({batch.Response.Length}) to {batch}");
@@ -395,7 +409,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 }
 
                 header.TotalDifficulty = _nextHeaderDiff;
-                AddBlockResult addBlockResult = InsertHeader(header);
+                AddBlockResult addBlockResult = InsertHeader(header, dependentBatches);
                 if (addBlockResult == AddBlockResult.InvalidBlock)
                 {
                     if (batch.ResponseSourcePeer != null)
@@ -466,7 +480,7 @@ namespace Nethermind.Synchronization.FastBlocks
             return added;
         }
 
-        private AddBlockResult InsertHeader(BlockHeader header)
+        private AddBlockResult InsertHeader(BlockHeader header, Queue<HeadersSyncBatch> dependentBatches)
         {
             if (header.IsGenesis)
             {
@@ -482,7 +496,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 long parentNumber = header.Number - 1;
                 if (_dependencies.TryRemove(parentNumber, out HeadersSyncBatch batch))
                 {
-                    InsertHeaders(batch);
+                    dependentBatches.Enqueue(batch);
                 }
             }
 
