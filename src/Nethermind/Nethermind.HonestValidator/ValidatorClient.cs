@@ -70,7 +70,7 @@ namespace Nethermind.HonestValidator
 
             _validatorState = new ValidatorState();
         }
-
+        
         /// <summary>
         /// Returns the domain for the 'domain_type' and 'fork_version'
         /// </summary>
@@ -113,6 +113,54 @@ namespace Nethermind.HonestValidator
 
             SigningRoot domainWrappedObject = new SigningRoot(objectRoot, domain);
             return _cryptographyService.HashTreeRoot(domainWrappedObject);
+        }
+
+        public ulong GetAggregationTime(BeaconChainInformation beaconChainInformation, Slot slot)
+        {
+            var timeParameters = _timeParameterOptions.CurrentValue;
+            ulong startTimeOfSlot = beaconChainInformation.GenesisTime + timeParameters.SecondsPerSlot * slot;
+            
+            // Aggregate 2/3 way through slot
+            ulong aggregationTime = startTimeOfSlot + (_timeParameterOptions.CurrentValue.SecondsPerSlot * 2 / 3);
+
+            return aggregationTime;
+        }
+
+        public ulong GetAttestationTime(BeaconChainInformation beaconChainInformation, Slot slot)
+        {
+            var timeParameters = _timeParameterOptions.CurrentValue;
+            ulong startTimeOfSlot = beaconChainInformation.GenesisTime + timeParameters.SecondsPerSlot * slot;
+            
+            // Attest 1/3 way through slot
+            ulong attestationTime = startTimeOfSlot + (_timeParameterOptions.CurrentValue.SecondsPerSlot / 3);
+
+            return attestationTime;
+        }
+        
+        public BlsSignature GetAttestationSignature(Attestation unsignedAttestation, BlsPublicKey blsPublicKey)
+        {
+            var fork = _beaconChainInformation.Fork;
+            var epoch = ComputeEpochAtSlot(unsignedAttestation.Data.Slot);
+
+            ForkVersion forkVersion;
+            if (epoch < fork.Epoch)
+            {
+                forkVersion = fork.PreviousVersion;
+            }
+            else
+            {
+                forkVersion = fork.CurrentVersion;
+            }
+
+            var domainType = _signatureDomainOptions.CurrentValue.BeaconAttester;
+            var attesterDomain = ComputeDomain(domainType, forkVersion);
+
+            var attestationDataRoot = _cryptographyService.HashTreeRoot(unsignedAttestation.Data);
+            var signingRoot = ComputeSigningRoot(attestationDataRoot, attesterDomain);
+
+            var signature = _validatorKeyProvider.SignRoot(blsPublicKey, signingRoot);
+
+            return signature;
         }
 
         public BlsSignature GetBlockSignature(BeaconBlock block, BlsPublicKey blsPublicKey)
@@ -180,6 +228,24 @@ namespace Nethermind.HonestValidator
             return randaoReveal;
         }
 
+        public Slot GetNextAggregationSlotToCheck(BeaconChainInformation beaconChainInformation)
+        {
+            // Generally no point in aggregating for slots <= current (head) slot
+            Slot slotToCheckAggregation =
+                Slot.Max(beaconChainInformation.LastAggregationSlotChecked + Slot.One,
+                    beaconChainInformation.SyncStatus.CurrentSlot);
+            return slotToCheckAggregation;
+        }
+
+        public Slot GetNextAttestationSlotToCheck(BeaconChainInformation beaconChainInformation)
+        {
+            // Generally no point in attesting for slots <= current (head) slot
+            Slot slotToCheckAttestation =
+                Slot.Max(beaconChainInformation.LastAttestationSlotChecked + Slot.One,
+                    beaconChainInformation.SyncStatus.CurrentSlot);
+            return slotToCheckAttestation;
+        }
+
         public async Task OnTickAsync(BeaconChainInformation beaconChainInformation, ulong time,
             CancellationToken cancellationToken)
         {
@@ -187,61 +253,141 @@ namespace Nethermind.HonestValidator
             await beaconChainInformation.SetTimeAsync(time).ConfigureAwait(false);
             Slot currentSlot = GetCurrentSlot(beaconChainInformation);
 
-            // TODO: attestation is done 1/3 way through slot
-
-            // Not a new slot (clock is still the same as the slot we just checked), return
-            bool shouldCheckSlot = currentSlot > beaconChainInformation.LastSlotChecked;
-            if (!shouldCheckSlot)
+            // Once at start of each slot, confirm responsibilities (could have been a reorg), then do proposal
+            bool shouldCheckStartSlot = currentSlot > beaconChainInformation.LastStartSlotChecked;
+            if (shouldCheckStartSlot)
             {
-                return;
+                await UpdateForkVersionActivityAsync(cancellationToken).ConfigureAwait(false);
+
+                // TODO: For beacon nodes that don't report SyncingStatus (which is nullable/optional),
+                // then need a different strategy to determine the current head known by the beacon node.
+                // The current code (2020-03-15) will simply start from slot 0 and process 1/second until
+                // caught up with clock slot; at 6 seconds/slot, this is 6x faster, i.e. 1 day still takes 4 hours.
+                // (okay for testing).
+                // Alternative 1: see if the node supports /beacon/head, and use that slot
+                // Alternative 2: try UpdateDuties, and if you get 406 DutiesNotAvailableForRequestedEpoch then use a
+                // divide & conquer algorithm to determine block to check. (Could be a back off x1, x2, x4, x8, etc if 406)
+
+                await UpdateSyncStatusActivityAsync(cancellationToken).ConfigureAwait(false);
+
+                // Need to have an anchor block (will provide the genesis time) before can do anything
+                // Absolutely no point in generating blocks < anchor slot
+                // Irrespective of clock time, can't check duties >= 2 epochs ahead of current (head), as don't have data
+                //  - actually, validator only cares about what they need to sign this slot
+                //  - the beacon node takes care of subscribing to topics an epoch in advance, etc
+                // While signing a block < highest (seen) slot may be a waste, there is no penalty for doing so
+
+                // Generally no point in generating blocks <= current (head) slot
+                Slot slotToCheck =
+                    Slot.Max(beaconChainInformation.LastStartSlotChecked,
+                        beaconChainInformation.SyncStatus.CurrentSlot) +
+                    Slot.One;
+
+                LogDebug.ProcessingSlotStart(_logger, slotToCheck, currentSlot,
+                    beaconChainInformation.SyncStatus.CurrentSlot,
+                    null);
+
+                // Slot is set before processing; if there is an error (in process; update duties has a try/catch), it will skip to the next slot
+                // (maybe the error will be resolved; trade off of whether error can be fixed by retrying, e.g. network error,
+                // but potentially getting stuck in a slot, vs missing a slot)
+                // TODO: Maybe add a retry policy/retry count when to advance last slot checked regardless
+                await beaconChainInformation.SetLastStartSlotChecked(slotToCheck);
+
+                // TODO: Attestations should run checks one epoch ahead, for topic subscriptions, although this is more a beacon node thing to do.
+
+                // Note that UpdateDuties will continue even if there is an error/issue (i.e. assume no change and process what we have)
+                Epoch epochToCheck = ComputeEpochAtSlot(slotToCheck);
+                // Check duties each slot, in case there has been a reorg 
+                await UpdateDutiesActivityAsync(epochToCheck, cancellationToken).ConfigureAwait(false);
+
+                await ProcessProposalDutiesAsync(slotToCheck, cancellationToken).ConfigureAwait(false);
+
+                // If upcoming attester, join (or change) topics
+                // Subscribe to topics
             }
 
-            await UpdateForkVersionActivityAsync(cancellationToken).ConfigureAwait(false);
+            // Attestation is done 1/3 way through slot
+            Slot nextAttestationSlot = GetNextAttestationSlotToCheck(beaconChainInformation);
+            ulong nextAttestationTime = GetAttestationTime(beaconChainInformation, nextAttestationSlot);
+            if (beaconChainInformation.Time > nextAttestationTime)
+            {
+                // In theory, there could be a reorg between start of slot and attestation, changing
+                // the attestation requirements, but currently (2020-05-24) only checking at start 
+                // of slot (above).
+                
+                LogDebug.ProcessingSlotAttestations(_logger, nextAttestationSlot, beaconChainInformation.Time, null);
+                await beaconChainInformation.SetLastAttestationSlotChecked(nextAttestationSlot);
+                await ProcessAttestationDutiesAsync(nextAttestationSlot, cancellationToken).ConfigureAwait(false);
+            }
             
-            // TODO: For beacon nodes that don't report SyncingStatus (which is nullable/optional),
-            // then need a different strategy to determine the current head known by the beacon node.
-            // The current code (2020-03-15) will simply start from slot 0 and process 1/second until
-            // caught up with clock slot; at 6 seconds/slot, this is 6x faster, i.e. 1 day still takes 4 hours.
-            // (okay for testing).
-            // Alternative 1: see if the node supports /beacon/head, and use that slot
-            // Alternative 2: try UpdateDuties, and if you get 406 DutiesNotAvailableForRequestedEpoch then use a
-            // divide & conquer algorithm to determine block to check. (Could be a back off x1, x2, x4, x8, etc if 406)
+            // TODO: Aggregation is done 2/3 way through slot
             
-            await UpdateSyncStatusActivityAsync(cancellationToken).ConfigureAwait(false);
+        }
 
-            // Need to have an anchor block (will provide the genesis time) before can do anything
-            // Absolutely no point in generating blocks < anchor slot
-            // Irrespective of clock time, can't check duties >= 2 epochs ahead of current (head), as don't have data
-            //  - actually, validator only cares about what they need to sign this slot
-            //  - the beacon node takes care of subscribing to topics an epoch in advance, etc
-            // While signing a block < highest (seen) slot may be a waste, there is no penalty for doing so
+        public async Task ProcessAttestationDutiesAsync(Slot slot, CancellationToken cancellationToken)
+        {
+            // If attester, get attestation, sign attestation, return to node
 
-            // Generally no point in generating blocks <= current (head) slot
-            Slot slotToCheck =
-                Slot.Max(beaconChainInformation.LastSlotChecked, beaconChainInformation.SyncStatus.CurrentSlot) +
-                Slot.One;
+            IList<(BlsPublicKey, Shard)>? attestationDutyList = _validatorState.GetAttestationDutyForSlot(slot);
+            if (!(attestationDutyList is null))
+            {
+                foreach ((BlsPublicKey validatorPublicKey, Shard shard) in attestationDutyList)
+                {
+                    Activity activity = new Activity("process-attestation-duty");
+                    activity.Start();
+                    using IDisposable activityScope = _logger.BeginScope("[TraceId, {TraceId}], [SpanId, {SpanId}]",
+                        activity.TraceId, activity.SpanId);
+                    try
+                    {
+                        if (_logger.IsDebug())
+                            LogDebug.RequestingAttestationFor(_logger, slot, _beaconChainInformation.Time, validatorPublicKey,
+                                null);
 
-            LogDebug.ProcessingSlot(_logger, slotToCheck, currentSlot, beaconChainInformation.SyncStatus.CurrentSlot,
-                null);
+                        ApiResponse<Attestation> newAttestationResponse = await _beaconNodeApi
+                            .NewAttestationAsync(validatorPublicKey, false, slot, shard, cancellationToken).ConfigureAwait(false);
+                        if (newAttestationResponse.StatusCode == StatusCode.Success)
+                        {
+                            Attestation unsignedAttestation = newAttestationResponse.Content;
+                            BlsSignature attestationSignature = GetAttestationSignature(unsignedAttestation, validatorPublicKey);
+                            Attestation signedAttestation = new Attestation(unsignedAttestation.AggregationBits,
+                                unsignedAttestation.Data, attestationSignature);
 
-            // Slot is set before processing; if there is an error (in process; update duties has a try/catch), it will skip to the next slot
-            // (maybe the error will be resolved; trade off of whether error can be fixed by retrying, e.g. network error,
-            // but potentially getting stuck in a slot, vs missing a slot)
-            // TODO: Maybe add a retry policy/retry count when to advance last slot checked regardless
-            await beaconChainInformation.SetLastSlotChecked(slotToCheck);
+                            // TODO: Getting one attestation at a time probably isn't very scalable.
+                            // All validators are attesting the same data, just in different committees with different indexes
+                            // => Get the data once, group relevant validators by committee, sign and aggregate within each
+                            // committee (marking relevant aggregation bits), then publish one pre-aggregated value? 
+                            
+                            if (_logger.IsDebug())
+                                LogDebug.PublishingSignedAttestation(_logger, slot, validatorPublicKey.ToShortString(),
+                                    signedAttestation.Data,
+                                    signedAttestation.Signature.ToString().Substring(0, 10), null);
 
-            // TODO: Attestations should run checks one epoch ahead, for topic subscriptions, although this is more a beacon node thing to do.
+                            ApiResponse publishAttestationResponse = await _beaconNodeApi
+                                .PublishAttestationAsync(signedAttestation, cancellationToken)
+                                .ConfigureAwait(false);
+                            if (publishAttestationResponse.StatusCode != StatusCode.Success &&
+                                publishAttestationResponse.StatusCode !=
+                                StatusCode.BroadcastButFailedValidation)
+                            {
+                                throw new Exception(
+                                    $"Error response from publish: {(int) publishAttestationResponse.StatusCode} {publishAttestationResponse.StatusCode}.");
+                            }
 
-            // Note that UpdateDuties will continue even if there is an error/issue (i.e. assume no change and process what we have)
-            Epoch epochToCheck = ComputeEpochAtSlot(slotToCheck);
-            await UpdateDutiesActivityAsync(epochToCheck, cancellationToken).ConfigureAwait(false);
-
-            await ProcessProposalDutiesAsync(slotToCheck, cancellationToken).ConfigureAwait(false);
-
-            // If upcoming attester, join (or change) topics
-            // Subscribe to topics
-
-            // Attest 1/3 way through slot
+                            bool nodeAccepted = publishAttestationResponse.StatusCode == StatusCode.Success;
+                            // TODO: Log warning if not accepted? Not sure what else we could do.
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Log.ExceptionProcessingProposalDuty(_logger, slot, validatorPublicKey, ex.Message, ex);
+                    }
+                    finally
+                    {
+                        activity.Stop();
+                    }
+                }
+                _validatorState.ClearAttestationDutyForSlot(slot);
+            }
         }
 
         public async Task ProcessProposalDutiesAsync(Slot slot, CancellationToken cancellationToken)

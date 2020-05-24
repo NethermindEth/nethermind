@@ -107,11 +107,38 @@ namespace Nethermind.BeaconNode.OApiClient
             return ApiResponse.Create((StatusCode) (int) httpResponse.StatusCode, content);
         }
 
-        public Task<ApiResponse<Attestation>> NewAttestationAsync(BlsPublicKey validatorPublicKey,
+        public async Task<ApiResponse<Attestation>> NewAttestationAsync(BlsPublicKey validatorPublicKey,
             bool proofOfCustodyBit, Slot slot, Shard shard,
             CancellationToken cancellationToken)
         {
-            throw new System.NotImplementedException();
+            string baseUri = "validator/attestation";
+
+            Dictionary<string, string> queryParameters = new Dictionary<string, string>
+            {
+                ["validator_pubkey"] = validatorPublicKey.ToString(),
+                ["poc_bit"] = proofOfCustodyBit ? "1" : "0",
+                ["slot"] = slot.ToString(),
+                ["shard"] = shard.ToString()
+            };
+
+            string uri = QueryHelpers.AddQueryString(baseUri, queryParameters);
+
+            using HttpResponseMessage httpResponse =
+                await _httpClient.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+
+            int statusCode = (int) httpResponse.StatusCode;
+            if (statusCode == (int) StatusCode.InvalidRequest
+                || statusCode == (int) StatusCode.CurrentlySyncing)
+            {
+                return ApiResponse.Create<Attestation>((StatusCode) statusCode);
+            }
+
+            httpResponse.EnsureSuccessStatusCode(); // throws if not 200-299
+            await using Stream contentStream = await httpResponse.Content.ReadAsStreamAsync();
+            Attestation content =
+                await JsonSerializer.DeserializeAsync<Attestation>(contentStream, _jsonSerializerOptions,
+                    cancellationToken);
+            return ApiResponse.Create((StatusCode) statusCode, content);
         }
 
         public async Task<ApiResponse<BeaconBlock>> NewBlockAsync(Slot slot, BlsSignature randaoReveal,

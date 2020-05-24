@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
@@ -22,6 +23,7 @@ namespace Nethermind.HonestValidator
 {
     public class ValidatorState
     {
+        private readonly ConcurrentDictionary<Slot, IList<(BlsPublicKey, Shard)>> _attestationDutyBySlot = new ConcurrentDictionary<Slot, IList<(BlsPublicKey, Shard)>>();
         private readonly Dictionary<BlsPublicKey, Shard> _attestationShard = new Dictionary<BlsPublicKey, Shard>();
         private readonly Dictionary<BlsPublicKey, Slot> _attestationSlot = new Dictionary<BlsPublicKey, Slot>();
 
@@ -32,9 +34,20 @@ namespace Nethermind.HonestValidator
         public IReadOnlyDictionary<BlsPublicKey, Slot> AttestationSlot => _attestationSlot;
         public IReadOnlyDictionary<BlsPublicKey, Slot> ProposalSlot => _proposalSlot;
 
+        public void ClearAttestationDutyForSlot(Slot slot)
+        {
+            _attestationDutyBySlot.TryRemove(slot, out _);
+        }
+
         public void ClearProposalDutyForSlot(Slot slot)
         {
             _proposalDutyBySlot.Remove(slot);
+        }
+
+        public IList<(BlsPublicKey, Shard)>? GetAttestationDutyForSlot(Slot slot)
+        {
+            // TODO: Consider TryRemove that pulls it out of the dictionary for processing
+            return _attestationDutyBySlot.GetValueOrDefault(slot);
         }
 
         public BlsPublicKey? GetProposalDutyForSlot(Slot slot)
@@ -47,6 +60,9 @@ namespace Nethermind.HonestValidator
             // TODO: can look ahead to next epoch
             _attestationShard[key] = shard;
             _attestationSlot[key] = slot;
+
+            IList<(BlsPublicKey, Shard)> list = _attestationDutyBySlot.GetOrAdd(slot, slot => new List<(BlsPublicKey, Shard)>());
+            list.Add((key, shard));
         }
 
         public void SetProposalDuty(BlsPublicKey key, Slot slot)
