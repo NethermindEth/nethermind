@@ -23,6 +23,7 @@ using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Facade.Transactions;
 using Nethermind.State;
 using Nethermind.Wallet;
 using NSubstitute;
@@ -51,7 +52,8 @@ namespace Nethermind.AuRa.Test.Transactions
             var innerTxSource = Substitute.For<ITxSource>();
             innerTxSource.GetTransactions(blockHeader, gasLimit).Returns(new[] {tx});
             
-            var transactionFiller = new GeneratedTxSourceSealer(innerTxSource, new BasicWallet(Build.A.PrivateKey.TestObject), timestamper, stateReader, chainId);
+            TxNonceStateSealerFactory stateSealerFactory = new TxNonceStateSealerFactory(new BasicWallet(Build.A.PrivateKey.TestObject), timestamper, chainId, stateReader);
+            var transactionFiller = new GeneratedTxSourceSealer(innerTxSource, stateSealerFactory);
             
             var txResult= transactionFiller.GetTransactions(blockHeader, gasLimit).First();
 

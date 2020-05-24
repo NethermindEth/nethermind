@@ -34,6 +34,7 @@ using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
 using Nethermind.State;
 using Nethermind.Db.Blooms;
+using Nethermind.Facade.Transactions;
 using Nethermind.Wallet;
 
 namespace Nethermind.Runner.Ethereum.Steps
@@ -173,7 +174,8 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             if (needSigner)
             {
-                txSource = new GeneratedTxSourceSealer(txSource, new BasicWallet(_context.NodeKey), _context.Timestamper, readOnlyTxProcessingEnv.StateReader, _context.BlockTree.ChainId);
+                TxNonceStateSealerFactory stateSealerFactory = new TxNonceStateSealerFactory(new BasicWallet(_context.NodeKey), _context.Timestamper, _context.BlockTree.ChainId, readOnlyTxProcessingEnv.StateReader); 
+                txSource = new GeneratedTxSourceSealer(txSource, stateSealerFactory);
             }
 
             var txPermissionFilter = GetTxPermissionFilter(readOnlyTxProcessingEnv, readOnlyTransactionProcessorSource);
