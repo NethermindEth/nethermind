@@ -37,18 +37,17 @@ namespace Nethermind.Runner.Ethereum.Steps
             _logger = _context.LogManager.GetClassLogger();
         }
 
-        public async Task Execute()
+        public Task Execute()
         {
             if (_context.Config<IInitConfig>().ProcessingEnabled)
             {
 #pragma warning disable 4014
-                RunBlockTreeInitTasks();
+                return RunBlockTreeInitTasks();
 #pragma warning restore 4014
             }
             else
             {
-                if (_logger.IsWarn) _logger.Warn($"Shutting down the blockchain processor due to {nameof(InitConfig)}.{nameof(InitConfig.ProcessingEnabled)} set to false");
-                await (_context.BlockchainProcessor?.StopAsync() ?? Task.CompletedTask);
+                return Task.CompletedTask;
             }
         }
 
