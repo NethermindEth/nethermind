@@ -27,9 +27,9 @@ namespace Nethermind.HonestValidator.Services
         public ulong GenesisTime { get; private set; }
 
         public Slot LastAggregationSlotChecked { get; private set; }
-        
+
         public Slot LastAttestationSlotChecked { get; private set; }
-        
+
         public Slot LastStartSlotChecked { get; private set; }
 
         public bool NodeIsSyncing { get; private set; }

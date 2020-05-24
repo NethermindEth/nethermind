@@ -70,7 +70,7 @@ namespace Nethermind.HonestValidator
 
             _validatorState = new ValidatorState();
         }
-        
+
         /// <summary>
         /// Returns the domain for the 'domain_type' and 'fork_version'
         /// </summary>
@@ -119,24 +119,13 @@ namespace Nethermind.HonestValidator
         {
             var timeParameters = _timeParameterOptions.CurrentValue;
             ulong startTimeOfSlot = beaconChainInformation.GenesisTime + timeParameters.SecondsPerSlot * slot;
-            
+
             // Aggregate 2/3 way through slot
             ulong aggregationTime = startTimeOfSlot + (_timeParameterOptions.CurrentValue.SecondsPerSlot * 2 / 3);
 
             return aggregationTime;
         }
 
-        public ulong GetAttestationTime(BeaconChainInformation beaconChainInformation, Slot slot)
-        {
-            var timeParameters = _timeParameterOptions.CurrentValue;
-            ulong startTimeOfSlot = beaconChainInformation.GenesisTime + timeParameters.SecondsPerSlot * slot;
-            
-            // Attest 1/3 way through slot
-            ulong attestationTime = startTimeOfSlot + (_timeParameterOptions.CurrentValue.SecondsPerSlot / 3);
-
-            return attestationTime;
-        }
-        
         public BlsSignature GetAttestationSignature(Attestation unsignedAttestation, BlsPublicKey blsPublicKey)
         {
             var fork = _beaconChainInformation.Fork;
@@ -161,6 +150,17 @@ namespace Nethermind.HonestValidator
             var signature = _validatorKeyProvider.SignRoot(blsPublicKey, signingRoot);
 
             return signature;
+        }
+
+        public ulong GetAttestationTime(BeaconChainInformation beaconChainInformation, Slot slot)
+        {
+            var timeParameters = _timeParameterOptions.CurrentValue;
+            ulong startTimeOfSlot = beaconChainInformation.GenesisTime + timeParameters.SecondsPerSlot * slot;
+
+            // Attest 1/3 way through slot
+            ulong attestationTime = startTimeOfSlot + (_timeParameterOptions.CurrentValue.SecondsPerSlot / 3);
+
+            return attestationTime;
         }
 
         public BlsSignature GetBlockSignature(BeaconBlock block, BlsPublicKey blsPublicKey)
@@ -314,14 +314,13 @@ namespace Nethermind.HonestValidator
                 // In theory, there could be a reorg between start of slot and attestation, changing
                 // the attestation requirements, but currently (2020-05-24) only checking at start 
                 // of slot (above).
-                
+
                 LogDebug.ProcessingSlotAttestations(_logger, nextAttestationSlot, beaconChainInformation.Time, null);
                 await beaconChainInformation.SetLastAttestationSlotChecked(nextAttestationSlot);
                 await ProcessAttestationDutiesAsync(nextAttestationSlot, cancellationToken).ConfigureAwait(false);
             }
-            
+
             // TODO: Aggregation is done 2/3 way through slot
-            
         }
 
         public async Task ProcessAttestationDutiesAsync(Slot slot, CancellationToken cancellationToken)
@@ -340,15 +339,18 @@ namespace Nethermind.HonestValidator
                     try
                     {
                         if (_logger.IsDebug())
-                            LogDebug.RequestingAttestationFor(_logger, slot, _beaconChainInformation.Time, validatorPublicKey,
+                            LogDebug.RequestingAttestationFor(_logger, slot, _beaconChainInformation.Time,
+                                validatorPublicKey,
                                 null);
 
                         ApiResponse<Attestation> newAttestationResponse = await _beaconNodeApi
-                            .NewAttestationAsync(validatorPublicKey, false, slot, shard, cancellationToken).ConfigureAwait(false);
+                            .NewAttestationAsync(validatorPublicKey, false, slot, shard, cancellationToken)
+                            .ConfigureAwait(false);
                         if (newAttestationResponse.StatusCode == StatusCode.Success)
                         {
                             Attestation unsignedAttestation = newAttestationResponse.Content;
-                            BlsSignature attestationSignature = GetAttestationSignature(unsignedAttestation, validatorPublicKey);
+                            BlsSignature attestationSignature =
+                                GetAttestationSignature(unsignedAttestation, validatorPublicKey);
                             Attestation signedAttestation = new Attestation(unsignedAttestation.AggregationBits,
                                 unsignedAttestation.Data, attestationSignature);
 
@@ -356,7 +358,7 @@ namespace Nethermind.HonestValidator
                             // All validators are attesting the same data, just in different committees with different indexes
                             // => Get the data once, group relevant validators by committee, sign and aggregate within each
                             // committee (marking relevant aggregation bits), then publish one pre-aggregated value? 
-                            
+
                             if (_logger.IsDebug())
                                 LogDebug.PublishingSignedAttestation(_logger, slot, validatorPublicKey.ToShortString(),
                                     signedAttestation.Data,
@@ -386,6 +388,7 @@ namespace Nethermind.HonestValidator
                         activity.Stop();
                     }
                 }
+
                 _validatorState.ClearAttestationDutyForSlot(slot);
             }
         }
@@ -404,7 +407,6 @@ namespace Nethermind.HonestValidator
                     activity.TraceId, activity.SpanId);
                 try
                 {
-
                     if (_logger.IsInfo())
                         Log.ProposalDutyFor(_logger, slot, _beaconChainInformation.Time, blsPublicKey, null);
 
@@ -496,7 +498,7 @@ namespace Nethermind.HonestValidator
                         _validatorState.AttestationShard.GetValueOrDefault(validatorDuty.ValidatorPublicKey);
                     if (validatorDuty.AttestationSlot.HasValue &&
                         (validatorDuty.AttestationSlot != currentAttestationSlot ||
-                        validatorDuty.AttestationShard != currentAttestationShard))
+                         validatorDuty.AttestationShard != currentAttestationShard))
                     {
                         _validatorState.SetAttestationDuty(validatorDuty.ValidatorPublicKey,
                             validatorDuty.AttestationSlot.Value,

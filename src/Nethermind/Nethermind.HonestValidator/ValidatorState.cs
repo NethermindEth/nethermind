@@ -23,7 +23,9 @@ namespace Nethermind.HonestValidator
 {
     public class ValidatorState
     {
-        private readonly ConcurrentDictionary<Slot, IList<(BlsPublicKey, Shard)>> _attestationDutyBySlot = new ConcurrentDictionary<Slot, IList<(BlsPublicKey, Shard)>>();
+        private readonly ConcurrentDictionary<Slot, IList<(BlsPublicKey, Shard)>> _attestationDutyBySlot =
+            new ConcurrentDictionary<Slot, IList<(BlsPublicKey, Shard)>>();
+
         private readonly Dictionary<BlsPublicKey, Shard> _attestationShard = new Dictionary<BlsPublicKey, Shard>();
         private readonly Dictionary<BlsPublicKey, Slot> _attestationSlot = new Dictionary<BlsPublicKey, Slot>();
 
@@ -61,7 +63,8 @@ namespace Nethermind.HonestValidator
             _attestationShard[key] = shard;
             _attestationSlot[key] = slot;
 
-            IList<(BlsPublicKey, Shard)> list = _attestationDutyBySlot.GetOrAdd(slot, slot => new List<(BlsPublicKey, Shard)>());
+            IList<(BlsPublicKey, Shard)> list =
+                _attestationDutyBySlot.GetOrAdd(slot, slot => new List<(BlsPublicKey, Shard)>());
             list.Add((key, shard));
         }
 
