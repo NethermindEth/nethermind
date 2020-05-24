@@ -177,7 +177,7 @@ namespace Ethereum.Test.Base
                 blockProcessor,
                 new TxSignaturesRecoveryStep(specProvider, ecdsa, NullTxPool.Instance, _logManager),
                 _logManager,
-                false);
+                BlockchainProcessor.Options.NoReceipts);
 
             InitializeTestState(test, stateProvider, storageProvider, specProvider);
 

@@ -89,7 +89,7 @@ namespace Nethermind.JsonRpc.Benchmark
                 blockProcessor,
                 new TxSignaturesRecoveryStep(specProvider, new EthereumEcdsa(specProvider.ChainId, LimboLogs.Instance), NullTxPool.Instance, LimboLogs.Instance),
                 LimboLogs.Instance,
-                false);
+                BlockchainProcessor.Options.NoReceipts);
 
             blockchainProcessor.Process(genesisBlock, ProcessingOptions.None, NullBlockTracer.Instance);
             blockchainProcessor.Process(block1, ProcessingOptions.None, NullBlockTracer.Instance);

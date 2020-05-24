@@ -310,7 +310,7 @@ namespace Nethermind.PerfTest
 
             /* blockchain processing */
             var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, processor, stateDb, codeDb, stateProvider, storageProvider, transactionPool, receiptStorage, _logManager);
-            var blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, recoveryStep, _logManager, true);
+            var blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, recoveryStep, _logManager, BlockchainProcessor.Options.Default);
 
             foreach ((Address address, ChainSpecAllocation allocation) in chainSpec.Allocations)
             {
