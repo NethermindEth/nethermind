@@ -25,11 +25,11 @@ using Nethermind.TxPool.Analytics;
 namespace Nethermind.Runner.Ethereum.Steps
 {
     [RunnerStepDependencies(typeof(InitializeNetwork))]
-    public class LoadAnalyticsPlugin : IStep
+    public class LoadAnalyticsPlugins : IStep
     {
         private readonly EthereumRunnerContext _context;
 
-        public LoadAnalyticsPlugin(EthereumRunnerContext context)
+        public LoadAnalyticsPlugins(EthereumRunnerContext context)
         {
             _context = context ?? throw new ArgumentNullException(nameof(context));
         }
