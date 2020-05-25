@@ -52,12 +52,9 @@ namespace Nethermind.Network.Test.Discovery
         private INodeTable _nodeTable;
         private IConfigProvider _configurationProvider;
         private ITimestamper _timestamper;
-<<<<<<< HEAD
         private IEvictionManager _evictionManagerMock;
         private ILogger _loggerMock;
-=======
         private IIPResolver _ipResolverMock;
->>>>>>> master
         private int _port = 1;
         private string _host = "192.168.1.27";
 
