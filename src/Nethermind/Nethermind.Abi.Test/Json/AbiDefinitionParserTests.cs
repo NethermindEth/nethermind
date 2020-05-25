@@ -18,7 +18,7 @@ using System;
 using FluentAssertions;
 using FluentAssertions.Json;
 using Nethermind.Consensus.AuRa.Contracts;
-using Nethermind.Serialization.Json.Abi;
+using Nethermind.Consensus.AuRa.Json;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 

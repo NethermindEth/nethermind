@@ -106,7 +106,6 @@ namespace Nethermind.Consensus.AuRa.Validators
         {
             if (block.IsGenesis)
             {
-                ValidatorStore.SetValidators(block.Number, LoadValidatorsFromContract(block.Header));
                 return;
             }
             
@@ -195,6 +194,11 @@ namespace Nethermind.Consensus.AuRa.Validators
         public override void OnBlockProcessingEnd(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None)
         {
             base.OnBlockProcessingEnd(block, receipts, options);
+            
+            if (block.IsGenesis)
+            {
+                ValidatorStore.SetValidators(block.Number, LoadValidatorsFromContract(block.Header));
+            }
             
             if (ValidatorContract.CheckInitiateChangeEvent(block.Header, receipts, out var potentialValidators))
             {

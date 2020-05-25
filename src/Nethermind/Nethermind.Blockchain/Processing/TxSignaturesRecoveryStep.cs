@@ -25,14 +25,18 @@ namespace Nethermind.Blockchain.Processing
 {
     public class TxSignaturesRecoveryStep : IBlockDataRecoveryStep
     {
-        private readonly ISpecProvider _specProvider;
         private readonly IEthereumEcdsa _ecdsa;
         private readonly ITxPool _txPool;
         private readonly ILogger _logger;
 
-        public TxSignaturesRecoveryStep(ISpecProvider specProvider, IEthereumEcdsa ecdsa, ITxPool txPool, ILogManager logManager)
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="ecdsa">Needed to recover an address from a signature.</param>
+        /// <param name="txPool">Finding transactions in mempool can speed up address recovery.</param>
+        /// <param name="logManager">Logging</param>
+        public TxSignaturesRecoveryStep(IEthereumEcdsa ecdsa, ITxPool txPool, ILogManager logManager)
         {
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _txPool = txPool ?? throw new ArgumentNullException(nameof(ecdsa));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -44,14 +48,13 @@ namespace Nethermind.Blockchain.Processing
             {
                 return;
             }
-
-            bool isEip155Enabled = _specProvider.GetSpec(block.Number).IsEip155Enabled;
+            
             for (int i = 0; i < block.Transactions.Length; i++)
             {
                 _txPool.TryGetPendingTransaction(block.Transactions[i].Hash, out var transaction);
                 Address sender = transaction?.SenderAddress;
                 
-                block.Transactions[i].SenderAddress = sender ?? _ecdsa.RecoverAddress(block.Transactions[i], isEip155Enabled);
+                block.Transactions[i].SenderAddress = sender ?? _ecdsa.RecoverAddress(block.Transactions[i]);
                 if(_logger.IsTrace) _logger.Trace($"Recovered {block.Transactions[i].SenderAddress} sender for {block.Transactions[i].Hash} (tx pool cached value: {sender})");
             }
         }

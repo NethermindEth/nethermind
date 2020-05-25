@@ -422,14 +422,7 @@ namespace Nethermind.Blockchain
             }
 
             bool isKnown = IsKnownBlock(header.Number, header.Hash);
-            if (header.Number == 0)
-            {
-                if (BestSuggestedHeader != null)
-                {
-                    throw new InvalidOperationException("Genesis block should be added only once");
-                }
-            }
-            else if (isKnown && (BestSuggestedHeader?.Number ?? 0) >= header.Number)
+            if (isKnown && (BestSuggestedHeader?.Number ?? 0) >= header.Number)
             {
                 if (_logger.IsTrace)
                 {
@@ -438,7 +431,8 @@ namespace Nethermind.Blockchain
 
                 return AddBlockResult.AlreadyKnown;
             }
-            else if (!IsKnownBlock(header.Number - 1, header.ParentHash))
+            
+            if (!header.IsGenesis && !IsKnownBlock(header.Number - 1, header.ParentHash))
             {
                 if (_logger.IsTrace)
                 {

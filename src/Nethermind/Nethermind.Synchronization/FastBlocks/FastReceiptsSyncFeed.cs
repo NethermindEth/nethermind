@@ -483,7 +483,7 @@ namespace Nethermind.Synchronization.FastBlocks
             for (int i = 0; i < receipts.Count; i++)
             {
                 (Block block, var txReceipts) = receipts[i];
-                _receiptStorage.Insert(block, txReceipts);
+                _receiptStorage.Insert(block, true, txReceipts);
             }
         }
 

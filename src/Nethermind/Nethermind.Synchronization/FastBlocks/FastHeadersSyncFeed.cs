@@ -478,12 +478,6 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 _nextHeaderHash = header.ParentHash;
                 _nextHeaderDiff = (header.TotalDifficulty ?? 0) - header.Difficulty;
-
-                long parentNumber = header.Number - 1;
-                if (_dependencies.TryRemove(parentNumber, out HeadersSyncBatch batch))
-                {
-                    InsertHeaders(batch);
-                }
             }
 
             return insertOutcome;

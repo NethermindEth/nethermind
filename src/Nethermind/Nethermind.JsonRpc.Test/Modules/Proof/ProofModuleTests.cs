@@ -73,7 +73,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             ProofModuleFactory moduleFactory = new ProofModuleFactory(
                 _dbProvider,
                 _blockTree,
-                new CompositeDataRecoveryStep(new TxSignaturesRecoveryStep(_specProvider, new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance), NullTxPool.Instance, LimboLogs.Instance)),
+                new CompositeDataRecoveryStep(new TxSignaturesRecoveryStep(new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance), NullTxPool.Instance, LimboLogs.Instance)),
                 receiptStorage,
                 _specProvider,
                 LimboLogs.Instance);

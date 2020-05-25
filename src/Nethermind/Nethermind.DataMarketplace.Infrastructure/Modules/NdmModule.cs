@@ -65,7 +65,6 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
                 readOnlyTxProcessingEnv.TransactionProcessor,
                 services.Ecdsa,
                 services.BloomStorage,
-                services.SpecProvider,
                 logManager,
                 false,
                 jsonRpcConfig.FindLogBlockDepthLimit);

@@ -98,7 +98,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 readOnlyTxProcessingEnv.TransactionProcessor,
                 _ethereumEcdsa,
                 _bloomStorage,
-                _specProvider,
                 _logManager,
                 _isMining,
                 _rpcConfig.FindLogBlockDepthLimit);

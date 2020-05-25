@@ -16,6 +16,7 @@
     <PackageReference Include="NLog.Targets.Seq" Version="1.1.0" />
     <PackageReference Include="NLog" Version="4.7.0" />
     <PackageReference Include="Seq.Api" Version="5.1.2" />
+    <PackageReference Include="System.IO.Abstractions" Version="11.0.6" />
     <PackageReference Include="YamlDotNet" Version="8.1.0" />
   </ItemGroup>
   <ItemGroup>
@@ -78,6 +79,9 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Update="configs\spaceneth_persistent.cfg">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Update="configs\ndm_provider_mainnet_proxy.cfg">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
