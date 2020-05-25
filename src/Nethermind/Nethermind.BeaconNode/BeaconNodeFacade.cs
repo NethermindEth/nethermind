@@ -170,10 +170,56 @@ namespace Nethermind.BeaconNode
             }
         }
 
-        public Task<ApiResponse> PublishAttestationAsync(Attestation signedAttestation,
+        public async Task<ApiResponse> PublishAttestationAsync(Attestation signedAttestation,
             CancellationToken cancellationToken)
         {
-            throw new NotImplementedException();
+            try
+            {
+                if (!_store.IsInitialized)
+                {
+                    return new ApiResponse(StatusCode.CurrentlySyncing);
+                }
+
+                // NOTE: For an attestation generated 1/3 way during the slot, it will fail validation (as it is not in the past),
+                // therefore it will never be accepted locally, but always broadcast.
+                // i.e. broadcast, aggregated, added to operations pool, and pulled out to be included in subsequent blocks,
+                // then applied (from the block)
+                // But we want to include valid attestations in fork choice rules.
+                // So, if might be valid in future, then hold until it is; i.e. check each slot
+                // Once pending attestations are validated, add to latest message, but also to pool (for future blocks)
+                // Need to exclude from pool if included in another block (but only if/when building on that chain)
+                // A reorg could make previously invalid attestations now valid, or previously included attestations free, etc
+                // i.e. don't remove, but need to keep/cache until finalisation (of target) has passed
+                
+                bool acceptedLocally = false;
+                try
+                {
+                    await _forkChoice.OnAttestationAsync(_store, signedAttestation).ConfigureAwait(false);
+                    acceptedLocally = true;
+                }
+                catch (Exception ex)
+                {
+                    if (_logger.IsWarn()) Log.AttestationNotAcceptedLocally(_logger, signedAttestation, ex);
+                }
+
+                // TODO: Network publishing
+                //if (_logger.IsDebug()) LogDebug.PublishingAttestationToNetwork(_logger, signedAttestation, null);
+                //await _networkPeering.PublishAttestationAsync(signedAttestation).ConfigureAwait(false);
+
+                if (acceptedLocally)
+                {
+                    return new ApiResponse(StatusCode.Success);
+                }
+                else
+                {
+                    return new ApiResponse(StatusCode.BroadcastButFailedValidation);
+                }
+            }
+            catch (Exception ex)
+            {
+                if (_logger.IsWarn()) Log.ApiErrorPublishAttestation(_logger, ex);
+                throw;
+            }
         }
 
         public async Task<ApiResponse> PublishBlockAsync(SignedBeaconBlock signedBlock,

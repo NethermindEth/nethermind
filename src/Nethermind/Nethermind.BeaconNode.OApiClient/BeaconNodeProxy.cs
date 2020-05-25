@@ -172,10 +172,28 @@ namespace Nethermind.BeaconNode.OApiClient
             return ApiResponse.Create((StatusCode) statusCode, content);
         }
 
-        public Task<ApiResponse> PublishAttestationAsync(Attestation signedAttestation,
+        public async Task<ApiResponse> PublishAttestationAsync(Attestation signedAttestation,
             CancellationToken cancellationToken)
         {
-            throw new System.NotImplementedException();
+            string uri = "validator/attestation";
+
+            await using var memoryStream = new MemoryStream();
+            await JsonSerializer.SerializeAsync(memoryStream, signedAttestation, _jsonSerializerOptions, cancellationToken);
+            memoryStream.Position = 0;
+            using var content = new StreamContent(memoryStream);
+            content.Headers.ContentType = new MediaTypeHeaderValue(JsonContentType);
+            using HttpResponseMessage httpResponse = await _httpClient.PostAsync(uri, content, cancellationToken);
+
+            int statusCode = (int) httpResponse.StatusCode;
+            if (statusCode == (int) StatusCode.InvalidRequest
+                || statusCode == (int) StatusCode.CurrentlySyncing)
+            {
+                return new ApiResponse((StatusCode) statusCode);
+            }
+
+            httpResponse.EnsureSuccessStatusCode(); // throws if not 200-299
+
+            return new ApiResponse((StatusCode) statusCode);
         }
 
         public async Task<ApiResponse> PublishBlockAsync(SignedBeaconBlock signedBlock,

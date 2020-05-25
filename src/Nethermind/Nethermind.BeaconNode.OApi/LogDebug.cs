@@ -16,6 +16,7 @@
 
 using System;
 using Microsoft.Extensions.Logging;
+using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 
 namespace Nethermind.BeaconNode.OApi
@@ -40,9 +41,14 @@ namespace Nethermind.BeaconNode.OApi
                 "Node syncing status requested.");
 
         public static readonly Action<ILogger, ulong, ulong, string, Exception?> NewAttestationRequested =
-            LoggerMessage.Define<ulong, ulong, string>(LogLevel.Information,
+            LoggerMessage.Define<ulong, ulong, string>(LogLevel.Debug,
                 new EventId(6483, nameof(NewAttestationRequested)),
                 "New attestation requested for slot {Slot}, shard {Shard}, for validator {ValidatorPublicKey}.");
         
+        public static readonly Action<ILogger, Slot?, CommitteeIndex?, string?, BlsSignature?, Exception?>
+            AttestationPublished =
+                LoggerMessage.Define<Slot?, CommitteeIndex?, string?, BlsSignature?>(LogLevel.Debug,
+                    new EventId(6484, nameof(AttestationPublished)),
+                    "Attestation received for slot {Slot}, index {Index}, bits {AggregationBits}, with signature {Signature}");
     }
 }
