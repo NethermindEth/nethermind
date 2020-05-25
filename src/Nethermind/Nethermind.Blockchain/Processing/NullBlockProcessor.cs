@@ -34,7 +34,7 @@ namespace Nethermind.Blockchain.Processing
         
         public static NullBlockProcessor Instance => _instance ?? LazyInitializer.EnsureInitialized(ref _instance, () => new NullBlockProcessor());
 
-        public Block[] Process(Keccak branchStateRoot, List<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer)
+        public Block[] Process(Keccak newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer)
         {
             return suggestedBlocks.ToArray();
         }
