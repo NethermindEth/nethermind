@@ -29,10 +29,12 @@ namespace Nethermind.Runner.Ethereum.Steps
     public class LoadAnalyticsPlugins : IStep
     {
         private readonly EthereumRunnerContext _context;
+        private readonly ILogger _logger;
 
         public LoadAnalyticsPlugins(EthereumRunnerContext context)
         {
             _context = context ?? throw new ArgumentNullException(nameof(context));
+            _logger = context.LogManager.GetClassLogger();
         }
 
         private class LogDataPublisher : IDataPublisher
@@ -43,18 +45,18 @@ namespace Nethermind.Runner.Ethereum.Steps
             {
                 _logger = logManager.GetClassLogger();
             }
-            
+
             public void Publish<T>(T data) where T : class
             {
                 if (data == null)
                 {
                     return;
                 }
-                
-                if(_logger.IsInfo) _logger.Info(data.ToString());
+
+                if (_logger.IsInfo) _logger.Info(data.ToString());
             }
         }
-        
+
         private class GrpcLogPublisher : IDataPublisher
         {
             private readonly IGrpcServer _grpcServer;
@@ -65,50 +67,59 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _grpcServer = grpcServer ?? throw new ArgumentNullException(nameof(grpcServer));
                 _logger = logManager.GetClassLogger();
             }
-            
+
             public void Publish<T>(T data) where T : class
             {
                 if (data == null)
                 {
                     return;
                 }
-                
-                if(_logger.IsWarn) _logger.Warn($"Publishing data {data.ToString()}");
+
+                if (_logger.IsWarn) _logger.Warn($"Publishing data {data.ToString()}");
                 _grpcServer.PublishAsync<T>(data, "analytics");
-                
-                if(_logger.IsInfo) _logger.Info(data.ToString());
+
+                if (_logger.IsInfo) _logger.Info(data.ToString());
             }
         }
-        
+
         public virtual Task Execute()
         {
+            _logger.Warn("Loading analytics plugins");
             IInitConfig initConfig = _context.Config<IInitConfig>();
             IGrpcConfig grpcConfig = _context.Config<IGrpcConfig>();
-            
+
             foreach (string path in Directory.GetFiles(initConfig.PluginsDirectory))
             {
                 if (path.EndsWith("dll"))
                 {
+                    _logger.Warn($"Loading assembly {path}");
                     Assembly assembly = Assembly.LoadFile(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, path));
                     foreach (Type type in assembly.GetTypes())
                     {
                         AnalyticsLoaderAttribute? loader = type.GetCustomAttribute<AnalyticsLoaderAttribute>();
                         if (loader != null)
                         {
+                            _logger.Warn($"Activating pluging {type.Name}");
                             IAnalyticsPluginLoader? pluginLoader = Activator.CreateInstance(type) as IAnalyticsPluginLoader;
                             if (grpcConfig.Enabled && grpcConfig.ProducerEnabled)
                             {
+                                _logger.Warn($"Initializing gRPC for {type.Name}");
                                 pluginLoader?.Init(_context.FileSystem, _context.TxPool, new GrpcLogPublisher(_context.GrpcServer, _context.LogManager), _context.LogManager);
                             }
                             else
                             {
+                                _logger.Warn($"Initializing log publisher for {type.Name}");
                                 pluginLoader?.Init(_context.FileSystem, _context.TxPool, new LogDataPublisher(_context.LogManager), _context.LogManager);
                             }
                         }
                     }
                 }
+                else
+                {
+                    _logger.Warn($"Skipping {path}");
+                }
             }
-            
+
             return Task.CompletedTask;
         }
     }
