@@ -24,7 +24,7 @@ using Nethermind.TxPool.Analytics;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
-    [RunnerStepDependencies]
+    [RunnerStepDependencies(typeof(InitializeNetwork))]
     public class LoadAnalyticsPlugin : IStep
     {
         private readonly EthereumRunnerContext _context;
@@ -61,7 +61,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             {
                 if (path.EndsWith("dll"))
                 {
-                    Assembly assembly = Assembly.LoadFile(path);
+                    Assembly assembly = Assembly.LoadFile(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, path));
                     foreach (Type type in assembly.GetTypes())
                     {
                         AnalyticsLoaderAttribute? loader = type.GetCustomAttribute<AnalyticsLoaderAttribute>();
