@@ -65,21 +65,11 @@ namespace Nethermind.Core2.Json.Test
             
             // Assert
             
-            // bit array is little endian,
-            // i.e. byte[] { 0x21, 0x03 }
-            // = bool[] { T, F, F, F, F, T, F, F,
-            //            T, T, F, F, F, F, F, F }
-            // = int[] { 0x321 }
+            // Spec 0.10.1 has json to hex values, of format byte
+            // If converted bits to bytes, e.g. little ending, then would not communicate length.
+            // Convert bit 0 => 0x00, 1 => 0x01, and byte sequence of 0x00 and 0x01.
             
-            // Spec 0.10.1 has json to hex values, but then can not communicate length
-            
-            // jsonString.ShouldBe("{\"aggregation_bits\":\"0x321\",\"data\":{" +
-            //                     "\"committee_index\":2,\"root\":\"0x1212121212121212121212121212121212121212121212121212121212121212\",\"slot\":21," +
-            //                     "\"source\":{\"epoch\":1,\"root\":\"0x3434343434343434343434343434343434343434343434343434343434343434\"}" +
-            //                     "\"target\":{\"epoch\":2,\"root\":\"0x5656565656565656565656565656565656565656565656565656565656565656\"}" +
-            //                     "},\"signature\":\"0xefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef\"}");
-
-            jsonString.ShouldBe("{\"aggregation_bits\":[true,false,false,false,false,true,false,false,true,true,false],\"data\":{" +
+            jsonString.ShouldBe("{\"aggregation_bits\":\"0x0100000000010000010100\",\"data\":{" +
                                 "\"beacon_block_root\":\"0x1212121212121212121212121212121212121212121212121212121212121212\",\"index\":2,\"slot\":21," +
                                 "\"source\":{\"epoch\":1,\"root\":\"0x3434343434343434343434343434343434343434343434343434343434343434\"}," +
                                 "\"target\":{\"epoch\":2,\"root\":\"0x5656565656565656565656565656565656565656565656565656565656565656\"}" +
@@ -92,7 +82,7 @@ namespace Nethermind.Core2.Json.Test
             // Arrange
             JsonSerializerOptions options = new JsonSerializerOptions();
             options.ConfigureNethermindCore2();
-            string jsonString = "{\"aggregation_bits\":[true,false,false,false,false,true,false,false,true,true,false],\"data\":{" +
+            string jsonString = "{\"aggregation_bits\":\"0x0100000000010000010100\",\"data\":{" +
                                 "\"beacon_block_root\":\"0x1212121212121212121212121212121212121212121212121212121212121212\",\"index\":2,\"slot\":21," +
                                 "\"source\":{\"epoch\":1,\"root\":\"0x3434343434343434343434343434343434343434343434343434343434343434\"}," +
                                 "\"target\":{\"epoch\":2,\"root\":\"0x5656565656565656565656565656565656565656565656565656565656565656\"}" +

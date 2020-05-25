@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -27,12 +28,14 @@ namespace Nethermind.Core2.Json
     {
         public override BitArray Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
-            return new BitArray(JsonSerializer.Deserialize<bool[]>(ref reader, options));
+            byte[] bytes = reader.GetBytesFromPrefixedHex();
+            return new BitArray(bytes.Select(x => x != 0).ToArray());
         }
 
         public override void Write(Utf8JsonWriter writer, BitArray value, JsonSerializerOptions options)
         {
-            JsonSerializer.Serialize(writer, value.Cast<bool>(), options);
+            byte[] bytes = value.Cast<bool>().Select(x => x ? (byte)0x01 : (byte)0x00).ToArray();
+            writer.WritePrefixedHexStringValue(bytes);
         }
     }
 }
