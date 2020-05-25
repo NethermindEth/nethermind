@@ -87,7 +87,7 @@ namespace Nethermind.JsonRpc.Benchmark
             BlockchainProcessor blockchainProcessor = new BlockchainProcessor(
                 blockTree,
                 blockProcessor,
-                new TxSignaturesRecoveryStep(specProvider, new EthereumEcdsa(specProvider.ChainId, LimboLogs.Instance), NullTxPool.Instance, LimboLogs.Instance),
+                new TxSignaturesRecoveryStep(new EthereumEcdsa(specProvider.ChainId, LimboLogs.Instance), NullTxPool.Instance, LimboLogs.Instance),
                 LimboLogs.Instance,
                 false);
 
@@ -109,7 +109,6 @@ namespace Nethermind.JsonRpc.Benchmark
                 transactionProcessor, 
                 new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance),
                 bloomStorage,
-                specProvider,
                 LimboLogs.Instance,
                 false);
             

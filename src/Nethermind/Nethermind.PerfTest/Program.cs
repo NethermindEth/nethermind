@@ -277,7 +277,7 @@ namespace Nethermind.PerfTest
             var blockTree = new UnprocessedBlockTreeWrapper(new BlockTree(blocksDb, headersDb, blockInfosDb, blockInfoRepository, specProvider, transactionPool, new BloomStorage(new BloomConfig(), dbProvider.HeadersDb, new InMemoryDictionaryFileStoreFactory()), _logManager));
             var receiptStorage = new InMemoryReceiptStorage();
 
-            IBlockDataRecoveryStep recoveryStep = new TxSignaturesRecoveryStep(specProvider, ethereumSigner, transactionPool, _logManager);
+            IBlockDataRecoveryStep recoveryStep = new TxSignaturesRecoveryStep(ethereumSigner, transactionPool, _logManager);
 
             /* blockchain processing */
             var blockhashProvider = new BlockhashProvider(blockTree, LimboLogs.Instance);

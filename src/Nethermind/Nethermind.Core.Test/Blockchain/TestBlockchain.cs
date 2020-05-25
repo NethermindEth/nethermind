@@ -113,7 +113,7 @@ namespace Nethermind.Core.Test.Blockchain
             TxProcessor = new TransactionProcessor(SpecProvider, State, Storage, virtualMachine, LimboLogs.Instance);
             BlockProcessor = CreateBlockProcessor();
 
-            BlockchainProcessor chainProcessor = new BlockchainProcessor(BlockTree, BlockProcessor, new TxSignaturesRecoveryStep(SpecProvider, EthereumEcdsa, TxPool, LimboLogs.Instance), LimboLogs.Instance, true);
+            BlockchainProcessor chainProcessor = new BlockchainProcessor(BlockTree, BlockProcessor, new TxSignaturesRecoveryStep(EthereumEcdsa, TxPool, LimboLogs.Instance), LimboLogs.Instance, true);
             chainProcessor.Start();
 
             StateReader = new StateReader(StateDb, CodeDb, LimboLogs.Instance);
