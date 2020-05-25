@@ -112,7 +112,7 @@ namespace Nethermind.Core.Test.Blockchain
             VirtualMachine virtualMachine = new VirtualMachine(State, Storage, new BlockhashProvider(BlockTree, LimboLogs.Instance), SpecProvider, LimboLogs.Instance);
             TxProcessor = new TransactionProcessor(SpecProvider, State, Storage, virtualMachine, LimboLogs.Instance);
             BlockProcessor = CreateBlockProcessor();
-            
+
             BlockchainProcessor chainProcessor = new BlockchainProcessor(BlockTree, BlockProcessor, new TxSignaturesRecoveryStep(EthereumEcdsa, TxPool, LimboLogs.Instance), LimboLogs.Instance, BlockchainProcessor.Options.Default);
             chainProcessor.Start();
 
