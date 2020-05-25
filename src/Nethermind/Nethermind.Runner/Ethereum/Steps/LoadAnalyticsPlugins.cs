@@ -18,6 +18,7 @@ using System;
 using System.IO;
 using System.Reflection;
 using System.Threading.Tasks;
+using Nethermind.Grpc;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
 using Nethermind.TxPool.Analytics;
@@ -54,9 +55,36 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
         }
         
+        private class GrpcLogPublisher : IDataPublisher
+        {
+            private readonly IGrpcServer _grpcServer;
+            private readonly ILogger _logger;
+
+            public GrpcLogPublisher(IGrpcServer grpcServer, ILogManager logManager)
+            {
+                _grpcServer = grpcServer ?? throw new ArgumentNullException(nameof(grpcServer));
+                _logger = logManager.GetClassLogger();
+            }
+            
+            public void Publish<T>(T data) where T : class
+            {
+                if (data == null)
+                {
+                    return;
+                }
+                
+                if(_logger.IsWarn) _logger.Warn($"Publishing data {data.ToString()}");
+                _grpcServer.PublishAsync<T>(data, "analytics");
+                
+                if(_logger.IsInfo) _logger.Info(data.ToString());
+            }
+        }
+        
         public virtual Task Execute()
         {
             IInitConfig initConfig = _context.Config<IInitConfig>();
+            IGrpcConfig grpcConfig = _context.Config<IGrpcConfig>();
+            
             foreach (string path in Directory.GetFiles(initConfig.PluginsDirectory))
             {
                 if (path.EndsWith("dll"))
@@ -68,7 +96,14 @@ namespace Nethermind.Runner.Ethereum.Steps
                         if (loader != null)
                         {
                             IAnalyticsPluginLoader? pluginLoader = Activator.CreateInstance(type) as IAnalyticsPluginLoader;
-                            pluginLoader?.Init(_context.FileSystem, _context.TxPool, new LogDataPublisher(_context.LogManager), _context.LogManager);
+                            if (grpcConfig.Enabled && grpcConfig.ProducerEnabled)
+                            {
+                                pluginLoader?.Init(_context.FileSystem, _context.TxPool, new GrpcLogPublisher(_context.GrpcServer, _context.LogManager), _context.LogManager);
+                            }
+                            else
+                            {
+                                pluginLoader?.Init(_context.FileSystem, _context.TxPool, new LogDataPublisher(_context.LogManager), _context.LogManager);
+                            }
                         }
                     }
                 }

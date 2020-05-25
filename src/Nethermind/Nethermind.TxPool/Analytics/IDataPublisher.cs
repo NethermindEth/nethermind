@@ -18,6 +18,6 @@ namespace Nethermind.TxPool.Analytics
 {
     public interface IDataPublisher
     {
-        void Publish<T>(T data);
+        void Publish<T>(T data) where T : class;
     }
 }
