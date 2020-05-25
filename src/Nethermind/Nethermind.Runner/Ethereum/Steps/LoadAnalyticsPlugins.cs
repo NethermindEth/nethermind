@@ -16,6 +16,7 @@
 
 using System;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
 using Nethermind.Grpc;
@@ -84,39 +85,40 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         public virtual Task Execute()
         {
-            _logger.Warn("Loading analytics plugins");
             IInitConfig initConfig = _context.Config<IInitConfig>();
             IGrpcConfig grpcConfig = _context.Config<IGrpcConfig>();
 
-            foreach (string path in Directory.GetFiles(initConfig.PluginsDirectory))
+            
+            string fullPluginsDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory!, initConfig.PluginsDirectory);
+            string[] pluginFiles = Directory.GetFiles(fullPluginsDir).Where(p => p.EndsWith("dll")).ToArray();
+
+            if (pluginFiles.Length > 0)
             {
-                if (path.EndsWith("dll"))
+                if (_logger.IsInfo) _logger.Info($"Loading {pluginFiles.Length} analytics plugins from {fullPluginsDir}");
+            }
+
+            foreach (string path in pluginFiles)
+            {
+                if (_logger.IsInfo) _logger.Warn($"Loading assembly {path}");
+                Assembly assembly = Assembly.LoadFile(Path.Combine(fullPluginsDir, path));
+                foreach (Type type in assembly.GetTypes())
                 {
-                    _logger.Warn($"Loading assembly {path}");
-                    Assembly assembly = Assembly.LoadFile(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, path));
-                    foreach (Type type in assembly.GetTypes())
+                    AnalyticsLoaderAttribute? loader = type.GetCustomAttribute<AnalyticsLoaderAttribute>();
+                    if (loader != null)
                     {
-                        AnalyticsLoaderAttribute? loader = type.GetCustomAttribute<AnalyticsLoaderAttribute>();
-                        if (loader != null)
+                        if(_logger.IsWarn) _logger.Warn($"Activating plugin {type.Name} from {path} {new FileInfo(path).CreationTime}");
+                        IAnalyticsPluginLoader? pluginLoader = Activator.CreateInstance(type) as IAnalyticsPluginLoader;
+                        if (grpcConfig.Enabled && grpcConfig.ProducerEnabled)
                         {
-                            _logger.Warn($"Activating pluging {type.Name}");
-                            IAnalyticsPluginLoader? pluginLoader = Activator.CreateInstance(type) as IAnalyticsPluginLoader;
-                            if (grpcConfig.Enabled && grpcConfig.ProducerEnabled)
-                            {
-                                _logger.Warn($"Initializing gRPC for {type.Name}");
-                                pluginLoader?.Init(_context.FileSystem, _context.TxPool, new GrpcLogPublisher(_context.GrpcServer, _context.LogManager), _context.LogManager);
-                            }
-                            else
-                            {
-                                _logger.Warn($"Initializing log publisher for {type.Name}");
-                                pluginLoader?.Init(_context.FileSystem, _context.TxPool, new LogDataPublisher(_context.LogManager), _context.LogManager);
-                            }
+                            if(_logger.IsWarn) _logger.Warn($"Initializing gRPC for {type.Name}");
+                            pluginLoader?.Init(_context.FileSystem, _context.TxPool, new GrpcLogPublisher(_context.GrpcServer, _context.LogManager), _context.LogManager);
+                        }
+                        else
+                        {
+                            if(_logger.IsWarn) _logger.Warn($"Initializing log publisher for {type.Name}");
+                            pluginLoader?.Init(_context.FileSystem, _context.TxPool, new LogDataPublisher(_context.LogManager), _context.LogManager);
                         }
                     }
-                }
-                else
-                {
-                    _logger.Warn($"Skipping {path}");
                 }
             }
 
