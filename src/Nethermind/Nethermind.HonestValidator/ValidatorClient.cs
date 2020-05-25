@@ -381,7 +381,7 @@ namespace Nethermind.HonestValidator
                     }
                     catch (Exception ex)
                     {
-                        Log.ExceptionProcessingProposalDuty(_logger, slot, validatorPublicKey, ex.Message, ex);
+                        Log.ExceptionProcessingAttestationDuty(_logger, slot, validatorPublicKey, ex.Message, ex);
                     }
                     finally
                     {

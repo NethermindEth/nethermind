@@ -121,6 +121,10 @@ namespace Nethermind.HonestValidator
             LoggerMessage.Define<Slot, BlsPublicKey, string>(LogLevel.Error,
                 new EventId(5457, nameof(ExceptionProcessingProposalDuty)),
                 "Exception processing proposal duty for slot {Slot} for validator public key {ValidatorPublicKey}, error message: {ErrorMessage}");
+        public static readonly Action<ILogger, Slot, BlsPublicKey, string, Exception?> ExceptionProcessingAttestationDuty =
+            LoggerMessage.Define<Slot, BlsPublicKey, string>(LogLevel.Error,
+                new EventId(5458, nameof(ExceptionProcessingAttestationDuty)),
+                "Exception processing attestation duty for slot {Slot} for validator public key {ValidatorPublicKey}, error message: {ErrorMessage}");
 
         // 8bxx finalization
 
