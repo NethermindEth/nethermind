@@ -39,12 +39,7 @@ namespace Ethereum.Blockchain.Block.Test
                 // it passes but causes the builds to take half an hour
                 return;
             }
-            
-            if (test.Name.Contains("suicideStorage"))
-            {
-                return;
-            }
-            
+
             await RunTest(test);
         }
         

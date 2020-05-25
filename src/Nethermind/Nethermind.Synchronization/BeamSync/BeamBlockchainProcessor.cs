@@ -219,6 +219,7 @@ namespace Nethermind.Synchronization.BeamSync
             if (block.IsGenesis)
             {
                 EnqueueForStandardProcessing(block);
+                return;
             }
 
             lock (_transitionLock)

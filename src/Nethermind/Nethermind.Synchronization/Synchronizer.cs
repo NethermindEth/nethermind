@@ -96,6 +96,11 @@ namespace Nethermind.Synchronization
 
         public void Start()
         {
+            if (!_syncConfig.SynchronizationEnabled)
+            {
+                return;
+            }
+            
             StartFullSyncComponents();
             if (_syncConfig.FastSync)
             {

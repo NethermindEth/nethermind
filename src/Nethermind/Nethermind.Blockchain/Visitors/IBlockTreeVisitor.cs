@@ -25,6 +25,11 @@ namespace Nethermind.Blockchain.Visitors
     public interface IBlockTreeVisitor
     {
         /// <summary>
+        /// Gives a hint to block tree that accepting new blocks should be halted for the length of the visit.
+        /// </summary>
+        bool PreventsAcceptingNewBlocks { get; }
+        
+        /// <summary>
         /// First block tree level to visit
         /// </summary>
         long StartLevelInclusive { get; }

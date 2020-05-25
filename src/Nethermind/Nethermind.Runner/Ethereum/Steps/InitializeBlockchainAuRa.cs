@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Linq;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
@@ -53,9 +54,8 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_context.StorageProvider == null) throw new StepDependencyException(nameof(_context.StorageProvider));
             if (_context.TxPool == null) throw new StepDependencyException(nameof(_context.TxPool));
             if (_context.ReceiptStorage == null) throw new StepDependencyException(nameof(_context.ReceiptStorage));
-            if (_context.AuRaBlockProcessorExtension == null) throw new StepDependencyException(nameof(_context.AuRaBlockProcessorExtension));
 
-            return new AuRaBlockProcessor(
+            var processor = new AuRaBlockProcessor(
                 _context.SpecProvider,
                 _context.BlockValidator,
                 _context.RewardCalculatorSource.Get(_context.TransactionProcessor),
@@ -67,10 +67,46 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.TxPool,
                 _context.ReceiptStorage,
                 _context.LogManager,
-                _context.AuRaBlockProcessorExtension,
                 _context.BlockTree,
                 GetTxPermissionFilter(),
                 GetGasLimitOverride());
+            processor.AuRaValidator = CreateAuRaValidator(processor);
+            return processor;
+        }
+
+        private IAuRaValidator CreateAuRaValidator(IBlockProcessor processor)
+        {
+            if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
+            if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
+            
+            _context.FinalizationManager = new AuRaBlockFinalizationManager(
+                _context.BlockTree, 
+                _context.ChainLevelInfoRepository, 
+                processor, 
+                _context.ValidatorStore, 
+                new ValidSealerStrategy(), 
+                _context.LogManager, 
+                _context.ChainSpec.AuRa.TwoThirdsMajorityTransition);
+            
+            IAuRaValidator validator = new AuRaValidatorFactory(
+                    _context.StateProvider, 
+                    _context.AbiEncoder, 
+                    _context.TransactionProcessor, 
+                    GetReadOnlyTransactionProcessorSource(), 
+                    _context.BlockTree, 
+                    _context.ReceiptStorage, 
+                    _context.ValidatorStore,
+                    _context.FinalizationManager,
+                    _context.LogManager,
+                    false)
+                .CreateValidatorProcessor(_context.ChainSpec.AuRa.Validators, _context.BlockTree.Head?.Header);
+
+            if (validator is IDisposable disposableValidator)
+            {
+                _context.DisposeStack.Push(disposableValidator);
+            }
+
+            return validator;
         }
 
         private ITxPermissionFilter? GetTxPermissionFilter()
@@ -132,16 +168,13 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_context.EthereumEcdsa == null) throw new StepDependencyException(nameof(_context.EthereumEcdsa));
             if (_context.NodeKey == null) throw new StepDependencyException(nameof(_context.NodeKey));
             
-            _context.ValidatorStore = new ValidatorStore(_context.DbProvider.BlockInfosDb);
             
-            IAuRaValidatorProcessorExtension validatorProcessorExtension = new AuRaValidatorProcessorFactory(_context.StateProvider, _context.AbiEncoder, _context.TransactionProcessor, GetReadOnlyTransactionProcessorSource(), _context.BlockTree, _context.ReceiptStorage, _context.ValidatorStore, _context.LogManager)
-                .CreateValidatorProcessor(_context.ChainSpec.AuRa.Validators);
+            _context.ValidatorStore = new ValidatorStore(_context.DbProvider.BlockInfosDb);
 
             AuRaStepCalculator auRaStepCalculator = new AuRaStepCalculator(_context.ChainSpec.AuRa.StepDuration, _context.Timestamper, _context.LogManager);
             _context.SealValidator = new AuRaSealValidator(_context.ChainSpec.AuRa, auRaStepCalculator, _context.ValidatorStore, _context.EthereumEcdsa, _context.LogManager);
             _context.RewardCalculatorSource = AuRaRewardCalculator.GetSource(_context.ChainSpec.AuRa, _context.AbiEncoder);
             _context.Sealer = new AuRaSealer(_context.BlockTree, _context.ValidatorStore, auRaStepCalculator, _context.NodeKey.Address, new BasicWallet(_context.NodeKey), new ValidSealerStrategy(), _context.LogManager);
-            _context.AuRaBlockProcessorExtension = validatorProcessorExtension;
         }
 
         private IReadOnlyTransactionProcessorSource GetReadOnlyTransactionProcessorSource() => 

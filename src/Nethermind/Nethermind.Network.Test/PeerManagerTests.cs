@@ -224,7 +224,7 @@ namespace Nethermind.Network.Test
             _storage.UpdateNodes(CreateNodes(count));
         }
 
-        [Test]
+        [Test, Retry(10)]
         public void Will_connect_to_a_candidate_node()
         {
             SetupPersistedPeers(1);

@@ -106,7 +106,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
                 return result;
             }
             
-            private Keccak GetState(BlockHeader parentHeader) => parentHeader.StateRoot;
+            private Keccak GetState(BlockHeader parentHeader) => parentHeader?.StateRoot ?? Keccak.EmptyTreeHash;
         }
     }
 }

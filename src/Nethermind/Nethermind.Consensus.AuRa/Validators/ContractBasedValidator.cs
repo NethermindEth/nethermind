@@ -33,7 +33,7 @@ using Nethermind.Db.Blooms;
 
 namespace Nethermind.Consensus.AuRa.Validators
 {
-    public class ContractBasedValidator : AuRaValidatorProcessorExtension
+    public class ContractBasedValidator : AuRaValidatorBase, IDisposable
     {
         private readonly ILogger _logger;
         private readonly IStateProvider _stateProvider;
@@ -46,8 +46,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         private IBlockFinalizationManager _blockFinalizationManager;
         private readonly IBlockTree _blockTree;
         private readonly IReceiptFinder _receiptFinder;
-        private bool _validatorUsedForSealing;
-
+        
         protected Address ContractAddress { get; }
         protected IAbiEncoder AbiEncoder { get; }
         protected ValidatorContract ValidatorContract => _validatorContract ??= CreateValidatorContract(ContractAddress);
@@ -64,8 +63,11 @@ namespace Nethermind.Consensus.AuRa.Validators
             IReceiptFinder receiptFinder,
             IValidatorStore validatorStore,
             IValidSealerStrategy validSealerStrategy,
+            IBlockFinalizationManager finalizationManager, 
+            BlockHeader parentHeader,
             ILogManager logManager,
-            long startBlockNumber) : base(validator, validSealerStrategy, validatorStore, logManager, startBlockNumber)
+            long startBlockNumber,
+            bool forSealing = false) : base(validator, validSealerStrategy, validatorStore, logManager, startBlockNumber, forSealing)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             ContractAddress = validator.Addresses?.FirstOrDefault() ?? throw new ArgumentException("Missing contract address for AuRa validator.", nameof(validator.Addresses));
@@ -76,34 +78,34 @@ namespace Nethermind.Consensus.AuRa.Validators
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             AbiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
             SetPendingValidators(LoadPendingValidators());
+            SetFinalizationManager(finalizationManager, parentHeader ?? _blockTree.Head?.Header);
         }
 
-        public override void SetFinalizationManager(IBlockFinalizationManager finalizationManager, in bool forSealing)
+        private void SetFinalizationManager(IBlockFinalizationManager finalizationManager, BlockHeader parentHeader)
         {
-            if (_blockFinalizationManager != null)
-            {
-                _blockFinalizationManager.BlocksFinalized -= OnBlocksFinalized;
-            }
+            _blockFinalizationManager = finalizationManager ?? throw new ArgumentNullException(nameof(finalizationManager));
 
-            _blockFinalizationManager = finalizationManager;
-            _validatorUsedForSealing = forSealing;
-            
-            if (!forSealing && _blockFinalizationManager != null)
+            if (!ForSealing)
             {
                 _blockFinalizationManager.BlocksFinalized += OnBlocksFinalized;
-                if (_blockTree.Head != null)
+                
+                if (parentHeader != null)
                 {
-                    Validators = LoadValidatorsFromContract(_blockTree.Head?.Header);
-                    base.SetFinalizationManager(finalizationManager, forSealing);
+                    Validators = LoadValidatorsFromContract(parentHeader);
+                    InitValidatorStore();
                 }
             }
         }
 
-        public override void PreProcess(Block block, ProcessingOptions options = ProcessingOptions.None)
+        public void Dispose()
+        {
+            _blockFinalizationManager.BlocksFinalized -= OnBlocksFinalized;
+        }
+
+        public override void OnBlockProcessingStart(Block block, ProcessingOptions options = ProcessingOptions.None)
         {
             if (block.IsGenesis)
             {
-                ValidatorStore.SetValidators(block.Number, LoadValidatorsFromContract(block.Header));
                 return;
             }
             
@@ -111,7 +113,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             var isProcessingBlock = !isProducingBlock;
             var isInitBlock = InitBlockNumber == block.Number;
             var shouldLoadValidators = Validators == null || isProducingBlock;
-            var mainChainProcessing = !_validatorUsedForSealing && isProcessingBlock;
+            var mainChainProcessing = !ForSealing && isProcessingBlock;
             
             if (shouldLoadValidators)
             {
@@ -158,7 +160,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                 }
             }
             
-            base.PreProcess(block, options);
+            base.OnBlockProcessingStart(block, options);
             
             FinalizePendingValidatorsIfNeeded(block.Header, isProcessingBlock);
             
@@ -189,9 +191,14 @@ namespace Nethermind.Consensus.AuRa.Validators
             return pendingValidators;
         }
 
-        public override void PostProcess(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None)
+        public override void OnBlockProcessingEnd(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None)
         {
-            base.PostProcess(block, receipts, options);
+            base.OnBlockProcessingEnd(block, receipts, options);
+            
+            if (block.IsGenesis)
+            {
+                ValidatorStore.SetValidators(block.Number, LoadValidatorsFromContract(block.Header));
+            }
             
             if (ValidatorContract.CheckInitiateChangeEvent(block.Header, receipts, out var potentialValidators))
             {
@@ -263,7 +270,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                     CurrentPendingValidators.AreFinalized = true;
                     Validators = CurrentPendingValidators.Addresses;
                     SetPendingValidators(CurrentPendingValidators, true);
-                    if (!_validatorUsedForSealing)
+                    if (!ForSealing)
                     {
                         ValidatorStore.SetValidators(e.FinalizingBlock.Number, Validators);
                         if (_logger.IsInfo) _logger.Info($"Finalizing validators for transition within contract signalled at block {CurrentPendingValidators.BlockNumber}. after block {e.FinalizingBlock.ToString(BlockHeader.Format.Short)}.");

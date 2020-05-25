@@ -17,6 +17,7 @@
 using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Core;
 using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
@@ -36,9 +37,12 @@ namespace Nethermind.Consensus.AuRa.Validators
             IReceiptFinder receiptFinder,
             IValidatorStore validatorStore,
             IValidSealerStrategy validSealerStrategy,
+            IBlockFinalizationManager finalizationManager, 
+            BlockHeader parentHeader,
             ILogManager logManager,
-            long startBlockNumber) 
-            : base(validator, stateProvider, abiEncoder, transactionProcessor, readOnlyTransactionProcessorSource, blockTree, receiptFinder, validatorStore, validSealerStrategy, logManager, startBlockNumber)
+            long startBlockNumber,
+            bool forSealing = false) 
+            : base(validator, stateProvider, abiEncoder, transactionProcessor, readOnlyTransactionProcessorSource, blockTree, receiptFinder, validatorStore, validSealerStrategy, finalizationManager, parentHeader, logManager, startBlockNumber, forSealing)
         {
         }
     }

@@ -50,6 +50,7 @@ namespace Nethermind.Network.Test.Discovery
         private string _host = "192.168.1.17";
         private Node[] _nodes;
         private PublicKey _publicKey;
+        private IIPResolver _ipResolver;
 
         [SetUp]
         public void Initialize()
@@ -75,13 +76,15 @@ namespace Nethermind.Network.Test.Discovery
 
             _timestamper = Timestamper.Default;
 
+            _ipResolver = new IPResolver(_networkConfig, logManager);
+
             var evictionManager = new EvictionManager(_nodeTable, logManager);
             var lifecycleFactory = new NodeLifecycleManagerFactory(_nodeTable, new DiscoveryMessageFactory(_timestamper), evictionManager, new NodeStatsManager(statsConfig, logManager), discoveryConfig, logManager);
 
             _nodes = new[] {new Node("192.168.1.18", 1), new Node("192.168.1.19", 2)};
 
             IFullDb nodeDb = new SimpleFilePublicKeyDb("Test", "test_db", logManager);
-            _discoveryManager = new DiscoveryManager(lifecycleFactory, _nodeTable, new NetworkStorage(nodeDb, logManager), discoveryConfig, logManager);
+            _discoveryManager = new DiscoveryManager(lifecycleFactory, _nodeTable, new NetworkStorage(nodeDb, logManager), discoveryConfig, logManager, _ipResolver);
             _discoveryManager.MessageSender = _messageSender;
         }
 
@@ -91,7 +94,7 @@ namespace Nethermind.Network.Test.Discovery
             //receiving ping
             var address = new IPEndPoint(IPAddress.Parse(_host), _port);
             _discoveryManager.OnIncomingMessage(new PingMessage {FarAddress = address, FarPublicKey = _publicKey, DestinationAddress = _nodeTable.MasterNode.Address, SourceAddress = address});
-            Thread.Sleep(200);
+            Thread.Sleep(500);
 
             // expecting to send pong
             _messageSender.Received(1).SendMessage(Arg.Is<PongMessage>(m => m.FarAddress.Address.ToString() == _host && m.FarAddress.Port == _port));

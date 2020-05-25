@@ -23,34 +23,44 @@ using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Consensus.AuRa.Validators
 {
-    public abstract class AuRaValidatorProcessorExtension : IAuRaValidatorProcessorExtension
+    public abstract class AuRaValidatorBase : IAuRaValidator
     {
+        public const long DefaultStartBlockNumber = 1;
+        
         private readonly IValidSealerStrategy _validSealerStrategy;
         private readonly ILogger _logger;
         
-        protected AuRaValidatorProcessorExtension(AuRaParameters.Validator validator, IValidSealerStrategy validSealerStrategy, IValidatorStore validatorStore, ILogManager logManager, long startBlockNumber)
+        protected AuRaValidatorBase(
+            AuRaParameters.Validator validator,
+            IValidSealerStrategy validSealerStrategy,
+            IValidatorStore validatorStore,
+            ILogManager logManager,
+            long startBlockNumber,
+            bool forSealing)
         {
             if (validator == null) throw new ArgumentNullException(nameof(validator));
             ValidatorStore = validatorStore ?? throw new ArgumentNullException(nameof(validatorStore));
             _validSealerStrategy = validSealerStrategy ?? throw new ArgumentNullException(nameof(validSealerStrategy));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             InitBlockNumber = startBlockNumber;
+            ForSealing = forSealing;
         }
         
         public Address[] Validators { get; protected set; }
         
         protected long InitBlockNumber { get; }
+        protected bool ForSealing { get; }
         protected IValidatorStore ValidatorStore { get; }
 
-        public virtual void SetFinalizationManager(IBlockFinalizationManager finalizationManager, in bool forSealing)
+        protected void InitValidatorStore()
         {
-            if (finalizationManager != null && !forSealing && InitBlockNumber == AuRaValidatorProcessorFactory.DefaultStartBlockNumber)
+            if (!ForSealing && InitBlockNumber == DefaultStartBlockNumber)
             {
                 ValidatorStore.SetValidators(InitBlockNumber, Validators);
             }
         }
 
-        public virtual void PreProcess(Block block, ProcessingOptions options = ProcessingOptions.None)
+        public virtual void OnBlockProcessingStart(Block block, ProcessingOptions options = ProcessingOptions.None)
         {
             if (!options.IsProducingBlock() && !block.IsGenesis)
             {
@@ -63,6 +73,6 @@ namespace Nethermind.Consensus.AuRa.Validators
             }
         }
 
-        public virtual void PostProcess(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None) { }
+        public virtual void OnBlockProcessingEnd(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None) { }
     }
 }

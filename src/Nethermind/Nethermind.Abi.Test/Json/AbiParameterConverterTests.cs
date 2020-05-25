@@ -19,7 +19,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using FluentAssertions;
-using Nethermind.Serialization.Json.Abi;
+using Nethermind.Consensus.AuRa.Json;
 using Newtonsoft.Json;
 using NUnit.Framework;
 

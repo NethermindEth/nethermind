@@ -28,6 +28,10 @@ namespace Ethereum.Blockchain.Test
     [TestFixture][Parallelizable(ParallelScope.All)]
     public class RevertTests : BlockchainTestBase
     {
+        /// <summary>
+        /// This tests can only happen on the pre Byzantium networks and all of these networks sync fine
+        /// They are special cases from the time of post-Shanghai-attack account clearing
+        /// </summary>
         private string[] ignored = new string[]
         {
             "RevertPrecompiledTouch_d0g0v0",
@@ -41,7 +45,6 @@ namespace Ethereum.Blockchain.Test
             "TouchToEmptyAccountRevert3_d0g0v0"
         };
         
-        [Todo(Improve.TestCoverage, "Investigate if the skipped tests only affected by retesteth - they worked before the test format changes")]
         [TestCaseSource(nameof(LoadTests))]
         public void Test(BlockchainTest test)
         {

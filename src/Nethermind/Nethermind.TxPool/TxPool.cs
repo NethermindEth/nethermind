@@ -197,9 +197,12 @@ namespace Nethermind.TxPool
 
         public AddTxResult AddTransaction(Transaction tx, TxHandlingOptions handlingOptions)
         {
-            bool isEip155Enabled = (handlingOptions & TxHandlingOptions.PreEip155Signing) == TxHandlingOptions.None;
             bool managedNonce = (handlingOptions & TxHandlingOptions.ManagedNonce) == TxHandlingOptions.ManagedNonce;
             bool isPersistentBroadcast = (handlingOptions & TxHandlingOptions.PersistentBroadcast) == TxHandlingOptions.PersistentBroadcast;
+            if (isPersistentBroadcast)
+            {
+                if (_logger.IsTrace) _logger.Trace($"Adding transaction {tx.ToString("  ")} - managed nonce: {managedNonce} | persistent brodcast {isPersistentBroadcast}");
+            }
 
             if (_fadingOwnTransactions.ContainsKey(tx.Hash))
             {
@@ -244,7 +247,7 @@ namespace Nethermind.TxPool
              */
             if (tx.SenderAddress == null)
             {
-                tx.SenderAddress = _ecdsa.RecoverAddress(tx, isEip155Enabled);
+                tx.SenderAddress = _ecdsa.RecoverAddress(tx);
                 if (tx.SenderAddress == null)
                 {
                     return AddTxResult.PotentiallyUseless;
@@ -282,13 +285,14 @@ namespace Nethermind.TxPool
             return AddTxResult.Added;
         }
 
-        private void HandleOwnTransaction(Transaction transaction, bool isOwn)
+        private void HandleOwnTransaction(Transaction tx, bool isOwn)
         {
             if (isOwn)
             {
-                _ownTransactions.TryAdd(transaction.Hash, transaction);
+                _ownTransactions.TryAdd(tx.Hash, tx);
                 _ownTimer.Enabled = true;
-                if (_logger.IsDebug) _logger.Debug($"Broadcasting own transaction {transaction.Hash} to {_peers.Count} peers");
+                if (_logger.IsDebug) _logger.Debug($"Broadcasting own transaction {tx.Hash} to {_peers.Count} peers");
+                if(_logger.IsTrace) _logger.Trace($"Broadcasting transaction {tx.ToString("  ")}");
             }
         }
 
@@ -312,7 +316,7 @@ namespace Nethermind.TxPool
 
                 if (!(nonce.TransactionHash is null && nonce.TransactionHash != transaction.Hash))
                 {
-                    // Nonce conflict
+                    // Nonce conflicteth
                     if (_logger.IsWarn) _logger.Warn($"Nonce: {nonce.Value} was already used in transaction: '{nonce.TransactionHash}' and cannot be reused by transaction: '{transaction.Hash}'.");
 
                     return true;

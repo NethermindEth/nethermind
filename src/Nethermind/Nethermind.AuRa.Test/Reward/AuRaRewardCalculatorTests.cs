@@ -18,18 +18,13 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using System.Numerics;
 using FluentAssertions;
 using Nethermind.Abi;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Consensus.AuRa.Rewards;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using NSubstitute;
@@ -104,7 +99,7 @@ namespace Nethermind.AuRa.Test.Reward
             action.Should().Throw<ArgumentException>();
         }
         
-        [TestCase(0, 200ul)]
+        [TestCase(1, 200ul)]
         [TestCase(5, 200ul)]
         [TestCase(9, 200ul)]
         public void calculates_rewards_correctly_before_contract_transition(long blockNumber, ulong expectedReward)
@@ -112,7 +107,16 @@ namespace Nethermind.AuRa.Test.Reward
             _block.Header.Number = blockNumber;
             var calculator = new AuRaRewardCalculator(_auraParameters, _abiEncoder, _transactionProcessor);
             var result =  calculator.CalculateRewards(_block);
-            result.Should().BeEquivalentTo(new BlockReward(_block.Beneficiary, expectedReward, BlockRewardType.Block));
+            result.Should().BeEquivalentTo(new BlockReward(_block.Beneficiary, expectedReward));
+        }
+        
+        [Test]
+        public void calculates_rewards_correctly_for_genesis()
+        {
+            _block.Header.Number = 0;
+            var calculator = new AuRaRewardCalculator(_auraParameters, _abiEncoder, _transactionProcessor);
+            var result =  calculator.CalculateRewards(_block);
+            result.Should().BeEmpty();
         }
         
         [TestCase(10, 100ul)]

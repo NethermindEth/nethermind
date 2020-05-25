@@ -19,9 +19,5 @@ namespace Nethermind.Wallet
     public class WalletConfig : IWalletConfig
     {
         public int DevAccounts { get; set; } = 10;
-        public bool Verify()
-        {
-            return true;
-        }
     }
 }

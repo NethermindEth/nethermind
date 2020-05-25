@@ -124,7 +124,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context.ReceiptStorage = initConfig.StoreReceipts ? (IReceiptStorage?) new PersistentReceiptStorage(_context.DbProvider.ReceiptsDb, _context.SpecProvider, new ReceiptsRecovery()) : NullReceiptStorage.Instance;
             _context.ReceiptFinder = new FullInfoReceiptFinder(_context.ReceiptStorage, new ReceiptsRecovery(), _context.BlockTree);
 
-            _context.RecoveryStep = new TxSignaturesRecoveryStep(_context.SpecProvider, _context.EthereumEcdsa, _context.TxPool, _context.LogManager);
+            _context.RecoveryStep = new TxSignaturesRecoveryStep(_context.EthereumEcdsa, _context.TxPool, _context.LogManager);
 
             _context.StorageProvider = new StorageProvider(
                 _context.DbProvider.StateDb,
@@ -180,8 +180,13 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.MainBlockProcessor,
                 _context.RecoveryStep,
                 _context.LogManager,
-                initConfig.StoreReceipts,
-                !syncConfig.BeamSync);
+                new BlockchainProcessor.Options
+                {
+                    AutoProcess = !syncConfig.BeamSync,
+                    StoreReceiptsByDefault = initConfig.StoreReceipts,
+                    RunGethTracer = initConfig.DiagnosticMode == DiagnosticMode.GethTrace,
+                    RunParityTracer = initConfig.DiagnosticMode == DiagnosticMode.ParityTrace,
+                });
 
             _context.BlockProcessingQueue = blockchainProcessor;
             _context.BlockchainProcessor = blockchainProcessor;

@@ -15,14 +15,14 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Linq;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Validators;
+using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
 
-namespace Nethermind.Core.Test
+namespace Nethermind.Blockchain.Test.Validators
 {
     [TestFixture]
     public class OmmersValidatorTests
@@ -63,7 +63,7 @@ namespace Nethermind.Core.Test
             BlockHeader[] ommers = GetValidOmmers(3);
 
             OmmersValidator ommersValidator = new OmmersValidator(_blockTree, _headerValidator, LimboLogs.Instance);
-            Assert.False(ommersValidator.Validate(new BlockHeader(), ommers));
+            Assert.False(ommersValidator.Validate(Build.A.BlockHeader.TestObject, ommers));
         }
 
         [Test]
@@ -80,7 +80,7 @@ namespace Nethermind.Core.Test
         public void When_ommer_is_brother_returns_false()
         {
             BlockHeader[] ommers = new BlockHeader[1];
-            ommers[0] = new BlockHeader();
+            ommers[0] = Build.A.BlockHeader.TestObject;
             ommers[0].ParentHash = _parent.Hash;
             ommers[0].Number = _block.Number;
 
