@@ -147,7 +147,7 @@ namespace Nethermind.Network.Test.Discovery
                 for (int b = 0; b < 255; b++)
                 {
                     INodeLifecycleManager manager = _discoveryManager.GetNodeLifecycleManager(new Node($"{a}.{b}.1.1", 8000));
-                    manager.SendPing();
+                    manager.SendPingAsync();
                     _discoveryManager.OnIncomingMessage(new PongMessage {FarAddress = new IPEndPoint(IPAddress.Parse($"{a}.{b}.1.1"), _port), FarPublicKey = _publicKey});
                 }
             }
