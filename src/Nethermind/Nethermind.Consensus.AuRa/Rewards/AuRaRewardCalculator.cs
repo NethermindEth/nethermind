@@ -30,7 +30,6 @@ namespace Nethermind.Consensus.AuRa.Rewards
 {
     public class AuRaRewardCalculator : IRewardCalculator
     {
-        private readonly ITransactionProcessor _transactionProcessor;
         private readonly StaticRewardCalculator _blockRewardCalculator;
         private readonly IList<RewardContract> _contracts;
         
@@ -43,10 +42,9 @@ namespace Nethermind.Consensus.AuRa.Rewards
                 if (auRaParameters.BlockRewardContractTransitions != null)
                 {
                     contracts.AddRange(auRaParameters.BlockRewardContractTransitions.Select(t => new RewardContract(transactionProcessor, abiEncoder, t.Value, t.Key)));
+                    contracts.Sort((a, b) => a.Activation.CompareTo(b.Activation));
                 }
-                
-                contracts.Sort((a, b) => a.Activation.CompareTo(b.Activation));
-                
+
                 if (auRaParameters.BlockRewardContractAddress != null)
                 {
                     var contractTransition = auRaParameters.BlockRewardContractTransition ?? 0;
@@ -62,15 +60,22 @@ namespace Nethermind.Consensus.AuRa.Rewards
             }
 
             if (auRaParameters == null) throw new ArgumentNullException(nameof(AuRaParameters));
-            _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
             _contracts = BuildTransitions();
             _blockRewardCalculator = new StaticRewardCalculator(auRaParameters.BlockReward);
         }
 
         public BlockReward[] CalculateRewards(Block block)
-            => _contracts.TryGetForBlock(block.Number, out var contract)
+        {
+            if (block.IsGenesis)
+            {
+                return Array.Empty<BlockReward>();
+            }
+            
+            return _contracts.TryGetForBlock(block.Number, out var contract)
                 ? CalculateRewardsWithContract(block, contract)
                 : _blockRewardCalculator.CalculateRewards(block);
+        }
+            
         
         private BlockReward[] CalculateRewardsWithContract(Block block, RewardContract contract)
         {

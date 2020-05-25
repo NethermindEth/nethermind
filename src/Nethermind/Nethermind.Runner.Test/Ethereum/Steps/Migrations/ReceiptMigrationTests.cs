@@ -66,6 +66,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             {
                 var block = context.BlockTree.FindBlock(i);
                 inMemoryReceiptStorage.Insert(block, 
+                    false, 
                     Core.Test.Builders.Build.A.Receipt.WithTransactionHash(TestItem.Keccaks[txIndex++]).TestObject,
                     Core.Test.Builders.Build.A.Receipt.WithTransactionHash(TestItem.Keccaks[txIndex++]).TestObject);
             }
@@ -102,9 +103,9 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             public bool CanGetReceiptsByHash(long blockNumber) => _inStorage.CanGetReceiptsByHash(blockNumber);
             public bool TryGetReceiptsIterator(long blockNumber, Keccak blockHash, out ReceiptsIterator iterator) => _outStorage.TryGetReceiptsIterator(blockNumber, blockHash, out iterator);
 
-            public void Insert(Block block, params TxReceipt[] txReceipts)
+            public void Insert(Block block, bool updateLowestInserted, params TxReceipt[] txReceipts)
             {
-                _outStorage.Insert(block, txReceipts);
+                _outStorage.Insert(block, updateLowestInserted, txReceipts);
             }
 
             public long? LowestInsertedReceiptBlock

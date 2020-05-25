@@ -89,7 +89,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             blockTree.UpdateMainChain(new[] {block}, true);
 
             var logEntries = new[] {Build.A.LogEntry.TestObject};
-            receiptStorage.Insert(block,new TxReceipt()
+            receiptStorage.Insert(block, false, new TxReceipt()
             {
                 Bloom = new Bloom(logEntries),
                 Index = 1,
