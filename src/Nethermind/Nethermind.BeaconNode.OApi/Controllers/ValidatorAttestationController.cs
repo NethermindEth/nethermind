@@ -33,25 +33,28 @@ namespace Nethermind.BeaconNode.OApi.Controllers
         /// <param name="validator_pubkey">Uniquely identifying which validator this attestation is to be produced for.</param>
         /// <param name="poc_bit">The proof-of-custody bit that is to be reported by the requesting validator. This bit will be inserted into the appropriate location in the returned `Attestation`.</param>
         /// <param name="slot">The slot for which the attestation should be proposed.</param>
-        /// <param name="shard">The shard number for which the attestation is to be proposed.</param>
+        /// <param name="index">The index number for which the attestation is to be proposed.</param>
         [HttpGet]
         // ReSharper disable once InconsistentNaming
         // ReSharper disable once IdentifierTypo
         public async Task<IActionResult> GetAsync([FromQuery] byte[] validator_pubkey, [FromQuery] uint poc_bit,
-            [FromQuery] ulong slot, [FromQuery] ulong shard,
+            [FromQuery] ulong slot, [FromQuery] ulong index,
             CancellationToken cancellationToken)
         {
             if (_logger.IsDebug())
-                LogDebug.NewAttestationRequested(_logger, slot, shard, Bytes.ToHexString(validator_pubkey), null);
+                LogDebug.NewAttestationRequested(_logger, slot, index, Bytes.ToHexString(validator_pubkey), null);
 
             BlsPublicKey validatorPublicKey = new BlsPublicKey(validator_pubkey);
             bool proofOfCustodyBit = poc_bit > 0;
             Slot targetSlot = new Slot(slot);
-            Shard targetShard = new Shard(shard);
+
+            // NOTE: Spec 0.10.1 still has old Shard references in OAPI, although the spec has changed to Index;
+            // use Index as it is easier to understand (i.e. the spec OAPI in 0.10.1 is wrong)
+            CommitteeIndex targetIndex = new CommitteeIndex(index);
 
             ApiResponse<Attestation> apiResponse =
                 await _beaconNode
-                    .NewAttestationAsync(validatorPublicKey, proofOfCustodyBit, targetSlot, targetShard,
+                    .NewAttestationAsync(validatorPublicKey, proofOfCustodyBit, targetSlot, targetIndex,
                         cancellationToken).ConfigureAwait(false);
 
             switch (apiResponse.StatusCode)

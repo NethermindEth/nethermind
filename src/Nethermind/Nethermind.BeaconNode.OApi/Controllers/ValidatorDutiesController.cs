@@ -58,6 +58,10 @@ namespace Nethermind.BeaconNode.OApi.Controllers
         {
             IList<BlsPublicKey> publicKeys = validator_pubkeys.Select(x => new BlsPublicKey(x)).ToList();
             Epoch? targetEpoch = (Epoch?) epoch;
+
+            // NOTE: Spec 0.10.1 still has old Shard references in OAPI in the Duties JSON, although the spec has changed to Index;
+            // use Index as it is easier to understand (i.e. the spec OAPI in 0.10.1 is wrong)
+
             ApiResponse<IList<ValidatorDuty>> apiResponse =
                 await _beaconNode.ValidatorDutiesAsync(publicKeys, targetEpoch, cancellationToken)
                     .ConfigureAwait(false);

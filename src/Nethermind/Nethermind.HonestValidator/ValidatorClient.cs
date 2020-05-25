@@ -39,18 +39,14 @@ namespace Nethermind.HonestValidator
         private readonly ICryptographyService _cryptographyService;
         private readonly IOptionsMonitor<InitialValues> _initialValueOptions;
         private readonly ILogger _logger;
-        private readonly IOptionsMonitor<MaxOperationsPerBlock> _maxOperationsPerBlockOptions;
-        private readonly IOptionsMonitor<MiscellaneousParameters> _miscellaneousParameterOptions;
         private readonly IOptionsMonitor<SignatureDomains> _signatureDomainOptions;
         private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
         private readonly IValidatorKeyProvider _validatorKeyProvider;
         private readonly ValidatorState _validatorState;
 
         public ValidatorClient(ILogger<ValidatorClient> logger,
-            IOptionsMonitor<MiscellaneousParameters> miscellaneousParameterOptions,
             IOptionsMonitor<InitialValues> initialValueOptions,
             IOptionsMonitor<TimeParameters> timeParameterOptions,
-            IOptionsMonitor<MaxOperationsPerBlock> maxOperationsPerBlockOptions,
             IOptionsMonitor<SignatureDomains> signatureDomainOptions,
             ICryptographyService cryptographyService,
             IBeaconNodeApi beaconNodeApi,
@@ -58,10 +54,8 @@ namespace Nethermind.HonestValidator
             BeaconChainInformation beaconChainInformation)
         {
             _logger = logger;
-            _miscellaneousParameterOptions = miscellaneousParameterOptions;
             _initialValueOptions = initialValueOptions;
             _timeParameterOptions = timeParameterOptions;
-            _maxOperationsPerBlockOptions = maxOperationsPerBlockOptions;
             _signatureDomainOptions = signatureDomainOptions;
             _cryptographyService = cryptographyService;
             _beaconNodeApi = beaconNodeApi;
@@ -327,10 +321,11 @@ namespace Nethermind.HonestValidator
         {
             // If attester, get attestation, sign attestation, return to node
 
-            IList<(BlsPublicKey, Shard)>? attestationDutyList = _validatorState.GetAttestationDutyForSlot(slot);
+            IList<(BlsPublicKey, CommitteeIndex)>?
+                attestationDutyList = _validatorState.GetAttestationDutyForSlot(slot);
             if (!(attestationDutyList is null))
             {
-                foreach ((BlsPublicKey validatorPublicKey, Shard shard) in attestationDutyList)
+                foreach ((BlsPublicKey validatorPublicKey, CommitteeIndex index) in attestationDutyList)
                 {
                     Activity activity = new Activity("process-attestation-duty");
                     activity.Start();
@@ -344,7 +339,7 @@ namespace Nethermind.HonestValidator
                                 null);
 
                         ApiResponse<Attestation> newAttestationResponse = await _beaconNodeApi
-                            .NewAttestationAsync(validatorPublicKey, false, slot, shard, cancellationToken)
+                            .NewAttestationAsync(validatorPublicKey, false, slot, index, cancellationToken)
                             .ConfigureAwait(false);
                         if (newAttestationResponse.StatusCode == StatusCode.Success)
                         {
@@ -477,35 +472,49 @@ namespace Nethermind.HonestValidator
                 // Record proposal duties first, in case there is an error
                 foreach (ValidatorDuty validatorDuty in validatorDutiesResponse.Content)
                 {
-                    Slot? currentProposalSlot =
-                        _validatorState.ProposalSlot.GetValueOrDefault(validatorDuty.ValidatorPublicKey);
-                    if (validatorDuty.BlockProposalSlot.HasValue &&
-                        validatorDuty.BlockProposalSlot != currentProposalSlot)
+                    if (validatorDuty.BlockProposalSlot.HasValue)
                     {
-                        _validatorState.SetProposalDuty(validatorDuty.ValidatorPublicKey,
-                            validatorDuty.BlockProposalSlot.Value);
-                        if (_logger.IsInfo())
-                            Log.ValidatorDutyProposalChanged(_logger, validatorDuty.ValidatorPublicKey, epoch,
-                                validatorDuty.BlockProposalSlot.Value, null);
+                        Slot? currentProposalSlot =
+                            _validatorState.ProposalSlot.GetValueOrDefault(validatorDuty.ValidatorPublicKey);
+                        bool needsProposalUpdate = validatorDuty.BlockProposalSlot != currentProposalSlot;
+                        if (needsProposalUpdate)
+                        {
+                            _validatorState.SetProposalDuty(validatorDuty.ValidatorPublicKey,
+                                validatorDuty.BlockProposalSlot.Value);
+                            if (_logger.IsInfo())
+                                Log.ValidatorDutyProposalChanged(_logger, validatorDuty.ValidatorPublicKey, epoch,
+                                    validatorDuty.BlockProposalSlot.Value, null);
+                        }
                     }
                 }
 
                 foreach (ValidatorDuty validatorDuty in validatorDutiesResponse.Content)
                 {
-                    Slot? currentAttestationSlot =
-                        _validatorState.AttestationSlot.GetValueOrDefault(validatorDuty.ValidatorPublicKey);
-                    Shard? currentAttestationShard =
-                        _validatorState.AttestationShard.GetValueOrDefault(validatorDuty.ValidatorPublicKey);
-                    if (validatorDuty.AttestationSlot.HasValue &&
-                        (validatorDuty.AttestationSlot != currentAttestationSlot ||
-                         validatorDuty.AttestationShard != currentAttestationShard))
+                    if (validatorDuty.AttestationSlot.HasValue)
                     {
-                        _validatorState.SetAttestationDuty(validatorDuty.ValidatorPublicKey,
-                            validatorDuty.AttestationSlot.Value,
-                            validatorDuty.AttestationShard);
-                        if (_logger.IsDebug())
-                            LogDebug.ValidatorDutyAttestationChanged(_logger, validatorDuty.ValidatorPublicKey, epoch,
-                                validatorDuty.AttestationSlot.Value, validatorDuty.AttestationShard, null);
+                        bool needsAttestationUpdate;
+                        if (_validatorState.AttestationSlotAndIndex.TryGetValue(validatorDuty.ValidatorPublicKey,
+                            out (Slot, CommitteeIndex) currentValue))
+                        {
+                            (Slot currentAttestationSlot, CommitteeIndex currentAttestationIndex) = currentValue;
+                            needsAttestationUpdate = validatorDuty.AttestationSlot != currentAttestationSlot ||
+                                                     validatorDuty.AttestationIndex != currentAttestationIndex;
+                        }
+                        else
+                        {
+                            needsAttestationUpdate = true;
+                        }
+
+                        if (needsAttestationUpdate)
+                        {
+                            _validatorState.SetAttestationDuty(validatorDuty.ValidatorPublicKey,
+                                validatorDuty.AttestationSlot.Value,
+                                validatorDuty.AttestationIndex!.Value);
+                            if (_logger.IsDebug())
+                                LogDebug.ValidatorDutyAttestationChanged(_logger, validatorDuty.ValidatorPublicKey,
+                                    epoch,
+                                    validatorDuty.AttestationSlot.Value, validatorDuty.AttestationIndex.Value, null);
+                        }
                     }
                 }
             }

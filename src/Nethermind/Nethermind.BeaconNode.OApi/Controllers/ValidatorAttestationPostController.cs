@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
@@ -23,7 +22,6 @@ using Microsoft.Extensions.Logging;
 using Nethermind.Core2;
 using Nethermind.Core2.Api;
 using Nethermind.Core2.Containers;
-using Nethermind.Core2.Crypto;
 using Nethermind.Logging.Microsoft;
 
 namespace Nethermind.BeaconNode.OApi.Controllers
@@ -35,7 +33,8 @@ namespace Nethermind.BeaconNode.OApi.Controllers
         private readonly IBeaconNodeApi _beaconNode;
         private readonly ILogger _logger;
 
-        public ValidatorAttestationPostController(ILogger<ValidatorAttestationPostController> logger, IBeaconNodeApi beaconNode)
+        public ValidatorAttestationPostController(ILogger<ValidatorAttestationPostController> logger,
+            IBeaconNodeApi beaconNode)
         {
             _logger = logger;
             _beaconNode = beaconNode;
@@ -67,6 +66,7 @@ namespace Nethermind.BeaconNode.OApi.Controllers
                             }
                         }));
                 }
+
                 LogDebug.AttestationPublished(_logger, signedAttestation.Data?.Slot,
                     signedAttestation.Data?.Index,
                     aggregationBits,

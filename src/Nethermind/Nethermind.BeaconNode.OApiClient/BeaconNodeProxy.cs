@@ -108,17 +108,20 @@ namespace Nethermind.BeaconNode.OApiClient
         }
 
         public async Task<ApiResponse<Attestation>> NewAttestationAsync(BlsPublicKey validatorPublicKey,
-            bool proofOfCustodyBit, Slot slot, Shard shard,
+            bool proofOfCustodyBit, Slot slot, CommitteeIndex index,
             CancellationToken cancellationToken)
         {
             string baseUri = "validator/attestation";
+
+            // NOTE: Spec 0.10.1 still has old Shard references in OAPI, although the spec has changed to Index;
+            // use Index as it is easier to understand (i.e. the spec OAPI in 0.10.1 is wrong)
 
             Dictionary<string, string> queryParameters = new Dictionary<string, string>
             {
                 ["validator_pubkey"] = validatorPublicKey.ToString(),
                 ["poc_bit"] = proofOfCustodyBit ? "1" : "0",
                 ["slot"] = slot.ToString(),
-                ["shard"] = shard.ToString()
+                ["index"] = index.ToString()
             };
 
             string uri = QueryHelpers.AddQueryString(baseUri, queryParameters);
@@ -178,7 +181,8 @@ namespace Nethermind.BeaconNode.OApiClient
             string uri = "validator/attestation";
 
             await using var memoryStream = new MemoryStream();
-            await JsonSerializer.SerializeAsync(memoryStream, signedAttestation, _jsonSerializerOptions, cancellationToken);
+            await JsonSerializer.SerializeAsync(memoryStream, signedAttestation, _jsonSerializerOptions,
+                cancellationToken);
             memoryStream.Position = 0;
             using var content = new StreamContent(memoryStream);
             content.Headers.ContentType = new MediaTypeHeaderValue(JsonContentType);

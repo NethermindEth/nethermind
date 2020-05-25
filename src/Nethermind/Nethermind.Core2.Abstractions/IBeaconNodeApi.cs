@@ -46,7 +46,7 @@ namespace Nethermind.Core2
         Task<ApiResponse<Syncing>> GetSyncingAsync(CancellationToken cancellationToken);
 
         Task<ApiResponse<Attestation>> NewAttestationAsync(BlsPublicKey validatorPublicKey, bool proofOfCustodyBit,
-            Slot slot, Shard shard, CancellationToken cancellationToken);
+            Slot slot, CommitteeIndex index, CancellationToken cancellationToken);
 
         Task<ApiResponse<BeaconBlock>> NewBlockAsync(Slot slot, BlsSignature randaoReveal,
             CancellationToken cancellationToken);

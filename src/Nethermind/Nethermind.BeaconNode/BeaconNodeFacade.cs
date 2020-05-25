@@ -137,13 +137,13 @@ namespace Nethermind.BeaconNode
         }
 
         public async Task<ApiResponse<Attestation>> NewAttestationAsync(BlsPublicKey validatorPublicKey,
-            bool proofOfCustodyBit, Slot slot, Shard shard,
+            bool proofOfCustodyBit, Slot slot, CommitteeIndex index,
             CancellationToken cancellationToken)
         {
             try
             {
                 Attestation unsignedAttestation = await _attestationProducer
-                    .NewAttestationAsync(validatorPublicKey, proofOfCustodyBit, slot, shard, cancellationToken)
+                    .NewAttestationAsync(validatorPublicKey, proofOfCustodyBit, slot, index, cancellationToken)
                     .ConfigureAwait(false);
                 return ApiResponse.Create(StatusCode.Success, unsignedAttestation);
             }
@@ -190,7 +190,7 @@ namespace Nethermind.BeaconNode
                 // Need to exclude from pool if included in another block (but only if/when building on that chain)
                 // A reorg could make previously invalid attestations now valid, or previously included attestations free, etc
                 // i.e. don't remove, but need to keep/cache until finalisation (of target) has passed
-                
+
                 bool acceptedLocally = false;
                 try
                 {

@@ -51,10 +51,10 @@ namespace Nethermind.HonestValidator
             LoggerMessage.Define<Slot, string, string, BeaconBlock, string>(LogLevel.Debug,
                 new EventId(6455, nameof(PublishingSignedBlock)),
                 "Publishing signed block for slot {Slot} for validator {PublicKey} with RANDAO reveal {RandaoReveal}, block details {BeaconBlock}, and signature {Signature}.");
-        public static readonly Action<ILogger, BlsPublicKey, Epoch, Slot, Shard, Exception?> ValidatorDutyAttestationChanged =
-            LoggerMessage.Define<BlsPublicKey, Epoch, Slot, Shard>(LogLevel.Debug,
+        public static readonly Action<ILogger, BlsPublicKey, Epoch, Slot, CommitteeIndex, Exception?> ValidatorDutyAttestationChanged =
+            LoggerMessage.Define<BlsPublicKey, Epoch, Slot, CommitteeIndex>(LogLevel.Debug,
                 new EventId(6456, nameof(ValidatorDutyAttestationChanged)),
-                "Validator {PublicKey} epoch {Epoch} duty attestation slot {Slot} for shard {Shard}.");
+                "Validator {PublicKey} epoch {Epoch} duty attestation slot {Slot}, committee index {CommitteeIndex}.");
         public static readonly Action<ILogger, Slot, Slot, Slot, Exception?> ProcessingSlotStart =
             LoggerMessage.Define<Slot, Slot, Slot>(LogLevel.Debug,
                 new EventId(6457, nameof(ProcessingSlotStart)),

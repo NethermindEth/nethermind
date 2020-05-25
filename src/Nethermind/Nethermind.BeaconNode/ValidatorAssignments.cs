@@ -148,7 +148,8 @@ namespace Nethermind.BeaconNode
             if (missingValidators.Any())
             {
                 if (_logger.IsDebug())
-                    LogDebug.GettingMissingValidatorDutiesForCache(_logger, missingValidators.Count(), epoch, epochStartRoot,
+                    LogDebug.GettingMissingValidatorDutiesForCache(_logger, missingValidators.Count(), epoch,
+                        epochStartRoot,
                         null);
 
                 BeaconState storedState = await _store.GetBlockStateAsync(epochStartRoot);
@@ -178,7 +179,7 @@ namespace Nethermind.BeaconNode
                                 Log.ValidatorNotActiveAtEpoch(_logger, epoch, validatorIndex.Value, validatorPublicKey,
                                     null);
                             dutiesForEpoch[validatorPublicKey] =
-                                new ValidatorDuty(validatorPublicKey, Slot.None, Shard.Zero, Slot.None);
+                                new ValidatorDuty(validatorPublicKey, Slot.None, CommitteeIndex.None, Slot.None);
                         }
                     }
                     else
@@ -186,7 +187,7 @@ namespace Nethermind.BeaconNode
                         if (_logger.IsWarn())
                             Log.ValidatorNotFoundAtEpoch(_logger, epoch, validatorPublicKey, null);
                         dutiesForEpoch[validatorPublicKey] =
-                            new ValidatorDuty(validatorPublicKey, Slot.None, Shard.Zero, Slot.None);
+                            new ValidatorDuty(validatorPublicKey, Slot.None, CommitteeIndex.None, Slot.None);
                     }
                 }
 
@@ -219,13 +220,11 @@ namespace Nethermind.BeaconNode
                     // Add to cached dictionary
                     foreach (var dutyDetails in dutyDetailsList)
                     {
-                        // HACK: Shards were removed from Phase 0, but analogy is committee index, so use for initial testing.
-                        Shard attestationShard =
-                            new Shard((ulong) dutyDetails.AttestationCommitteeIndex.GetValueOrDefault());
-
                         ValidatorDuty validatorDuty =
-                            new ValidatorDuty(dutyDetails.ValidatorPublicKey, dutyDetails.AttestationSlot,
-                                attestationShard, dutyDetails.BlockProposalSlot);
+                            new ValidatorDuty(dutyDetails.ValidatorPublicKey,
+                                dutyDetails.AttestationSlot,
+                                dutyDetails.AttestationCommitteeIndex,
+                                dutyDetails.BlockProposalSlot);
                         dutiesForEpoch[dutyDetails.ValidatorPublicKey] = validatorDuty;
                     }
                 }
