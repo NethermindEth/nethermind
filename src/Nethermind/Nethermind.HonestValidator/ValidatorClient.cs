@@ -355,7 +355,7 @@ namespace Nethermind.HonestValidator
                             // committee (marking relevant aggregation bits), then publish one pre-aggregated value? 
 
                             if (_logger.IsDebug())
-                                LogDebug.PublishingSignedAttestation(_logger, slot, validatorPublicKey.ToShortString(),
+                                LogDebug.PublishingSignedAttestation(_logger, slot, index, validatorPublicKey.ToShortString(),
                                     signedAttestation.Data,
                                     signedAttestation.Signature.ToString().Substring(0, 10), null);
 

@@ -71,10 +71,9 @@ namespace Nethermind.HonestValidator
             LoggerMessage.Define<Slot, ulong, BlsPublicKey>(LogLevel.Debug,
                 new EventId(6460, nameof(RequestingAttestationFor)),
                 "Running attestation duty for slot {Slot} at time {Time} for validator {PublicKey}.");
-        public static readonly Action<ILogger, Slot, string, AttestationData, string, Exception?> PublishingSignedAttestation =
-            LoggerMessage.Define<Slot, string, AttestationData, string>(LogLevel.Debug,
+        public static readonly Action<ILogger, Slot, CommitteeIndex, string, AttestationData, string, Exception?> PublishingSignedAttestation =
+            LoggerMessage.Define<Slot, CommitteeIndex, string, AttestationData, string>(LogLevel.Debug,
                 new EventId(6461, nameof(PublishingSignedAttestation)),
-                "Publishing signed attestation for slot {Slot} for validator {PublicKey}, attestation data {AttestationData}, and signature {Signature}.");
-
+                "Publishing signed attestation for slot {AttestationSlot}, index {AttestationIndex} for validator {PublicKey}, attestation data {AttestationData}, and signature {Signature}.");
     }
 }
