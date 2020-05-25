@@ -277,7 +277,7 @@ namespace Nethermind.PerfTest
             var blockTree = new UnprocessedBlockTreeWrapper(new BlockTree(blocksDb, headersDb, blockInfosDb, blockInfoRepository, specProvider, transactionPool, new BloomStorage(new BloomConfig(), dbProvider.HeadersDb, new InMemoryDictionaryFileStoreFactory()), _logManager));
             var receiptStorage = new InMemoryReceiptStorage();
 
-            IBlockDataRecoveryStep recoveryStep = new TxSignaturesRecoveryStep(specProvider, ethereumSigner, transactionPool, _logManager);
+            IBlockDataRecoveryStep recoveryStep = new TxSignaturesRecoveryStep(ethereumSigner, transactionPool, _logManager);
 
             /* blockchain processing */
             var blockhashProvider = new BlockhashProvider(blockTree, LimboLogs.Instance);
@@ -310,7 +310,7 @@ namespace Nethermind.PerfTest
 
             /* blockchain processing */
             var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, processor, stateDb, codeDb, stateProvider, storageProvider, transactionPool, receiptStorage, _logManager);
-            var blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, recoveryStep, _logManager, true);
+            var blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, recoveryStep, _logManager, BlockchainProcessor.Options.Default);
 
             foreach ((Address address, ChainSpecAllocation allocation) in chainSpec.Allocations)
             {

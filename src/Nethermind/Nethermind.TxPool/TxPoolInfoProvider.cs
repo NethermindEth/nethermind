@@ -24,12 +24,12 @@ namespace Nethermind.TxPool
 {
     public class TxPoolInfoProvider : ITxPoolInfoProvider
     {
-        private readonly IStateReader _stateProvider;
+        private readonly IStateReader _stateReader;
         private readonly ITxPool _txPool;
 
         public TxPoolInfoProvider(IStateReader stateReader, ITxPool txPool)
         {
-            _stateProvider = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
+            _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
         }
 
@@ -47,31 +47,24 @@ namespace Nethermind.TxPool
                     continue;
                 }
 
-                var accountNonce = _stateProvider.GetNonce(head.StateRoot, address);
+                var accountNonce = _stateReader.GetNonce(head.StateRoot, address);
                 var expectedNonce = accountNonce;
                 var pending = new Dictionary<ulong, Transaction>();
                 var queued = new Dictionary<ulong, Transaction>();
-                var transactionsGroupedByNonce = group.OrderBy(t => t.Nonce);
+                var transactionsOrderedByNonce = group.OrderBy(t => t.Nonce);
 
-                foreach (var transaction in transactionsGroupedByNonce)
+                foreach (var transaction in transactionsOrderedByNonce)
                 {
-                    var transactionNonce = (ulong) transaction.Nonce;
-                    
-                    if (transaction.Nonce < accountNonce)
-                    {
-                        queued.Add(transactionNonce, transaction);
-                        continue;
-                    }
-
-                    if (transaction.Nonce == accountNonce ||
-                        accountNonce != expectedNonce && transaction.Nonce == expectedNonce)
+                    ulong transactionNonce = (ulong) transaction.Nonce;
+                    if (transaction.Nonce == expectedNonce)
                     {
                         pending.Add(transactionNonce, transaction);
                         expectedNonce = transaction.Nonce + 1;
-                        continue;
                     }
-
-                    queued.Add(transactionNonce, transaction);
+                    else
+                    {
+                        queued.Add(transactionNonce, transaction);    
+                    }
                 }
 
                 if (pending.Any())

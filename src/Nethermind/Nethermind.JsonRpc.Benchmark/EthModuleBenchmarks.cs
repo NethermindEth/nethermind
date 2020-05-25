@@ -87,9 +87,9 @@ namespace Nethermind.JsonRpc.Benchmark
             BlockchainProcessor blockchainProcessor = new BlockchainProcessor(
                 blockTree,
                 blockProcessor,
-                new TxSignaturesRecoveryStep(specProvider, new EthereumEcdsa(specProvider.ChainId, LimboLogs.Instance), NullTxPool.Instance, LimboLogs.Instance),
+                new TxSignaturesRecoveryStep(new EthereumEcdsa(specProvider.ChainId, LimboLogs.Instance), NullTxPool.Instance, LimboLogs.Instance),
                 LimboLogs.Instance,
-                false);
+                BlockchainProcessor.Options.NoReceipts);
 
             blockchainProcessor.Process(genesisBlock, ProcessingOptions.None, NullBlockTracer.Instance);
             blockchainProcessor.Process(block1, ProcessingOptions.None, NullBlockTracer.Instance);
@@ -109,11 +109,10 @@ namespace Nethermind.JsonRpc.Benchmark
                 transactionProcessor, 
                 new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance),
                 bloomStorage,
-                specProvider,
                 LimboLogs.Instance,
                 false);
             
-            TxPoolBridge txPoolBridge = new TxPoolBridge(NullTxPool.Instance, NullWallet.Instance, specProvider.ChainId);
+            TxPoolBridge txPoolBridge = new TxPoolBridge(NullTxPool.Instance, NullWallet.Instance, Timestamper.Default, specProvider.ChainId);
             
             _ethModule = new EthModule(new JsonRpcConfig(), bridge, txPoolBridge, LimboLogs.Instance);
         }

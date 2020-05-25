@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,9 +14,24 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-namespace Nethermind.Consensus.AuRa.Validators
+using System;
+using Nethermind.Abi;
+using Newtonsoft.Json;
+
+namespace Nethermind.Consensus.AuRa.Json
 {
-    public interface IAuRaValidatorProcessorExtension : IAuRaValidator, IAuRaBlockProcessorExtension
+    public class AbiTypeConverter : JsonConverter<AbiType>
     {
+        public override void WriteJson(JsonWriter writer, AbiType value, JsonSerializer serializer)
+        {
+            writer.WriteValue(value.Name);
+        }
+
+        public override AbiType ReadJson(JsonReader reader, Type objectType, AbiType existingValue, bool hasExistingValue, JsonSerializer serializer)
+        {
+            throw new NotSupportedException();
+        }
+
+        public override bool CanRead { get; } = false;
     }
 }

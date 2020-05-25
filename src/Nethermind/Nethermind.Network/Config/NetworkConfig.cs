@@ -21,6 +21,7 @@ namespace Nethermind.Network.Config
         public string ExternalIp { get; set; } = null;
         public string LocalIp { get; set; }
         public string StaticPeers { get; set; }
+        public bool OnlyStaticPeers { get; set; }
         public string TrustedPeers { get; set; } = string.Empty;
         public bool IsPeersPersistenceOn { get; set; } = true;
         public int ActivePeersMaxCount { get; set; } = 50;
@@ -35,9 +36,5 @@ namespace Nethermind.Network.Config
         public int NettyArenaOrder { get; set; } = 11;
         public int DiscoveryPort { get; set; } = 30303;
         public int P2PPort { get; set; } = 30303;
-        public bool Verify()
-        {
-            throw new System.NotImplementedException();
-        }
     }
 }

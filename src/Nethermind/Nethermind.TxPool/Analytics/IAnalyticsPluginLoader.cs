@@ -14,13 +14,13 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Consensus.AuRa.Validators;
-using Nethermind.Specs.ChainSpecStyle;
+using System.IO.Abstractions;
+using Nethermind.Logging;
 
-namespace Nethermind.Consensus.AuRa
+namespace Nethermind.TxPool.Analytics
 {
-    public interface IAuRaValidatorProcessorFactory
+    public interface IAnalyticsPluginLoader
     {
-        IAuRaValidatorProcessorExtension CreateValidatorProcessor(AuRaParameters.Validator validator, long? startBlock = null);
+        IAnalyticsPlugin Init(IFileSystem fileSystem, ITxPool txPool, IDataPublisher dataPublisher, ILogManager logManager);
     }
 }

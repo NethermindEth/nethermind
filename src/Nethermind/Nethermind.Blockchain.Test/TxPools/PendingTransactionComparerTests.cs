@@ -15,11 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections;
+using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.TxPool;
 using NUnit.Framework;
 
-namespace Nethermind.Core.Test
+namespace Nethermind.Blockchain.Test.TxPools
 {
     public class PendingTransactionComparerTests
     {

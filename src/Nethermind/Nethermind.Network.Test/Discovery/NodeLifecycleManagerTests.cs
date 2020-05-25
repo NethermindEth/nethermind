@@ -52,8 +52,12 @@ namespace Nethermind.Network.Test.Discovery
         private INodeTable _nodeTable;
         private IConfigProvider _configurationProvider;
         private ITimestamper _timestamper;
+<<<<<<< HEAD
         private IEvictionManager _evictionManagerMock;
         private ILogger _loggerMock;
+=======
+        private IIPResolver _ipResolverMock;
+>>>>>>> master
         private int _port = 1;
         private string _host = "192.168.1.27";
 
@@ -80,6 +84,8 @@ namespace Nethermind.Network.Test.Discovery
             discoveryConfig.BucketSize = 3;
             discoveryConfig.BucketsCount = 1;
 
+            _ipResolverMock = Substitute.For<IIPResolver>();
+
             IStatsConfig statsConfig = _configurationProvider.GetConfig<IStatsConfig>();
 
             var calculator = new NodeDistanceCalculator(discoveryConfig);
@@ -97,7 +103,7 @@ namespace Nethermind.Network.Test.Discovery
             _udpClient = Substitute.For<IMessageSender>();
 
             var discoveryDb = new SimpleFilePublicKeyDb("Test","test", logManager);
-            _discoveryManager = new DiscoveryManager(lifecycleFactory, _nodeTable, new NetworkStorage(discoveryDb, logManager), discoveryConfig, logManager);
+            _discoveryManager = new DiscoveryManager(lifecycleFactory, _nodeTable, new NetworkStorage(discoveryDb, logManager), discoveryConfig, logManager, _ipResolverMock);
             _discoveryManager.MessageSender = _udpClient;
 
             _discoveryManagerMock = Substitute.For<IDiscoveryManager>();

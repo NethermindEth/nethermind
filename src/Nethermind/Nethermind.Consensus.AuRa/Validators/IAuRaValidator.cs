@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Blockchain.Processing;
 using Nethermind.Core;
 
 namespace Nethermind.Consensus.AuRa.Validators
@@ -21,5 +22,7 @@ namespace Nethermind.Consensus.AuRa.Validators
     public interface IAuRaValidator
     {
         Address[] Validators { get; }
+        void OnBlockProcessingStart(Block block, ProcessingOptions options = ProcessingOptions.None);
+        void OnBlockProcessingEnd(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None);
     }
 }

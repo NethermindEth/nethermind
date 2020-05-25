@@ -312,7 +312,7 @@ namespace Nethermind.Synchronization.Blocks
                             var contextReceiptsForBlock = context.ReceiptsForBlocks[blockIndex];
                             if (contextReceiptsForBlock != null)
                             {
-                                _receiptStorage.Insert(currentBlock, contextReceiptsForBlock);
+                                _receiptStorage.Insert(currentBlock, false, contextReceiptsForBlock);
                             }
                         }
 

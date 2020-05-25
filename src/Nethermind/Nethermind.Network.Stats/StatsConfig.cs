@@ -47,9 +47,5 @@ namespace Nethermind.Stats
         public int[] FailedConnectionDelays { get; }
         
         public int[] DisconnectDelays { get; }
-        public bool Verify()
-        {
-            throw new System.NotImplementedException();
-        }
     }
 }

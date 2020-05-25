@@ -47,7 +47,7 @@ namespace Nethermind.Blockchain.Visitors
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
             _batchSize = batchSize;
-            StartLevelInclusive = Math.Max(1L, startBlockNumber ?? _blockTree.Head?.Number ?? 0L);
+            StartLevelInclusive = Math.Max(0L, startBlockNumber ?? (_blockTree.Head?.Number + 1) ?? 0L);
             _blocksToLoad = Math.Min(maxBlocksToLoad, _blockTree.BestKnownNumber - StartLevelInclusive);
             EndLevelExclusive = StartLevelInclusive + _blocksToLoad + 1;
 
@@ -72,6 +72,7 @@ namespace Nethermind.Blockchain.Visitors
             }
         }
 
+        public bool PreventsAcceptingNewBlocks => true;
         public long StartLevelInclusive { get; }
 
         public long EndLevelExclusive { get; }
@@ -137,7 +138,7 @@ namespace Nethermind.Blockchain.Visitors
 
         private void LogPlannedOperation()
         {
-            if (_blocksToLoad == 0)
+            if (_blocksToLoad <= 0)
             {
                 if (_logger.IsInfo) _logger.Info("Found no blocks to load from DB");
             }
