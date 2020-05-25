@@ -28,7 +28,6 @@
       <Project>{6BAD851C-B0A2-4DFE-A1F3-1C3A634C522B}</Project>
       <Name>Nethermind.Core.Test</Name>
     </ProjectReference>
-    <ProjectReference Include="..\Nethermind.Network\Nethermind.Network.csproj" />
   </ItemGroup>
   <ItemGroup>
     <None Remove="chainspec.json" />

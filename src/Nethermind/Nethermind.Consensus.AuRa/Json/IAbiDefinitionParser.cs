@@ -15,28 +15,14 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using FluentAssertions;
-using FluentAssertions.Json;
-using Nethermind.Consensus.AuRa.Contracts;
-using Nethermind.Consensus.AuRa.Json;
-using Newtonsoft.Json.Linq;
-using NUnit.Framework;
+using Nethermind.Abi;
 
-namespace Nethermind.Abi.Test.Json
+namespace Nethermind.Consensus.AuRa.Json
 {
-    public class AbiDefinitionParserTests
+    public interface IAbiDefinitionParser
     {
-        [TestCase(typeof(RandomContract))]
-        [TestCase(typeof(ValidatorContract))]
-        [TestCase(typeof(ReportingValidatorContract))]
-        [TestCase(typeof(RewardContract))]
-        public void Can_load_contract(Type contractType)
-        {
-            var parser = new AbiDefinitionParser();
-            var json = parser.LoadContract(contractType);
-            var contract = parser.Parse(json);
-            var serialized = parser.Serialize(contract);
-            JToken.Parse(serialized).Should().ContainSubtree(json);
-        }
+        AbiDefinition Parse(string json);
+        AbiDefinition Parse<T>();
+        AbiDefinition Parse(Type type);
     }
 }
