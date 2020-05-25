@@ -55,11 +55,6 @@ namespace Nethermind.Blockchain.Processing
         /// </summary>
         private BlockReceiptsTracer _receiptsTracer;
 
-        /// <summary>
-        /// State root of the state just before the processing of the current branch begins;
-        /// </summary>
-        private Keccak _currentBranchStateRoot;
-
         public BlockProcessor(
             ISpecProvider specProvider,
             IBlockValidator blockValidator,
@@ -92,15 +87,15 @@ namespace Nethermind.Blockchain.Processing
 
         public event EventHandler<TxProcessedEventArgs> TransactionProcessed;
 
-        public Block[] Process(Keccak branchStateRoot, List<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer)
+        public Block[] Process(Keccak newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer)
         {
             if (suggestedBlocks.Count == 0) return Array.Empty<Block>();
 
             /* We need to save the snapshot state root before reorganization in case the new branch has invalid blocks.
                In case of invalid blocks on the new branch we will discard the entire branch and come back to 
                the previous head state.*/
-            CreateCheckpoint();
-            InitBranch(branchStateRoot);
+            Keccak previousBranchStateRoot = CreateCheckpoint();
+            InitBranch(newBranchStateRoot);
 
             bool readOnly = (options & ProcessingOptions.ReadOnlyChain) != 0;
             Block[] processedBlocks = new Block[suggestedBlocks.Count];
@@ -111,7 +106,7 @@ namespace Nethermind.Blockchain.Processing
                     processedBlocks[i] = ProcessOne(suggestedBlocks[i], options, blockTracer);
                     
                     // be cautious here as AuRa depends on processing
-                    PreCommitBlock(); // only needed if we plan to read state root?
+                    PreCommitBlock(newBranchStateRoot); // only needed if we plan to read state root?
                     if (!readOnly)
                     {
                         BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(processedBlocks[i]));
@@ -120,7 +115,7 @@ namespace Nethermind.Blockchain.Processing
 
                 if (readOnly)
                 {
-                    DiscardBranch();
+                    RestoreBranch(previousBranchStateRoot);
                 }
                 else
                 {
@@ -131,7 +126,7 @@ namespace Nethermind.Blockchain.Processing
             }
             catch (InvalidBlockException)
             {
-                DiscardBranch();
+                RestoreBranch(previousBranchStateRoot);
                 throw;
             }
         }
@@ -152,39 +147,41 @@ namespace Nethermind.Blockchain.Processing
             }
         }
 
-        private void CreateCheckpoint()
+        private Keccak CreateCheckpoint()
         {
-            _currentBranchStateRoot = _stateProvider.StateRoot;
+            Keccak currentBranchStateRoot = _stateProvider.StateRoot;
 
             /* Below is a non-critical assertion that nonetheless should be addressed when it happens. */
             if (_stateDb.HasUncommittedChanges || _codeDb.HasUncommittedChanges)
             {
-                if (_logger.IsError) _logger.Error($"Uncommitted state when processing from a branch root {_currentBranchStateRoot}.");
+                if (_logger.IsError) _logger.Error($"Uncommitted state when processing from a branch root {currentBranchStateRoot}.");
             }
+
+            return currentBranchStateRoot;
         }
 
-        private void PreCommitBlock()
+        private void PreCommitBlock(Keccak newBranchStateRoot)
         {
+            if (_logger.IsTrace) _logger.Trace($"Committing the branch - {newBranchStateRoot} | {_stateProvider.StateRoot}");
             _stateProvider.CommitTree();
             _storageProvider.CommitTrees();
         }
         
         private void CommitBranch()
         {
-            if (_logger.IsTrace) _logger.Trace($"Committing the branch - {_currentBranchStateRoot} | {_stateProvider.StateRoot}");
             _stateDb.Commit();
             _codeDb.Commit();
         }
 
-        private void DiscardBranch()
+        private void RestoreBranch(Keccak branchingPointStateRoot)
         {
-            if (_logger.IsTrace) _logger.Trace($"Restoring the branch checkpoint - {_currentBranchStateRoot} | {_stateProvider.StateRoot}");
+            if (_logger.IsTrace) _logger.Trace($"Restoring the branch checkpoint - {branchingPointStateRoot} | {_stateProvider.StateRoot}");
             _stateDb.Restore(ISnapshotableDb.NoChangesCheckpoint);
             _codeDb.Restore(ISnapshotableDb.NoChangesCheckpoint);
             _storageProvider.Reset();
             _stateProvider.Reset();
-            _stateProvider.StateRoot = _currentBranchStateRoot;
-            if (_logger.IsTrace) _logger.Trace($"Restored the branch checkpoint - {_currentBranchStateRoot} | {_stateProvider.StateRoot}");
+            _stateProvider.StateRoot = branchingPointStateRoot;
+            if (_logger.IsTrace) _logger.Trace($"Restored the branch checkpoint - {branchingPointStateRoot} | {_stateProvider.StateRoot}");
         }
 
         private TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, IBlockTracer blockTracer)
