@@ -109,6 +109,13 @@ namespace Nethermind.Blockchain.Processing
                 for (int i = 0; i < suggestedBlocks.Count; i++)
                 {
                     processedBlocks[i] = ProcessOne(suggestedBlocks[i], options, blockTracer);
+                    
+                    // be cautious here as AuRa depends on processing
+                    PreCommitBlock(); // only needed if we plan to read state root?
+                    if (!readOnly)
+                    {
+                        BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(processedBlocks[i]));
+                    }
                 }
 
                 if (readOnly)
@@ -118,10 +125,6 @@ namespace Nethermind.Blockchain.Processing
                 else
                 {
                     CommitBranch();
-                    for (int i = 0; i < suggestedBlocks.Count; i++)
-                    {
-                        BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(processedBlocks[i]));
-                    }
                 }
 
                 return processedBlocks;
@@ -160,11 +163,15 @@ namespace Nethermind.Blockchain.Processing
             }
         }
 
+        private void PreCommitBlock()
+        {
+            _stateProvider.CommitTree();
+            _storageProvider.CommitTrees();
+        }
+        
         private void CommitBranch()
         {
             if (_logger.IsTrace) _logger.Trace($"Committing the branch - {_currentBranchStateRoot} | {_stateProvider.StateRoot}");
-            _stateProvider.CommitTree();
-            _storageProvider.CommitTrees();
             _stateDb.Commit();
             _codeDb.Commit();
         }
