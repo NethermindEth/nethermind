@@ -58,15 +58,13 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
         }
 
-        private class GrpcLogPublisher : IDataPublisher
+        private class GrpcPublisher : IDataPublisher
         {
             private readonly IGrpcServer _grpcServer;
-            private readonly ILogger _logger;
 
-            public GrpcLogPublisher(IGrpcServer grpcServer, ILogManager logManager)
+            public GrpcPublisher(IGrpcServer grpcServer)
             {
                 _grpcServer = grpcServer ?? throw new ArgumentNullException(nameof(grpcServer));
-                _logger = logManager.GetClassLogger();
             }
 
             public void Publish<T>(T data) where T : class
@@ -75,11 +73,26 @@ namespace Nethermind.Runner.Ethereum.Steps
                 {
                     return;
                 }
+                
+                _grpcServer.PublishAsync(data, null);
+            }
+        }
+        
+        private class CompositePublisher : IDataPublisher
+        {
+            private readonly IDataPublisher[] _dataPublisher;
 
-                if (_logger.IsWarn) _logger.Warn($"Publishing data {data.ToString()}");
-                _grpcServer.PublishAsync<T>(data, "analytics");
+            public CompositePublisher(params IDataPublisher[] dataPublisher)
+            {
+                _dataPublisher = dataPublisher;
+            }
 
-                if (_logger.IsInfo) _logger.Info(data.ToString());
+            public void Publish<T>(T data) where T : class
+            {
+                foreach (IDataPublisher dataPublisher in _dataPublisher)
+                {
+                    dataPublisher.Publish(data);
+                }
             }
         }
 
@@ -87,7 +100,6 @@ namespace Nethermind.Runner.Ethereum.Steps
         {
             IInitConfig initConfig = _context.Config<IInitConfig>();
             IGrpcConfig grpcConfig = _context.Config<IGrpcConfig>();
-
             
             string fullPluginsDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory!, initConfig.PluginsDirectory);
             string[] pluginFiles = Directory.GetFiles(fullPluginsDir).Where(p => p.EndsWith("dll")).ToArray();
@@ -111,7 +123,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                         if (grpcConfig.Enabled && grpcConfig.ProducerEnabled)
                         {
                             if(_logger.IsWarn) _logger.Warn($"Initializing gRPC for {type.Name}");
-                            pluginLoader?.Init(_context.FileSystem, _context.TxPool, new GrpcLogPublisher(_context.GrpcServer, _context.LogManager), _context.LogManager);
+                            pluginLoader?.Init(_context.FileSystem, _context.TxPool, new GrpcPublisher(_context.GrpcServer!), _context.LogManager);
                         }
                         else
                         {
