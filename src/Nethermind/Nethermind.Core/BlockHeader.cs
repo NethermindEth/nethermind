@@ -45,7 +45,7 @@ namespace Nethermind.Core
 
         public WeakReference<BlockHeader> MaybeParent { get; set; }
 
-        public bool IsGenesis => Number == 0;
+        public bool IsGenesis => Number == 0L;
         public Keccak ParentHash { get; set; }
         public Keccak OmmersHash { get; set; }
         public Address Author { get; set; }

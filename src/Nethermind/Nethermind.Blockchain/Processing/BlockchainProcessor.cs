@@ -364,7 +364,6 @@ namespace Nethermind.Blockchain.Processing
 
             Block toBeProcessed = suggestedBlock;
             do
-
             {
                 blocksToBeAddedToMain.Add(toBeProcessed);
                 if (_logger.IsTrace) _logger.Trace($"To be processed (of {suggestedBlock.ToString(Block.Format.Short)}) is {toBeProcessed?.ToString(Block.Format.Short)}");
@@ -376,7 +375,8 @@ namespace Nethermind.Blockchain.Processing
                 branchingPoint = _blockTree.FindParentHeader(toBeProcessed.Header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                 if (branchingPoint == null)
                 {
-                    break; //failure here
+                    // genesis block
+                    break;
                 }
 
                 // for beam sync we do not expect previous blocks to necessarily be there and we
