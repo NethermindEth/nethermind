@@ -184,7 +184,7 @@ namespace Nethermind.Blockchain.Test
                 _blockTree = new BlockTree(blockDb, headersDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), MainnetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
                 _blockProcessor = new BlockProcessorMock(_logManager);
                 _recoveryStep = new RecoveryStepMock(_logManager);
-                _processor = new BlockchainProcessor(_blockTree, _blockProcessor, _recoveryStep, LimboLogs.Instance, true);
+                _processor = new BlockchainProcessor(_blockTree, _blockProcessor, _recoveryStep, LimboLogs.Instance, BlockchainProcessor.Options.Default);
                 _resetEvent = new AutoResetEvent(false);
 
                 _blockTree.NewHeadBlock += (sender, args) =>

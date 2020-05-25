@@ -180,8 +180,13 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.MainBlockProcessor,
                 _context.RecoveryStep,
                 _context.LogManager,
-                initConfig.StoreReceipts,
-                !syncConfig.BeamSync);
+                new BlockchainProcessor.Options
+                {
+                    AutoProcess = !syncConfig.BeamSync,
+                    StoreReceiptsByDefault = initConfig.StoreReceipts,
+                    RunGethTracer = initConfig.DiagnosticMode == DiagnosticMode.GethTrace,
+                    RunParityTracer = initConfig.DiagnosticMode == DiagnosticMode.ParityTrace,
+                });
 
             _context.BlockProcessingQueue = blockchainProcessor;
             _context.BlockchainProcessor = blockchainProcessor;
