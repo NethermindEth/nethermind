@@ -213,6 +213,8 @@ namespace Nethermind.Core
             public int Index2 { get; }
             public int Index3 { get; }
         }
+
+        public BloomStructRef ToStructRef() => new BloomStructRef(Bytes);
     }
 
     public ref struct BloomStructRef

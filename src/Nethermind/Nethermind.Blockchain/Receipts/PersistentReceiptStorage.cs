@@ -18,6 +18,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -40,6 +41,9 @@ namespace Nethermind.Blockchain.Receipts
         private static readonly Keccak MigrationBlockNumberKey = Keccak.Compute(nameof(MigratedBlockNumber));
         private long _migratedBlockNumber;
         private static readonly ReceiptStorageDecoder StorageDecoder = ReceiptStorageDecoder.Instance;
+        
+        private const int CacheSize = 32;
+        private readonly ICache<Keccak, TxReceipt[]> _receiptsCache = new LruCacheWithRecycling<Keccak, TxReceipt[]>(CacheSize, CacheSize, "receipts");
 
         public PersistentReceiptStorage(IColumnsDb<ReceiptsColumns> receiptsDb, ISpecProvider specProvider, IReceiptsRecovery receiptsRecovery)
         {
@@ -105,6 +109,11 @@ namespace Nethermind.Blockchain.Receipts
             {
                 return Array.Empty<TxReceipt>();
             }
+
+            if (_receiptsCache.TryGet(block.Hash, out var receipts))
+            {
+                return receipts;
+            }
             
             var receiptsData = _blocksDb.GetSpan(block.Hash);
             try
@@ -119,13 +128,15 @@ namespace Nethermind.Blockchain.Receipts
                     // var data = _database.MultiGet(block.Transactions.Select(t => t.Hash));
                     // return data.Select(kvp => DeserializeObsolete(new Keccak(kvp.Key), kvp.Value)).ToArray();
 
-                    TxReceipt[] result = new TxReceipt[block.Transactions.Length];
+                    receipts = new TxReceipt[block.Transactions.Length];
                     for (int i = 0; i < block.Transactions.Length; i++)
                     {
-                        result[i] = FindReceiptObsolete(block.Transactions[i].Hash);
+                        receipts[i] = FindReceiptObsolete(block.Transactions[i].Hash);
                     }
 
-                    return result;
+                    _receiptsCache.Set(block.Hash, receipts);
+
+                    return receipts;
                 }
             }
             finally
@@ -134,7 +145,7 @@ namespace Nethermind.Blockchain.Receipts
             }
         }
 
-        private static TxReceipt[] DecodeArray(Span<byte> receiptsData)
+        private static TxReceipt[] DecodeArray(in Span<byte> receiptsData)
         {
             var decoderContext = new Rlp.ValueDecoderContext(receiptsData);
             try
@@ -150,10 +161,24 @@ namespace Nethermind.Blockchain.Receipts
 
         public TxReceipt[] Get(Keccak blockHash)
         {
+            if (_receiptsCache.TryGet(blockHash, out var receipts))
+            {
+                return receipts;
+            }
+            
             var receiptsData = _blocksDb.GetSpan(blockHash);
             try
             {
-                return receiptsData.IsNullOrEmpty() ? Array.Empty<TxReceipt>() : DecodeArray(receiptsData);
+                if (receiptsData.IsNullOrEmpty())
+                {
+                    return Array.Empty<TxReceipt>();
+                }
+                else
+                {
+                    receipts = DecodeArray(receiptsData);
+                    _receiptsCache.Set(blockHash, receipts);
+                    return receipts;
+                }
             }
             finally
             {
@@ -165,6 +190,12 @@ namespace Nethermind.Blockchain.Receipts
 
         public bool TryGetReceiptsIterator(long blockNumber, Keccak blockHash, out ReceiptsIterator iterator)
         {
+            if (_receiptsCache.TryGet(blockHash, out var receipts))
+            {
+                iterator = new ReceiptsIterator(receipts);
+                return true;
+            }
+            
             var result = CanGetReceiptsByHash(blockNumber);
             var receiptsData = _blocksDb.GetSpan(blockHash);
             if (receiptsData == null)
@@ -207,6 +238,8 @@ namespace Nethermind.Blockchain.Receipts
             {
                 MigratedBlockNumber = blockNumber;
             }
+            
+            _receiptsCache.Set(block.Hash, txReceipts);
         }
 
         public long? LowestInsertedReceiptBlock

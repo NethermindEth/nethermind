@@ -22,6 +22,7 @@ namespace Nethermind.Blockchain.Receipts
 {
     public ref struct LogEntriesIterator
     {
+        private readonly LogEntry[] _logs;
         private readonly int _length;
         private Rlp.ValueDecoderContext _decoderContext;
         public long Index { get; private set; }
@@ -31,41 +32,71 @@ namespace Nethermind.Blockchain.Receipts
             _decoderContext = new Rlp.ValueDecoderContext(data);
             _length = _decoderContext.ReadSequenceLength();
             Index = -1;
+            _logs = null;
+        }
+
+        public LogEntriesIterator(LogEntry[] logs)
+        {
+            _decoderContext =new Rlp.ValueDecoderContext();
+            _length = logs.Length;
+            Index = -1;
+            _logs = logs;
         }
 
         public bool TryGetNext(out LogEntryStructRef current)
         {
-            if (_decoderContext.Position < _length)
+            if (_logs == null)
             {
-                LogEntryDecoder.Instance.DecodeStructRef(ref _decoderContext, RlpBehaviors.None, out current);
-                Index++;
-                return true;
+                if (_decoderContext.Position < _length)
+                {
+                    LogEntryDecoder.Instance.DecodeStructRef(ref _decoderContext, RlpBehaviors.None, out current);
+                    Index++;
+                    return true;
+                }
             }
             else
             {
-                current = new LogEntryStructRef();
-                return false;
+                if (++Index < _length)
+                {
+                    current = new LogEntryStructRef(_logs[Index]);
+                    return true;
+                }
             }
+            
+            current = new LogEntryStructRef();
+            return false;
         }
         
         public void Reset()
         {
-            _decoderContext.Position = 0;
-            _decoderContext.ReadSequenceLength();
+            Index = -1;
+            
+            if (_logs == null)
+            {
+                _decoderContext.Position = 0;
+                _decoderContext.ReadSequenceLength();
+            }
         }
 
         public bool TrySkipNext()
         {
-            if (_decoderContext.Position < _length)
+            if (_logs == null)
             {
-                _decoderContext.SkipItem();
-                Index++;
-                return true;
+                if (_decoderContext.Position < _length)
+                {
+                    _decoderContext.SkipItem();
+                    Index++;
+                    return true;
+                }
             }
             else
             {
-                return false;
+                if (++Index < _length)
+                {
+                    return true;
+                }
             }
+            return false;
         }
     }
 }
