@@ -44,7 +44,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _logger = logManager.GetClassLogger();
             }
             
-            public void Publish<T>(T data)
+            public void Publish<T>(T data) where T : class
             {
                 if (data == null)
                 {
