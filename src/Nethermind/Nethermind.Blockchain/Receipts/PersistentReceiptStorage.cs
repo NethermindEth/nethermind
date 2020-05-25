@@ -120,7 +120,7 @@ namespace Nethermind.Blockchain.Receipts
             {
                 if (!receiptsData.IsNullOrEmpty())
                 {
-                    return DecodeArray(receiptsData);
+                    receipts = DecodeArray(receiptsData);
                 }
                 else
                 {
@@ -133,11 +133,10 @@ namespace Nethermind.Blockchain.Receipts
                     {
                         receipts[i] = FindReceiptObsolete(block.Transactions[i].Hash);
                     }
-
-                    _receiptsCache.Set(block.Hash, receipts);
-
-                    return receipts;
                 }
+                
+                _receiptsCache.Set(block.Hash, receipts);
+                return receipts;
             }
             finally
             {
@@ -263,6 +262,11 @@ namespace Nethermind.Blockchain.Receipts
                 _migratedBlockNumber = value;
                 _database.Set(MigrationBlockNumberKey, MigratedBlockNumber.ToBigEndianByteArrayWithoutLeadingZeros());
             }
+        }
+
+        public void ClearCache()
+        {
+            _receiptsCache.Clear();
         }
     }
 }

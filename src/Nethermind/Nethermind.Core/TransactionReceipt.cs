@@ -87,17 +87,17 @@ namespace Nethermind.Core
         {
             StatusCode = receipt.StatusCode;
             BlockNumber = receipt.BlockNumber;
-            BlockHash = receipt.BlockHash.ToStructRef();
-            TxHash = receipt.TxHash.ToStructRef();
+            BlockHash = (receipt.BlockHash ?? Keccak.Zero).ToStructRef();
+            TxHash = (receipt.TxHash ?? Keccak.Zero).ToStructRef();
             Index = receipt.Index;
             GasUsed = receipt.GasUsed;
             GasUsedTotal = receipt.GasUsedTotal;
-            Sender = receipt.Sender.ToStructRef();
-            ContractAddress = receipt.ContractAddress.ToStructRef();
-            Recipient = receipt.Recipient.ToStructRef();
+            Sender = (receipt.Sender ?? Address.Zero).ToStructRef();
+            ContractAddress = (receipt.ContractAddress ?? Address.Zero).ToStructRef();
+            Recipient = (receipt.Recipient ?? Address.Zero).ToStructRef();
             ReturnValue = receipt.ReturnValue;
-            PostTransactionState = receipt.PostTransactionState.ToStructRef();
-            Bloom = receipt.Bloom.ToStructRef();
+            PostTransactionState = (receipt.PostTransactionState ?? Keccak.Zero).ToStructRef();
+            Bloom = (receipt.Bloom ?? Core.Bloom.Empty).ToStructRef();
             Logs = receipt.Logs;
             LogsRlp = Span<byte>.Empty;
             Error = receipt.Error;
