@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Threading.Tasks;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -30,9 +31,8 @@ namespace Nethermind.Network.Discovery.Lifecycle
         void ProcessPongMessage(PongMessage discoveryMessage);
         void ProcessNeighborsMessage(NeighborsMessage discoveryMessage);
         void ProcessFindNodeMessage(FindNodeMessage discoveryMessage);
-
         void SendFindNode(byte[] searchedNodeId);
-        void SendPing();
+        Task SendPingAsync();
         void SendPong(PingMessage discoveryMessage);
         void SendNeighbors(Node[] nodes);
 
