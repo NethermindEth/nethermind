@@ -113,7 +113,7 @@ namespace Nethermind.BeaconNode.Test
                 validatorDuties.Add(validatorDuty);
                 Console.WriteLine("Index [{0}], Epoch {1}, Validator {2}, : attestation slot {3}, shard {4}, proposal slot {5}",
                     validatorDutyIndex, targetEpoch, validatorDuty.ValidatorPublicKey, validatorDuty.AttestationSlot,
-                    (ulong) validatorDuty.AttestationIndex, validatorDuty.BlockProposalSlot);
+                    validatorDuty.AttestationIndex, validatorDuty.BlockProposalSlot);
                 validatorDutyIndex++;
             }
 
@@ -123,7 +123,7 @@ namespace Nethermind.BeaconNode.Test
             {
                 Console.WriteLine("Index [{0}], Epoch {1}, Validator {2}, : attestation slot {3}, shard {4}, proposal slot {5}",
                     validatorDutyIndex, targetEpoch, validatorDuty.ValidatorPublicKey, validatorDuty.AttestationSlot,
-                    (ulong) validatorDuty.AttestationIndex, validatorDuty.BlockProposalSlot);
+                    validatorDuty.AttestationIndex, validatorDuty.BlockProposalSlot);
             }
 
             // Assert
@@ -177,7 +177,7 @@ namespace Nethermind.BeaconNode.Test
                 validatorDuties.Add(validatorDuty);
                 Console.WriteLine("Index [{0}], Epoch {1}, Validator {2}, : attestation slot {3}, shard {4}, proposal slot {5}",
                     validatorDutyIndex, targetEpoch, validatorDuty.ValidatorPublicKey, validatorDuty.AttestationSlot,
-                    (ulong) validatorDuty.AttestationIndex, validatorDuty.BlockProposalSlot);
+                    validatorDuty.AttestationIndex, validatorDuty.BlockProposalSlot);
                 validatorDutyIndex++;
             }
 
@@ -187,7 +187,7 @@ namespace Nethermind.BeaconNode.Test
             {
                 Console.WriteLine("Index [{0}], Epoch {1}, Validator {2}, : attestation slot {3}, shard {4}, proposal slot {5}",
                     validatorDutyIndex, targetEpoch, validatorDuty.ValidatorPublicKey, validatorDuty.AttestationSlot,
-                    (ulong) validatorDuty.AttestationIndex, validatorDuty.BlockProposalSlot);
+                    validatorDuty.AttestationIndex, validatorDuty.BlockProposalSlot);
             }
             
             // Assert
@@ -247,7 +247,7 @@ namespace Nethermind.BeaconNode.Test
                 validatorDuties.Add(validatorDuty);
                 Console.WriteLine("Index [{0}], Epoch {1}, Validator {2}, : attestation slot {3}, shard {4}, proposal slot {5}",
                     validatorDutyIndex, targetEpoch, validatorDuty.ValidatorPublicKey, validatorDuty.AttestationSlot,
-                    (ulong) validatorDuty.AttestationIndex, validatorDuty.BlockProposalSlot);
+                    validatorDuty.AttestationIndex, validatorDuty.BlockProposalSlot);
                 validatorDutyIndex++;
             }
 
@@ -257,7 +257,7 @@ namespace Nethermind.BeaconNode.Test
             {
                 Console.WriteLine("Index [{0}], Epoch {1}, Validator {2}, : attestation slot {3}, shard {4}, proposal slot {5}",
                     validatorDutyIndex, targetEpoch, validatorDuty.ValidatorPublicKey, validatorDuty.AttestationSlot,
-                    (ulong) validatorDuty.AttestationIndex, validatorDuty.BlockProposalSlot);
+                    validatorDuty.AttestationIndex, validatorDuty.BlockProposalSlot);
             }
             
             // Assert
