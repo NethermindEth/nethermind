@@ -23,6 +23,11 @@ using Nethermind.TxPool;
 using Nethermind.Facade;
 using Nethermind.Baseline;
 using Nethermind.Abi;
+using Nethermind.Db;
+using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Filters;
+using System.Collections.Generic;
+
 
 namespace Nethermind.JsonRpc.Modules.Baseline
 {
@@ -33,6 +38,7 @@ namespace Nethermind.JsonRpc.Modules.Baseline
         private readonly ILogger _logger;
         private readonly ITxPoolBridge _txPoolBridge;
 
+        MemDb _memdb = new MemDb();
         public BaselineModule(ITxPoolBridge txPoolBridge, IAbiEncoder abiEncoder, ILogManager logManager)
         {
             _abiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
@@ -52,6 +58,21 @@ namespace Nethermind.JsonRpc.Modules.Baseline
             tx.GasPrice = 0.GWei();
 
             Keccak txHash = _txPoolBridge.SendTransaction(tx, TxHandlingOptions.ManagedNonce);
+            // getReceipt check
+
+            // FilterStore store = new FilterStore();
+
+            // IEnumerable<string> topics = new string[] { "insertLeaf", "insertLeaves"};
+
+            // LogFilter logFilter = store.CreateLogFilter(new BlockParameter(1), new BlockParameter(2), new AddressFilter(contractAddress));
+
+            // var logs = _logFinder.FindLogs(logFilter);
+
+            // foreach(var log in logs)
+            // {
+            //     Console.WriteLine("test");
+            //     Console.WriteLine(log);
+            // }
 
             return ResultWrapper<Keccak>.Success(txHash);
         }

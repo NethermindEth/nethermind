@@ -31,7 +31,7 @@ namespace Nethermind.Facade
         private readonly IWallet _wallet;
         private readonly ITimestamper _timestamper;
         private readonly int _chainId;
-
+        
         public TxPoolBridge(ITxPool txPool, IWallet wallet, ITimestamper timestamper, int chainId)
         {
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
