@@ -16,6 +16,7 @@
 
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.Filters.Topics
 {
@@ -30,16 +31,18 @@ namespace Nethermind.Blockchain.Filters.Topics
             _expressions = expressions;
         }
 
-        public bool Accepts(LogEntry entry)
+        public bool Accepts(LogEntry entry) => Accepts(entry.Topics);
+
+        private bool Accepts(Keccak[] topics)
         {
-            if (_expressions.Length > entry.Topics.Length)
+            if (_expressions.Length > topics.Length)
             {
                 return false;
             }
-            
+
             for (int i = 0; i < _expressions.Length; i++)
             {
-                if (!_expressions[i].Accepts(entry.Topics[i]))
+                if (!_expressions[i].Accepts(topics[i]))
                 {
                     return false;
                 }
@@ -47,10 +50,15 @@ namespace Nethermind.Blockchain.Filters.Topics
 
             return true;
         }
-        
+
         public bool Accepts(ref LogEntryStructRef entry)
         {
-            var iterator = new KeccaksIterator(entry.Topics);
+            if (entry.Topics != null)
+            {
+                return Accepts(entry.Topics);
+            }
+            
+            var iterator = new KeccaksIterator(entry.TopicsRlp);
             for (int i = 0; i < _expressions.Length; i++)
             {
                 if (iterator.TryGetNext(out var keccak))
@@ -69,7 +77,7 @@ namespace Nethermind.Blockchain.Filters.Topics
             return true;
         }
 
-        public bool Matches(Core.Bloom bloom)
+        public bool Matches(Bloom bloom)
         {
             bool result = true;
             

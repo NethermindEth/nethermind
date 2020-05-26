@@ -202,6 +202,8 @@ namespace Nethermind.Core.Crypto
         {
             return !(a == b);
         }
+
+        public KeccakStructRef ToStructRef() => new KeccakStructRef(Bytes);
     }
     
     public ref struct KeccakStructRef
