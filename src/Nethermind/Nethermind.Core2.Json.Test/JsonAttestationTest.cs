@@ -34,7 +34,7 @@ namespace Nethermind.Core2.Json.Test
     public class JsonAttestationTest
     {
         [Test]
-        public async Task Attesation_Serialize()
+        public async Task Attestation_Serialize()
         {
             // Arrange
             JsonSerializerOptions options = new JsonSerializerOptions();

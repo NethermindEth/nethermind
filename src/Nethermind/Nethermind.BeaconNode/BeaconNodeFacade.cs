@@ -203,8 +203,8 @@ namespace Nethermind.BeaconNode
                 }
 
                 // TODO: Network publishing
-                //if (_logger.IsDebug()) LogDebug.PublishingAttestationToNetwork(_logger, signedAttestation, null);
-                //await _networkPeering.PublishAttestationAsync(signedAttestation).ConfigureAwait(false);
+                if (_logger.IsDebug()) LogDebug.PublishingAttestationToNetwork(_logger, signedAttestation, null);
+                await _networkPeering.PublishAttestationAsync(signedAttestation).ConfigureAwait(false);
 
                 if (acceptedLocally)
                 {
