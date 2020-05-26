@@ -82,6 +82,23 @@ namespace Nethermind.Blockchain.Test.Receipts
         }
         
         [Test]
+        public void Should_not_cache_empty_non_processed_blocks()
+        {
+            var block = Build.A.Block
+                .WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject)
+                .WithReceiptsRoot(TestItem.KeccakA)
+                .TestObject;
+
+            var emptyReceipts = new TxReceipt[] {null};
+            _storage.Get(block).Should().BeEquivalentTo(emptyReceipts);
+            // can be from cache:
+            _storage.Get(block).Should().BeEquivalentTo(emptyReceipts);
+            var (_, receipts) = InsertBlock(block);
+            // before should not be cached
+            _storage.Get(block).Should().BeEquivalentTo(receipts);
+        }
+        
+        [Test]
         public void Adds_and_retrieves_receipts_for_block_with_iterator_from_cache_after_insert()
         {
             var (block, receipts) = InsertBlock();
@@ -119,10 +136,11 @@ namespace Nethermind.Blockchain.Test.Receipts
             receiptStructRef.Logs.Should().BeEquivalentTo(receipts.First().Logs);
             iterator.TryGetNext(out receiptStructRef).Should().BeFalse();
         }
+        
 
-        private (Block block, TxReceipt[] receipts) InsertBlock()
+        private (Block block, TxReceipt[] receipts) InsertBlock(Block block = null)
         {
-            Block block = Build.A.Block
+            block ??= Build.A.Block
                 .WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject)
                 .WithReceiptsRoot(TestItem.KeccakA)
                 .TestObject;

@@ -118,6 +118,8 @@ namespace Nethermind.Blockchain.Receipts
             var receiptsData = _blocksDb.GetSpan(block.Hash);
             try
             {
+                bool shouldCache = true;
+                
                 if (!receiptsData.IsNullOrEmpty())
                 {
                     receipts = DecodeArray(receiptsData);
@@ -132,10 +134,17 @@ namespace Nethermind.Blockchain.Receipts
                     for (int i = 0; i < block.Transactions.Length; i++)
                     {
                         receipts[i] = FindReceiptObsolete(block.Transactions[i].Hash);
+                        shouldCache &= receipts[i] != null;
                     }
                 }
+
+                shouldCache &= receipts.Length > 0;
                 
-                _receiptsCache.Set(block.Hash, receipts);
+                if (shouldCache)
+                {
+                    _receiptsCache.Set(block.Hash, receipts);
+                }
+
                 return receipts;
             }
             finally
