@@ -24,10 +24,6 @@ using Nethermind.Facade;
 using Nethermind.Baseline;
 using Nethermind.Abi;
 using Nethermind.Db;
-using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Filters;
-using System.Collections.Generic;
-
 
 namespace Nethermind.JsonRpc.Modules.Baseline
 {
@@ -45,16 +41,16 @@ namespace Nethermind.JsonRpc.Modules.Baseline
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _txPoolBridge = txPoolBridge ?? throw new ArgumentNullException(nameof(txPoolBridge));
         }
-        public ResultWrapper<Keccak> baseline_insertLeaf(Address address, Address contractAddress)
+        public ResultWrapper<Keccak> baseline_insertLeaf(Address address, Address contractAddress, Keccak hash)
         {
-            var txData = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, ContractMerkleTree.InsertLeafAbiSig);
+            var txData = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, ContractMerkleTree.InsertLeafAbiSig, hash);
 
             Transaction tx = new Transaction();
             tx.Value = 0;
             tx.Data = txData;
             tx.To = contractAddress;
             tx.SenderAddress = address;
-            tx.GasLimit = 100000;
+            tx.GasLimit = 1000000;
             tx.GasPrice = 0.GWei();
 
             Keccak txHash = _txPoolBridge.SendTransaction(tx, TxHandlingOptions.ManagedNonce);
@@ -81,11 +77,12 @@ namespace Nethermind.JsonRpc.Modules.Baseline
             var txData = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, ContractMerkleTree.InsertLeavesAbiSig);
 
             Transaction tx = new Transaction();
+
             tx.Value = 0;
             tx.Data = txData;
             tx.To = contractAddress;
             tx.SenderAddress = address;
-            tx.GasLimit = 100000;
+            tx.GasLimit = 1000000;
             tx.GasPrice = 0.GWei();
 
             Keccak txHash = _txPoolBridge.SendTransaction(tx, TxHandlingOptions.ManagedNonce);
@@ -123,7 +120,8 @@ namespace Nethermind.JsonRpc.Modules.Baseline
 
         public ResultWrapper<string> baseline_getSiblings()
         {
-            return ResultWrapper<string>.Success("test3");
+            // return ResultWrapper<string>.Success("test3");
+            return null;
         }
     }
 }
