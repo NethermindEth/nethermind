@@ -60,7 +60,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
         public Node ManagedNode { get; }
         public NodeLifecycleState State { get; private set; }
         public INodeStats NodeStats { get; }
-        public bool IsBonded => (_sentPing && _receivedPong) && (_receivedPing && _sentPong);
+        public bool IsBonded => _sentPing && _receivedPong;
 
         public event EventHandler<NodeLifecycleState> OnStateChanged;
 
@@ -166,15 +166,11 @@ namespace Nethermind.Network.Discovery.Lifecycle
 
         private DateTime _lastPingSent = DateTime.MinValue;
 
-        public void SendPing()
+        public async Task SendPingAsync()
         {
-            Task.Run(() =>
-            {
-                _lastPingSent = DateTime.UtcNow;
-                Task task = SendPingAsync(_discoveryConfig.PingRetryCount);
-                _sentPing = true;
-                return task;
-            });
+            _lastPingSent = DateTime.UtcNow;
+            await CreateAndSendPingAsync(_discoveryConfig.PingRetryCount);
+            _sentPing = true;
         }
 
         public void SendPong(PingMessage discoveryMessage)
@@ -223,7 +219,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
             if (newState == NodeLifecycleState.New)
             {
                 //if node is just discovered we send ping to confirm it is active
-                SendPing();
+                SendPingAsync();
             }
             else if (newState == NodeLifecycleState.Active)
             {
@@ -251,7 +247,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
 
                 if (DateTime.UtcNow - _lastPingSent > TimeSpan.FromSeconds(5))
                 {
-                    SendPing();
+                    SendPingAsync();
                 }
                 else
                 {
@@ -271,7 +267,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
             }
         }
 
-        private async Task SendPingAsync(int counter)
+        private async Task CreateAndSendPingAsync(int counter = 1)
         {
             PingMessage msg = _discoveryMessageFactory.CreateOutgoingMessage<PingMessage>(ManagedNode);
             msg.SourceAddress = _nodeTable.MasterNode.Address;
@@ -288,7 +284,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
                 {
                     if (counter > 1)
                     {
-                        await SendPingAsync(counter - 1);
+                        await CreateAndSendPingAsync(counter - 1);
                     }
 
                     UpdateState(NodeLifecycleState.Unreachable);

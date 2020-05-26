@@ -44,7 +44,7 @@ namespace Nethermind.Network.Test
             var publicKey = new PublicKey("0x000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
             string domain = "nethermind.io";
             Enode enode = new Enode($"enode://{publicKey.ToString(false)}@{domain}:{1234}");
-            Dns.GetHostAddresses(domain).Should().Contain(enode.HostIp);
+            Dns.GetHostAddresses(domain).Should().NotBeEmpty();
             enode.Port.Should().Be(1234);
             enode.PublicKey.Should().BeEquivalentTo(publicKey);
         }

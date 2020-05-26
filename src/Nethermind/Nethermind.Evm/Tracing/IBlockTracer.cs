@@ -17,21 +17,19 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
-using Nethermind.State;
 
 namespace Nethermind.Evm.Tracing
 {
     public interface IBlockTracer
     {
         bool IsTracingRewards { get; }
+        
         void ReportReward(Address author, string rewardType, UInt256 rewardValue);
+        
         void StartNewBlockTrace(Block block);
+        
         ITxTracer StartNewTxTrace(Keccak txHash);
-
-        void BeforeRestore(IStateProvider state)
-        {
-        }
-
+        
         void EndTxTrace();
     }
 }

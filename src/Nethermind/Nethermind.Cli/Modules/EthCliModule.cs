@@ -187,6 +187,18 @@ namespace Nethermind.Cli.Modules
         {
             return NodeManager.PostJint("eth_getLogs", filter).Result;
         }
+        
+        [CliFunction("eth", "getFilterChanges")]
+        public JsValue GetFilterChanges(long filterId)
+        {
+            return NodeManager.PostJint("eth_getFilterChanges", filterId).Result;
+        }
+        
+        [CliFunction("eth", "newPendingTransactionFilter")]
+        public long NewPendingTransactionFilter()
+        {
+            return NodeManager.Post<long>("eth_newPendingTransactionFilter").Result;
+        }
 
         public EthCliModule(ICliEngine cliEngine, INodeManager nodeManager) : base(cliEngine, nodeManager)
         {

@@ -91,13 +91,13 @@ namespace Nethermind.Blockchain.Test
         }
 
         [Test]
-        public void Can_only_add_genesis_once()
+        public void Suggesting_genesis_many_times_does_not_cause_any_trouble()
         {
             BlockTree blockTree = BuildBlockTree();
             Block blockA = Build.A.Block.WithNumber(0).TestObject;
             Block blockB = Build.A.Block.WithNumber(0).TestObject;
-            blockTree.SuggestBlock(blockA);
-            Assert.Throws<InvalidOperationException>(() => blockTree.SuggestBlock(blockB));
+            blockTree.SuggestBlock(blockA).Should().Be(AddBlockResult.Added);
+            blockTree.SuggestBlock(blockB).Should().Be(AddBlockResult.AlreadyKnown);
         }
 
         [Test]

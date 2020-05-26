@@ -87,6 +87,7 @@ namespace Nethermind.Runner
                     string request = await reader.ReadToEndAsync();
                     JsonRpcResult result = await jsonRpcProcessor.ProcessAsync(request);
 
+                    ctx.Response.ContentType = "application/json";
                     if (result.IsCollection)
                     {
                         _jsonSerializer.Serialize(ctx.Response.Body, result.Responses);

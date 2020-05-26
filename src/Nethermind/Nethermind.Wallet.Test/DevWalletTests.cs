@@ -133,7 +133,7 @@ namespace Nethermind.Wallet.Test
                 tx.SenderAddress = signerAddress;
                 
                 wallet.Sign(tx, chainId);
-                Address recovered = ecdsa.RecoverAddress(tx, true);
+                Address recovered = ecdsa.RecoverAddress(tx);
                 Assert.AreEqual(signerAddress, recovered, $"{i}");
                 Assert.AreEqual(chainId, tx.Signature.ChainId, "chainId");
             }

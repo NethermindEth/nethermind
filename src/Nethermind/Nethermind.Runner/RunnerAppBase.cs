@@ -61,6 +61,7 @@ namespace Nethermind.Runner
         private IRunner _ethereumRunner = NullRunner.Instance;
         private IRunner _grpcRunner = NullRunner.Instance;
         private TaskCompletionSource<object?>? _cancelKeySource;
+        private TaskCompletionSource<object?>? _processExit;
         private IMonitoringService _monitoringService = NullMonitoringService.Instance;
 
         protected RunnerAppBase()
@@ -70,6 +71,7 @@ namespace Nethermind.Runner
 
         private void CurrentDomainOnProcessExit(object? sender, EventArgs e)
         {
+            _processExit?.SetResult(null);
         }
 
         private void LogMemoryConfiguration()
@@ -79,7 +81,7 @@ namespace Nethermind.Runner
             if (_logger?.IsDebug ?? false) _logger!.Debug($"LOH compaction mode : {System.Runtime.GCSettings.LargeObjectHeapCompactionMode}");
         }
 
-        public void Run(string[] args)
+        public Task Run(string[] args)
         {
             (CommandLineApplication app, var buildConfigProvider, var getDbBasePath) = BuildCommandLineApp();
             ManualResetEventSlim appClosed = new ManualResetEventSlim(true);
@@ -106,10 +108,11 @@ namespace Nethermind.Runner
                 EthereumJsonSerializer serializer = new EthereumJsonSerializer();
                 if (_logger.IsDebug) _logger.Debug($"Nethermind config:\n{serializer.Serialize(initConfig, true)}\n");
 
+                _processExit = new TaskCompletionSource<object?>();
                 _cancelKeySource = new TaskCompletionSource<object?>();
 
                 await StartRunners(configProvider);
-                await _cancelKeySource.Task;
+                await Task.WhenAny(_cancelKeySource.Task, _processExit.Task);
 
                 Console.WriteLine("Closing, please wait until all functions are stopped properly...");
                 StopAsync().Wait();
@@ -121,6 +124,7 @@ namespace Nethermind.Runner
 
             app.Execute(args);
             appClosed.Wait();
+            return Task.CompletedTask;
         }
 
         private void ConsoleOnCancelKeyPress(object sender, ConsoleCancelEventArgs e)

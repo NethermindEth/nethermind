@@ -18,10 +18,14 @@ namespace Nethermind.Db
 {
     public interface ISnapshotableDb : IDb
     {
+        public const int NoChangesCheckpoint = -1;
+        
         void Restore(int snapshot);
 
         void Commit();
         
         int TakeSnapshot();
+
+        bool HasUncommittedChanges => TakeSnapshot() != NoChangesCheckpoint;
     }
 }

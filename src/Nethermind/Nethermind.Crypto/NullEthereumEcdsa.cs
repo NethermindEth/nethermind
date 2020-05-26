@@ -43,7 +43,7 @@ namespace Nethermind.Crypto
             throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
         }
 
-        public Address RecoverAddress(Transaction tx, bool _)
+        public Address RecoverAddress(Transaction tx)
         {
             throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
         }
@@ -53,7 +53,7 @@ namespace Nethermind.Crypto
             throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
         }
 
-        public bool Verify(Address sender, Transaction tx, bool _)
+        public bool Verify(Address sender, Transaction tx)
         {
             throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
         }

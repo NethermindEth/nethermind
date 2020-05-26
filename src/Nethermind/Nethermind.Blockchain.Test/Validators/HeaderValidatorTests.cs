@@ -16,24 +16,25 @@
 
 using System;
 using System.Numerics;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Ethash;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Specs;
-using Nethermind.Specs.Forks;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Logging;
-using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
+using Nethermind.Logging;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
+using Nethermind.State.Repositories;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 
-namespace Nethermind.Core.Test
+namespace Nethermind.Blockchain.Test.Validators
 {
     [TestFixture]
     public class HeaderValidatorTests

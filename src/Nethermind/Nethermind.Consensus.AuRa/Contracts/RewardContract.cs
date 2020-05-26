@@ -19,11 +19,11 @@ using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Rewards;
+using Nethermind.Consensus.AuRa.Json;
 using Nethermind.Core;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
-using Nethermind.Serialization.Json.Abi;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {

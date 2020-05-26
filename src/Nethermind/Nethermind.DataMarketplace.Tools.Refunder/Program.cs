@@ -110,7 +110,7 @@ namespace Nethermind.DataMarketplace.Tools.Refunder
                     wallet.Sign(transaction, ChainId.Mainnet);
                     
                     EthereumEcdsa ecdsa = new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance);
-                    Address recoveredAddress = ecdsa.RecoverAddress(transaction, true);
+                    Address recoveredAddress = ecdsa.RecoverAddress(transaction);
                     if (recoveredAddress != transaction.SenderAddress)
                     {
                         Console.WriteLine("Signature failure");

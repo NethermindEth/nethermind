@@ -126,8 +126,7 @@ namespace Nethermind.Evm
                 // hacky fix for the potential recovery issue
                 if (transaction.Signature != null)
                 {
-                    bool eip155Enabled = _specProvider.GetSpec(block.Number).IsEip155Enabled;
-                    transaction.SenderAddress = _ecdsa.RecoverAddress(transaction, eip155Enabled);
+                    transaction.SenderAddress = _ecdsa.RecoverAddress(transaction);
                 }
 
                 if (sender != transaction.SenderAddress)
