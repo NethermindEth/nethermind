@@ -24,15 +24,18 @@ using Nethermind.Facade;
 using Nethermind.Baseline;
 using Nethermind.Abi;
 using Nethermind.Db;
+using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Filters;
 
 namespace Nethermind.JsonRpc.Modules.Baseline
 {
     public class BaselineModule : IBaselineModule
     {
-
         private readonly IAbiEncoder _abiEncoder;
         private readonly ILogger _logger;
         private readonly ITxPoolBridge _txPoolBridge;
+
+        public FilterLog filterLog;
 
         MemDb _memdb = new MemDb();
         public BaselineModule(ITxPoolBridge txPoolBridge, IAbiEncoder abiEncoder, ILogManager logManager)
@@ -62,7 +65,7 @@ namespace Nethermind.JsonRpc.Modules.Baseline
 
             // LogFilter logFilter = store.CreateLogFilter(new BlockParameter(1), new BlockParameter(2), new AddressFilter(contractAddress));
 
-            // var logs = _logFinder.FindLogs(logFilter);
+            //var logs = _logFinder.FindLogs(logFilter);
 
             // foreach(var log in logs)
             // {
