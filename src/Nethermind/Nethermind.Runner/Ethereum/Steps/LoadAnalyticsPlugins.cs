@@ -102,6 +102,11 @@ namespace Nethermind.Runner.Ethereum.Steps
             IGrpcConfig grpcConfig = _context.Config<IGrpcConfig>();
             
             string fullPluginsDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory!, initConfig.PluginsDirectory);
+            if (!Directory.Exists(fullPluginsDir))
+            {
+                if (_logger.IsWarn) _logger.Warn($"Plugins folder {fullPluginsDir} was not found. Skipping.");
+            }
+            
             string[] pluginFiles = Directory.GetFiles(fullPluginsDir).Where(p => p.EndsWith("dll")).ToArray();
 
             if (pluginFiles.Length > 0)
