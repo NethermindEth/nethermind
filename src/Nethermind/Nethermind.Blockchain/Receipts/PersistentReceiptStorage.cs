@@ -42,7 +42,7 @@ namespace Nethermind.Blockchain.Receipts
         private long _migratedBlockNumber;
         private static readonly ReceiptStorageDecoder StorageDecoder = ReceiptStorageDecoder.Instance;
         
-        private const int CacheSize = 32;
+        private const int CacheSize = 64;
         private readonly ICache<Keccak, TxReceipt[]> _receiptsCache = new LruCacheWithRecycling<Keccak, TxReceipt[]>(CacheSize, CacheSize, "receipts");
 
         public PersistentReceiptStorage(IColumnsDb<ReceiptsColumns> receiptsDb, ISpecProvider specProvider, IReceiptsRecovery receiptsRecovery)
