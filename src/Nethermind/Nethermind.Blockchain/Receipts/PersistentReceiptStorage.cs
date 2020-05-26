@@ -264,7 +264,7 @@ namespace Nethermind.Blockchain.Receipts
             }
         }
 
-        public void ClearCache()
+        internal void ClearCache()
         {
             _receiptsCache.Clear();
         }
