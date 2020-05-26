@@ -146,15 +146,22 @@ namespace Nethermind.Blockchain.Find
                 long logIndexInBlock = 0;
                 while (iterator.TryGetNext(out var receipt))
                 {
-                    LogEntriesIterator logsIterator = new LogEntriesIterator(receipt.Logs);
-                    if (filter.Matches(ref receipt.BloomStruct))
+                    LogEntriesIterator logsIterator = receipt.Logs == null ? new LogEntriesIterator(receipt.LogsRlp) : new LogEntriesIterator(receipt.Logs);
+                    if (filter.Matches(ref receipt.Bloom))
                     {
                         while (logsIterator.TryGetNext(out var log))
                         {
                             if (filter.Accepts(ref log))
                             {
                                 logList ??= new List<FilterLog>();
-                                var topicsValueDecoderContext = new Rlp.ValueDecoderContext(log.Topics);
+                                Keccak[] topics = log.Topics;
+                                
+                                if (topics == null)
+                                {
+                                    var topicsValueDecoderContext = new Rlp.ValueDecoderContext(log.TopicsRlp);
+                                    topics = KeccakDecoder.Instance.DecodeArray(ref topicsValueDecoderContext);
+                                }
+                                
                                 logList.Add(new FilterLog(
                                     logIndexInBlock,
                                     logsIterator.Index,
@@ -164,7 +171,7 @@ namespace Nethermind.Blockchain.Find
                                     receipt.TxHash.ToKeccak(),
                                     log.LoggersAddress.ToAddress(),
                                     log.Data.ToArray(),
-                                    KeccakDecoder.Instance.DecodeArray(ref topicsValueDecoderContext)));
+                                    topics));
                             }
                             
                             logIndexInBlock++;

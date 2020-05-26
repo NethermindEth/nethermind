@@ -72,12 +72,35 @@ namespace Nethermind.Core
         /// </summary>
         public KeccakStructRef PostTransactionState;
 
-        public BloomStructRef BloomStruct;
+        public BloomStructRef Bloom;
         
         /// <summary>
         /// Rlp encoded logs
         /// </summary>
-        public Span<byte> Logs;
+        public Span<byte> LogsRlp { get; set; }
+        
+        public LogEntry[] Logs { get; }
+        
         public string Error { get; set; }
+
+        public TxReceiptStructRef(TxReceipt receipt)
+        {
+            StatusCode = receipt.StatusCode;
+            BlockNumber = receipt.BlockNumber;
+            BlockHash = (receipt.BlockHash ?? Keccak.Zero).ToStructRef();
+            TxHash = (receipt.TxHash ?? Keccak.Zero).ToStructRef();
+            Index = receipt.Index;
+            GasUsed = receipt.GasUsed;
+            GasUsedTotal = receipt.GasUsedTotal;
+            Sender = (receipt.Sender ?? Address.Zero).ToStructRef();
+            ContractAddress = (receipt.ContractAddress ?? Address.Zero).ToStructRef();
+            Recipient = (receipt.Recipient ?? Address.Zero).ToStructRef();
+            ReturnValue = receipt.ReturnValue;
+            PostTransactionState = (receipt.PostTransactionState ?? Keccak.Zero).ToStructRef();
+            Bloom = (receipt.Bloom ?? Core.Bloom.Empty).ToStructRef();
+            Logs = receipt.Logs;
+            LogsRlp = Span<byte>.Empty;
+            Error = receipt.Error;
+        }
     }
 }
