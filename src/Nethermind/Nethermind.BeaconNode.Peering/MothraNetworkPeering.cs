@@ -17,11 +17,12 @@ namespace Nethermind.BeaconNode.Peering
     public class MothraNetworkPeering : INetworkPeering
     {
         private readonly ILogger _logger;
-        private readonly IOptionsMonitor<NetworkingConfiguration> _networkingConfigurationOptions;
         private readonly IMothraLibp2p _mothraLibp2p;
+        private readonly IOptionsMonitor<NetworkingConfiguration> _networkingConfigurationOptions;
         private readonly PeerManager _peerManager;
 
-        public MothraNetworkPeering(ILogger<MothraNetworkPeering> logger, IOptionsMonitor<NetworkingConfiguration> networkingConfigurationOptions, IMothraLibp2p mothraLibp2p,
+        public MothraNetworkPeering(ILogger<MothraNetworkPeering> logger,
+            IOptionsMonitor<NetworkingConfiguration> networkingConfigurationOptions, IMothraLibp2p mothraLibp2p,
             PeerManager peerManager)
         {
             _logger = logger;
@@ -51,7 +52,7 @@ namespace Nethermind.BeaconNode.Peering
             string topicTemplate = "/eth2/committee_index{0}_beacon_attestation/ssz";
             string topic = string.Format(topicTemplate, attestationSubnetIndex);
             byte[] topicUtf8 = Encoding.UTF8.GetBytes(topic);
-            
+
             Span<byte> encoded = new byte[Ssz.Ssz.AttestationLength(signedAttestation)];
             Ssz.Ssz.Encode(encoded, signedAttestation);
 

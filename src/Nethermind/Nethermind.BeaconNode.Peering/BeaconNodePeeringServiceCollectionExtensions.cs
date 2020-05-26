@@ -29,7 +29,8 @@ namespace Nethermind.BeaconNode.Peering
     {
         public static void AddBeaconNodePeering(this IServiceCollection services, IConfiguration configuration)
         {
-            services.Configure<NetworkingConfiguration>(x => configuration.Bind("BeaconChain:NetworkingConfiguration", x));
+            services.Configure<NetworkingConfiguration>(x =>
+                configuration.Bind("BeaconChain:NetworkingConfiguration", x));
 
             if (configuration.GetSection("Peering:Mothra").Exists())
             {

@@ -21,11 +21,10 @@ using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
-using Nethermind.Core2.Api;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
-using NUnit.Framework;
 using Nethermind.Core2.Types;
+using NUnit.Framework;
 using Shouldly;
 
 namespace Nethermind.Core2.Json.Test

@@ -15,18 +15,17 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using Nethermind.Core2.Types;
 
 namespace Nethermind.Core2.Configuration
 {
     public class NetworkingConfiguration
     {
+        public uint AttestationPropagationSlotRange { get; set; }
+        public uint AttestationSubnetCount { get; set; }
         public uint GossipMaximumSize { get; set; }
         public uint MaximumChunkSize { get; set; }
-        public uint AttestationSubnetCount { get; set; }
-        public TimeSpan TimeToFirstByteTimeout { get; set; }
-        public TimeSpan ResponseTimeout { get; set; }
-        public uint AttestationPropagationSlotRange { get; set; }
         public TimeSpan MaximumGossipClockDisparity { get; set; }
+        public TimeSpan ResponseTimeout { get; set; }
+        public TimeSpan TimeToFirstByteTimeout { get; set; }
     }
 }
