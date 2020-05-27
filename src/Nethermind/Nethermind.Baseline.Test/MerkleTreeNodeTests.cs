@@ -15,17 +15,23 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-namespace Nethermind.Baseline
+using FluentAssertions;
+using NUnit.Framework;
+
+namespace Nethermind.Baseline.Test
 {
-    public readonly struct MerkleTreeNode
+    [TestFixture]
+    public class MerkleTreeNodeTests
     {
-        public MerkleTreeNode(Bytes32 hash, int index)
+        [Test]
+        public void On_creation_sets_the_fields_properly()
         {
-            Hash = hash;
-            Index = index;
+            byte[] bytes = new byte[32];
+            bytes[1] = 44;
+            Bytes32 hash = Bytes32.Wrap(bytes);
+            MerkleTreeNode merkleTreeNode = new MerkleTreeNode(hash, 5);
+            merkleTreeNode.Hash.Should().Be(hash);
+            merkleTreeNode.Index.Should().Be(5);
         }
-        
-        public Bytes32 Hash { get; }
-        public int Index { get; } // 32bit index for 32 depth of a tree
     }
 }

@@ -16,6 +16,8 @@
 // 
 
 using System;
+using FluentAssertions;
+using Nethermind.Db;
 using NUnit.Framework;
 
 namespace Nethermind.Baseline.Test
@@ -23,53 +25,80 @@ namespace Nethermind.Baseline.Test
     [TestFixture]
     public class MerkleTreeTests
     {
-        [Test]
-        public void On_adding_one_leaf_count_goes_up_to_1()
-        {
-            throw new NotImplementedException();
-        }
+        private Bytes32[] _testLeaves = new Bytes32[32];
         
+        [OneTimeSetUp]
+        public void Setup()
+        {
+            for (int i = 0; i < _testLeaves.Length; i++)
+            {
+                byte[] bytes = new byte[32];
+                bytes[i] = (byte)i;
+                _testLeaves[i] = Bytes32.Wrap(bytes);
+            }
+        }
+
         [Test]
         public void Initially_count_is_0()
         {
-            throw new NotImplementedException();
+            MerkleTree merkleTree = new MerkleTree(new MemDb());
+            merkleTree.Count.Should().Be(0);
         }
         
         [Test]
+        public void On_adding_one_leaf_count_goes_up_to_1()
+        {
+            MerkleTree merkleTree = new MerkleTree(new MemDb());
+            merkleTree.Insert(_testLeaves[0]);
+            merkleTree.Count.Should().Be(1);
+        }
+
+        [Test]
         public void Can_restore_count_from_the_database()
         {
-            throw new NotImplementedException();
+            MemDb memDb = new MemDb();
+            MerkleTree merkleTree = new MerkleTree(memDb);
+            merkleTree.Insert(_testLeaves[0]);
+            
+            MerkleTree merkleTreeRestored = new MerkleTree(memDb);
+            merkleTreeRestored.Count.Should().Be(1);
         }
-        
+
         [TestCase(2)]
         [TestCase(3)]
         [TestCase(4)]
         public void When_inserting_more_leaves_count_keeps_growing(int numberOfLeaves)
         {
-            throw new NotImplementedException();
+            MerkleTree merkleTree = new MerkleTree(new MemDb());
+            for (int i = 0; i < numberOfLeaves; i++)
+            {
+                merkleTree.Insert(_testLeaves[i]);
+                merkleTree.Count.Should().Be(i + 1);    
+            }
         }
-        
+
         [TestCase(0)]
         [TestCase(short.MaxValue + 1)]
         public void Can_get_proof_from_an_emptyTree_on_an_index(int leafIndex)
         {
             throw new NotImplementedException();
         }
-        
+
         [TestCase(0)]
         [TestCase(short.MaxValue + 1)]
         public void Can_get_proof_on_a_populated_trie_on_an_index(int leafIndex)
         {
             throw new NotImplementedException();
         }
-        
+
         [TestCase(int.MinValue)]
         [TestCase(-1)]
         [TestCase(short.MaxValue + 2)]
         [TestCase(int.MaxValue)]
         public void Throws_on_get_proof_on_the_leaf_index_out_of_bounds(int leafIndex)
         {
-            throw new NotImplementedException();
+            MerkleTree merkleTree = new MerkleTree(new MemDb());
+            Assert.Throws<IndexOutOfRangeException>(() => merkleTree.GetProof(leafIndex));
         }
     }
 }
