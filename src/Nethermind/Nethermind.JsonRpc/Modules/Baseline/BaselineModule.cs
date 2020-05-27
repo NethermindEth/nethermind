@@ -26,6 +26,7 @@ using Nethermind.Abi;
 using Nethermind.Db;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Filters;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.JsonRpc.Modules.Baseline
 {
@@ -34,7 +35,6 @@ namespace Nethermind.JsonRpc.Modules.Baseline
         private readonly IAbiEncoder _abiEncoder;
         private readonly ILogger _logger;
         private readonly ITxPoolBridge _txPoolBridge;
-
         public FilterLog filterLog;
 
         MemDb _memdb = new MemDb();
@@ -72,6 +72,37 @@ namespace Nethermind.JsonRpc.Modules.Baseline
             //     Console.WriteLine("test");
             //     Console.WriteLine(log);
             // }
+
+            filterLog = new FilterLog(0, 
+                0, 
+                5, 
+                new Keccak("0xbbf3682375dae572acfb63c67f862dcdf59e96e043d44152cca7ebefa8c14cec"), 
+                0,
+                new Keccak("0xbe45ba4ec5fdfa14239c5e345f7e99dc7f7a6d6cd05e7e52b1fc5254bc712b9b"),
+                new Address("0x83c82edd1605ac37d9065d784fdc000b20e9879d"),
+                new byte[] { 
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
+                    242, 54, 130, 226, 242, 233, 234, 20, 29, 70, 99,
+                    222, 252, 64, 247, 42, 118, 195, 91, 53, 216, 202, 
+                    214, 224, 22, 25, 1, 242, 169, 103, 201, 182, 26, 
+                    206, 48, 45, 79, 206, 116, 147, 119, 56, 32, 221, 
+                    42, 126, 203, 132, 161, 108, 25, 159, 242, 96, 
+                    122, 247, 122, 223, 240, 0, 0, 0, 0, 0 },
+                new Keccak[] { new Keccak("0x6a82ba2aa1d2c039c41e6e2b5a5a1090d09906f060d32af9c1ac0beff7af75c0")}
+            );
+
+            // var leafHash = Bytes.ToHexString(filterLog.Data).Substring(64, 64);
+            // 31- tree depth, leafCount
+            var leafCount = 0;
+            
+            byte[] key = Rlp.Encode(Rlp.Encode(31), Rlp.Encode(leafCount)).Bytes;
+
+            _memdb[key] = filterLog.Data.Slice(64, 64);
+
+            byte[] retrievedBytes = _memdb[key];
+
+            Console.WriteLine(Bytes.ToHexString(retrievedBytes));
 
             return ResultWrapper<Keccak>.Success(txHash);
         }
@@ -123,8 +154,9 @@ namespace Nethermind.JsonRpc.Modules.Baseline
 
         public ResultWrapper<string> baseline_getSiblings()
         {
-            // return ResultWrapper<string>.Success("test3");
-            return null;
+
+            var tree = MerkleTree.CalculateMerkleTreeFromLeaves(_memdb.GetAllValues());
+            return ResultWrapper<string>.Success("test3");
         }
     }
 }

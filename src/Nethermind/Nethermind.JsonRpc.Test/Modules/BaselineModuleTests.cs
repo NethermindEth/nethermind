@@ -63,7 +63,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             var keccakBytes = Bytes.FromHexString("f23682e2f2e9ea141d4663defc40f72a76c35b35d8cad6e0161901f2a967c9b6");
             var keccak = new Keccak(keccakBytes);
             _baselineModule.baseline_insertLeaf(_adressMock, _adressMock2, keccak);
-            Assert.Contains(dataBytes, keccakBytes);
+            Assert.Contains(keccakBytes, dataBytes);
         }
 
     }
