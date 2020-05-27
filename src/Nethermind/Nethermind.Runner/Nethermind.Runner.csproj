@@ -84,6 +84,9 @@
     <Content Update="configs\ndm_provider_mainnet_proxy.cfg">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <Content Update="configs\energyWeb.cfg">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
   <ItemGroup>
     <Content Update="NLog.config">

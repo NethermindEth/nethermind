@@ -16,6 +16,7 @@
 
 using System.Net;
 using System.Threading.Tasks;
+using Nethermind.Config;
 using Nethermind.KeyStore;
 using Nethermind.KeyStore.Config;
 using Nethermind.Network;
