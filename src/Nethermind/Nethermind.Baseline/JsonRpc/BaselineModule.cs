@@ -15,35 +15,52 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Timers;
+using Nethermind.Abi;
+using Nethermind.Blockchain.Filters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Logging;
-using Nethermind.TxPool;
-using Nethermind.Facade;
-using Nethermind.Baseline;
-using Nethermind.Abi;
 using Nethermind.Db;
-using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Filters;
+using Nethermind.Facade;
+using Nethermind.JsonRpc;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.TxPool;
 
-namespace Nethermind.JsonRpc.Modules.Baseline
+namespace Nethermind.Baseline.JsonRpc
 {
     public class BaselineModule : IBaselineModule
     {
         private readonly IAbiEncoder _abiEncoder;
         private readonly ILogger _logger;
         private readonly ITxPoolBridge _txPoolBridge;
+        
+        private MerkleTree _merkleTree;
+        private MemDb _memDb = new MemDb();
+        
         public FilterLog filterLog;
 
-        MemDb _memdb = new MemDb();
         public BaselineModule(ITxPoolBridge txPoolBridge, IAbiEncoder abiEncoder, ILogManager logManager)
         {
             _abiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _txPoolBridge = txPoolBridge ?? throw new ArgumentNullException(nameof(txPoolBridge));
+            _merkleTree = new MerkleTree(_memDb);
+            
+            Timer timer = new Timer();
+            timer.Elapsed += TimerOnElapsed;
         }
+
+        private void TimerOnElapsed(object sender, ElapsedEventArgs e)
+        {
+            // get logs for a block range
+            // insert leaves
+            
+            // LogFilter logFilter = store.CreateLogFilter(new BlockParameter(1), new BlockParameter(2), new AddressFilter(contractAddress));
+            // var logs = _logFinder.FindLogs(logFilter);
+        }
+
         public ResultWrapper<Keccak> baseline_insertLeaf(Address address, Address contractAddress, Keccak hash)
         {
             var txData = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, ContractMerkleTree.InsertLeafAbiSig, hash);
@@ -98,9 +115,9 @@ namespace Nethermind.JsonRpc.Modules.Baseline
             
             byte[] key = Rlp.Encode(Rlp.Encode(31), Rlp.Encode(leafCount)).Bytes;
 
-            _memdb[key] = filterLog.Data.Slice(64, 64);
+            _memDb[key] = filterLog.Data.Slice(64, 64);
 
-            byte[] retrievedBytes = _memdb[key];
+            byte[] retrievedBytes = _memDb[key];
 
             Console.WriteLine(Bytes.ToHexString(retrievedBytes));
 
@@ -152,11 +169,9 @@ namespace Nethermind.JsonRpc.Modules.Baseline
             } 
         }
 
-        public ResultWrapper<string> baseline_getSiblings()
+        public ResultWrapper<MerkleTreeNode[]> baseline_getSiblings(int leafIndex)
         {
-
-            var tree = MerkleTree.CalculateMerkleTreeFromLeaves(_memdb.GetAllValues());
-            return ResultWrapper<string>.Success("test3");
+            return ResultWrapper<MerkleTreeNode[]>.Success(_merkleTree.GetProof(leafIndex));
         }
     }
 }

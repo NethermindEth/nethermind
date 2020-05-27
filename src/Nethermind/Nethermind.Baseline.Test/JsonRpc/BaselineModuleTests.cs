@@ -1,16 +1,16 @@
 using Nethermind.Abi;
+using Nethermind.Baseline.JsonRpc;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Facade;
-using Nethermind.JsonRpc.Modules.Baseline;
 using Nethermind.Logging;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 
-namespace Nethermind.JsonRpc.Test.Modules
+namespace Nethermind.Baseline.Test.JsonRpc
 {
     [TestFixture]
     public class BaselineModuleTests

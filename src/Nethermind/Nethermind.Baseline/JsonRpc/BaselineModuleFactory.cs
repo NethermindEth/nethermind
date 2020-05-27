@@ -15,15 +15,16 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using Nethermind.Core.Specs;
+using Nethermind.Abi;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Facade;
+using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
-using Nethermind.Abi;
 
-namespace Nethermind.JsonRpc.Modules.Baseline
+namespace Nethermind.Baseline.JsonRpc
 {
     public class BaselineModuleFactory : ModuleFactoryBase<IBaselineModule>
     {
@@ -48,9 +49,7 @@ namespace Nethermind.JsonRpc.Modules.Baseline
         
         public override IBaselineModule Create()
         {
-            
             TxPoolBridge txPoolBridge = new TxPoolBridge(_txPool, _wallet, Timestamper.Default, _specProvider.ChainId);
-            
             return new BaselineModule(txPoolBridge, _abiEncoder, _logManager);
         }
     }

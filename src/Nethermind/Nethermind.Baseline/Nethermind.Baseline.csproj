@@ -4,7 +4,12 @@
     <LangVersion>latest</LangVersion>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Blockchain\Nethermind.Blockchain.csproj" />
     <ProjectReference Include="..\Nethermind.Config\Nethermind.Config.csproj" />
     <ProjectReference Include="..\Nethermind.Abi\Nethermind.Abi.csproj" />
+    <ProjectReference Include="..\Nethermind.Facade\Nethermind.Facade.csproj" />
+    <ProjectReference Include="..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj" />
+    <ProjectReference Include="..\Nethermind.TxPool\Nethermind.TxPool.csproj" />
+    <ProjectReference Include="..\Nethermind.Wallet\Nethermind.Wallet.csproj" />
   </ItemGroup>
 </Project>

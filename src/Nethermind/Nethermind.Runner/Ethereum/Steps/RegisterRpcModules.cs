@@ -31,12 +31,12 @@ using Nethermind.JsonRpc.Modules.Personal;
 using Nethermind.JsonRpc.Modules.Proof;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.JsonRpc.Modules.TxPool;
-using Nethermind.JsonRpc.Modules.Baseline;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Runner.Ethereum.Subsystems;
 using Nethermind.Baseline.Config;
+using Nethermind.Baseline.JsonRpc;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {

@@ -13,18 +13,24 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
+using System.Collections.Generic;
+using Nethermind.Blockchain.Filters;
+using Nethermind.Blockchain.Find;
 
-namespace Nethermind.JsonRpc.Modules.Baseline
+namespace Nethermind.Facade
 {
-    [RpcModule(ModuleType.Baseline)]
-    public interface IBaselineModule : IModule
+    public interface ILogBridge
     {
-        ResultWrapper<Keccak> baseline_insertLeaf(Address address, Address contractAddress, Keccak hash);
-        ResultWrapper<Keccak> baseline_insertLeaves(Address address, Address contractAddress);
-        ResultWrapper<Keccak> baseline_deploy(Address address, string contractType);
-        ResultWrapper<string> baseline_getSiblings();
+        IEnumerable<FilterLog> GetLogs(BlockParameter fromBlock, BlockParameter toBlock, object address = null, IEnumerable<object> topics = null);
+    }
+
+    public class LogBridge : ILogBridge
+    {
+        public IEnumerable<FilterLog> GetLogs(BlockParameter fromBlock, BlockParameter toBlock, object address = null, IEnumerable<object> topics = null)
+        {
+            throw new System.NotImplementedException();
+        }
     }
 }
