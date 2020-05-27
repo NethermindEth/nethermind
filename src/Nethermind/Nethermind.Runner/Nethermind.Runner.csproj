@@ -84,7 +84,11 @@
     <Content Update="configs\ndm_provider_mainnet_proxy.cfg">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Update="configs\energyWeb.cfg">
+    <Content Update="configs\energyweb.cfg">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Update="..\Chains\energyweb.json">
+      <Link>chainspec\energyweb.json</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
