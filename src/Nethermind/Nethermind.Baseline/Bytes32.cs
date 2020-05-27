@@ -15,10 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Runtime.InteropServices;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Baseline
 {
-    public class Bytes32
+    public class Bytes32 : IEquatable<Bytes32>
     {
         public const int Length = 32;
 
@@ -63,5 +65,24 @@ namespace Nethermind.Baseline
             return new ReadOnlySpan<byte>(_bytes);
         }
 
+        public bool Equals(Bytes32 other)
+        {
+            if (ReferenceEquals(null, other)) return false;
+            if (ReferenceEquals(this, other)) return true;
+            return Bytes.AreEqual(_bytes, other._bytes);
+        }
+
+        public override bool Equals(object obj)
+        {
+            if (ReferenceEquals(null, obj)) return false;
+            if (ReferenceEquals(this, obj)) return true;
+            if (obj.GetType() != this.GetType()) return false;
+            return Equals((Bytes32) obj);
+        }
+
+        public override int GetHashCode()
+        {
+            return MemoryMarshal.Read<int>(_bytes);
+        }
     }
 }

@@ -34,6 +34,6 @@ namespace Nethermind.Baseline.JsonRpc
         ResultWrapper<Keccak> baseline_deploy(Address address, string contractType);
         
         [JsonRpcMethod(Description = "describe", IsReadOnly = false, IsImplemented = false)]
-        ResultWrapper<MerkleTreeNode[]> baseline_getSiblings(int leafIndex);
+        ResultWrapper<MerkleTreeNode[]> baseline_getSiblings(long leafIndex);
     }
 }

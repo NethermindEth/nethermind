@@ -176,9 +176,14 @@ namespace Nethermind.Baseline.JsonRpc
             }
         }
 
-        public ResultWrapper<MerkleTreeNode[]> baseline_getSiblings(int leafIndex)
+        public ResultWrapper<MerkleTreeNode[]> baseline_getSiblings(long leafIndex)
         {
-            return ResultWrapper<MerkleTreeNode[]>.Success(_merkleTree.GetProof(leafIndex));
+            if (leafIndex > MerkleTree.MaxLeafIndex)
+            {
+                throw new ArgumentOutOfRangeException($"leafIndex index should be less than {MerkleTree.MaxLeafIndex}");
+            }
+            
+            return ResultWrapper<MerkleTreeNode[]>.Success(_merkleTree.GetProof((uint)leafIndex));
         }
     }
 }

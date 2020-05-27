@@ -19,13 +19,13 @@ namespace Nethermind.Baseline
 {
     public readonly struct MerkleTreeNode
     {
-        public MerkleTreeNode(Bytes32 hash, int index)
+        public MerkleTreeNode(Bytes32 hash, uint index)
         {
             Hash = hash;
             Index = index;
         }
         
         public Bytes32 Hash { get; }
-        public int Index { get; } // 32bit index for 32 depth of a tree
+        public uint Index { get; } // 32bit index for 32 depth of a tree
     }
 }
