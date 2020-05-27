@@ -16,6 +16,7 @@
 // 
 
 using System;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Db;
 using NUnit.Framework;
@@ -26,14 +27,14 @@ namespace Nethermind.Baseline.Test
     public class MerkleTreeTests
     {
         private Bytes32[] _testLeaves = new Bytes32[32];
-        
+
         [OneTimeSetUp]
         public void Setup()
         {
             for (int i = 0; i < _testLeaves.Length; i++)
             {
                 byte[] bytes = new byte[32];
-                bytes[i] = (byte)i;
+                bytes[i] = (byte) i;
                 _testLeaves[i] = Bytes32.Wrap(bytes);
             }
         }
@@ -44,7 +45,60 @@ namespace Nethermind.Baseline.Test
             MerkleTree merkleTree = new MerkleTree(new MemDb());
             merkleTree.Count.Should().Be(0);
         }
+
+        private const int _firstLeafIndexAsNodeIndex = int.MaxValue / 2 + 1 - 1;
+        private const int _lastLeafIndexAsNodeIndex = int.MaxValue;
         
+        [TestCase(0, null)]
+        [TestCase(1, null)]
+        [TestCase(_firstLeafIndexAsNodeIndex - 1, null)]
+        [TestCase(_firstLeafIndexAsNodeIndex, 0)]
+        [TestCase(_firstLeafIndexAsNodeIndex + 1, 1)]
+        [TestCase(int.MaxValue - 1, int.MaxValue / 2)]
+        [TestCase(int.MaxValue, null)]
+        public void Can_calculate_leaf_index_from_node_index(int nodeIndex, int? leafIndex)
+        {
+            MerkleTree merkleTree = new MerkleTree(new MemDb());
+            if (leafIndex == null)
+            {
+                Assert.Throws<IndexOutOfRangeException>(() => merkleTree.GetLeafIndex(nodeIndex));
+            }
+            else
+            {
+                merkleTree.GetLeafIndex(nodeIndex).Should().Be(leafIndex.Value);
+            }
+        }
+
+        [Test]
+        public async Task Can_safely_insert_concurrently()
+        {
+            MerkleTree merkleTree = new MerkleTree(new MemDb());
+            int iterations = 10000;
+            int concurrentTasksCount = 8;
+            Action keepAdding = () =>
+            {
+                for (int i = 0; i < iterations; i++)
+                {
+                    merkleTree.Insert(_testLeaves[0]);
+                }
+            };
+
+            Task[] tasks = new Task[concurrentTasksCount];
+            for (int i = 0; i < tasks.Length; i++)
+            {
+                tasks[i] = new Task(keepAdding);
+            }
+
+            for (int i = 0; i < tasks.Length; i++)
+            {
+                tasks[i].Start();
+            }
+
+            await Task.WhenAll(tasks);
+
+            merkleTree.Count.Should().Be(concurrentTasksCount * iterations);
+        }
+
         [Test]
         public void On_adding_one_leaf_count_goes_up_to_1()
         {
@@ -59,7 +113,7 @@ namespace Nethermind.Baseline.Test
             MemDb memDb = new MemDb();
             MerkleTree merkleTree = new MerkleTree(memDb);
             merkleTree.Insert(_testLeaves[0]);
-            
+
             MerkleTree merkleTreeRestored = new MerkleTree(memDb);
             merkleTreeRestored.Count.Should().Be(1);
         }
@@ -73,7 +127,7 @@ namespace Nethermind.Baseline.Test
             for (int i = 0; i < numberOfLeaves; i++)
             {
                 merkleTree.Insert(_testLeaves[i]);
-                merkleTree.Count.Should().Be(i + 1);    
+                merkleTree.Count.Should().Be(i + 1);
             }
         }
 

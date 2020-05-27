@@ -1,8 +1,10 @@
 using System.Security.Cryptography;
 using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 
+[assembly:InternalsVisibleTo("Nethermind.Baseline.Test")]
 namespace Nethermind.Baseline
 {
     public class MerkleTree
@@ -11,6 +13,7 @@ namespace Nethermind.Baseline
 
         private static readonly byte[][] s_zeroHashes = new byte[32][];
         private static readonly HashAlgorithm s_hashAlgorithm = SHA256.Create();
+        private readonly byte[] _countKey = new byte[] {0};
 
         static MerkleTree()
         {
@@ -26,15 +29,38 @@ namespace Nethermind.Baseline
         public MerkleTree(IKeyValueStore keyValueStore)
         {
             _keyValueStore = keyValueStore ?? throw new ArgumentNullException(nameof(keyValueStore));
-            Count = new RlpStream(_keyValueStore[new byte[] {0}]).DecodeInt();
-        }
 
-        public void Insert(Bytes32 leaf)
-        {
-            throw new NotImplementedException();
+            byte[] countBytes = _keyValueStore[_countKey];
+            Count = countBytes == null ? 0 : new RlpStream(countBytes).DecodeInt();
         }
         
-        public MerkleTreeNode[] GetProof(int index)
+        private void StoreCountInTheDb()
+        {
+            _keyValueStore[_countKey] = Rlp.Encode(Count).Bytes;
+        }
+
+        private const int _firstLeafIndexAsNodeIndex = int.MaxValue / 2;
+        
+        internal int GetLeafIndex(int nodeIndex)
+        {
+            if (nodeIndex == int.MaxValue ||
+                nodeIndex < _firstLeafIndexAsNodeIndex)
+            {
+                throw new IndexOutOfRangeException($"Leaf indices start at {_firstLeafIndexAsNodeIndex}");
+            }
+            
+            return nodeIndex - _firstLeafIndexAsNodeIndex;
+        }
+        
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public void Insert(Bytes32 leaf)
+        {
+            _keyValueStore[Rlp.Encode(Count).Bytes] = leaf.AsSpan().ToArray();
+            Count++;
+            StoreCountInTheDb();
+        }
+        
+        public MerkleTreeNode[] GetProof(int leafIndex)
         {
             throw new NotImplementedException();
         }
