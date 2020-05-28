@@ -189,6 +189,8 @@ namespace Nethermind.Synchronization.Blocks
                         throw new EthSyncException($"{bestPeer} sent a block {currentHeader.ToString(BlockHeader.Format.Short)} with an invalid header");
                     }
 
+                    // i == 0 is always false but leave it this was as it will be possible that we will change the 
+                    // loop iterator to start with o
                     if (HandleAddResult(bestPeer, currentHeader, i == 0, _blockTree.Insert(currentHeader)))
                     {
                         headersSynced++;

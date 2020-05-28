@@ -57,11 +57,6 @@ namespace Nethermind.Network.Benchmarks
                 throw new Exception("decoder buffer");
             }
             
-            if (_decoderBuffer.ReadableBytes > 0)
-            {
-                throw new Exception("decoder buffer");
-            }
-            
             SetupAll();
             IterationSetup();
             Current();
