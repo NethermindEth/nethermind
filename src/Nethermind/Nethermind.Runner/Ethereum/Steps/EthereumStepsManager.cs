@@ -45,7 +45,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 .Where(t => !t.IsInterface && IsStepType(t))
                 .GroupBy(GetStepBaseType);
 
-            Type? GetStepType(Type[] typesInGroup)
+            Type? GetStepType(IEnumerable<Type> sameStepSubtypes)
             {
                 Type? GetStepTypeRecursive(Type? contextType)
                 {
@@ -59,7 +59,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                         return null;
                     }
 
-                    Type stepTypeForContext = typesInGroup.Where(t => !t.IsAbstract)
+                    Type stepTypeForContext = sameStepSubtypes.Where(t => !t.IsAbstract)
                         .FirstOrDefault(t => HasConstructorWithParameter(t, contextType));
 
                     return stepTypeForContext != null
@@ -67,12 +67,12 @@ namespace Nethermind.Runner.Ethereum.Steps
                         : GetStepTypeRecursive(contextType?.BaseType);
                 }
 
-                return typesInGroup.Length == 0 ? typesInGroup[0] : GetStepTypeRecursive(_context.GetType());
+                return sameStepSubtypes.Count() == 1 ? sameStepSubtypes.First() : GetStepTypeRecursive(_context.GetType());
             }
 
             foreach (IGrouping<Type?, Type> typeGroup in types.Where(t => t != null))
             {
-                Type? type = GetStepType(typeGroup.ToArray());
+                Type? type = GetStepType(typeGroup);
                 if (type != null)
                 {
                     if (_logger.IsDebug) _logger.Debug($"Discovered Ethereum step: {type.Name}");
