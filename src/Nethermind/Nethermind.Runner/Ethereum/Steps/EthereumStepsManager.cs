@@ -39,7 +39,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             _logger = _context.LogManager.GetClassLogger<EthereumStepsManager>();
         }
 
-        public void DiscoverAll()
+        public async Task DiscoverAll()
         {
             var types = GetType().Assembly.GetTypes()
                 .Where(t => !t.IsInterface && IsStepType(t))
@@ -86,7 +86,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 }
             }
 
-            ReviewDependencies();
+            await ReviewDependencies();
         }
 
         private readonly ConcurrentDictionary<Type, bool> _hasFinishedExecution = new ConcurrentDictionary<Type, bool>();
@@ -97,7 +97,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         private Type? GetStepBaseType(Type? type) => IsStepType(type?.BaseType) ? GetStepBaseType(type?.BaseType) : type;
 
-        private void ReviewDependencies()
+        private async Task ReviewDependencies()
         {
             List<Type> typesReady = new List<Type>();
             bool changedAnything;
@@ -136,6 +136,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                 {
                     _discoveredSteps[type] = true;
                 }
+
+                await Task.Delay(10);
             } while (changedAnything);
         }
 
@@ -144,7 +146,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             while (_hasFinishedExecution.Values.Any(finished => !finished))
             {
                 RunOneRoundOfInitialization();
-                ReviewDependencies();
+                await ReviewDependencies();
             }
 
             await Task.WhenAll(_allPending);

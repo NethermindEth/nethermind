@@ -81,7 +81,7 @@ namespace Nethermind.Runner.Ethereum
             _context.DisposeStack.Push(_context.RunnerCancellation);
 
             EthereumStepsManager stepsManager = new EthereumStepsManager(_context);
-            stepsManager.DiscoverAll();
+            await stepsManager.DiscoverAll();
             await stepsManager.InitializeAll();
             
             string infoScreen = ThisNodeInfo.BuildNodeInfoScreen();
