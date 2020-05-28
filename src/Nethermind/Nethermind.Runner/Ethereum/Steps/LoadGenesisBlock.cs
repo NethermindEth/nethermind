@@ -36,8 +36,8 @@ namespace Nethermind.Runner.Ethereum.Steps
     public class LoadGenesisBlock : IStep
     {
         private readonly EthereumRunnerContext _context;
-        private ILogger _logger;
-        private IInitConfig _initConfig;
+        private readonly ILogger _logger;
+        private IInitConfig? _initConfig;
 
         public LoadGenesisBlock(EthereumRunnerContext context)
         {
