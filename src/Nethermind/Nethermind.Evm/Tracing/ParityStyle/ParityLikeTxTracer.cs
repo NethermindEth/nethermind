@@ -204,10 +204,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
 
                 _vmTraceStack.Push(currentVmTrace);
                 _currentVmTrace = currentVmTrace;
-                if (_trace.VmTrace == null)
-                {
-                    _trace.VmTrace = _currentVmTrace.VmTrace;
-                }
+                _trace.VmTrace ??= _currentVmTrace.VmTrace;
             }
         }
 
@@ -218,7 +215,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
                 _currentVmTrace.VmTrace.Operations = _currentVmTrace.Ops.ToArray();
                 _vmTraceStack.Pop();
                 _currentVmTrace = _vmTraceStack.Count == 0 ? (null, null) : _vmTraceStack.Peek();
-                _currentOperation = _currentVmTrace.Ops?.Last();
+                _currentOperation = _currentVmTrace.Ops.Last();
                 _gasAlreadySetForCurrentOp = false;
 
                 if (_actionStack.Peek().Type != "suicide")

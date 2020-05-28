@@ -47,7 +47,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
         public ReceiptsMessage Deserialize(byte[] bytes)
         {
-            if (bytes.Length == 0 && bytes[0] == Rlp.OfEmptySequence[0]) return new ReceiptsMessage(null);
+            if (bytes.Length == 0 || bytes[0] == Rlp.OfEmptySequence[0]) return new ReceiptsMessage(null);
 
             RlpStream rlpStream = bytes.AsRlpStream();
 
