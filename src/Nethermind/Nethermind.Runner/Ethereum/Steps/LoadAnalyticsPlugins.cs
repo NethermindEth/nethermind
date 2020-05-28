@@ -23,6 +23,7 @@ using Nethermind.Grpc;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
 using Nethermind.TxPool.Analytics;
+using YamlDotNet.Serialization.TypeInspectors;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
@@ -105,6 +106,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (!Directory.Exists(fullPluginsDir))
             {
                 if (_logger.IsWarn) _logger.Warn($"Plugins folder {fullPluginsDir} was not found. Skipping.");
+                return Task.CompletedTask;
             }
             
             string[] pluginFiles = Directory.GetFiles(fullPluginsDir).Where(p => p.EndsWith("dll")).ToArray();
