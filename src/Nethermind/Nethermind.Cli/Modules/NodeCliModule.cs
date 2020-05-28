@@ -18,6 +18,7 @@ using System;
 using System.IO;
 using System.Reflection;
 using Jint.Native;
+using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;

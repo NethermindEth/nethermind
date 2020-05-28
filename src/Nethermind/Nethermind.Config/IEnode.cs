@@ -18,7 +18,7 @@ using System.Net;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Network
+namespace Nethermind.Config
 {
     public interface IEnode
     {

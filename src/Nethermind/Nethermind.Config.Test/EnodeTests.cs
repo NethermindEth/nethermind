@@ -16,15 +16,13 @@
 // 
 
 using System;
-using System.Linq;
 using System.Net;
-using DotNetty.Common.Utilities;
 using FluentAssertions;
-using Nethermind.Blockchain;
 using Nethermind.Core.Crypto;
+using Nethermind.Network;
 using NUnit.Framework;
 
-namespace Nethermind.Network.Test
+namespace Nethermind.Config.Test
 {
     public class EnodeTests
     {
