@@ -112,7 +112,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             var isProducingBlock = options.IsProducingBlock();
             var isProcessingBlock = !isProducingBlock;
             var isInitBlock = InitBlockNumber == block.Number;
-            var headNumber = _blockTree.Head?.Number ?? -2;
+            var headNumber = _blockTree.Head?.Number ?? -2; // -2, so genesis.Number - 1 > -2.
             var skippingBlocks = block.Number - 1 > headNumber;
             var shouldLoadValidators = Validators == null || skippingBlocks || isProducingBlock;
             var mainChainProcessing = !ForSealing && isProcessingBlock;
