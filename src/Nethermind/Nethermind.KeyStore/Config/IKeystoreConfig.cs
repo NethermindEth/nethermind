@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Config;
+using Nethermind.Core;
 
 namespace Nethermind.KeyStore.Config
 {
@@ -35,5 +36,6 @@ namespace Nethermind.KeyStore.Config
         int SymmetricEncrypterKeySize { get; }
         int IVSize { get; }
         string TestNodeKey { get; set; }
+        string BlockAuthorAccount { get; set; }
     }
 }
