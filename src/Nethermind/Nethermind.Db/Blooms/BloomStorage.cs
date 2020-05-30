@@ -251,7 +251,6 @@ namespace Nethermind.Db.Blooms
             private readonly bool _migrationStatistics;
             private readonly ICache<long, Bloom> _cache;
             private readonly byte[] _bytes = new byte[Bloom.ByteLength];
-            private int _needsFlush;
 
             public BloomStorageLevel(IFileStore fileStore, in byte level, in int levelElementSize, in int levelMultiplier, bool migrationStatistics)
             {
@@ -280,7 +279,6 @@ namespace Nethermind.Db.Blooms
                     existingBloom.Accumulate(bloom);
 
                     _fileStore.Write(bucket, existingBloom.Bytes);
-                    Interlocked.Exchange(ref _needsFlush, 1);
                     _cache.Set(bucket, existingBloom);
                 }
             }
@@ -289,15 +287,7 @@ namespace Nethermind.Db.Blooms
 
             public long GetBucket(long blockNumber) => blockNumber / LevelElementSize;
 
-            public IFileReader GetReader()
-            {
-                if (Interlocked.CompareExchange(ref _needsFlush, 0, 1) == 1)
-                {
-                    _fileStore.Flush();
-                }
-
-                return _fileStore.GetFileReader();
-            }
+            public IFileReader CreateReader() => _fileStore.CreateFileReader();
 
             public void Migrate(in long blockNumber, Bloom bloom)
             {
@@ -391,7 +381,7 @@ namespace Nethermind.Db.Blooms
                     levels.Add(level);
                 }
                 
-                return levels.Select(l => (l, l.GetReader())).AsParallel().ToArray();
+                return levels.Select(l => (l, l.CreateReader())).AsParallel().ToArray();
             }
 
             public void Reset()

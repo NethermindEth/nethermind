@@ -82,7 +82,7 @@ namespace Nethermind.Blockchain.Test.Bloom
             
             return storage.ContainsRange(from, to);
         }
-        
+
         public static IEnumerable GetBloomsTestCases
         {
             get
@@ -196,14 +196,9 @@ namespace Nethermind.Blockchain.Test.Bloom
                 return Core.Bloom.ByteLength;
             }
 
-            public IFileReader GetFileReader()
+            public IFileReader CreateFileReader()
             {
                 return new InMemoryDictionaryFileReader(this);
-            }
-
-            public void Flush()
-            {
-                Flushes++;
             }
 
             public int Flushes { get; private set; }
