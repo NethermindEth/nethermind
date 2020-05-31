@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.IO;
 using System.IO.Abstractions;
 using System.Threading.Tasks;
 using System.Timers;
@@ -38,7 +39,7 @@ namespace Nethermind.Baseline.JsonRpc
         private readonly ILogger _logger;
         private readonly ITxPoolBridge _txPoolBridge;
 
-        private MerkleTree _merkleTree;
+        private BaselineTree _merkleTree;
         private MemDb _memDb = new MemDb();
 
         public FilterLog filterLog;
@@ -50,7 +51,7 @@ namespace Nethermind.Baseline.JsonRpc
             _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _txPoolBridge = txPoolBridge ?? throw new ArgumentNullException(nameof(txPoolBridge));
-            _merkleTree = new ShaMerkleTree(_memDb);
+            _merkleTree = new ShaBaselineTree(_memDb);
 
             _timer = new Timer();
             _timer.Interval = 1000;
@@ -132,9 +133,9 @@ namespace Nethermind.Baseline.JsonRpc
             return Task.FromResult(ResultWrapper<Keccak>.Success(txHash));
         }
 
-        public Task<ResultWrapper<Keccak>> baseline_insertLeaves(Address address, Address contractAddress)
+        public Task<ResultWrapper<Keccak>> baseline_insertLeaves(Address address, Address contractAddress, params Keccak[] hashes)
         {
-            var txData = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, ContractMerkleTree.InsertLeavesAbiSig);
+            var txData = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, ContractMerkleTree.InsertLeavesAbiSig, new object[] {hashes});
 
             Transaction tx = new Transaction();
 
@@ -149,7 +150,7 @@ namespace Nethermind.Baseline.JsonRpc
 
             return Task.FromResult(ResultWrapper<Keccak>.Success(txHash));
         }
-        
+
         /// <summary>
         /// We retrieve the line 3 from here (bytecode) 
         /// 
@@ -160,45 +161,52 @@ namespace Nethermind.Baseline.JsonRpc
         /// <param name="contract"></param>
         /// <returns></returns>
         private async Task<byte[]> GetContractBytecode(string contract)
-        {   
+        {
             string[] contractBytecode = await _fileSystem.File.ReadAllLinesAsync($"contracts/{contract}.bin");
-            if(_logger.IsInfo) _logger.Info($"Loading bytecode of {contractBytecode[1]}");
+            if (contractBytecode.Length < 4)
+            {
+                throw new IOException("Bytecode not found");
+            }
+            
+            if (_logger.IsInfo) _logger.Info($"Loading bytecode of {contractBytecode[1]}");
             return Bytes.FromHexString(contractBytecode[3]);
         }
 
         public async Task<ResultWrapper<Keccak>> baseline_deploy(Address address, string contractType)
         {
+            byte[] bytecode;
             try
             {
-                byte[] bytecode = await GetContractBytecode(contractType);
-                Transaction tx = new Transaction();
-                tx.Value = 0;
-                tx.Init = bytecode;
-                tx.GasLimit = 2000000;
-                tx.GasPrice = 20.GWei();
-                tx.SenderAddress = address;
-
-                Keccak txHash = _txPoolBridge.SendTransaction(tx, TxHandlingOptions.ManagedNonce);
-
-                _logger.Info($"Sent transaction at price {tx.GasPrice} to {tx.SenderAddress}");
-                _logger.Info($"Contract {contractType} has been deployed");
-
-                return ResultWrapper<Keccak>.Success(txHash);
+                bytecode = await GetContractBytecode(contractType);
             }
-            catch (System.IO.FileNotFoundException)
+            catch (IOException ioException)
             {
-                return ResultWrapper<Keccak>.Fail($"The given contract {contractType} does not exist.");
+                return ResultWrapper<Keccak>.Fail($"{contractType} bytecode could not be loaded.", ErrorCodes.ResourceUnavailable);
             }
+
+            Transaction tx = new Transaction();
+            tx.Value = 0;
+            tx.Init = bytecode;
+            tx.GasLimit = 2000000;
+            tx.GasPrice = 20.GWei();
+            tx.SenderAddress = address;
+
+            Keccak txHash = _txPoolBridge.SendTransaction(tx, TxHandlingOptions.ManagedNonce);
+
+            _logger.Info($"Sent transaction at price {tx.GasPrice} to {tx.SenderAddress}");
+            _logger.Info($"Contract {contractType} has been deployed");
+
+            return ResultWrapper<Keccak>.Success(txHash);
         }
 
-        public Task<ResultWrapper<MerkleTreeNode[]>> baseline_getSiblings(long leafIndex)
+        public Task<ResultWrapper<BaselineTreeNode[]>> baseline_getSiblings(long leafIndex)
         {
-            if (leafIndex > MerkleTree.MaxLeafIndex)
+            if (leafIndex > MerkleTree.MaxLeafIndex || leafIndex < 0l)
             {
-                throw new ArgumentOutOfRangeException($"leafIndex index should be less than {MerkleTree.MaxLeafIndex}");
+                return Task.FromResult(ResultWrapper<BaselineTreeNode[]>.Fail($"{leafIndex} is not a valid leaf index", ErrorCodes.InvalidInput));
             }
-            
-            return Task.FromResult(ResultWrapper<MerkleTreeNode[]>.Success(_merkleTree.GetProof((uint)leafIndex)));
+
+            return Task.FromResult(ResultWrapper<BaselineTreeNode[]>.Success(_merkleTree.GetProof((uint)leafIndex)));
         }
     }
 }

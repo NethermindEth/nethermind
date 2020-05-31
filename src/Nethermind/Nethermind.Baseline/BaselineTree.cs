@@ -21,7 +21,7 @@ namespace Nethermind.Baseline
 
         /* baseline does not use a sparse merkle tree - instead they use a single zero hash value
            does it expose any attack vectors? */
-        public static Bytes32 ZeroHash = new Bytes32();
+        public static Bytes32 ZeroHash = Bytes32.Zero;
 
         /// <summary>
         /// Key for the storage value

@@ -13,11 +13,25 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-namespace Nethermind.Baseline.Config
+using FluentAssertions;
+using NUnit.Framework;
+
+namespace Nethermind.Baseline.Test
 {
-    public class BaselineConfig : IBaselineConfig
+    [TestFixture]
+    public class BaselineTreeNodeTests
     {
-        public bool Enabled { get; set; }
+        [Test]
+        public void On_creation_sets_the_fields_properly()
+        {
+            byte[] bytes = new byte[32];
+            bytes[1] = 44;
+            Bytes32 hash = Bytes32.Wrap(bytes);
+            BaselineTreeNode treeNode = new BaselineTreeNode(hash, 5);
+            treeNode.Hash.Should().Be(hash);
+            treeNode.NodeIndex.Should().Be(5);
+        }
     }
 }

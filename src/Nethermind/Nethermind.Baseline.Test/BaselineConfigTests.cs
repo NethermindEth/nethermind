@@ -13,11 +13,26 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-namespace Nethermind.Baseline.Config
+using FluentAssertions;
+using Nethermind.Baseline.Config;
+using NUnit.Framework;
+
+namespace Nethermind.Baseline.Test
 {
-    public class BaselineConfig : IBaselineConfig
+    [TestFixture]
+    public class BaselineConfigTests
     {
-        public bool Enabled { get; set; }
+        [Test]
+        public void Can_set()
+        {
+            BaselineConfig config = new BaselineConfig();
+            config.Enabled.Should().BeFalse();
+            config.Enabled = true;
+            config.Enabled.Should().BeTrue();
+            config.Enabled = false;
+            config.Enabled.Should().BeFalse();
+        }
     }
 }

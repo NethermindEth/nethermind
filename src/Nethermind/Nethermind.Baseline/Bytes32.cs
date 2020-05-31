@@ -22,14 +22,9 @@ namespace Nethermind.Baseline
 {
     public class Bytes32 : IEquatable<Bytes32>
     {
-        public const int Length = 32;
+        private const int Length = 32;
 
         private readonly byte[] _bytes;
-
-        public Bytes32()
-        {
-            _bytes = new byte[Length];
-        }
 
         public static Bytes32 Wrap(byte[] bytes)
         {
@@ -40,22 +35,11 @@ namespace Nethermind.Baseline
         {
             if (bytes.Length != Length)
             {
-                throw new ArgumentOutOfRangeException(nameof(bytes), bytes.Length,
-                    $"{nameof(Bytes32)} must have exactly {Length} bytes");
+                throw new ArgumentException(
+                    $"{nameof(Bytes32)} must have exactly {Length} bytes and had {bytes.Length}", nameof(bytes));
             }
 
             _bytes = bytes;
-        }
-        
-        public Bytes32(ReadOnlySpan<byte> span)
-        {
-            if (span.Length != Length)
-            {
-                throw new ArgumentOutOfRangeException(nameof(span), span.Length,
-                    $"{nameof(Bytes32)} must have exactly {Length} bytes");
-            }
-
-            _bytes = span.ToArray();
         }
 
         public static Bytes32 Zero { get; } = new Bytes32(new byte[Length]);
@@ -76,7 +60,7 @@ namespace Nethermind.Baseline
         {
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;
-            if (obj.GetType() != this.GetType()) return false;
+            if (obj.GetType() != GetType()) return false;
             return Equals((Bytes32) obj);
         }
 

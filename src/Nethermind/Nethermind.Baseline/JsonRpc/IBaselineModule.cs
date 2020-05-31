@@ -29,12 +29,12 @@ namespace Nethermind.Baseline.JsonRpc
         Task<ResultWrapper<Keccak>> baseline_insertLeaf(Address address, Address contractAddress, Keccak hash);
         
         [JsonRpcMethod(Description = "describe", IsReadOnly = false, IsImplemented = false)]
-        Task<ResultWrapper<Keccak>> baseline_insertLeaves(Address address, Address contractAddress);
+        Task<ResultWrapper<Keccak>> baseline_insertLeaves(Address address, Address contractAddress, params Keccak[] hash);
         
         [JsonRpcMethod(Description = "describe", IsReadOnly = false, IsImplemented = false)]
         Task<ResultWrapper<Keccak>> baseline_deploy(Address address, string contractType);
         
         [JsonRpcMethod(Description = "describe", IsReadOnly = false, IsImplemented = false)]
-        Task<ResultWrapper<MerkleTreeNode[]>> baseline_getSiblings(long leafIndex);
+        Task<ResultWrapper<BaselineTreeNode[]>> baseline_getSiblings(long leafIndex);
     }
 }
