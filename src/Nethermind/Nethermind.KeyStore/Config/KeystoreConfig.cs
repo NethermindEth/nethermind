@@ -35,5 +35,6 @@ namespace Nethermind.KeyStore.Config
         public int IVSize { get; set; } = 16;
         public string TestNodeKey { get; set; }
         public string BlockAuthorAccount { get; set; }
+        public string BlockAuthorPassword { get; set; }
     }
 }
