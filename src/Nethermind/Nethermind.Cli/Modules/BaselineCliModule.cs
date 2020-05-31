@@ -1,3 +1,5 @@
+using System.Linq;
+
 namespace Nethermind.Cli.Modules
 {
     [CliModule("baseline")]
@@ -11,12 +13,30 @@ namespace Nethermind.Cli.Modules
         public string deploy(string address, string contractType) => NodeManager.Post<string>("baseline_deploy", CliParseAddress(address), contractType).Result;
 
         [CliFunction("baseline", "addLeaf")]
-        public string addLeaf() => NodeManager.Post<string>("baseline_addLeaf").Result;
+        public string addLeaf(string address, string contractAddress, string hash) =>
+            NodeManager.Post<string>(
+                "baseline_addLeaf",
+                CliParseAddress(address),
+                CliParseAddress(contractAddress),
+                CliParseHash(hash)).Result;
         
         [CliFunction("baseline", "addLeaves")]
-        public string addLeaves() => NodeManager.Post<string>("baseline_addLeaves").Result;
+        public string addLeaves(string address, string contractAddress, string[] hashes) => NodeManager.Post<string>(
+            "baseline_addLeaves",
+            CliParseAddress(address),
+            CliParseAddress(contractAddress),
+            hashes.Select(CliParseHash).ToArray()
+            ).Result;
         
         [CliFunction("baseline", "getSiblings")]
-        public string getSiblings() => NodeManager.Post("baseline_getSiblings").Result;
+        public string getSiblings(string contactAddress, long leafIndex) => NodeManager.Post(
+            "baseline_getSiblings",
+            CliParseAddress(contactAddress),
+            leafIndex).Result;
+        
+        [CliFunction("baseline", "track")]
+        public string getSiblings(string contactAddress) => NodeManager.Post(
+            "baseline_track",
+            CliParseAddress(contactAddress)).Result;
     }
 }

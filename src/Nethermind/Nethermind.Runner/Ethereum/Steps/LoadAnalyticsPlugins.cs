@@ -93,7 +93,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 if (path.EndsWith("dll"))
                 {
                     _logger.Warn($"Loading assembly {path}");
-                    Assembly assembly = Assembly.LoadFile(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, path));
+                    Assembly assembly = Assembly.LoadFile(Path.Combine(AppDomain.CurrentDomain.BaseDirectory!, path));
                     foreach (Type type in assembly.GetTypes())
                     {
                         AnalyticsLoaderAttribute? loader = type.GetCustomAttribute<AnalyticsLoaderAttribute>();

@@ -1,5 +1,8 @@
 using System;
 using System.Runtime.CompilerServices;
+using System.Timers;
+using Nethermind.Blockchain.Find;
+using Nethermind.Core;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 
@@ -7,6 +10,47 @@ using Nethermind.Trie;
 
 namespace Nethermind.Baseline
 {
+    public class BaselineTreeTracker
+    {
+        private readonly Address _address;
+        private readonly BaselineTree _baselineTree;
+        private readonly ILogFinder _logFinder;
+        private readonly IBlockFinder _blockFinder;
+        private Timer _timer;
+
+        /// <summary>
+        /// This class should smoothly react to new blocks and logs
+        /// For now it will be very non-optimized just to deliver the basic functionality
+        /// </summary>
+        /// <param name="address"></param>
+        /// <param name="baselineTree"></param>
+        /// <param name="logFinder"></param>
+        /// <param name="blockFinder"></param>
+        public BaselineTreeTracker(Address address, BaselineTree baselineTree, ILogFinder logFinder, IBlockFinder blockFinder)
+        {
+            _address = address ?? throw new ArgumentNullException(nameof(address));
+            _baselineTree = baselineTree ?? throw new ArgumentNullException(nameof(baselineTree));
+            _logFinder = logFinder ?? throw new ArgumentNullException(nameof(logFinder));
+            _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
+
+            _timer = InitTimer();
+        }
+        
+        private Timer InitTimer()
+        {
+            Timer timer = new Timer();
+            timer.Interval = 1000;
+            timer.Elapsed += TimerOnElapsed;
+            timer.AutoReset = false;
+            return timer;
+        }
+        
+        private void TimerOnElapsed(object sender, ElapsedEventArgs e)
+        {
+            _timer.Enabled = true;
+        }
+    }
+    
     public abstract partial class BaselineTree
     {
         private const int LeafRow = 32;

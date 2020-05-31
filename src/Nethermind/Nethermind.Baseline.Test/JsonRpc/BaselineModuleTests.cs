@@ -12,6 +12,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Evm;
+using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
@@ -74,7 +75,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             BaselineModule baselineModule = new BaselineModule(testRpc.TxPoolBridge, _abiEncoder, _fileSystem, new MemDb(), LimboLogs.Instance);
             var result = await baselineModule.baseline_deploy(TestItem.Addresses[0], "MissingContract");
             result.Data.Should().Be(null);
-            result.ErrorCode.Should().NotBe(0);
+            result.ErrorCode.Should().Be(ErrorCodes.ResourceNotFound);
             result.Result.Error.Should().NotBeEmpty();
             result.Result.ResultType.Should().Be(ResultType.Failure);
         }
@@ -148,6 +149,22 @@ namespace Nethermind.Baseline.Test.JsonRpc
         }
         
         [Test]
+        public async Task second_track_request_will_fail()
+        {
+            SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
+            TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
+            BaselineModule baselineModule = new BaselineModule(testRpc.TxPoolBridge, _abiEncoder, _fileSystem, new MemDb(), LimboLogs.Instance);
+            await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
+            
+            await baselineModule.baseline_track(TestItem.AddressC); // any address (no need for tree there)
+            var result = await baselineModule.baseline_track(TestItem.AddressC); // any address (no need for tree there)
+
+            result.Result.ResultType.Should().Be(ResultType.Failure);
+            result.Result.Error.Should().NotBeNull();
+            result.ErrorCode.Should().Be(ErrorCodes.InvalidInput);
+        }
+        
+        [Test]
         public async Task cannot_get_siblings_after_leaf_is_added_if_not_traced()
         {
             SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
@@ -192,7 +209,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             
             result.Result.ResultType.Should().Be(ResultType.Failure);
             result.Result.Error.Should().NotBeNull();
-            result.ErrorCode.Should().NotBe(0);
+            result.ErrorCode.Should().Be(ErrorCodes.InvalidInput);
             result.Data.Should().BeNull();
         }
     }

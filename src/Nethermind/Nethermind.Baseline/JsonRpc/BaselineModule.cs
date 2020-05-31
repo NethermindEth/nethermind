@@ -46,8 +46,6 @@ namespace Nethermind.Baseline.JsonRpc
         private ConcurrentDictionary<Address, BaselineTree> _baselineTrees;
         private BaselineMetadata _metadata;
 
-        private Timer _timer;
-
         public BaselineModule(ITxPoolBridge txPoolBridge, IAbiEncoder abiEncoder, IFileSystem fileSystem, IDb baselineDb, ILogManager logManager)
         {
             _abiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
@@ -58,16 +56,6 @@ namespace Nethermind.Baseline.JsonRpc
             
             _metadata = LoadMetadata();
             _baselineTrees = InitTrees();
-            _timer = InitTimer();
-        }
-
-        private Timer InitTimer()
-        {
-            Timer timer = new Timer();
-            timer.Interval = 1000;
-            timer.Elapsed += TimerOnElapsed;
-            timer.AutoReset = false;
-            return timer;
         }
 
         private ConcurrentDictionary<Address, BaselineTree> InitTrees()
@@ -93,11 +81,6 @@ namespace Nethermind.Baseline.JsonRpc
         {
             ShaBaselineTree tree = new ShaBaselineTree(_baselineDb, trackedTree.Bytes, TruncationLength);
             return _baselineTrees.TryAdd(trackedTree, tree);
-        }
-
-        private void TimerOnElapsed(object sender, ElapsedEventArgs e)
-        {
-            _timer.Enabled = true;
         }
 
         public Task<ResultWrapper<Keccak>> baseline_insertLeaf(Address address, Address contractAddress, Keccak hash)
@@ -177,7 +160,7 @@ namespace Nethermind.Baseline.JsonRpc
             }
             catch (IOException)
             {
-                return ResultWrapper<Keccak>.Fail($"{contractType} bytecode could not be loaded.", ErrorCodes.ResourceUnavailable);
+                return ResultWrapper<Keccak>.Fail($"{contractType} bytecode could not be loaded.", ErrorCodes.ResourceNotFound);
             }
 
             Transaction tx = new Transaction();
@@ -215,7 +198,7 @@ namespace Nethermind.Baseline.JsonRpc
         {
             // can potentially warn user if tree is not deployed at the address
 
-            if (_baselineTrees.TryAdd(contractAddress, new ShaBaselineTree(_baselineDb, contractAddress.Bytes)))
+            if (TryAddTree(contractAddress))
             {
                 return Task.FromResult(ResultWrapper<bool>.Success(true));
             }
