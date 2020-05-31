@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.IO.Abstractions;
 using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -29,6 +30,7 @@ namespace Nethermind.Baseline.JsonRpc
     public class BaselineModuleFactory : ModuleFactoryBase<IBaselineModule>
     {
         private readonly ISpecProvider _specProvider;
+        private readonly IFileSystem _fileSystem;
         private readonly ITxPool _txPool;
         private readonly IWallet _wallet;
         private readonly ILogManager _logManager;
@@ -38,19 +40,21 @@ namespace Nethermind.Baseline.JsonRpc
             IAbiEncoder abiEncoder,
             IWallet wallet,
             ISpecProvider specProvider,
+            IFileSystem fileSystem,
             ILogManager logManager)
         {
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _abiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
         }
         
         public override IBaselineModule Create()
         {
             TxPoolBridge txPoolBridge = new TxPoolBridge(_txPool, _wallet, Timestamper.Default, _specProvider.ChainId);
-            return new BaselineModule(txPoolBridge, _abiEncoder, _logManager);
+            return new BaselineModule(txPoolBridge, _abiEncoder, _fileSystem, _logManager);
         }
     }
 }

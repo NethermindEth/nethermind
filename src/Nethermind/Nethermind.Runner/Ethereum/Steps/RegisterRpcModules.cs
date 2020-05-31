@@ -103,7 +103,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             if (baselineConfig.Enabled)
             {
-                BaselineModuleFactory baselineModuleFactory = new BaselineModuleFactory(_context.TxPool, _context.AbiEncoder, _context.Wallet, _context.SpecProvider, _context.LogManager);
+                BaselineModuleFactory baselineModuleFactory = new BaselineModuleFactory(_context.TxPool, _context.AbiEncoder, _context.Wallet, _context.SpecProvider, _context.FileSystem, _context.LogManager);
                 _context.RpcModuleProvider.Register(new SingletonModulePool<IBaselineModule>(baselineModuleFactory, true));
                 if (logger?.IsInfo ?? false) logger!.Info($"Baseline RPC Module has been enabled");
             }

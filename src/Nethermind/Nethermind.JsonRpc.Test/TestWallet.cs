@@ -15,22 +15,13 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Abi;
-using Nethermind.Baseline.JsonRpc;
-using Nethermind.Core;
-using Nethermind.JsonRpc.Test.Modules;
-using Nethermind.Logging;
-
-namespace Nethermind.Baseline.Test.JsonRpc
+namespace Nethermind.JsonRpc.Test
 {
-    public class BaselineTestBlockchain : TestRpcBlockchain
+    public class TestWallet
     {
-        public IBaselineModule BaselineModule { get; set; }
-        
-        protected BaselineTestBlockchain(SealEngineType sealEngineType)
-            : base(sealEngineType)
+        public TestWallet()
         {
-            BaselineModule = new BaselineModule(TxPoolBridge, new AbiEncoder(), LimboLogs.Instance);
+            
         }
     }
 }

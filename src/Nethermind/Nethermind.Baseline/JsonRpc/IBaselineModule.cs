@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
@@ -25,15 +26,15 @@ namespace Nethermind.Baseline.JsonRpc
     public interface IBaselineModule : IModule
     {
         [JsonRpcMethod(Description = "describe", IsReadOnly = false, IsImplemented = false)]
-        ResultWrapper<Keccak> baseline_insertLeaf(Address address, Address contractAddress, Keccak hash);
+        Task<ResultWrapper<Keccak>> baseline_insertLeaf(Address address, Address contractAddress, Keccak hash);
         
         [JsonRpcMethod(Description = "describe", IsReadOnly = false, IsImplemented = false)]
-        ResultWrapper<Keccak> baseline_insertLeaves(Address address, Address contractAddress);
+        Task<ResultWrapper<Keccak>> baseline_insertLeaves(Address address, Address contractAddress);
         
         [JsonRpcMethod(Description = "describe", IsReadOnly = false, IsImplemented = false)]
-        ResultWrapper<Keccak> baseline_deploy(Address address, string contractType);
+        Task<ResultWrapper<Keccak>> baseline_deploy(Address address, string contractType);
         
         [JsonRpcMethod(Description = "describe", IsReadOnly = false, IsImplemented = false)]
-        ResultWrapper<MerkleTreeNode[]> baseline_getSiblings(long leafIndex);
+        Task<ResultWrapper<MerkleTreeNode[]>> baseline_getSiblings(long leafIndex);
     }
 }

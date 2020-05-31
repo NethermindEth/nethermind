@@ -26,10 +26,10 @@ namespace Nethermind.Core.Test.Builders
             NonZeroBloom = new Bloom();
             NonZeroBloom.Set(KeccakA.Bytes);
 
-            PrivateKeys = new PrivateKey[256];
-            PublicKeys = new PublicKey[256];
-            Addresses = new Address[256];
-            Keccaks = new Keccak[256];
+            PrivateKeys = new PrivateKey[255];
+            PublicKeys = new PublicKey[255];
+            Addresses = new Address[255];
+            Keccaks = new Keccak[255];
 
             for (byte i = 1; i > 0; i++) // this will wrap around
             {
