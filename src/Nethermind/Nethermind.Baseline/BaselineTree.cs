@@ -7,7 +7,7 @@ using Nethermind.Trie;
 
 namespace Nethermind.Baseline
 {
-    public abstract class BaselineTree
+    public abstract partial class BaselineTree
     {
         private const int LeafRow = 32;
         private const int LeafLevel = 0;
@@ -22,41 +22,38 @@ namespace Nethermind.Baseline
 
         /* baseline does not use a sparse merkle tree - instead they use a single zero hash value
            does it expose any attack vectors? */
-        public static Bytes32 ZeroHash = Bytes32.Zero;
+        internal static Bytes32 ZeroHash = Bytes32.Zero;
 
-        /// <summary>
-        /// Key for the storage value
-        /// </summary>
-        private byte[] _countKey;
-
-        static BaselineTree()
-        {
-            
-        }
-
-        public uint Count { get; set; }
+        public uint Count { get; private set; }
 
         public BaselineTree(IKeyValueStore keyValueStore, byte[] dbPrefix, int truncationLength = 0)
         {
             _keyValueStore = keyValueStore ?? throw new ArgumentNullException(nameof(keyValueStore));
             _dbPrefix = dbPrefix ?? throw new ArgumentNullException(nameof(dbPrefix));
-            _countKey = BuildDbKey(_nodeIndexReservedForMetadata);
             TruncationLength = truncationLength;
-
-            byte[] countBytes = _keyValueStore[_countKey];
-            Count = countBytes == null ? 0 : new RlpStream(countBytes).DecodeUInt();
+            Count = LoadCount();
         }
 
-        private ulong _nodeIndexReservedForMetadata = ulong.MaxValue;
-
+        private uint LoadCount()
+        {
+            // this is an incorrect binary search approach
+            // that will fail if any of the leaves are zero hashes
+            // we should read count from the corresponding contract
+            
+            ulong left = GetMinNodeIndex(LeafRow);
+            ulong right = GetMaxNodeIndex(LeafRow);
+            ulong? topIndex = Binary.Search(left, right, ni => !ZeroHash.Equals(LoadValue(ni)));
+            if (!topIndex.HasValue)
+            {
+                return 0;
+            }
+            
+            return GetLeafIndex(topIndex.Value) + 1;
+        }
+        
         private byte[] BuildDbKey(ulong nodeIndex)
         {
             return Rlp.Encode(Rlp.Encode(_dbPrefix), Rlp.Encode(nodeIndex)).Bytes;
-        }
-
-        private void StoreCountInTheDb()
-        {
-            _keyValueStore[_countKey] = Rlp.Encode(Count).Bytes;
         }
 
         private Bytes32 LoadValue(uint row, uint indexAtRow)
@@ -202,7 +199,7 @@ namespace Nethermind.Baseline
         [MethodImpl(MethodImplOptions.Synchronized)]
         public void Insert(Bytes32 leaf)
         {
-            _keyValueStore[Rlp.Encode(Count).Bytes] = leaf.AsSpan().ToArray();
+            SaveValue(GetNodeIndex(LeafRow, Count), leaf.AsSpan().ToArray());
 
             uint indexAtRow = Count;
             uint siblingIndexAtRow = GetSiblingIndexAtRow(LeafRow, indexAtRow);
@@ -229,7 +226,6 @@ namespace Nethermind.Baseline
             }
 
             Count++;
-            StoreCountInTheDb();
         }
 
         public BaselineTreeNode[] GetProof(uint leafIndex)

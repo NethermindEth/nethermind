@@ -102,6 +102,11 @@ namespace Nethermind.Baseline.JsonRpc
 
         public Task<ResultWrapper<Keccak>> baseline_insertLeaf(Address address, Address contractAddress, Keccak hash)
         {
+            if (hash == Keccak.Zero)
+            {
+                return Task.FromResult(ResultWrapper<Keccak>.Fail("Cannot insert zero hash", ErrorCodes.InvalidInput));
+            }
+            
             var txData = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, ContractMerkleTree.InsertLeafAbiSig, hash);
 
             Transaction tx = new Transaction();
@@ -118,6 +123,14 @@ namespace Nethermind.Baseline.JsonRpc
 
         public Task<ResultWrapper<Keccak>> baseline_insertLeaves(Address address, Address contractAddress, params Keccak[] hashes)
         {
+            for (int i = 0; i < hashes.Length; i++)
+            {
+                if (hashes[i] == Keccak.Zero)
+                {
+                    return Task.FromResult(ResultWrapper<Keccak>.Fail("Cannot insert zero hash", ErrorCodes.InvalidInput));
+                }
+            }
+
             var txData = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, ContractMerkleTree.InsertLeavesAbiSig, new object[] {hashes});
 
             Transaction tx = new Transaction();

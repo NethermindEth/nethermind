@@ -46,7 +46,7 @@ namespace Nethermind.Baseline.Test
             for (int i = 0; i < _testLeaves.Length; i++)
             {
                 byte[] bytes = new byte[32];
-                bytes[i] = (byte) i;
+                bytes[i] = (byte) (i + 1);
                 _testLeaves[i] = Bytes32.Wrap(bytes);
             }
         }
@@ -59,8 +59,8 @@ namespace Nethermind.Baseline.Test
         [Test]
         public void Initially_count_is_0()
         {
-            BaselineTree merkleTree = BuildATree();
-            merkleTree.Count.Should().Be(0);
+            BaselineTree baselineTree = BuildATree();
+            baselineTree.Count.Should().Be(0);
         }
 
         [TestCase(ulong.MinValue, null)]
@@ -199,14 +199,14 @@ namespace Nethermind.Baseline.Test
         [Test]
         public async Task Can_safely_insert_concurrently()
         {
-            BaselineTree merkleTree = BuildATree();
+            BaselineTree baselineTree = BuildATree();
             uint iterations = 1000;
             uint concurrentTasksCount = 8;
             Action keepAdding = () =>
             {
                 for (int i = 0; i < iterations; i++)
                 {
-                    merkleTree.Insert(_testLeaves[0]);
+                    baselineTree.Insert(_testLeaves[0]);
                 }
             };
 
@@ -223,26 +223,32 @@ namespace Nethermind.Baseline.Test
 
             await Task.WhenAll(tasks);
 
-            merkleTree.Count.Should().Be(concurrentTasksCount * iterations);
+            baselineTree.Count.Should().Be(concurrentTasksCount * iterations);
         }
 
         [Test]
         public void On_adding_one_leaf_count_goes_up_to_1()
         {
-            BaselineTree merkleTree = BuildATree();
-            merkleTree.Insert(_testLeaves[0]);
-            merkleTree.Count.Should().Be(1);
+            BaselineTree baselineTree = BuildATree();
+            baselineTree.Insert(_testLeaves[0]);
+            baselineTree.Count.Should().Be(1);
         }
 
-        [Test]
-        public void Can_restore_count_from_the_database()
+        [TestCase(0u)]
+        [TestCase(1u)]
+        [TestCase(123u)]
+        public void Can_restore_count_from_the_database(uint leafCount)
         {
             MemDb memDb = new MemDb();
-            BaselineTree merkleTree = BuildATree(memDb);
-            merkleTree.Insert(_testLeaves[0]);
+            BaselineTree baselineTree = BuildATree(memDb);
 
-            BaselineTree merkleTreeRestored = BuildATree(memDb);
-            merkleTreeRestored.Count.Should().Be(1);
+            for (int i = 0; i < leafCount; i++)
+            {
+                baselineTree.Insert(_testLeaves[0]);    
+            }
+
+            BaselineTree baselineTreeRestored = BuildATree(memDb);
+            baselineTreeRestored.Count.Should().Be(leafCount);
         }
 
         [TestCase(2)]
@@ -250,11 +256,11 @@ namespace Nethermind.Baseline.Test
         [TestCase(4)]
         public void When_inserting_more_leaves_count_keeps_growing(int numberOfLeaves)
         {
-            BaselineTree merkleTree = BuildATree();
+            BaselineTree baselineTree = BuildATree();
             for (uint i = 0; i < numberOfLeaves; i++)
             {
-                merkleTree.Insert(_testLeaves[i]);
-                merkleTree.Count.Should().Be(i + 1);
+                baselineTree.Insert(_testLeaves[i]);
+                baselineTree.Count.Should().Be(i + 1);
             }
         }
 
@@ -264,13 +270,13 @@ namespace Nethermind.Baseline.Test
         [TestCase(23u)]
         public void Can_get_proof_on_a_populated_trie_on_an_index(uint nodesCount)
         {
-            BaselineTree merkleTree = BuildATree();
+            BaselineTree baselineTree = BuildATree();
             for (int i = 0; i < nodesCount; i++)
             {
-                merkleTree.Insert(_testLeaves[0]);    
+                baselineTree.Insert(_testLeaves[0]);    
             }
             
-            BaselineTreeNode[] proof = merkleTree.GetProof(0);
+            BaselineTreeNode[] proof = baselineTree.GetProof(0);
             proof.Should().HaveCount(BaselineTree.TreeHeight);
 
             for (int proofRow = 0; proofRow < BaselineTree.TreeHeight; proofRow++)
