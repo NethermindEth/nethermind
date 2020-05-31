@@ -301,6 +301,28 @@ namespace Nethermind.Store.Test.Proofs
         }
 
         [Test]
+        public void Storage_proofs_have_values_set_when_missing()
+        {
+            IDb memDb = new MemDb();
+            StateTree tree = new StateTree(memDb);
+            StorageTree storageTree = new StorageTree(memDb);
+            storageTree.Commit();
+
+            byte[] code = new byte[] {1, 2, 3};
+            Account account1 = Build.An.Account.WithBalance(1).WithStorageRoot(storageTree.RootHash).TestObject;
+            Account account2 = Build.An.Account.WithBalance(2).TestObject;
+            tree.Set(TestItem.AddressA, account1);
+            tree.Set(TestItem.AddressB, account2);
+            tree.Commit();
+
+            AccountProofCollector accountProofCollector = new AccountProofCollector(TestItem.AddressA, new[] {Bytes.FromHexString("0x0000000000000000000000000000000000000000000000000000000000000000"), Bytes.FromHexString("0x0000000000000000000000000000000000000000000000000000000000000001")});
+            tree.Accept(accountProofCollector, tree.RootHash, true);
+            AccountProof proof = accountProofCollector.BuildResult();
+            Assert.AreEqual("0x0000000000000000000000000000000000000000000000000000000000000000000000000000000000", proof.StorageProofs[0].Value.ToHexString(true));
+            Assert.AreEqual("0x0000000000000000000000000000000000000000000000000000000000000000000000000000000000", proof.StorageProofs[1].Value.ToHexString(true));
+        }
+
+        [Test]
         public void Storage_proofs_have_keys_set()
         {
             IDb memDb = new MemDb();
