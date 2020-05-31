@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Serialization.Rlp;
@@ -8,37 +7,40 @@ using Nethermind.Trie;
 
 namespace Nethermind.Baseline
 {
-    public class MerkleTree
+    /// <summary>
+    /// This will be moved to Eth2
+    /// </summary>
+    public abstract class MerkleTree
     {
         private const int LeafLevel = 31;
         public const int TreeDepth = 32;
         private const uint MaxNodes = uint.MaxValue;
         private const uint MaxNodeIndex = MaxNodes - 1;
         private const uint FirstLeafIndexAsNodeIndex = MaxNodes / 2;
-        public const uint MaxLeafIndex = uint.MaxValue / 2;
+        public const uint TreeWidth = uint.MaxValue / 2 + 1;
+        public const uint MaxLeafIndex = TreeWidth - 1;
 
         private readonly IKeyValueStore _keyValueStore;
-
-        public static readonly byte[][] s_zeroHashes = new byte[32][];
-        private static readonly HashAlgorithm s_hashAlgorithm = SHA256.Create();
+        private protected int TruncationLength { get; }
 
         private static byte[] _countKey;
 
         static MerkleTree()
         {
             _countKey = Rlp.Encode(uint.MaxValue).Bytes;
-            s_zeroHashes[0] = new byte[32];
-            for (int index = 1; index < 32; index++)
-            {
-                s_zeroHashes[index] = Hash(s_zeroHashes[index - 1], s_zeroHashes[index - 1]);
-            }
         }
+
+        /// <summary>
+        /// Zero hashes will always be stored as 32 bytes (not truncated)
+        /// </summary>
+        protected abstract byte[][] ZeroHashesInternal { get; }
 
         public uint Count { get; set; }
 
-        public MerkleTree(IKeyValueStore keyValueStore)
+        public MerkleTree(IKeyValueStore keyValueStore, int truncationLength = 0)
         {
             _keyValueStore = keyValueStore ?? throw new ArgumentNullException(nameof(keyValueStore));
+            TruncationLength = truncationLength;
 
             byte[] countBytes = _keyValueStore[_countKey];
             Count = countBytes == null ? 0 : new RlpStream(countBytes).DecodeUInt();
@@ -83,7 +85,7 @@ namespace Nethermind.Baseline
             byte[] nodeHashBytes = _keyValueStore[Rlp.Encode(nodeIndex).Bytes];
             if (nodeHashBytes == null)
             {
-                return Bytes32.Wrap(s_zeroHashes[31 - GetLevel(nodeIndex)]);
+                return Bytes32.Wrap(ZeroHashesInternal[31 - GetLevel(nodeIndex)]);
             }
 
             return Bytes32.Wrap(nodeHashBytes);
@@ -225,13 +227,6 @@ namespace Nethermind.Baseline
             return proof;
         }
 
-        private static byte[] Hash(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
-        {
-            Span<byte> combined = new Span<byte>(new byte[64]);
-            a.CopyTo(combined);
-            b.CopyTo(combined.Slice(32));
-            // try compute hash here?
-            return s_hashAlgorithm.ComputeHash(combined.ToArray());
-        }
+        protected abstract byte[] Hash(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b);
     }
 }

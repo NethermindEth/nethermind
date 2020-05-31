@@ -46,7 +46,7 @@ namespace Nethermind.Baseline.JsonRpc
             _abiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _txPoolBridge = txPoolBridge ?? throw new ArgumentNullException(nameof(txPoolBridge));
-            _merkleTree = new MerkleTree(_memDb);
+            _merkleTree = new ShaMerkleTree(_memDb);
 
             _timer = new Timer();
             _timer.Interval = 1000;
