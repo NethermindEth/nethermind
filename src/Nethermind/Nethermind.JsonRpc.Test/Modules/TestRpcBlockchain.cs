@@ -71,9 +71,9 @@ namespace Nethermind.JsonRpc.Test.Modules
                 return this;
             }
             
-            public async Task<TestRpcBlockchain> Build()
+            public async Task<TestRpcBlockchain> Build(ISpecProvider specProvider = null)
             {
-                return (TestRpcBlockchain)(await _blockchain.Build());
+                return (TestRpcBlockchain)(await _blockchain.Build(specProvider));
             }
         }
 
