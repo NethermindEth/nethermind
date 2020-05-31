@@ -56,7 +56,7 @@ namespace Nethermind.Baseline
             return Bytes.AreEqual(_bytes, other._bytes);
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;

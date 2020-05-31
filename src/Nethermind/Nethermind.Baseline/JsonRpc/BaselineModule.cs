@@ -15,12 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Concurrent;
 using System.IO;
 using System.IO.Abstractions;
 using System.Threading.Tasks;
 using System.Timers;
 using Nethermind.Abi;
-using Nethermind.Blockchain.Filters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -28,92 +28,75 @@ using Nethermind.Db;
 using Nethermind.Facade;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
 
 namespace Nethermind.Baseline.JsonRpc
 {
     public class BaselineModule : IBaselineModule
     {
+        private const int TruncationLength = 5;
+        
         private readonly IAbiEncoder _abiEncoder;
         private readonly IFileSystem _fileSystem;
+        private readonly IDb _baselineDb;
         private readonly ILogger _logger;
         private readonly ITxPoolBridge _txPoolBridge;
 
-        private BaselineTree _merkleTree;
-        private MemDb _memDb = new MemDb();
+        private ConcurrentDictionary<Address, BaselineTree> _baselineTrees;
+        private BaselineMetadata _metadata;
 
-        public FilterLog filterLog;
         private Timer _timer;
 
-        public BaselineModule(ITxPoolBridge txPoolBridge, IAbiEncoder abiEncoder, IFileSystem fileSystem, ILogManager logManager)
+        public BaselineModule(ITxPoolBridge txPoolBridge, IAbiEncoder abiEncoder, IFileSystem fileSystem, IDb baselineDb, ILogManager logManager)
         {
             _abiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
             _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
+            _baselineDb = baselineDb ?? throw new ArgumentNullException(nameof(baselineDb));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _txPoolBridge = txPoolBridge ?? throw new ArgumentNullException(nameof(txPoolBridge));
-            _merkleTree = new ShaBaselineTree(_memDb);
+            
+            _metadata = LoadMetadata();
+            _baselineTrees = InitTrees();
+            _timer = InitTimer();
+        }
 
-            _timer = new Timer();
-            _timer.Interval = 1000;
-            _timer.Elapsed += TimerOnElapsed;
-            _timer.AutoReset = false;
+        private Timer InitTimer()
+        {
+            Timer timer = new Timer();
+            timer.Interval = 1000;
+            timer.Elapsed += TimerOnElapsed;
+            timer.AutoReset = false;
+            return timer;
+        }
+
+        private ConcurrentDictionary<Address, BaselineTree> InitTrees()
+        {
+            ConcurrentDictionary<Address, BaselineTree> trees = new ConcurrentDictionary<Address, BaselineTree>();
+            foreach (Address trackedTree in _metadata.TrackedTrees)
+            {
+                TryAddTree(trackedTree);
+            }
+
+            return trees;
+        }
+        
+        private BaselineMetadata LoadMetadata()
+        {
+            byte[] serializedMetadata = _baselineDb[new byte[0]];
+            return serializedMetadata == null
+                ? new BaselineMetadata()
+                : new BaselineMetadata(Rlp.DecodeArray<Address>(new RlpStream(serializedMetadata)));
+        }
+
+        private bool TryAddTree(Address trackedTree)
+        {
+            ShaBaselineTree tree = new ShaBaselineTree(_baselineDb, trackedTree.Bytes, TruncationLength);
+            return _baselineTrees.TryAdd(trackedTree, tree);
         }
 
         private void TimerOnElapsed(object sender, ElapsedEventArgs e)
         {
-            // get logs for a block range
-            // insert leaves
-
-            // LogFilter logFilter = store.CreateLogFilter(new BlockParameter(1), new BlockParameter(2), new AddressFilter(contractAddress));
-            // var logs = _logFinder.FindLogs(logFilter);
-
-            // getReceipt check
-
-            // FilterStore store = new FilterStore();
-
-            // IEnumerable<string> topics = new string[] { "insertLeaf", "insertLeaves"};
-
-            // LogFilter logFilter = store.CreateLogFilter(new BlockParameter(1), new BlockParameter(2), new AddressFilter(contractAddress));
-
-            //var logs = _logFinder.FindLogs(logFilter);
-
-            // foreach(var log in logs)
-            // {
-            //     Console.WriteLine("test");
-            //     Console.WriteLine(log);
-            // }
-
-            // filterLog = new FilterLog(0, 
-            //     0, 
-            //     5, 
-            //     new Keccak("0xbbf3682375dae572acfb63c67f862dcdf59e96e043d44152cca7ebefa8c14cec"), 
-            //     0,
-            //     new Keccak("0xbe45ba4ec5fdfa14239c5e345f7e99dc7f7a6d6cd05e7e52b1fc5254bc712b9b"),
-            //     new Address("0x83c82edd1605ac37d9065d784fdc000b20e9879d"),
-            //     new byte[] { 
-            //         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            //         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
-            //         242, 54, 130, 226, 242, 233, 234, 20, 29, 70, 99,
-            //         222, 252, 64, 247, 42, 118, 195, 91, 53, 216, 202, 
-            //         214, 224, 22, 25, 1, 242, 169, 103, 201, 182, 26, 
-            //         206, 48, 45, 79, 206, 116, 147, 119, 56, 32, 221, 
-            //         42, 126, 203, 132, 161, 108, 25, 159, 242, 96, 
-            //         122, 247, 122, 223, 240, 0, 0, 0, 0, 0 },
-            //     new Keccak[] { new Keccak("0x6a82ba2aa1d2c039c41e6e2b5a5a1090d09906f060d32af9c1ac0beff7af75c0")}
-            // );
-            //
-            // // var leafHash = Bytes.ToHexString(filterLog.Data).Substring(64, 64);
-            // // 31- tree depth, leafCount
-            // var leafCount = 0;
-            //
-            // byte[] key = Rlp.Encode(Rlp.Encode(31), Rlp.Encode(leafCount)).Bytes;
-            //
-            // _memDb[key] = filterLog.Data.Slice(64, 64);
-            //
-            // byte[] retrievedBytes = _memDb[key];
-            //
-            // Console.WriteLine(Bytes.ToHexString(retrievedBytes));
-
             _timer.Enabled = true;
         }
 
@@ -167,7 +150,7 @@ namespace Nethermind.Baseline.JsonRpc
             {
                 throw new IOException("Bytecode not found");
             }
-            
+
             if (_logger.IsInfo) _logger.Info($"Loading bytecode of {contractBytecode[1]}");
             return Bytes.FromHexString(contractBytecode[3]);
         }
@@ -179,7 +162,7 @@ namespace Nethermind.Baseline.JsonRpc
             {
                 bytecode = await GetContractBytecode(contractType);
             }
-            catch (IOException ioException)
+            catch (IOException)
             {
                 return ResultWrapper<Keccak>.Fail($"{contractType} bytecode could not be loaded.", ErrorCodes.ResourceUnavailable);
             }
@@ -199,14 +182,32 @@ namespace Nethermind.Baseline.JsonRpc
             return ResultWrapper<Keccak>.Success(txHash);
         }
 
-        public Task<ResultWrapper<BaselineTreeNode[]>> baseline_getSiblings(long leafIndex)
+        public Task<ResultWrapper<BaselineTreeNode[]>> baseline_getSiblings(Address contractAddress, long leafIndex)
         {
-            if (leafIndex > MerkleTree.MaxLeafIndex || leafIndex < 0l)
+            if (leafIndex > MerkleTree.MaxLeafIndex || leafIndex < 0L)
             {
                 return Task.FromResult(ResultWrapper<BaselineTreeNode[]>.Fail($"{leafIndex} is not a valid leaf index", ErrorCodes.InvalidInput));
             }
 
-            return Task.FromResult(ResultWrapper<BaselineTreeNode[]>.Success(_merkleTree.GetProof((uint)leafIndex)));
+            bool isTracked = _baselineTrees.TryGetValue(contractAddress, out BaselineTree? tree);
+            if (!isTracked)
+            {
+                return Task.FromResult(ResultWrapper<BaselineTreeNode[]>.Fail($"{contractAddress} tree is not tracked", ErrorCodes.InvalidInput));
+            }
+
+            return Task.FromResult(ResultWrapper<BaselineTreeNode[]>.Success(tree!.GetProof((uint) leafIndex)));
+        }
+
+        public Task<ResultWrapper<bool>> baseline_track(Address contractAddress)
+        {
+            // can potentially warn user if tree is not deployed at the address
+
+            if (_baselineTrees.TryAdd(contractAddress, new ShaBaselineTree(_baselineDb, contractAddress.Bytes)))
+            {
+                return Task.FromResult(ResultWrapper<bool>.Success(true));
+            }
+
+            return Task.FromResult(ResultWrapper<bool>.Fail($"{contractAddress} is already tracked", ErrorCodes.InvalidInput));
         }
     }
 }

@@ -25,16 +25,19 @@ namespace Nethermind.Baseline.JsonRpc
     [RpcModule(ModuleType.Baseline)]
     public interface IBaselineModule : IModule
     {
-        [JsonRpcMethod(Description = "describe", IsReadOnly = false, IsImplemented = false)]
+        [JsonRpcMethod(Description = "describe", IsReadOnly = false, IsImplemented = true)]
         Task<ResultWrapper<Keccak>> baseline_insertLeaf(Address address, Address contractAddress, Keccak hash);
         
-        [JsonRpcMethod(Description = "describe", IsReadOnly = false, IsImplemented = false)]
+        [JsonRpcMethod(Description = "describe", IsReadOnly = false, IsImplemented = true)]
         Task<ResultWrapper<Keccak>> baseline_insertLeaves(Address address, Address contractAddress, params Keccak[] hash);
         
-        [JsonRpcMethod(Description = "describe", IsReadOnly = false, IsImplemented = false)]
+        [JsonRpcMethod(Description = "describe", IsReadOnly = false, IsImplemented = true)]
         Task<ResultWrapper<Keccak>> baseline_deploy(Address address, string contractType);
         
+        [JsonRpcMethod(Description = "describe", IsReadOnly = false, IsImplemented = true)]
+        Task<ResultWrapper<BaselineTreeNode[]>> baseline_getSiblings(Address contractAddress, long leafIndex);
+        
         [JsonRpcMethod(Description = "describe", IsReadOnly = false, IsImplemented = false)]
-        Task<ResultWrapper<BaselineTreeNode[]>> baseline_getSiblings(long leafIndex);
+        Task<ResultWrapper<bool>> baseline_track(Address contractAddress);
     }
 }

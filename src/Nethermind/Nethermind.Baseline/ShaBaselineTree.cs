@@ -16,7 +16,6 @@
 // 
 
 using System;
-using System.Collections.ObjectModel;
 using System.Security.Cryptography;
 using Nethermind.Trie;
 
@@ -26,10 +25,9 @@ namespace Nethermind.Baseline
     {
         private static readonly HashAlgorithm _hashAlgorithm = SHA256.Create();
         
-        public ShaBaselineTree(IKeyValueStore keyValueStore, int truncationLength = 0)
-            : base(keyValueStore, truncationLength)
+        public ShaBaselineTree(IKeyValueStore keyValueStore, byte[] dbPrefix, int truncationLength = 0)
+            : base(keyValueStore, dbPrefix, truncationLength)
         {
-            
         }
 
         private static byte[] HashStatic(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)

@@ -53,7 +53,7 @@ namespace Nethermind.Baseline.Test
 
         private BaselineTree BuildATree(IKeyValueStore keyValueStore = null)
         {
-            return new ShaBaselineTree(keyValueStore ?? new MemDb(), _truncationLength);
+            return new ShaBaselineTree(keyValueStore ?? new MemDb(), new byte[] {}, _truncationLength);
         }
 
         [Test]

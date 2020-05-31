@@ -17,6 +17,7 @@ namespace Nethermind.Baseline
         private const ulong MaxNodeIndex = MaxNodes - 1;
 
         private readonly IKeyValueStore _keyValueStore;
+        private readonly byte[] _dbPrefix;
         private protected int TruncationLength { get; }
 
         /* baseline does not use a sparse merkle tree - instead they use a single zero hash value
@@ -26,22 +27,31 @@ namespace Nethermind.Baseline
         /// <summary>
         /// Key for the storage value
         /// </summary>
-        private static byte[] _countKey;
+        private byte[] _countKey;
 
         static BaselineTree()
         {
-            _countKey = Rlp.Encode(ulong.MaxValue).Bytes;
+            
         }
 
         public uint Count { get; set; }
 
-        public BaselineTree(IKeyValueStore keyValueStore, int truncationLength = 0)
+        public BaselineTree(IKeyValueStore keyValueStore, byte[] dbPrefix, int truncationLength = 0)
         {
             _keyValueStore = keyValueStore ?? throw new ArgumentNullException(nameof(keyValueStore));
+            _dbPrefix = dbPrefix ?? throw new ArgumentNullException(nameof(dbPrefix));
+            _countKey = BuildDbKey(_nodeIndexReservedForMetadata);
             TruncationLength = truncationLength;
 
             byte[] countBytes = _keyValueStore[_countKey];
             Count = countBytes == null ? 0 : new RlpStream(countBytes).DecodeUInt();
+        }
+
+        private ulong _nodeIndexReservedForMetadata = ulong.MaxValue;
+
+        private byte[] BuildDbKey(ulong nodeIndex)
+        {
+            return Rlp.Encode(Rlp.Encode(_dbPrefix), Rlp.Encode(nodeIndex)).Bytes;
         }
 
         private void StoreCountInTheDb()
@@ -56,7 +66,7 @@ namespace Nethermind.Baseline
 
         private void SaveValue(ulong nodeIndex, byte[] hashBytes)
         {
-            _keyValueStore[Rlp.Encode(nodeIndex).Bytes] = hashBytes;
+            _keyValueStore[BuildDbKey(nodeIndex)] = hashBytes;
         }
 
         private void SaveValue(ulong nodeIndex, Bytes32 hash)
@@ -80,7 +90,7 @@ namespace Nethermind.Baseline
 
         private Bytes32 LoadValue(ulong nodeIndex)
         {
-            byte[] nodeHashBytes = _keyValueStore[Rlp.Encode(nodeIndex).Bytes];
+            byte[] nodeHashBytes = _keyValueStore[BuildDbKey(nodeIndex)];
             if (nodeHashBytes == null)
             {
                 return ZeroHash;
