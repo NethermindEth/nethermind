@@ -70,7 +70,22 @@ namespace Nethermind.Wallet
         {
             if(_config.BlockAuthorAccount != null)
             {
-                SecureString password = ConsoleUtils.ReadSecret($"Provide password for validator account {_config.BlockAuthorAccount}");
+                SecureString password;
+                if(_config.BlockAuthorPassword != null)
+                {
+                    password = new SecureString();
+                    foreach (var character in _config.BlockAuthorPassword)
+                    {
+                        password.AppendChar(character);
+                    }
+                    
+                    password.MakeReadOnly();
+                }
+                else
+                {
+                    password = ConsoleUtils.ReadSecret($"Provide password for validator account {_config.BlockAuthorAccount}");    
+                }
+                
                 try
                 {
                     (PrivateKey privateKey, Result result) = _keyStore.GetKey(new Address(_config.BlockAuthorAccount), password);
