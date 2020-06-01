@@ -37,6 +37,8 @@ using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Runner.Ethereum.Subsystems;
 using Nethermind.Baseline.Config;
 using Nethermind.Baseline.JsonRpc;
+using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Receipts;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
@@ -103,7 +105,23 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             if (baselineConfig.Enabled)
             {
-                BaselineModuleFactory baselineModuleFactory = new BaselineModuleFactory(_context.TxPool, _context.AbiEncoder, _context.Wallet, _context.SpecProvider, _context.FileSystem, _context.LogManager);
+                LogFinder logFinder = new LogFinder(
+                    _context.BlockTree,
+                    _context.ReceiptFinder,
+                    _context.BloomStorage,
+                    _context.LogManager,
+                    new ReceiptsRecovery(), 1024);
+                
+                BaselineModuleFactory baselineModuleFactory = new BaselineModuleFactory(
+                    _context.TxPool,
+                    logFinder,
+                    _context.BlockTree,
+                    _context.AbiEncoder,
+                    _context.Wallet,
+                    _context.SpecProvider,
+                    _context.FileSystem,
+                    _context.LogManager);
+                
                 _context.RpcModuleProvider.Register(new SingletonModulePool<IBaselineModule>(baselineModuleFactory, true));
                 if (logger?.IsInfo ?? false) logger!.Info($"Baseline RPC Module has been enabled");
             }

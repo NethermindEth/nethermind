@@ -45,8 +45,16 @@ namespace Nethermind.Baseline.Test.JsonRpc
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
             testRpc.TestWallet.UnlockAccount(TestItem.Addresses[0], new SecureString());
             await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
-
-            BaselineModule baselineModule = new BaselineModule(testRpc.TxPoolBridge, _abiEncoder, _fileSystem, new MemDb(), LimboLogs.Instance);
+            
+            BaselineModule baselineModule = new BaselineModule(
+                testRpc.TxPoolBridge,
+                testRpc.LogFinder,
+                testRpc.BlockTree,
+                _abiEncoder,
+                _fileSystem,
+                new MemDb(),
+                LimboLogs.Instance);
+            
             var result = await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA");
             result.Data.Should().NotBe(null);
             result.ErrorCode.Should().Be(0);
@@ -72,7 +80,15 @@ namespace Nethermind.Baseline.Test.JsonRpc
             testRpc.TestWallet.UnlockAccount(TestItem.Addresses[0], new SecureString());
             await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
 
-            BaselineModule baselineModule = new BaselineModule(testRpc.TxPoolBridge, _abiEncoder, _fileSystem, new MemDb(), LimboLogs.Instance);
+            BaselineModule baselineModule = new BaselineModule(
+                testRpc.TxPoolBridge,
+                testRpc.LogFinder,
+                testRpc.BlockTree,
+                _abiEncoder,
+                _fileSystem,
+                new MemDb(),
+                LimboLogs.Instance);
+            
             var result = await baselineModule.baseline_deploy(TestItem.Addresses[0], "MissingContract");
             result.Data.Should().Be(null);
             result.ErrorCode.Should().Be(ErrorCodes.ResourceNotFound);
@@ -85,7 +101,15 @@ namespace Nethermind.Baseline.Test.JsonRpc
         {
             SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
-            BaselineModule baselineModule = new BaselineModule(testRpc.TxPoolBridge, _abiEncoder, _fileSystem, new MemDb(), LimboLogs.Instance);
+            BaselineModule baselineModule = new BaselineModule(
+                testRpc.TxPoolBridge,
+                testRpc.LogFinder,
+                testRpc.BlockTree,
+                _abiEncoder,
+                _fileSystem,
+                new MemDb(),
+                LimboLogs.Instance);
+            
             await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
             Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
             await testRpc.AddBlock();
@@ -107,7 +131,15 @@ namespace Nethermind.Baseline.Test.JsonRpc
         {
             SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
-            BaselineModule baselineModule = new BaselineModule(testRpc.TxPoolBridge, _abiEncoder, _fileSystem, new MemDb(), LimboLogs.Instance);
+            BaselineModule baselineModule = new BaselineModule(
+                testRpc.TxPoolBridge,
+                testRpc.LogFinder,
+                testRpc.BlockTree,
+                _abiEncoder,
+                _fileSystem,
+                new MemDb(),
+                LimboLogs.Instance);
+            
             await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
             Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
             await testRpc.AddBlock();
@@ -128,7 +160,15 @@ namespace Nethermind.Baseline.Test.JsonRpc
         {
             SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
-            BaselineModule baselineModule = new BaselineModule(testRpc.TxPoolBridge, _abiEncoder, _fileSystem, new MemDb(), LimboLogs.Instance);
+            BaselineModule baselineModule = new BaselineModule(
+                testRpc.TxPoolBridge,
+                testRpc.LogFinder,
+                testRpc.BlockTree,
+                _abiEncoder,
+                _fileSystem,
+                new MemDb(),
+                LimboLogs.Instance);
+            
             await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
             Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
             await testRpc.AddBlock();
@@ -149,53 +189,74 @@ namespace Nethermind.Baseline.Test.JsonRpc
         }
         
         [Test]
-        public async Task can_work_with_two_trees()
+        public async Task can_work_with_many_trees()
         {
             SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
-            BaselineModule baselineModule = new BaselineModule(testRpc.TxPoolBridge, _abiEncoder, _fileSystem, new MemDb(), LimboLogs.Instance);
+            BaselineModule baselineModule = new BaselineModule(
+                testRpc.TxPoolBridge,
+                testRpc.LogFinder,
+                testRpc.BlockTree,
+                _abiEncoder,
+                _fileSystem,
+                new MemDb(),
+                LimboLogs.Instance);
+            
             await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
             Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
             Keccak txHash2 = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
+            Keccak txHash3 = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
+            await testRpc.AddBlock();
+            await testRpc.AddBlock();
             await testRpc.AddBlock();
 
             ReceiptForRpc receipt = (await testRpc.EthModule.eth_getTransactionReceipt(txHash)).Data;
             ReceiptForRpc receipt2 = (await testRpc.EthModule.eth_getTransactionReceipt(txHash2)).Data;
+            ReceiptForRpc receipt3 = (await testRpc.EthModule.eth_getTransactionReceipt(txHash3)).Data;
 
             receipt.Status.Should().Be(1);
             receipt2.Status.Should().Be(1);
+            receipt3.Status.Should().Be(1);
 
             await baselineModule.baseline_insertLeaves(TestItem.Addresses[1], receipt.ContractAddress, TestItem.KeccakG, TestItem.KeccakH);
             await baselineModule.baseline_insertLeaves(TestItem.Addresses[1], receipt2.ContractAddress, TestItem.KeccakE, TestItem.KeccakF);
+            await baselineModule.baseline_insertLeaf(TestItem.Addresses[1], receipt3.ContractAddress, TestItem.KeccakG);
+            await baselineModule.baseline_insertLeaf(TestItem.Addresses[1], receipt3.ContractAddress, TestItem.KeccakH);
+            
+            await testRpc.AddBlock();
             await testRpc.AddBlock();
 
             await baselineModule.baseline_track(receipt.ContractAddress);
             await baselineModule.baseline_track(receipt2.ContractAddress);
+            await baselineModule.baseline_track(receipt3.ContractAddress);
             
             var result = await baselineModule.baseline_getSiblings(receipt.ContractAddress, 1);
             var result2 = await baselineModule.baseline_getSiblings(receipt2.ContractAddress, 1);
+            var result3 = await baselineModule.baseline_getSiblings(receipt3.ContractAddress, 1);
             await testRpc.AddBlock();
             
             result.Result.ResultType.Should().Be(ResultType.Success);
-            result.Result.Error.Should().Be(null);
-            result.ErrorCode.Should().Be(0);
             result.Data.Should().HaveCount(32);
             
             result2.Result.ResultType.Should().Be(ResultType.Success);
-            result2.Result.Error.Should().Be(null);
-            result2.ErrorCode.Should().Be(0);
             result2.Data.Should().HaveCount(32);
+            
+            result3.Result.ResultType.Should().Be(ResultType.Success);
+            result3.Data.Should().HaveCount(32);
 
             for (int i = 1; i < 32; i++)
             {
                 result.Data[i].Hash.Should().Be(BaselineTree.ZeroHash);
                 result2.Data[i].Hash.Should().Be(BaselineTree.ZeroHash);
+                result3.Data[i].Hash.Should().Be(BaselineTree.ZeroHash);
             }
             
             result.Data[0].Hash.Should().NotBe(BaselineTree.ZeroHash);
             result2.Data[0].Hash.Should().NotBe(BaselineTree.ZeroHash);
+            result3.Data[0].Hash.Should().NotBe(BaselineTree.ZeroHash);
             
             result.Data[0].Hash.Should().NotBe(result2.Data[0].Hash);
+            result.Data[0].Hash.Should().Be(result3.Data[0].Hash);
         }
         
         [Test]
@@ -203,7 +264,15 @@ namespace Nethermind.Baseline.Test.JsonRpc
         {
             SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
-            BaselineModule baselineModule = new BaselineModule(testRpc.TxPoolBridge, _abiEncoder, _fileSystem, new MemDb(), LimboLogs.Instance);
+            BaselineModule baselineModule = new BaselineModule(
+                testRpc.TxPoolBridge,
+                testRpc.LogFinder,
+                testRpc.BlockTree,
+                _abiEncoder,
+                _fileSystem,
+                new MemDb(),
+                LimboLogs.Instance);
+            
             await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
             
             await baselineModule.baseline_track(TestItem.AddressC); // any address (no need for tree there)
@@ -221,7 +290,15 @@ namespace Nethermind.Baseline.Test.JsonRpc
         {
             SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
-            BaselineModule baselineModule = new BaselineModule(testRpc.TxPoolBridge, _abiEncoder, _fileSystem, new MemDb(), LimboLogs.Instance);
+            BaselineModule baselineModule = new BaselineModule(
+                testRpc.TxPoolBridge,
+                testRpc.LogFinder,
+                testRpc.BlockTree,
+                _abiEncoder,
+                _fileSystem,
+                new MemDb(),
+                LimboLogs.Instance);
+            
             for (int i = 0; i < trackedCount; i++)
             {
                 await baselineModule.baseline_track(TestItem.Addresses[i]); // any address (no need for tree there)    
@@ -239,13 +316,29 @@ namespace Nethermind.Baseline.Test.JsonRpc
             SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
             MemDb memDb = new MemDb();
-            BaselineModule baselineModule = new BaselineModule(testRpc.TxPoolBridge, _abiEncoder, _fileSystem, memDb, LimboLogs.Instance);
+            BaselineModule baselineModule = new BaselineModule(
+                testRpc.TxPoolBridge,
+                testRpc.LogFinder,
+                testRpc.BlockTree,
+                _abiEncoder,
+                _fileSystem,
+                memDb,
+                LimboLogs.Instance);
+            
             for (int i = 0; i < trackedCount; i++)
             {
                 await baselineModule.baseline_track(TestItem.Addresses[i]); // any address (no need for tree there)    
             }
 
-            BaselineModule restored = new BaselineModule(testRpc.TxPoolBridge, _abiEncoder, _fileSystem, memDb, LimboLogs.Instance);
+            BaselineModule restored = new BaselineModule(
+                testRpc.TxPoolBridge,
+                testRpc.LogFinder,
+                testRpc.BlockTree,
+                _abiEncoder,
+                _fileSystem,
+                memDb,
+                LimboLogs.Instance);
+            
             var resultRestored = await restored.baseline_getTracked();
             resultRestored.Data.Length.Should().Be((int)trackedCount);
         }
@@ -255,7 +348,15 @@ namespace Nethermind.Baseline.Test.JsonRpc
         {
             SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
-            BaselineModule baselineModule = new BaselineModule(testRpc.TxPoolBridge, _abiEncoder, _fileSystem, new MemDb(), LimboLogs.Instance);
+            BaselineModule baselineModule = new BaselineModule(
+                testRpc.TxPoolBridge,
+                testRpc.LogFinder,
+                testRpc.BlockTree,
+                _abiEncoder,
+                _fileSystem,
+                new MemDb(),
+                LimboLogs.Instance);
+            
             await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
             Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
             await testRpc.AddBlock();
@@ -280,7 +381,15 @@ namespace Nethermind.Baseline.Test.JsonRpc
         {
             SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
-            BaselineModule baselineModule = new BaselineModule(testRpc.TxPoolBridge, _abiEncoder, _fileSystem, new MemDb(), LimboLogs.Instance);
+            BaselineModule baselineModule = new BaselineModule(
+                testRpc.TxPoolBridge,
+                testRpc.LogFinder,
+                testRpc.BlockTree,
+                _abiEncoder,
+                _fileSystem,
+                new MemDb(),
+                LimboLogs.Instance);
+            
             await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
             Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
             await testRpc.AddBlock();

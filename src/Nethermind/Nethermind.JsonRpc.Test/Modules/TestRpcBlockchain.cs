@@ -16,10 +16,13 @@
 
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Filters;
+using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
 using Nethermind.Facade;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
@@ -37,6 +40,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public IEthModule EthModule { get; private set; }
         public IBlockchainBridge Bridge { get; private set; }
         public ITxPoolBridge TxPoolBridge { get; private set; }
+        public ILogFinder LogFinder { get; private set; }
         public IKeyStore KeyStore { get; } = new MemKeyStore(TestItem.PrivateKeys);
         public IWallet TestWallet { get; } = new DevKeyStoreWallet(new MemKeyStore(TestItem.PrivateKeys), LimboLogs.Instance);
 
@@ -79,12 +83,14 @@ namespace Nethermind.JsonRpc.Test.Modules
 
         protected override async Task<TestBlockchain> Build(ISpecProvider specProvider = null)
         {
+            BloomStorage bloomStorage = new BloomStorage(new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
             specProvider ??= MainnetSpecProvider.Instance;
             await base.Build(specProvider);
             IFilterStore filterStore = new FilterStore();
             IFilterManager filterManager = new FilterManager(filterStore, BlockProcessor, TxPool, LimboLogs.Instance);
             Bridge ??= new BlockchainBridge(StateReader, State, Storage, BlockTree, TxPool, ReceiptStorage, filterStore, filterManager, TestWallet, TxProcessor, EthereumEcdsa, NullBloomStorage.Instance, LimboLogs.Instance, false);
             TxPoolBridge ??= new TxPoolBridge(TxPool, TestWallet, Timestamper, specProvider?.ChainId ?? 0);
+            LogFinder = new LogFinder(BlockTree, ReceiptStorage, bloomStorage, LimboLogs.Instance, new ReceiptsRecovery());
             
             EthModule = new EthModule(new JsonRpcConfig(), Bridge, TxPoolBridge, LimboLogs.Instance);
             return this;

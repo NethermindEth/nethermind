@@ -21,6 +21,9 @@ using System.IO.Abstractions;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Abi;
+using Nethermind.Blockchain.Filters;
+using Nethermind.Blockchain.Filters.Topics;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -42,19 +45,23 @@ namespace Nethermind.Baseline.JsonRpc
         private readonly IDb _baselineDb;
         private readonly ILogger _logger;
         private readonly ITxPoolBridge _txPoolBridge;
+        private readonly ILogFinder _logFinder;
+        private readonly IBlockFinder _blockFinder;
 
         private ConcurrentDictionary<Address, BaselineTree> _baselineTrees
             = new ConcurrentDictionary<Address, BaselineTree>();
 
         private BaselineMetadata _metadata;
 
-        public BaselineModule(ITxPoolBridge txPoolBridge, IAbiEncoder abiEncoder, IFileSystem fileSystem, IDb baselineDb, ILogManager logManager)
+        public BaselineModule(ITxPoolBridge txPoolBridge, ILogFinder logFinder, IBlockFinder blockFinder, IAbiEncoder abiEncoder, IFileSystem fileSystem, IDb baselineDb, ILogManager logManager)
         {
             _abiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
             _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
             _baselineDb = baselineDb ?? throw new ArgumentNullException(nameof(baselineDb));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _txPoolBridge = txPoolBridge ?? throw new ArgumentNullException(nameof(txPoolBridge));
+            _logFinder = logFinder ?? throw new ArgumentNullException(nameof(logFinder));
+            _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
 
             _metadata = LoadMetadata();
             InitTrees();
@@ -176,7 +183,7 @@ namespace Nethermind.Baseline.JsonRpc
             Transaction tx = new Transaction();
             tx.Value = 0;
             tx.Init = bytecode;
-            tx.GasLimit = 2000000;
+            tx.GasLimit = 1000000;
             tx.GasPrice = 20.GWei();
             tx.SenderAddress = address;
 
@@ -186,6 +193,49 @@ namespace Nethermind.Baseline.JsonRpc
             _logger.Info($"Contract {contractType} has been deployed");
 
             return ResultWrapper<Keccak>.Success(txHash);
+        }
+
+        private BaselineTree RebuildEntireTree(Address treeAddress)
+        {
+            // bad
+
+            Keccak leavesTopic = new Keccak("0x8ec50f97970775682a68d3c6f9caedf60fd82448ea40706b8b65d6c03648b922");
+            LogFilter insertLeavesFilter = new LogFilter(
+                0,
+                new BlockParameter(0L),
+                new BlockParameter(_blockFinder.Head.Number),
+                new AddressFilter(treeAddress),
+                new TopicsFilter(new SpecificTopic(leavesTopic)));
+
+            Keccak leafTopic = new Keccak("0x6a82ba2aa1d2c039c41e6e2b5a5a1090d09906f060d32af9c1ac0beff7af75c0");
+            LogFilter insertLeafFilter = new LogFilter(
+                0,
+                new BlockParameter(0L),
+                new BlockParameter(_blockFinder.Head.Number),
+                new AddressFilter(treeAddress),
+                new TopicsFilter(new SpecificTopic(leafTopic))); // find tree topics
+
+            var insertLeavesLogs = _logFinder.FindLogs(insertLeavesFilter);
+            var insertLeafLogs = _logFinder.FindLogs(insertLeafFilter);
+            BaselineTree baselineTree = new ShaBaselineTree(new MemDb(), new byte[0], 5);
+
+            // Keccak leafTopic = new Keccak("0x8ec50f97970775682a68d3c6f9caedf60fd82448ea40706b8b65d6c03648b922");
+            foreach (FilterLog filterLog in insertLeavesLogs)
+            {
+                for (int i = 0; i < (filterLog.Data.Length - 128) / 32; i++)
+                {
+                    Bytes32 leafHash = Bytes32.Wrap(filterLog.Data.Slice(128 + 32 * i, 32).ToArray());
+                    baselineTree.Insert(leafHash);
+                }
+            }
+
+            foreach (FilterLog filterLog in insertLeafLogs)
+            {
+                Bytes32 leafHash = Bytes32.Wrap(filterLog.Data.Slice(32, 32).ToArray());
+                baselineTree.Insert(leafHash);
+            }
+
+            return baselineTree;
         }
 
         public Task<ResultWrapper<BaselineTreeNode[]>> baseline_getSiblings(Address contractAddress, long leafIndex)
@@ -200,6 +250,9 @@ namespace Nethermind.Baseline.JsonRpc
             {
                 return Task.FromResult(ResultWrapper<BaselineTreeNode[]>.Fail($"{contractAddress} tree is not tracked", ErrorCodes.InvalidInput));
             }
+
+            // everything in memory
+            tree = RebuildEntireTree(contractAddress);
 
             return Task.FromResult(ResultWrapper<BaselineTreeNode[]>.Success(tree!.GetProof((uint) leafIndex)));
         }

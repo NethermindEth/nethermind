@@ -17,6 +17,7 @@
 using System;
 using System.IO.Abstractions;
 using Nethermind.Abi;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
@@ -33,11 +34,15 @@ namespace Nethermind.Baseline.JsonRpc
         private readonly ISpecProvider _specProvider;
         private readonly IFileSystem _fileSystem;
         private readonly ITxPool _txPool;
+        private readonly ILogFinder _logFinder;
+        private readonly IBlockFinder _blockFinder;
         private readonly IWallet _wallet;
         private readonly ILogManager _logManager;
         private readonly IAbiEncoder _abiEncoder;
         
         public BaselineModuleFactory(ITxPool txPool,
+            ILogFinder logFinder,
+            IBlockFinder blockFinder,
             IAbiEncoder abiEncoder,
             IWallet wallet,
             ISpecProvider specProvider,
@@ -45,6 +50,8 @@ namespace Nethermind.Baseline.JsonRpc
             ILogManager logManager)
         {
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
+            _logFinder = logFinder ?? throw new ArgumentNullException(nameof(logFinder));
+            _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
             _abiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
@@ -55,7 +62,7 @@ namespace Nethermind.Baseline.JsonRpc
         public override IBaselineModule Create()
         {
             TxPoolBridge txPoolBridge = new TxPoolBridge(_txPool, _wallet, Timestamper.Default, _specProvider.ChainId);
-            return new BaselineModule(txPoolBridge, _abiEncoder, _fileSystem, new MemDb(), _logManager);
+            return new BaselineModule(txPoolBridge, _logFinder, _blockFinder, _abiEncoder, _fileSystem, new MemDb(), _logManager);
         }
     }
 }
