@@ -15,17 +15,22 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using Nethermind.Core.Crypto;
+
 namespace Nethermind.Baseline
 {
     public readonly struct BaselineTreeNode
     {
-        public BaselineTreeNode(Bytes32 hash, ulong nodeNodeIndex)
+        public BaselineTreeNode(Keccak hash, ulong nodeNodeIndex)
         {
             Hash = hash;
             NodeIndex = nodeNodeIndex;
         }
         
-        public Bytes32 Hash { get; }
+        /// <summary>
+        /// Keccak here in order not to add a new converter at the moment
+        /// </summary>
+        public Keccak Hash { get; }
         public ulong NodeIndex { get; } // 64bit index for a tree of height 32
     }
 }

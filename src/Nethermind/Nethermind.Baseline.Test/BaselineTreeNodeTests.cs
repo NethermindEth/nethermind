@@ -16,6 +16,7 @@
 // 
 
 using FluentAssertions;
+using Nethermind.Core.Crypto;
 using NUnit.Framework;
 
 namespace Nethermind.Baseline.Test
@@ -28,9 +29,8 @@ namespace Nethermind.Baseline.Test
         {
             byte[] bytes = new byte[32];
             bytes[1] = 44;
-            Bytes32 hash = Bytes32.Wrap(bytes);
-            BaselineTreeNode treeNode = new BaselineTreeNode(hash, 5);
-            treeNode.Hash.Should().Be(hash);
+            BaselineTreeNode treeNode = new BaselineTreeNode(new Keccak(bytes), 5);
+            treeNode.Hash.Should().Be(new Keccak(bytes));
             treeNode.NodeIndex.Should().Be(5);
         }
     }

@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.CompilerServices;
+using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 
@@ -240,7 +241,7 @@ namespace Nethermind.Baseline
                 uint siblingIndex = GetSiblingIndexAtRow((uint) proofRow, indexAtRow);
                 ulong siblingNodeIndex = GetNodeIndex((uint) proofRow, siblingIndex);
                 ulong nodeIndex = GetNodeIndex((uint) proofRow, indexAtRow);
-                proof[TreeHeight - proofRow] = new BaselineTreeNode(LoadValue(siblingNodeIndex), siblingNodeIndex);
+                proof[TreeHeight - proofRow] = new BaselineTreeNode(new Keccak(LoadValue(siblingNodeIndex).AsSpan().ToArray()), siblingNodeIndex);
                 indexAtRow = GetIndexAtRow((uint) proofRow - 1u, GetParentIndex(nodeIndex));
             }
 

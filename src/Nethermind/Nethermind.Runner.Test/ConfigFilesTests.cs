@@ -149,10 +149,11 @@ namespace Nethermind.Runner.Test
             Test<IInitConfig, bool>(configWildcard, c => c.IsMining, true);
         }
         
-        [TestCase("*")]
-        public void Baseline_is_disabled_by_default(string configWildcard)
+        [TestCase("spaceneth", true)]
+        [TestCase("^spaceneth", false)]
+        public void Baseline_is_disabled_by_default(string configWildcard, bool enabled)
         {
-            Test<IBaselineConfig, bool>(configWildcard, c => c.Enabled, false);
+            Test<IBaselineConfig, bool>(configWildcard, c => c.Enabled, enabled);
         }
 
         [TestCase("ndm", true)]

@@ -25,22 +25,40 @@ namespace Nethermind.Baseline.JsonRpc
     [RpcModule(ModuleType.Baseline)]
     public interface IBaselineModule : IModule
     {
-        [JsonRpcMethod(Description = "describe", IsReadOnly = false, IsImplemented = true)]
+        [JsonRpcMethod(
+            Description = "Inserts a single leaf to a tree at the given 'address'",
+            IsReadOnly = false,
+            IsImplemented = true)]
         Task<ResultWrapper<Keccak>> baseline_insertLeaf(Address address, Address contractAddress, Keccak hash);
         
-        [JsonRpcMethod(Description = "describe", IsReadOnly = false, IsImplemented = true)]
+        [JsonRpcMethod(
+            Description = "Inserts multiple leaves to a tree at the given 'address'",
+            IsReadOnly = false,
+            IsImplemented = true)]
         Task<ResultWrapper<Keccak>> baseline_insertLeaves(Address address, Address contractAddress, params Keccak[] hash);
         
-        [JsonRpcMethod(Description = "describe", IsReadOnly = false, IsImplemented = true)]
+        [JsonRpcMethod(
+            Description = "Deploys a contract with the given 'contract type'. Requires the account to be unlocked.",
+            IsReadOnly = false,
+            IsImplemented = true)]
         Task<ResultWrapper<Keccak>> baseline_deploy(Address address, string contractType);
         
-        [JsonRpcMethod(Description = "describe", IsReadOnly = false, IsImplemented = true)]
+        [JsonRpcMethod(
+            Description = "describe",
+            IsReadOnly = false,
+            IsImplemented = true)]
         Task<ResultWrapper<BaselineTreeNode[]>> baseline_getSiblings(Address contractAddress, long leafIndex);
         
-        [JsonRpcMethod(Description = "describe", IsReadOnly = false, IsImplemented = true)]
+        [JsonRpcMethod(
+            Description = "Starts tracking a tree at the given address.",
+            IsReadOnly = false,
+            IsImplemented = true)]
         Task<ResultWrapper<bool>> baseline_track(Address contractAddress);
         
-        [JsonRpcMethod(Description = "describe", IsReadOnly = false, IsImplemented = false)]
+        [JsonRpcMethod(
+            Description = "Lists all the tracked tree addresses.",
+            IsReadOnly = false,
+            IsImplemented = false)]
         Task<ResultWrapper<Address[]>> baseline_getTracked();
     }
 }

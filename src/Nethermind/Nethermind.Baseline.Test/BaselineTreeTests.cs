@@ -18,6 +18,7 @@
 using System;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Trie;
 using NUnit.Framework;
@@ -283,11 +284,11 @@ namespace Nethermind.Baseline.Test
             {
                 if (nodesCount > 1 >> proofRow)
                 {
-                    proof[proofRow].Should().NotBe(BaselineTree.ZeroHash, proofRow.ToString());
+                    proof[proofRow].Should().NotBe(Keccak.Zero, proofRow.ToString());
                 }
                 else
                 {
-                    proof[proofRow].Hash.Should().Be(BaselineTree.ZeroHash, proofRow.ToString());
+                    proof[proofRow].Hash.Should().Be(Keccak.Zero, proofRow.ToString());
                 }
             }
         }

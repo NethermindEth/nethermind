@@ -246,14 +246,14 @@ namespace Nethermind.Baseline.Test.JsonRpc
 
             for (int i = 1; i < 32; i++)
             {
-                result.Data[i].Hash.Should().Be(BaselineTree.ZeroHash);
-                result2.Data[i].Hash.Should().Be(BaselineTree.ZeroHash);
-                result3.Data[i].Hash.Should().Be(BaselineTree.ZeroHash);
+                result.Data[i].Hash.Should().Be(Keccak.Zero);
+                result2.Data[i].Hash.Should().Be(Keccak.Zero);
+                result3.Data[i].Hash.Should().Be(Keccak.Zero);
             }
             
-            result.Data[0].Hash.Should().NotBe(BaselineTree.ZeroHash);
-            result2.Data[0].Hash.Should().NotBe(BaselineTree.ZeroHash);
-            result3.Data[0].Hash.Should().NotBe(BaselineTree.ZeroHash);
+            result.Data[0].Hash.Should().NotBe(Keccak.Zero);
+            result2.Data[0].Hash.Should().NotBe(Keccak.Zero);
+            result3.Data[0].Hash.Should().NotBe(Keccak.Zero);
             
             result.Data[0].Hash.Should().NotBe(result2.Data[0].Hash);
             result.Data[0].Hash.Should().Be(result3.Data[0].Hash);
