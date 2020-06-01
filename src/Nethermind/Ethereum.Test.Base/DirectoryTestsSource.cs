@@ -68,7 +68,7 @@ namespace Ethereum.Test.Base
             {
                 char pathSeparator = Path.AltDirectorySeparatorChar;
                 string currentDirectory = AppDomain.CurrentDomain.BaseDirectory;
-                string legacyTestsDirectory = currentDirectory.Remove(currentDirectory.IndexOf("src")) + $"src{pathSeparator}tests{pathSeparator}LegacyTests{pathSeparator}";              
+                string legacyTestsDirectory = currentDirectory.Remove(currentDirectory.LastIndexOf("src")) + $"src{pathSeparator}tests{pathSeparator}LegacyTests{pathSeparator}";              
 
                testDirs = Directory.EnumerateDirectories(legacyTestsDirectory, _directory, new EnumerationOptions { RecurseSubdirectories = true });
             }
