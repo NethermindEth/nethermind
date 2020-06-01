@@ -149,6 +149,56 @@ namespace Nethermind.Baseline.Test.JsonRpc
         }
         
         [Test]
+        public async Task can_work_with_two_trees()
+        {
+            SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
+            TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
+            BaselineModule baselineModule = new BaselineModule(testRpc.TxPoolBridge, _abiEncoder, _fileSystem, new MemDb(), LimboLogs.Instance);
+            await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
+            Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
+            Keccak txHash2 = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
+            await testRpc.AddBlock();
+
+            ReceiptForRpc receipt = (await testRpc.EthModule.eth_getTransactionReceipt(txHash)).Data;
+            ReceiptForRpc receipt2 = (await testRpc.EthModule.eth_getTransactionReceipt(txHash2)).Data;
+
+            receipt.Status.Should().Be(1);
+            receipt2.Status.Should().Be(1);
+
+            await baselineModule.baseline_insertLeaves(TestItem.Addresses[1], receipt.ContractAddress, TestItem.KeccakG, TestItem.KeccakH);
+            await baselineModule.baseline_insertLeaves(TestItem.Addresses[1], receipt2.ContractAddress, TestItem.KeccakE, TestItem.KeccakF);
+            await testRpc.AddBlock();
+
+            await baselineModule.baseline_track(receipt.ContractAddress);
+            await baselineModule.baseline_track(receipt2.ContractAddress);
+            
+            var result = await baselineModule.baseline_getSiblings(receipt.ContractAddress, 1);
+            var result2 = await baselineModule.baseline_getSiblings(receipt2.ContractAddress, 1);
+            await testRpc.AddBlock();
+            
+            result.Result.ResultType.Should().Be(ResultType.Success);
+            result.Result.Error.Should().Be(null);
+            result.ErrorCode.Should().Be(0);
+            result.Data.Should().HaveCount(32);
+            
+            result2.Result.ResultType.Should().Be(ResultType.Success);
+            result2.Result.Error.Should().Be(null);
+            result2.ErrorCode.Should().Be(0);
+            result2.Data.Should().HaveCount(32);
+
+            for (int i = 1; i < 32; i++)
+            {
+                result.Data[i].Hash.Should().Be(BaselineTree.ZeroHash);
+                result2.Data[i].Hash.Should().Be(BaselineTree.ZeroHash);
+            }
+            
+            result.Data[0].Hash.Should().NotBe(BaselineTree.ZeroHash);
+            result2.Data[0].Hash.Should().NotBe(BaselineTree.ZeroHash);
+            
+            result.Data[0].Hash.Should().NotBe(result2.Data[0].Hash);
+        }
+        
+        [Test]
         public async Task second_track_request_will_fail()
         {
             SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
@@ -172,8 +222,6 @@ namespace Nethermind.Baseline.Test.JsonRpc
             SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
             BaselineModule baselineModule = new BaselineModule(testRpc.TxPoolBridge, _abiEncoder, _fileSystem, new MemDb(), LimboLogs.Instance);
-            await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
-            
             for (int i = 0; i < trackedCount; i++)
             {
                 await baselineModule.baseline_track(TestItem.Addresses[i]); // any address (no need for tree there)    
@@ -181,6 +229,25 @@ namespace Nethermind.Baseline.Test.JsonRpc
             
             var result = (await baselineModule.baseline_getTracked());
             result.Data.Length.Should().Be((int)trackedCount);
+        }
+        
+        [TestCase(0u)]
+        [TestCase(1u)]
+        [TestCase(123u)]
+        public async Task can_restore_tracking_list_on_startup(uint trackedCount)
+        {
+            SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
+            TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
+            MemDb memDb = new MemDb();
+            BaselineModule baselineModule = new BaselineModule(testRpc.TxPoolBridge, _abiEncoder, _fileSystem, memDb, LimboLogs.Instance);
+            for (int i = 0; i < trackedCount; i++)
+            {
+                await baselineModule.baseline_track(TestItem.Addresses[i]); // any address (no need for tree there)    
+            }
+
+            BaselineModule restored = new BaselineModule(testRpc.TxPoolBridge, _abiEncoder, _fileSystem, memDb, LimboLogs.Instance);
+            var resultRestored = await restored.baseline_getTracked();
+            resultRestored.Data.Length.Should().Be((int)trackedCount);
         }
         
         [Test]

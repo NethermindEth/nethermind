@@ -68,5 +68,10 @@ namespace Nethermind.Baseline
         {
             return MemoryMarshal.Read<int>(_bytes);
         }
+
+        public override string ToString()
+        {
+            return _bytes.ToHexString();
+        }
     }
 }
