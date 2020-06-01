@@ -250,8 +250,7 @@ namespace Nethermind.Db.Blooms
             private readonly IFileStore _fileStore;
             private readonly bool _migrationStatistics;
             private readonly ICache<long, Bloom> _cache;
-            private readonly byte[] _bytes = new byte[Bloom.ByteLength];
-
+            
             public BloomStorageLevel(IFileStore fileStore, in byte level, in int levelElementSize, in int levelMultiplier, bool migrationStatistics)
             {
                 _fileStore = fileStore;
@@ -271,9 +270,10 @@ namespace Nethermind.Db.Blooms
                     var existingBloom = _cache.Get(bucket);
                     if (existingBloom == null)
                     {
-                        var bytesRead = _fileStore.Read(bucket, _bytes);
+                        byte[] bytes = new byte[Bloom.ByteLength];
+                        var bytesRead = _fileStore.Read(bucket, bytes);
                         var bloomRead = bytesRead == Bloom.ByteLength;
-                        existingBloom = bloomRead ? new Bloom(_bytes) : new Bloom();
+                        existingBloom = bloomRead ? new Bloom(bytes) : new Bloom();
                     }
 
                     existingBloom.Accumulate(bloom);
