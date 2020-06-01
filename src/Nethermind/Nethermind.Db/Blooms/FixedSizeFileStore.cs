@@ -24,14 +24,16 @@ namespace Nethermind.Db.Blooms
     {
         private readonly string _path;
         private readonly int _elementSize;
-        private readonly Stream _file;
+        private readonly Stream _fileWrite;
+        private readonly Stream _fileRead;
         private int _needsFlush;
         
         public FixedSizeFileStore(string path, int elementSize)
         {
             _path = path;
             _elementSize = elementSize;
-            _file = File.Open(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read);
+            _fileWrite = File.Open(path, FileMode.OpenOrCreate, FileAccess.Write, FileShare.Read);
+            _fileRead = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
         }
 
         public void Write(long index, ReadOnlySpan<byte> element)
@@ -41,20 +43,22 @@ namespace Nethermind.Db.Blooms
                 throw new ArgumentException($"Element size incorrect. Only elements of length {_elementSize} are acceptable.");
             }
             
-            lock (_file)
+            lock (_fileWrite)
             {
-                SeekIndex(_file, index);
-                _file.Write(element);
+                SeekIndex(_fileWrite, index);
+                _fileWrite.Write(element);
                 Interlocked.Exchange(ref _needsFlush, 1);
             }
         }
 
         public int Read(long index, Span<byte> element)
         {
-            lock (_file)
+            EnsureFlushed();
+            
+            lock (_fileRead)
             {
-                SeekIndex(_file, index);
-                return _file.Read(element);
+                SeekIndex(_fileRead, index);
+                return _fileRead.Read(element);
             }            
         }
 
@@ -68,9 +72,9 @@ namespace Nethermind.Db.Blooms
         {
             if (Interlocked.CompareExchange(ref _needsFlush, 0, 1) == 1)
             {
-                lock (_file)
+                lock (_fileWrite)
                 {
-                    _file.Flush();
+                    _fileWrite.Flush();
                 }
             }
         }
@@ -86,7 +90,8 @@ namespace Nethermind.Db.Blooms
 
         public void Dispose()
         {
-            _file?.Dispose();
+            _fileWrite?.Dispose();
+            _fileRead?.Dispose();
         }
     }
 }
