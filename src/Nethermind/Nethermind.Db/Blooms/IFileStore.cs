@@ -24,8 +24,6 @@ namespace Nethermind.Db.Blooms
 
         int Read(long index, Span<byte> element);
         
-        IFileReader GetFileReader();
-        
-        void Flush();
+        IFileReader CreateFileReader();
     }
 }
