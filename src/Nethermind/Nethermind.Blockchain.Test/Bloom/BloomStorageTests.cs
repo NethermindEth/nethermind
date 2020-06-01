@@ -203,19 +203,5 @@ namespace Nethermind.Blockchain.Test.Bloom
 
             public int Flushes { get; private set; }
         }
-
-        [Test]
-        public void Flushes_on_get_after_store()
-        {
-            var fileStoreFactory = Substitute.For<IFileStoreFactory>();
-            var fileStore = new MockFileStore();
-            fileStoreFactory.Create(Arg.Any<string>()).Returns(fileStore);
-            var storage = new BloomStorage(_config, _bloomDb, fileStoreFactory);
-            storage.Store(1, Core.Bloom.Empty);
-            foreach (var _ in storage.GetBlooms(0, 1)) { }
-            fileStoreFactory.Received().Create(Arg.Any<string>());
-            fileStore.Flushes.Should().BeGreaterThan(0);
-        }
-
     }
 }
