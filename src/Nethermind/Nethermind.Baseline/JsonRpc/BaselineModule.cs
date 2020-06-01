@@ -18,8 +18,8 @@ using System;
 using System.Collections.Concurrent;
 using System.IO;
 using System.IO.Abstractions;
+using System.Linq;
 using System.Threading.Tasks;
-using System.Timers;
 using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -197,13 +197,26 @@ namespace Nethermind.Baseline.JsonRpc
         public Task<ResultWrapper<bool>> baseline_track(Address contractAddress)
         {
             // can potentially warn user if tree is not deployed at the address
-
+            
             if (TryAddTree(contractAddress))
             {
+                UpdateMetadata(contractAddress);
                 return Task.FromResult(ResultWrapper<bool>.Success(true));
             }
 
             return Task.FromResult(ResultWrapper<bool>.Fail($"{contractAddress} is already tracked", ErrorCodes.InvalidInput));
+        }
+        
+        public Task<ResultWrapper<Address[]>> baseline_getTracked()
+        {
+            return Task.FromResult(ResultWrapper<Address[]>.Success(_metadata.TrackedTrees));
+        }
+
+        private void UpdateMetadata(Address contractAddress)
+        {
+            var list = _metadata.TrackedTrees.ToList();
+            list.Add(contractAddress);
+            _metadata.TrackedTrees = list.ToArray();
         }
     }
 }

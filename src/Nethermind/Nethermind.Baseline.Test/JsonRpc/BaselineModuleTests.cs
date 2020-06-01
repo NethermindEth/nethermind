@@ -164,6 +164,25 @@ namespace Nethermind.Baseline.Test.JsonRpc
             result.ErrorCode.Should().Be(ErrorCodes.InvalidInput);
         }
         
+        [TestCase(0u)]
+        [TestCase(1u)]
+        [TestCase(123u)]
+        public async Task can_return_tracked_list(uint trackedCount)
+        {
+            SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
+            TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
+            BaselineModule baselineModule = new BaselineModule(testRpc.TxPoolBridge, _abiEncoder, _fileSystem, new MemDb(), LimboLogs.Instance);
+            await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
+            
+            for (int i = 0; i < trackedCount; i++)
+            {
+                await baselineModule.baseline_track(TestItem.Addresses[i]); // any address (no need for tree there)    
+            }
+            
+            var result = (await baselineModule.baseline_getTracked());
+            result.Data.Length.Should().Be((int)trackedCount);
+        }
+        
         [Test]
         public async Task cannot_get_siblings_after_leaf_is_added_if_not_traced()
         {

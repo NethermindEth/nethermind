@@ -37,7 +37,10 @@ namespace Nethermind.Baseline.JsonRpc
         [JsonRpcMethod(Description = "describe", IsReadOnly = false, IsImplemented = true)]
         Task<ResultWrapper<BaselineTreeNode[]>> baseline_getSiblings(Address contractAddress, long leafIndex);
         
-        [JsonRpcMethod(Description = "describe", IsReadOnly = false, IsImplemented = false)]
+        [JsonRpcMethod(Description = "describe", IsReadOnly = false, IsImplemented = true)]
         Task<ResultWrapper<bool>> baseline_track(Address contractAddress);
+        
+        [JsonRpcMethod(Description = "describe", IsReadOnly = false, IsImplemented = false)]
+        Task<ResultWrapper<Address[]>> baseline_getTracked();
     }
 }

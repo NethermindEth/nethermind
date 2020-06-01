@@ -35,8 +35,12 @@ namespace Nethermind.Cli.Modules
             leafIndex).Result;
         
         [CliFunction("baseline", "track")]
-        public string getSiblings(string contactAddress) => NodeManager.Post(
+        public string track(string contactAddress) => NodeManager.Post(
             "baseline_track",
             CliParseAddress(contactAddress)).Result;
+        
+        [CliFunction("baseline", "getTracked")]
+        public string getTracked() => NodeManager.Post(
+            "baseline_getTracked").Result;
     }
 }
