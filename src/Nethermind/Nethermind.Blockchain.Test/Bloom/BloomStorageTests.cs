@@ -18,6 +18,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
@@ -202,6 +203,28 @@ namespace Nethermind.Blockchain.Test.Bloom
             }
 
             public int Flushes { get; private set; }
+        }
+        
+        [Test]
+        public void Can_safely_insert_concurrently()
+        {
+            _config.IndexLevelBucketSizes = new[]{byte.MaxValue + 1};
+            var storage = new BloomStorage(_config, _bloomDb, _fileStoreFactory);
+            Core.Bloom expectedBloom = new Core.Bloom();
+            for (int i = 0; i <= byte.MaxValue; i++)
+            {
+                expectedBloom.Set(i);
+            }
+
+            Parallel.For(0, byte.MaxValue * byte.MaxValue * 2, i =>
+            {
+                var bloom = new Core.Bloom();
+                bloom.Set(i % Core.Bloom.BitLength);
+                storage.Store(i, bloom);
+            });
+
+            var first = storage.GetBlooms(0, byte.MaxValue * 3).First();
+            first.Should().Be(expectedBloom);
         }
     }
 }
