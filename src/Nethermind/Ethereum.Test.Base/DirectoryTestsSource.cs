@@ -66,20 +66,17 @@ namespace Ethereum.Test.Base
             IEnumerable<string> testDirs;
             if (!Path.IsPathRooted(_directory))
             {
-                Directory.SetCurrentDirectory(AppDomain.CurrentDomain.BaseDirectory);
-                testDirs = Directory.EnumerateDirectories(".", _directory);
+                string currentDirectory = AppDomain.CurrentDomain.BaseDirectory;
+                string legacyTestsDirectory = currentDirectory.Remove(currentDirectory.IndexOf("/src")) + "/src/tests/LegacyTests/";                
+
+               testDirs = Directory.EnumerateDirectories(legacyTestsDirectory, _directory, new EnumerationOptions { RecurseSubdirectories = true });
             }
             else
             {
                 testDirs = new[] {_directory};
             }
 
-            if (Directory.Exists(".\\Tests\\"))
-            {
-                testDirs = testDirs.Union(Directory.EnumerateDirectories(".\\Tests\\", _directory));
-            }
-
-            List<LegacyBlockchainTest> testJsons = new List<LegacyBlockchainTest>();
+            var testJsons = new List<LegacyBlockchainTest>();
             foreach (string testDir in testDirs)
             {
                 testJsons.AddRange(LoadLegacyTestsFromDirectory(testDir, _wildcard));
