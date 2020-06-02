@@ -33,16 +33,9 @@ namespace Ethereum.Blockchain.Block.Test
         [TestCaseSource(nameof(LoadTests))]
         public async Task Test(LegacyBlockchainTest test)
         {
-            if (test.Name.Contains("randomStatetest94"))
-            {
-                // test has unreasonable amount of gas assigned to the block
-                // it passes but causes the builds to take half an hour
-                return;
-            }
-
             await RunTest(test);
         }
         
-        public static IEnumerable<LegacyBlockchainTest> LoadTests() { return new DirectoryTestsSource("bcStateTests").LoadLegacyTests(); }
+        public static IEnumerable<LegacyBlockchainTest> LoadTests() { return new DirectoryTestsSource("bcStateTests").LoadTestsInLegacyFormat(); }
     }
 }

@@ -60,6 +60,28 @@ namespace Ethereum.Test.Base
 
             return testJsons;
         }
+
+        public IEnumerable<LegacyBlockchainTest> LoadTestsInLegacyFormat()
+        {
+            IEnumerable<string> testDirs;
+            if (!Path.IsPathRooted(_directory))
+            {
+                Directory.SetCurrentDirectory(AppDomain.CurrentDomain.BaseDirectory);
+                testDirs = Directory.EnumerateDirectories(".", _directory);
+            }
+            else
+            {
+                testDirs = new[] {_directory};
+            }
+
+            var testJsons = new List<LegacyBlockchainTest>();
+            foreach (string testDir in testDirs)
+            {
+                testJsons.AddRange(LoadLegacyTestsFromDirectory(testDir, _wildcard));
+            }
+
+            return testJsons;
+        }
         
         public IEnumerable<LegacyBlockchainTest> LoadLegacyTests()
         {

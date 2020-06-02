@@ -33,6 +33,6 @@ namespace Ethereum.Blockchain.Block.Test
             await RunTest(test);
         }
 
-        public static IEnumerable<LegacyBlockchainTest> LoadTests() { return new DirectoryTestsSource("bcBlockGasLimitTest").LoadLegacyTests(); }
+        public static IEnumerable<LegacyBlockchainTest> LoadTests() { return new DirectoryTestsSource("bcBlockGasLimitTest").LoadTestsInLegacyFormat(); }
     }
 }
