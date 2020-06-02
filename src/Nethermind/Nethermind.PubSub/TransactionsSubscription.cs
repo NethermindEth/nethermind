@@ -13,11 +13,11 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Logging;
 using Nethermind.PubSub.Models;
@@ -25,44 +25,31 @@ using Block = Nethermind.Core.Block;
 
 namespace Nethermind.PubSub
 {
-    public class Subscription : ISubscription
+    public class TransactionsSubscription : ISubscription
     {
         private readonly IBlockProcessor _blockProcessor;
         private readonly IEnumerable<IProducer> _producers;
         private readonly ILogger _logger;
 
-        public Subscription(IEnumerable<IProducer> producers, IBlockProcessor blockProcessor, ILogManager logManager)
+        public TransactionsSubscription(IEnumerable<IProducer> producers, IBlockProcessor blockProcessor, ILogManager logManager)
         {
             _producers = producers ?? throw new ArgumentNullException(nameof(producers));
             _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
             _logger = logManager.GetClassLogger();
-            _blockProcessor.BlockProcessed += OnBlockProcessed;
             _blockProcessor.TransactionProcessed += OnTransactionProcessed;
             if (_logger.IsInfo) _logger.Info("New data subscription started");
         }
-
-        private async void OnBlockProcessed(object sender, BlockProcessedEventArgs e)
-            => await PublishBlockAsync(e.Block);
 
         private async void OnTransactionProcessed(object sender, TxProcessedEventArgs e)
             => await PublishTransactionAsync(new FullTransaction(e.Index, e.Transaction, e.TxReceipt));
 
         public void Dispose()
         {
-            _blockProcessor.BlockProcessed -= OnBlockProcessed;
             _blockProcessor.TransactionProcessed -= OnTransactionProcessed;
             if (_logger.IsInfo) _logger.Info("Data subscription closed");
         }
 
-        public async Task PublishBlockAsync(Block block)
-        {
-            foreach (var producer in _producers)
-            {
-                await producer.PublishAsync(block);
-            }
-        }
-
-        public async Task PublishTransactionAsync(FullTransaction transaction)
+        private async Task PublishTransactionAsync(FullTransaction transaction)
         {
             foreach (var producer in _producers)
             {

@@ -14,48 +14,53 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
 using System.Threading.Tasks;
-using Nethermind.Grpc;
-using Nethermind.Grpc.Producers;
+using Nethermind.Logging;
+using Nethermind.PubSub;
+using Nethermind.Runner.Analytics;
 using Nethermind.Runner.Ethereum.Context;
-using Nethermind.Runner.Ethereum.Subsystems;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
     [RunnerStepDependencies(typeof(StartBlockProcessor))]
-    public class StartGrpcProducer : IStep, ISubsystemStateAware
+    public class StartLogProducer : IStep
     {
         private readonly EthereumRunnerContext _context;
 
-        public StartGrpcProducer(EthereumRunnerContext context)
+        public StartLogProducer(EthereumRunnerContext context)
         {
             _context = context;
-            EthereumSubsystemState newState = _context.Config<IGrpcConfig>().Enabled
-                ? EthereumSubsystemState.AwaitingInitialization
-                : EthereumSubsystemState.Disabled;
-
-            SubsystemStateChanged?.Invoke(this, new SubsystemStateEventArgs(newState));
         }
 
         public Task Execute()
         {
-            IGrpcConfig grpcConfig = _context.Config<IGrpcConfig>();
-            if (grpcConfig.Enabled)
+            IAnalyticsConfig analyticsConfig = _context.Config<IAnalyticsConfig>();
+            if (analyticsConfig.LogPublishedData)
             {
-                SubsystemStateChanged?.Invoke(this, new SubsystemStateEventArgs(EthereumSubsystemState.Initializing));
-
-                GrpcProducer grpcProducer = new GrpcProducer(_context.GrpcServer);
-                _context.Producers.Add(grpcProducer);
-
-                SubsystemStateChanged?.Invoke(this, new SubsystemStateEventArgs(EthereumSubsystemState.Running));
+                LogProducer logProducer = new LogProducer(_context.EthereumJsonSerializer!, _context.LogManager);
+                _context.Producers.Add(logProducer);
             }
 
             return Task.CompletedTask;
         }
 
-        public event EventHandler<SubsystemStateEventArgs>? SubsystemStateChanged;
+        private class LogProducer : IProducer
+        {
+            private ILogger _logger;
+            private IJsonSerializer _jsonSerializer;
 
-        public EthereumSubsystem MonitoredSubsystem => EthereumSubsystem.Grpc;
+            public LogProducer(IJsonSerializer jsonSerializer, ILogManager logManager)
+            {
+                _logger = logManager.GetClassLogger<LogProducer>();
+                _jsonSerializer = jsonSerializer;
+            }
+
+            public Task PublishAsync<T>(T data) where T : class
+            {
+                if (_logger.IsInfo) _logger.Info(_jsonSerializer.Serialize(data));
+                return Task.CompletedTask;
+            }
+        }
     }
 }

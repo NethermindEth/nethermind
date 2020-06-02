@@ -30,6 +30,7 @@ using Nethermind.Monitoring.Config;
 using Nethermind.Network.Config;
 using Nethermind.PubSub.Kafka;
 using Nethermind.Db.Blooms;
+using Nethermind.Runner.Analytics;
 using Nethermind.TxPool;
 using NUnit.Framework;
 
@@ -139,7 +140,6 @@ namespace Nethermind.Runner.Test
         public void Grpc_defaults(string configWildcard, bool expectedDefault)
         {
             Test<IGrpcConfig, bool>(configWildcard, c => c.Enabled, expectedDefault);
-            Test<IGrpcConfig, bool>(configWildcard, c => c.ProducerEnabled, expectedDefault);
         }
 
         [TestCase("ndm_consumer_local.cfg")]
@@ -153,6 +153,15 @@ namespace Nethermind.Runner.Test
         public void Ndm_enabled_only_for_ndm_configs(string configWildcard, bool ndmEnabled)
         {
             Test<INdmConfig, bool>(configWildcard, c => c.Enabled, ndmEnabled);
+        }
+        
+        [TestCase("*")]
+        public void Analytics_defaults(string configWildcard)
+        {
+            Test<IAnalyticsConfig, bool>(configWildcard, c => c.PluginsEnabled, false);
+            Test<IAnalyticsConfig, bool>(configWildcard, c => c.StreamBlocks, false);
+            Test<IAnalyticsConfig, bool>(configWildcard, c => c.StreamTransactions, false);
+            Test<IAnalyticsConfig, bool>(configWildcard, c => c.LogPublishedData, false);
         }
 
         [TestCase("*")]

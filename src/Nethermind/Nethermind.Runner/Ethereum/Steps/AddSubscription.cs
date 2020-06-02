@@ -14,32 +14,116 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Linq;
+using System;
+using System.IO;
+using System.Reflection;
 using System.Threading.Tasks;
+using Nethermind.Logging;
 using Nethermind.PubSub;
+using Nethermind.Runner.Analytics;
 using Nethermind.Runner.Ethereum.Context;
+using Nethermind.TxPool.Analytics;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
-    [RunnerStepDependencies(typeof(InitializeBlockchain), typeof(StartGrpcProducer), typeof(StartKafkaProducer))]
-    public class AddSubscription : IStep
+    [RunnerStepDependencies(typeof(InitializeBlockchain), typeof(StartGrpcProducer), typeof(StartKafkaProducer), typeof(StartLogProducer))]
+    public class AddSubscriptions : IStep
     {
         private readonly EthereumRunnerContext _context;
+        private ILogger _logger;
 
-        public AddSubscription(EthereumRunnerContext context)
+        public AddSubscriptions(EthereumRunnerContext context)
         {
             _context = context;
+            _logger = context.LogManager.GetClassLogger();
         }
 
         public Task Execute()
         {
-            ISubscription subscription = _context.Producers.Any() 
-                ? new Subscription(_context.Producers, _context.MainBlockProcessor, _context.LogManager) 
-                : (ISubscription) new EmptySubscription();
-
-            _context.DisposeStack.Push(subscription);
-
+            IAnalyticsConfig analyticsConfig = _context.Config<IAnalyticsConfig>();
+            InitBlocksStreaming(analyticsConfig);
+            InitTransactionStreaming(analyticsConfig);
+            LoadPlugins(analyticsConfig);
             return Task.CompletedTask;
+        }
+
+        private void InitBlocksStreaming(IAnalyticsConfig analyticsConfig)
+        {
+            if (analyticsConfig.StreamBlocks)
+            {
+                BlocksSubscription subscription =
+                    new BlocksSubscription(_context.Producers, _context.MainBlockProcessor, _context.LogManager);
+                _context.DisposeStack.Push(subscription);
+            }
+        }
+
+        private void InitTransactionStreaming(IAnalyticsConfig analyticsConfig)
+        {
+            if (analyticsConfig.StreamTransactions)
+            {
+                TransactionsSubscription subscription =
+                    new TransactionsSubscription(_context.Producers, _context.MainBlockProcessor, _context.LogManager);
+                _context.DisposeStack.Push(subscription);
+            }
+        }
+
+        private void LoadPlugins(IAnalyticsConfig analyticsConfig)
+        {
+            if (analyticsConfig.PluginsEnabled)
+            {
+                IInitConfig initConfig = _context.Config<IInitConfig>();
+                foreach (string path in Directory.GetFiles(initConfig.PluginsDirectory))
+                {
+                    if (path.EndsWith("dll"))
+                    {
+                        LoadAssemblyPlugins(_logger, path);
+                    }
+                    else
+                    {
+                        _logger.Warn($"Skipping {path}");
+                    }
+                }
+            }
+        }
+
+        private void LoadAssemblyPlugins(ILogger logger, string path)
+        {
+            if (logger.IsWarn) logger.Warn($"Loading assembly {path}");
+            Assembly assembly = Assembly.LoadFile(Path.Combine(AppDomain.CurrentDomain.BaseDirectory!, path));
+            foreach (Type type in assembly.GetTypes())
+            {
+                AnalyticsLoaderAttribute? loader = type.GetCustomAttribute<AnalyticsLoaderAttribute>();
+                if (loader != null)
+                {
+                    InitPlugin(logger, type);
+                }
+            }
+        }
+
+        private void InitPlugin(ILogger logger, Type type)
+        {
+            if (logger.IsInfo) logger.Info($"Activating pluging {type.Name}");
+            IAnalyticsPluginLoader? pluginLoader = Activator.CreateInstance(type) as IAnalyticsPluginLoader;
+            foreach (IProducer producer in _context.Producers)
+            {
+                var bridge = new TxPublisherBridge(producer);
+                pluginLoader?.Init(_context.FileSystem, _context.TxPool, bridge, _context.LogManager);
+            }
+        }
+
+        private class TxPublisherBridge : IDataPublisher, IProducer
+        {
+            private readonly IProducer _producer;
+
+            public TxPublisherBridge(IProducer producer)
+            {
+                _producer = producer ?? throw new ArgumentNullException(nameof(producer));
+            }
+
+            public Task PublishAsync<T>(T data) where T : class
+            {
+                return _producer.PublishAsync(data);
+            }
         }
     }
 }

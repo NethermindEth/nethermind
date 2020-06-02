@@ -23,7 +23,5 @@ namespace Nethermind.PubSub
 {
     public interface ISubscription : IDisposable
     {
-        Task PublishBlockAsync(Block block);
-        Task PublishTransactionAsync(FullTransaction transaction);
     }
 }
