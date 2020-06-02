@@ -16,6 +16,7 @@
 
 using System;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
 using Nethermind.Logging;
@@ -72,30 +73,27 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (analyticsConfig.PluginsEnabled)
             {
                 IInitConfig initConfig = _context.Config<IInitConfig>();
-                foreach (string path in Directory.GetFiles(initConfig.PluginsDirectory))
+                string fullPluginsDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory!, initConfig.PluginsDirectory);
+                if (!Directory.Exists(fullPluginsDir))
                 {
-                    if (path.EndsWith("dll"))
-                    {
-                        LoadAssemblyPlugins(_logger, path);
-                    }
-                    else
-                    {
-                        _logger.Warn($"Skipping {path}");
-                    }
+                    if (_logger.IsWarn) _logger.Warn($"Plugins folder {fullPluginsDir} was not found. Skipping.");
+                    return;
                 }
-            }
-        }
-
-        private void LoadAssemblyPlugins(ILogger logger, string path)
-        {
-            if (logger.IsWarn) logger.Warn($"Loading assembly {path}");
-            Assembly assembly = Assembly.LoadFile(Path.Combine(AppDomain.CurrentDomain.BaseDirectory!, path));
-            foreach (Type type in assembly.GetTypes())
-            {
-                AnalyticsLoaderAttribute? loader = type.GetCustomAttribute<AnalyticsLoaderAttribute>();
-                if (loader != null)
+            
+                string[] pluginFiles = Directory.GetFiles(fullPluginsDir).Where(p => p.EndsWith("dll")).ToArray();
+                if (pluginFiles.Length > 0)
                 {
-                    InitPlugin(logger, type);
+                    if (_logger.IsInfo) _logger.Info($"Loading {pluginFiles.Length} analytics plugins from {fullPluginsDir}");
+                }
+
+                foreach (string path in pluginFiles)
+                {
+                    if (_logger.IsInfo) _logger.Warn($"Loading assembly {path}");
+                    Assembly assembly = Assembly.LoadFile(Path.Combine(fullPluginsDir, path));
+                    foreach (Type type in assembly.GetTypes())
+                    {
+                        InitPlugin(_logger, type);
+                    }
                 }
             }
         }
