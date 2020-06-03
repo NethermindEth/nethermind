@@ -92,7 +92,10 @@ namespace Nethermind.Runner.Ethereum.Steps
                     Assembly assembly = Assembly.LoadFile(Path.Combine(fullPluginsDir, path));
                     foreach (Type type in assembly.GetTypes())
                     {
-                        InitPlugin(_logger, type);
+                        if (typeof(IAnalyticsPluginLoader).IsAssignableFrom(type))
+                        {
+                            InitPlugin(_logger, type);
+                        }
                     }
                 }
             }
