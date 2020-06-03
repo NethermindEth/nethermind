@@ -53,7 +53,15 @@ namespace Nethermind.PubSub
         {
             foreach (var producer in _producers)
             {
-                await producer.PublishAsync(transaction);
+                try
+                {
+                    await producer.PublishAsync(transaction);
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine(e);
+                    throw;
+                }
             }
         }
     }

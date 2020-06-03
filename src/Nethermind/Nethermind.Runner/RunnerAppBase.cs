@@ -44,6 +44,7 @@ using Nethermind.Monitoring;
 using Nethermind.Monitoring.Metrics;
 using Nethermind.Logging.NLog;
 using Nethermind.Monitoring.Config;
+using Nethermind.Runner.Analytics;
 using Nethermind.Runner.Ethereum;
 using Nethermind.Serialization.Json;
 using Nethermind.WebSockets;
@@ -224,6 +225,14 @@ namespace Nethermind.Runner
                 jsonSerializer,
                 _monitoringService);
 
+            IAnalyticsConfig analyticsConfig = configProvider.GetConfig<IAnalyticsConfig>();
+            if (analyticsConfig.PluginsEnabled ||
+                analyticsConfig.StreamBlocks ||
+                analyticsConfig.StreamTransactions)
+            {
+                webSocketsManager.AddModule(new AnalyticsWebSocketsModule(jsonSerializer), true);
+            }
+            
             await _ethereumRunner.Start().ContinueWith(x =>
             {
                 if (x.IsFaulted && (_logger?.IsError ?? false)) _logger!.Error("Error during ethereum runner start", x.Exception);
