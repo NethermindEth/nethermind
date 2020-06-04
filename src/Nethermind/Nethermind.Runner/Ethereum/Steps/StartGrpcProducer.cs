@@ -46,11 +46,8 @@ namespace Nethermind.Runner.Ethereum.Steps
             {
                 SubsystemStateChanged?.Invoke(this, new SubsystemStateEventArgs(EthereumSubsystemState.Initializing));
 
-                if (grpcConfig.ProducerEnabled)
-                {
-                    GrpcProducer grpcProducer = new GrpcProducer(_context.GrpcServer);
-                    _context.Producers.Add(grpcProducer);
-                }
+                GrpcProducer grpcProducer = new GrpcProducer(_context.GrpcServer);
+                _context.Producers.Add(grpcProducer);
 
                 SubsystemStateChanged?.Invoke(this, new SubsystemStateEventArgs(EthereumSubsystemState.Running));
             }

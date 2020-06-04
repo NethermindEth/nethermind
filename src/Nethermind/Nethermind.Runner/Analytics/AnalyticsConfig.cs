@@ -13,20 +13,15 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using Nethermind.Config;
-
-namespace Nethermind.Grpc
+namespace Nethermind.Runner.Analytics
 {
-    public interface IGrpcConfig : IConfig
+    public class AnalyticsConfig : IAnalyticsConfig
     {
-        [ConfigItem(Description = "If 'false' then it disables gRPC protocol", DefaultValue = "true")]
-        bool Enabled { get; }
-        
-        [ConfigItem(Description = "An address of the host under which gRPC will be running", DefaultValue = "localhost")]
-        string Host { get; }
-        
-        [ConfigItem(Description = "Port of the host under which gRPC will be exposed", DefaultValue = "50000")]
-        int Port { get; }
+        public bool PluginsEnabled { get; set; }
+        public bool StreamTransactions { get; set; }
+        public bool StreamBlocks { get; set; }
+        public bool LogPublishedData { get; set; }
     }
 }

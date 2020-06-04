@@ -13,20 +13,24 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
 using Nethermind.Config;
 
-namespace Nethermind.Grpc
+namespace Nethermind.Runner.Analytics
 {
-    public interface IGrpcConfig : IConfig
+    public interface IAnalyticsConfig : IConfig
     {
-        [ConfigItem(Description = "If 'false' then it disables gRPC protocol", DefaultValue = "true")]
-        bool Enabled { get; }
+        [ConfigItem(Description = "If 'false' then no analytics plugins will be loaded", DefaultValue = "false")]
+        public bool PluginsEnabled { get; set; }
         
-        [ConfigItem(Description = "An address of the host under which gRPC will be running", DefaultValue = "localhost")]
-        string Host { get; }
+        [ConfigItem(Description = "If 'false' then transactions are not streamed by default to gRPC and Kafka endpoints.", DefaultValue = "false")]
+        public bool StreamTransactions { get; set; }
+
+        [ConfigItem(Description = "If 'false' then blocks are not streamed by default to gRPC and Kafka endpoints.", DefaultValue = "false")]
+        public bool StreamBlocks { get; set; }
         
-        [ConfigItem(Description = "Port of the host under which gRPC will be exposed", DefaultValue = "50000")]
-        int Port { get; }
+        [ConfigItem(Description = "If 'true' then all analytics will be also output to logger", DefaultValue = "false")]
+        public bool LogPublishedData { get; set; }
     }
 }
