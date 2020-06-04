@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Nethermind.Runner
@@ -26,7 +27,7 @@ namespace Nethermind.Runner
         
         public static NullRunner Instance = new NullRunner();
         
-        public Task Start()
+        public Task Start(CancellationToken _)
         {
             return Task.CompletedTask;
         }

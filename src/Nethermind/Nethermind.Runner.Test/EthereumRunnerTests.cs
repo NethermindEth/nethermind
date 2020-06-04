@@ -19,6 +19,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using log4net.Core;
 using Nethermind.Blockchain.Synchronization;
@@ -153,8 +154,68 @@ namespace Nethermind.Runner.Test
                     new EthereumJsonSerializer(), 
                     Substitute.For<IMonitoringService>());
 
-                await runner.Start();
+                await runner.Start(CancellationToken.None);
                 await runner.StopAsync();
+            }
+            finally
+            {
+                // rocks db still has a lock on a file called "LOCK".
+                Directory.Delete(tempPath, true);
+            }
+        }
+        
+                [TestCaseSource(nameof(ChainSpecRunnerTests))]
+        [Timeout(12000)] // just to make sure we are not on infinite loop on steps because of incorrect dependencies
+        public async Task Smoke_cancel(string chainSpecPath)
+        {
+            Type type1 = typeof(ITxPoolConfig);
+            Type type2 = typeof(INetworkConfig);
+            Type type3 = typeof(IKeyStoreConfig);
+            Type type4 = typeof(IDbConfig);
+            Type type5 = typeof(IStatsConfig);
+            Type type6 = typeof(IKafkaConfig);
+            Type type7 = typeof(IEthStatsConfig);
+            Type type8 = typeof(ISyncConfig);
+            Type type9 = typeof(IBloomConfig);
+
+            var configProvider = new ConfigProvider();
+            configProvider.AddSource(new ConfigSource(chainSpecPath));
+            
+            Console.WriteLine(type1.Name);
+            Console.WriteLine(type2.Name);
+            Console.WriteLine(type3.Name);
+            Console.WriteLine(type4.Name);
+            Console.WriteLine(type5.Name);
+            Console.WriteLine(type6.Name);
+            Console.WriteLine(type7.Name);
+            Console.WriteLine(type8.Name);
+            Console.WriteLine(type9.Name);
+            
+            var tempPath = Path.Combine(Path.GetTempPath(), "test_" + Guid.NewGuid());
+            Directory.CreateDirectory(tempPath);
+            
+            try
+            {
+                configProvider.GetConfig<IInitConfig>().BaseDbPath = tempPath;
+            
+                EthereumRunner runner = new EthereumRunner(
+                    new RpcModuleProvider(new JsonRpcConfig(), LimboLogs.Instance),
+                    configProvider,
+                    NUnitLogManager.Instance, 
+                    Substitute.For<IGrpcServer>(),
+                    Substitute.For<INdmConsumerChannelManager>(),
+                    Substitute.For<INdmDataPublisher>(),
+                    Substitute.For<INdmInitializer>(),
+                    Substitute.For<IWebSocketsManager>(),
+                    new EthereumJsonSerializer(), 
+                    Substitute.For<IMonitoringService>());
+
+                CancellationTokenSource cts = new CancellationTokenSource();
+                Task task = runner.Start(cts.Token);
+
+                cts.Cancel();
+                
+                await task;
             }
             finally
             {

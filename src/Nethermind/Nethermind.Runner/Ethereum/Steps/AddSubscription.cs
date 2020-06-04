@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.PubSub;
 using Nethermind.Runner.Ethereum.Context;
@@ -31,7 +32,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context = context;
         }
 
-        public Task Execute()
+        public Task Execute(CancellationToken cancellationToken)
         {
             ISubscription subscription = _context.Producers.Any() 
                 ? new Subscription(_context.Producers, _context.MainBlockProcessor, _context.LogManager) 
