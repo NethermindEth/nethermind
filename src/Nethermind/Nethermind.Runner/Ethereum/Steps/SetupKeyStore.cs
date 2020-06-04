@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Net;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.KeyStore;
@@ -36,8 +37,9 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context = context;
         }
 
-        public async Task Execute()
+        public async Task Execute(CancellationToken cancellationToken)
         {
+            // why is the await Task.Run here?
             await Task.Run(() =>
             {
                 IKeyStoreConfig keyStoreConfig = _context.Config<IKeyStoreConfig>();

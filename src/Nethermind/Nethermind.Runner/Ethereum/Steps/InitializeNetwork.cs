@@ -70,12 +70,12 @@ namespace Nethermind.Runner.Ethereum.Steps
             _syncConfig = _ctx.Config<ISyncConfig>();
         }
 
-        public async Task Execute()
+        public async Task Execute(CancellationToken cancellationToken)
         {
-            await Initialize();
+            await Initialize(cancellationToken);
         }
 
-        private async Task Initialize()
+        private async Task Initialize(CancellationToken cancellationToken)
         {
             if (_ctx.DbProvider == null) throw new StepDependencyException(nameof(_ctx.DbProvider));
             if (_ctx.BlockTree == null) throw new StepDependencyException(nameof(_ctx.BlockTree));
@@ -139,6 +139,11 @@ namespace Nethermind.Runner.Ethereum.Steps
             _ctx.DisposeStack.Push(_ctx.SyncServer);
 
             InitDiscovery();
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+            
             await InitPeer().ContinueWith(initPeerTask =>
             {
                 if (initPeerTask.IsFaulted)
@@ -146,6 +151,11 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _logger.Error("Unable to init the peer manager.", initPeerTask.Exception);
                 }
             });
+            
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
 
             await StartSync().ContinueWith(initNetTask =>
             {
@@ -154,6 +164,11 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _logger.Error("Unable to start the synchronizer.", initNetTask.Exception);
                 }
             });
+            
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
 
             await StartDiscovery().ContinueWith(initDiscoveryTask =>
             {
@@ -165,6 +180,11 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             try
             {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    return;
+                }
+                
                 StartPeer();
             }
             catch (Exception e)

@@ -39,7 +39,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             _logger = _context.LogManager.GetClassLogger<EthereumStepsManager>();
         }
 
-        public async Task DiscoverAll()
+        public async Task DiscoverAll(CancellationToken cancellationToken)
         {
             var types = GetType().Assembly.GetTypes()
                 .Where(t => !t.IsInterface && IsStepType(t))
@@ -72,6 +72,11 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             foreach (IGrouping<Type?, Type> typeGroup in types.Where(t => t != null))
             {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    break;
+                }
+                
                 Type? type = GetStepType(typeGroup);
                 if (type != null)
                 {
@@ -86,7 +91,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 }
             }
 
-            await ReviewDependencies();
+            await ReviewDependencies(cancellationToken);
         }
 
         private readonly ConcurrentDictionary<Type, bool> _hasFinishedExecution = new ConcurrentDictionary<Type, bool>();
@@ -97,7 +102,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         private Type? GetStepBaseType(Type? type) => IsStepType(type?.BaseType) ? GetStepBaseType(type?.BaseType) : type;
 
-        private async Task ReviewDependencies()
+        private async Task ReviewDependencies(CancellationToken cancellationToken)
         {
             List<Type> typesReady = new List<Type>();
             bool changedAnything;
@@ -108,6 +113,11 @@ namespace Nethermind.Runner.Ethereum.Steps
 
                 foreach ((Type type, bool allDependenciesInitialized) in _discoveredSteps)
                 {
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        break;
+                    }
+                    
                     if (!allDependenciesInitialized)
                     {
                         RunnerStepDependenciesAttribute? dependenciesAttribute = type.GetCustomAttribute<RunnerStepDependenciesAttribute>();
@@ -141,12 +151,17 @@ namespace Nethermind.Runner.Ethereum.Steps
             } while (changedAnything);
         }
 
-        public async Task InitializeAll()
+        public async Task InitializeAll(CancellationToken cancellationToken)
         {
             while (_hasFinishedExecution.Values.Any(finished => !finished))
             {
-                RunOneRoundOfInitialization();
-                await ReviewDependencies();
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    break;
+                }
+                
+                RunOneRoundOfInitialization(cancellationToken);
+                await ReviewDependencies(cancellationToken);
             }
 
             await Task.WhenAll(_allPending);
@@ -155,11 +170,16 @@ namespace Nethermind.Runner.Ethereum.Steps
         private ConcurrentBag<Task> _allPending = new ConcurrentBag<Task>();
         private ConcurrentBag<Type> _allStarted = new ConcurrentBag<Type>();
 
-        private void RunOneRoundOfInitialization()
+        private void RunOneRoundOfInitialization(CancellationToken cancellationToken)
         {
             int startedThisRound = 0;
             foreach ((Type discoveredStep, bool dependenciesInitialized) in _discoveredSteps)
             {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    break;
+                }
+                
                 if (_allStarted.Contains(discoveredStep))
                 {
                     continue;
@@ -206,7 +226,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 }
 
                 Stopwatch stopwatch = Stopwatch.StartNew();
-                Task task = step.Execute();
+                Task task = step.Execute(cancellationToken);
                 startedThisRound++;
                 Task continuationTask = task.ContinueWith(t =>
                 {

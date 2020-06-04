@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Grpc;
 using Nethermind.Grpc.Producers;
@@ -38,7 +39,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             SubsystemStateChanged?.Invoke(this, new SubsystemStateEventArgs(newState));
         }
 
-        public Task Execute()
+        public Task Execute(CancellationToken _)
         {
             IGrpcConfig grpcConfig = _context.Config<IGrpcConfig>();
             if (grpcConfig.Enabled)

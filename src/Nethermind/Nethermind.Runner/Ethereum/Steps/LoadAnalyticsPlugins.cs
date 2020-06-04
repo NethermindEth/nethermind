@@ -18,6 +18,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Grpc;
 using Nethermind.Logging;
@@ -97,7 +98,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
         }
 
-        public virtual Task Execute()
+        public virtual Task Execute(CancellationToken cancellationToken)
         {
             IInitConfig initConfig = _context.Config<IInitConfig>();
             IGrpcConfig grpcConfig = _context.Config<IGrpcConfig>();
@@ -118,6 +119,11 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             foreach (string path in pluginFiles)
             {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    break;
+                }
+                
                 if (_logger.IsInfo) _logger.Warn($"Loading assembly {path}");
                 Assembly assembly = Assembly.LoadFile(Path.Combine(fullPluginsDir, path));
                 foreach (Type type in assembly.GetTypes())

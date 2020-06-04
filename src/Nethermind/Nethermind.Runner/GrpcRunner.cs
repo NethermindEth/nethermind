@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Threading;
 using System.Threading.Tasks;
 using Grpc.Core;
 using Nethermind.Grpc;
@@ -35,7 +36,7 @@ namespace Nethermind.Runner
             _logger = logManager.GetClassLogger();
         }
 
-        public Task Start()
+        public Task Start(CancellationToken cancellationToken)
         {
             _server = new Server
             {

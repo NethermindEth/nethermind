@@ -57,6 +57,8 @@ namespace Nethermind.Runner
         private IRunner _jsonRpcRunner = NullRunner.Instance;
         private IRunner _ethereumRunner = NullRunner.Instance;
         private IRunner _grpcRunner = NullRunner.Instance;
+        
+        private CancellationTokenSource _processCloseCancellationSource = new CancellationTokenSource();
         private TaskCompletionSource<object?>? _cancelKeySource;
         private TaskCompletionSource<object?>? _processExit;
         private IMonitoringService _monitoringService = NullMonitoringService.Instance;
@@ -68,6 +70,7 @@ namespace Nethermind.Runner
 
         private void CurrentDomainOnProcessExit(object? sender, EventArgs e)
         {
+            _processCloseCancellationSource.Cancel();
             _processExit?.SetResult(null);
         }
 
@@ -108,7 +111,7 @@ namespace Nethermind.Runner
                 _processExit = new TaskCompletionSource<object?>();
                 _cancelKeySource = new TaskCompletionSource<object?>();
 
-                await StartRunners(configProvider);
+                await StartRunners(_processCloseCancellationSource.Token, configProvider);
                 await Task.WhenAny(_cancelKeySource.Task, _processExit.Task);
 
                 Console.WriteLine("Closing, please wait until all functions are stopped properly...");
@@ -131,7 +134,7 @@ namespace Nethermind.Runner
         }
 
         [Todo(Improve.Refactor, "network config can be handled internally in EthereumRunner")]
-        protected async Task StartRunners(IConfigProvider configProvider)
+        protected async Task StartRunners(CancellationToken cancellationToken, IConfigProvider configProvider)
         {
             IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
             IJsonRpcConfig jsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
@@ -179,7 +182,7 @@ namespace Nethermind.Runner
             {
                 grpcServer = new GrpcServer(jsonSerializer, logManager);
                 _grpcRunner = new GrpcRunner(grpcServer, grpcConfig, logManager);
-                await _grpcRunner.Start().ContinueWith(x =>
+                await _grpcRunner.Start(cancellationToken).ContinueWith(x =>
                 {
                     if (x.IsFaulted && (_logger?.IsError ?? false)) _logger!.Error("Error during GRPC runner start", x.Exception);
                 });
@@ -224,7 +227,7 @@ namespace Nethermind.Runner
                 jsonSerializer,
                 _monitoringService);
 
-            await _ethereumRunner.Start().ContinueWith(x =>
+            await _ethereumRunner.Start(cancellationToken).ContinueWith(x =>
             {
                 if (x.IsFaulted && (_logger?.IsError ?? false)) _logger!.Error("Error during ethereum runner start", x.Exception);
             });
@@ -243,7 +246,7 @@ namespace Nethermind.Runner
                 Bootstrap.Instance.LogManager = logManager;
                 Bootstrap.Instance.JsonSerializer = jsonSerializer;
                 _jsonRpcRunner = new JsonRpcRunner(configProvider, rpcModuleProvider, logManager, jsonRpcProcessor, webSocketsManager);
-                await _jsonRpcRunner.Start().ContinueWith(x =>
+                await _jsonRpcRunner.Start(cancellationToken).ContinueWith(x =>
                 {
                     if (x.IsFaulted && (_logger?.IsError ?? false)) _logger!.Error("Error during jsonRpc runner start", x.Exception);
                 });
