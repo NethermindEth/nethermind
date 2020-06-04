@@ -7,14 +7,18 @@ namespace Ethereum.Blockchain.Block.Legacy.Test
 {
     [TestFixture]
     [Parallelizable(ParallelScope.All)]
-    public class BlockGasLimitTest : LegacyBlockchainTestBase
+    public class BlockGasLimitTest : BlockchainTestBase
     {
         [TestCaseSource(nameof(LoadTests))]
-        public async Task Test(LegacyBlockchainTest test)
+        public async Task Test(BlockchainTest test)
         {
             await RunTest(test);
         }
 
-        public static IEnumerable<LegacyBlockchainTest> LoadTests() { return new DirectoryTestsSource("bcBlockGasLimitTest").LoadLegacyTests(); }
+        public static IEnumerable<BlockchainTest> LoadTests()
+        {
+            var loader = new DirectoryTestsSourceLoader(new LoadLegacyBlockchainTestsStrategy(), "bcBlockGasLimitTest");
+            return (IEnumerable<BlockchainTest>)loader.LoadTests();      
+        }
     }
 }

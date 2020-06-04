@@ -6,14 +6,18 @@ using NUnit.Framework;
 namespace Ethereum.Blockchain.Legacy.Test
 {
     [TestFixture][Parallelizable(ParallelScope.All)]
-    public class AttackTests : LegacyBlockchainTestBase
+    public class AttackTests : GeneralStateTestBase
     { 
         [TestCaseSource(nameof(LoadTests))]
-        public async Task Test(LegacyBlockchainTest test)
+        public void Test(GeneralStateTest test)
         {
-            await RunTest(test);
+            Assert.True(RunTest(test).Pass);
         }
 
-        public static IEnumerable<LegacyBlockchainTest> LoadTests() { return new DirectoryTestsSource("stAttackTest").LoadLegacyTests(); }
+        public static IEnumerable<GeneralStateTest> LoadTests() 
+        {
+            var loader = new DirectoryTestsSourceLoader(new LoadLegacyGeneralStateTestsStrategy(), "stAttackTest");
+            return (IEnumerable<GeneralStateTest>)loader.LoadTests();
+        }
     }
 }

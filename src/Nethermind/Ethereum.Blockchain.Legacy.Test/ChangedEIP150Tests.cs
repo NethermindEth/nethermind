@@ -24,14 +24,18 @@ using NUnit.Framework;
 namespace Ethereum.Blockchain.Legacy.Test
 {
     [TestFixture][Parallelizable(ParallelScope.All)]
-    public class ChangedEIP150Tests : LegacyBlockchainTestBase
+    public class ChangedEIP150Tests : GeneralStateTestBase
     { 
         [TestCaseSource(nameof(LoadTests))]
-        public async Task Test(LegacyBlockchainTest test)
+        public void Test(GeneralStateTest test)
         {
-            await RunTest(test);
+            Assert.True(RunTest(test).Pass);
         }
 
-        public static IEnumerable<LegacyBlockchainTest> LoadTests() { return new DirectoryTestsSource("stChangedEIP150").LoadLegacyTests(); }
+        public static IEnumerable<GeneralStateTest> LoadTests() 
+        {
+            var loader = new DirectoryTestsSourceLoader(new LoadLegacyGeneralStateTestsStrategy(), "stChangedEIP150");
+            return (IEnumerable<GeneralStateTest>)loader.LoadTests();
+        }
     }
 }

@@ -7,14 +7,18 @@ namespace Ethereum.Blockchain.Block.Legacy.Test
 {
     [TestFixture]
     [Parallelizable(ParallelScope.All)]
-    public class UncleSpecialTests : LegacyBlockchainTestBase
+    public class UncleSpecialTests : BlockchainTestBase
     {
         [TestCaseSource(nameof(LoadTests))]
-        public async Task Test(LegacyBlockchainTest test)
+        public async Task Test(BlockchainTest test)
         {
             await RunTest(test);
         }
 
-        public static IEnumerable<LegacyBlockchainTest> LoadTests() { return new DirectoryTestsSource("bcUncleSpecialTests").LoadLegacyTests(); }
+        public static IEnumerable<BlockchainTest> LoadTests()
+        {
+            var loader = new DirectoryTestsSourceLoader(new LoadLegacyBlockchainTestsStrategy(), "bcForkStressTest");
+            return (IEnumerable<BlockchainTest>)loader.LoadTests();      
+        }
     }
 }

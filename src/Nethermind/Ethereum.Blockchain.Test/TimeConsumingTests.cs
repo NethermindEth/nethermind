@@ -24,10 +24,10 @@ using NUnit.Framework;
 namespace Ethereum.Blockchain.Test
 {
     [TestFixture][Parallelizable(ParallelScope.All)]
-    public class TimeConsumingTests : BlockchainTestBase
+    public class TimeConsumingTests : GeneralStateTestBase
     {
         [TestCaseSource(nameof(LoadTests))]
-        public void Test(BlockchainTest test)
+        public void Test(GeneralStateTest test)
         {
             if (test.Name.Contains("CALLBlake2f_MaxRound"))
             {
@@ -37,6 +37,7 @@ namespace Ethereum.Blockchain.Test
             Assert.True(RunTest(test).Pass);
         }
         
-        public static IEnumerable<BlockchainTest> LoadTests() { return new DirectoryTestsSource("stTimeConsuming").LoadTests(); }
+        public static IEnumerable<GeneralStateTest> LoadTests() { var loader = new DirectoryTestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stTimeConsuming");
+            return (IEnumerable<GeneralStateTest>)loader.LoadTests(); }
     }
 }

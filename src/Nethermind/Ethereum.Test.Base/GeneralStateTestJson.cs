@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -17,13 +17,17 @@
  */
 
 using System.Collections.Generic;
+using Nethermind.Core.Specs;
 
 namespace Ethereum.Test.Base
 {
-    public interface IBlockchainTestsSource
+    public class GeneralStateTestJson
     {
-        IEnumerable<BlockchainTest> LoadTests();
-        
-        IEnumerable<LegacyBlockchainTest> LoadLegacyTests();
+        public GeneralStateTestEnvJson Env { get; set; }
+        public Dictionary<string, PostStateJson[]> Post { get; set; }
+        public Dictionary<string, AccountStateJson> Pre { get; set; }
+        public string SealEngine { get; set; }
+        public string LoadFailure { get; set; }
+        public TransactionJson Transaction { get; set; }
     }
 }

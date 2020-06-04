@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,13 +16,29 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Collections.Generic;
-using System.Threading.Tasks;
+using System.IO;
+using Ethereum.Test.Base.Interfaces;
 
 namespace Ethereum.Test.Base
 {
-    public interface IStateTestRunner
+    public class DirectoryTestsSourceLoader : ITestSourceLoader
     {
-        IEnumerable<EthereumTestResult> RunTests();
+        private readonly ITestLoadStrategy _testLoadStrategy;
+        private readonly string _directory;
+        private readonly string _wildcard;
+
+        public DirectoryTestsSourceLoader(ITestLoadStrategy testLoadStrategy, string directory, string wildcard = null)
+        {
+            _testLoadStrategy = testLoadStrategy ?? throw new ArgumentNullException(nameof(testLoadStrategy));
+            _directory = directory ?? throw new ArgumentNullException(nameof(directory));
+            _wildcard = wildcard;
+        }
+
+        public IEnumerable<IEthereumTest> LoadTests()
+        {
+            return _testLoadStrategy.Load(_directory);
+        }
     }
 }

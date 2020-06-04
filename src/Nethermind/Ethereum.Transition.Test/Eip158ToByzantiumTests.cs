@@ -24,14 +24,15 @@ using NUnit.Framework;
 namespace Ethereum.Transition.Test
 {
     [TestFixture][Parallelizable(ParallelScope.All)]
-    public class Eip158ToByzantiumTests : LegacyBlockchainTestBase
+    public class Eip158ToByzantiumTests : BlockchainTestBase
     {
         [TestCaseSource(nameof(LoadTests))]
-        public async Task Test(LegacyBlockchainTest test)
+        public async Task Test(BlockchainTest test)
         {    
             await RunTest(test);
         }
         
-        public static IEnumerable<LegacyBlockchainTest> LoadTests() { return new DirectoryTestsSource("bcEIP158ToByzantium").LoadLegacyTests(); }
+        public static IEnumerable<BlockchainTest> LoadTests() { var loader = new DirectoryTestsSourceLoader(new LoadLegacyBlockchainTestsStrategy(), "bcEIP158ToByzantium");
+        return (IEnumerable<BlockchainTest>)loader.LoadTests(); }
     }
 }

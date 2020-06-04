@@ -25,14 +25,18 @@ namespace Ethereum.Blockchain.Block.Test
 {
     [TestFixture]
     [Parallelizable(ParallelScope.All)]
-    public class ForgedTests : LegacyBlockchainTestBase
+    public class ForgedTests : BlockchainTestBase
     {
         [TestCaseSource(nameof(LoadTests))]
-        public async Task Test(LegacyBlockchainTest test)
+        public async Task Test(BlockchainTest test)
         {
             await RunTest(test);
         }
-        
-        public static IEnumerable<LegacyBlockchainTest> LoadTests() { return new DirectoryTestsSource("bcForgedTest").LoadTestsInLegacyFormat(); }
+
+        public static IEnumerable<BlockchainTest> LoadTests()
+        {
+            var loader = new DirectoryTestsSourceLoader(new LoadBlockchainTestsStrategy(), "bcForgedTest");
+        return (IEnumerable<BlockchainTest>)loader.LoadTests();
+        }
     }
 }
