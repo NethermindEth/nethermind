@@ -18,7 +18,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using NUnit.Framework;
 
-namespace Nethermind.Core.Test
+namespace Nethermind.Store.Test
 {
     [TestFixture]
     public class StateDbTests

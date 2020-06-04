@@ -333,11 +333,11 @@ namespace Nethermind.Serialization.Rlp
             if(isStorage) decoderContext.DecodeAddressStructRef(out item.ContractAddress);
             if(isStorage) item.GasUsed = (long) decoderContext.DecodeUBigInt();
             item.GasUsedTotal = (long) decoderContext.DecodeUBigInt();
-            decoderContext.DecodeBloomStructRef(out item.BloomStruct);
+            decoderContext.DecodeBloomStructRef(out item.Bloom);
 
             var peekPrefixAndContentLength = decoderContext.PeekPrefixAndContentLength();
             var logsBytes = peekPrefixAndContentLength.ContentLength + peekPrefixAndContentLength.PrefixLength;
-            item.Logs = decoderContext.Data.Slice(decoderContext.Position, logsBytes);
+            item.LogsRlp = decoderContext.Data.Slice(decoderContext.Position, logsBytes);
             decoderContext.SkipItem();
             
             bool allowExtraData = (rlpBehaviors & RlpBehaviors.AllowExtraData) != 0;

@@ -16,6 +16,7 @@
 
 using System.Net;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Config;
 using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc.Modules.Net;
 using Nethermind.Logging;

@@ -213,8 +213,7 @@ namespace Ethereum.Transaction.Test
                 IEthereumEcdsa ecdsa = new EthereumEcdsa(useChainId ? ChainId.Mainnet : 0, LimboLogs.Instance);
                 bool verified = ecdsa.Verify(
                     validTest.Sender,
-                    transaction,
-                    false);
+                    transaction);
                 Assert.True(verified);
             }
             else

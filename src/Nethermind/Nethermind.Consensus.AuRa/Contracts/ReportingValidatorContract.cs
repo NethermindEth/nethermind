@@ -15,10 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Abi;
+using Nethermind.Consensus.AuRa.Json;
 using Nethermind.Core;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
-using Nethermind.Serialization.Json.Abi;
 using Nethermind.State;
 
 namespace Nethermind.Consensus.AuRa.Contracts

@@ -259,7 +259,7 @@ namespace Nethermind.Synchronization.Reporting
 
         private void WriteDbSyncReport()
         {
-            _logger.Info($"Syncing previously downloaded blocks from DB");
+            _logger.Info($"Syncing previously downloaded blocks from DB (partial offline mode until it finishes)");
         }
 
         private void WriteNotStartedReport()

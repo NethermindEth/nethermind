@@ -18,12 +18,12 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Abi;
+using Nethermind.Consensus.AuRa.Json;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
-using Nethermind.Serialization.Json.Abi;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 

@@ -14,17 +14,10 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Threading.Tasks;
-using Nethermind.PubSub.Models;
-using Block = Nethermind.Core.Block;
-
 namespace Nethermind.PubSub
 {
     public class EmptySubscription : ISubscription
     {
-        public Task PublishBlockAsync(Block block) => Task.CompletedTask;
-        public Task PublishTransactionAsync(FullTransaction transaction) => Task.CompletedTask;
-
         public void Dispose()
         {
         }

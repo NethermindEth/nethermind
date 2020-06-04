@@ -44,7 +44,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             ForSealing = forSealing;
         }
         
-        public Address[] Validators { get; protected set; }
+        public Address[] Validators { get; protected internal set; }
         
         protected long InitBlockNumber { get; }
         protected bool ForSealing { get; }

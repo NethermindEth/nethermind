@@ -14,6 +14,8 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Core;
+
 namespace Nethermind.KeyStore.Config
 {
     public class KeyStoreConfig : IKeyStoreConfig
@@ -32,9 +34,7 @@ namespace Nethermind.KeyStore.Config
         public int SymmetricEncrypterKeySize { get; set; } = 128;
         public int IVSize { get; set; } = 16;
         public string TestNodeKey { get; set; }
-        public bool Verify()
-        {
-            throw new System.NotImplementedException();
-        }
+        public string BlockAuthorAccount { get; set; }
+        public string BlockAuthorPassword { get; set; }
     }
 }

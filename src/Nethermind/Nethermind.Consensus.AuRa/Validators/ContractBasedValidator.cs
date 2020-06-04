@@ -96,19 +96,20 @@ namespace Nethermind.Consensus.AuRa.Validators
         {
             if (block.IsGenesis)
             {
-                ValidatorStore.SetValidators(block.Number, LoadValidatorsFromContract(block.Header));
                 return;
             }
             
             var isProducingBlock = options.IsProducingBlock();
             var isProcessingBlock = !isProducingBlock;
             var isInitBlock = InitBlockNumber == block.Number;
-            var shouldLoadValidators = Validators == null || isProducingBlock;
+            var headNumber = BlockTree.Head?.Number ?? -2; // -2, so genesis.Number - 1 > -2.
+            var skippingBlocks = block.Number - 1 > headNumber;
+            var shouldLoadValidators = Validators == null || skippingBlocks || isProducingBlock;
             var mainChainProcessing = !ForSealing && isProcessingBlock;
             
             if (shouldLoadValidators)
             {
-                Validators = isInitBlock 
+                Validators = isInitBlock || skippingBlocks
                     ? LoadValidatorsFromContract(BlockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None)) 
                     : ValidatorStore.GetValidators();
 
@@ -185,6 +186,11 @@ namespace Nethermind.Consensus.AuRa.Validators
         public override void OnBlockProcessingEnd(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None)
         {
             base.OnBlockProcessingEnd(block, receipts, options);
+            
+            if (block.IsGenesis)
+            {
+                ValidatorStore.SetValidators(block.Number, LoadValidatorsFromContract(block.Header));
+            }
             
             if (ValidatorContract.CheckInitiateChangeEvent(block.Header, receipts, out var potentialValidators))
             {

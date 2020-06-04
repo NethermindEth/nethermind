@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
@@ -44,13 +45,12 @@ namespace Nethermind.Runner.Ethereum.Steps
         private readonly EthereumRunnerContext _context;
         private BlockProducerContext? _blockProducerContext;
         
-
-        public StartBlockProducer(EthereumRunnerContext context)
+        protected StartBlockProducer(EthereumRunnerContext context)
         {
             _context = context;
         }
 
-        public Task Execute()
+        public Task Execute(CancellationToken _)
         {
             IInitConfig initConfig = _context.Config<IInitConfig>();
             if (initConfig.IsMining)
@@ -81,7 +81,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, readOnlyBlockTree, _context.SpecProvider, _context.LogManager);
                 var readOnlyTransactionProcessorSource = new ReadOnlyTransactionProcessorSource(readOnlyTxProcessingEnv);
                 BlockProcessor blockProcessor = CreateBlockProcessor(readOnlyTxProcessingEnv, readOnlyTransactionProcessorSource, readOnlyDbProvider);
-                OneTimeChainProcessor chainProcessor = new OneTimeChainProcessor(readOnlyDbProvider, new BlockchainProcessor(readOnlyBlockTree, blockProcessor, _context.RecoveryStep, _context.LogManager, false));
+                OneTimeChainProcessor chainProcessor = new OneTimeChainProcessor(readOnlyDbProvider, new BlockchainProcessor(readOnlyBlockTree, blockProcessor, _context.RecoveryStep, _context.LogManager, BlockchainProcessor.Options.NoReceipts));
 
                 return new BlockProducerContext
                 {

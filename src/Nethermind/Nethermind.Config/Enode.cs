@@ -21,7 +21,7 @@ using System.Net.Sockets;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Network
+namespace Nethermind.Config
 {
     public class Enode : IEnode
     {

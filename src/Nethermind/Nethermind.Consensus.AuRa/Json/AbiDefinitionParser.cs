@@ -18,11 +18,12 @@ using System;
 using System.IO;
 using System.Text;
 using Nethermind.Abi;
+using Nethermind.Serialization.Json;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
 using Newtonsoft.Json.Serialization;
 
-namespace Nethermind.Serialization.Json.Abi
+namespace Nethermind.Consensus.AuRa.Json
 {
     public class AbiDefinitionParser : IAbiDefinitionParser
     {

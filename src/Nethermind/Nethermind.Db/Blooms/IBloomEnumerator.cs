@@ -21,5 +21,6 @@ namespace Nethermind.Db.Blooms
     public interface IBloomEnumeration : IEnumerable<Core.Bloom>
     {
         bool TryGetBlockNumber(out long blockNumber);
+        (long FromBlock, long ToBlock) CurrentIndices { get; }
     }
 }

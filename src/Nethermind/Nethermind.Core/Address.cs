@@ -151,6 +151,8 @@ namespace Nethermind.Core
         }
 
         public static bool operator !=(Address a, Address b) => !(a == b);
+
+        public AddressStructRef ToStructRef() => new AddressStructRef(Bytes);
     }
     
     public ref struct AddressStructRef

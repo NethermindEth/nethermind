@@ -14,18 +14,12 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Net;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
+using System.Threading.Tasks;
 
-namespace Nethermind.Network
+namespace Nethermind.TxPool.Analytics
 {
-    public interface IEnode
+    public interface IDataPublisher
     {
-        PublicKey PublicKey { get; }
-        Address Address { get; }
-        IPAddress HostIp { get; }
-        int Port { get; }
-        string Info { get; }
+        Task PublishAsync<T>(T data) where T : class;
     }
 }

@@ -18,7 +18,7 @@ using System;
 using Nethermind.Abi;
 using Newtonsoft.Json;
 
-namespace Nethermind.Serialization.Json.Abi
+namespace Nethermind.Consensus.AuRa.Json
 {
     public class AbiTypeConverter : JsonConverter<AbiType>
     {

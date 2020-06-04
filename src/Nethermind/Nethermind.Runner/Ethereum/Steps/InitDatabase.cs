@@ -44,7 +44,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context = context;
         }
 
-        public async Task Execute()
+        public async Task Execute(CancellationToken _)
         {
             ILogger logger = _context.LogManager.GetClassLogger();
             

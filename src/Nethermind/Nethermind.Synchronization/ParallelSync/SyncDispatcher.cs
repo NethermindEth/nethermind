@@ -17,7 +17,6 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using MathNet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Synchronization.Peers;
 

@@ -187,7 +187,7 @@ namespace Nethermind.JsonRpc
                 Stopwatch singleRequestWatch = new Stopwatch();
                 foreach (JsonRpcRequest jsonRpcRequest in rpcRequest.Collection)
                 {
-                    singleRequestWatch.Start();
+                    singleRequestWatch.Restart();
 
                     Metrics.JsonRpcRequests++;
                     JsonRpcResponse response = await _jsonRpcService.SendRequestAsync(jsonRpcRequest);
