@@ -29,12 +29,12 @@
     "eip1052Transition": "0x0",
     "registrar": "0x1204700000000000000000000000000000000006",
 
-    "eip152Transition": "0xFFFFFFFF",
-    "eip1108Transition": "0xFFFFFFFF",
-    "eip1344Transition": "0xFFFFFFFF",
-    "eip1884Transition": "0xFFFFFFFF",
-    "eip2028Transition": "0xFFFFFFFF",
-    "eip2200Transition": "0xFFFFFFFF"
+    "eip1283Transition": "0x4ff704",
+    "eip1344Transition": "0x4ff704",
+    "eip1706Transition": "0x4ff704",
+    "eip1884Transition": "0x4ff704",
+    "eip2028Transition": "0x4ff704",
+    "eip2200Transition": "0x4ff704"
   },
   "genesis": {
     "seal": {
