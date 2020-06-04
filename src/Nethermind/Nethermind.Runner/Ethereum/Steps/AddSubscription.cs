@@ -18,6 +18,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Logging;
 using Nethermind.PubSub;
@@ -39,7 +40,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             _logger = context.LogManager.GetClassLogger();
         }
 
-        public Task Execute()
+        public Task Execute(CancellationToken cancellationToken)
         {
             IAnalyticsConfig analyticsConfig = _context.Config<IAnalyticsConfig>();
             InitBlocksStreaming(analyticsConfig);

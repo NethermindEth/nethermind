@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Runner.Ethereum.Context;
@@ -25,10 +26,10 @@ namespace Nethermind.Runner.Ethereum.Steps
     {
         public InitRlpAuRa(AuRaEthereumRunnerContext context) : base(context) { }
 
-        public override Task Execute()
+        public override Task Execute(CancellationToken cancellationToken)
         {
             Rlp.Decoders[typeof(BlockInfo)] = new BlockInfoDecoder(true);
-            return base.Execute();
+            return base.Execute(cancellationToken);
         }
     }
 }

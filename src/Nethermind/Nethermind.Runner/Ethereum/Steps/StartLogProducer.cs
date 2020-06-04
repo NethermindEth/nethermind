@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Logging;
 using Nethermind.PubSub;
@@ -33,7 +34,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context = context;
         }
 
-        public Task Execute()
+        public Task Execute(CancellationToken cancellationToken)
         {
             IAnalyticsConfig analyticsConfig = _context.Config<IAnalyticsConfig>();
             if (analyticsConfig.LogPublishedData)

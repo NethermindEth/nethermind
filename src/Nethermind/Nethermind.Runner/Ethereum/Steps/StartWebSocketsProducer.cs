@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Runner.Analytics;
 using Nethermind.Runner.Ethereum.Context;
@@ -30,13 +31,13 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context = context;
         }
 
-        public Task Execute()
+        public Task Execute(CancellationToken cancellationToken)
         {
             IInitConfig initConfig = _context.Config<IInitConfig>();
             if (initConfig.WebSocketsEnabled)
             {
-                AnalyticsWebSocketsModule analyticsModule =
-                    _context.WebSocketsManager!.GetModule("analytics") as AnalyticsWebSocketsModule;
+                AnalyticsWebSocketsModule? analyticsModule =
+                    _context.WebSocketsManager?.GetModule("analytics") as AnalyticsWebSocketsModule;
                 if (analyticsModule != null)
                 {
                     _context.Producers.Add(analyticsModule);
