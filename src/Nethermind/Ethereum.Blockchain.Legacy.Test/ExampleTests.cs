@@ -24,12 +24,12 @@ using NUnit.Framework;
 namespace Ethereum.Blockchain.Legacy.Test
 {
     [TestFixture][Parallelizable(ParallelScope.All)]
-    public class ExampleTests : BlockchainTestBase
+    public class ExampleTests : GeneralStateTestBase
     { 
         [TestCaseSource(nameof(LoadTests))]
-        public async Task Test(BlockchainTest test)
+        public void Test(GeneralStateTest test)
         {
-            await RunTest(test);
+            Assert.True(RunTest(test).Pass);
         }
 
         public static IEnumerable<GeneralStateTest> LoadTests() 
