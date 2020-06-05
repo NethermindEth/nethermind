@@ -1,6 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core.Extensions;
+using Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.Databases;
+using Nethermind.DataMarketplace.Consumers.Infrastructure.Rlp;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
@@ -8,224 +11,121 @@ using Nethermind.Serialization.Rlp;
 using Terminal.Gui;
 
 namespace Nethermind.RocksDbExtractor
-
 {
     class Program
     {
         static void Main(string[] args)
         {
-            Application.Init();
+           Application.Init();
             
-            var top = Application.Top;
-            var win = new Window ("NDM RocksDb Extractor");
-            top.Add(win);
+            var window = new Window ("NDM RocksDb Extractor");
+            Application.Top.Add(window);
             
             var quitBtn = new Button(3, 1, "Quit");
             quitBtn.Clicked = () =>
             {
-                top.Running = false;
+                Application.Top.Running = false;
+                Application.RequestStop();
             };
 
             var pathLbl = new Label(3, 3, "Enter DB path: ");
             var path = new TextField(20, 3, 70, "");
-            var applyBtn = new Button(90, 3, "Apply");
+            var applyBtn = new Button(90, 3, "OK");
+            
+            window.Add (pathLbl, path, quitBtn, applyBtn);
 
             applyBtn.Clicked = () =>
             {
-                double number = 0;
-                var isDouble = double.TryParse(path.Text.ToString(), out number);
+                var isDouble = double.TryParse(path.Text.ToString(), out _);
                 if(isDouble)
                 {
                     MessageBox.ErrorQuery(30, 6, "Error", "Path can not be a number.");
                     path.Text = string.Empty;
-                    return;
+                    
                 } else if(string.IsNullOrEmpty(path.Text.ToString()))
                 {
                     MessageBox.ErrorQuery(30, 6, "Error", "Path can not be empty.");
-                    return;
                 }
                 else
                 {
-                    var clientsListView = new ListView(new Rect(3, 8, top.Frame.Width, 10), new List<string>()
+                    // var consumerPath = @"\ndm_consumer\local";
+                    // var providerPath = @"\ndm_provider\local";
+                    // var mainPath = path.Text.ToString() + consumerPath;
+
+                    // dodac sprawdzenie czy jest slash na koncu czy nie
+                    
+                    
+                    var window2 = new Window("Clients");
+                    Application.Top.Add(window2);
+                    
+                    var consumerBtn = new Button(1, 1, "Consumer");
+                    consumerBtn.Clicked = () =>
+                    {
+                        var window3 = new Window("Folder");
+                        Application.Top.Add(window3);
+                        var path = @"D:\Workspace\Demerzel\ndm\src\nethermind\src\Nethermind\Nethermind.Runner\bin\Debug\netcoreapp3.1\nethermind_db\ndm_consumer\local";
+                        string[] folders = System.IO.Directory.GetDirectories(path,"*");
+                        var nameFolders1 = new List<string>();
+                        var i = 1;
+                        
+                        foreach (var folder in folders)
                         {
-                            "Consumer",
-                            "Provider"
-                        });
-
-                    win.Add(
-                        clientsListView
-                    );
-                    // D:\Workspace\Demerzel\ndm\src\nethermind\src\Nethermind\Nethermind.Runner\bin\Debug\netcoreapp3.1\nethermind_db\ndm_consumer\local
-                    
-                    // var isEnter = Console.ReadKey().Key == ConsoleKey.Enter;
-                    
-            
-                    // ILogManager logger = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Trace));
-                    // DbOnTheRocks dbOnTheRocks = new BlocksRocksDb(path, new DbConfig(), logger);
-                    // var blocksBytes = dbOnTheRocks.GetAll();
-                    //
-                    // var blockDecoder = new BlockDecoder();
-                    // foreach (var blockBytes in blocksBytes)
-                    // {
-                    //     var block = blockDecoder.Decode(AsRlpStream(blockBytes.Value));
-                    //     Console.WriteLine(block);
-                    // }
                             
-                    
-                    
-                    
-                    
-                    // MessageBox.Query(30, 6, "Query", $"Path: {path.Text.ToString()}.");
+                            // nameFolders1.Add(folder.Split('\\').Last());
+                            var name = folder.Split('\\').Last();
+                            var nameBtn = new Button(1, i++, $"{name}");
+                            
+                            
+                            
+                            
+                            
+                            
+                            nameBtn.Clicked = () =>
+                            {
+                                var window4 = new Window("Folder1");
+                                Application.Top.Add(window4);
+
+                            ILogManager logger = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Trace));
+                            DbOnTheRocks dbOnTheRocks = new BlocksRocksDb(path, new DbConfig(), logger);
+                            var blocksBytes = dbOnTheRocks.GetAll();
+                            
+                            var blockDecoder = new BlockDecoder();
+                            var y = 1;
+                            foreach (var blockBytes in blocksBytes)
+                            {
+                                var block = blockDecoder.Decode(AsRlpStream(blockBytes.Value));
+                                var blockBtn = new Button(1, y++, $"{block}");
+                                window4.Add(blockBtn);
+                            }
+                            
+                            Application.Run(window4);
+
+                            
+                            
+                            
+                                
+                            };
+                            window3.Add(nameBtn);
+                            
+                        }
+
+                        
+                            
+                        
+                        Application.Run(window3);
+                    };
+                    var providerBtn = new Button(1, 2, "Provider");
+                    window2.Add(consumerBtn, providerBtn);
+                    Application.Run(window2);
+
+
+
+
                 }
-                
-                
-                
-                
-                
-                //
-                // win.Remove(allMoviesListView);
-                // if (string.IsNullOrEmpty(txtSearch.Text.ToString()) || string.IsNullOrEmpty(minimumRatingTxt.Text.ToString()))
-                // {
-                //     win.Add(allMoviesListView);
-                // }
-                // else
-                // {
-                //     win.Remove(allMoviesListView);
-                //     
-                // }
-            
             };
-            
-            // Console.ReadKey();
-            // if (Console.ReadKey().Key == ConsoleKey.Enter)
-            // {
-
-            //
-            //     // D:\Workspace\Demerzel\ndm\src\nethermind\src\Nethermind\Nethermind.Runner\bin\Debug\netcoreapp3.1\nethermind_db\ndm_consumer\local
-            // }
-            
- 
-
-
-
-            // // Add some controls
-
-            // var forKidsOnly = new CheckBox(3, 3, "For Kids?");
-            // var minimumRatingLbl = new Label(25, 3, "Minimum Rating: ");
-            // var minimumRatingTxt = new TextField(41, 3, 10, "");
-            
-            // var mylist = new List<string>();
-            // mylist.Add("aa");
-            // mylist.Add("bb");
-            // mylist.Add("cc");
-            // var allMoviesListView = new ListView(new Rect(4, 8, top.Frame.Width, 200), mylist);
-            //
-            
-            win.Add (
-                pathLbl,
-                path,
-                quitBtn,
-                applyBtn
-            );
-
-            Application.Run(win);
+            Application.Run();
         }
         private static RlpStream AsRlpStream(byte[] bytes) 
-            => bytes == null ? new RlpStream(Bytes.Empty) : new RlpStream(bytes);
+              => bytes == null ? new RlpStream(Bytes.Empty) : new RlpStream(bytes);
     }
 }
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    // class Program
-    // {
-    //     static void Main(string[] args)
-    //     {
-    //         var top = Application.Top;
-    //
-    //         // Creates a menubar, the item "New" has a help menu.
-    //         var menu = new MenuBar (new MenuBarItem [] {
-    //             new MenuBarItem ("_File", new MenuItem [] {
-    //                 new MenuItem ("_Quit", "", () => { top.Running = false; })
-    //             })
-    //         });
-    //         top.Add(menu);
-    //
-    //         var result = MessageBox.Query (50, 7,
-    //             "Question", "Select client", "Consumer", "Provider");
-    //
-    //         switch (result)
-    //         {
-    //             case 0:
-    //             {
-    //                 // var path = @"D:\Workspace\Demerzel\ndm\src\nethermind\src\Nethermind\Nethermind.Runner\bin\Debug\netcoreapp3.1\nethermind_db\ndm_consumer\local";
-    //
-    //                 break;
-    //             }
-    //             case 1:
-    //             {
-    //                 // var path = @"D:\Workspace\Demerzel\ndm\src\nethermind\src\Nethermind\Nethermind.Runner\bin\Debug\netcoreapp3.1\nethermind_db\ndm_consumer\local";
-    //
-    //                 break;
-    //             }
-    //         }
-    //         
-    //         return;
-    //         
-    //         // var path = @"D:\Workspace\Demerzel\ndm\src\nethermind\src\Nethermind\Nethermind.Runner\bin\Debug\netcoreapp3.1\nethermind_db\ndm_consumer\local";
-    //         // Console.WriteLine("Consumer");
-    //         // Console.WriteLine("Provider");
-    //         //
-    //         // var isEnter = Console.ReadKey().Key == ConsoleKey.Enter;
-    //         
-    //
-    //         // ILogManager logger = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Trace));
-    //         // DbOnTheRocks dbOnTheRocks = new BlocksRocksDb(path, new DbConfig(), logger);
-    //         // var blocksBytes = dbOnTheRocks.GetAll();
-    //         //
-    //         // var blockDecoder = new BlockDecoder();
-    //         // foreach (var blockBytes in blocksBytes)
-    //         // {
-    //         //     var block = blockDecoder.Decode(AsRlpStream(blockBytes.Value));
-    //         //     Console.WriteLine(block);
-    //         //     // Console.WriteLine($"{keyValuePair.Key.ToHexString()}->{keyValuePair.Value.ToHexString()}");
-    //         // }
-    //         
-    //         
-    //         
-    //         
-    //         
-    //         
-    //         
-    //         
-    //         
-    //         // string path = @"D:\Workspace\Demerzel\ndm\src\nethermind\src\Nethermind\Nethermind.Runner\bin\Debug\netcoreapp3.1\nethermind_db\ndm_consumer\local\blocks";
-    //         // ILogManager logger = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Trace));
-    //         // DbOnTheRocks dbOnTheRocks = new BlocksRocksDb(path, new DbConfig(), logger);
-    //         // DbOnTheRocks dbOnTheRocks = new CodeRocksDb(path, new DbConfig(), logger);
-    //         // DbOnTheRocks dbOnTheRocks = new StateRocksDb(path, new DbConfig(), logger);
-    //         // var allValues = dbOnTheRocks.GetAll();
-    //         // foreach (KeyValuePair<byte[], byte[]> keyValuePair in allValues)
-    //         // {
-    //         //     Console.WriteLine($"{keyValuePair.Key.ToHexString()}->{keyValuePair.Value.ToHexString()}");
-    //         //     Console.WriteLine("");
-    //         //     Console.WriteLine("");
-    //         // }
-    //         // var result = dbOnTheRocks[new byte[] {1, 2, 3}];
-    //         // dbOnTheRocks[new byte[] {1, 2, 3}] = new byte[] {4, 5, 6};
-    //         // Console.WriteLine(result.ToHexString());
-    //         // Console.ReadLine();
-    //     }
-    //
-
-    // }
-// }
