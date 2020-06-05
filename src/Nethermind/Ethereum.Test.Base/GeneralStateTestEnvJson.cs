@@ -4,7 +4,7 @@ using Nethermind.Dirichlet.Numerics;
 
 namespace Ethereum.Test.Base
 {
-    public class BlockchainTestEnvJson
+    public class GeneralStateTestEnvJson
     {
         public Address CurrentCoinbase { get; set; }
         public UInt256 CurrentDifficulty { get; set; }

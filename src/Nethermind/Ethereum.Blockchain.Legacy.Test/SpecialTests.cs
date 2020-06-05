@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -17,13 +17,26 @@
  */
 
 using System.Collections.Generic;
+using System.Threading.Tasks;
+using Ethereum.Test.Base;
+using NUnit.Framework;
 
-namespace Ethereum.Test.Base
+namespace Ethereum.Blockchain.Legacy.Test
 {
-    public interface IBlockchainTestsSource
-    {
-        IEnumerable<BlockchainTest> LoadTests();
-        
-        IEnumerable<LegacyBlockchainTest> LoadLegacyTests();
+    [TestFixture][Parallelizable(ParallelScope.All)]
+    public class SpecialTests : GeneralStateTestBase
+    { 
+        [TestCaseSource(nameof(LoadTests))]
+        public void Test(GeneralStateTest test)
+        {
+            Assert.True(RunTest(test).Pass);
+        }
+
+        public static IEnumerable<GeneralStateTest> LoadTests() 
+        {
+            var loader = new DirectoryTestsSourceLoader(new LoadLegacyGeneralStateTestsStrategy(), "stSpecialTest");
+            return (IEnumerable<GeneralStateTest>)loader.LoadTests();
+        }
     }
 }
+

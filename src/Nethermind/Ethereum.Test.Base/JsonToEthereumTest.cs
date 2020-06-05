@@ -31,7 +31,7 @@ using Nethermind.Specs.Forks;
 
 namespace Ethereum.Test.Base
 {
-    public static class JsonToBlockchainTest
+    public static class JsonToEthereumTest
     {
         private static IReleaseSpec ParseSpec(string network)
         {
@@ -150,23 +150,23 @@ namespace Ethereum.Test.Base
             return state;
         }
 
-        public static IEnumerable<BlockchainTest> Convert(string name, BlockchainTestJson testJson)
+        public static IEnumerable<GeneralStateTest> Convert(string name, GeneralStateTestJson testJson)
         {
             if (testJson.LoadFailure != null)
             {
-                return Enumerable.Repeat(new BlockchainTest
+                return Enumerable.Repeat(new GeneralStateTest
                 {
                     Name = name,
                     LoadFailure = testJson.LoadFailure
                 }, 1);
             }
 
-            List<BlockchainTest> blockchainTests = new List<BlockchainTest>();
+            List<GeneralStateTest> blockchainTests = new List<GeneralStateTest>();
             foreach (var postStateBySpec in testJson.Post)
             {
                 foreach (PostStateJson stateJson in postStateBySpec.Value)
                 {
-                    BlockchainTest test = new BlockchainTest();
+                    GeneralStateTest test = new GeneralStateTest();
                     test.Name = name + $"_d{stateJson.Indexes.Data}g{stateJson.Indexes.Gas}v{stateJson.Indexes.Value}";
                     test.ForkName = postStateBySpec.Key;
                     test.Fork = ParseSpec(postStateBySpec.Key);
@@ -187,18 +187,18 @@ namespace Ethereum.Test.Base
             return blockchainTests;
         }
 
-        public static LegacyBlockchainTest Convert(string name, LegacyBlockchainTestJson testJson)
+        public static BlockchainTest Convert(string name, BlockchainTestJson testJson)
         {
             if (testJson.LoadFailure != null)
             {
-                return new LegacyBlockchainTest
+                return new BlockchainTest
                 {
                     Name = name,
                     LoadFailure = testJson.LoadFailure
                 };
             }
 
-            LegacyBlockchainTest test = new LegacyBlockchainTest();
+            BlockchainTest test = new BlockchainTest();
             test.Name = name;
             test.Network = testJson.EthereumNetwork;
             test.NetworkAfterTransition = testJson.EthereumNetworkAfterTransition;
@@ -209,7 +209,7 @@ namespace Ethereum.Test.Base
             test.Blocks = testJson.Blocks;
             test.Pre = testJson.Pre.ToDictionary(p => new Address(p.Key), p => Convert(p.Value));
 
-            HalfLegacyBlockchainTestJson half = testJson as HalfLegacyBlockchainTestJson;
+            HalfBlockchainTestJson half = testJson as HalfBlockchainTestJson;
             if (half != null)
             {
                 test.PostStateRoot = half.PostState;
@@ -225,11 +225,11 @@ namespace Ethereum.Test.Base
 
         private static EthereumJsonSerializer _serializer = new EthereumJsonSerializer();
 
-        public static IEnumerable<BlockchainTest> Convert(string json)
+        public static IEnumerable<GeneralStateTest> Convert(string json)
         {
-            Dictionary<string, BlockchainTestJson> testsInFile = _serializer.Deserialize<Dictionary<string, BlockchainTestJson>>(json);
-            List<BlockchainTest> tests = new List<BlockchainTest>();
-            foreach (KeyValuePair<string, BlockchainTestJson> namedTest in testsInFile)
+            Dictionary<string, GeneralStateTestJson> testsInFile = _serializer.Deserialize<Dictionary<string, GeneralStateTestJson>>(json);
+            List<GeneralStateTest> tests = new List<GeneralStateTest>();
+            foreach (KeyValuePair<string, GeneralStateTestJson> namedTest in testsInFile)
             {
                 tests.AddRange(Convert(namedTest.Key, namedTest.Value));
             }
@@ -237,25 +237,25 @@ namespace Ethereum.Test.Base
             return tests;
         }
 
-        public static IEnumerable<LegacyBlockchainTest> ConvertLegacy(string json)
+        public static IEnumerable<BlockchainTest> ConvertToBlockchainTests(string json)
         {
-            Dictionary<string, LegacyBlockchainTestJson> testsInFile;
+            Dictionary<string, BlockchainTestJson> testsInFile;
             try
             {
-                testsInFile = _serializer.Deserialize<Dictionary<string, LegacyBlockchainTestJson>>(json);
+                testsInFile = _serializer.Deserialize<Dictionary<string, BlockchainTestJson>>(json);
             }
             catch (Exception)
             {
-                var half = _serializer.Deserialize<Dictionary<string, HalfLegacyBlockchainTestJson>>(json);
-                testsInFile = new Dictionary<string, LegacyBlockchainTestJson>();
-                foreach (KeyValuePair<string, HalfLegacyBlockchainTestJson> pair in half)
+                var half = _serializer.Deserialize<Dictionary<string, HalfBlockchainTestJson>>(json);
+                testsInFile = new Dictionary<string, BlockchainTestJson>();
+                foreach (KeyValuePair<string, HalfBlockchainTestJson> pair in half)
                 {
                     testsInFile[pair.Key] = pair.Value;
                 }
             }
 
-            List<LegacyBlockchainTest> testsByName = new List<LegacyBlockchainTest>();
-            foreach (KeyValuePair<string, LegacyBlockchainTestJson> namedTest in testsInFile)
+            List<BlockchainTest> testsByName = new List<BlockchainTest>();
+            foreach (KeyValuePair<string, BlockchainTestJson> namedTest in testsInFile)
             {
                 string[] transitionInfo = namedTest.Value.Network.Split("At");
                 string[] networks = transitionInfo[0].Split("To");

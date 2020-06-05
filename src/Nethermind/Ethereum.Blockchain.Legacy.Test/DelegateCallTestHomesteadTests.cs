@@ -18,11 +18,24 @@
 
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Ethereum.Test.Base;
+using NUnit.Framework;
 
-namespace Ethereum.Test.Base
+namespace Ethereum.Blockchain.Legacy.Test
 {
-    public interface IStateTestRunner
-    {
-        IEnumerable<EthereumTestResult> RunTests();
+    [TestFixture][Parallelizable(ParallelScope.All)]
+    public class DelegateCallTestHomesteadTests : GeneralStateTestBase
+    { 
+        [TestCaseSource(nameof(LoadTests))]
+        public void Test(GeneralStateTest test)
+        {
+            Assert.True(RunTest(test).Pass);
+        }
+
+        public static IEnumerable<GeneralStateTest> LoadTests() 
+        {
+            var loader = new DirectoryTestsSourceLoader(new LoadLegacyGeneralStateTestsStrategy(), "stDelegatecallTestHomestead");
+            return (IEnumerable<GeneralStateTest>)loader.LoadTests();
+        }
     }
 }

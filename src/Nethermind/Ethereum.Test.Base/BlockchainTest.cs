@@ -17,35 +17,36 @@
  */
 
 using System.Collections.Generic;
+using Ethereum.Test.Base.Interfaces;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Serialization.Rlp;
 
 namespace Ethereum.Test.Base
 {
-    public class BlockchainTest
+    public class BlockchainTest : IEthereumTest
     {
         public string Category { get; set; }
         public string Name { get; set; }
-        public IReleaseSpec Fork { get; set; }
-        public string ForkName { get; set; }
-        public Address CurrentCoinbase { get; set; }
-        public UInt256 CurrentDifficulty { get; set; }
-        public long CurrentGasLimit { get; set; }
-        public long CurrentNumber { get; set; }
-        public UInt256 CurrentTimestamp { get; set; }
-        public Keccak PreviousHash { get; set; }
+        public IReleaseSpec Network { get; set; }
+        public IReleaseSpec NetworkAfterTransition { get; set; }
+        public long TransitionBlockNumber { get; set; }
+        public Keccak LastBlockHash { get; set; }
+        public Rlp GenesisRlp { get; set; }
+
+        public TestBlockJson[] Blocks { get; set; }
+        public TestBlockHeaderJson GenesisBlockHeader { get; set; }
+
         public Dictionary<Address, AccountState> Pre { get; set; }
-        public Keccak PostHash { get; set; }
-        public Keccak PostReceiptsRoot { get; set; }
+        public Dictionary<Address, AccountState> PostState { get; set; }
+        public Keccak PostStateRoot { get; set; }
         public bool SealEngineUsed { get; set; }    
-        public string LoadFailure { get; set; }
-        public Transaction Transaction { get; set; }
-        
+        public string LoadFailure { get; set; }    
+
         public override string ToString()
         {
-            return $"{Category}.{Name}_{ForkName}";
+            return Name;
         }
     }
 }
