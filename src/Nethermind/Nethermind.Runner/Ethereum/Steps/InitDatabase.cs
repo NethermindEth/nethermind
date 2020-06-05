@@ -62,7 +62,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (syncConfig.BeamSync)
             {
                 _context.SyncModeSelector = new PendingSyncModeSelector();
-                BeamSyncDbProvider beamSyncProvider = new BeamSyncDbProvider(_context.SyncModeSelector, _context.DbProvider, _context.LogManager);
+                BeamSyncDbProvider beamSyncProvider = new BeamSyncDbProvider(_context.SyncModeSelector, _context.DbProvider, _context.Config<ISyncConfig>(), _context.LogManager);
                 _context.DbProvider = beamSyncProvider;
             }
         }
