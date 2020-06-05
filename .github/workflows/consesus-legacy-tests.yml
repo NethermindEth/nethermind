@@ -1,11 +1,9 @@
-name: Build with Code Coverage
+name: Consensus Legacy Tests
 
-# on:
-#   push:
-#     tags:
-#     - '*'
-
-on: push
+on:
+  push:
+    tags:
+    - '*'
 
 jobs:
   blockchain-tests:
