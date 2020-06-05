@@ -87,8 +87,6 @@ namespace Nethermind.Runner
         [ConfigItem(Description = "Diagnostics mode which logs the Parity style traces")]
         ParityTrace,
         [ConfigItem(Description = "Diagnostics mode which logs the Geth style traces")]
-        GethTrace,
-        [ConfigItem(Description = "Tries to fix a corrupted state DB.")]
-        FixDb
+        GethTrace
     }
 }

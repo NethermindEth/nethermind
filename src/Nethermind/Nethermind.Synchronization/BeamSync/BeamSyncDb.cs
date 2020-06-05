@@ -52,7 +52,7 @@ namespace Nethermind.Synchronization.BeamSync
 
         private IDb _targetDbForSaves;
 
-        public BeamSyncDb(IDb stateDb, IDb tempDb, ISyncModeSelector syncModeSelector, ILogManager logManager)
+        public BeamSyncDb(IDb stateDb, IDb tempDb, ISyncModeSelector syncModeSelector, ILogManager logManager, int contextTimeout = 4, int preProcessTimeout = 15)
             : base(logManager)
         {
             _logger = logManager.GetClassLogger<BeamSyncDb>();
@@ -64,6 +64,8 @@ namespace Nethermind.Synchronization.BeamSync
             _syncModeSelector.Changed += SyncModeSelectorOnChanged;
 
             _targetDbForSaves = _tempDb; // before transition to full we are saving to beam DB
+            _contextExpiryTimeSpan = TimeSpan.FromSeconds(contextTimeout);
+            _preProcessExpiryTimeSpan = TimeSpan.FromSeconds(preProcessTimeout);
         }
 
         private object _finishLock = new object();
@@ -123,8 +125,8 @@ namespace Nethermind.Synchronization.BeamSync
 
         private HashSet<Keccak> _requestedNodes = new HashSet<Keccak>();
 
-        private TimeSpan _contextExpiryTimeSpan = TimeSpan.FromSeconds(4);
-        private TimeSpan _preProcessExpiryTimeSpan = TimeSpan.FromSeconds(15);
+        private readonly TimeSpan _contextExpiryTimeSpan;
+        private readonly TimeSpan _preProcessExpiryTimeSpan;
 
         public byte[] this[byte[] key]
         {
@@ -146,6 +148,7 @@ namespace Nethermind.Synchronization.BeamSync
                 // if we keep timing out then we would finally reject the block (but only shelve it instead of marking invalid)
 
                 bool wasInDb = true;
+                _stateDb[key] = null;
                 while (true)
                 {
                     if (_isDisposed)
@@ -166,7 +169,7 @@ namespace Nethermind.Synchronization.BeamSync
                     byte[] fromMem = _tempDb[key] ?? _stateDb[key];
                     if (fromMem == null)
                     {
-                        if (_logger.IsTrace) _logger.Trace($"Beam sync miss - {key.ToHexString()} - retrieving");
+                        if (_logger.IsWarn) _logger.Warn($"Beam sync miss - {key.ToHexString()} - retrieving");
                         
                         if (BeamSyncContext.Cancelled.Value.IsCancellationRequested)
                         {
@@ -211,7 +214,7 @@ namespace Nethermind.Synchronization.BeamSync
                         {
                             BeamSyncContext.ResolvedInContext.Value++;
                             Interlocked.Increment(ref Metrics.BeamedTrieNodes);
-                            if (_logger.IsTrace) _logger.Trace($"Resolved key {key.ToHexString()} of context {BeamSyncContext.Description.Value} - resolved ctx {BeamSyncContext.ResolvedInContext.Value} | total {Metrics.BeamedTrieNodes}");
+                            if (_logger.IsWarn) _logger.Warn($"Resolved key {key.ToHexString()} of context {BeamSyncContext.Description.Value} - resolved ctx {BeamSyncContext.ResolvedInContext.Value} | total {Metrics.BeamedTrieNodes}");
                         }
 
                         BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
@@ -260,6 +263,7 @@ namespace Nethermind.Synchronization.BeamSync
 
         public bool KeyExists(byte[] key)
         {
+            throw new NotSupportedException("Key exists is not supported by beam sync in fix modes.");
             return _tempDb.KeyExists(key);
         }
 
@@ -340,7 +344,7 @@ namespace Nethermind.Synchronization.BeamSync
                     {
                         if (Keccak.Compute(data[i]) == key)
                         {
-                            _tempDb[key.Bytes] = data[i];
+                            _targetDbForSaves[key.Bytes] = data[i];
                             // _requestedNodes.Remove(hashes[i], out _);
                             consumed++;
                         }
@@ -352,7 +356,7 @@ namespace Nethermind.Synchronization.BeamSync
                     }
                     else
                     {
-                        if (_tempDb[key.Bytes] == null)
+                        if (_targetDbForSaves[key.Bytes] == null)
                         {
                             lock (_requestedNodes)
                             {
