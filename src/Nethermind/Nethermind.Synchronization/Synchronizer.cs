@@ -113,7 +113,7 @@ namespace Nethermind.Synchronization
                 StartStateSyncComponents();
             }
 
-            if (_syncConfig.FastSync && _syncConfig.BeamSync)
+            if (_syncConfig.BeamSync)
             {
                 StartBeamSyncComponents();
             }

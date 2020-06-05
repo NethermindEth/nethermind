@@ -147,6 +147,14 @@ namespace Nethermind.Blockchain
 
         private void RecalculateTreeLevels()
         {
+            if (_syncConfig.BeamSync && !_syncConfig.FastSync)
+            {
+                BestKnownNumber = Head.Number;
+                BestSuggestedBody = Head;
+                BestSuggestedHeader = Head.Header;
+                return;
+            }
+            
             LoadLowestInsertedHeader();
             LoadLowestInsertedBody();
             LoadBestKnown();

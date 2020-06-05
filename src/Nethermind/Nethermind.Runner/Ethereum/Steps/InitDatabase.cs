@@ -80,8 +80,6 @@ namespace Nethermind.Runner.Ethereum.Steps
                     return new ReadOnlyDbProvider(rocksDb, storeReceipts);
                 case DiagnosticMode.MemDb:
                     return new MemDbProvider();
-                case DiagnosticMode.FixDb:
-                    return new BeamSyncDbProvider();
                 default:
                     return await GetRocksDbProvider(dbConfig, initConfig.BaseDbPath, storeReceipts);
             }
