@@ -148,7 +148,6 @@ namespace Nethermind.Synchronization.BeamSync
                 // if we keep timing out then we would finally reject the block (but only shelve it instead of marking invalid)
 
                 bool wasInDb = true;
-                _stateDb[key] = null;
                 while (true)
                 {
                     if (_isDisposed)
