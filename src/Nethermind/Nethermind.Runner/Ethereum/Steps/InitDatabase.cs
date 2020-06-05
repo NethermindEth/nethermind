@@ -80,6 +80,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                     return new ReadOnlyDbProvider(rocksDb, storeReceipts);
                 case DiagnosticMode.MemDb:
                     return new MemDbProvider();
+                case DiagnosticMode.FixDb:
+                    return new BeamSyncDbProvider();
                 default:
                     return await GetRocksDbProvider(dbConfig, initConfig.BaseDbPath, storeReceipts);
             }
@@ -87,7 +89,9 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         private async Task<RocksDbProvider> GetRocksDbProvider(IDbConfig dbConfig, string basePath, bool useReceiptsDb)
         {
-            RocksDbProvider debugRecorder = new RocksDbProvider(_context.LogManager, _context.Config<INdmConfig>().Enabled);
+            IInitConfig initConfig = _context.Config<IInitConfig>();
+            bool isFixMode = initConfig.DiagnosticMode == DiagnosticMode.FixDb;
+            RocksDbProvider debugRecorder = new RocksDbProvider(_context.LogManager, _context.Config<INdmConfig>().Enabled, isFixMode);
             ThisNodeInfo.AddInfo("DB location  :", $"{basePath}");
             await debugRecorder.Init(basePath, dbConfig, useReceiptsDb);
             return debugRecorder;

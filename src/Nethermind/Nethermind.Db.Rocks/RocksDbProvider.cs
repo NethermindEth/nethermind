@@ -27,11 +27,13 @@ namespace Nethermind.Db.Rocks
     {
         private readonly ILogManager _logManager;
         private readonly bool _addNdmDbs;
+        private readonly bool _isFixStateMode;
 
-        public RocksDbProvider(ILogManager logManager, bool addNdmDbs = true)
+        public RocksDbProvider(ILogManager logManager, bool addNdmDbs = true, bool isFixStateMode = false)
         {
             _logManager = logManager;
             _addNdmDbs = addNdmDbs;
+            _isFixStateMode = isFixStateMode;
         }
 
         public async Task Init(string basePath, IDbConfig dbConfig, bool useReceiptsDb)
@@ -72,7 +74,9 @@ namespace Nethermind.Db.Rocks
         public IDb ConfigsDb { get; private set; }
         public IDb EthRequestsDb { get; private set; }
         public IDb BloomDb { get; private set; }
-        public IDb BeamStateDb { get; } = new MemDb();
+        
+        public IDb _beamStateDb = new MemDb();
+        public IDb BeamStateDb => _isFixStateMode ? StateDb.Innermost : _beamStateDb;
 
         public void Dispose()
         {
