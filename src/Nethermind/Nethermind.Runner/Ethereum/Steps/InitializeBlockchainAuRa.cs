@@ -28,6 +28,7 @@ using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
 using Nethermind.Evm;
+using Nethermind.Facade.Transactions;
 using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Wallet;
 
@@ -105,6 +106,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _context.ReceiptStorage, 
                     _context.ValidatorStore,
                     _context.FinalizationManager,
+                    new TxPoolSender(_context.TxPool, new BasicWallet(_context.NodeKey), _context.Timestamper, _context.ChainSpec.ChainId), 
+                    _context.TxPool,
                     _context.LogManager,
                     _context.NodeKey.Address,
                     chainSpecAuRa.PosdaoTransition,

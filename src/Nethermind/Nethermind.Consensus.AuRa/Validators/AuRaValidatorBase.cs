@@ -47,7 +47,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         public Address[] Validators { get; protected internal set; }
         
         protected long InitBlockNumber { get; }
-        protected bool ForSealing { get; }
+        protected internal bool ForSealing { get; }
         protected IValidatorStore ValidatorStore { get; }
 
         protected void InitValidatorStore()

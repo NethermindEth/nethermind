@@ -23,6 +23,8 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.AuRa.Contracts;
+using Nethermind.Consensus.AuRa.Transactions;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm;
@@ -31,27 +33,36 @@ using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.Db.Blooms;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa.Validators
 {
-    public class ReportingContractBasedValidator : IAuRaValidator, IReportingValidator
+    public partial class ReportingContractBasedValidator : IAuRaValidator, IReportingValidator
     {
         private delegate Transaction CreateReportTransactionDelegate(Address validator, long block, byte[] proof);
         
         private readonly ContractBasedValidator _contractValidator;
-        private readonly IBlockFinder _blockFinder;
+        private readonly long _posdaoTransition;
+        private readonly ITxSender _posdaoTxSender;
+        private readonly IStateProvider _stateProvider;
+        private readonly ITxSender _nonPosdaoTxSender;
         private readonly ILogger _logger;
         
         public ReportingContractBasedValidator(
             ContractBasedValidator contractValidator,
             ReportingValidatorContract reportingValidatorContract,
             long posdaoTransition,
-            // IBlockFinder blockFinder,
+            ITxSender txSender,
+            ITxPool txPool,
+            IStateProvider stateProvider,
             ILogManager logManager)
         {
             _contractValidator = contractValidator ?? throw new ArgumentNullException(nameof(contractValidator));
-            // _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
             ValidatorContract = reportingValidatorContract ?? throw new ArgumentNullException(nameof(reportingValidatorContract));
+            _posdaoTransition = posdaoTransition;
+            _posdaoTxSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
+            _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
+            _nonPosdaoTxSender = new TxGasPriceSender(txSender, txPool);
             _logger = logManager?.GetClassLogger<ReportingContractBasedValidator>() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
@@ -69,9 +80,22 @@ namespace Nethermind.Consensus.AuRa.Validators
                 if (_logger.IsWarn) _logger.Warn($"Not reporting {validator} on block {blockNumber}: Not a validator");
                 return null;
             }
+            
+            var persistentReport = new PersistentReport(validator, (UInt256) blockNumber, proof);
+            
+            if (IsPosdao(blockNumber))
+            {
+                _persistentReports.AddLast(persistentReport);
+            }
 
-            // self.validators.enqueue_report
-            return ValidatorContract.ReportMalicious(validator, (UInt256) blockNumber, proof);
+            return CreateReportMaliciousTransactionCore(persistentReport);
+        }
+
+        private Transaction CreateReportMaliciousTransactionCore(PersistentReport persistentReport)
+        {
+            var transaction = ValidatorContract.ReportMalicious(persistentReport.ValidatorAddress, persistentReport.BlockNumber, persistentReport.Proof);
+            transaction.Nonce = _stateProvider.GetNonce(ValidatorContract.NodeAddress);
+            return transaction;
         }
 
         public void ReportBenign(Address validator, long blockNumber, IReportingValidator.BenignCause cause)
@@ -90,8 +114,9 @@ namespace Nethermind.Consensus.AuRa.Validators
                 var transaction = createReportTransactionDelegate(validator, blockNumber, proof);
                 if (transaction != null)
                 {
-                    // check posdao_transition transaction.GasPrice = 
-                    
+                    var posdao = IsPosdao(blockNumber);
+                    var txSender = posdao ? _posdaoTxSender : _nonPosdaoTxSender;
+                    SendTransaction(txSender, transaction); 
                     if (_logger.IsWarn) _logger.Warn($"Reported {type} validator {validator} at block {blockNumber}");
                 }
             }
@@ -100,6 +125,13 @@ namespace Nethermind.Consensus.AuRa.Validators
                 if (_logger.IsError) _logger.Error($"Validator {validator} could not be reported on block {blockNumber} with cause {cause}", e);
             }
         }
+
+        private static void SendTransaction(ITxSender txSender, Transaction transaction)
+        {
+            txSender.SendTransaction(transaction, TxHandlingOptions.ManagedNonce | TxHandlingOptions.PersistentBroadcast);
+        }
+
+        private bool IsPosdao(long blockNumber) => _posdaoTransition <= blockNumber;
 
         public void TryReportSkipped(BlockHeader header, BlockHeader parent)
         {
@@ -140,6 +172,10 @@ namespace Nethermind.Consensus.AuRa.Validators
         public void OnBlockProcessingEnd(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None)
         {
             _contractValidator.OnBlockProcessingEnd(block, receipts, options);
+            if (!_contractValidator.ForSealing)
+            {
+                ResendPersistedReports(block.Header);
+            }
         }
     }
 }

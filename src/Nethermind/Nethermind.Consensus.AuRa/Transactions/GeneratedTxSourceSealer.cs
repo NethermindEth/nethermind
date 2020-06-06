@@ -30,20 +30,26 @@ namespace Nethermind.Consensus.AuRa.Transactions
     public class GeneratedTxSourceSealer : ITxSource
     {
         private readonly ITxSource _innerSource;
-        private readonly IStateTxSealerFactory _stateTxSealerFactory;
+        private readonly ITxSealer _txSealer;
+        private readonly IStateReader _stateReader;
+        private readonly Address _nodeAddress;
 
-        public GeneratedTxSourceSealer(ITxSource innerSource, IStateTxSealerFactory stateTxSealerFactory)
+        public GeneratedTxSourceSealer(ITxSource innerSource, ITxSealer txSealer, IStateReader stateReader, Address nodeAddress)
         {
             _innerSource = innerSource ?? throw new ArgumentNullException(nameof(innerSource));
-            _stateTxSealerFactory = stateTxSealerFactory ?? throw new ArgumentNullException(nameof(stateTxSealerFactory));
+            _txSealer = txSealer ?? throw new ArgumentNullException(nameof(txSealer));
+            _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
+            _nodeAddress = nodeAddress ?? throw new ArgumentNullException(nameof(nodeAddress));
         }
         
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit) =>
             _innerSource.GetTransactions(parent, gasLimit).Select(tx =>
             {
+                var nodeNonce = _stateReader.GetNonce(parent.StateRoot, _nodeAddress);
                 if (tx is GeneratedTransaction)
                 {
-                    _stateTxSealerFactory.CreateTxSealerForState(parent.StateRoot).Seal(tx);
+                    tx.Nonce = ++nodeNonce;
+                    _txSealer.Seal(tx);
                 }
 
                 return tx;

@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -17,13 +17,14 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.TxPool;
 
-namespace Nethermind.Facade
+namespace Nethermind.TxPool
 {
-    public interface ITxPoolBridge : ITxSender
+    public class NullTxSender : ITxSender
     {
-        Transaction GetPendingTransaction(Keccak txHash);
-        Transaction[] GetPendingTransactions();
+        public static ITxSender Instance { get; } = new NullTxSender();
+        
+        public Keccak SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions) => tx.Hash;
+        
     }
 }

@@ -28,6 +28,7 @@ using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -52,6 +53,8 @@ namespace Nethermind.AuRa.Test
                 Substitute.For<IReceiptStorage>(),
                 Substitute.For<IValidatorStore>(),
                 Substitute.For<IBlockFinalizationManager>(),
+                Substitute.For<ITxSender>(),
+                Substitute.For<ITxPool>(),
                 LimboLogs.Instance,
                 Address.Zero,
                 long.MaxValue);

@@ -38,6 +38,11 @@ namespace Nethermind.Facade.Transactions
             if (sealers.Length == 0) throw new ArgumentException("Sealers can not be empty.", nameof(sealers));
         }
 
+        public TxPoolSender(ITxPool txPool, IBasicWallet wallet, ITimestamper timestamper, int chainId)
+            : this(txPool, new TxSealer(wallet, timestamper, chainId), new TxNonceTxPoolReserveSealer(wallet, timestamper, chainId, txPool))
+        {
+        }
+
         public Keccak SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
             bool seal = tx.Signature == null;
@@ -47,7 +52,7 @@ namespace Nethermind.Facade.Transactions
                 var sealer = _sealers[i];
                 if (seal)
                 {
-                    Seal(tx, sealer);
+                    sealer.Seal(tx);
                 }
                 
                 AddTxResult result = _txPool.AddTransaction(tx, txHandlingOptions);
@@ -63,18 +68,6 @@ namespace Nethermind.Facade.Transactions
             }
 
             return tx.Hash;
-        }
-
-        private static void Seal(Transaction tx, ITxSealer sealer)
-        {
-            try
-            {
-                sealer.Seal(tx);
-            }
-            catch (SecurityException e)
-            {
-                throw new SecurityException("Your account is locked. Unlock the account via CLI, personal_unlockAccount or use Trusted Signer.", e);
-            }
         }
     }
 }

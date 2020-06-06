@@ -26,6 +26,8 @@ using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.Db.Blooms;
+using Nethermind.Facade.Transactions;
+using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa
 {
@@ -39,6 +41,8 @@ namespace Nethermind.Consensus.AuRa
         private readonly IReceiptFinder _receiptFinder;
         private readonly IValidatorStore _validatorStore;
         private readonly IBlockFinalizationManager _finalizationManager;
+        private readonly ITxSender _txSender;
+        private readonly ITxPool _txPool;
         private readonly ILogManager _logManager;
         private readonly Address _nodeAddress;
         private readonly long _posdaoTransition;
@@ -52,6 +56,8 @@ namespace Nethermind.Consensus.AuRa
             IReceiptFinder receiptFinder,
             IValidatorStore validatorStore,
             IBlockFinalizationManager finalizationManager,
+            ITxSender txSender,
+            ITxPool txPool,
             ILogManager logManager,
             Address nodeAddress,
             long posdaoTransition,
@@ -65,6 +71,8 @@ namespace Nethermind.Consensus.AuRa
             _receiptFinder = receiptFinder;
             _validatorStore = validatorStore;
             _finalizationManager = finalizationManager;
+            _txSender = txSender;
+            _txPool = txPool;
             _logManager = logManager;
             _nodeAddress = nodeAddress;
             _posdaoTransition = posdaoTransition;
@@ -111,6 +119,9 @@ namespace Nethermind.Consensus.AuRa
                         GetContractBasedValidator(),
                         GetReportingValidatorContract(),
                         _posdaoTransition,
+                        _txSender,
+                        _txPool,
+                        _stateProvider,
                         _logManager),
                 
                 AuRaParameters.ValidatorType.Multi => 

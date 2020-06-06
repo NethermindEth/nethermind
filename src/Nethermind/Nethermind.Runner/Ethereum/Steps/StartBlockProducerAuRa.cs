@@ -35,6 +35,7 @@ using Nethermind.Runner.Ethereum.Context;
 using Nethermind.State;
 using Nethermind.Db.Blooms;
 using Nethermind.Facade.Transactions;
+using Nethermind.TxPool;
 using Nethermind.Wallet;
 
 namespace Nethermind.Runner.Ethereum.Steps
@@ -99,6 +100,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _context.ReceiptStorage,
                     _context.ValidatorStore,
                     _context.FinalizationManager,
+                    NullTxSender.Instance,
+                    NullTxPool.Instance, 
                     _context.LogManager,
                     _context.NodeKey.Address,
                     chainSpecAuRa.PosdaoTransition,
@@ -174,8 +177,8 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             if (needSigner)
             {
-                TxNonceStateSealerFactory stateSealerFactory = new TxNonceStateSealerFactory(new BasicWallet(_context.NodeKey), _context.Timestamper, _context.BlockTree.ChainId, readOnlyTxProcessingEnv.StateReader); 
-                txSource = new GeneratedTxSourceSealer(txSource, stateSealerFactory);
+                TxSealer transactionSealer = new TxSealer(new BasicWallet(_context.NodeKey), _context.Timestamper, _context.BlockTree.ChainId); 
+                txSource = new GeneratedTxSourceSealer(txSource, transactionSealer, readOnlyTxProcessingEnv.StateReader, _context.NodeKey.Address);
             }
 
             var txPermissionFilter = GetTxPermissionFilter(readOnlyTxProcessingEnv, readOnlyTransactionProcessorSource);

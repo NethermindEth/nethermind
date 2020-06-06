@@ -46,7 +46,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         private readonly IReceiptFinder _receiptFinder;
         private readonly long _posdaoTransition;
 
-        private ValidatorContract ValidatorContract { get; }
+        internal ValidatorContract ValidatorContract { get; }
         private PendingValidators CurrentPendingValidators => _currentPendingValidators;
 
         public ContractBasedValidator(
@@ -308,12 +308,12 @@ namespace Nethermind.Consensus.AuRa.Validators
 
                     if (emitInitChangeCallable)
                     {
-                        if (_logger.IsTrace) _logger.Trace($"New block #{newBlockNumber} issued ― no need to call emitInitiateChange()");
+                        if (_logger.IsTrace) _logger.Trace($"New block #{newBlockNumber} issued ― calling emitInitiateChange()");
+                        yield return ValidatorContract.EmitInitiateChange();
                     }
                     else
                     {
-                        if (_logger.IsTrace) _logger.Trace($"New block #{newBlockNumber} issued ― calling emitInitiateChange()");
-                        yield return ValidatorContract.EmitInitiateChange();
+                        if (_logger.IsTrace) _logger.Trace($"New block #{newBlockNumber} issued ― no need to call emitInitiateChange()");
                     }
                 }
             }

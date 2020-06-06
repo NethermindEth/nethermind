@@ -16,17 +16,11 @@
 // 
 
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 
 namespace Nethermind.TxPool
 {
     public interface ITxSealer
     {
         void Seal(Transaction tx);
-    }
-
-    public interface IStateTxSealerFactory
-    {
-        ITxSealer CreateTxSealerForState(Keccak state);
     }
 }

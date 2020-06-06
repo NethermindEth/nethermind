@@ -52,8 +52,8 @@ namespace Nethermind.AuRa.Test.Transactions
             var innerTxSource = Substitute.For<ITxSource>();
             innerTxSource.GetTransactions(blockHeader, gasLimit).Returns(new[] {tx});
             
-            TxNonceStateSealerFactory stateSealerFactory = new TxNonceStateSealerFactory(new BasicWallet(Build.A.PrivateKey.TestObject), timestamper, chainId, stateReader);
-            var transactionFiller = new GeneratedTxSourceSealer(innerTxSource, stateSealerFactory);
+            TxSealer txSealer = new TxSealer(new BasicWallet(Build.A.PrivateKey.TestObject), timestamper, chainId);
+            var transactionFiller = new GeneratedTxSourceSealer(innerTxSource, txSealer, stateReader, tx.SenderAddress);
             
             var txResult= transactionFiller.GetTransactions(blockHeader, gasLimit).First();
 
