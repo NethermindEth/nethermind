@@ -123,7 +123,8 @@ namespace Nethermind.HonestValidator
             return aggregationTime;
         }
 
-        public async Task<BlsSignature> GetAttestationSignatureAsync(Attestation unsignedAttestation, BlsPublicKey blsPublicKey)
+        public async Task<BlsSignature> GetAttestationSignatureAsync(Attestation unsignedAttestation,
+            BlsPublicKey blsPublicKey)
         {
             Fork fork = _beaconChainInformation.Fork;
             Epoch epoch = ComputeEpochAtSlot(unsignedAttestation.Data.Slot);
@@ -139,13 +140,11 @@ namespace Nethermind.HonestValidator
             }
 
             DomainType domainType = _signatureDomainOptions.CurrentValue.BeaconAttester;
-            
+
             (DomainType domainType, ForkVersion forkVersion) cacheKey = (domainType, forkVersion);
             Domain attesterDomain =
-                await _cache.GetOrCreateAsync(cacheKey, entry =>
-                {
-                    return Task.FromResult(ComputeDomain(domainType, forkVersion));
-                }).ConfigureAwait(false);
+                await _cache.GetOrCreateAsync(cacheKey,
+                    entry => { return Task.FromResult(ComputeDomain(domainType, forkVersion)); }).ConfigureAwait(false);
 
             Root attestationDataRoot = _cryptographyService.HashTreeRoot(unsignedAttestation.Data);
             Root signingRoot = ComputeSigningRoot(attestationDataRoot, attesterDomain);
@@ -332,7 +331,7 @@ namespace Nethermind.HonestValidator
 
             IList<(BlsPublicKey, CommitteeIndex)>
                 attestationDutyList = _validatorState.GetAttestationDutyForSlot(slot);
-            
+
             foreach ((BlsPublicKey validatorPublicKey, CommitteeIndex index) in attestationDutyList)
             {
                 Activity activity = new Activity("process-attestation-duty");
@@ -353,7 +352,8 @@ namespace Nethermind.HonestValidator
                     {
                         Attestation unsignedAttestation = newAttestationResponse.Content;
                         BlsSignature attestationSignature =
-                            await GetAttestationSignatureAsync(unsignedAttestation, validatorPublicKey).ConfigureAwait(false);
+                            await GetAttestationSignatureAsync(unsignedAttestation, validatorPublicKey)
+                                .ConfigureAwait(false);
                         Attestation signedAttestation = new Attestation(unsignedAttestation.AggregationBits,
                             unsignedAttestation.Data, attestationSignature);
 
@@ -363,7 +363,8 @@ namespace Nethermind.HonestValidator
                         // committee (marking relevant aggregation bits), then publish one pre-aggregated value? 
 
                         if (_logger.IsDebug())
-                            LogDebug.PublishingSignedAttestation(_logger, slot, index, validatorPublicKey.ToShortString(),
+                            LogDebug.PublishingSignedAttestation(_logger, slot, index,
+                                validatorPublicKey.ToShortString(),
                                 signedAttestation.Data,
                                 signedAttestation.Signature.ToString().Substring(0, 10), null);
 
@@ -547,7 +548,8 @@ namespace Nethermind.HonestValidator
                 activity.TraceId, activity.SpanId);
             try
             {
-                ApiResponse<Fork> forkResponse = await _beaconNodeApi.GetNodeForkAsync(cancellationToken).ConfigureAwait(false);
+                ApiResponse<Fork> forkResponse =
+                    await _beaconNodeApi.GetNodeForkAsync(cancellationToken).ConfigureAwait(false);
                 if (forkResponse.StatusCode == StatusCode.Success)
                 {
                     await _beaconChainInformation.SetForkAsync(forkResponse.Content).ConfigureAwait(false);
@@ -575,7 +577,8 @@ namespace Nethermind.HonestValidator
                 activity.TraceId, activity.SpanId);
             try
             {
-                ApiResponse<Syncing> syncingResponse = await _beaconNodeApi.GetSyncingAsync(cancellationToken).ConfigureAwait(false);
+                ApiResponse<Syncing> syncingResponse =
+                    await _beaconNodeApi.GetSyncingAsync(cancellationToken).ConfigureAwait(false);
                 if (syncingResponse.StatusCode == StatusCode.Success)
                 {
                     await _beaconChainInformation.SetSyncStatus(syncingResponse.Content).ConfigureAwait(false);
