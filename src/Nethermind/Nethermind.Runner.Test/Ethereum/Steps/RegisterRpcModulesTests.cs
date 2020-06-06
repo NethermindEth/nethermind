@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Threading;
 using Nethermind.Config;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -47,7 +48,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             context.RpcModuleProvider = rpcModuleProvider;
             
             RegisterRpcModules registerRpcModules = new RegisterRpcModules(context);
-            registerRpcModules.Execute();
+            registerRpcModules.Execute(CancellationToken.None);
             
             rpcModuleProvider.ReceivedWithAnyArgs().Register<IProofModule>(null);
         }
@@ -68,7 +69,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             context.RpcModuleProvider = rpcModuleProvider;
 
             RegisterRpcModules registerRpcModules = new RegisterRpcModules(context);
-            registerRpcModules.Execute();
+            registerRpcModules.Execute(CancellationToken.None);
             
             rpcModuleProvider.DidNotReceiveWithAnyArgs().Register<IProofModule>(null);
         }

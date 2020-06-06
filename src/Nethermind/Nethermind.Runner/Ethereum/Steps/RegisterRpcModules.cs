@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Cli.Modules;
 using Nethermind.DataMarketplace.Core.Configs;
@@ -48,7 +49,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context = context;
         }
 
-        public virtual Task Execute()
+        public virtual Task Execute(CancellationToken cancellationToken)
         {
             if (_context.RpcModuleProvider == null) throw new StepDependencyException(nameof(_context.RpcModuleProvider));
 

@@ -22,10 +22,11 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using Ethereum.Test.Base.Interfaces;
 
 namespace Ethereum.Test.Base
 {
-    public class FileTestsSource : IBlockchainTestsSource
+    public class FileTestsSource
     {
         private readonly string _fileName;
         private readonly string _wildcard;
@@ -36,50 +37,50 @@ namespace Ethereum.Test.Base
             _wildcard = wildcard;
         }
 
-        public IEnumerable<BlockchainTest> LoadTests()
+        public IEnumerable<GeneralStateTest> LoadGeneralStateTests()
         {
             try
             {
                 if (Path.GetFileName(_fileName).StartsWith("."))
                 {
-                    return Enumerable.Empty<BlockchainTest>();
+                    return Enumerable.Empty<GeneralStateTest>();
                 }
 
                 if (_wildcard != null && !_fileName.Contains(_wildcard))
                 {
-                    return Enumerable.Empty<BlockchainTest>();
+                    return Enumerable.Empty<GeneralStateTest>();
                 }
 
                 string json = File.ReadAllText(_fileName);
-                return JsonToBlockchainTest.Convert(json);
+                return JsonToEthereumTest.Convert(json);
             }
             catch (Exception e)
             {
-                return Enumerable.Repeat(new BlockchainTest {Name = _fileName, LoadFailure = $"Failed to load: {e.Message}"}, 1);
+                return Enumerable.Repeat(new GeneralStateTest {Name = _fileName, LoadFailure = $"Failed to load: {e.Message}"}, 1);
             }
         }
         
-        public IEnumerable<LegacyBlockchainTest> LoadLegacyTests()
+        public IEnumerable<BlockchainTest> LoadBlockchainTests()
         {
             try
             {
                 if (Path.GetFileName(_fileName).StartsWith("."))
                 {
-                    return Enumerable.Empty<LegacyBlockchainTest>();
+                    return Enumerable.Empty<BlockchainTest>();
                 }
 
                 if (_wildcard != null && !_fileName.Contains(_wildcard))
                 {
-                    return Enumerable.Empty<LegacyBlockchainTest>();
+                    return Enumerable.Empty<BlockchainTest>();
                 }
 
                 string json = File.ReadAllText(_fileName, Encoding.Default);
                 
-                return JsonToBlockchainTest.ConvertLegacy(json);
+                return JsonToEthereumTest.ConvertToBlockchainTests(json);
             }
             catch (Exception e)
             {
-                return Enumerable.Repeat(new LegacyBlockchainTest {Name = _fileName, LoadFailure = $"Failed to load: {e.Message}"}, 1);
+                return Enumerable.Repeat(new BlockchainTest {Name = _fileName, LoadFailure = $"Failed to load: {e.Message}"}, 1);
             }
         }
     }

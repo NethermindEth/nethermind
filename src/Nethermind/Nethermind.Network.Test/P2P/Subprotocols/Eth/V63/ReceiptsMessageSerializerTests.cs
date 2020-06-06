@@ -14,12 +14,14 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
@@ -103,6 +105,13 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         {
             TxReceipt[][] data = {new[] {Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject}, null, new[] {null, Build.A.Receipt.WithAllFieldsFilled.TestObject}};
             Test(data);
+        }
+        
+        [Test]
+        public void Deserialize_empty()
+        {
+            ReceiptsMessageSerializer serializer = new ReceiptsMessageSerializer(RopstenSpecProvider.Instance);
+            serializer.Deserialize(new byte[0]).TxReceipts.Should().HaveCount(0);
         }
         
         [Test]

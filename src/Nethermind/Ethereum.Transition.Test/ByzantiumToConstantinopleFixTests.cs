@@ -25,14 +25,15 @@ namespace Ethereum.Transition.Test
 {
     [TestFixture]
     [Parallelizable(ParallelScope.All)]
-    public class ByzantiumToConstantinopleFixTests : LegacyBlockchainTestBase
+    public class ByzantiumToConstantinopleFixTests : BlockchainTestBase
     {
         [TestCaseSource(nameof(LoadTests))]
-        public async Task Test(LegacyBlockchainTest test)
+        public async Task Test(BlockchainTest test)
         {    
             await RunTest(test);
         }
         
-        public static IEnumerable<LegacyBlockchainTest> LoadTests() { return new DirectoryTestsSource("bcByzantiumToConstantinopleFix").LoadLegacyTests(); }
+        public static IEnumerable<BlockchainTest> LoadTests() { var loader = new DirectoryTestsSourceLoader(new LoadLegacyBlockchainTestsStrategy(), "bcByzantiumToConstantinopleFix");
+        return (IEnumerable<BlockchainTest>)loader.LoadTests(); }
     }
 }

@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore;
 using Microsoft.AspNetCore.Hosting;
@@ -63,7 +64,7 @@ namespace Nethermind.Runner.Ethereum
             _logger = logManager.GetClassLogger();
         }
 
-        public Task Start()
+        public Task Start(CancellationToken cancellationToken)
         {
             IEnumerable<string> GetUrls()
             {
@@ -114,14 +115,21 @@ namespace Nethermind.Runner.Ethereum
                     logging.AddProvider(new CustomMicrosoftLoggerProvider(_logManager));
                 })
                 .Build();
-
-            _webHost = webHost;
-            _webHost.Start();
+            
             string urlsString = string.Join(" ; ", urls);
-            if (_logger.IsDebug) _logger.Debug($"JSON RPC     : {urlsString}");
+            
             ThisNodeInfo.AddInfo("JSON RPC     :", $"{urlsString}");
-            if (_logger.IsDebug) _logger.Debug($"RPC modules  : {string.Join(", ", _moduleProvider.Enabled.OrderBy(x => x))}");
             ThisNodeInfo.AddInfo("RPC modules  :", $"{string.Join(", ", _moduleProvider.Enabled.OrderBy(x => x))}");
+            
+            _webHost = webHost;
+
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                _webHost.Start();
+                if (_logger.IsDebug) _logger.Debug($"JSON RPC     : {urlsString}");
+                if (_logger.IsDebug) _logger.Debug($"RPC modules  : {string.Join(", ", _moduleProvider.Enabled.OrderBy(x => x))}");
+            }
+
             return Task.CompletedTask;
         }
 

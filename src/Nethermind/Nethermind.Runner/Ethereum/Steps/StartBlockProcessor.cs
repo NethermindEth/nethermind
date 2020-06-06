@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Runner.Ethereum.Context;
 
@@ -29,7 +30,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context = context;
         }
         
-        public Task Execute()
+        public Task Execute(CancellationToken _)
         {
             if (_context.BlockchainProcessor == null)
             {

@@ -129,7 +129,7 @@ namespace Nethermind.Wallet
         
         public void Sign(Transaction tx, int chainId)
         {
-            if (_logger.IsDebug) _logger?.Debug($"Signing transaction: {tx.Value} to {tx.To}");
+            if (_logger.IsDebug) _logger.Debug($"Signing transaction: {tx.Value} to {tx.To}");
             IBasicWallet.Sign(this, tx, chainId);
         }
 

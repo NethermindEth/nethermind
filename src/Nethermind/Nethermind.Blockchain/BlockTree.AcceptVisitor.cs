@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Visitors;
@@ -133,7 +132,7 @@ namespace Nethermind.Blockchain
             BlockVisitOutcome blockVisitOutcome = await visitor.VisitBlock(block, cancellationToken);
             if ((blockVisitOutcome & BlockVisitOutcome.Suggest) == BlockVisitOutcome.Suggest)
             {
-                // remnant after previous approach - we want to skip stadard suggest processing and just invoke processor
+                // remnant after previous approach - we want to skip standard suggest processing and just invoke processor
                 BestSuggestedHeader = block.Header;
                 BestSuggestedBody = block;
                 NewBestSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
