@@ -29,7 +29,7 @@ using Nethermind.State;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public class ValidatorContract : Contract
+    public partial class ValidatorContract : Contract
     {
         private readonly IAbiEncoder _abiEncoder;
         private readonly IStateProvider _stateProvider;
@@ -120,25 +120,5 @@ namespace Nethermind.Consensus.AuRa.Contracts
         {
             EnsureSystemAccount(_stateProvider);
         }
-
-        /// <summary>
-        /// Returns a boolean flag indicating whether the `emitInitiateChange` function can be called at the moment. Used by a validator's node and `TxPermission` contract (to deny dummy calling).
-        /// </summary>
-        public bool EmitInitiateChangeCallable(BlockHeader parentHeader) => Constant.Call<bool>(parentHeader, Definition.GetFunction(nameof(EmitInitiateChangeCallable)), Address.SystemUser);
-
-
-        /// <summary>
-        /// Emits the `InitiateChange` event to pass a new validator set to the validator nodes.
-        /// Called automatically by one of the current validator's nodes when the `emitInitiateChangeCallable` getter
-        /// returns `true` (when some validator needs to be removed as malicious or the validator set needs to be
-        /// updated at the beginning of a new staking epoch). The new validator set is passed to the validator nodes
-        /// through the `InitiateChange` event and saved for later use by the `finalizeChange` function.
-        /// See https://openethereum.github.io/wiki/Validator-Set.html for more info about the `InitiateChange` event.
-        /// </summary>
-        public Transaction EmitInitiateChange() => GenerateTransaction<GeneratedTransaction>(Definition.GetFunction(nameof(EmitInitiateChange)), _nodeAddress);
-        
-        // This was mistakenly put here in POSDAO it should belong to ReportingValidatorContract
-        public bool ShouldValidatorReport(Address validatorAddress, Address maliciousMiningAddress, in UInt256 blockNumber, BlockHeader parentHeader) => 
-            Constant.Call<bool>(parentHeader, Definition.GetFunction(nameof(ShouldValidatorReport)), Address.SystemUser, validatorAddress, maliciousMiningAddress, blockNumber);
     }
 }

@@ -35,17 +35,16 @@ using Nethermind.Db.Blooms;
 
 namespace Nethermind.Consensus.AuRa.Validators
 {
-    public class ContractBasedValidator : AuRaValidatorBase, ITxSource, IDisposable
+    public partial class ContractBasedValidator : AuRaValidatorBase, IDisposable
     {
         private readonly ILogger _logger;
        
         private PendingValidators _currentPendingValidators;
         private long _lastProcessedBlockNumber = 0;
         private IBlockFinalizationManager _blockFinalizationManager;
-        protected IBlockTree BlockTree { get; }
+        private IBlockTree BlockTree { get; }
         private readonly IReceiptFinder _receiptFinder;
-        private readonly long _posdaoTransition;
-
+        
         internal ValidatorContract ValidatorContract { get; }
         private PendingValidators CurrentPendingValidators => _currentPendingValidators;
 
@@ -281,41 +280,6 @@ namespace Nethermind.Consensus.AuRa.Validators
             if (canSave)
             {
                 ValidatorStore.PendingValidators = validators;
-            }
-        }
-
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
-        {
-            if (ForSealing)
-            {
-                var newBlockNumber = parent.Number + 1;
-                if (newBlockNumber < _posdaoTransition)
-                {
-                    if (_logger.IsTrace) _logger.Trace("Skipping a call to emitInitiateChange");
-                }
-                else
-                {
-                    bool emitInitChangeCallable = false;
-
-                    try
-                    {
-                        emitInitChangeCallable = ValidatorContract.EmitInitiateChangeCallable(parent);
-                    }
-                    catch (AuRaException e)
-                    {
-                        if (_logger.IsError) _logger.Error($"Call to {nameof(ValidatorContract.EmitInitiateChangeCallable)} failed.", e);
-                    }
-
-                    if (emitInitChangeCallable)
-                    {
-                        if (_logger.IsTrace) _logger.Trace($"New block #{newBlockNumber} issued ― calling emitInitiateChange()");
-                        yield return ValidatorContract.EmitInitiateChange();
-                    }
-                    else
-                    {
-                        if (_logger.IsTrace) _logger.Trace($"New block #{newBlockNumber} issued ― no need to call emitInitiateChange()");
-                    }
-                }
             }
         }
     }
