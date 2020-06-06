@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Nethermind.Core2;
@@ -36,6 +37,7 @@ namespace Nethermind.HonestValidator
     {
         private readonly BeaconChainInformation _beaconChainInformation;
         private readonly IBeaconNodeApi _beaconNodeApi;
+        private readonly IMemoryCache _cache;
         private readonly ICryptographyService _cryptographyService;
         private readonly IOptionsMonitor<InitialValues> _initialValueOptions;
         private readonly ILogger _logger;
@@ -63,6 +65,7 @@ namespace Nethermind.HonestValidator
             _beaconChainInformation = beaconChainInformation;
 
             _validatorState = new ValidatorState();
+            _cache = new MemoryCache(new MemoryCacheOptions());
         }
 
         /// <summary>
@@ -120,7 +123,7 @@ namespace Nethermind.HonestValidator
             return aggregationTime;
         }
 
-        public BlsSignature GetAttestationSignature(Attestation unsignedAttestation, BlsPublicKey blsPublicKey)
+        public async Task<BlsSignature> GetAttestationSignatureAsync(Attestation unsignedAttestation, BlsPublicKey blsPublicKey)
         {
             var fork = _beaconChainInformation.Fork;
             var epoch = ComputeEpochAtSlot(unsignedAttestation.Data.Slot);
@@ -136,7 +139,13 @@ namespace Nethermind.HonestValidator
             }
 
             var domainType = _signatureDomainOptions.CurrentValue.BeaconAttester;
-            var attesterDomain = ComputeDomain(domainType, forkVersion);
+            
+            var cacheKey = (domainType, forkVersion);
+            Domain attesterDomain =
+                await _cache.GetOrCreateAsync(cacheKey, entry =>
+                {
+                    return Task.FromResult(ComputeDomain(domainType, forkVersion));
+                }).ConfigureAwait(false);
 
             var attestationDataRoot = _cryptographyService.HashTreeRoot(unsignedAttestation.Data);
             var signingRoot = ComputeSigningRoot(attestationDataRoot, attesterDomain);
@@ -345,7 +354,7 @@ namespace Nethermind.HonestValidator
                         {
                             Attestation unsignedAttestation = newAttestationResponse.Content;
                             BlsSignature attestationSignature =
-                                GetAttestationSignature(unsignedAttestation, validatorPublicKey);
+                                await GetAttestationSignatureAsync(unsignedAttestation, validatorPublicKey).ConfigureAwait(false);
                             Attestation signedAttestation = new Attestation(unsignedAttestation.AggregationBits,
                                 unsignedAttestation.Data, attestationSignature);
 

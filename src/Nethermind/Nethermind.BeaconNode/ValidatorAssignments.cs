@@ -142,7 +142,7 @@ namespace Nethermind.BeaconNode
                 {
                     entry.SlidingExpiration = TimeSpan.FromSeconds(2 * timeParameters.SecondsPerSlot);
                     return Task.FromResult(new ConcurrentDictionary<BlsPublicKey, ValidatorDuty>());
-                });
+                }).ConfigureAwait(false);
 
             IEnumerable<BlsPublicKey> missingValidators = validatorPublicKeys.Except(dutiesForEpoch.Keys);
             if (missingValidators.Any())
