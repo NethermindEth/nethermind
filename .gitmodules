@@ -8,3 +8,6 @@
 	path = src/rocksdb-sharp
 	url = https://github.com/NethermindEth/rocksdb-sharp.git
 	branch = master
+[submodule "src/bench_precompiles"]
+	path = src/bench_precompiles
+	url = https://github.com/shamatar/bench_precompiles.git
