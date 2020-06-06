@@ -77,22 +77,18 @@ namespace Nethermind.BeaconNode.OApi.Controllers
             ApiResponse apiResponse =
                 await _beaconNode.PublishAttestationAsync(signedAttestation, cancellationToken).ConfigureAwait(false);
 
-            switch (apiResponse.StatusCode)
+            return apiResponse.StatusCode switch
             {
-                case Core2.Api.StatusCode.Success:
-                    // "The attestation was validated successfully and has been broadcast. It has also been integrated into the beacon node's database."
-                    return Ok();
-                case Core2.Api.StatusCode.BroadcastButFailedValidation:
-                    // "The attestation failed validation, but was successfully broadcast anyway. It was not integrated into the beacon node's database."
-                    return Accepted();
-                case Core2.Api.StatusCode.InvalidRequest:
-                    return Problem("Invalid request syntax.", statusCode: (int) apiResponse.StatusCode);
-                case Core2.Api.StatusCode.CurrentlySyncing:
-                    return Problem("Beacon node is currently syncing, try again later.",
-                        statusCode: (int) apiResponse.StatusCode);
-            }
-
-            return Problem("Beacon node internal error.", statusCode: (int) apiResponse.StatusCode);
+                // "The attestation was validated successfully and has been broadcast. It has also been integrated into the beacon node's database."
+                Core2.Api.StatusCode.Success => Ok(),
+                // "The attestation failed validation, but was successfully broadcast anyway. It was not integrated into the beacon node's database."
+                Core2.Api.StatusCode.BroadcastButFailedValidation => Accepted(),
+                Core2.Api.StatusCode.InvalidRequest => Problem("Invalid request syntax.",
+                    statusCode: (int) apiResponse.StatusCode),
+                Core2.Api.StatusCode.CurrentlySyncing => Problem("Beacon node is currently syncing, try again later.",
+                    statusCode: (int) apiResponse.StatusCode),
+                _ => Problem("Beacon node internal error.", statusCode: (int) apiResponse.StatusCode)
+            };
         }
     }
 }
