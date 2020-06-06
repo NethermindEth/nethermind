@@ -26,15 +26,6 @@ namespace Nethermind.Precompiles.Benchmark
 => BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args, new DebugInProcessConfig());
 #else
         {
-            // BenchmarkRunner.Run<HandshakeBenchmarks>();
-            // BenchmarkRunner.Run<KdfDerivation>();
-            // BenchmarkRunner.Run<EcdhAgreementBenchmarks>();
-            // BenchmarkRunner.Run<OutFlowBenchmark>();
-            // BenchmarkRunner.Run<InFlowBenchmark>();
-            // BenchmarkRunner.Run<NettyFrameEncoder>();
-            // BenchmarkRunner.Run<NettyFrameMerger>();
-            // BenchmarkRunner.Run<NettyPacketSplitter>();
-            // BenchmarkRunner.Run<DiscoveryBenchmarks>();
             BenchmarkRunner.Run<Sha256Benchmark>(new DebugInProcessConfig());
         }
 #endif
