@@ -114,7 +114,7 @@ namespace Nethermind.HonestValidator
 
         public ulong GetAggregationTime(BeaconChainInformation beaconChainInformation, Slot slot)
         {
-            var timeParameters = _timeParameterOptions.CurrentValue;
+            TimeParameters timeParameters = _timeParameterOptions.CurrentValue;
             ulong startTimeOfSlot = beaconChainInformation.GenesisTime + timeParameters.SecondsPerSlot * slot;
 
             // Aggregate 2/3 way through slot
@@ -125,8 +125,8 @@ namespace Nethermind.HonestValidator
 
         public async Task<BlsSignature> GetAttestationSignatureAsync(Attestation unsignedAttestation, BlsPublicKey blsPublicKey)
         {
-            var fork = _beaconChainInformation.Fork;
-            var epoch = ComputeEpochAtSlot(unsignedAttestation.Data.Slot);
+            Fork fork = _beaconChainInformation.Fork;
+            Epoch epoch = ComputeEpochAtSlot(unsignedAttestation.Data.Slot);
 
             ForkVersion forkVersion;
             if (epoch < fork.Epoch)
@@ -138,26 +138,26 @@ namespace Nethermind.HonestValidator
                 forkVersion = fork.CurrentVersion;
             }
 
-            var domainType = _signatureDomainOptions.CurrentValue.BeaconAttester;
+            DomainType domainType = _signatureDomainOptions.CurrentValue.BeaconAttester;
             
-            var cacheKey = (domainType, forkVersion);
+            (DomainType domainType, ForkVersion forkVersion) cacheKey = (domainType, forkVersion);
             Domain attesterDomain =
                 await _cache.GetOrCreateAsync(cacheKey, entry =>
                 {
                     return Task.FromResult(ComputeDomain(domainType, forkVersion));
                 }).ConfigureAwait(false);
 
-            var attestationDataRoot = _cryptographyService.HashTreeRoot(unsignedAttestation.Data);
-            var signingRoot = ComputeSigningRoot(attestationDataRoot, attesterDomain);
+            Root attestationDataRoot = _cryptographyService.HashTreeRoot(unsignedAttestation.Data);
+            Root signingRoot = ComputeSigningRoot(attestationDataRoot, attesterDomain);
 
-            var signature = _validatorKeyProvider.SignRoot(blsPublicKey, signingRoot);
+            BlsSignature signature = _validatorKeyProvider.SignRoot(blsPublicKey, signingRoot);
 
             return signature;
         }
 
         public ulong GetAttestationTime(BeaconChainInformation beaconChainInformation, Slot slot)
         {
-            var timeParameters = _timeParameterOptions.CurrentValue;
+            TimeParameters timeParameters = _timeParameterOptions.CurrentValue;
             ulong startTimeOfSlot = beaconChainInformation.GenesisTime + timeParameters.SecondsPerSlot * slot;
 
             // Attest 1/3 way through slot
@@ -168,8 +168,8 @@ namespace Nethermind.HonestValidator
 
         public BlsSignature GetBlockSignature(BeaconBlock block, BlsPublicKey blsPublicKey)
         {
-            var fork = _beaconChainInformation.Fork;
-            var epoch = ComputeEpochAtSlot(block.Slot);
+            Fork fork = _beaconChainInformation.Fork;
+            Epoch epoch = ComputeEpochAtSlot(block.Slot);
 
             ForkVersion forkVersion;
             if (epoch < fork.Epoch)
@@ -181,8 +181,8 @@ namespace Nethermind.HonestValidator
                 forkVersion = fork.CurrentVersion;
             }
 
-            var domainType = _signatureDomainOptions.CurrentValue.BeaconProposer;
-            var proposerDomain = ComputeDomain(domainType, forkVersion);
+            DomainType domainType = _signatureDomainOptions.CurrentValue.BeaconProposer;
+            Domain proposerDomain = ComputeDomain(domainType, forkVersion);
 
             /*
             JsonSerializerOptions options = new System.Text.Json.JsonSerializerOptions { WriteIndented = true };
@@ -190,10 +190,10 @@ namespace Nethermind.HonestValidator
             string blockJson = System.Text.Json.JsonSerializer.Serialize(block, options);
             */
 
-            var blockRoot = _cryptographyService.HashTreeRoot(block);
-            var signingRoot = ComputeSigningRoot(blockRoot, proposerDomain);
+            Root blockRoot = _cryptographyService.HashTreeRoot(block);
+            Root signingRoot = ComputeSigningRoot(blockRoot, proposerDomain);
 
-            var signature = _validatorKeyProvider.SignRoot(blsPublicKey, signingRoot);
+            BlsSignature signature = _validatorKeyProvider.SignRoot(blsPublicKey, signingRoot);
 
             return signature;
         }
@@ -207,8 +207,8 @@ namespace Nethermind.HonestValidator
 
         public BlsSignature GetEpochSignature(Slot slot, BlsPublicKey blsPublicKey)
         {
-            var fork = _beaconChainInformation.Fork;
-            var epoch = ComputeEpochAtSlot(slot);
+            Fork fork = _beaconChainInformation.Fork;
+            Epoch epoch = ComputeEpochAtSlot(slot);
 
             ForkVersion forkVersion;
             if (epoch < fork.Epoch)
@@ -220,13 +220,13 @@ namespace Nethermind.HonestValidator
                 forkVersion = fork.CurrentVersion;
             }
 
-            var domainType = _signatureDomainOptions.CurrentValue.Randao;
-            var randaoDomain = ComputeDomain(domainType, forkVersion);
+            DomainType domainType = _signatureDomainOptions.CurrentValue.Randao;
+            Domain randaoDomain = ComputeDomain(domainType, forkVersion);
 
-            var epochRoot = _cryptographyService.HashTreeRoot(epoch);
-            var signingRoot = ComputeSigningRoot(epochRoot, randaoDomain);
+            Root epochRoot = _cryptographyService.HashTreeRoot(epoch);
+            Root signingRoot = ComputeSigningRoot(epochRoot, randaoDomain);
 
-            var randaoReveal = _validatorKeyProvider.SignRoot(blsPublicKey, signingRoot);
+            BlsSignature randaoReveal = _validatorKeyProvider.SignRoot(blsPublicKey, signingRoot);
 
             return randaoReveal;
         }
@@ -330,67 +330,65 @@ namespace Nethermind.HonestValidator
         {
             // If attester, get attestation, sign attestation, return to node
 
-            IList<(BlsPublicKey, CommitteeIndex)>?
+            IList<(BlsPublicKey, CommitteeIndex)>
                 attestationDutyList = _validatorState.GetAttestationDutyForSlot(slot);
-            if (!(attestationDutyList is null))
+            
+            foreach ((BlsPublicKey validatorPublicKey, CommitteeIndex index) in attestationDutyList)
             {
-                foreach ((BlsPublicKey validatorPublicKey, CommitteeIndex index) in attestationDutyList)
+                Activity activity = new Activity("process-attestation-duty");
+                activity.Start();
+                using IDisposable activityScope = _logger.BeginScope("[TraceId, {TraceId}], [SpanId, {SpanId}]",
+                    activity.TraceId, activity.SpanId);
+                try
                 {
-                    Activity activity = new Activity("process-attestation-duty");
-                    activity.Start();
-                    using IDisposable activityScope = _logger.BeginScope("[TraceId, {TraceId}], [SpanId, {SpanId}]",
-                        activity.TraceId, activity.SpanId);
-                    try
+                    if (_logger.IsDebug())
+                        LogDebug.RequestingAttestationFor(_logger, slot, _beaconChainInformation.Time,
+                            validatorPublicKey,
+                            null);
+
+                    ApiResponse<Attestation> newAttestationResponse = await _beaconNodeApi
+                        .NewAttestationAsync(validatorPublicKey, false, slot, index, cancellationToken)
+                        .ConfigureAwait(false);
+                    if (newAttestationResponse.StatusCode == StatusCode.Success)
                     {
+                        Attestation unsignedAttestation = newAttestationResponse.Content;
+                        BlsSignature attestationSignature =
+                            await GetAttestationSignatureAsync(unsignedAttestation, validatorPublicKey).ConfigureAwait(false);
+                        Attestation signedAttestation = new Attestation(unsignedAttestation.AggregationBits,
+                            unsignedAttestation.Data, attestationSignature);
+
+                        // TODO: Getting one attestation at a time probably isn't very scalable.
+                        // All validators are attesting the same data, just in different committees with different indexes
+                        // => Get the data once, group relevant validators by committee, sign and aggregate within each
+                        // committee (marking relevant aggregation bits), then publish one pre-aggregated value? 
+
                         if (_logger.IsDebug())
-                            LogDebug.RequestingAttestationFor(_logger, slot, _beaconChainInformation.Time,
-                                validatorPublicKey,
-                                null);
+                            LogDebug.PublishingSignedAttestation(_logger, slot, index, validatorPublicKey.ToShortString(),
+                                signedAttestation.Data,
+                                signedAttestation.Signature.ToString().Substring(0, 10), null);
 
-                        ApiResponse<Attestation> newAttestationResponse = await _beaconNodeApi
-                            .NewAttestationAsync(validatorPublicKey, false, slot, index, cancellationToken)
+                        ApiResponse publishAttestationResponse = await _beaconNodeApi
+                            .PublishAttestationAsync(signedAttestation, cancellationToken)
                             .ConfigureAwait(false);
-                        if (newAttestationResponse.StatusCode == StatusCode.Success)
+                        if (publishAttestationResponse.StatusCode != StatusCode.Success &&
+                            publishAttestationResponse.StatusCode !=
+                            StatusCode.BroadcastButFailedValidation)
                         {
-                            Attestation unsignedAttestation = newAttestationResponse.Content;
-                            BlsSignature attestationSignature =
-                                await GetAttestationSignatureAsync(unsignedAttestation, validatorPublicKey).ConfigureAwait(false);
-                            Attestation signedAttestation = new Attestation(unsignedAttestation.AggregationBits,
-                                unsignedAttestation.Data, attestationSignature);
-
-                            // TODO: Getting one attestation at a time probably isn't very scalable.
-                            // All validators are attesting the same data, just in different committees with different indexes
-                            // => Get the data once, group relevant validators by committee, sign and aggregate within each
-                            // committee (marking relevant aggregation bits), then publish one pre-aggregated value? 
-
-                            if (_logger.IsDebug())
-                                LogDebug.PublishingSignedAttestation(_logger, slot, index, validatorPublicKey.ToShortString(),
-                                    signedAttestation.Data,
-                                    signedAttestation.Signature.ToString().Substring(0, 10), null);
-
-                            ApiResponse publishAttestationResponse = await _beaconNodeApi
-                                .PublishAttestationAsync(signedAttestation, cancellationToken)
-                                .ConfigureAwait(false);
-                            if (publishAttestationResponse.StatusCode != StatusCode.Success &&
-                                publishAttestationResponse.StatusCode !=
-                                StatusCode.BroadcastButFailedValidation)
-                            {
-                                throw new Exception(
-                                    $"Error response from publish: {(int) publishAttestationResponse.StatusCode} {publishAttestationResponse.StatusCode}.");
-                            }
-
-                            bool nodeAccepted = publishAttestationResponse.StatusCode == StatusCode.Success;
-                            // TODO: Log warning if not accepted? Not sure what else we could do.
+                            throw new Exception(
+                                $"Error response from publish: {(int) publishAttestationResponse.StatusCode} {publishAttestationResponse.StatusCode}.");
                         }
+
+                        bool nodeAccepted = publishAttestationResponse.StatusCode == StatusCode.Success;
+                        // TODO: Log warning if not accepted? Not sure what else we could do.
                     }
-                    catch (Exception ex)
-                    {
-                        Log.ExceptionProcessingAttestationDuty(_logger, slot, validatorPublicKey, ex.Message, ex);
-                    }
-                    finally
-                    {
-                        activity.Stop();
-                    }
+                }
+                catch (Exception ex)
+                {
+                    Log.ExceptionProcessingAttestationDuty(_logger, slot, validatorPublicKey, ex.Message, ex);
+                }
+                finally
+                {
+                    activity.Stop();
                 }
 
                 _validatorState.ClearAttestationDutyForSlot(slot);
@@ -407,7 +405,7 @@ namespace Nethermind.HonestValidator
             {
                 Activity activity = new Activity("process-proposal-duty");
                 activity.Start();
-                using var activityScope = _logger.BeginScope("[TraceId, {TraceId}], [SpanId, {SpanId}]",
+                using IDisposable activityScope = _logger.BeginScope("[TraceId, {TraceId}], [SpanId, {SpanId}]",
                     activity.TraceId, activity.SpanId);
                 try
                 {
@@ -463,7 +461,7 @@ namespace Nethermind.HonestValidator
         {
             Activity activity = new Activity("update-duties");
             activity.Start();
-            using var activityScope = _logger.BeginScope("[TraceId, {TraceId}], [SpanId, {SpanId}]",
+            using IDisposable activityScope = _logger.BeginScope("[TraceId, {TraceId}], [SpanId, {SpanId}]",
                 activity.TraceId, activity.SpanId);
             try
             {
@@ -545,11 +543,11 @@ namespace Nethermind.HonestValidator
 
             Activity activity = new Activity("update-fork-version");
             activity.Start();
-            using var activityScope = _logger.BeginScope("[TraceId, {TraceId}], [SpanId, {SpanId}]",
+            using IDisposable activityScope = _logger.BeginScope("[TraceId, {TraceId}], [SpanId, {SpanId}]",
                 activity.TraceId, activity.SpanId);
             try
             {
-                var forkResponse = await _beaconNodeApi.GetNodeForkAsync(cancellationToken).ConfigureAwait(false);
+                ApiResponse<Fork> forkResponse = await _beaconNodeApi.GetNodeForkAsync(cancellationToken).ConfigureAwait(false);
                 if (forkResponse.StatusCode == StatusCode.Success)
                 {
                     await _beaconChainInformation.SetForkAsync(forkResponse.Content).ConfigureAwait(false);
@@ -573,11 +571,11 @@ namespace Nethermind.HonestValidator
         {
             Activity activity = new Activity("update-sync-status");
             activity.Start();
-            using var activityScope = _logger.BeginScope("[TraceId, {TraceId}], [SpanId, {SpanId}]",
+            using IDisposable activityScope = _logger.BeginScope("[TraceId, {TraceId}], [SpanId, {SpanId}]",
                 activity.TraceId, activity.SpanId);
             try
             {
-                var syncingResponse = await _beaconNodeApi.GetSyncingAsync(cancellationToken).ConfigureAwait(false);
+                ApiResponse<Syncing> syncingResponse = await _beaconNodeApi.GetSyncingAsync(cancellationToken).ConfigureAwait(false);
                 if (syncingResponse.StatusCode == StatusCode.Success)
                 {
                     await _beaconChainInformation.SetSyncStatus(syncingResponse.Content).ConfigureAwait(false);

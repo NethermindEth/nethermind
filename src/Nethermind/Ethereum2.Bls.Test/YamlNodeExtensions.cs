@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using YamlDotNet.RepresentationModel;
 
@@ -27,7 +28,7 @@ namespace Ethereum2.Bls.Test
         public static T?[]? ArrayProp<T>(this YamlNode yamlNode, string propertyName) where T : class
         {
             YamlMappingNode? mappingNode = yamlNode as YamlMappingNode;
-            var result =
+            IEnumerable<string?>? result =
                 (mappingNode?[propertyName] as YamlSequenceNode)?.Children.Select(i => (i as YamlScalarNode)?.Value);
             return result?.Select(i => i is null ? null : (T) Convert.ChangeType(i, typeof(T))).ToArray();
         }
@@ -36,7 +37,7 @@ namespace Ethereum2.Bls.Test
             Func<YamlSequenceNode?, T> converter) where T : class
         {
             YamlMappingNode? mappingNode = yamlNode as YamlMappingNode;
-            var result = (mappingNode?[propertyName] as YamlSequenceNode)?.Children
+            T[]? result = (mappingNode?[propertyName] as YamlSequenceNode)?.Children
                 .Select(i => converter(i as YamlSequenceNode)).ToArray();
             return result;
         }

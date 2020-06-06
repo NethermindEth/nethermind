@@ -57,18 +57,16 @@ namespace Nethermind.BeaconNode.OApi.Controllers
                     .NewAttestationAsync(validatorPublicKey, proofOfCustodyBit, targetSlot, targetIndex,
                         cancellationToken).ConfigureAwait(false);
 
-            switch (apiResponse.StatusCode)
+            IActionResult actionResult = apiResponse.StatusCode switch
             {
-                case Core2.Api.StatusCode.Success:
-                    return Ok(apiResponse.Content);
-                case Core2.Api.StatusCode.InvalidRequest:
-                    return Problem("Invalid request syntax.", statusCode: (int) apiResponse.StatusCode);
-                case Core2.Api.StatusCode.CurrentlySyncing:
-                    return Problem("Beacon node is currently syncing, try again later.",
-                        statusCode: (int) apiResponse.StatusCode);
-            }
-
-            return Problem("Beacon node internal error.", statusCode: (int) apiResponse.StatusCode);
+                Core2.Api.StatusCode.Success => Ok(apiResponse.Content),
+                Core2.Api.StatusCode.InvalidRequest => Problem("Invalid request syntax.",
+                    statusCode: (int) apiResponse.StatusCode),
+                Core2.Api.StatusCode.CurrentlySyncing => Problem("Beacon node is currently syncing, try again later.",
+                    statusCode: (int) apiResponse.StatusCode),
+                _ => Problem("Beacon node internal error.", statusCode: (int) apiResponse.StatusCode)
+            };
+            return actionResult;
         }
     }
 }

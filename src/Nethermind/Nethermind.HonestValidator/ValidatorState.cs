@@ -47,10 +47,10 @@ namespace Nethermind.HonestValidator
             _proposalDutyBySlot.Remove(slot);
         }
 
-        public IList<(BlsPublicKey, CommitteeIndex)>? GetAttestationDutyForSlot(Slot slot)
+        public IList<(BlsPublicKey, CommitteeIndex)> GetAttestationDutyForSlot(Slot slot)
         {
             // TODO: Consider TryRemove that pulls it out of the dictionary for processing
-            return _attestationDutyBySlot.GetValueOrDefault(slot);
+            return _attestationDutyBySlot.GetValueOrDefault(slot) ?? new (BlsPublicKey, CommitteeIndex)[0];
         }
 
         public BlsPublicKey? GetProposalDutyForSlot(Slot slot)
