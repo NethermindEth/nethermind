@@ -4,6 +4,7 @@ using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Precompiles.Benchmark
 {
+    [HtmlExporter]
     [SimpleJob(RuntimeMoniker.NetCoreApp31)]
     public class RipEmdBenchmark : PrecompileBenchmarkBase
     {
