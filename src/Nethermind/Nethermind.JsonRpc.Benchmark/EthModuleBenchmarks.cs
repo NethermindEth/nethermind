@@ -109,6 +109,7 @@ namespace Nethermind.JsonRpc.Benchmark
                 transactionProcessor, 
                 new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance),
                 bloomStorage,
+                Timestamper.Default,
                 LimboLogs.Instance,
                 false);
             
