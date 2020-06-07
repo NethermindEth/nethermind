@@ -24,13 +24,14 @@ using Nethermind.Evm;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public class V2 : TransactionPermissionContract
+    public class TransactionPermissionContractV2 : TransactionPermissionContract
     {
-        protected override AbiDefinition AbiDefinition { get; } = new AbiDefinitionParser().Parse<V2>();
+        protected override AbiDefinition AbiDefinition { get; }
+            = new AbiDefinitionParser().Parse<TransactionPermissionContractV2>();
         
         private static readonly UInt256 Two = 2;
 
-        public V2(
+        public TransactionPermissionContractV2(
             ITransactionProcessor transactionProcessor,
             IAbiEncoder abiEncoder,
             Address contractAddress,

@@ -18,16 +18,20 @@
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts.Json;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public class V1 : TransactionPermissionContract 
+    public class TransactionPermissionContractV3 : TransactionPermissionContract
     {
-        protected override AbiDefinition AbiDefinition { get; } = new AbiDefinitionParser().Parse<V1>();
+        protected override AbiDefinition AbiDefinition { get; }
+            = new AbiDefinitionParser().Parse<TransactionPermissionContractV3>();
 
-        public V1(
+        private static readonly UInt256 Three = 3;
+
+        public TransactionPermissionContractV3(
             ITransactionProcessor transactionProcessor,
             IAbiEncoder abiEncoder,
             Address contractAddress,
@@ -36,9 +40,18 @@ namespace Nethermind.Consensus.AuRa.Contracts
         {
         }
 
-        public override (TxPermissions Permissions, bool ShouldCache) AllowedTxTypes(BlockHeader parentHeader, Transaction tx) => 
-            (Constant.Call<TxPermissions>(parentHeader, nameof(AllowedTxTypes), Address.Zero, tx.SenderAddress), true);
+        public override (TxPermissions Permissions, bool ShouldCache) AllowedTxTypes(BlockHeader parentHeader, Transaction tx) =>
+            // _sender Transaction sender address.
+            // _to Transaction recipient address. If creating a contract, the `_to` address is zero.
+            // _value Transaction amount in wei.
+            // _gasPrice Gas price in wei for the transaction.
+            // _data Transaction data.
+            Constant.Call<TxPermissions, bool>(
+                parentHeader,
+                nameof(AllowedTxTypes),
+                Address.Zero,
+                tx.SenderAddress, tx.To ?? Address.Zero, tx.Value, tx.GasPrice, tx.Data ?? tx.Init ?? Bytes.Empty);
 
-        public override UInt256 Version => UInt256.One;
+        public override UInt256 Version => Three;
     }
 }

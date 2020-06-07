@@ -27,7 +27,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
 {
     public abstract class TransactionPermissionContract : Contract, IVersionedContract
     {
-        public UInt256 ContractVersion(BlockHeader blockHeader)
+        public virtual UInt256 ContractVersion(BlockHeader blockHeader)
             => Constant.Call<UInt256>(blockHeader, nameof(ContractVersion), Address.Zero);
 
         /// <summary>
@@ -56,28 +56,40 @@ namespace Nethermind.Consensus.AuRa.Contracts
             Constant = GetConstant(readOnlyReadOnlyTransactionProcessorSource);
         }
 
-        public static V1 CreateV1(ITransactionProcessor transactionProcessor,
+        public static TransactionPermissionContractV1 CreateV1(ITransactionProcessor transactionProcessor,
             IAbiEncoder abiEncoder,
             Address contractAddress,
             IReadOnlyTransactionProcessorSource readOnlyReadOnlyTransactionProcessorSource)
         {
-            return new V1(transactionProcessor, abiEncoder, contractAddress, readOnlyReadOnlyTransactionProcessorSource);
+            return new TransactionPermissionContractV1(
+                transactionProcessor,
+                abiEncoder,
+                contractAddress,
+                readOnlyReadOnlyTransactionProcessorSource);
         }
 
-        public static V2 CreateV2(ITransactionProcessor transactionProcessor,
+        public static TransactionPermissionContractV2 CreateV2(ITransactionProcessor transactionProcessor,
             IAbiEncoder abiEncoder,
             Address contractAddress,
             IReadOnlyTransactionProcessorSource readOnlyReadOnlyTransactionProcessorSource)
         {
-            return new V2(transactionProcessor, abiEncoder, contractAddress, readOnlyReadOnlyTransactionProcessorSource);
+            return new TransactionPermissionContractV2(
+                transactionProcessor,
+                abiEncoder,
+                contractAddress,
+                readOnlyReadOnlyTransactionProcessorSource);
         }
 
-        public static V3 CreateV3(ITransactionProcessor transactionProcessor,
+        public static TransactionPermissionContractV3 CreateV3(ITransactionProcessor transactionProcessor,
             IAbiEncoder abiEncoder,
             Address contractAddress,
             IReadOnlyTransactionProcessorSource readOnlyReadOnlyTransactionProcessorSource)
         {
-            return new V3(transactionProcessor, abiEncoder, contractAddress, readOnlyReadOnlyTransactionProcessorSource);
+            return new TransactionPermissionContractV3(
+                transactionProcessor,
+                abiEncoder,
+                contractAddress,
+                readOnlyReadOnlyTransactionProcessorSource);
         }
 
         public static Dictionary<UInt256, TransactionPermissionContract> CreateAllVersions(

@@ -18,19 +18,22 @@
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts.Json;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public class V3 : TransactionPermissionContract
+    public class TransactionPermissionContractV1 : TransactionPermissionContract 
     {
-        protected override AbiDefinition AbiDefinition { get; } = new AbiDefinitionParser().Parse<V3>();
+        public override UInt256 ContractVersion(BlockHeader blockHeader)
+        {
+            return 1;
+        }
 
-        private static readonly UInt256 Three = 3;
+        protected override AbiDefinition AbiDefinition { get; }
+            = new AbiDefinitionParser().Parse<TransactionPermissionContractV1>();
 
-        public V3(
+        public TransactionPermissionContractV1(
             ITransactionProcessor transactionProcessor,
             IAbiEncoder abiEncoder,
             Address contractAddress,
@@ -39,18 +42,9 @@ namespace Nethermind.Consensus.AuRa.Contracts
         {
         }
 
-        public override (TxPermissions Permissions, bool ShouldCache) AllowedTxTypes(BlockHeader parentHeader, Transaction tx) =>
-            // _sender Transaction sender address.
-            // _to Transaction recipient address. If creating a contract, the `_to` address is zero.
-            // _value Transaction amount in wei.
-            // _gasPrice Gas price in wei for the transaction.
-            // _data Transaction data.
-            Constant.Call<TxPermissions, bool>(
-                parentHeader,
-                nameof(AllowedTxTypes),
-                Address.Zero,
-                tx.SenderAddress, tx.To ?? Address.Zero, tx.Value, tx.GasPrice, tx.Data ?? tx.Init ?? Bytes.Empty);
+        public override (TxPermissions Permissions, bool ShouldCache) AllowedTxTypes(BlockHeader parentHeader, Transaction tx) => 
+            (Constant.Call<TxPermissions>(parentHeader, nameof(AllowedTxTypes), Address.Zero, tx.SenderAddress), true);
 
-        public override UInt256 Version => Three;
+        public override UInt256 Version => UInt256.One;
     }
 }
