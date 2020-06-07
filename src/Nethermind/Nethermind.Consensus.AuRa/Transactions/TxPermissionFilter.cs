@@ -28,12 +28,12 @@ namespace Nethermind.Consensus.AuRa.Transactions
 {
     public class TxPermissionFilter : ITxPermissionFilter
     {
-        private readonly TransactionPermissionContract _contract;
+        private readonly ITransactionPermissionContract _contract;
         private readonly ITxPermissionFilter.Cache _cache;
         private readonly IStateProvider _stateProvider;
         private readonly ILogger _logger;
         
-        public TxPermissionFilter(TransactionPermissionContract contract, ITxPermissionFilter.Cache cache, IStateProvider stateProvider, ILogManager logManager)
+        public TxPermissionFilter(ITransactionPermissionContract contract, ITxPermissionFilter.Cache cache, IStateProvider stateProvider, ILogManager logManager)
         {
             _contract = contract ?? throw new ArgumentNullException(nameof(contract));
             _cache = cache ?? throw new ArgumentNullException(nameof(cache));

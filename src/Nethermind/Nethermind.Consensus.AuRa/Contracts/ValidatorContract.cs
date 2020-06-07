@@ -29,25 +29,8 @@ using Nethermind.State;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public interface IValidatorContract
+    public partial interface IValidatorContract
     {
-        /// <summary>
-        /// Returns a boolean flag indicating whether the `emitInitiateChange` function can be called at the moment. Used by a validator's node and `TxPermission` contract (to deny dummy calling).
-        /// </summary>
-        bool EmitInitiateChangeCallable(BlockHeader parentHeader);
-
-        /// <summary>
-        /// Emits the `InitiateChange` event to pass a new validator set to the validator nodes.
-        /// Called automatically by one of the current validator's nodes when the `emitInitiateChangeCallable` getter
-        /// returns `true` (when some validator needs to be removed as malicious or the validator set needs to be
-        /// updated at the beginning of a new staking epoch). The new validator set is passed to the validator nodes
-        /// through the `InitiateChange` event and saved for later use by the `finalizeChange` function.
-        /// See https://openethereum.github.io/wiki/Validator-Set.html for more info about the `InitiateChange` event.
-        /// </summary>
-        Transaction EmitInitiateChange();
-
-        bool ShouldValidatorReport(Address validatorAddress, Address maliciousMiningAddress, in UInt256 blockNumber, BlockHeader parentHeader);
-
         /// <summary>
         /// Called when an initiated change reaches finality and is activated.
         /// Only valid when msg.sender == SUPER_USER (EIP96, 2**160 - 2)
