@@ -229,6 +229,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Logging", "Logging", "{94CF
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.DepositContract", "Nethermind.DepositContract\Nethermind.DepositContract.csproj", "{7CDFAAB2-84C2-4286-A8F8-509EA08A7758}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.DepositContract.Test", "Nethermind.DepositContract.Test\Nethermind.DepositContract.Test.csproj", "{537E55B1-D5DE-4A01-9C0C-C18D437BCE00}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -603,6 +605,10 @@ Global
 		{7CDFAAB2-84C2-4286-A8F8-509EA08A7758}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{7CDFAAB2-84C2-4286-A8F8-509EA08A7758}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{7CDFAAB2-84C2-4286-A8F8-509EA08A7758}.Release|Any CPU.Build.0 = Release|Any CPU
+		{537E55B1-D5DE-4A01-9C0C-C18D437BCE00}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{537E55B1-D5DE-4A01-9C0C-C18D437BCE00}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{537E55B1-D5DE-4A01-9C0C-C18D437BCE00}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{537E55B1-D5DE-4A01-9C0C-C18D437BCE00}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -669,6 +675,7 @@ Global
 		{8167D02A-F653-45D6-BDAA-110FEAB6116D} = {94CF4207-DA03-4D26-AAA2-284475A6DF1E}
 		{B07BC190-D053-408F-A9EF-C4C45AD0D9E2} = {94CF4207-DA03-4D26-AAA2-284475A6DF1E}
 		{79330582-F005-494E-AE8D-D8C92A37CD72} = {94CF4207-DA03-4D26-AAA2-284475A6DF1E}
+		{537E55B1-D5DE-4A01-9C0C-C18D437BCE00} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {092CA5E3-6180-4ED7-A3CB-9B57FAC2AA85}

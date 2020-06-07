@@ -17,7 +17,7 @@
 
 using System;
 using Nethermind.Abi;
-using Nethermind.Consensus.AuRa.Json;
+using Nethermind.Blockchain.Contracts.Json;
 using Nethermind.Core;
 using Nethermind.Dirichlet.Numerics;
 

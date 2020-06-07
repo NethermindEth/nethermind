@@ -22,7 +22,7 @@ using Nethermind.Abi;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
-namespace Nethermind.Consensus.AuRa.Json
+namespace Nethermind.Blockchain.Contracts.Json
 {
     internal static class AbiParameterConverterStatics
     {

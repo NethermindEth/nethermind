@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,25 +13,15 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System;
-using Nethermind.Abi;
-using Newtonsoft.Json;
+using Nethermind.Config;
 
-namespace Nethermind.Consensus.AuRa.Json
+namespace Nethermind.DepositContract
 {
-    public class AbiTypeConverter : JsonConverter<AbiType>
+    public interface IDepositConfig : IConfig
     {
-        public override void WriteJson(JsonWriter writer, AbiType value, JsonSerializer serializer)
-        {
-            writer.WriteValue(value.Name);
-        }
-
-        public override AbiType ReadJson(JsonReader reader, Type objectType, AbiType existingValue, bool hasExistingValue, JsonSerializer serializer)
-        {
-            throw new NotSupportedException();
-        }
-
-        public override bool CanRead { get; } = false;
+        [ConfigItem(Description = "Address of the Eth2 deposit contract on the Eth1 network.", DefaultValue = "null")]
+        string DepositContractAddress { get; }
     }
 }

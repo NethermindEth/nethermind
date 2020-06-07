@@ -23,7 +23,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
 using Newtonsoft.Json.Serialization;
 
-namespace Nethermind.Consensus.AuRa.Json
+namespace Nethermind.Blockchain.Contracts.Json
 {
     public class AbiDefinitionParser : IAbiDefinitionParser
     {

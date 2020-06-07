@@ -15,29 +15,13 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Threading.Tasks;
-using Nethermind.Abi;
-using Nethermind.Blockchain.Contracts.Json;
-using Nethermind.Core.Crypto;
-using Nethermind.JsonRpc;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.DepositContract
 {
-    public class DepositModule : IDepositModule
+    [SuppressMessage("ReSharper", "UnusedAutoPropertyAccessor.Global")]
+    public class DepositConfig : IDepositConfig
     {
-        private AbiDefinitionParser _parser = new AbiDefinitionParser();
-
-        private AbiDefinition _abiDefinition;
-
-        public DepositModule()
-        {
-            _abiDefinition = _parser.Parse("contracts/validator_registration.json");
-        }
-
-        public ValueTask<ResultWrapper<Keccak>> deposit_test()
-        {
-            var result = ResultWrapper<Keccak>.Fail("not implemented", ErrorCodes.InternalError);
-            return new ValueTask<ResultWrapper<Keccak>>(result);
-        }
+        public string DepositContractAddress { get; set; }
     }
 }

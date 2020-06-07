@@ -19,7 +19,7 @@ using Nethermind.Abi;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
-namespace Nethermind.Consensus.AuRa.Json
+namespace Nethermind.Blockchain.Contracts.Json
 {
     public class AbiDefinitionConverter : JsonConverter<AbiDefinition>
     {

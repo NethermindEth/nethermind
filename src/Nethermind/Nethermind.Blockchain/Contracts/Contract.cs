@@ -117,7 +117,7 @@ namespace Nethermind.Blockchain.Contracts
         /// <param name="transaction">Transaction to be executed.</param>
         /// <param name="callAndRestore">Is it restore call.</param>
         /// <returns>Bytes with result.</returns>
-        /// <exception cref="AuRaException">Thrown when there is an exception during execution or <see cref="CallOutputTracer.StatusCode"/> is <see cref="StatusCode.Failure"/>.</exception>
+        /// <exception cref="AbiException">Thrown when there is an exception during execution or <see cref="CallOutputTracer.StatusCode"/> is <see cref="StatusCode.Failure"/>.</exception>
         private static byte[] CallCore(ITransactionProcessor transactionProcessor, BlockHeader header, Transaction transaction, bool callAndRestore = false)
         {
             bool failure;
@@ -170,7 +170,7 @@ namespace Nethermind.Blockchain.Contracts
         }
 
         /// <summary>
-        /// Same as <see cref="Call(Nethermind.Core.BlockHeader,AbiFunctionDescription,Address,object[])"/> but returns false instead of throwing <see cref="AuRaException"/>.
+        /// Same as <see cref="Call(Nethermind.Core.BlockHeader,AbiFunctionDescription,Address,object[])"/> but returns false instead of throwing <see cref="AbiException"/>.
         /// </summary>
         /// <param name="header">Header in which context the call is done.</param>
         /// <param name="function">Function in contract that is being called.</param>
