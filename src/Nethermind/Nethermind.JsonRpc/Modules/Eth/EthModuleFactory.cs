@@ -84,7 +84,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             ReadOnlyBlockTree readOnlyTree = new ReadOnlyBlockTree(_blockTree);
             IReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
             ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, readOnlyTree, _specProvider, _logManager);
-            
+
             var blockchainBridge = new BlockchainBridge(
                 readOnlyTxProcessingEnv.StateReader,
                 readOnlyTxProcessingEnv.StateProvider,
