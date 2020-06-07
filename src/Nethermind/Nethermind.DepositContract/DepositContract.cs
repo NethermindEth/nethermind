@@ -15,20 +15,21 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Threading.Tasks;
+using System;
+using Nethermind.Abi;
+using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.JsonRpc;
-using Nethermind.JsonRpc.Modules;
 
 namespace Nethermind.DepositContract
 {
-    public interface IDepositModule : IModule
+    public class DepositContract : Contract
     {
-        [JsonRpcMethod(Description = "Deploys the deposit contract")]
-        ValueTask<ResultWrapper<Keccak>> deposit_deploy(Address senderAddress);
+        public DepositContract(AbiDefinition definition, IAbiEncoder abiEncoder, Address contractAddress)
+            : base(null, abiEncoder, contractAddress)
+        {
+            AbiDefinition = definition ?? throw new ArgumentNullException(nameof(definition));
+        }
         
-        [JsonRpcMethod(Description = "Deposits 32ETH at the validator address")]
-        ValueTask<ResultWrapper<Keccak>> deposit_make();
+        protected override AbiDefinition AbiDefinition { get; }
     }
 }

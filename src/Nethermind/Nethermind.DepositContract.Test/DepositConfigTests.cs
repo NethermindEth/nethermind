@@ -15,20 +15,23 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Threading.Tasks;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.JsonRpc;
-using Nethermind.JsonRpc.Modules;
+using FluentAssertions;
+using Nethermind.Core.Test.Builders;
+using NUnit.Framework;
 
-namespace Nethermind.DepositContract
+namespace Nethermind.DepositContract.Test
 {
-    public interface IDepositModule : IModule
+    [TestFixture]
+    public class DepositConfigTests
     {
-        [JsonRpcMethod(Description = "Deploys the deposit contract")]
-        ValueTask<ResultWrapper<Keccak>> deposit_deploy(Address senderAddress);
-        
-        [JsonRpcMethod(Description = "Deposits 32ETH at the validator address")]
-        ValueTask<ResultWrapper<Keccak>> deposit_make();
+        [Test]
+        public void defaults_are_fine()
+        {
+            string address = TestItem.AddressA.ToString();
+            DepositConfig depositConfig = new DepositConfig();
+            depositConfig.DepositContractAddress.Should().BeNull();
+            depositConfig.DepositContractAddress = address;
+            depositConfig.DepositContractAddress.Should().Be(address);
+        }
     }
 }

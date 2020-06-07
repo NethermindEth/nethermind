@@ -65,6 +65,6 @@ namespace Nethermind.Abi
 
         public AbiFunctionDescription GetFunction(string name, bool camelCase = true) => _functions[camelCase ? GetFunctionName(name) : name];
 
-        public string GetFunctionName(string name) => char.IsUpper(name[0]) ? Char.ToLowerInvariant(name[0]) + name.Substring(1) : name;
+        public static string GetFunctionName(string name) => char.IsUpper(name[0]) ? Char.ToLowerInvariant(name[0]) + name.Substring(1) : name;
     }
 }

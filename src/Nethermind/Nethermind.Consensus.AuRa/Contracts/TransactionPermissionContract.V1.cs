@@ -15,31 +15,30 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts.Json;
 using Nethermind.Core;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Evm;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public partial class TransactionPermissionContract
+    public class V1 : TransactionPermissionContract 
     {
-        private class V1 : ITransactionPermissionVersionedContract
+        protected override AbiDefinition AbiDefinition { get; } = new AbiDefinitionParser().Parse<V1>();
+
+        public V1(
+            ITransactionProcessor transactionProcessor,
+            IAbiEncoder abiEncoder,
+            Address contractAddress,
+            IReadOnlyTransactionProcessorSource readOnlyReadOnlyTransactionProcessorSource)
+            : base(transactionProcessor, abiEncoder, contractAddress, readOnlyReadOnlyTransactionProcessorSource)
         {
-            private ConstantContract Constant { get; }
-            
-            public AbiDefinition Definition { get; } = new AbiDefinitionParser().Parse<V1>();
-
-            public V1(ConstantContract constant)
-            {
-                Constant = constant;
-            }
-            
-            public (TxPermissions Permissions, bool ShouldCache) AllowedTxTypes(BlockHeader parentHeader, Transaction tx) => 
-                (Constant.Call<TxPermissions>(parentHeader, Definition.GetFunction(nameof(AllowedTxTypes)), Address.Zero, tx.SenderAddress), true);
-
-            public UInt256 Version => UInt256.One;
         }
+
+        public override (TxPermissions Permissions, bool ShouldCache) AllowedTxTypes(BlockHeader parentHeader, Transaction tx) => 
+            (Constant.Call<TxPermissions>(parentHeader, nameof(AllowedTxTypes), Address.Zero, tx.SenderAddress), true);
+
+        public override UInt256 Version => UInt256.One;
     }
 }

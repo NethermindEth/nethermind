@@ -16,6 +16,7 @@
 // 
 
 using System;
+using System.Diagnostics.Contracts;
 using System.IO;
 using System.Threading.Tasks;
 using Nethermind.Abi;
@@ -23,6 +24,7 @@ using Nethermind.Blockchain.Contracts.Json;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Evm;
 using Nethermind.Facade;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
@@ -33,16 +35,25 @@ namespace Nethermind.DepositContract
     public class DepositModule : IDepositModule
     {
         private readonly ITxPoolBridge _txPoolBridge;
+        private readonly IDepositConfig _depositConfig;
         private readonly ILogger _logger;
-        private AbiDefinition _abiDefinition;
+        private readonly AbiDefinition _abiDefinition;
+        private readonly DepositContract? _depositContract;
         
         private AbiDefinitionParser _parser = new AbiDefinitionParser();
 
-        public DepositModule(ITxPoolBridge txPoolBridge, ILogManager logManager)
+        public DepositModule(ITxPoolBridge txPoolBridge, IDepositConfig depositConfig, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger<DepositModule>() ?? throw new ArgumentNullException(nameof(logManager));
             _txPoolBridge = txPoolBridge ?? throw new ArgumentNullException(nameof(txPoolBridge));
+            _depositConfig = depositConfig ?? throw new ArgumentNullException(nameof(depositConfig));
             _abiDefinition = _parser.Parse(File.ReadAllText("contracts/validator_registration.json"));
+
+            if (depositConfig.DepositContractAddress != null)
+            {
+                var address = new Address(depositConfig.DepositContractAddress);
+                _depositContract = new DepositContract(_abiDefinition, new AbiEncoder(), address);
+            }
         }
 
         public ValueTask<ResultWrapper<Keccak>> deposit_deploy(Address senderAddress)
@@ -61,7 +72,7 @@ namespace Nethermind.DepositContract
             return new ValueTask<ResultWrapper<Keccak>>(ResultWrapper<Keccak>.Success(txHash));
         }
 
-        public ValueTask<ResultWrapper<Keccak>> deposit_test()
+        public ValueTask<ResultWrapper<Keccak>> deposit_make()
         {
             var result = ResultWrapper<Keccak>.Fail("not implemented", ErrorCodes.InternalError);
             return new ValueTask<ResultWrapper<Keccak>>(result);

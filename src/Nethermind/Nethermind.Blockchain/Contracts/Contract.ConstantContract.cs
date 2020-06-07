@@ -16,7 +16,6 @@
 // 
 
 using System;
-using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
@@ -36,7 +35,7 @@ namespace Nethermind.Blockchain.Contracts
         /// <summary>
         /// Constant version of the contract. Allows to call contract methods without state modification.
         /// </summary>
-        protected class ConstantContract
+        public class ConstantContract
         {
             private readonly Contract _contract;
             private readonly IReadOnlyTransactionProcessorSource _readOnlyReadOnlyTransactionProcessorSource;
@@ -53,56 +52,55 @@ namespace Nethermind.Blockchain.Contracts
                 return Contract.CallCore(readOnlyTransactionProcessor, parentHeader, transaction, true);
             }
 
-            private object[] Call(BlockHeader parentHeader, AbiFunctionDescription function, Address sender, params object[] arguments)
+            private object[] Call(BlockHeader parentHeader, string functionName, Address sender, params object[] arguments)
             {
-                var result = CallRaw(parentHeader, function, sender, arguments);
-                var objects = AbiEncoderExtensions.Decode(_contract.AbiEncoder, function.GetReturnInfo(), result);
-                return objects;
+                return CallRaw(parentHeader, functionName, sender, arguments); ;
             }
 
             /// <summary>
             /// 
             /// </summary>
             /// <param name="parentHeader"></param>
-            /// <param name="function"></param>
+            /// <param name="functionName"></param>
             /// <param name="sender"></param>
             /// <param name="arguments"></param>
             /// <typeparam name="T"></typeparam>
             /// <returns></returns>
-            public T Call<T>(BlockHeader parentHeader, AbiFunctionDescription function, Address sender, params object[] arguments)
+            public T Call<T>(BlockHeader parentHeader, string functionName, Address sender, params object[] arguments)
             {
-                return (T) Call(parentHeader, function, sender, arguments)[0];
+                return (T) Call(parentHeader, functionName, sender, arguments)[0];
             }
-            
+
             /// <summary>
             /// 
             /// </summary>
             /// <param name="parentHeader"></param>
-            /// <param name="function"></param>
+            /// <param name="functionName"></param>
             /// <param name="sender"></param>
             /// <param name="arguments"></param>
             /// <typeparam name="T1"></typeparam>
             /// <typeparam name="T2"></typeparam>
             /// <returns></returns>
-            public (T1, T2) Call<T1, T2>(BlockHeader parentHeader, AbiFunctionDescription function, Address sender,params object[] arguments)
+            public (T1, T2) Call<T1, T2>(BlockHeader parentHeader, string functionName, Address sender,params object[] arguments)
             {
-                var objects = Call(parentHeader, function, sender, arguments);
+                var objects = Call(parentHeader, functionName, sender, arguments);
                 return ((T1) objects[0], (T2) objects[1]);
             }
-            
+
             /// <summary>
             /// 
             /// </summary>
             /// <param name="parentHeader"></param>
-            /// <param name="function"></param>
+            /// <param name="functionName"></param>
             /// <param name="sender"></param>
             /// <param name="arguments"></param>
             /// <returns></returns>
-            public byte[] CallRaw(BlockHeader parentHeader, AbiFunctionDescription function, Address sender, params object[] arguments)
+            public object[] CallRaw(BlockHeader parentHeader, string functionName, Address sender, params object[] arguments)
             {
-                var transaction = _contract.GenerateTransaction<SystemTransaction>(function, sender, arguments);
+                var transaction = _contract.GenerateTransaction<SystemTransaction>(functionName, sender, arguments);
                 var result = Call(parentHeader, transaction);
-                return result;
+                var objects = _contract.DecodeReturnData(functionName, result);
+                return objects;
             }
             
             private Keccak GetState(BlockHeader parentHeader) => parentHeader?.StateRoot ?? Keccak.EmptyTreeHash;

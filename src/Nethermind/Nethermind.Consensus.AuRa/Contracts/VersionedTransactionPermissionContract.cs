@@ -15,20 +15,28 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Threading.Tasks;
+using Nethermind.Abi;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.JsonRpc;
-using Nethermind.JsonRpc.Modules;
+using Nethermind.Evm;
 
-namespace Nethermind.DepositContract
+namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public interface IDepositModule : IModule
+    public class VersionedTransactionPermissionContract : VersionedContract<TransactionPermissionContract>
     {
-        [JsonRpcMethod(Description = "Deploys the deposit contract")]
-        ValueTask<ResultWrapper<Keccak>> deposit_deploy(Address senderAddress);
-        
-        [JsonRpcMethod(Description = "Deposits 32ETH at the validator address")]
-        ValueTask<ResultWrapper<Keccak>> deposit_make();
+        public VersionedTransactionPermissionContract(
+            ITransactionProcessor transactionProcessor,
+            IAbiEncoder abiEncoder,
+            Address contractAddress,
+            long activation,
+            IReadOnlyTransactionProcessorSource readOnlyReadOnlyTransactionProcessorSource)
+            : base(
+                TransactionPermissionContract.CreateAllVersions(
+                    transactionProcessor,
+                    abiEncoder,
+                    contractAddress,
+                    readOnlyReadOnlyTransactionProcessorSource),
+                activation)
+        {
+        }
     }
 }

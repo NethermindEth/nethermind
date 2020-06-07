@@ -178,7 +178,7 @@ namespace Nethermind.AuRa.Test.Transactions
             var chain = await chainFactory();
             var head = chain.BlockTree.Head;
             var isAllowed = chain.TxPermissionFilter.IsAllowed(tx, head.Header);
-            chain.TxPermissionFilterCache.VersionedContracts.Get(head.Hash).Should().Be(version);
+            chain.TxPermissionFilter.Current.Version.Should().Be(version);
             return (isAllowed, chain.TxPermissionFilterCache.Permissions.Contains((head.Hash, tx.SenderAddress)));
         }
 
@@ -201,7 +201,8 @@ namespace Nethermind.AuRa.Test.Transactions
             {
                 var chain = await chainTask;
                 chain.TxPermissionFilterCache.Permissions.Clear();
-                chain.TxPermissionFilterCache.VersionedContracts.Clear();
+                // TODO: clear
+                // chain.TxPermissionFilterCache.VersionedContracts.Clear();
                 return chain;
             };
 
@@ -223,7 +224,7 @@ namespace Nethermind.AuRa.Test.Transactions
         [TestCase(10, ExpectedResult = false)]
         public bool allows_transactions_before_transitions(long blockNumber)
         {
-            var transactionPermissionContract = new TransactionPermissionContract(
+            var transactionPermissionContract = new VersionedTransactionPermissionContract(
                 Substitute.For<ITransactionProcessor>(), 
                 Substitute.For<IAbiEncoder>(),
                 TestItem.AddressA,
@@ -247,7 +248,7 @@ namespace Nethermind.AuRa.Test.Transactions
                     ValidatorType = AuRaParameters.ValidatorType.List
                 };
 
-                var transactionPermissionContract = new TransactionPermissionContract(TxProcessor, new AbiEncoder(), _contractAddress, 1,
+                var transactionPermissionContract = new VersionedTransactionPermissionContract(TxProcessor, new AbiEncoder(), _contractAddress, 1,
                     new ReadOnlyTransactionProcessorSource(DbProvider, BlockTree, SpecProvider, LimboLogs.Instance));
 
                 TxPermissionFilterCache = new ITxPermissionFilter.Cache();

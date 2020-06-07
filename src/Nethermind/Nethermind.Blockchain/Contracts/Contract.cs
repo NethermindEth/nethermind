@@ -17,6 +17,7 @@
 using System;
 using Nethermind.Abi;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
@@ -44,8 +45,10 @@ namespace Nethermind.Blockchain.Contracts
         /// </summary>
         public const long DefaultContractGasLimit = 1_600_000L;
         
+        private IAbiEncoder _abiEncoder;
         private readonly ITransactionProcessor _transactionProcessor;
-        protected IAbiEncoder AbiEncoder { get; }
+
+        protected abstract AbiDefinition AbiDefinition { get; }
         protected Address ContractAddress { get; }
 
         /// <summary>
@@ -57,7 +60,7 @@ namespace Nethermind.Blockchain.Contracts
         protected Contract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress)
         {
             _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
-            AbiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
+            _abiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
             ContractAddress = contractAddress ?? throw new ArgumentNullException(nameof(contractAddress));
         }
 
@@ -83,13 +86,13 @@ namespace Nethermind.Blockchain.Contracts
         /// That transaction can be added to a produced block or broadcasted - if <see cref="GeneratedTransaction"/> is used as <see cref="T"/>.
         /// That transaction can be used in <see cref="Call(Nethermind.Core.BlockHeader,Nethermind.Core.Transaction)"/> if <see cref="SystemTransaction"/> is used as <see cref="T"/>.
         /// </summary>
-        /// <param name="function">Function in contract that is called by the transaction.</param>
+        /// <param name="functionName">Function in contract that is called by the transaction.</param>
         /// <param name="sender">Sender of the transaction - caller of the function.</param>
         /// <param name="arguments">Arguments to the function.</param>
         /// <typeparam name="T">Type of <see cref="Transaction"/>.</typeparam>
         /// <returns>Transaction.</returns>
-        protected Transaction GenerateTransaction<T>(AbiFunctionDescription function, Address sender, params object[] arguments) where T : Transaction, new()
-            => GenerateTransaction<T>(AbiEncoder.Encode(function.GetCallInfo(), arguments), sender);
+        protected Transaction GenerateTransaction<T>(string functionName, Address sender, params object[] arguments) where T : Transaction, new()
+            => GenerateTransaction<T>(_abiEncoder.Encode(AbiDefinition.GetFunction(functionName).GetCallInfo(), arguments), sender);
 
         private byte[] Call(BlockHeader header, Transaction transaction) => CallCore(_transactionProcessor, header, transaction);
 
@@ -97,15 +100,16 @@ namespace Nethermind.Blockchain.Contracts
         /// Calls the function in contract, state modification is allowed.
         /// </summary>
         /// <param name="header">Header in which context the call is done.</param>
-        /// <param name="function">Function in contract that is being called.</param>
+        /// <param name="functionName"></param>
         /// <param name="sender">Sender of the transaction - caller of the function.</param>
         /// <param name="arguments">Arguments to the function.</param>
-        /// <returns>Deserialized return value of the <see cref="function"/> based on its definition.</returns>
-        protected object[] Call(BlockHeader header, AbiFunctionDescription function, Address sender, params object[] arguments)
+        /// <returns>Deserialized return value of the <see cref="functionName"/> based on its definition.</returns>
+        protected object[] Call(BlockHeader header, string functionName, Address sender, params object[] arguments)
         {
-            var transaction = GenerateTransaction<SystemTransaction>(function, sender, arguments);
+            var function = AbiDefinition.GetFunction(functionName);
+            var transaction = GenerateTransaction<SystemTransaction>(functionName, sender, arguments);
             var result = Call(header, transaction);
-            var objects = AbiEncoder.Decode(function.GetReturnInfo(), result);
+            var objects = _abiEncoder.Decode(function.GetReturnInfo(), result);
             return objects;
         }
 
@@ -173,17 +177,18 @@ namespace Nethermind.Blockchain.Contracts
         /// Same as <see cref="Call(Nethermind.Core.BlockHeader,AbiFunctionDescription,Address,object[])"/> but returns false instead of throwing <see cref="AbiException"/>.
         /// </summary>
         /// <param name="header">Header in which context the call is done.</param>
-        /// <param name="function">Function in contract that is being called.</param>
+        /// <param name="functionName"></param>
         /// <param name="sender">Sender of the transaction - caller of the function.</param>
-        /// <param name="result">Deserialized return value of the <see cref="function"/> based on its definition.</param>
+        /// <param name="result">Deserialized return value of the <see cref="functionName"/> based on its definition.</param>
         /// <param name="arguments">Arguments to the function.</param>
         /// <returns>true if function was <see cref="StatusCode.Success"/> otherwise false.</returns>
-        protected bool TryCall(BlockHeader header, AbiFunctionDescription function, Address sender, out object[] result, params object[] arguments)
+        protected bool TryCall(BlockHeader header, string functionName, Address sender, out object[] result, params object[] arguments)
         {
-            var transaction = GenerateTransaction<SystemTransaction>(function, sender, arguments);
+            var function = AbiDefinition.GetFunction(functionName);
+            var transaction = GenerateTransaction<SystemTransaction>(functionName, sender, arguments);
             if (TryCall(header, transaction, out var bytes))
             {
-                result = AbiEncoder.Decode(function.GetReturnInfo(), bytes);
+                result = _abiEncoder.Decode(function.GetReturnInfo(), bytes);
                 return true;
             }
 
@@ -202,6 +207,17 @@ namespace Nethermind.Blockchain.Contracts
                 stateProvider.CreateAccount(Address.SystemUser, UInt256.Zero);
                 stateProvider.Commit(Homestead.Instance);
             }
+        }
+
+        protected Keccak GetEventHash(string eventName)
+        {
+            // TODO: cache it...
+            return AbiDefinition.Events[eventName].GetHash();
+        }
+        
+        protected object[] DecodeReturnData(string functionName, byte[] data)
+        {
+            return _abiEncoder.Decode(AbiDefinition.GetFunction(functionName).GetReturnInfo(), data);
         }
     }
 }

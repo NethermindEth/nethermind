@@ -3,7 +3,6 @@ using System.IO.Abstractions;
 using System.Security;
 using System.Threading.Tasks;
 using FluentAssertions;
-using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -41,6 +40,7 @@ namespace Nethermind.DepositContract.Test.JsonRpc
             
             DepositModule depositModule = new DepositModule(
                 testRpc.TxPoolBridge,
+                new DepositConfig(),
                 LimboLogs.Instance);
             
             var result = await depositModule.deposit_deploy(TestItem.Addresses[0]);

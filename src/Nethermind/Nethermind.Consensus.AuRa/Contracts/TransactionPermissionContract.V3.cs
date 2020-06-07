@@ -15,42 +15,42 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts.Json;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Evm;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public partial class TransactionPermissionContract
+    public class V3 : TransactionPermissionContract
     {
-        private class V3 : ITransactionPermissionVersionedContract, IVersionContract
+        protected override AbiDefinition AbiDefinition { get; } = new AbiDefinitionParser().Parse<V3>();
+
+        private static readonly UInt256 Three = 3;
+
+        public V3(
+            ITransactionProcessor transactionProcessor,
+            IAbiEncoder abiEncoder,
+            Address contractAddress,
+            IReadOnlyTransactionProcessorSource readOnlyReadOnlyTransactionProcessorSource)
+            : base(transactionProcessor, abiEncoder, contractAddress, readOnlyReadOnlyTransactionProcessorSource)
         {
-            private static readonly UInt256 Three = 3;
-
-            public AbiDefinition Definition { get; } = new AbiDefinitionParser().Parse<V3>();
-            public ConstantContract Constant { get; }
-
-            public V3(ConstantContract constant)
-            {
-                Constant = constant;
-            }
-            
-            public (TxPermissions Permissions, bool ShouldCache) AllowedTxTypes(BlockHeader parentHeader, Transaction tx) =>
-                // _sender Transaction sender address.
-                // _to Transaction recipient address. If creating a contract, the `_to` address is zero.
-                // _value Transaction amount in wei.
-                // _gasPrice Gas price in wei for the transaction.
-                // _data Transaction data.
-                Constant.Call<TxPermissions, bool>(
-                    parentHeader, 
-                    Definition.GetFunction(nameof(AllowedTxTypes)), 
-                    Address.Zero, 
-                    tx.SenderAddress, tx.To ?? Address.Zero, tx.Value, tx.GasPrice, tx.Data ?? tx.Init ?? Bytes.Empty);
-
-            public UInt256 Version => Three;
         }
+
+        public override (TxPermissions Permissions, bool ShouldCache) AllowedTxTypes(BlockHeader parentHeader, Transaction tx) =>
+            // _sender Transaction sender address.
+            // _to Transaction recipient address. If creating a contract, the `_to` address is zero.
+            // _value Transaction amount in wei.
+            // _gasPrice Gas price in wei for the transaction.
+            // _data Transaction data.
+            Constant.Call<TxPermissions, bool>(
+                parentHeader,
+                nameof(AllowedTxTypes),
+                Address.Zero,
+                tx.SenderAddress, tx.To ?? Address.Zero, tx.Value, tx.GasPrice, tx.Data ?? tx.Init ?? Bytes.Empty);
+
+        public override UInt256 Version => Three;
     }
 }

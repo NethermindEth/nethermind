@@ -19,12 +19,13 @@ using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
     public interface ITxPermissionFilter
     {
+        TransactionPermissionContract Current { get; }
+        
         bool IsAllowed(Transaction tx, BlockHeader parentHeader);
         
         public class Cache
@@ -33,8 +34,6 @@ namespace Nethermind.Consensus.AuRa.Transactions
             
             internal ICache<(Keccak ParentHash, Address Sender), TransactionPermissionContract.TxPermissions?> Permissions { get; } =
                 new LruCacheWithRecycling<(Keccak ParentHash, Address Sender), TransactionPermissionContract.TxPermissions?>(MaxCacheSize, "TxPermissions");
-        
-            internal ICache<Keccak, UInt256> VersionedContracts { get; } = new LruCacheWithRecycling<Keccak, UInt256>(MaxCacheSize, "TxPermissionsVersionedContracts");
         }
     }
 }

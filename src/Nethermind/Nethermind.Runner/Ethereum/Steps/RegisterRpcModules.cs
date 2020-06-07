@@ -133,7 +133,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             {
                 TxPoolBridge txPoolBridge = new TxPoolBridge(
                     _context.TxPool, _context.Wallet, _context.Timestamper, _context.SpecProvider.ChainId);
-                DepositModule depositModule = new DepositModule(txPoolBridge, _context.LogManager);
+                DepositModule depositModule = new DepositModule(txPoolBridge, depositConfig, _context.LogManager);
                 _context.RpcModuleProvider.Register(new SingletonModulePool<IDepositModule>(depositModule, true));
             }
 
