@@ -23,6 +23,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
@@ -30,6 +31,7 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Db.Blooms;
 using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using NSubstitute;
@@ -53,13 +55,17 @@ namespace Nethermind.Facade.Test
         private IEthereumEcdsa _ethereumEcdsa;
         private IBloomStorage _bloomStorage;
         private ISpecProvider _specProvider;
+        private IDbProvider _dbProvider;
 
         [SetUp]
         public void SetUp()
         {
-            _stateReader = Substitute.For<IStateReader>();
-            _stateProvider = Substitute.For<IStateProvider>();
-            _storageProvider = Substitute.For<IStorageProvider>();
+            _dbProvider = new MemDbProvider();
+            
+            _stateReader = new StateReader(_dbProvider.StateDb, _dbProvider.CodeDb, LimboLogs.Instance);
+            _stateProvider = new StateProvider(_dbProvider.StateDb, _dbProvider.CodeDb, LimboLogs.Instance);
+            _storageProvider = new StorageProvider(_dbProvider.StateDb, _stateProvider, LimboLogs.Instance);
+            
             _blockTree = Substitute.For<IBlockTree>();
             _txPool = Substitute.For<ITxPool>();
             _receiptStorage = Substitute.For<IReceiptStorage>();
@@ -71,7 +77,7 @@ namespace Nethermind.Facade.Test
             _bloomStorage = Substitute.For<IBloomStorage>();
             _specProvider = MainnetSpecProvider.Instance;
             _blockchainBridge = new BlockchainBridge(
-                _stateReader, 
+                _stateReader,
                 _stateProvider,
                 _storageProvider,
                 _blockTree,
@@ -92,7 +98,7 @@ namespace Nethermind.Facade.Test
         {
             _blockchainBridge.GetTransaction(TestItem.KeccakA).Should().Be((null, null));
         }
-        
+
         [Test]
         public void get_transaction_returns_null_when_block_not_found()
         {
@@ -100,7 +106,7 @@ namespace Nethermind.Facade.Test
             _receiptStorage.FindBlockHash(TestItem.KeccakA).Returns(TestItem.KeccakB);
             _blockchainBridge.GetTransaction(TestItem.KeccakA).Should().Be((null, null));
         }
-        
+
         [Test]
         public void get_transaction_returns_receipt_and_transaction_when_found()
         {
@@ -120,14 +126,49 @@ namespace Nethermind.Facade.Test
             BlockHeader header = Build.A.BlockHeader.WithNumber(10).TestObject;
             Transaction tx = new Transaction();
             tx.GasLimit = Transaction.BaseTxGasCost;
-            
+
             var gas = _blockchainBridge.EstimateGas(header, tx);
             gas.GasSpent.Should().Be(Transaction.BaseTxGasCost);
-            
+
             _transactionProcessor.Received().CallAndRestore(
                 tx,
                 Arg.Is<BlockHeader>(bh => bh.Number == 11),
                 Arg.Any<EstimateGasTracer>());
+        }
+
+        [Test]
+        public void Get_storage()
+        {
+            var storageCell = new StorageCell(TestItem.AddressA, 1);
+            
+            _stateProvider.CreateAccount(storageCell.Address, UInt256.One);
+            _stateProvider.Commit(MuirGlacier.Instance);
+            _stateProvider.CommitTree();
+
+            byte[] initialValue = new byte[] {1, 2, 3};
+            _storageProvider.Set(storageCell, initialValue);
+            _storageProvider.Commit();
+            _storageProvider.CommitTrees();
+            _stateProvider.Commit(MuirGlacier.Instance);
+            _stateProvider.CommitTree();
+            
+            var retrieved =
+                _blockchainBridge.GetStorage(storageCell.Address, storageCell.Index, _stateProvider.StateRoot);
+            retrieved.Should().BeEquivalentTo(initialValue);
+            
+            byte[] newValue = new byte[] {1, 2, 3};
+            StorageProvider someOtherStorageProvider =
+                new StorageProvider(_dbProvider.StateDb, _stateProvider, LimboLogs.Instance);
+            someOtherStorageProvider.Set(storageCell, newValue);
+            _storageProvider.Set(storageCell, initialValue);
+            _storageProvider.Commit();
+            _storageProvider.CommitTrees();
+            _stateProvider.Commit(MuirGlacier.Instance);
+            _stateProvider.CommitTree();
+            
+            retrieved =
+                _blockchainBridge.GetStorage(storageCell.Address, storageCell.Index, _stateProvider.StateRoot);
+            retrieved.Should().BeEquivalentTo(newValue);
         }
     }
 }
