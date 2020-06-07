@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,25 +14,18 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core2.Crypto;
-using Nethermind.Core2.Types;
+using System;
 
-namespace Nethermind.Core2.Api
+namespace Nethermind.Core2.Configuration
 {
-    public class ValidatorDuty
+    public class NetworkingConfiguration
     {
-        public ValidatorDuty(BlsPublicKey validatorPublicKey, Slot? attestationSlot, CommitteeIndex? attestationIndex,
-            Slot? blockProposalSlot)
-        {
-            ValidatorPublicKey = validatorPublicKey;
-            AttestationSlot = attestationSlot;
-            AttestationIndex = attestationIndex;
-            BlockProposalSlot = blockProposalSlot;
-        }
-
-        public CommitteeIndex? AttestationIndex { get; }
-        public Slot? AttestationSlot { get; }
-        public Slot? BlockProposalSlot { get; }
-        public BlsPublicKey ValidatorPublicKey { get; }
+        public uint AttestationPropagationSlotRange { get; set; }
+        public uint AttestationSubnetCount { get; set; }
+        public uint GossipMaximumSize { get; set; }
+        public uint MaximumChunkSize { get; set; }
+        public TimeSpan MaximumGossipClockDisparity { get; set; }
+        public TimeSpan ResponseTimeout { get; set; }
+        public TimeSpan TimeToFirstByteTimeout { get; set; }
     }
 }

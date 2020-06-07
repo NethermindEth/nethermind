@@ -186,6 +186,18 @@ namespace Nethermind.BeaconNode
             LoggerMessage.Define<Epoch, BlsPublicKey>(LogLevel.Warning,
                 new EventId(4411, nameof(ValidatorNotFoundAtEpoch)),
                 "No duties as validator public key not found at epoch {Epoch} for validator {ValidatorPublicKey}.");
+        public static readonly Action<ILogger, Exception?> ApiErrorNewAttestation =
+            LoggerMessage.Define(LogLevel.Warning,
+                new EventId(4412, nameof(ApiErrorNewAttestation)),
+                "Exception result from API Attestation (get).");
+        public static readonly Action<ILogger, Attestation, Exception?> AttestationNotAcceptedLocally =
+            LoggerMessage.Define<Attestation>(LogLevel.Warning,
+                new EventId(4413, nameof(AttestationNotAcceptedLocally)),
+                "Attestation {Attestation} not accepted by local chain (but will still try to publish to peers).");
+        public static readonly Action<ILogger, Exception?> ApiErrorPublishAttestation =
+            LoggerMessage.Define(LogLevel.Warning,
+                new EventId(4414, nameof(ApiErrorPublishAttestation)),
+                "Exception result from API publish Attestation (post).");
 
         public static readonly Action<ILogger, long, Exception?> QuickStartClockCreated =
             LoggerMessage.Define<long>(LogLevel.Warning,
