@@ -243,8 +243,8 @@ namespace Nethermind.Facade
 
         public byte[] GetStorage(Address address, UInt256 index, Keccak stateRoot)
         {
-            _stateProvider.StateRoot = stateRoot;
-            return _storageProvider.Get(new StorageCell(address, index));
+            Keccak storageRoot = _stateReader.GetStorageRoot(stateRoot, address);
+            return _stateReader.GetStorage(storageRoot, index);
         }
 
         public Account GetAccount(Address address, Keccak stateRoot)
