@@ -18,6 +18,7 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Specs;
@@ -137,6 +138,35 @@ namespace Nethermind.Store.Test
             Task d = StartStorageTask(reader, stateRoot3, storageCell, new byte[] {4});
 
             await Task.WhenAll(a, b, c, d);
+        }
+
+        [Test]
+        public async Task Non_existing()
+        {
+            StorageCell storageCell = new StorageCell(_address1, UInt256.One);
+            IReleaseSpec spec = MuirGlacier.Instance;
+            StateDb stateDb = new StateDb(new MemDb());
+            StateProvider provider = new StateProvider(stateDb, new MemDb(), Logger);
+            StorageProvider storageProvider = new StorageProvider(stateDb, provider, Logger);
+
+            void CommitEverything()
+            {
+                storageProvider.Commit();
+                storageProvider.CommitTrees();
+                provider.Commit(spec);
+                provider.CommitTree();
+            }
+
+            provider.CreateAccount(_address1, 1);
+            storageProvider.Set(storageCell, new byte[] {1});
+            CommitEverything();
+            Keccak stateRoot0 = provider.StateRoot;
+
+            stateDb.Commit();
+            StateReader reader = new StateReader(stateDb, Substitute.For<IDb>(), Logger);
+            Keccak storageRoot = reader.GetStorageRoot(stateRoot0, _address1);
+            reader.GetStorage(storageRoot, storageCell.Index + 1).Should().BeEquivalentTo(new byte[] {0});
+            reader.GetStorage(Keccak.EmptyTreeHash, storageCell.Index + 1).Should().BeEquivalentTo(new byte[] {0});
         }
 
         private Task StartTask(StateReader reader, Keccak stateRoot, UInt256 value)

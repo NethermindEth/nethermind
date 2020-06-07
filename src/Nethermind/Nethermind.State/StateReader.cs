@@ -17,6 +17,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
@@ -28,7 +29,7 @@ namespace Nethermind.State
     public class StateReader : IStateReader
     {
         private readonly ILogger _logger;
-        
+
         private readonly IDb _codeDb;
 
         public StateReader(ISnapshotableDb stateDb, IDb codeDb, ILogManager logManager)
@@ -39,7 +40,7 @@ namespace Nethermind.State
             _state = new StateTree(stateDb);
             _storage = new StorageTree(stateDb);
         }
-        
+
         private readonly StateTree _state;
         private readonly StorageTree _storage;
 
@@ -72,10 +73,15 @@ namespace Nethermind.State
         {
             return GetState(stateRoot, address)?.StorageRoot;
         }
-        
+
         public byte[] GetStorage(Keccak storageRoot, UInt256 index)
         {
-            Metrics.StateTreeReads++;
+            if (storageRoot == Keccak.EmptyTreeHash)
+            {
+                return new byte[] {0};
+            }
+
+            Metrics.StorageTreeReads++;
             return _storage.Get(index, storageRoot);
         }
 
@@ -99,9 +105,9 @@ namespace Nethermind.State
             return _codeDb[codeHash.Bytes];
         }
 
-        public void RunTreeVisitor(ITreeVisitor treeVisitor, Keccak rootHash)	
+        public void RunTreeVisitor(ITreeVisitor treeVisitor, Keccak rootHash)
         {
-            _state.Accept(treeVisitor, rootHash, true);	
+            _state.Accept(treeVisitor, rootHash, true);
         }
 
         public byte[] GetCode(Keccak stateRoot, Address address)
@@ -117,6 +123,11 @@ namespace Nethermind.State
 
         private Account GetState(Keccak stateRoot, Address address)
         {
+            if (stateRoot == Keccak.EmptyTreeHash)
+            {
+                return null;
+            }
+
             Metrics.StateTreeReads++;
             Account account = _state.Get(address, stateRoot);
             return account;

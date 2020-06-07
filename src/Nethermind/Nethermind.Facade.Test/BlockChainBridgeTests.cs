@@ -20,6 +20,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -61,7 +62,7 @@ namespace Nethermind.Facade.Test
         public void SetUp()
         {
             _dbProvider = new MemDbProvider();
-            
+
             _stateReader = new StateReader(_dbProvider.StateDb, _dbProvider.CodeDb, LimboLogs.Instance);
             _stateProvider = new StateProvider(_dbProvider.StateDb, _dbProvider.CodeDb, LimboLogs.Instance);
             _storageProvider = new StorageProvider(_dbProvider.StateDb, _stateProvider, LimboLogs.Instance);
@@ -126,7 +127,7 @@ namespace Nethermind.Facade.Test
             BlockHeader header = Build.A.BlockHeader.WithNumber(10).TestObject;
             Transaction tx = new Transaction();
             tx.GasLimit = Transaction.BaseTxGasCost;
-
+            
             var gas = _blockchainBridge.EstimateGas(header, tx);
             gas.GasSpent.Should().Be(Transaction.BaseTxGasCost);
 
