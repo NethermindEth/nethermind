@@ -25,7 +25,7 @@ using Nethermind.Evm;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public partial class TransactionPermissionContract : Contract, IActivatedAtBlock
+    public partial class TransactionPermissionContract : Blockchain.Contracts.Contract, IActivatedAtBlock
     {
         private readonly IDictionary<UInt256, ITransactionPermissionVersionedContract> _versionedContracts;
         private readonly IVersionContract _versionContract;

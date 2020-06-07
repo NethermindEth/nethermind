@@ -29,7 +29,7 @@ using Nethermind.State;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public class ValidatorContract : Contract
+    public class ValidatorContract : Blockchain.Contracts.Contract
     {
         private readonly IAbiEncoder _abiEncoder;
         private readonly IStateProvider _stateProvider;

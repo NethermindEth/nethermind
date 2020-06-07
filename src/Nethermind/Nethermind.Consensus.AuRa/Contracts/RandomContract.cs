@@ -26,7 +26,7 @@ using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public class RandomContract : Contract, IActivatedAtBlock
+    public class RandomContract : Blockchain.Contracts.Contract, IActivatedAtBlock
     {
         private readonly Address _nodeAddress;
         private static readonly AbiDefinition Definition = new AbiDefinitionParser().Parse<RandomContract>();

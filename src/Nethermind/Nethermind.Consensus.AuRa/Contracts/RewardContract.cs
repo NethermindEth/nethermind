@@ -27,7 +27,7 @@ using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public class RewardContract : Contract, IActivatedAtBlock
+    public class RewardContract : Blockchain.Contracts.Contract, IActivatedAtBlock
     {
         public long Activation { get; }
         

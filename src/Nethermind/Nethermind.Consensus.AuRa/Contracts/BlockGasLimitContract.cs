@@ -26,7 +26,7 @@ using Nethermind.Evm;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public class BlockGasLimitContract : Contract, IActivatedAtBlock
+    public class BlockGasLimitContract : Blockchain.Contracts.Contract, IActivatedAtBlock
     {
         private static readonly AbiDefinition Definition = new AbiDefinitionParser().Parse<BlockGasLimitContract>();
         private ConstantContract Constant { get; }
