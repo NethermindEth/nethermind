@@ -173,7 +173,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return ResultWrapper<byte[]>.Success(Bytes.Empty);
             }
 
-            return ResultWrapper<byte[]>.Success(_blockchainBridge.GetStorage(address, positionIndex, header.StateRoot));
+            var storage = _blockchainBridge.GetStorage(address, positionIndex, header.StateRoot);
+            return ResultWrapper<byte[]>.Success(storage.PadLeft(32));
         }
 
         public Task<ResultWrapper<UInt256?>> eth_getTransactionCount(Address address, BlockParameter blockParameter)
