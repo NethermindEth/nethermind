@@ -40,6 +40,8 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
         public void UpdateCurrent(BlockHeader blockHeader)
         {
+            this.BlockActivationCheck(blockHeader);
+            
             if (!VersionsCache.TryGet(blockHeader.Hash, out var version))
             {
                 version = Current.ContractVersion(blockHeader);

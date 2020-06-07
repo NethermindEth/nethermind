@@ -25,11 +25,6 @@ namespace Nethermind.Consensus.AuRa.Contracts
 {
     public class TransactionPermissionContractV1 : TransactionPermissionContract 
     {
-        public override UInt256 ContractVersion(BlockHeader blockHeader)
-        {
-            return 1;
-        }
-
         protected override AbiDefinition AbiDefinition { get; }
             = new AbiDefinitionParser().Parse<TransactionPermissionContractV1>();
 
