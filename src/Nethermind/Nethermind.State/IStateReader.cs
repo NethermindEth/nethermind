@@ -30,13 +30,15 @@ namespace Nethermind.State
         UInt256 GetBalance(Keccak stateRoot, Address address);
         
         Keccak GetStorageRoot(Keccak stateRoot, Address address);
+        
+        byte[] GetStorage(Keccak storageRoot, UInt256 index);
 
         Keccak GetCodeHash(Keccak stateRoot, Address address);
         
         byte[] GetCode(Keccak stateRoot, Address address);
 
         byte[] GetCode(Keccak codeHash);
-        
+
         void RunTreeVisitor(ITreeVisitor treeVisitor, Keccak stateRoot);
     }
 }
