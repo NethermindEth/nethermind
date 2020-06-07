@@ -47,6 +47,7 @@ namespace Nethermind.Facade
         private readonly IFilterStore _filterStore;
         private readonly IStateReader _stateReader;
         private readonly IEthereumEcdsa _ecdsa;
+        private readonly ITimestamper _timestamper;
         private readonly IFilterManager _filterManager;
         private readonly IStateProvider _stateProvider;
         private readonly IReceiptFinder _receiptFinder;
@@ -66,6 +67,7 @@ namespace Nethermind.Facade
             ITransactionProcessor transactionProcessor,
             IEthereumEcdsa ecdsa,
             IBloomStorage bloomStorage,
+            ITimestamper timestamper,
             ILogManager logManager,
             bool isMining,
             int findLogBlockDepthLimit = 1000)
@@ -81,6 +83,7 @@ namespace Nethermind.Facade
             _wallet = wallet ?? throw new ArgumentException(nameof(wallet));
             _transactionProcessor = transactionProcessor ?? throw new ArgumentException(nameof(transactionProcessor));
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
+            _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
             IsMining = isMining;
 
             _logFinder = new LogFinder(_blockTree, _receiptFinder, bloomStorage, logManager, new ReceiptsRecovery(), findLogBlockDepthLimit);
@@ -203,7 +206,7 @@ namespace Nethermind.Facade
                     0,
                     blockHeader.Number + 1,
                     blockHeader.GasLimit,
-                    blockHeader.Timestamp,
+                    _timestamper.EpochSeconds,
                     Bytes.Empty);
 
                 transaction.Hash = transaction.CalculateHash();
