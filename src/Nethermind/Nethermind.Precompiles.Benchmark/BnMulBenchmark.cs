@@ -8,7 +8,7 @@ namespace Nethermind.Precompiles.Benchmark
     [SimpleJob(RuntimeMoniker.NetCoreApp31)]
     public class BnMulBenchmark : PrecompileBenchmarkBase
     {
-        protected override IPrecompiledContract Precompile => Bn128AddPrecompiledContract.Instance;
+        protected override IPrecompiledContract Precompile => Bn128MulPrecompiledContract.Instance;
         protected override string InputsDirectory => "bnmul";
     }
 }
