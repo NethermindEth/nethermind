@@ -21,9 +21,11 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
@@ -31,6 +33,7 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Db.Blooms;
 using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using NSubstitute;
@@ -55,13 +58,17 @@ namespace Nethermind.Facade.Test
         private IBloomStorage _bloomStorage;
         private ManualTimestamper _timestamper;
         private ISpecProvider _specProvider;
+        private IDbProvider _dbProvider;
 
         [SetUp]
         public void SetUp()
         {
-            _stateReader = Substitute.For<IStateReader>();
-            _stateProvider = Substitute.For<IStateProvider>();
-            _storageProvider = Substitute.For<IStorageProvider>();
+            _dbProvider = new MemDbProvider();
+
+            _stateReader = new StateReader(_dbProvider.StateDb, _dbProvider.CodeDb, LimboLogs.Instance);
+            _stateProvider = new StateProvider(_dbProvider.StateDb, _dbProvider.CodeDb, LimboLogs.Instance);
+            _storageProvider = new StorageProvider(_dbProvider.StateDb, _stateProvider, LimboLogs.Instance);
+          
             _timestamper = new ManualTimestamper();
             _blockTree = Substitute.For<IBlockTree>();
             _txPool = Substitute.For<ITxPool>();
@@ -74,7 +81,7 @@ namespace Nethermind.Facade.Test
             _bloomStorage = Substitute.For<IBloomStorage>();
             _specProvider = MainnetSpecProvider.Instance;
             _blockchainBridge = new BlockchainBridge(
-                _stateReader, 
+                _stateReader,
                 _stateProvider,
                 _storageProvider,
                 _blockTree,
@@ -96,7 +103,7 @@ namespace Nethermind.Facade.Test
         {
             _blockchainBridge.GetTransaction(TestItem.KeccakA).Should().Be((null, null));
         }
-        
+
         [Test]
         public void get_transaction_returns_null_when_block_not_found()
         {
@@ -104,7 +111,7 @@ namespace Nethermind.Facade.Test
             _receiptStorage.FindBlockHash(TestItem.KeccakA).Returns(TestItem.KeccakB);
             _blockchainBridge.GetTransaction(TestItem.KeccakA).Should().Be((null, null));
         }
-        
+
         [Test]
         public void get_transaction_returns_receipt_and_transaction_when_found()
         {
@@ -129,11 +136,66 @@ namespace Nethermind.Facade.Test
             
             var gas = _blockchainBridge.EstimateGas(header, tx);
             gas.GasSpent.Should().Be(Transaction.BaseTxGasCost);
-            
+
             _transactionProcessor.Received().CallAndRestore(
                 tx,
                 Arg.Is<BlockHeader>(bh => bh.Number == 11 && bh.Timestamp == ((ITimestamper)_timestamper).EpochSeconds),
                 Arg.Any<EstimateGasTracer>());
+        }
+
+        [Test]
+        public void Get_storage()
+        {
+            /* all testing will be touching just a single storage cell */
+            var storageCell = new StorageCell(TestItem.AddressA, 1);
+            
+            /* to start with we need to create an account that we will be setting storage at */
+            _stateProvider.CreateAccount(storageCell.Address, UInt256.One);
+            _stateProvider.Commit(MuirGlacier.Instance);
+            _stateProvider.CommitTree();
+            
+            /* at this stage we have an account with empty storage at the address that we want to test */
+
+            byte[] initialValue = new byte[] {1, 2, 3};
+            _storageProvider.Set(storageCell, initialValue);
+            _storageProvider.Commit();
+            _storageProvider.CommitTrees();
+            _stateProvider.Commit(MuirGlacier.Instance);
+            _stateProvider.CommitTree();
+
+            var retrieved =
+                _blockchainBridge.GetStorage(storageCell.Address, storageCell.Index, _stateProvider.StateRoot);
+            retrieved.Should().BeEquivalentTo(initialValue);
+            
+            /* at this stage we set the value in storage to 1,2,3 at the tested storage cell */
+            
+            /* Now we are testing scenario where the storage is being changed by the block processor.
+               To do that we create some different storage / state access stack that represents the processor.
+               It is a different stack of objects than the one that is used by the blockchain bridge. */
+            
+            byte[] newValue = new byte[] {1, 2, 3, 4, 5};
+            
+            StateProvider processorStateProvider =
+                new StateProvider(_dbProvider.StateDb, _dbProvider.CodeDb, LimboLogs.Instance);
+            processorStateProvider.StateRoot = _stateProvider.StateRoot;
+            
+            StorageProvider processorStorageProvider =
+                new StorageProvider(_dbProvider.StateDb, processorStateProvider, LimboLogs.Instance);
+            
+            processorStorageProvider.Set(storageCell, newValue);
+            processorStorageProvider.Commit();
+            processorStorageProvider.CommitTrees();
+            processorStateProvider.Commit(MuirGlacier.Instance);
+            processorStateProvider.CommitTree();
+            
+            /* At this stage the DB should have the storage value updated to 5.
+               We will try to retrieve the value by taking the state root from the processor.*/
+            
+            retrieved =
+                _blockchainBridge.GetStorage(storageCell.Address, storageCell.Index, processorStateProvider.StateRoot);
+            retrieved.Should().BeEquivalentTo(newValue);
+            
+            /* If it failed then it means that the blockchain bridge cached the previous call value */
         }
     }
 }
