@@ -226,13 +226,21 @@ namespace Nethermind.AuRa.Test.Transactions
         {
             var transactionPermissionContract = new VersionedTransactionPermissionContract(
                 Substitute.For<ITransactionProcessor>(), 
-                Substitute.For<IAbiEncoder>(),
+                new AbiEncoder(), 
                 TestItem.AddressA,
                 5, 
                 Substitute.For<IReadOnlyTransactionProcessorSource>());
             
             var filter = new TxPermissionFilter(transactionPermissionContract, new ITxPermissionFilter.Cache(), Substitute.For<IStateProvider>(), LimboLogs.Instance);
-            return filter.IsAllowed(Build.A.Transaction.TestObject, Build.A.BlockHeader.WithNumber(blockNumber).TestObject);
+            try
+            {
+                return filter.IsAllowed(Build.A.Transaction.TestObject, Build.A.BlockHeader.WithNumber(blockNumber).TestObject);
+            }
+            catch (Exception)
+            {
+                // TODO: previously it was throwing exceptions as well
+                return false;
+            }
         }
 
         public class TestTxPermissionsBlockchain : TestContractBlockchain

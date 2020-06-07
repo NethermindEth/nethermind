@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts.Json;
 using Nethermind.Core;
@@ -23,8 +24,15 @@ using Nethermind.Evm;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public class TransactionPermissionContractV1 : TransactionPermissionContract 
+    public class TransactionPermissionContractV1 : TransactionPermissionContract
     {
+        public override bool SupportsContractVersion => false;
+
+        public override UInt256 ContractVersion(BlockHeader blockHeader)
+        {
+            throw new NotSupportedException();
+        }
+
         protected override AbiDefinition AbiDefinition { get; }
             = new AbiDefinitionParser().Parse<TransactionPermissionContractV1>();
 

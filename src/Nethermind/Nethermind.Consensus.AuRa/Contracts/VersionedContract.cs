@@ -17,6 +17,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.Versioning;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
@@ -34,7 +35,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         public VersionedContract(IDictionary<UInt256, T> versions, long activation)
         {
             _versionedContracts = versions ?? throw new ArgumentNullException(nameof(versions));
-            Current = versions[1];
+            Current = versions.First(v => v.Value.SupportsContractVersion).Value;
             Activation = activation;
         }
 

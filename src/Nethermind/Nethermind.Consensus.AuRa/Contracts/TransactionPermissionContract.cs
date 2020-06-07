@@ -27,8 +27,19 @@ namespace Nethermind.Consensus.AuRa.Contracts
 {
     public abstract class TransactionPermissionContract : Contract, IVersionedContract
     {
+        public virtual bool SupportsContractVersion => true;
+
         public virtual UInt256 ContractVersion(BlockHeader blockHeader)
-            => Constant.Call<UInt256>(blockHeader, nameof(ContractVersion), Address.Zero);
+        {
+            try
+            {
+                return Constant.Call<UInt256>(blockHeader, nameof(ContractVersion), Address.Zero);
+            }
+            catch (Exception e)
+            {
+                return UInt256.One;;
+            }
+        }
 
         /// <summary>
         /// Returns the contract version number needed for node's engine.
