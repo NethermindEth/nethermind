@@ -163,7 +163,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                             _context.AbiEncoder,
                             blockGasLimitContractTransition.Value,
                             blockGasLimitContractTransition.Key,
-                            GetReadOnlyTransactionProcessorSource())).ToArray(),
+                            GetReadOnlyTransactionProcessorSource()))
+                        .ToArray<IBlockGasLimitContract>(),
                     _context.GasLimitOverrideCache,
                     _context.Config<IAuraConfig>().Minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract,
                     _context.LogManager);

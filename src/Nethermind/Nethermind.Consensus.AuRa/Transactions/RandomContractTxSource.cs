@@ -39,10 +39,10 @@ namespace Nethermind.Consensus.AuRa.Transactions
     {
         private readonly IEciesCipher _eciesCipher;
         private readonly PrivateKey _privateKey;
-        private readonly IList<RandomContract> _contracts;
+        private readonly IList<IRandomContract> _contracts;
         private readonly ICryptoRandom _random;
 
-        public RandomContractTxSource(IList<RandomContract> contracts,
+        public RandomContractTxSource(IList<IRandomContract> contracts,
             IEciesCipher eciesCipher,
             PrivateKey privateKey, 
             ICryptoRandom cryptoRandom)
@@ -65,12 +65,12 @@ namespace Nethermind.Consensus.AuRa.Transactions
             }
         }
 
-        private Transaction GetTransaction(in RandomContract contract, in BlockHeader parent)
+        private Transaction GetTransaction(in IRandomContract contract, in BlockHeader parent)
         {
             var (phase, round) = contract.GetPhase(parent);
             switch (phase)
             {
-                case RandomContract.Phase.BeforeCommit:
+                case IRandomContract.Phase.BeforeCommit:
                 {
                     byte[] bytes = new byte[32];
                     _random.GenerateRandomBytes(bytes);
@@ -78,7 +78,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
                     var cipher = _eciesCipher.Encrypt(_privateKey.PublicKey, bytes);
                     return contract.CommitHash(hash, cipher);
                 }
-                case RandomContract.Phase.Reveal:
+                case IRandomContract.Phase.Reveal:
                 {
                     var (hash, cipher) = contract.GetCommitAndCipher(parent, round);
                     byte[] bytes = _eciesCipher.Decrypt(_privateKey, cipher).Item2;
@@ -98,8 +98,8 @@ namespace Nethermind.Consensus.AuRa.Transactions
                     
                     return contract.RevealNumber(number);
                 }
-                case RandomContract.Phase.Waiting:
-                case RandomContract.Phase.Committed:
+                case IRandomContract.Phase.Waiting:
+                case IRandomContract.Phase.Committed:
                     return null;
             }
             

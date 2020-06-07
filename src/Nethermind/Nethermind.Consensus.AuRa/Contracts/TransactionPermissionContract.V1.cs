@@ -25,7 +25,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
 {
     public partial class TransactionPermissionContract
     {
-        private class V1 : ITransactionPermissionVersionedContract
+        private class V1 : ITransactionPermissionContract.ITransactionPermissionVersionedContract
         {
             private ConstantContract Constant { get; }
             
@@ -36,8 +36,8 @@ namespace Nethermind.Consensus.AuRa.Contracts
                 Constant = constant;
             }
             
-            public (TxPermissions Permissions, bool ShouldCache) AllowedTxTypes(BlockHeader parentHeader, Transaction tx) => 
-                (Constant.Call<TxPermissions>(parentHeader, Definition.GetFunction(nameof(AllowedTxTypes)), Address.Zero, tx.SenderAddress), true);
+            public (ITransactionPermissionContract.TxPermissions Permissions, bool ShouldCache) AllowedTxTypes(BlockHeader parentHeader, Transaction tx) => 
+                (Constant.Call<ITransactionPermissionContract.TxPermissions>(parentHeader, Definition.GetFunction(nameof(AllowedTxTypes)), Address.Zero, tx.SenderAddress), true);
 
             public UInt256 Version => UInt256.One;
         }

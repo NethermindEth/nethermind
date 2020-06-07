@@ -26,27 +26,40 @@ using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public class RandomContract : Contract, IActivatedAtBlock
+    public interface IRandomContract : IActivatedAtBlock
     {
-        private readonly Address _nodeAddress;
-        private static readonly AbiDefinition Definition = new AbiDefinitionParser().Parse<RandomContract>();
-        private ConstantContract Constant { get; }
+        (Phase Phase, UInt256 Round) GetPhase(BlockHeader parentHeader);
 
-        public RandomContract(ITransactionProcessor transactionProcessor,
-            IAbiEncoder abiEncoder,
-            Address contractAddress,
-            IReadOnlyTransactionProcessorSource readOnlyReadOnlyTransactionProcessorSource,
-            long transitionBlock,
-            Address nodeAddress)
-            : base(transactionProcessor, abiEncoder, contractAddress)
-        {
-            _nodeAddress = nodeAddress;
-            Activation = transitionBlock;
-            Constant = GetConstant(readOnlyReadOnlyTransactionProcessorSource);
-        }
+        /// <summary>
+        /// Returns the Keccak-256 hash and cipher of the validator's secret for the specified collection round and the specified validator stored by the validator through the `commitHash` function.
+        /// </summary>
+        /// <param name="parentHeader">Block header on which this is to be executed on.</param>
+        /// <param name="collectRound">The serial number of the collection round for which hash and cipher should be retrieved.</param>
+        /// <returns>Keccak-256 hash and cipher of the validator's secret for the specified collection round and the specified validator stored by the validator through the `commitHash` function.</returns>
+        /// <remarks>
+        /// The mining address of validator is last contract parameter.
+        /// </remarks>
+        (Keccak Hash, byte[] Cipher) GetCommitAndCipher(BlockHeader parentHeader, UInt256 collectRound);
 
-        public long Activation { get; }
+        /// <summary>
+        /// Called by the validator's node to store a hash and a cipher of the validator's secret on each collection round.
+        /// The validator's node must use its mining address to call this function.
+        /// This function can only be called once per collection round (during the `commits phase`).
+        /// </summary>
+        /// <param name="secretHash">The Keccak-256 hash of the validator's secret.</param>
+        /// <param name="cipher">The cipher of the validator's secret. Can be used by the node to restore the lost secret after the node is restarted (see the `getCipher` getter).</param>
+        /// <returns>Transaction to be included in block.</returns>
+        Transaction CommitHash(in Keccak secretHash, byte[] cipher);
 
+        /// <summary>
+        /// Called by the validator's node to XOR its number with the current random seed.
+        /// The validator's node must use its mining address to call this function.
+        /// This function can only be called once per collection round (during the `reveals phase`).
+        /// </summary>
+        /// <param name="number">The validator's number.</param>
+        /// <returns>Transaction to be included in block.</returns>
+        Transaction RevealNumber(UInt256 number);
+        
         public enum Phase
         {
             /// <summary>
@@ -72,8 +85,30 @@ namespace Nethermind.Consensus.AuRa.Contracts
             /// </summary>
             Reveal
         }
+    }
 
-        public (Phase Phase, UInt256 Round) GetPhase(BlockHeader parentHeader)
+    public class RandomContract : Contract, IRandomContract
+    {
+        private readonly Address _nodeAddress;
+        private static readonly AbiDefinition Definition = new AbiDefinitionParser().Parse<RandomContract>();
+        private ConstantContract Constant { get; }
+
+        public RandomContract(ITransactionProcessor transactionProcessor,
+            IAbiEncoder abiEncoder,
+            Address contractAddress,
+            IReadOnlyTransactionProcessorSource readOnlyReadOnlyTransactionProcessorSource,
+            long transitionBlock,
+            Address nodeAddress)
+            : base(transactionProcessor, abiEncoder, contractAddress)
+        {
+            _nodeAddress = nodeAddress;
+            Activation = transitionBlock;
+            Constant = GetConstant(readOnlyReadOnlyTransactionProcessorSource);
+        }
+
+        public long Activation { get; }
+
+        public (IRandomContract.Phase Phase, UInt256 Round) GetPhase(BlockHeader parentHeader)
         {
             this.BlockActivationCheck(parentHeader);
             
@@ -86,12 +121,12 @@ namespace Nethermind.Consensus.AuRa.Contracts
                 ? revealed
                     ? throw new InvalidOperationException("Revealed random number during commit phase.")
                     : !isCommitted
-                        ? Phase.BeforeCommit
-                        : Phase.Committed
+                        ? IRandomContract.Phase.BeforeCommit
+                        : IRandomContract.Phase.Committed
                 : !isCommitted // We apparently entered too late to make a commitment, wait until we get a chance again. 
                   || revealed
-                    ? Phase.Waiting
-                    : Phase.Reveal;
+                    ? IRandomContract.Phase.Waiting
+                    : IRandomContract.Phase.Reveal;
 
             return (phase, round);
         }

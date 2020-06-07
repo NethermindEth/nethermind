@@ -45,11 +45,11 @@ namespace Nethermind.Consensus.AuRa.Validators
         private IBlockTree BlockTree { get; }
         private readonly IReceiptFinder _receiptFinder;
         
-        internal ValidatorContract ValidatorContract { get; }
+        internal IValidatorContract ValidatorContract { get; }
         private PendingValidators CurrentPendingValidators => _currentPendingValidators;
 
         public ContractBasedValidator(
-            ValidatorContract validatorContract,
+            IValidatorContract validatorContract,
             IBlockTree blockTree,
             IReceiptFinder receiptFinder,
             IValidatorStore validatorStore,

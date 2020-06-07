@@ -26,7 +26,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
 {
     public partial class TransactionPermissionContract
     {
-        private class V3 : ITransactionPermissionVersionedContract, IVersionContract
+        private class V3 : ITransactionPermissionContract.ITransactionPermissionVersionedContract, IVersionContract
         {
             private static readonly UInt256 Three = 3;
 
@@ -38,13 +38,13 @@ namespace Nethermind.Consensus.AuRa.Contracts
                 Constant = constant;
             }
             
-            public (TxPermissions Permissions, bool ShouldCache) AllowedTxTypes(BlockHeader parentHeader, Transaction tx) =>
+            public (ITransactionPermissionContract.TxPermissions Permissions, bool ShouldCache) AllowedTxTypes(BlockHeader parentHeader, Transaction tx) =>
                 // _sender Transaction sender address.
                 // _to Transaction recipient address. If creating a contract, the `_to` address is zero.
                 // _value Transaction amount in wei.
                 // _gasPrice Gas price in wei for the transaction.
                 // _data Transaction data.
-                Constant.Call<TxPermissions, bool>(
+                Constant.Call<ITransactionPermissionContract.TxPermissions, bool>(
                     parentHeader, 
                     Definition.GetFunction(nameof(AllowedTxTypes)), 
                     Address.Zero, 

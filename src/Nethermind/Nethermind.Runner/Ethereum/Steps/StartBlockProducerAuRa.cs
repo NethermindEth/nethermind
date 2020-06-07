@@ -135,7 +135,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         protected override ITxSource CreateTxSourceForProducer(ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv, ReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource)
         {
-            IList<RandomContract> GetRandomContracts(
+            IList<IRandomContract> GetRandomContracts(
                 IDictionary<long, Address> randomnessContractAddress, 
                 ITransactionProcessor transactionProcessor, 
                 IAbiEncoder abiEncoder,
@@ -148,7 +148,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                         txProcessorSource, 
                         kvp.Key, 
                         nodeAddress))
-                    .ToArray();
+                    .ToArray<IRandomContract>();
 
 
             if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
@@ -234,7 +234,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                             _context.AbiEncoder,
                             blockGasLimitContractTransition.Value,
                             blockGasLimitContractTransition.Key,
-                            readOnlyTransactionProcessorSource)).ToArray(),
+                            readOnlyTransactionProcessorSource))
+                        .ToArray<IBlockGasLimitContract>(),
                     _context.GasLimitOverrideCache,
                     _auraConfig?.Minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract == true,
                     _context.LogManager);

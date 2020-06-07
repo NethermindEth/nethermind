@@ -29,7 +29,60 @@ using Nethermind.State;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public partial class ValidatorContract : Contract
+    public interface IValidatorContract
+    {
+        /// <summary>
+        /// Returns a boolean flag indicating whether the `emitInitiateChange` function can be called at the moment. Used by a validator's node and `TxPermission` contract (to deny dummy calling).
+        /// </summary>
+        bool EmitInitiateChangeCallable(BlockHeader parentHeader);
+
+        /// <summary>
+        /// Emits the `InitiateChange` event to pass a new validator set to the validator nodes.
+        /// Called automatically by one of the current validator's nodes when the `emitInitiateChangeCallable` getter
+        /// returns `true` (when some validator needs to be removed as malicious or the validator set needs to be
+        /// updated at the beginning of a new staking epoch). The new validator set is passed to the validator nodes
+        /// through the `InitiateChange` event and saved for later use by the `finalizeChange` function.
+        /// See https://openethereum.github.io/wiki/Validator-Set.html for more info about the `InitiateChange` event.
+        /// </summary>
+        Transaction EmitInitiateChange();
+
+        bool ShouldValidatorReport(Address validatorAddress, Address maliciousMiningAddress, in UInt256 blockNumber, BlockHeader parentHeader);
+
+        /// <summary>
+        /// Called when an initiated change reaches finality and is activated.
+        /// Only valid when msg.sender == SUPER_USER (EIP96, 2**160 - 2)
+        ///
+        /// Also called when the contract is first enabled for consensus. In this case,
+        /// the "change" finalized is the activation of the initial set.
+        /// function finalizeChange();
+        /// </summary>
+        void FinalizeChange(BlockHeader blockHeader);
+
+        /// <summary>
+        /// Get current validator set (last enacted or initial if no changes ever made)
+        /// function getValidators() constant returns (address[] _validators);
+        /// </summary>
+        Address[] GetValidators(BlockHeader parentHeader);
+
+        /// <summary>
+        /// Issue this log event to signal a desired change in validator set.
+        /// This will not lead to a change in active validator set until
+        /// finalizeChange is called.
+        ///
+        /// Only the last log event of any block can take effect.
+        /// If a signal is issued while another is being finalized it may never
+        /// take effect.
+        ///
+        /// _parent_hash here should be the parent block hash, or the
+        /// signal will not be recognized.
+        /// event InitiateChange(bytes32 indexed _parent_hash, address[] _new_set);
+        /// </summary>
+        bool CheckInitiateChangeEvent(BlockHeader blockHeader, TxReceipt[] receipts, out Address[] addresses);
+
+        void EnsureSystemAccount();
+    }
+    
+    public partial class ValidatorContract : Contract, IValidatorContract
     {
         private readonly IAbiEncoder _abiEncoder;
         private readonly IStateProvider _stateProvider;

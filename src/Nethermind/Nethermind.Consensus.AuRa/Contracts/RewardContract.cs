@@ -27,7 +27,27 @@ using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public class RewardContract : Contract, IActivatedAtBlock
+    public interface IRewardContract : IActivatedAtBlock
+    {
+        /// <summary>
+        /// produce rewards for the given benefactors,
+        /// with corresponding reward codes.
+        /// only callable by `SYSTEM_ADDRESS`
+        /// function reward(address[] benefactors, uint16[] kind) external returns (address[], uint256[]);
+        /// </summary>
+        /// <param name="blockHeader"></param>
+        /// <param name="benefactors">benefactor addresses</param>
+        /// <param name="kind">
+        /// Kind:
+        /// 0 - Author - Reward attributed to the block author
+        /// 2 - Empty step - Reward attributed to the author(s) of empty step(s) included in the block (AuthorityRound engine)
+        /// 3 - External - Reward attributed by an external protocol (e.g. block reward contract)
+        /// 101-106 - Uncle - Reward attributed to uncles, with distance 1 to 6 (Ethash engine)
+        /// </param>
+        (Address[] Addresses, UInt256[] Rewards) Reward(BlockHeader blockHeader, Address[] benefactors, ushort[] kind);
+    }
+
+    public class RewardContract : Contract, IRewardContract
     {
         public long Activation { get; }
         

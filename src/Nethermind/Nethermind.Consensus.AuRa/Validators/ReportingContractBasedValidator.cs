@@ -50,7 +50,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         
         public ReportingContractBasedValidator(
             ContractBasedValidator contractValidator,
-            ReportingValidatorContract reportingValidatorContract,
+            IReportingValidatorContract reportingValidatorContract,
             long posdaoTransition,
             ITxSender txSender,
             ITxPool txPool,
@@ -66,7 +66,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             _logger = logManager?.GetClassLogger<ReportingContractBasedValidator>() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        private ReportingValidatorContract ValidatorContract { get; }
+        private IReportingValidatorContract ValidatorContract { get; }
         
         public void ReportMalicious(Address validator, long blockNumber, byte[] proof, IReportingValidator.MaliciousCause cause)
         {

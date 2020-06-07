@@ -25,32 +25,28 @@ using Nethermind.Evm;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public partial class TransactionPermissionContract : Contract, IActivatedAtBlock
+    public interface ITransactionPermissionContract : IActivatedAtBlock
     {
-        private readonly IDictionary<UInt256, ITransactionPermissionVersionedContract> _versionedContracts;
-        private readonly IVersionContract _versionContract;
-
-        public TransactionPermissionContract(ITransactionProcessor transactionProcessor,
-            IAbiEncoder abiEncoder,
-            Address contractAddress,
-            long activationBlock,
-            IReadOnlyTransactionProcessorSource readOnlyReadOnlyTransactionProcessorSource) 
-            : base(transactionProcessor, abiEncoder, contractAddress)
+        ITransactionPermissionVersionedContract GetVersionedContract(BlockHeader parentHeader);
+        ITransactionPermissionVersionedContract GetVersionedContract(UInt256 version);
+        
+        public interface ITransactionPermissionVersionedContract
         {
-            Activation = activationBlock;
-            var constantContract = GetConstant(readOnlyReadOnlyTransactionProcessorSource);
-            _versionedContracts = GetContracts(constantContract).ToDictionary(c => c.Version);
-            _versionContract = (IVersionContract) _versionedContracts.Values.First(c => c is IVersionContract);
+            /// <summary>
+            /// Defines the allowed transaction types which may be initiated by the specified sender with
+            /// the specified gas price and data. Used by node's engine each time a transaction is about to be
+            /// included into a block.
+            /// </summary>
+            /// <param name="parentHeader"></param>
+            /// <param name="tx"></param>
+            /// <returns><see cref="TxPermissions"/>Set of allowed transactions types and <see cref="bool"/> If `true` is returned, the same permissions will be applied from the same sender without calling this contract again.</returns>
+            (TxPermissions Permissions, bool ShouldCache) AllowedTxTypes(BlockHeader parentHeader, Transaction tx);
+            
+            /// <summary>
+            /// Returns the contract's version number needed for node's engine.
+            /// </summary>
+            UInt256 Version { get; }
         }
-
-        private IEnumerable<ITransactionPermissionVersionedContract> GetContracts(ConstantContract constant)
-        {
-            yield return new V1(constant);
-            yield return new V2(constant);
-            yield return new V3(constant);
-        }
-
-        public long Activation { get; }
         
         [Flags]
         public enum TxPermissions : uint
@@ -82,8 +78,36 @@ namespace Nethermind.Consensus.AuRa.Contracts
             
             All = 0xffffffff,
         }
-        
-        public ITransactionPermissionVersionedContract GetVersionedContract(BlockHeader parentHeader)
+    }
+    
+    public partial class TransactionPermissionContract : Contract, ITransactionPermissionContract
+    {
+        private readonly IDictionary<UInt256, ITransactionPermissionContract.ITransactionPermissionVersionedContract> _versionedContracts;
+        private readonly IVersionContract _versionContract;
+
+        public TransactionPermissionContract(ITransactionProcessor transactionProcessor,
+            IAbiEncoder abiEncoder,
+            Address contractAddress,
+            long activationBlock,
+            IReadOnlyTransactionProcessorSource readOnlyReadOnlyTransactionProcessorSource) 
+            : base(transactionProcessor, abiEncoder, contractAddress)
+        {
+            Activation = activationBlock;
+            var constantContract = GetConstant(readOnlyReadOnlyTransactionProcessorSource);
+            _versionedContracts = GetContracts(constantContract).ToDictionary(c => c.Version);
+            _versionContract = (IVersionContract) _versionedContracts.Values.First(c => c is IVersionContract);
+        }
+
+        private IEnumerable<ITransactionPermissionContract.ITransactionPermissionVersionedContract> GetContracts(ConstantContract constant)
+        {
+            yield return new V1(constant);
+            yield return new V2(constant);
+            yield return new V3(constant);
+        }
+
+        public long Activation { get; }
+
+        public ITransactionPermissionContract.ITransactionPermissionVersionedContract GetVersionedContract(BlockHeader parentHeader)
         {
             this.BlockActivationCheck(parentHeader);
             
@@ -98,26 +122,8 @@ namespace Nethermind.Consensus.AuRa.Contracts
             }
         }
         
-        public ITransactionPermissionVersionedContract GetVersionedContract(UInt256 version) => _versionedContracts.TryGetValue(version, out var contract) ? contract : null;
-
-        public interface ITransactionPermissionVersionedContract
-        {
-            /// <summary>
-            /// Defines the allowed transaction types which may be initiated by the specified sender with
-            /// the specified gas price and data. Used by node's engine each time a transaction is about to be
-            /// included into a block.
-            /// </summary>
-            /// <param name="parentHeader"></param>
-            /// <param name="tx"></param>
-            /// <returns><see cref="TxPermissions"/>Set of allowed transactions types and <see cref="bool"/> If `true` is returned, the same permissions will be applied from the same sender without calling this contract again.</returns>
-            (TxPermissions Permissions, bool ShouldCache) AllowedTxTypes(BlockHeader parentHeader, Transaction tx);
-            
-            /// <summary>
-            /// Returns the contract's version number needed for node's engine.
-            /// </summary>
-            UInt256 Version { get; }
-        }
-
+        public ITransactionPermissionContract.ITransactionPermissionVersionedContract GetVersionedContract(UInt256 version) => _versionedContracts.TryGetValue(version, out var contract) ? contract : null;
+        
         private interface IVersionContract
         {
             AbiDefinition Definition { get; }

@@ -81,8 +81,8 @@ namespace Nethermind.Consensus.AuRa
 
         public IAuRaValidator CreateValidatorProcessor(AuRaParameters.Validator validator, BlockHeader parentHeader = null, long? startBlock = null)
         {
-            ValidatorContract GetValidatorContract() => new ValidatorContract(_transactionProcessor, _abiEncoder, validator.GetContractAddress(), _stateProvider, _readOnlyReadOnlyTransactionProcessorSource, _nodeAddress);
-            ReportingValidatorContract GetReportingValidatorContract() => new ReportingValidatorContract(_transactionProcessor, _abiEncoder, validator.GetContractAddress(), _nodeAddress);
+            IValidatorContract GetValidatorContract() => new ValidatorContract(_transactionProcessor, _abiEncoder, validator.GetContractAddress(), _stateProvider, _readOnlyReadOnlyTransactionProcessorSource, _nodeAddress);
+            IReportingValidatorContract GetReportingValidatorContract() => new ReportingValidatorContract(_transactionProcessor, _abiEncoder, validator.GetContractAddress(), _nodeAddress);
 
             var validSealerStrategy = new ValidSealerStrategy();
             long startBlockNumber = startBlock ?? AuRaValidatorBase.DefaultStartBlockNumber;

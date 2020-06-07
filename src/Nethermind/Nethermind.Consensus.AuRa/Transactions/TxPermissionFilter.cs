@@ -56,16 +56,16 @@ namespace Nethermind.Consensus.AuRa.Transactions
             }
         }
 
-        private TransactionPermissionContract.TxPermissions GetPermissions(Transaction tx, BlockHeader parentHeader)
+        private ITransactionPermissionContract.TxPermissions GetPermissions(Transaction tx, BlockHeader parentHeader)
         {
             var key = (parentHeader.Hash, tx.SenderAddress);
             var txCachedPermissions = _cache.Permissions.Get(key);
             return txCachedPermissions ?? GetPermissionsFromContract(tx, parentHeader, key);
         }
 
-        private TransactionPermissionContract.TxPermissions GetPermissionsFromContract(Transaction tx, BlockHeader parentHeader, in (Keccak Hash, Address SenderAddress) key)
+        private ITransactionPermissionContract.TxPermissions GetPermissionsFromContract(Transaction tx, BlockHeader parentHeader, in (Keccak Hash, Address SenderAddress) key)
         {
-            TransactionPermissionContract.TxPermissions txPermissions = TransactionPermissionContract.TxPermissions.None;
+            ITransactionPermissionContract.TxPermissions txPermissions = ITransactionPermissionContract.TxPermissions.None;
             bool shouldCache = true;
             
             var versionedContract = GetVersionedContract(parentHeader);
@@ -95,9 +95,9 @@ namespace Nethermind.Consensus.AuRa.Transactions
             return txPermissions;
         }
 
-        private TransactionPermissionContract.ITransactionPermissionVersionedContract GetVersionedContract(BlockHeader blockHeader)
+        private ITransactionPermissionContract.ITransactionPermissionVersionedContract GetVersionedContract(BlockHeader blockHeader)
         {
-            TransactionPermissionContract.ITransactionPermissionVersionedContract versionedContract;
+            ITransactionPermissionContract.ITransactionPermissionVersionedContract versionedContract;
             if (_cache.VersionedContracts.TryGet(blockHeader.Hash, out var version))
             {
                 versionedContract = _contract.GetVersionedContract(version);
@@ -111,13 +111,13 @@ namespace Nethermind.Consensus.AuRa.Transactions
             return versionedContract;
         }
 
-        private TransactionPermissionContract.TxPermissions GetTxType(Transaction tx)
+        private ITransactionPermissionContract.TxPermissions GetTxType(Transaction tx)
         {
             return tx.IsContractCreation
-                ? TransactionPermissionContract.TxPermissions.Create
+                ? ITransactionPermissionContract.TxPermissions.Create
                 : _stateProvider.GetCodeHash(tx.To) != Keccak.OfAnEmptyString
-                    ? TransactionPermissionContract.TxPermissions.Call
-                    : TransactionPermissionContract.TxPermissions.Basic;
+                    ? ITransactionPermissionContract.TxPermissions.Call
+                    : ITransactionPermissionContract.TxPermissions.Basic;
         }
     }
 }

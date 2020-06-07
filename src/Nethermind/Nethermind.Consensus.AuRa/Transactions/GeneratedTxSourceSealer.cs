@@ -42,10 +42,12 @@ namespace Nethermind.Consensus.AuRa.Transactions
             _nodeAddress = nodeAddress ?? throw new ArgumentNullException(nameof(nodeAddress));
         }
         
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit) =>
-            _innerSource.GetTransactions(parent, gasLimit).Select(tx =>
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
+        {
+            var nodeNonce = _stateReader.GetNonce(parent.StateRoot, _nodeAddress);
+            
+            return _innerSource.GetTransactions(parent, gasLimit).Select(tx =>
             {
-                var nodeNonce = _stateReader.GetNonce(parent.StateRoot, _nodeAddress);
                 if (tx is GeneratedTransaction)
                 {
                     tx.Nonce = ++nodeNonce;
@@ -54,5 +56,6 @@ namespace Nethermind.Consensus.AuRa.Transactions
 
                 return tx;
             });
+        }
     }
 }
