@@ -18,6 +18,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Config;
@@ -50,7 +51,7 @@ namespace Nethermind.Runner.Hive
             _configurationProvider = configurationProvider ?? throw new ArgumentNullException(nameof(configurationProvider));
         }
 
-        public Task Start()
+        public Task Start(CancellationToken cancellationToken)
         {
             _logger.Info("HIVE initialization starting");
             _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
@@ -58,7 +59,7 @@ namespace Nethermind.Runner.Hive
             ListEnvironmentVariables();
             InitializeKeys(hiveConfig.KeysDir);
             InitializeChain(hiveConfig.ChainFile);
-            InitializeBlocks(hiveConfig.BlocksDir);
+            InitializeBlocks(hiveConfig.BlocksDir, cancellationToken);
             _blockTree.NewHeadBlock -= BlockTreeOnNewHeadBlock;
             _logger.Info("HIVE initialization completed");
             return Task.CompletedTask;
@@ -130,7 +131,7 @@ namespace Nethermind.Runner.Hive
             }
         }
 
-        private void InitializeBlocks(string blocksDir)
+        private void InitializeBlocks(string blocksDir, CancellationToken cancellationToken)
         {
             if (!Directory.Exists(blocksDir))
             {
@@ -143,6 +144,11 @@ namespace Nethermind.Runner.Hive
             var blocks = files.Select(x => new {File = x, Block = DecodeBlock(x)}).OrderBy(x => x.Block.Header.Number).ToArray();
             foreach (var block in blocks)
             {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    break;
+                }
+                
                 if (_logger.IsInfo) _logger.Info($"HIVE Processing block file: {block.File} - {block.Block.ToString(Block.Format.Short)}");
                 ProcessBlock(block.Block);
             }

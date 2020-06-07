@@ -38,5 +38,8 @@ namespace Nethermind.Blockchain.Synchronization
         public string PivotTotalDifficulty { get; set; }
         public string PivotNumber { get; set; }
         public string PivotHash { get; set; }
+        public int BeamSyncContextTimeout { get; set; } = 4;
+        public int BeamSyncPreProcessorTimeout { get; set; } = 15;
+        public bool BeamSyncFixMode { get; set; } = false;
     }
 }

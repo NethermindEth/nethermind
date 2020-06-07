@@ -17,6 +17,7 @@
 using System;
 using System.IO;
 using System.Security;
+using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Crypto;
 using Nethermind.KeyStore;
@@ -67,6 +68,43 @@ namespace Nethermind.Wallet
         [DoNotUseInSecuredContext("This stored the node key in plaintext - it is just one step further to the full node key protection")]
         public PrivateKey LoadNodeKey()
         {
+            if(_config.BlockAuthorAccount != null)
+            {
+                SecureString password;
+                if(_config.BlockAuthorPassword != null)
+                {
+                    password = new SecureString();
+                    foreach (var character in _config.BlockAuthorPassword)
+                    {
+                        password.AppendChar(character);
+                    }
+                    
+                    password.MakeReadOnly();
+                }
+                else
+                {
+                    password = ConsoleUtils.ReadSecret($"Provide password for validator account {_config.BlockAuthorAccount}");    
+                }
+                
+                try
+                {
+                    (PrivateKey privateKey, Result result) = _keyStore.GetKey(new Address(_config.BlockAuthorAccount), password);
+                    if (result == Result.Success)
+                    {
+                        return privateKey;
+                    }
+                    else
+                    {
+                        if(_logger.IsError) _logger.Error($"Not able to unlock the key for {_config.BlockAuthorAccount}");
+                        // continue to the other methods
+                    }
+                }
+                catch (Exception e)
+                {
+                    if(_logger.IsError) _logger.Error($"Not able to unlock the key for {_config.BlockAuthorAccount}", e);
+                }
+            }
+            
             // this is not secure at all but this is just the node key, nothing critical so far, will use the key store here later and allow to manage by password when launching the node
             if (_config.TestNodeKey == null)
             {

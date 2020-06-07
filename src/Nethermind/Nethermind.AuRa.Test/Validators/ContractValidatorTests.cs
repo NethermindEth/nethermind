@@ -196,29 +196,36 @@ namespace Nethermind.AuRa.Test.Validators
             validator.Validators.Should().BeEquivalentTo(validators, o => o.WithStrictOrdering());
         }
             
-        [Test]
-        public void loads_initial_validators_from_contract()
+        [TestCase(1)]
+        [TestCase(10)]
+        public void loads_initial_validators_from_contract(long blockNumber)
         {
             var initialValidator = TestItem.AddressA;
-            SetupInitialValidators(initialValidator);
+            var block = Build.A.Block.WithParent(_parentHeader).WithNumber(blockNumber).WithBeneficiary(initialValidator).WithAura(1, Bytes.Empty).TestObject;
+            SetupInitialValidators(block.Header, initialValidator);
             var startBlockNumber = 1;
-            IAuRaValidator validator = new ContractBasedValidator(_validator, _stateProvider, _abiEncoder, _transactionProcessor, _readOnlyTransactionProcessorSource, _blockTree, _receiptsStorage, _validatorStore, _validSealerStrategy, _blockFinalizationManager, _parentHeader, _logManager, startBlockNumber);
+            var validator = new ContractBasedValidator(_validator, _stateProvider, _abiEncoder, _transactionProcessor, _readOnlyTransactionProcessorSource, _blockTree, _receiptsStorage, _validatorStore, _validSealerStrategy, _blockFinalizationManager, _parentHeader, _logManager, startBlockNumber);
+
+            bool finalizeChangeCalled = blockNumber == 1;
             
-            _block.Header.Number = 1;
-            _block.Header.Beneficiary = initialValidator;
-            validator.OnBlockProcessingStart(_block);
+            if (!finalizeChangeCalled)
+            {
+                validator.Validators = new[] {TestItem.AddressD};
+            }
+            
+            validator.OnBlockProcessingStart(block);
 
             // getValidators should have been called
-            _transactionProcessor.Received(1)
+            _transactionProcessor.Received()
                 .CallAndRestore(
                     Arg.Is<Transaction>(t => CheckTransaction(t, _getValidatorsData)),
                     _parentHeader,
                     Arg.Is<ITxTracer>(t => t is CallOutputTracer));
 
             // finalizeChange should be called
-            _transactionProcessor.Received(1)
+            _transactionProcessor.Received(finalizeChangeCalled ? 1 : 0)
                 .Execute(Arg.Is<Transaction>(t => CheckTransaction(t, _finalizeChangeData)),
-                    _block.Header,
+                    block.Header,
                     Arg.Is<ITxTracer>(t => t is CallOutputTracer));
 
                 // initial validator should be true

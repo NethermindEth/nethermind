@@ -88,10 +88,11 @@ namespace Nethermind.JsonRpc.Test.Modules
             await base.Build(specProvider);
             IFilterStore filterStore = new FilterStore();
             IFilterManager filterManager = new FilterManager(filterStore, BlockProcessor, TxPool, LimboLogs.Instance);
-            Bridge ??= new BlockchainBridge(StateReader, State, Storage, BlockTree, TxPool, ReceiptStorage, filterStore, filterManager, TestWallet, TxProcessor, EthereumEcdsa, NullBloomStorage.Instance, LimboLogs.Instance, false);
-            TxPoolBridge ??= new TxPoolBridge(TxPool, TestWallet, Timestamper, specProvider?.ChainId ?? 0);
-            LogFinder = new LogFinder(BlockTree, ReceiptStorage, bloomStorage, LimboLogs.Instance, new ReceiptsRecovery());
             
+            LogFinder = new LogFinder(BlockTree, ReceiptStorage, bloomStorage, LimboLogs.Instance, new ReceiptsRecovery());
+            Bridge ??= new BlockchainBridge(StateReader, State, Storage, BlockTree, TxPool, ReceiptStorage, filterStore, filterManager, TestWallet, TxProcessor, EthereumEcdsa, NullBloomStorage.Instance, Timestamper, LimboLogs.Instance, false);
+            TxPoolBridge ??= new TxPoolBridge(TxPool, TestWallet, Timestamper, specProvider?.ChainId ?? 0);
+
             EthModule = new EthModule(new JsonRpcConfig(), Bridge, TxPoolBridge, LimboLogs.Instance);
             return this;
         }

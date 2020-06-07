@@ -53,9 +53,9 @@ namespace Nethermind.JsonRpc.Modules.Admin
             _nodeInfo = new NodeInfo();
             _nodeInfo.Name = ClientVersion.Description;
             _nodeInfo.Enode = _enode.Info;
-            byte[] publicKeyBytes = _enode?.PublicKey?.Bytes;
+            byte[] publicKeyBytes = _enode.PublicKey?.Bytes;
             _nodeInfo.Id = (publicKeyBytes == null ? Keccak.Zero : Keccak.Compute(publicKeyBytes)).ToString(false);
-            _nodeInfo.Ip = _enode?.HostIp?.ToString();
+            _nodeInfo.Ip = _enode.HostIp?.ToString();
             _nodeInfo.ListenAddress = $"{_enode.HostIp}:{_enode.Port}";
             _nodeInfo.Ports.Discovery = _networkConfig.DiscoveryPort;
             _nodeInfo.Ports.Listener = _networkConfig.P2PPort;

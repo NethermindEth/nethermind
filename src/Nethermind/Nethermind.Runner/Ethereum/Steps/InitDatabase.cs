@@ -44,7 +44,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context = context;
         }
 
-        public async Task Execute()
+        public async Task Execute(CancellationToken _)
         {
             ILogger logger = _context.LogManager.GetClassLogger();
             
@@ -62,7 +62,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (syncConfig.BeamSync)
             {
                 _context.SyncModeSelector = new PendingSyncModeSelector();
-                BeamSyncDbProvider beamSyncProvider = new BeamSyncDbProvider(_context.SyncModeSelector, _context.DbProvider, _context.LogManager);
+                BeamSyncDbProvider beamSyncProvider = new BeamSyncDbProvider(_context.SyncModeSelector, _context.DbProvider, _context.Config<ISyncConfig>(), _context.LogManager);
                 _context.DbProvider = beamSyncProvider;
             }
         }
@@ -87,6 +87,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         private async Task<RocksDbProvider> GetRocksDbProvider(IDbConfig dbConfig, string basePath, bool useReceiptsDb)
         {
+            IInitConfig initConfig = _context.Config<IInitConfig>();
             RocksDbProvider debugRecorder = new RocksDbProvider(_context.LogManager, _context.Config<INdmConfig>().Enabled);
             ThisNodeInfo.AddInfo("DB location  :", $"{basePath}");
             await debugRecorder.Init(basePath, dbConfig, useReceiptsDb);

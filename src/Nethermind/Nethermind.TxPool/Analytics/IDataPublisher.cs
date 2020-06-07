@@ -14,10 +14,12 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Threading.Tasks;
+
 namespace Nethermind.TxPool.Analytics
 {
     public interface IDataPublisher
     {
-        void Publish<T>(T data) where T : class;
+        Task PublishAsync<T>(T data) where T : class;
     }
 }

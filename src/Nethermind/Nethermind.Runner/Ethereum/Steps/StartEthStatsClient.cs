@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
@@ -51,7 +52,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         bool IStep.MustInitialize => false;
         
-        public async Task Execute()
+        public async Task Execute(CancellationToken _)
         {
             IEthStatsConfig ethStatsConfig = _context.Config<IEthStatsConfig>();
             if (!ethStatsConfig.Enabled)

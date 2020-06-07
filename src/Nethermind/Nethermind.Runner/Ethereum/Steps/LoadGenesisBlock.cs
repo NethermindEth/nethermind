@@ -36,8 +36,8 @@ namespace Nethermind.Runner.Ethereum.Steps
     public class LoadGenesisBlock : IStep
     {
         private readonly EthereumRunnerContext _context;
-        private ILogger _logger;
-        private IInitConfig _initConfig;
+        private readonly ILogger _logger;
+        private IInitConfig? _initConfig;
 
         public LoadGenesisBlock(EthereumRunnerContext context)
         {
@@ -45,7 +45,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             _logger = _context.LogManager.GetClassLogger();
         }
 
-        public async Task Execute()
+        public async Task Execute(CancellationToken _)
         {
             _initConfig = _context.Config<IInitConfig>();
             Keccak? expectedGenesisHash = string.IsNullOrWhiteSpace(_initConfig.GenesisHash) ? null : new Keccak(_initConfig.GenesisHash);

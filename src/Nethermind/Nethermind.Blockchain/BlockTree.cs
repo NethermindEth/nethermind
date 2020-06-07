@@ -118,7 +118,7 @@ namespace Nethermind.Blockchain
             {
                 DeleteBlocks(new Keccak(deletePointer));
             }
-            
+
             ChainLevelInfo genesisLevel = LoadLevel(0, true);
             if (genesisLevel != null)
             {
@@ -147,6 +147,14 @@ namespace Nethermind.Blockchain
 
         private void RecalculateTreeLevels()
         {
+            if (_syncConfig.BeamSyncFixMode)
+            {
+                BestKnownNumber = Head.Number;
+                BestSuggestedBody = Head;
+                BestSuggestedHeader = Head.Header;
+                return;
+            }
+            
             LoadLowestInsertedHeader();
             LoadLowestInsertedBody();
             LoadBestKnown();
@@ -431,7 +439,7 @@ namespace Nethermind.Blockchain
 
                 return AddBlockResult.AlreadyKnown;
             }
-            
+
             if (!header.IsGenesis && !IsKnownBlock(header.Number - 1, header.ParentHash))
             {
                 if (_logger.IsTrace)
@@ -689,7 +697,7 @@ namespace Nethermind.Blockchain
             BestSuggestedBody = Head;
 
             BlockAcceptingNewBlocks();
-            
+
             try
             {
                 DeleteBlocks(invalidBlock.Hash);
@@ -703,7 +711,7 @@ namespace Nethermind.Blockchain
         private void DeleteBlocks(Keccak deletePointer)
         {
             BlockHeader deleteHeader = FindHeader(deletePointer, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            
+
             long currentNumber = deleteHeader.Number;
             Keccak currentHash = deleteHeader.Hash;
             Keccak nextHash = null;
@@ -724,14 +732,7 @@ namespace Nethermind.Blockchain
                     }
                     else
                     {
-                        for (int i = 0; i < currentLevel.BlockInfos.Length; i++)
-                        {
-                            if (currentLevel.BlockInfos[0].BlockHash == currentHash)
-                            {
-                                currentLevel.BlockInfos = currentLevel.BlockInfos.Where(bi => bi.BlockHash != currentHash).ToArray();
-                                break;
-                            }
-                        }
+                        currentLevel.BlockInfos = currentLevel.BlockInfos.Where(bi => bi.BlockHash != currentHash).ToArray();
                     }
                 }
 
@@ -927,7 +928,7 @@ namespace Nethermind.Blockchain
             {
                 _txPool.RemoveTransaction(block.Transactions[i].Hash, block.Number);
             }
-            
+
             // the hash will only be the same during perf test runs / modified DB states
             if (hashOfThePreviousMainBlock != null && hashOfThePreviousMainBlock != block.Hash)
             {
@@ -1271,12 +1272,12 @@ namespace Nethermind.Blockchain
 
             return deleted;
         }
-        
+
         internal void BlockAcceptingNewBlocks()
         {
             Interlocked.Increment(ref _canAcceptNewBlocksCounter);
         }
-        
+
         internal void ReleaseAcceptingNewBlocks()
         {
             Interlocked.Decrement(ref _canAcceptNewBlocksCounter);
