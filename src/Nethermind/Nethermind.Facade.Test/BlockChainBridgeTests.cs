@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Blockchain;
@@ -52,6 +53,7 @@ namespace Nethermind.Facade.Test
         private ITransactionProcessor _transactionProcessor;
         private IEthereumEcdsa _ethereumEcdsa;
         private IBloomStorage _bloomStorage;
+        private ManualTimestamper _timestamper;
         private ISpecProvider _specProvider;
 
         [SetUp]
@@ -60,6 +62,7 @@ namespace Nethermind.Facade.Test
             _stateReader = Substitute.For<IStateReader>();
             _stateProvider = Substitute.For<IStateProvider>();
             _storageProvider = Substitute.For<IStorageProvider>();
+            _timestamper = new ManualTimestamper();
             _blockTree = Substitute.For<IBlockTree>();
             _txPool = Substitute.For<ITxPool>();
             _receiptStorage = Substitute.For<IReceiptStorage>();
@@ -83,6 +86,7 @@ namespace Nethermind.Facade.Test
                 _transactionProcessor,
                 _ethereumEcdsa,
                 _bloomStorage,
+                _timestamper,
                 LimboLogs.Instance,
                 false);
         }
@@ -117,6 +121,8 @@ namespace Nethermind.Facade.Test
         [Test]
         public void Estimate_gas_returns_the_estimate_from_the_tracer()
         {
+            _timestamper.UtcNow = DateTime.MinValue;
+            _timestamper.Add(TimeSpan.FromDays(123));
             BlockHeader header = Build.A.BlockHeader.WithNumber(10).TestObject;
             Transaction tx = new Transaction();
             tx.GasLimit = Transaction.BaseTxGasCost;
@@ -126,7 +132,7 @@ namespace Nethermind.Facade.Test
             
             _transactionProcessor.Received().CallAndRestore(
                 tx,
-                Arg.Is<BlockHeader>(bh => bh.Number == 11),
+                Arg.Is<BlockHeader>(bh => bh.Number == 11 && bh.Timestamp == ((ITimestamper)_timestamper).EpochSeconds),
                 Arg.Any<EstimateGasTracer>());
         }
     }
