@@ -32,11 +32,17 @@ namespace Nethermind.Abi
         {
         }
         
+        public byte[] Bytecode { get; private set; }
         public IReadOnlyList<AbiFunctionDescription> Constructors => _constructors;
         public IReadOnlyDictionary<string, AbiFunctionDescription> Functions => _functions;
         public IReadOnlyDictionary<string, AbiEventDescription> Events => _events;
         public IReadOnlyList<AbiBaseDescription> Items => _items;
 
+        public void SetBytecode(byte[] bytecode)
+        {
+            Bytecode = bytecode;
+        }
+        
         public void Add(AbiFunctionDescription function)
         {
             if (function.Type == AbiDescriptionType.Constructor)

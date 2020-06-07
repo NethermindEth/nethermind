@@ -22,6 +22,6 @@ namespace Nethermind.DepositContract
     [SuppressMessage("ReSharper", "UnusedAutoPropertyAccessor.Global")]
     public class DepositConfig : IDepositConfig
     {
-        public string DepositContractAddress { get; set; }
+        public string? DepositContractAddress { get; set; }
     }
 }

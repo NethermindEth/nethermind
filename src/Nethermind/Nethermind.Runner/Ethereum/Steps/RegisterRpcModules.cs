@@ -40,6 +40,7 @@ using Nethermind.Baseline.Config;
 using Nethermind.Baseline.JsonRpc;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.DepositContract;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
@@ -125,6 +126,15 @@ namespace Nethermind.Runner.Ethereum.Steps
                 
                 _context.RpcModuleProvider.Register(new SingletonModulePool<IBaselineModule>(baselineModuleFactory, true));
                 if (logger?.IsInfo ?? false) logger!.Info($"Baseline RPC Module has been enabled");
+            }
+            
+            IDepositConfig depositConfig = _context.Config<IDepositConfig>();
+            if (depositConfig.DepositContractAddress != null)
+            {
+                TxPoolBridge txPoolBridge = new TxPoolBridge(
+                    _context.TxPool, _context.Wallet, _context.Timestamper, _context.SpecProvider.ChainId);
+                DepositModule depositModule = new DepositModule(txPoolBridge, _context.LogManager);
+                _context.RpcModuleProvider.Register(new SingletonModulePool<IDepositModule>(depositModule, true));
             }
 
             TxPoolModule txPoolModule = new TxPoolModule(_context.BlockTree, _context.TxPoolInfoProvider, _context.LogManager);

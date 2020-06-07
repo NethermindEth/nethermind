@@ -16,6 +16,7 @@
 // 
 
 using System.Threading.Tasks;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -24,6 +25,9 @@ namespace Nethermind.DepositContract
 {
     public interface IDepositModule : IModule
     {
+        [JsonRpcMethod(Description = "Deploys the deposit contract")]
+        ValueTask<ResultWrapper<Keccak>> deposit_deploy(Address senderAddress);
+        
         [JsonRpcMethod(Description = "Deposits 32ETH at the validator address")]
         ValueTask<ResultWrapper<Keccak>> deposit_test();
     }

@@ -22,6 +22,6 @@ namespace Nethermind.DepositContract
     public interface IDepositConfig : IConfig
     {
         [ConfigItem(Description = "Address of the Eth2 deposit contract on the Eth1 network.", DefaultValue = "null")]
-        string DepositContractAddress { get; }
+        string? DepositContractAddress { get; }
     }
 }

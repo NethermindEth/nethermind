@@ -15,7 +15,11 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Linq;
+using System.Runtime.CompilerServices;
 using Nethermind.Abi;
+using Nethermind.Core.Extensions;
+using Nethermind.Crypto;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -27,7 +31,7 @@ namespace Nethermind.Blockchain.Contracts.Json
         {
             writer.WriteStartArray();
             
-            foreach (var item in value.Items)
+            foreach (AbiBaseDescription item in value.Items)
             {
                 serializer.Serialize(writer, item);
             }
@@ -35,23 +39,52 @@ namespace Nethermind.Blockchain.Contracts.Json
             writer.WriteEndArray();
         }
         
-        public override AbiDefinition ReadJson(JsonReader reader, Type objectType, AbiDefinition existingValue, bool hasExistingValue, JsonSerializer serializer)
+        private readonly string _nameTokenName = nameof(AbiBaseDescription<AbiParameter>.Name).ToLowerInvariant();
+        private readonly string _typeTokenName = nameof(AbiBaseDescription<AbiParameter>.Type).ToLowerInvariant();
+        
+        public override AbiDefinition ReadJson(
+            JsonReader reader,
+            Type objectType,
+            AbiDefinition existingValue,
+            bool hasExistingValue,
+            JsonSerializer serializer)
         {
-            var token = JToken.Load(reader);
+            JToken topLevelToken = JToken.Load(reader);
             existingValue ??= new AbiDefinition();
-            foreach (var definitionToken in token.Children())
+            
+            JToken abiToken;
+            if (topLevelToken.Type == JTokenType.Object)
             {
-                var type = Enum.Parse<AbiDescriptionType>(definitionToken[nameof(AbiBaseDescription<AbiParameter>.Type).ToLowerInvariant()].Value<string>(), true);
-                var name = definitionToken[nameof(AbiBaseDescription<AbiParameter>.Name).ToLowerInvariant()]?.Value<string>();
+                abiToken = topLevelToken["abi"];
+                byte[] bytecode = Bytes.FromHexString(topLevelToken["bytecode"]?.Value<string>() ?? string.Empty);
+                existingValue.SetBytecode(bytecode);   
+            }
+            else
+            {
+                abiToken = topLevelToken;
+            }
+
+            foreach (var definitionToken in abiToken?.Children() ?? Enumerable.Empty<JToken>())
+            {
+                string name = definitionToken[_nameTokenName]?.Value<string>();
+                JToken typeToken = definitionToken[_typeTokenName];
+                if (typeToken == null)
+                {
+                    continue;
+                }
+                
+                AbiDescriptionType type = Enum.Parse<AbiDescriptionType>(
+                    typeToken.Value<string>(), true);
+                
                 if (type == AbiDescriptionType.Event)
                 {
-                    var abiEvent = new AbiEventDescription();
+                    AbiEventDescription abiEvent = new AbiEventDescription();
                     serializer.Populate(definitionToken.CreateReader(), abiEvent);
                     existingValue.Add(abiEvent);
                 }
                 else
                 {
-                    var abiFunction = new AbiFunctionDescription();
+                    AbiFunctionDescription abiFunction = new AbiFunctionDescription();
                     serializer.Populate(definitionToken.CreateReader(), abiFunction);
                     existingValue.Add(abiFunction);
                 }
