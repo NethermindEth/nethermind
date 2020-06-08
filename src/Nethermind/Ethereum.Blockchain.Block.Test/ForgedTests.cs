@@ -17,6 +17,7 @@
  */
 
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using NUnit.Framework;
@@ -34,8 +35,13 @@ namespace Ethereum.Blockchain.Block.Test
 
         public static IEnumerable<BlockchainTest> LoadTests()
         {
+            bool isWindows = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+            if(isWindows)
+            {
+                return null;
+            }
             var loader = new DirectoryTestsSourceLoader(new LoadBlockchainTestsStrategy(), "bcForgedTest");
-        return (IEnumerable<BlockchainTest>)loader.LoadTests();
+            return (IEnumerable<BlockchainTest>)loader.LoadTests();
         }
     }
 }
