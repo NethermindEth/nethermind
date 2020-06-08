@@ -19,6 +19,7 @@ using System;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.DepositContract
 {
@@ -31,5 +32,21 @@ namespace Nethermind.DepositContract
         }
         
         protected override AbiDefinition AbiDefinition { get; }
+
+        public Transaction Deposit(
+            Address sender,
+            byte[] blsPublicKey,
+            byte[] withdrawalCredentials,
+            byte[] blsSignature,
+            byte[] depositDataRoot)
+            => GenerateTransaction<Transaction>(
+                "deposit",
+                sender,
+                blsPublicKey,
+                withdrawalCredentials,
+                blsSignature,
+                depositDataRoot);
+
+        public Keccak DepositEventHash => GetEventHash("DepositEvent");
     }
 }

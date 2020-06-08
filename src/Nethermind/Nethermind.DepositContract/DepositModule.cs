@@ -16,7 +16,6 @@
 // 
 
 using System;
-using System.Diagnostics.Contracts;
 using System.IO;
 using System.Threading.Tasks;
 using Nethermind.Abi;
@@ -24,7 +23,6 @@ using Nethermind.Blockchain.Contracts.Json;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Evm;
 using Nethermind.Facade;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
@@ -38,7 +36,7 @@ namespace Nethermind.DepositContract
         private readonly IDepositConfig _depositConfig;
         private readonly ILogger _logger;
         private readonly AbiDefinition _abiDefinition;
-        private readonly DepositContract? _depositContract;
+        private DepositContract? _depositContract;
         
         private AbiDefinitionParser _parser = new AbiDefinitionParser();
 
@@ -72,10 +70,32 @@ namespace Nethermind.DepositContract
             return new ValueTask<ResultWrapper<Keccak>>(ResultWrapper<Keccak>.Success(txHash));
         }
 
-        public ValueTask<ResultWrapper<Keccak>> deposit_make()
+        public ValueTask<ResultWrapper<bool>> deposit_setContractAddress(Address contractAddress)
         {
-            var result = ResultWrapper<Keccak>.Fail("not implemented", ErrorCodes.InternalError);
-            return new ValueTask<ResultWrapper<Keccak>>(result);
+            _depositConfig.DepositContractAddress = contractAddress.ToString();
+            _depositContract = new DepositContract(_abiDefinition, new AbiEncoder(), contractAddress);
+            return new ValueTask<ResultWrapper<bool>>(ResultWrapper<bool>.Success(true));
+        }
+
+        public ValueTask<ResultWrapper<Keccak>> deposit_make(
+            Address senderAddress,
+            byte[] blsPublicKey,
+            byte[] withdrawalCredentials,
+            byte[] blsSignature,
+            byte[] dataRoot)
+        {
+            if (_depositContract == null)
+            {
+                var result = ResultWrapper<Keccak>.Fail("Deposit contract address not specified.", ErrorCodes.InternalError);
+                return new ValueTask<ResultWrapper<Keccak>>(result);    
+            }
+            
+            Transaction tx =
+                _depositContract.Deposit(senderAddress, blsPublicKey, withdrawalCredentials, blsSignature, dataRoot);
+            tx.Value = 32.Ether();
+            Keccak txHash = _txPoolBridge.SendTransaction(tx, TxHandlingOptions.ManagedNonce);
+            
+            return new ValueTask<ResultWrapper<Keccak>>(ResultWrapper<Keccak>.Success(txHash));
         }
     }
 }

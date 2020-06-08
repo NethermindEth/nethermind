@@ -59,7 +59,8 @@ namespace Nethermind.Blockchain.Contracts
         /// <param name="contractAddress">Address where contract is deployed.</param>
         protected Contract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress)
         {
-            _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
+            // _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
+            _transactionProcessor = transactionProcessor;
             _abiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
             ContractAddress = contractAddress ?? throw new ArgumentNullException(nameof(contractAddress));
         }

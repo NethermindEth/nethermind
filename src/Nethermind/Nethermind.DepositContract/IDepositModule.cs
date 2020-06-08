@@ -28,7 +28,15 @@ namespace Nethermind.DepositContract
         [JsonRpcMethod(Description = "Deploys the deposit contract")]
         ValueTask<ResultWrapper<Keccak>> deposit_deploy(Address senderAddress);
         
+        [JsonRpcMethod(Description = "Sets the contract address")]
+        ValueTask<ResultWrapper<bool>> deposit_setContractAddress(Address contractAddress);
+        
         [JsonRpcMethod(Description = "Deposits 32ETH at the validator address")]
-        ValueTask<ResultWrapper<Keccak>> deposit_make();
+        ValueTask<ResultWrapper<Keccak>> deposit_make(
+            Address senderAddress,
+            byte[] blsPublicKey,
+            byte[] withdrawalCredentials,
+            byte[] blsSignature,
+            byte[] dataRoot);
     }
 }
