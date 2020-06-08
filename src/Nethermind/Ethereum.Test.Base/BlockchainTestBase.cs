@@ -182,6 +182,7 @@ namespace Ethereum.Test.Base
             InitializeTestState(test, stateProvider, storageProvider, specProvider);
 
             List<(Block Block, string ExpectedException)> correctRlp = new List<(Block, string)>();
+            correctRlp.Capacity = test.Blocks.Length;
             for (int i = 0; i < test.Blocks.Length; i++)
             {
                 try
