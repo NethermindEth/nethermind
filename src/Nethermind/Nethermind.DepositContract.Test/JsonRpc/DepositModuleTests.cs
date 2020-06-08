@@ -83,8 +83,7 @@ namespace Nethermind.DepositContract.Test.JsonRpc
                 TestItem.Addresses[0],
                 new byte[48],
                 new byte[32],
-                new byte[96],
-                new byte[32]);
+                new byte[96]);
             result.Data.Should().NotBe(null);
             result.ErrorCode.Should().Be(0);
             result.Result.Error.Should().BeNull();
@@ -93,6 +92,8 @@ namespace Nethermind.DepositContract.Test.JsonRpc
             await testRpc.AddBlock();
             
             testRpc.BlockTree.Head.Transactions.Should().Contain(tx => !tx.IsContractCreation);
+            
+            /* if status is 1 then it means that no revert has been made */
             testRpc.ReceiptStorage.Get(testRpc.BlockTree.Head)[0].StatusCode.Should().Be(1);
         }
     }

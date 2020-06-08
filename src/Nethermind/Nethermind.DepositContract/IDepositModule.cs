@@ -36,7 +36,6 @@ namespace Nethermind.DepositContract
             Address senderAddress,
             byte[] blsPublicKey,
             byte[] withdrawalCredentials,
-            byte[] blsSignature,
-            byte[] dataRoot);
+            byte[] blsSignature);
     }
 }

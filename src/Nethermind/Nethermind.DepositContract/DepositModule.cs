@@ -16,7 +16,10 @@
 // 
 
 using System;
+using System.Buffers.Binary;
 using System.IO;
+using System.Numerics;
+using System.Security.Cryptography;
 using System.Threading.Tasks;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts.Json;
@@ -81,20 +84,49 @@ namespace Nethermind.DepositContract
             Address senderAddress,
             byte[] blsPublicKey,
             byte[] withdrawalCredentials,
-            byte[] blsSignature,
-            byte[] dataRoot)
+            byte[] blsSignature)
         {
             if (_depositContract == null)
             {
                 var result = ResultWrapper<Keccak>.Fail("Deposit contract address not specified.", ErrorCodes.InternalError);
                 return new ValueTask<ResultWrapper<Keccak>>(result);    
             }
+
+            byte[] amount = new byte[8];
+            BinaryPrimitives.WriteUInt64LittleEndian(amount, (ulong) ((BigInteger)32.Ether() / (BigInteger)1.GWei()));
+
+            /* what follows is SSZ merkleization
+               we can probably use the code from Eth2 abstraction */
             
-            Transaction tx =
-                _depositContract.Deposit(senderAddress, blsPublicKey, withdrawalCredentials, blsSignature, dataRoot);
+            var sha256 = SHA256.Create();
+            byte[] zeroBytes32 = new byte[32];
+            byte[] pubKeyInput = new byte[64];
+            blsPublicKey.AsSpan().CopyTo(pubKeyInput.AsSpan(0, 48));
+            byte[] pubKeyRoot = sha256.ComputeHash(pubKeyInput);
+            byte[] signatureRoot =
+                sha256.ComputeHash(
+                    Bytes.Concat(
+                        sha256.ComputeHash(blsSignature.Slice(0, 64)),
+                        sha256.ComputeHash(
+                            Bytes.Concat(
+                                blsSignature.Slice(64, 32),
+                                zeroBytes32))));
+
+            byte[] depositDataRoot = sha256.ComputeHash(
+                Bytes.Concat(
+                    sha256.ComputeHash(Bytes.Concat(pubKeyRoot, withdrawalCredentials)), 
+                    sha256.ComputeHash(Bytes.Concat(amount.PadRight(32), signatureRoot))));
+            
+            Transaction tx = _depositContract.Deposit(
+                senderAddress,
+                blsPublicKey,
+                withdrawalCredentials,
+                blsSignature,
+                depositDataRoot);
+            
             tx.Value = 32.Ether();
             Keccak txHash = _txPoolBridge.SendTransaction(tx, TxHandlingOptions.ManagedNonce);
-            
+
             return new ValueTask<ResultWrapper<Keccak>>(ResultWrapper<Keccak>.Success(txHash));
         }
     }
