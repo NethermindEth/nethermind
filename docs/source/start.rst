@@ -8,7 +8,7 @@ Setup a VM
 
 If you are not launching on your laptop/desktop then you will probably want to setup a cloud VM.
 You cand more info about setting up everything with selected `cloud providers <https://nethermind.readthedocs.io/en/latest/cloud.html>`_.
-Mke sure that you configure `firewall <https://nethermind.readthedocs.io/en/latest/firewall_configuration.html>`_ properly.
+Make sure that you configure `firewall <https://nethermind.readthedocs.io/en/latest/firewall_configuration.html>`_ properly.
 You can check `supported operating systems and architectures <https://nethermind.readthedocs.io/en/latest/platforms.html>`_ and `hardware requirements <https://nethermind.readthedocs.io/en/latest/hardware_requirements.html>`_
 
 Download 

@@ -43,17 +43,10 @@ namespace Nethermind.Overseer.Test.Framework
             {
                 string message = $"{testResult.Order}. {testResult.Name} has " +
                                  $"{(testResult.Passed ? "passed [+]" : "failed [-]")}";
-                if (testResult.Passed)
-                {
-                    TestContext.WriteLine(message);
-                }
-                else
-                {
-                    TestContext.WriteLine(message);
-                }
+                TestContext.WriteLine(message);
             }
         }
-        
+
         /// <summary>
         /// Gets the task representing the fluent work.
         /// </summary>
@@ -80,10 +73,11 @@ namespace Nethermind.Overseer.Test.Framework
                     TestContext.WriteLine(e.ToString());
                     throw;
                 }
+
                 return this;
             }, TaskContinuationOptions.OnlyOnRanToCompletion);
         }
-        
+
         public void QueueWork(TestStepBase step)
         {
             // queue up the work
@@ -99,6 +93,7 @@ namespace Nethermind.Overseer.Test.Framework
                     TestContext.WriteLine($"Step {step.Name} failed with error: {e}");
                     throw;
                 }
+
                 TestContext.WriteLine($"Step {step.Name} complete");
             }, TaskContinuationOptions.OnlyOnRanToCompletion).Unwrap();
         }
@@ -155,7 +150,7 @@ namespace Nethermind.Overseer.Test.Framework
         public NethermindProcessWrapper CurrentNode { get; private set; }
 
         public List<TestResult> _results = new List<TestResult>();
-        
+
         public TestBuilder SwitchNode(string node)
         {
             CurrentNode = Nodes[node];
@@ -172,17 +167,17 @@ namespace Nethermind.Overseer.Test.Framework
         {
             return StartNode(name, "configs/cliqueNode.cfg");
         }
-        
+
         public TestBuilder StartCliqueMiner(string name)
         {
             return StartNode(name, "configs/cliqueMiner.cfg");
         }
-        
+
         public TestBuilder StartGoerliNode(string name)
         {
             return StartNode(name, "configs/goerliNode.cfg");
         }
-        
+
         public TestBuilder StartGoerliMiner(string name)
         {
             return StartNode(name, "configs/goerliMiner.cfg");
@@ -237,6 +232,7 @@ namespace Nethermind.Overseer.Test.Framework
                 keyArray[31] = _nodeCounter;
                 key = keyArray.ToHexString();
             }
+
             return key;
         }
 
@@ -253,15 +249,15 @@ namespace Nethermind.Overseer.Test.Framework
             QueueWork(step);
             return this;
         }
-        
+
         public TestBuilder KillAll()
         {
-            foreach (KeyValuePair<string,NethermindProcessWrapper> keyValuePair in Nodes)
+            foreach (KeyValuePair<string, NethermindProcessWrapper> keyValuePair in Nodes)
             {
                 var step = new KillProcessTestStep($"Kill {keyValuePair.Key}", Nodes[keyValuePair.Key]);
                 QueueWork(step);
             }
-            
+
             return this;
         }
 

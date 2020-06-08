@@ -26,7 +26,11 @@ namespace Nethermind.HonestValidator.Services
         public Fork Fork { get; private set; } = Fork.Zero;
         public ulong GenesisTime { get; private set; }
 
-        public Slot LastSlotChecked { get; private set; }
+        public Slot LastAggregationSlotChecked { get; private set; }
+
+        public Slot LastAttestationSlotChecked { get; private set; }
+
+        public Slot LastStartSlotChecked { get; private set; }
 
         public bool NodeIsSyncing { get; private set; }
 
@@ -46,9 +50,21 @@ namespace Nethermind.HonestValidator.Services
             return Task.CompletedTask;
         }
 
-        public Task SetLastSlotChecked(Slot slot)
+        public Task SetLastAggregationSlotChecked(Slot slot)
         {
-            LastSlotChecked = slot;
+            LastAggregationSlotChecked = slot;
+            return Task.CompletedTask;
+        }
+
+        public Task SetLastAttestationSlotChecked(Slot slot)
+        {
+            LastAttestationSlotChecked = slot;
+            return Task.CompletedTask;
+        }
+
+        public Task SetLastStartSlotChecked(Slot slot)
+        {
+            LastStartSlotChecked = slot;
             return Task.CompletedTask;
         }
 

@@ -41,6 +41,7 @@ namespace Nethermind.Core2.Json
             options.Converters.Add(new JsonConverterShard());
             options.Converters.Add(new JsonConverterSlot());
             options.Converters.Add(new JsonConverterValidatorIndex());
+            options.Converters.Add(new JsonConverterBitArray());
             
             // Constructor converters
             options.Converters.Add(new LastConstructorJsonConverter<SyncingStatus>());
@@ -54,6 +55,9 @@ namespace Nethermind.Core2.Json
             options.Converters.Add(new LastConstructorJsonConverter<Deposit>());
             options.Converters.Add(new LastConstructorJsonConverter<DepositData>());
             options.Converters.Add(new LastConstructorJsonConverter<SignedBeaconBlock>());
+            options.Converters.Add(new LastConstructorJsonConverter<Attestation>());
+            options.Converters.Add(new LastConstructorJsonConverter<AttestationData>());
+            options.Converters.Add(new LastConstructorJsonConverter<Checkpoint>());
         }
     }
 }

@@ -53,6 +53,8 @@ namespace Nethermind.Db.Blooms
                 return false;
             }
 
+            public (long FromBlock, long ToBlock) CurrentIndices { get; } = (0, 0);
+
             IEnumerator IEnumerable.GetEnumerator()
             {
                 return GetEnumerator();

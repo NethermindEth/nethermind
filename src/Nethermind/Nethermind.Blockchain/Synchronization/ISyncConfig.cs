@@ -66,5 +66,14 @@ namespace Nethermind.Blockchain.Synchronization
         UInt256 PivotTotalDifficultyParsed => UInt256.Parse(PivotTotalDifficulty ?? "0x0");
 
         Keccak PivotHashParsed => PivotHash == null ? null : new Keccak(Bytes.FromHexString(PivotHash));
+        
+        [ConfigItem(Description = "Context timeout.", DefaultValue = "4")]
+        public int BeamSyncContextTimeout { get; set; }
+        
+        [ConfigItem(Description = "Beam sync pre processor timeout.", DefaultValue = "15")]
+        public int BeamSyncPreProcessorTimeout { get; set; }
+        
+        [ConfigItem(Description = "Should use beam sync to fix corrupted state DB (dev use).", DefaultValue = "false")]
+        public bool BeamSyncFixMode { get; set; }
     }
 }

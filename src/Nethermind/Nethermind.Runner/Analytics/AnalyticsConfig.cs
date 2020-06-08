@@ -13,19 +13,15 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System.Net;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-
-namespace Nethermind.Network
+namespace Nethermind.Runner.Analytics
 {
-    public interface IEnode
+    public class AnalyticsConfig : IAnalyticsConfig
     {
-        PublicKey PublicKey { get; }
-        Address Address { get; }
-        IPAddress HostIp { get; }
-        int Port { get; }
-        string Info { get; }
+        public bool PluginsEnabled { get; set; }
+        public bool StreamTransactions { get; set; }
+        public bool StreamBlocks { get; set; }
+        public bool LogPublishedData { get; set; }
     }
 }

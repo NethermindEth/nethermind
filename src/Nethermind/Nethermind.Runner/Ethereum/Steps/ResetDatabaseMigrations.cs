@@ -16,6 +16,7 @@
 
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
@@ -40,7 +41,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context = context;
         }
         
-        public Task Execute()
+        public Task Execute(CancellationToken cancellationToken)
         {
             _receiptStorage = _context.ReceiptStorage ?? throw new StepDependencyException(nameof(_context.ReceiptStorage));
             _blockTree = _context.BlockTree ?? throw new StepDependencyException(nameof(_context.BlockTree));

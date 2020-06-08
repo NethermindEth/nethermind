@@ -44,8 +44,6 @@ namespace Nethermind.Db.Blooms
             return 0;
         }
 
-        public IFileReader GetFileReader() => new InMemoryDictionaryFileReader(this);
-
-        public void Flush() { }
+        public IFileReader CreateFileReader() => new InMemoryDictionaryFileReader(this);
     }
 }
