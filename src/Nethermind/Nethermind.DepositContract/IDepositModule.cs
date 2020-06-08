@@ -37,5 +37,8 @@ namespace Nethermind.DepositContract
             byte[] blsPublicKey,
             byte[] withdrawalCredentials,
             byte[] blsSignature);
+
+        [JsonRpcMethod(Description = "Retrieves all Eth2 deposits from this chain.")]
+        ValueTask<ResultWrapper<DepositModule.DepositData[]>> deposit_getAll();
     }
 }
