@@ -24,7 +24,6 @@ using NUnit.Framework;
 namespace Ethereum.Blockchain.Block.Test
 {
     [TestFixture]
-    [Parallelizable(ParallelScope.All)]
     public class UncleTests : BlockchainTestBase
     {
         [TestCaseSource(nameof(LoadTests))]
