@@ -21,6 +21,7 @@ namespace Nethermind.Consensus.Clique
 {
     public interface ICliqueBridge
     {
+        bool ProduceBlock(Keccak parentHash);
         void CastVote(Address signer, bool vote);
         void UncastVote(Address signer);
         Snapshot GetSnapshot();
