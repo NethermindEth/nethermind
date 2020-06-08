@@ -105,15 +105,15 @@ namespace Nethermind.Runner.Ethereum.Steps
             AdminModule adminModule = new AdminModule(_context.BlockTree, networkConfig, _context.PeerManager, _context.StaticNodesManager, _context.Enode, initConfig.BaseDbPath);
             _context.RpcModuleProvider.Register(new SingletonModulePool<IAdminModule>(adminModule, true));
 
+            LogFinder logFinder = new LogFinder(
+                _context.BlockTree,
+                _context.ReceiptFinder,
+                _context.BloomStorage,
+                _context.LogManager,
+                new ReceiptsRecovery(), 1024);
+            
             if (baselineConfig.Enabled)
             {
-                LogFinder logFinder = new LogFinder(
-                    _context.BlockTree,
-                    _context.ReceiptFinder,
-                    _context.BloomStorage,
-                    _context.LogManager,
-                    new ReceiptsRecovery(), 1024);
-                
                 BaselineModuleFactory baselineModuleFactory = new BaselineModuleFactory(
                     _context.TxPool,
                     logFinder,
@@ -133,7 +133,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             {
                 TxPoolBridge txPoolBridge = new TxPoolBridge(
                     _context.TxPool, _context.Wallet, _context.Timestamper, _context.SpecProvider.ChainId);
-                DepositModule depositModule = new DepositModule(txPoolBridge, depositConfig, _context.LogManager);
+                DepositModule depositModule = new DepositModule(txPoolBridge, logFinder, depositConfig, _context.LogManager);
                 _context.RpcModuleProvider.Register(new SingletonModulePool<IDepositModule>(depositModule, true));
             }
 

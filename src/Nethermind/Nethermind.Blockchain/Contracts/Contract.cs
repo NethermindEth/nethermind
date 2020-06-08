@@ -49,7 +49,7 @@ namespace Nethermind.Blockchain.Contracts
         private readonly ITransactionProcessor _transactionProcessor;
 
         protected abstract AbiDefinition AbiDefinition { get; }
-        protected Address ContractAddress { get; }
+        public Address ContractAddress { get; }
 
         /// <summary>
         /// Creates contract

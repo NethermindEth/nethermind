@@ -17,12 +17,16 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
 using System.Security.Cryptography;
 using System.Threading.Tasks;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts.Json;
+using Nethermind.Blockchain.Filters;
+using Nethermind.Blockchain.Filters.Topics;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -36,6 +40,7 @@ namespace Nethermind.DepositContract
     public class DepositModule : IDepositModule
     {
         private readonly ITxPoolBridge _txPoolBridge;
+        private readonly ILogFinder _logFinder;
         private readonly IDepositConfig _depositConfig;
         private readonly ILogger _logger;
         private readonly AbiDefinition _abiDefinition;
@@ -43,10 +48,11 @@ namespace Nethermind.DepositContract
         
         private AbiDefinitionParser _parser = new AbiDefinitionParser();
 
-        public DepositModule(ITxPoolBridge txPoolBridge, IDepositConfig depositConfig, ILogManager logManager)
+        public DepositModule(ITxPoolBridge txPoolBridge, ILogFinder logFinder, IDepositConfig depositConfig, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger<DepositModule>() ?? throw new ArgumentNullException(nameof(logManager));
             _txPoolBridge = txPoolBridge ?? throw new ArgumentNullException(nameof(txPoolBridge));
+            _logFinder = logFinder ?? throw new ArgumentNullException(nameof(logFinder));
             _depositConfig = depositConfig ?? throw new ArgumentNullException(nameof(depositConfig));
             _abiDefinition = _parser.Parse(File.ReadAllText("contracts/validator_registration.json"));
 
@@ -80,6 +86,55 @@ namespace Nethermind.DepositContract
             return new ValueTask<ResultWrapper<bool>>(ResultWrapper<bool>.Success(true));
         }
 
+        public class DepositData
+        {
+            public long BlockNumber { get; set; }
+            public long TxIndex { get; set; }
+            public long LogIndex { get; set; }
+            
+            public byte[] PubKey { get; set; }
+            public byte[] WithdrawalCredentials { get; set; }
+            public byte[] Amount { get; set; }
+            public byte[] BlsSignature { get; set; }
+        }
+        
+        public ValueTask<ResultWrapper<DepositData[]>> deposit_getAll()
+        {
+            ResultWrapper<DepositData[]> result;
+            if (_depositContract == null)
+            {
+                result = ResultWrapper<DepositData[]>.Fail("Deposit contract address not specified.", ErrorCodes.InternalError);
+                return new ValueTask<ResultWrapper<DepositData[]>>(result);    
+            }
+
+            var logFilter = new LogFilter(
+                1,
+                new BlockParameter(0L),
+                BlockParameter.Latest,
+                new AddressFilter(_depositContract.ContractAddress),
+                new TopicsFilter(new SpecificTopic(_depositContract.DepositEventHash)));
+            
+            var logs = _logFinder.FindLogs(logFilter);
+            List<DepositData> allData = new List<DepositData>();
+            foreach (FilterLog filterLog in logs)
+            {
+                DepositData depositData = new DepositData();
+                depositData.LogIndex = filterLog.LogIndex;
+                depositData.TxIndex = filterLog.TransactionIndex;
+                depositData.BlockNumber = filterLog.BlockNumber;
+                depositData.Amount = filterLog.Data.Slice(352, 8);
+                depositData.PubKey = filterLog.Data.Slice(192, 48);
+                depositData.WithdrawalCredentials = filterLog.Data.Slice(288, 32);
+                depositData.BlsSignature = filterLog.Data.Slice(416, 96);
+                allData.Add(depositData);
+            }
+
+            // foreach log
+
+            result = ResultWrapper<DepositData[]>.Success(allData.ToArray());
+            return new ValueTask<ResultWrapper<DepositData[]>>(result);
+        }
+        
         public ValueTask<ResultWrapper<Keccak>> deposit_make(
             Address senderAddress,
             byte[] blsPublicKey,
@@ -92,11 +147,35 @@ namespace Nethermind.DepositContract
                 return new ValueTask<ResultWrapper<Keccak>>(result);    
             }
 
+            var depositDataRoot = CalculateDepositDataRoot(blsPublicKey, withdrawalCredentials, blsSignature);
+
+            Transaction tx = _depositContract.Deposit(
+                senderAddress,
+                blsPublicKey,
+                withdrawalCredentials,
+                blsSignature,
+                depositDataRoot);
+            
+            tx.Value = 32.Ether();
+            Keccak txHash = _txPoolBridge.SendTransaction(tx, TxHandlingOptions.ManagedNonce);
+
+            return new ValueTask<ResultWrapper<Keccak>>(ResultWrapper<Keccak>.Success(txHash));
+        }
+
+        /// <summary>
+        /// Calculates merkleized SSZ root
+        /// </summary>
+        /// <param name="blsPublicKey"></param>
+        /// <param name="withdrawalCredentials"></param>
+        /// <param name="blsSignature"></param>
+        /// <returns></returns>
+        private static byte[] CalculateDepositDataRoot(
+            byte[] blsPublicKey,
+            byte[] withdrawalCredentials,
+            byte[] blsSignature)
+        {
             byte[] amount = new byte[8];
             BinaryPrimitives.WriteUInt64LittleEndian(amount, (ulong) ((BigInteger)32.Ether() / (BigInteger)1.GWei()));
-
-            /* what follows is SSZ merkleization
-               we can probably use the code from Eth2 abstraction */
             
             var sha256 = SHA256.Create();
             byte[] zeroBytes32 = new byte[32];
@@ -114,20 +193,9 @@ namespace Nethermind.DepositContract
 
             byte[] depositDataRoot = sha256.ComputeHash(
                 Bytes.Concat(
-                    sha256.ComputeHash(Bytes.Concat(pubKeyRoot, withdrawalCredentials)), 
+                    sha256.ComputeHash(Bytes.Concat(pubKeyRoot, withdrawalCredentials)),
                     sha256.ComputeHash(Bytes.Concat(amount.PadRight(32), signatureRoot))));
-            
-            Transaction tx = _depositContract.Deposit(
-                senderAddress,
-                blsPublicKey,
-                withdrawalCredentials,
-                blsSignature,
-                depositDataRoot);
-            
-            tx.Value = 32.Ether();
-            Keccak txHash = _txPoolBridge.SendTransaction(tx, TxHandlingOptions.ManagedNonce);
-
-            return new ValueTask<ResultWrapper<Keccak>>(ResultWrapper<Keccak>.Success(txHash));
+            return depositDataRoot;
         }
     }
 }

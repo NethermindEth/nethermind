@@ -1,5 +1,7 @@
+using System.Buffers.Binary;
 using System.IO;
 using System.IO.Abstractions;
+using System.Numerics;
 using System.Security;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -40,6 +42,7 @@ namespace Nethermind.DepositContract.Test.JsonRpc
             
             DepositModule depositModule = new DepositModule(
                 testRpc.TxPoolBridge,
+                testRpc.LogFinder,
                 new DepositConfig(),
                 LimboLogs.Instance);
             
@@ -70,6 +73,7 @@ namespace Nethermind.DepositContract.Test.JsonRpc
             
             DepositModule depositModule = new DepositModule(
                 testRpc.TxPoolBridge,
+                testRpc.LogFinder,
                 new DepositConfig(),
                 LimboLogs.Instance);
             
@@ -95,6 +99,50 @@ namespace Nethermind.DepositContract.Test.JsonRpc
             
             /* if status is 1 then it means that no revert has been made */
             testRpc.ReceiptStorage.Get(testRpc.BlockTree.Head)[0].StatusCode.Should().Be(1);
+        }
+        
+        [Test]
+        public async Task can_getLogs()
+        {
+            var spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
+            TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
+            testRpc.TestWallet.UnlockAccount(TestItem.Addresses[0], new SecureString());
+            await testRpc.AddFunds(TestItem.Addresses[0], 33.Ether());
+            
+            DepositModule depositModule = new DepositModule(
+                testRpc.TxPoolBridge,
+                testRpc.LogFinder,
+                new DepositConfig(),
+                LimboLogs.Instance);
+            
+            await depositModule.deposit_deploy(TestItem.Addresses[0]);
+            await testRpc.AddBlock();
+
+            var contractAddress = ContractAddress.From(TestItem.Addresses[0], 0);
+            await depositModule.deposit_setContractAddress(contractAddress);
+            
+            await depositModule.deposit_make(
+                TestItem.Addresses[0],
+                GetNonZeroBytes(48),
+                GetNonZeroBytes(32),
+                GetNonZeroBytes(96));
+
+            await testRpc.AddBlock();
+
+            var all = depositModule.deposit_getAll();
+            all.Result.Data.Length.Should().Be(1);
+            ulong amount = BinaryPrimitives.ReadUInt64LittleEndian(all.Result.Data[0].Amount);
+            ((BigInteger) amount).Should().Be((BigInteger) 32.Ether() / (BigInteger) 1.GWei());
+        }
+
+        private byte[] GetNonZeroBytes(int length)
+        {
+            byte[] result = new byte[length];
+            for (int i = 0; i < result.Length; i++)
+            {
+                result[i] = (byte) i;
+            }
+            return result;
         }
     }
 }
