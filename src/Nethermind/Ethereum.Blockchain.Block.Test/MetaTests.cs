@@ -24,7 +24,7 @@ using NUnit.Framework;
 
 namespace Ethereum.Blockchain.Block.Test
 {
-    [TestFixture]
+    [TestFixture][Parallelizable(ParallelScope.All)]
     public class MetaTests
     {
         [Test]

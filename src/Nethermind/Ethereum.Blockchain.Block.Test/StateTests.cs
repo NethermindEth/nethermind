@@ -25,7 +25,7 @@ using NUnit.Framework;
 
 namespace Ethereum.Blockchain.Block.Test
 {
-    [TestFixture]
+    [TestFixture][Parallelizable(ParallelScope.All)]
     public class StateTests : BlockchainTestBase
     {
         [Todo(Improve.TestCoverage, "SuicideStorage tests")]
