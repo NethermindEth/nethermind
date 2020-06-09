@@ -45,6 +45,7 @@ namespace Nethermind.Consensus.AuRa
         private readonly ITxPool _txPool;
         private readonly ILogManager _logManager;
         private readonly Address _nodeAddress;
+        private readonly ReportingContractBasedValidator.Cache _reportingValidatorCache;
         private readonly long _posdaoTransition;
         private readonly bool _forSealing;
 
@@ -60,6 +61,7 @@ namespace Nethermind.Consensus.AuRa
             ITxPool txPool,
             ILogManager logManager,
             Address nodeAddress,
+            ReportingContractBasedValidator.Cache reportingValidatorCache,
             long posdaoTransition,
             bool forSealing = false)
         {
@@ -75,6 +77,7 @@ namespace Nethermind.Consensus.AuRa
             _txPool = txPool;
             _logManager = logManager;
             _nodeAddress = nodeAddress;
+            _reportingValidatorCache = reportingValidatorCache;
             _posdaoTransition = posdaoTransition;
             _forSealing = forSealing;
         }
@@ -122,6 +125,7 @@ namespace Nethermind.Consensus.AuRa
                         _txSender,
                         _txPool,
                         _stateProvider,
+                        _reportingValidatorCache,
                         _logManager),
                 
                 AuRaParameters.ValidatorType.Multi => 

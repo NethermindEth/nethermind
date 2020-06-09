@@ -57,6 +57,7 @@ namespace Nethermind.AuRa.Test
                 Substitute.For<ITxPool>(),
                 LimboLogs.Instance,
                 Address.Zero,
+                new ReportingContractBasedValidator.Cache(),
                 long.MaxValue);
 
             var validator = new AuRaParameters.Validator()

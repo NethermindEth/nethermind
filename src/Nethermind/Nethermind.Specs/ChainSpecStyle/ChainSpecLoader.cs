@@ -186,8 +186,8 @@ namespace Nethermind.Specs.ChainSpecStyle
                     Validators = LoadValidator(chainSpecJson.Engine.AuthorityRound.Validator),
                     RandomnessContractAddress = chainSpecJson.Engine.AuthorityRound.RandomnessContractAddress,
                     BlockGasLimitContractTransitions = chainSpecJson.Engine.AuthorityRound.BlockGasLimitContractTransitions,
-                    TwoThirdsMajorityTransition = chainSpecJson.Engine.AuthorityRound.TwoThirdsMajorityTransition ?? long.MaxValue,
-                    PosdaoTransition = chainSpecJson.Engine.AuthorityRound.PosdaoTransition ?? long.MaxValue,
+                    TwoThirdsMajorityTransition = chainSpecJson.Engine.AuthorityRound.TwoThirdsMajorityTransition ?? AuRaParameters.TransitionDisabled,
+                    PosdaoTransition = chainSpecJson.Engine.AuthorityRound.PosdaoTransition ?? AuRaParameters.TransitionDisabled,
                 };
             }
             else if (chainSpecJson.Engine?.Clique != null)

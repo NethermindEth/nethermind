@@ -29,19 +29,19 @@ namespace Nethermind.Consensus.AuRa.Validators
         /// <summary>
         /// The maximum number of reports to keep queued
         /// </summary>
-        private const int MaxQueuedReports = 10;
+        internal const int MaxQueuedReports = 10;
         
         /// <summary>
         /// The maximum number of malice reports to include when creating a new block.
         /// </summary>
-        private const int MaxReportsPerBlock = 10;
+        internal const int MaxReportsPerBlock = 10;
         
         /// <summary>
         /// Don't re-send malice reports every block. Skip this many before retrying.
         /// </summary>
         private const int ReportsSkipBlocks = 1;
-            
-        private readonly LinkedList<PersistentReport> _persistentReports = new LinkedList<PersistentReport>();
+
+        private readonly LinkedList<PersistentReport> _persistentReports;
         private long _resentReportsInBlock = 0;
         
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
@@ -58,7 +58,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             if (_contractValidator.ForSealing && IsPosdao(parent.Number + 1))
             {
                 FilterReports(parent);
-                foreach (var persistentReport in _persistentReports.Take(MaxQueuedReports))
+                foreach (var persistentReport in _persistentReports.Take(MaxReportsPerBlock))
                 {
                     var transaction = ValidatorContract.ReportMalicious(persistentReport.ValidatorAddress, persistentReport.BlockNumber, persistentReport.Proof);
                     if (transaction != null && gasLimit >= transaction.GasLimit)
@@ -141,8 +141,13 @@ namespace Nethermind.Consensus.AuRa.Validators
                 }
             }
         }
+        
+        public class Cache
+        {
+            internal LinkedList<PersistentReport> PersistentReports { get; } = new LinkedList<PersistentReport>();
+        }
 
-        private class PersistentReport : IEquatable<PersistentReport>
+        internal class PersistentReport : IEquatable<PersistentReport>
         {
             public Address ValidatorAddress { get; }
             public UInt256 BlockNumber { get; }

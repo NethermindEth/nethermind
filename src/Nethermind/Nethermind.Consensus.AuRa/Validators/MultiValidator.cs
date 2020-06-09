@@ -16,16 +16,18 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Processing;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Consensus.AuRa.Validators
 {
-    public class MultiValidator : IAuRaValidator, IReportingValidator, IDisposable
+    public class MultiValidator : IAuRaValidator, IReportingValidator, ITxSource, IDisposable
     {
         private readonly IAuRaValidatorFactory _validatorFactory;
         private readonly IBlockTree _blockTree;
@@ -232,5 +234,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         {
             _currentValidator.GetReportingValidator().TryReportSkipped(header, parent);
         }
+
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit) => _currentValidator is ITxSource txSource ? txSource.GetTransactions(parent, gasLimit) : Enumerable.Empty<Transaction>();
     }
 }

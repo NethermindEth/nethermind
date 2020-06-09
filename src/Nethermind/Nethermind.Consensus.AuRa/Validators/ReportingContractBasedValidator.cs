@@ -55,6 +55,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             ITxSender txSender,
             ITxPool txPool,
             IStateProvider stateProvider,
+            Cache cache,
             ILogManager logManager)
         {
             _contractValidator = contractValidator ?? throw new ArgumentNullException(nameof(contractValidator));
@@ -63,6 +64,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             _posdaoTxSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _nonPosdaoTxSender = new TxGasPriceSender(txSender, txPool);
+            _persistentReports = cache?.PersistentReports ?? throw new ArgumentNullException(nameof(cache));
             _logger = logManager?.GetClassLogger<ReportingContractBasedValidator>() ?? throw new ArgumentNullException(nameof(logManager));
         }
 

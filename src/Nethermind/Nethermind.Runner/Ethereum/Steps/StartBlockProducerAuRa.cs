@@ -25,6 +25,7 @@ using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Transactions;
+using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Crypto;
@@ -35,6 +36,7 @@ using Nethermind.Runner.Ethereum.Context;
 using Nethermind.State;
 using Nethermind.Db.Blooms;
 using Nethermind.Facade.Transactions;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 
@@ -45,6 +47,7 @@ namespace Nethermind.Runner.Ethereum.Steps
     {
         private readonly AuRaEthereumRunnerContext _context;
         private IAuraConfig? _auraConfig;
+        private IAuRaValidator? _validator;
 
         public StartBlockProducerAuRa(AuRaEthereumRunnerContext context) : base(context)
         {
@@ -91,7 +94,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             var chainSpecAuRa = _context.ChainSpec.AuRa;
             
-            var validator = new AuRaValidatorFactory(
+            _validator = new AuRaValidatorFactory(
                     readOnlyTxProcessingEnv.StateProvider,
                     _context.AbiEncoder,
                     readOnlyTxProcessingEnv.TransactionProcessor,
@@ -104,11 +107,12 @@ namespace Nethermind.Runner.Ethereum.Steps
                     NullTxPool.Instance, 
                     _context.LogManager,
                     _context.NodeKey.Address,
+                    _context.ReportingContractValidatorCache,
                     chainSpecAuRa.PosdaoTransition,
                     true)
                 .CreateValidatorProcessor(chainSpecAuRa.Validators, _context.BlockTree.Head?.Header);
             
-            if (validator is IDisposable disposableValidator)
+            if (_validator is IDisposable disposableValidator)
             {
                 _context.DisposeStack.Push(disposableValidator);
             }
@@ -129,28 +133,58 @@ namespace Nethermind.Runner.Ethereum.Steps
                 GetTxPermissionFilter(readOnlyTxProcessingEnv, readOnlyTransactionProcessorSource, readOnlyTxProcessingEnv.StateProvider),
                 GetGasLimitOverride(readOnlyTxProcessingEnv, readOnlyTransactionProcessorSource, readOnlyTxProcessingEnv.StateProvider))
             {
-                AuRaValidator = validator
+                AuRaValidator = _validator
             };
         }
 
         protected override ITxSource CreateTxSourceForProducer(ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv, ReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource)
         {
-            IList<IRandomContract> GetRandomContracts(
-                IDictionary<long, Address> randomnessContractAddress, 
-                ITransactionProcessor transactionProcessor, 
-                IAbiEncoder abiEncoder,
-                IReadOnlyTransactionProcessorSource txProcessorSource, 
-                Address nodeAddress) =>
-                randomnessContractAddress
-                    .Select(kvp => new RandomContract(transactionProcessor, 
-                        abiEncoder, 
-                        kvp.Value, 
-                        txProcessorSource, 
-                        kvp.Key, 
-                        nodeAddress))
-                    .ToArray<IRandomContract>();
+            bool CheckAddPosdaoTransactions(IList<ITxSource> list, long auRaPosdaoTransition)
+            {
+                if (auRaPosdaoTransition < AuRaParameters.TransitionDisabled && _validator is ITxSource validatorSource)
+                {
+                    list.Insert(0, validatorSource);
+                    return true;
+                }
 
+                return false;
+            }
 
+            bool CheckAddRandomnessTransactions(IList<ITxSource> list, IDictionary<long, Address> randomnessContractAddress, PrivateKey nodeKey)
+            {
+                IList<IRandomContract> GetRandomContracts(
+                    IDictionary<long, Address> randomnessContractAddressPerBlock, 
+                    ITransactionProcessor transactionProcessor, 
+                    IAbiEncoder abiEncoder,
+                    IReadOnlyTransactionProcessorSource txProcessorSource, 
+                    Address nodeAddress) =>
+                    randomnessContractAddressPerBlock
+                        .Select(kvp => new RandomContract(transactionProcessor, 
+                            abiEncoder, 
+                            kvp.Value, 
+                            txProcessorSource, 
+                            kvp.Key, 
+                            nodeAddress))
+                        .ToArray<IRandomContract>();
+                
+                if (randomnessContractAddress?.Any() == true)
+                {
+                    var randomContractTxSource = new RandomContractTxSource(
+                        GetRandomContracts(randomnessContractAddress,
+                            readOnlyTxProcessingEnv.TransactionProcessor, _context.AbiEncoder,
+                            readOnlyTransactionProcessorSource,
+                            nodeKey.Address),
+                        new EciesCipher(_context.CryptoRandom),
+                        nodeKey,
+                        _context.CryptoRandom);
+
+                    list.Insert(0, randomContractTxSource);
+                    return true;
+                }
+
+                return false;
+            }
+            
             if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
             if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
             if (_context.NodeKey == null) throw new StepDependencyException(nameof(_context.NodeKey));
@@ -158,20 +192,8 @@ namespace Nethermind.Runner.Ethereum.Steps
             IList<ITxSource> txSources = new List<ITxSource> { base.CreateTxSourceForProducer(readOnlyTxProcessingEnv, readOnlyTransactionProcessorSource) };
             bool needSigner = false;
             
-            if (_context.ChainSpec.AuRa.RandomnessContractAddress?.Any() == true)
-            {
-                var randomContractTxSource = new RandomContractTxSource(
-                    GetRandomContracts(_context.ChainSpec.AuRa.RandomnessContractAddress, 
-                        readOnlyTxProcessingEnv.TransactionProcessor, _context.AbiEncoder, 
-                        readOnlyTransactionProcessorSource, 
-                        _context.NodeKey.Address),
-                    new EciesCipher(_context.CryptoRandom),
-                    _context.NodeKey, 
-                    _context.CryptoRandom);
-                
-                txSources.Insert(0, randomContractTxSource);
-                needSigner = true;
-            }
+            needSigner |= CheckAddPosdaoTransactions(txSources, _context.ChainSpec.AuRa.PosdaoTransition);
+            needSigner |= CheckAddRandomnessTransactions(txSources, _context.ChainSpec.AuRa.RandomnessContractAddress, _context.NodeKey);
 
             ITxSource txSource = txSources.Count > 1 ? new CompositeTxSource(txSources.ToArray()) : txSources[0];
 

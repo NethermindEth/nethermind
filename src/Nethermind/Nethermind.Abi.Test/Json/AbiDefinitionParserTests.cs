@@ -26,10 +26,11 @@ namespace Nethermind.Abi.Test.Json
 {
     public class AbiDefinitionParserTests
     {
+        [TestCase(typeof(BlockGasLimitContract))]
         [TestCase(typeof(RandomContract))]
-        [TestCase(typeof(ValidatorContract))]
-        [TestCase(typeof(ReportingValidatorContract))]
         [TestCase(typeof(RewardContract))]
+        [TestCase(typeof(ReportingValidatorContract))]
+        [TestCase(typeof(ValidatorContract))]
         public void Can_load_contract(Type contractType)
         {
             var parser = new AbiDefinitionParser();

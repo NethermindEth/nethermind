@@ -75,7 +75,12 @@ namespace Nethermind.Runner.Ethereum.Steps
             
             var auRaValidator = CreateAuRaValidator(processor);
             processor.AuRaValidator = auRaValidator;
-            _context.ReportingValidator = _sealValidator.ReportingValidator = auRaValidator.GetReportingValidator();
+            var reportingValidator = auRaValidator.GetReportingValidator();
+            _context.ReportingValidator = reportingValidator;
+            if (_sealValidator != null)
+            {
+                _sealValidator.ReportingValidator = reportingValidator;
+            }
             
             return processor;
         }
@@ -110,6 +115,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _context.TxPool,
                     _context.LogManager,
                     _context.NodeKey.Address,
+                    _context.ReportingContractValidatorCache,
                     chainSpecAuRa.PosdaoTransition,
                     false)
                 .CreateValidatorProcessor(chainSpecAuRa.Validators, _context.BlockTree.Head?.Header);

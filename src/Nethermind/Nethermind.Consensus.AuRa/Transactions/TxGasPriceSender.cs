@@ -17,14 +17,17 @@
 
 using System;
 using System.Linq;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
     public class TxGasPriceSender : ITxSender
     {
+        private static readonly UInt256 DefaultGasPrice = 20_000_000ul;
         private readonly ITxSender _txSender;
         private readonly ITxPool _txPool;
         private readonly uint _percentDelta;
@@ -38,9 +41,18 @@ namespace Nethermind.Consensus.AuRa.Transactions
 
         public Keccak SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
-            var minGasPrice = _txPool.GetPendingTransactions().Where(t => t.GasPrice > 0).Min(t => t.GasPrice);
+            // TODO: Move to Uint256 when we support division
+            ulong minGasPrice = (ulong) CurrentMinGasPrice();
             tx.GasPrice = minGasPrice * _percentDelta / 100;
             return _txSender.SendTransaction(tx, txHandlingOptions);
+        }
+
+        private UInt256 CurrentMinGasPrice()
+        {
+            var transactionsWithGasPrice = _txPool.GetPendingTransactions();
+            return transactionsWithGasPrice.Any(t => t.GasPrice > 0) 
+                ? transactionsWithGasPrice.Where(t => t.GasPrice > 0).Min(t => t.GasPrice) 
+                : DefaultGasPrice;
         }
     }
 }
