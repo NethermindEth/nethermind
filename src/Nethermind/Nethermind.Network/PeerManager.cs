@@ -920,6 +920,11 @@ namespace Nethermind.Network
             NetworkNode[] storedNodes = _peerStorage.GetPersistedNodes();
             foreach (NetworkNode node in storedNodes)
             {
+                if (node.Port < 0 || node.Port > ushort.MaxValue)
+                {
+                    continue;
+                }
+                
                 Peer peer = _peerPool.GetOrAdd(node, false);
                 long newRep = _stats.GetNewPersistedReputation(peer.Node);
                 if (newRep != node.Reputation)
