@@ -36,11 +36,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Serialization.Rl
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Serialization.Json", "Nethermind.Serialization.Json\Nethermind.Serialization.Json.csproj", "{38949E85-406D-4558-AD0D-0D181C1881E2}"
 EndProject
-<<<<<<< HEAD
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Abi", "Nethermind.Abi\Nethermind.Abi.csproj", "{81AEA5F7-FC77-42F8-8162-CFC1E402D11B}"
 EndProject
-=======
->>>>>>> master
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
