@@ -30,36 +30,38 @@ namespace Nethermind.Consensus.AuRa.Contracts
     public abstract class VersionedContract<T> : IActivatedAtBlock
         where T : Contract, IVersionedContract
     {
-        private readonly IDictionary<UInt256, T> _versionedContracts;
+        private readonly IDictionary<UInt256, T> _versions;
         
-        public VersionedContract(IDictionary<UInt256, T> versions, long activation)
+        private const int MaxCacheSize = 4096;
+        
+        private T _defaultVersion;
+        
+        internal ICache<Keccak, UInt256> VersionsCache { get; }
+            = new LruCacheWithRecycling<Keccak, UInt256>(MaxCacheSize, nameof(VersionedContract<T>));
+        
+        protected VersionedContract(IDictionary<UInt256, T> versions, long activation)
         {
-            _versionedContracts = versions ?? throw new ArgumentNullException(nameof(versions));
-            Current = versions.First(v => v.Value.SupportsContractVersion).Value;
+            _versions = versions ?? throw new ArgumentNullException(nameof(versions));
+            _defaultVersion = versions.First(v => v.Value.SupportsContractVersion).Value;
             Activation = activation;
         }
 
-        public void UpdateCurrent(BlockHeader blockHeader)
+        public T ResolveVersion(BlockHeader blockHeader)
         {
             this.BlockActivationCheck(blockHeader);
             
-            if (!VersionsCache.TryGet(blockHeader.Hash, out var version))
+            if (!VersionsCache.TryGet(blockHeader.Hash, out var versionNumber))
             {
-                version = Current.ContractVersion(blockHeader);
-                VersionsCache.Set(blockHeader.Hash, version);
+                versionNumber = _defaultVersion.ContractVersion(blockHeader);
+                VersionsCache.Set(blockHeader.Hash, versionNumber);
             }
             
-            Current = GetVersionedContract(version);
+            return ResolveVersion(versionNumber);
         }
 
-        private const int MaxCacheSize = 4096;
+        public T ResolveVersion(UInt256 versionNumber) =>
+            _versions.TryGetValue(versionNumber, out var contract) ? contract : null;
         
-        internal ICache<Keccak, UInt256> VersionsCache { get; } = new LruCacheWithRecycling<Keccak, UInt256>(MaxCacheSize, "TxPermissionsVersionedContracts");
-        
-        public T GetVersionedContract(UInt256 version) =>
-            _versionedContracts.TryGetValue(version, out var contract) ? contract : null;
-
-        public T Current { get; private set; }
         public long Activation { get; }
     }
 }

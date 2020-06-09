@@ -223,8 +223,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Baseline", "Neth
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Baseline.Test", "Nethermind.Baseline.Test\Nethermind.Baseline.Test.csproj", "{CB8FE0A7-E007-44E9-8009-5767332B2A1B}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Precompiles.Benchmark", "Nethermind.Precompiles.Benchmark\Nethermind.Precompiles.Benchmark.csproj", "{1E36E03B-7457-42D0-A085-FC2BB23038F5}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU

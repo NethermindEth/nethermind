@@ -399,6 +399,8 @@ namespace Nethermind.State
 
         public void ClearStorage(Address address)
         {
+            /* we are setting cached values to zero so we do not use previously set values
+               when the contract is revived with CREATE2 inside the same block */
             foreach (var cellByAddress in _intraBlockCache)
             {
                 if (cellByAddress.Key.Address == address)
@@ -406,6 +408,11 @@ namespace Nethermind.State
                     Set(cellByAddress.Key, _zeroValue);
                 }
             }
+
+            /* here it is important to make sure that we will not reuse the same tree when the contract is revived
+               by means of CREATE 2 - notice that the cached trie may carry information about items that were not
+               touched in this block, hence were not zeroed above */
+            _storages[address] = new StorageTree(_stateDb, Keccak.EmptyTreeHash);
         }
 
         private enum ChangeType

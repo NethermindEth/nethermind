@@ -13,25 +13,29 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
 
-using Nethermind.Consensus.AuRa.Contracts;
-using Nethermind.Core;
-using Nethermind.Core.Caching;
-using Nethermind.Core.Crypto;
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using Nethermind.Core2.Types;
 
-namespace Nethermind.Consensus.AuRa.Transactions
+namespace Nethermind.Core2.Json
 {
-    public interface ITxPermissionFilter
+    public class JsonConverterBitArray : JsonConverter<BitArray>
     {
-        bool IsAllowed(Transaction tx, BlockHeader parentHeader);
-        
-        public class Cache
+        public override BitArray Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
-            private const int MaxCacheSize = 4096;
-            
-            internal ICache<(Keccak ParentHash, Address Sender), TransactionPermissionContract.TxPermissions?> Permissions { get; } =
-                new LruCacheWithRecycling<(Keccak ParentHash, Address Sender), TransactionPermissionContract.TxPermissions?>(MaxCacheSize, "TxPermissions");
+            byte[] bytes = reader.GetBytesFromPrefixedHex();
+            return new BitArray(bytes.Select(x => x != 0).ToArray());
+        }
+
+        public override void Write(Utf8JsonWriter writer, BitArray value, JsonSerializerOptions options)
+        {
+            byte[] bytes = value.Cast<bool>().Select(x => x ? (byte)0x01 : (byte)0x00).ToArray();
+            writer.WritePrefixedHexStringValue(bytes);
         }
     }
 }

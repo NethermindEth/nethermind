@@ -212,7 +212,6 @@ namespace Nethermind.Blockchain.Contracts
 
         protected Keccak GetEventHash(string eventName)
         {
-            // TODO: cache it...
             return AbiDefinition.Events[eventName].GetHash();
         }
         

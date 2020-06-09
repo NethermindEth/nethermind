@@ -20,6 +20,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Nethermind.Core2;
+using Nethermind.Core2.Configuration;
 using Nethermind.Peering.Mothra;
 
 namespace Nethermind.BeaconNode.Peering
@@ -28,6 +29,9 @@ namespace Nethermind.BeaconNode.Peering
     {
         public static void AddBeaconNodePeering(this IServiceCollection services, IConfiguration configuration)
         {
+            services.Configure<NetworkingConfiguration>(x =>
+                configuration.Bind("BeaconChain:NetworkingConfiguration", x));
+
             if (configuration.GetSection("Peering:Mothra").Exists())
             {
                 services.Configure<MothraConfiguration>(x => configuration.Bind("Peering:Mothra", x));

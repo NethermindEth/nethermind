@@ -107,6 +107,43 @@ namespace Nethermind.BeaconNode.OApiClient
             return ApiResponse.Create((StatusCode) (int) httpResponse.StatusCode, content);
         }
 
+        public async Task<ApiResponse<Attestation>> NewAttestationAsync(BlsPublicKey validatorPublicKey,
+            bool proofOfCustodyBit, Slot slot, CommitteeIndex index,
+            CancellationToken cancellationToken)
+        {
+            string baseUri = "validator/attestation";
+
+            // NOTE: Spec 0.10.1 still has old Shard references in OAPI, although the spec has changed to Index;
+            // use Index as it is easier to understand (i.e. the spec OAPI in 0.10.1 is wrong)
+
+            Dictionary<string, string> queryParameters = new Dictionary<string, string>
+            {
+                ["validator_pubkey"] = validatorPublicKey.ToString(),
+                ["poc_bit"] = proofOfCustodyBit ? "1" : "0",
+                ["slot"] = slot.ToString(),
+                ["index"] = index.ToString()
+            };
+
+            string uri = QueryHelpers.AddQueryString(baseUri, queryParameters);
+
+            using HttpResponseMessage httpResponse =
+                await _httpClient.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+
+            int statusCode = (int) httpResponse.StatusCode;
+            if (statusCode == (int) StatusCode.InvalidRequest
+                || statusCode == (int) StatusCode.CurrentlySyncing)
+            {
+                return ApiResponse.Create<Attestation>((StatusCode) statusCode);
+            }
+
+            httpResponse.EnsureSuccessStatusCode(); // throws if not 200-299
+            await using Stream contentStream = await httpResponse.Content.ReadAsStreamAsync();
+            Attestation content =
+                await JsonSerializer.DeserializeAsync<Attestation>(contentStream, _jsonSerializerOptions,
+                    cancellationToken);
+            return ApiResponse.Create((StatusCode) statusCode, content);
+        }
+
         public async Task<ApiResponse<BeaconBlock>> NewBlockAsync(Slot slot, BlsSignature randaoReveal,
             CancellationToken cancellationToken)
         {
@@ -136,6 +173,31 @@ namespace Nethermind.BeaconNode.OApiClient
                 await JsonSerializer.DeserializeAsync<BeaconBlock>(contentStream, _jsonSerializerOptions,
                     cancellationToken);
             return ApiResponse.Create((StatusCode) statusCode, content);
+        }
+
+        public async Task<ApiResponse> PublishAttestationAsync(Attestation signedAttestation,
+            CancellationToken cancellationToken)
+        {
+            string uri = "validator/attestation";
+
+            await using var memoryStream = new MemoryStream();
+            await JsonSerializer.SerializeAsync(memoryStream, signedAttestation, _jsonSerializerOptions,
+                cancellationToken);
+            memoryStream.Position = 0;
+            using var content = new StreamContent(memoryStream);
+            content.Headers.ContentType = new MediaTypeHeaderValue(JsonContentType);
+            using HttpResponseMessage httpResponse = await _httpClient.PostAsync(uri, content, cancellationToken);
+
+            int statusCode = (int) httpResponse.StatusCode;
+            if (statusCode == (int) StatusCode.InvalidRequest
+                || statusCode == (int) StatusCode.CurrentlySyncing)
+            {
+                return new ApiResponse((StatusCode) statusCode);
+            }
+
+            httpResponse.EnsureSuccessStatusCode(); // throws if not 200-299
+
+            return new ApiResponse((StatusCode) statusCode);
         }
 
         public async Task<ApiResponse> PublishBlockAsync(SignedBeaconBlock signedBlock,

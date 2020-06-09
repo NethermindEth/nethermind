@@ -26,7 +26,7 @@
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\Nethermind.Bls\Nethermind.Bls.csproj" />
+        <ProjectReference Include="..\Nethermind.Cryptography.Bls\Nethermind.Cryptography.Bls.csproj" />
         <ProjectReference Include="..\Nethermind.Core2\Nethermind.Core2.csproj" />
     </ItemGroup>
 

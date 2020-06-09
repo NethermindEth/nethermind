@@ -30,8 +30,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
         private readonly ITxPermissionFilter.Cache _cache;
         private readonly IStateProvider _stateProvider;
         private readonly ILogger _logger;
-        public TransactionPermissionContract Current => _contract.Current;
-        
+
         public TxPermissionFilter(VersionedContract<TransactionPermissionContract> contract, ITxPermissionFilter.Cache cache, IStateProvider stateProvider, ILogManager logManager)
         {
             _contract = contract ?? throw new ArgumentNullException(nameof(contract));
@@ -96,8 +95,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
 
         private TransactionPermissionContract GetVersionedContract(BlockHeader blockHeader)
         {
-            _contract.UpdateCurrent(blockHeader);
-            return _contract.Current;
+            return _contract.ResolveVersion(blockHeader);
         }
 
         private TransactionPermissionContract.TxPermissions GetTxType(Transaction tx)

@@ -116,6 +116,11 @@ namespace Nethermind.Consensus.Clique
             if (_logger.IsWarn) _logger.Warn($"Removed Clique vote for {signer}");
         }
 
+        public void ProduceOnTopOf(Keccak hash)
+        {
+            _signalsQueue.Add(_blockTree.FindBlock(hash, BlockTreeLookupOptions.None));
+        }
+
         private void TimerOnElapsed(object sender, ElapsedEventArgs e)
         {
             try
