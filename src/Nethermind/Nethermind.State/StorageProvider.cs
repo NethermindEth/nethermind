@@ -406,6 +406,8 @@ namespace Nethermind.State
                     Set(cellByAddress.Key, _zeroValue);
                 }
             }
+
+            _storages[address] = new StorageTree(_stateDb, Keccak.EmptyTreeHash);
         }
 
         private enum ChangeType
