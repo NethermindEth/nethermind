@@ -73,19 +73,32 @@ namespace Nethermind.Evm
             PushData(0); // salt
             PushData(codeToBeDeployed.Length);
             PushData(0); // position in memory
-            PushData(0); // value
+            Op(Instruction.CALLVALUE);
             Op(Instruction.CREATE2);
 
             return this;
         }
 
+        public Prepare CallWithValue(Address address, long gasLimit)
+        {
+            PushData(0);
+            PushData(0);
+            PushData(0);
+            PushData(0);
+            Op(Instruction.CALLVALUE); // value
+            PushData(address);
+            PushData(gasLimit);
+            Op(Instruction.CALL);
+            return this;
+        }
+        
         public Prepare Call(Address address, long gasLimit)
         {
             PushData(0);
             PushData(0);
             PushData(0);
             PushData(0);
-            PushData(0);
+            PushData(0); // value
             PushData(address);
             PushData(gasLimit);
             Op(Instruction.CALL);
