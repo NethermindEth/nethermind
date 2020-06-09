@@ -403,14 +403,7 @@ namespace Nethermind.State
             {
                 if (cellByAddress.Key.Address == address)
                 {
-                    if (_originalValues.ContainsKey(cellByAddress.Key))
-                    {
-                        Set(cellByAddress.Key, _originalValues[cellByAddress.Key]);
-                    }
-                    else
-                    {
-                        Set(cellByAddress.Key, _zeroValue);
-                    }
+                    Set(cellByAddress.Key, _zeroValue);
                 }
             }
         }

@@ -58,15 +58,23 @@ namespace Nethermind.Evm
 
         public Prepare ForInitOf(byte[] codeToBeDeployed)
         {
-            if (codeToBeDeployed.Length > 32)
-            {
-                throw new NotSupportedException();
-            }
-            
-            StoreDataInMemory(0, codeToBeDeployed.PadRight(32));
+            StoreDataInMemory(0, codeToBeDeployed);
             PushData(codeToBeDeployed.Length);
             PushData(0);
             Op(Instruction.RETURN);
+
+            return this;
+        }
+        
+        public Prepare ForCreate2Of(byte[] codeToBeDeployed)
+        {
+            StoreDataInMemory(0, codeToBeDeployed);
+            
+            PushData(0); // salt
+            PushData(codeToBeDeployed.Length);
+            PushData(0); // position in memory
+            PushData(0); // value
+            Op(Instruction.CREATE2);
 
             return this;
         }
@@ -217,11 +225,6 @@ namespace Nethermind.Evm
 
         private Prepare StoreDataInMemory(int position, byte[] data)
         {
-            if (position % 32 != 0)
-            {
-                throw new NotSupportedException();
-            }
-
             for (int i = 0; i < data.Length; i += 32)
             {
                 PushData(data.Slice(i, data.Length - i).PadRight(32));
