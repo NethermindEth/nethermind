@@ -233,5 +233,9 @@ namespace Nethermind.BeaconNode
             LoggerMessage.Define<int, Epoch, Root>(LogLevel.Debug,
                 new EventId(6403, nameof(GettingMissingValidatorDutiesForCache)),
                 "Validator duties for {0} validators are missing from the cache and need to be calculated for epoch {Epoch} with starting root {EpochStartRoot}.");
+        public static readonly Action<ILogger, Attestation, Exception?> PublishingAttestationToNetwork
+            = LoggerMessage.Define<Attestation>(LogLevel.Debug,
+                new EventId(6404, nameof(PublishingAttestationToNetwork)),
+                "Publishing attestation {Attestation} to network");
     }
 }

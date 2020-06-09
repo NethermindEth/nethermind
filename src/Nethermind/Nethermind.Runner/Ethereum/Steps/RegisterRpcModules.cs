@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Cli.Modules;
 using Nethermind.DataMarketplace.Core.Configs;
@@ -41,6 +42,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Vault.JsonRpc;
 using Nethermind.Vault.Config;
+using Nethermind.DepositContract;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
@@ -54,7 +56,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context = context;
         }
 
-        public virtual Task Execute()
+        public virtual Task Execute(CancellationToken cancellationToken)
         {
             if (_context.RpcModuleProvider == null) throw new StepDependencyException(nameof(_context.RpcModuleProvider));
 
@@ -105,16 +107,16 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             AdminModule adminModule = new AdminModule(_context.BlockTree, networkConfig, _context.PeerManager, _context.StaticNodesManager, _context.Enode, initConfig.BaseDbPath);
             _context.RpcModuleProvider.Register(new SingletonModulePool<IAdminModule>(adminModule, true));
-
+            
+            LogFinder logFinder = new LogFinder(
+                            _context.BlockTree,
+                            _context.ReceiptFinder,
+                            _context.BloomStorage,
+                            _context.LogManager,
+                            new ReceiptsRecovery(), 1024);
+            
             if (baselineConfig.Enabled)
             {
-                LogFinder logFinder = new LogFinder(
-                    _context.BlockTree,
-                    _context.ReceiptFinder,
-                    _context.BloomStorage,
-                    _context.LogManager,
-                    new ReceiptsRecovery(), 1024);
-                
                 BaselineModuleFactory baselineModuleFactory = new BaselineModuleFactory(
                     _context.TxPool,
                     logFinder,
@@ -127,6 +129,15 @@ namespace Nethermind.Runner.Ethereum.Steps
                 
                 _context.RpcModuleProvider.Register(new SingletonModulePool<IBaselineModule>(baselineModuleFactory, true));
                 if (logger?.IsInfo ?? false) logger!.Info($"Baseline RPC Module has been enabled");
+            }
+
+            IDepositConfig depositConfig = _context.Config<IDepositConfig>();
+            if (depositConfig.DepositContractAddress != null)
+            {
+                TxPoolBridge txPoolBridge = new TxPoolBridge(
+                    _context.TxPool, _context.Wallet, _context.Timestamper, _context.SpecProvider.ChainId);
+                DepositModule depositModule = new DepositModule(txPoolBridge, logFinder, depositConfig, _context.LogManager);
+                _context.RpcModuleProvider.Register(new SingletonModulePool<IDepositModule>(depositModule, true));
             }
 
             TxPoolModule txPoolModule = new TxPoolModule(_context.BlockTree, _context.TxPoolInfoProvider, _context.LogManager);

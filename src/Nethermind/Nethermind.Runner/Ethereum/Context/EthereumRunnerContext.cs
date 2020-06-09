@@ -87,7 +87,6 @@ namespace Nethermind.Runner.Ethereum.Context
         public ChainSpec? ChainSpec { get; set; }
         public ICryptoRandom CryptoRandom { get; }
         public IJsonSerializer? EthereumJsonSerializer { get; set; }
-        public CancellationTokenSource? RunnerCancellation { get; set; }
         public IBlockchainProcessor? BlockchainProcessor { get; set; }
         public IDiscoveryApp? DiscoveryApp { get; set; }
         public IMessageSerializationService _messageSerializationService { get; } = new MessageSerializationService();

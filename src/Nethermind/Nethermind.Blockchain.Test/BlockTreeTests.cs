@@ -52,7 +52,8 @@ namespace Nethermind.Blockchain.Test
             _blocksDb = new MemDb();
             _headersDb = new MemDb();
             _blocksInfosDb = new MemDb();
-            return new BlockTree(_blocksDb, _headersDb, _blocksInfosDb, new ChainLevelInfoRepository(_blocksInfosDb), MainnetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+            _chainlevelInfoRepository = new ChainLevelInfoRepository(_blocksInfosDb);
+            return new BlockTree(_blocksDb, _headersDb, _blocksInfosDb, _chainlevelInfoRepository, MainnetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
         }
 
         private static void AddToMain(BlockTree blockTree, Block block0)
@@ -897,6 +898,60 @@ namespace Nethermind.Blockchain.Test
             Assert.IsNull(blockInfosDb.Get(2), "level 2");
             Assert.IsNull(blockInfosDb.Get(3), "level 3");
         }
+        
+        [Test]
+        public void When_deleting_invalid_block_deletes_its_descendants_even_if_not_first()
+        {
+            MemDb blocksDb = new MemDb();
+            MemDb blockInfosDb = new MemDb();
+            MemDb headersDb = new MemDb();
+            ChainLevelInfoRepository repository = new ChainLevelInfoRepository(blockInfosDb);
+            BlockTree tree = new BlockTree(blocksDb, headersDb, blockInfosDb, repository, MainnetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+            Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+            Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
+            Block block2 = Build.A.Block.WithNumber(2).WithDifficulty(3).WithParent(block1).TestObject;
+            Block block3 = Build.A.Block.WithNumber(3).WithDifficulty(4).WithParent(block2).TestObject;
+            
+            Block block1b = Build.A.Block.WithNumber(1).WithDifficulty(2).WithExtraData(new byte[] {1}).WithParent(block0).TestObject;
+            Block block2b = Build.A.Block.WithNumber(2).WithDifficulty(3).WithExtraData(new byte[] {1}).WithParent(block1b).TestObject;
+            Block block3b = Build.A.Block.WithNumber(3).WithDifficulty(4).WithExtraData(new byte[] {1}).WithParent(block2b).TestObject;
+
+            tree.SuggestBlock(block0);
+            tree.SuggestBlock(block1);
+            tree.SuggestBlock(block2);
+            tree.SuggestBlock(block3);
+            
+            tree.SuggestBlock(block1b);
+            tree.SuggestBlock(block2b);
+            tree.SuggestBlock(block3b);
+            
+            tree.UpdateMainChain(block0);
+            tree.UpdateMainChain(block1);
+            tree.DeleteInvalidBlock(block1b);
+
+            Assert.AreEqual(3L, tree.BestKnownNumber, "best known");
+            Assert.AreEqual(1L, tree.Head.Number, "head");
+            Assert.AreEqual(1L, tree.BestSuggestedHeader.Number, "suggested");
+
+            Assert.NotNull(blocksDb.Get(block1.Hash), "block 1");
+            Assert.NotNull(blocksDb.Get(block2.Hash), "block 2");
+            Assert.NotNull(blocksDb.Get(block3.Hash), "block 3");
+            Assert.Null(blocksDb.Get(block1b.Hash), "block 1b");
+            Assert.Null(blocksDb.Get(block2b.Hash), "block 2b");
+            Assert.Null(blocksDb.Get(block3b.Hash), "block 3b");
+
+            Assert.NotNull(blockInfosDb.Get(1), "level 1");
+            Assert.NotNull(blockInfosDb.Get(2), "level 2");
+            Assert.NotNull(blockInfosDb.Get(3), "level 3");
+            
+            Assert.NotNull(blockInfosDb.Get(1), "level 1b");
+            Assert.NotNull(blockInfosDb.Get(2), "level 2b");
+            Assert.NotNull(blockInfosDb.Get(3), "level 3b");
+
+            repository.LoadLevel(1).BlockInfos.Length.Should().Be(1);
+            repository.LoadLevel(2).BlockInfos.Length.Should().Be(1);
+            repository.LoadLevel(3).BlockInfos.Length.Should().Be(1);
+        }
 
         [Test]
         public void After_removing_invalid_block_will_not_accept_it_again()
@@ -1057,6 +1112,8 @@ namespace Nethermind.Blockchain.Test
             new object[] {728000, 0L},
             new object[] {7280000L, 1L}
         };
+
+        private ChainLevelInfoRepository _chainlevelInfoRepository;
 
         [Test, TestCaseSource(nameof(SourceOfBSearchTestCases))]
         public void Loads_best_known_correctly_on_inserts(long beginIndex, long insertedBlocks)

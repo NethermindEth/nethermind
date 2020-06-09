@@ -16,6 +16,7 @@
 
 using System;
 using System.IO;
+using System.Threading;
 
 namespace Nethermind.Db.Blooms
 {
@@ -23,8 +24,9 @@ namespace Nethermind.Db.Blooms
     {
         private readonly string _path;
         private readonly int _elementSize;
-        private readonly FileStream _fileWrite;
-        private readonly FileStream _fileRead;
+        private readonly Stream _fileWrite;
+        private readonly Stream _fileRead;
+        private int _needsFlush;
         
         public FixedSizeFileStore(string path, int elementSize)
         {
@@ -45,11 +47,14 @@ namespace Nethermind.Db.Blooms
             {
                 SeekIndex(_fileWrite, index);
                 _fileWrite.Write(element);
+                Interlocked.Exchange(ref _needsFlush, 1);
             }
         }
 
         public int Read(long index, Span<byte> element)
         {
+            EnsureFlushed();
+            
             lock (_fileRead)
             {
                 SeekIndex(_fileRead, index);
@@ -57,20 +62,24 @@ namespace Nethermind.Db.Blooms
             }            
         }
 
-        public IFileReader GetFileReader()
+        public IFileReader CreateFileReader()
         {
+            EnsureFlushed();
             return new FileReader(_path, _elementSize);
         }
 
-        public void Flush()
+        private void EnsureFlushed()
         {
-            lock (_fileWrite)
+            if (Interlocked.CompareExchange(ref _needsFlush, 0, 1) == 1)
             {
-                _fileWrite.Flush();
+                lock (_fileWrite)
+                {
+                    _fileWrite.Flush();
+                }
             }
         }
 
-        private void SeekIndex(FileStream file, long index)
+        private void SeekIndex(Stream file, long index)
         {
             long seekPosition = index * _elementSize;
             if (file.Position != seekPosition)

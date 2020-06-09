@@ -187,10 +187,10 @@ namespace Nethermind.JsonRpc.Test.Modules
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":[\"0x190d9a78dbc61b1856162ab909976a1b28ba4a41ee041341576ea69686cd3b29\"],\"id\":67}", serialized2, serialized2.Replace("\"", "\\\""));
         }
 
-        [TestCase("earliest", "0xabcdef")]
-        [TestCase("latest", "0xabcdef")]
-        [TestCase("pending", "0xabcdef")]
-        [TestCase("0x0", "0xabcdef")]
+        [TestCase("earliest", "0x0000000000000000000000000000000000000000000000000000000000abcdef")]
+        [TestCase("latest", "0x0000000000000000000000000000000000000000000000000000000000abcdef")]
+        [TestCase("pending", "0x0000000000000000000000000000000000000000000000000000000000abcdef")]
+        [TestCase("0x0", "0x0000000000000000000000000000000000000000000000000000000000abcdef")]
         public void Eth_get_storage_at(string blockParameter, string expectedResult)
         {
             string serialized = _test.TestEthRpc("eth_getStorageAt", TestItem.AddressA.Bytes.ToHexString(true), "0x1", blockParameter);
@@ -201,7 +201,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void Eth_get_storage_at_default_block()
         {
             string serialized = _test.TestEthRpc("eth_getStorageAt", TestItem.AddressA.Bytes.ToHexString(true), "0x1");
-            Assert.AreEqual($"{{\"jsonrpc\":\"2.0\",\"result\":\"0xabcdef\",\"id\":67}}", serialized);
+            Assert.AreEqual($"{{\"jsonrpc\":\"2.0\",\"result\":\"0x0000000000000000000000000000000000000000000000000000000000abcdef\",\"id\":67}}", serialized);
         }
 
         [Test]

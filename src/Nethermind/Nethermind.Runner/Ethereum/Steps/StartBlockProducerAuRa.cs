@@ -190,7 +190,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_context.ChainSpec.Parameters.TransactionPermissionContract != null)
             {
                 var txPermissionFilter = new TxPermissionFilter(
-                    new TransactionPermissionContract(
+                    new VersionedTransactionPermissionContract(
                         environment.TransactionProcessor,
                         _context.AbiEncoder,
                         _context.ChainSpec.Parameters.TransactionPermissionContract,

@@ -33,5 +33,6 @@ namespace Nethermind.Consensus.Clique
         ResultWrapper<string[]> clique_getSignersAtHashAnnotated(Keccak hash);
         ResultWrapper<bool> clique_propose(Address signer, bool vote);
         ResultWrapper<bool> clique_discard(Address signer);
+        ResultWrapper<bool> clique_produceBlock(Keccak parentHash);
     }
 }

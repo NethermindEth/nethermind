@@ -58,24 +58,24 @@ namespace Nethermind.BeaconNode.OApi.Controllers
         {
             IList<BlsPublicKey> publicKeys = validator_pubkeys.Select(x => new BlsPublicKey(x)).ToList();
             Epoch? targetEpoch = (Epoch?) epoch;
+
+            // NOTE: Spec 0.10.1 still has old Shard references in OAPI in the Duties JSON, although the spec has changed to Index;
+            // use Index as it is easier to understand (i.e. the spec OAPI in 0.10.1 is wrong)
+
             ApiResponse<IList<ValidatorDuty>> apiResponse =
                 await _beaconNode.ValidatorDutiesAsync(publicKeys, targetEpoch, cancellationToken)
                     .ConfigureAwait(false);
-            switch (apiResponse.StatusCode)
+            return apiResponse.StatusCode switch
             {
-                case Core2.Api.StatusCode.Success:
-                    return Ok(apiResponse.Content);
-                case Core2.Api.StatusCode.InvalidRequest:
-                    return Problem("Invalid request syntax.", statusCode: (int) apiResponse.StatusCode);
-                case Core2.Api.StatusCode.CurrentlySyncing:
-                    return Problem("Beacon node is currently syncing, try again later.",
-                        statusCode: (int) apiResponse.StatusCode);
-                case Core2.Api.StatusCode.DutiesNotAvailableForRequestedEpoch:
-                    return Problem("Duties cannot be provided for the requested epoch.",
-                        statusCode: (int) apiResponse.StatusCode);
-            }
-
-            return Problem("Beacon node internal error.", statusCode: (int) apiResponse.StatusCode);
+                Core2.Api.StatusCode.Success => Ok(apiResponse.Content),
+                Core2.Api.StatusCode.InvalidRequest => Problem("Invalid request syntax.",
+                    statusCode: (int) apiResponse.StatusCode),
+                Core2.Api.StatusCode.CurrentlySyncing => Problem("Beacon node is currently syncing, try again later.",
+                    statusCode: (int) apiResponse.StatusCode),
+                Core2.Api.StatusCode.DutiesNotAvailableForRequestedEpoch => Problem(
+                    "Duties cannot be provided for the requested epoch.", statusCode: (int) apiResponse.StatusCode),
+                _ => Problem("Beacon node internal error.", statusCode: (int) apiResponse.StatusCode)
+            };
         }
     }
 }

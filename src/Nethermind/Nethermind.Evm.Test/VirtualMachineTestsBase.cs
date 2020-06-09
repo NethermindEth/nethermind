@@ -213,10 +213,20 @@ namespace Nethermind.Evm.Test
             Assert.AreEqual(expectedValue.ToBigEndianByteArray(), actualValue, "storage");
         }
 
+        private static int _callIndex = -1;
+        
         protected void AssertStorage(StorageCell storageCell, BigInteger expectedValue)
         {
-            byte[] actualValue = Storage.Get(storageCell);
-            Assert.AreEqual(expectedValue.ToBigEndianByteArray(), actualValue, $"storage {storageCell}");
+            _callIndex++;
+            if (!TestState.AccountExists(storageCell.Address))
+            {
+                Assert.AreEqual(expectedValue.ToBigEndianByteArray(), new byte[1] {0}, $"storage {storageCell}, call {_callIndex}");
+            }
+            else
+            {
+                byte[] actualValue = Storage.Get(storageCell);
+                Assert.AreEqual(expectedValue.ToBigEndianByteArray(), actualValue, $"storage {storageCell}, call {_callIndex}");    
+            }
         }
 
         protected void AssertCodeHash(Address address, Keccak codeHash)

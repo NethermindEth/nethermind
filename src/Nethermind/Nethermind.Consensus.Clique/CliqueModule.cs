@@ -32,6 +32,11 @@ namespace Nethermind.Consensus.Clique
             _cliqueBridge = cliqueBridge ?? throw new ArgumentNullException(nameof(cliqueBridge));
         }
 
+        public ResultWrapper<bool> clique_produceBlock(Keccak parentHash)
+        {
+            return ResultWrapper<bool>.Success(_cliqueBridge.ProduceBlock(parentHash));
+        }
+        
         public ResultWrapper<Snapshot> clique_getSnapshot()
         {
             return ResultWrapper<Snapshot>.Success(_cliqueBridge.GetSnapshot());

@@ -19,6 +19,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -68,7 +69,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
         [Test]
         public void Beam_db_provider_smoke_test()
         {
-            BeamSyncDbProvider dbProvider = new BeamSyncDbProvider(StaticSelector.Beam, new MemDbProvider(), LimboLogs.Instance);
+            BeamSyncDbProvider dbProvider = new BeamSyncDbProvider(StaticSelector.Beam, new MemDbProvider(), new SyncConfig(), LimboLogs.Instance);
             // has to be state DB on the outside
             Assert.IsInstanceOf(typeof(StateDb), dbProvider.StateDb);
             Assert.IsInstanceOf(typeof(StateDb), dbProvider.CodeDb);
@@ -77,7 +78,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
         [Test]
         public void Beam_db_provider_can_dispose()
         {
-            BeamSyncDbProvider dbProvider = new BeamSyncDbProvider(StaticSelector.Beam, new MemDbProvider(), LimboLogs.Instance);
+            BeamSyncDbProvider dbProvider = new BeamSyncDbProvider(StaticSelector.Beam, new MemDbProvider(),new SyncConfig(), LimboLogs.Instance);
             dbProvider.Dispose();
         }
 

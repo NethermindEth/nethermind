@@ -19,6 +19,7 @@
 using System;
 using System.Collections.Generic;
 using Ethereum.Test.Base;
+using Ethereum.Test.Base.Interfaces;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Serialization.Json;
@@ -32,15 +33,15 @@ namespace Nethermind.State.Test.Runner
         Never
     }
     
-    public class StateTestsRunner : BlockchainTestBase, IStateTestRunner
+    public class StateTestsRunner : GeneralStateTestBase, IStateTestRunner
     {
-        private IBlockchainTestsSource _testsSource;
+        private ITestSourceLoader _testsSource;
         private readonly WhenTrace _whenTrace;
         private readonly bool _traceMemory;
         private readonly bool _traceStack;
         private IJsonSerializer _serializer = new EthereumJsonSerializer();
 
-        public StateTestsRunner(IBlockchainTestsSource testsSource, WhenTrace whenTrace, bool traceMemory, bool traceStack)
+        public StateTestsRunner(ITestSourceLoader testsSource, WhenTrace whenTrace, bool traceMemory, bool traceStack)
         {
             _testsSource = testsSource ?? throw new ArgumentNullException(nameof(testsSource));
             _whenTrace = whenTrace;
@@ -70,8 +71,8 @@ namespace Nethermind.State.Test.Runner
         public IEnumerable<EthereumTestResult> RunTests()
         {
             List<EthereumTestResult> results = new List<EthereumTestResult>();
-            IEnumerable<BlockchainTest> tests = _testsSource.LoadTests();
-            foreach (BlockchainTest test in tests)
+            IEnumerable<GeneralStateTest> tests = (IEnumerable<GeneralStateTest>)_testsSource.LoadTests();
+            foreach (GeneralStateTest test in tests)
             {
                 EthereumTestResult result = null;
                 if (_whenTrace != WhenTrace.Always)

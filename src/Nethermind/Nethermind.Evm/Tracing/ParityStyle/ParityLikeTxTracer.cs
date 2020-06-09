@@ -204,10 +204,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
 
                 _vmTraceStack.Push(currentVmTrace);
                 _currentVmTrace = currentVmTrace;
-                if (_trace.VmTrace == null)
-                {
-                    _trace.VmTrace = _currentVmTrace.VmTrace;
-                }
+                _trace.VmTrace ??= _currentVmTrace.VmTrace;
             }
         }
 

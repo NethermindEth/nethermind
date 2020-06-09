@@ -20,6 +20,7 @@ using System;
 using System.IO;
 using CommandLine;
 using Ethereum.Test.Base;
+using Ethereum.Test.Base.Interfaces;
 
 namespace Nethermind.State.Test.Runner
 {
@@ -80,23 +81,23 @@ namespace Nethermind.State.Test.Runner
             }
         }
 
-        private static void RunSingleTest(string path, Func<IBlockchainTestsSource, IStateTestRunner> testRunnerBuilder)
+        private static void RunSingleTest(string path, Func<ITestSourceLoader, IStateTestRunner> testRunnerBuilder)
         {
-            IBlockchainTestsSource source;
-            if (Directory.Exists(path))
-            {
-                source = new DirectoryTestsSource(path);
-            }
-            else if (File.Exists(path))
-            {
-                source = new FileTestsSource(path);
-            }
-            else
-            {
-                throw new IOException("Input path could not be resolved.");
-            }
+            // ITestSourceLoader source;
+            // if (Directory.Exists(path))
+            // {
+            //     source = new DirectoryTestsSourceLoader(path);
+            // }
+            // else if (File.Exists(path))
+            // {
+            //     source = new FileTestsSource(path);
+            // }
+            // else
+            // {
+            //     throw new IOException("Input path could not be resolved.");
+            // }
 
-            testRunnerBuilder(source).RunTests();
+            // testRunnerBuilder(source).RunTests();
         }
     }
 }
