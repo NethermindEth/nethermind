@@ -217,8 +217,6 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Logging", "Logging", "{94CF
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.DepositContract", "Nethermind.DepositContract\Nethermind.DepositContract.csproj", "{7CDFAAB2-84C2-4286-A8F8-509EA08A7758}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.DepositContract.Test", "Nethermind.DepositContract.Test\Nethermind.DepositContract.Test.csproj", "{537E55B1-D5DE-4A01-9C0C-C18D437BCE00}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Baseline", "Nethermind.Baseline\Nethermind.Baseline.csproj", "{9494FD1A-5A4E-444D-B451-030BFC599ADC}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Baseline.Test", "Nethermind.Baseline.Test\Nethermind.Baseline.Test.csproj", "{CB8FE0A7-E007-44E9-8009-5767332B2A1B}"
