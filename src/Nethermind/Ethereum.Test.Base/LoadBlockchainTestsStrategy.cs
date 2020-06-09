@@ -12,9 +12,9 @@ namespace Ethereum.Test.Base
             IEnumerable<string> testDirs;
             if (!Path.IsPathRooted(testsDirectoryName))
             {
-                string legacyTestsDirectory = GetBlockchainTestsDirectory();
+                string testDirectory = GetBlockchainTestsDirectory();
 
-               testDirs = Directory.EnumerateDirectories(legacyTestsDirectory, testsDirectoryName, new EnumerationOptions { RecurseSubdirectories = true });
+               testDirs = Directory.EnumerateDirectories(testDirectory, testsDirectoryName, new EnumerationOptions { RecurseSubdirectories = true });
             }
             else
             {
