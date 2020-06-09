@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,16 +13,15 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System;
-using Nethermind.Abi;
+using System.Diagnostics.CodeAnalysis;
 
-namespace Nethermind.Consensus.AuRa.Json
+namespace Nethermind.DepositContract
 {
-    public interface IAbiDefinitionParser
+    [SuppressMessage("ReSharper", "UnusedAutoPropertyAccessor.Global")]
+    public class DepositConfig : IDepositConfig
     {
-        AbiDefinition Parse(string json);
-        AbiDefinition Parse<T>();
-        AbiDefinition Parse(Type type);
+        public string? DepositContractAddress { get; set; }
     }
 }

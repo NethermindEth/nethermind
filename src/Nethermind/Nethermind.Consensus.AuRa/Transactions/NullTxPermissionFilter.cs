@@ -15,12 +15,15 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Core;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
     public class NullTxPermissionFilter : ITxPermissionFilter
     {
+        public TransactionPermissionContract Current => null;
+        
         public bool IsAllowed(Transaction tx, BlockHeader parentHeader) => true;
         
         public static readonly NullTxPermissionFilter Instance = new NullTxPermissionFilter(); 

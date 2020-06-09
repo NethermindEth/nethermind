@@ -2,7 +2,10 @@
 using System.Text;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Nethermind.Core2;
+using Nethermind.Core2.Configuration;
+using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.P2p;
 using Nethermind.Core2.Types;
@@ -15,12 +18,15 @@ namespace Nethermind.BeaconNode.Peering
     {
         private readonly ILogger _logger;
         private readonly IMothraLibp2p _mothraLibp2p;
+        private readonly IOptionsMonitor<NetworkingConfiguration> _networkingConfigurationOptions;
         private readonly PeerManager _peerManager;
 
-        public MothraNetworkPeering(ILogger<MothraNetworkPeering> logger, IMothraLibp2p mothraLibp2p,
+        public MothraNetworkPeering(ILogger<MothraNetworkPeering> logger,
+            IOptionsMonitor<NetworkingConfiguration> networkingConfigurationOptions, IMothraLibp2p mothraLibp2p,
             PeerManager peerManager)
         {
             _logger = logger;
+            _networkingConfigurationOptions = networkingConfigurationOptions;
             _mothraLibp2p = mothraLibp2p;
             _peerManager = peerManager;
         }
@@ -33,6 +39,30 @@ namespace Nethermind.BeaconNode.Peering
         {
             // NOTE: Mothra does not support peer disconnect, so nothing to do.
             _peerManager.DisconnectSession(peerId);
+            return Task.CompletedTask;
+        }
+
+        public Task PublishAttestationAsync(Attestation signedAttestation)
+        {
+            // TODO: Basic validation before broadcasting, e.g. signature is correct 
+
+            ulong attestationSubnetIndex = (ulong) signedAttestation.Data.Index %
+                                           _networkingConfigurationOptions.CurrentValue.AttestationSubnetCount;
+            // TODO: Maybe cache the subnet topic UTF8 byte values (concurrent dictionary?)
+            string topicTemplate = "/eth2/committee_index{0}_beacon_attestation/ssz";
+            string topic = string.Format(topicTemplate, attestationSubnetIndex);
+            byte[] topicUtf8 = Encoding.UTF8.GetBytes(topic);
+
+            Span<byte> encoded = new byte[Ssz.Ssz.AttestationLength(signedAttestation)];
+            Ssz.Ssz.Encode(encoded, signedAttestation);
+
+            if (_logger.IsDebug()) LogDebug.GossipSend(_logger, topic, encoded.Length, null);
+            if (!_mothraLibp2p.SendGossip(topicUtf8, encoded))
+            {
+                if (_logger.IsWarn())
+                    Log.GossipNotPublishedAsPeeeringNotStarted(_logger, topic, null);
+            }
+
             return Task.CompletedTask;
         }
 

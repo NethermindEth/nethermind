@@ -49,16 +49,31 @@ namespace Nethermind.HonestValidator
                 "Requesting new block for slot {Slot} for validator {PublicKey} with RANDAO reveal {RandaoReveal}.");
         public static readonly Action<ILogger, Slot, string, string, BeaconBlock, string, Exception?> PublishingSignedBlock =
             LoggerMessage.Define<Slot, string, string, BeaconBlock, string>(LogLevel.Debug,
-                new EventId(6454, nameof(PublishingSignedBlock)),
+                new EventId(6455, nameof(PublishingSignedBlock)),
                 "Publishing signed block for slot {Slot} for validator {PublicKey} with RANDAO reveal {RandaoReveal}, block details {BeaconBlock}, and signature {Signature}.");
-        public static readonly Action<ILogger, BlsPublicKey, Epoch, Slot, Shard, Exception?> ValidatorDutyAttestationChanged =
-            LoggerMessage.Define<BlsPublicKey, Epoch, Slot, Shard>(LogLevel.Debug,
-                new EventId(6455, nameof(ValidatorDutyAttestationChanged)),
-                "Validator {PublicKey} epoch {Epoch} duty attestation slot {Slot} for shard {Shard}.");
-        public static readonly Action<ILogger, Slot, Slot, Slot, Exception?> ProcessingSlot =
+        public static readonly Action<ILogger, BlsPublicKey, Epoch, Slot, CommitteeIndex, Exception?> ValidatorDutyAttestationChanged =
+            LoggerMessage.Define<BlsPublicKey, Epoch, Slot, CommitteeIndex>(LogLevel.Debug,
+                new EventId(6456, nameof(ValidatorDutyAttestationChanged)),
+                "Validator {PublicKey} epoch {Epoch} duty attestation slot {Slot}, committee index {CommitteeIndex}.");
+        public static readonly Action<ILogger, Slot, Slot, Slot, Exception?> ProcessingSlotStart =
             LoggerMessage.Define<Slot, Slot, Slot>(LogLevel.Debug,
-                new EventId(6455, nameof(ProcessingSlot)),
-                "Processing slot {CheckSlot}, at clock time slot {ClockSlot}, with last sync status current (head) slot {NodeCurrentSlot}.");
-
+                new EventId(6457, nameof(ProcessingSlotStart)),
+                "Processing start of slot {CheckSlot}, at clock time slot {ClockSlot}, with last sync status current (head) slot {NodeCurrentSlot}.");
+        public static readonly Action<ILogger, Slot, ulong, Exception?> ProcessingSlotAttestations =
+            LoggerMessage.Define<Slot, ulong>(LogLevel.Debug,
+                new EventId(6458, nameof(ProcessingSlotAttestations)),
+                "Processing attestations for slot {CheckAttestationSlot}, at clock time {ClockTime}.");
+        public static readonly Action<ILogger, Slot, ulong, Exception?> ProcessingSlotAggregations =
+            LoggerMessage.Define<Slot, ulong>(LogLevel.Debug,
+                new EventId(6459, nameof(ProcessingSlotAggregations)),
+                "Processing aggregations for slot {CheckAggregationSlot}, at clock time {ClockTime}.");
+        public static readonly Action<ILogger, Slot, ulong, BlsPublicKey, Exception?> RequestingAttestationFor =
+            LoggerMessage.Define<Slot, ulong, BlsPublicKey>(LogLevel.Debug,
+                new EventId(6460, nameof(RequestingAttestationFor)),
+                "Running attestation duty for slot {Slot} at time {Time} for validator {PublicKey}.");
+        public static readonly Action<ILogger, Slot, CommitteeIndex, string, AttestationData, string, Exception?> PublishingSignedAttestation =
+            LoggerMessage.Define<Slot, CommitteeIndex, string, AttestationData, string>(LogLevel.Debug,
+                new EventId(6461, nameof(PublishingSignedAttestation)),
+                "Publishing signed attestation for slot {AttestationSlot}, index {AttestationIndex} for validator {PublicKey}, attestation data {AttestationData}, and signature {Signature}.");
     }
 }

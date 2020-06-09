@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,31 +15,28 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
 using Nethermind.Abi;
-using Nethermind.Consensus.AuRa.Json;
 using Nethermind.Core;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Evm;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public partial class TransactionPermissionContract
+    public class VersionedTransactionPermissionContract : VersionedContract<TransactionPermissionContract>
     {
-        private class V1 : ITransactionPermissionVersionedContract
+        public VersionedTransactionPermissionContract(
+            ITransactionProcessor transactionProcessor,
+            IAbiEncoder abiEncoder,
+            Address contractAddress,
+            long activation,
+            IReadOnlyTransactionProcessorSource readOnlyReadOnlyTransactionProcessorSource)
+            : base(
+                TransactionPermissionContract.CreateAllVersions(
+                    transactionProcessor,
+                    abiEncoder,
+                    contractAddress,
+                    readOnlyReadOnlyTransactionProcessorSource),
+                activation)
         {
-            private ConstantContract Constant { get; }
-            
-            public AbiDefinition Definition { get; } = new AbiDefinitionParser().Parse<V1>();
-
-            public V1(ConstantContract constant)
-            {
-                Constant = constant;
-            }
-            
-            public (TxPermissions Permissions, bool ShouldCache) AllowedTxTypes(BlockHeader parentHeader, Transaction tx) => 
-                (Constant.Call<TxPermissions>(parentHeader, Definition.GetFunction(nameof(AllowedTxTypes)), Address.Zero, tx.SenderAddress), true);
-
-            public UInt256 Version => UInt256.One;
         }
     }
 }

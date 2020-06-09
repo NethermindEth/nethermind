@@ -16,8 +16,6 @@
 
 using System;
 using System.Linq;
-using Nethermind.Abi;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus.AuRa;
@@ -26,7 +24,6 @@ using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Rewards;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
-using Nethermind.Core;
 using Nethermind.Evm;
 using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Wallet;
@@ -118,7 +115,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.TxFilterCache = new ITxPermissionFilter.Cache();
                 
                 var txPermissionFilter = new TxPermissionFilter(
-                    new TransactionPermissionContract(
+                    new VersionedTransactionPermissionContract(
                         _context.TransactionProcessor,
                         _context.AbiEncoder,
                         _context.ChainSpec.Parameters.TransactionPermissionContract,

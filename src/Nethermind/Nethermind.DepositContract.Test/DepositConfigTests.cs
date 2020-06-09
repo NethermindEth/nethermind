@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,16 +13,25 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System;
+using FluentAssertions;
+using Nethermind.Core.Test.Builders;
+using NUnit.Framework;
 
-namespace Nethermind.Core2.Benchmarks
+namespace Nethermind.DepositContract.Test
 {
-    class Program
+    [TestFixture]
+    public class DepositConfigTests
     {
-        static void Main(string[] args)
+        [Test]
+        public void defaults_are_fine()
         {
-            Console.WriteLine("Hello World!");
+            string address = TestItem.AddressA.ToString();
+            DepositConfig depositConfig = new DepositConfig();
+            depositConfig.DepositContractAddress.Should().BeNull();
+            depositConfig.DepositContractAddress = address;
+            depositConfig.DepositContractAddress.Should().Be(address);
         }
     }
 }

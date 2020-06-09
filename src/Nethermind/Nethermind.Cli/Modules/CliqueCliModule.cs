@@ -74,6 +74,12 @@ namespace Nethermind.Cli.Modules
         {
             return NodeManager.Post<bool>("clique_discard", CliParseAddress(address)).Result;
         }
+        
+        [CliFunction("clique", "produceBlock")]
+        public bool ProduceBlock(string parentHash)
+        {
+            return NodeManager.Post<bool>("clique_produceBlock", CliParseHash(parentHash)).Result;
+        }
 
         public CliqueCliModule(ICliEngine cliEngine, INodeManager nodeManager) : base(cliEngine, nodeManager)
         {

@@ -15,23 +15,27 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using Nethermind.Abi;
-using Newtonsoft.Json;
+using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using Nethermind.Core2.Types;
 
-namespace Nethermind.Consensus.AuRa.Json
+namespace Nethermind.Core2.Json
 {
-    public class AbiTypeConverter : JsonConverter<AbiType>
+    public class JsonConverterBitArray : JsonConverter<BitArray>
     {
-        public override void WriteJson(JsonWriter writer, AbiType value, JsonSerializer serializer)
+        public override BitArray Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
-            writer.WriteValue(value.Name);
+            byte[] bytes = reader.GetBytesFromPrefixedHex();
+            return new BitArray(bytes.Select(x => x != 0).ToArray());
         }
 
-        public override AbiType ReadJson(JsonReader reader, Type objectType, AbiType existingValue, bool hasExistingValue, JsonSerializer serializer)
+        public override void Write(Utf8JsonWriter writer, BitArray value, JsonSerializerOptions options)
         {
-            throw new NotSupportedException();
+            byte[] bytes = value.Cast<bool>().Select(x => x ? (byte)0x01 : (byte)0x00).ToArray();
+            writer.WritePrefixedHexStringValue(bytes);
         }
-
-        public override bool CanRead { get; } = false;
     }
 }

@@ -37,6 +37,7 @@
       <Project>{0B52D472-A7B0-4AB6-AFE3-A644B90F53FC}</Project>
       <Name>Nethermind.Db</Name>
     </ProjectReference>
+    <ProjectReference Include="..\Nethermind.DepositContract\Nethermind.DepositContract.csproj" />
     <ProjectReference Include="..\Nethermind.EthStats\Nethermind.EthStats.csproj" />
     <ProjectReference Include="..\Nethermind.Grpc\Nethermind.Grpc.csproj" />
     <ProjectReference Include="..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj">
