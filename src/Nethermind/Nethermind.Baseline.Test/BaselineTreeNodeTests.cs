@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,25 +13,25 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System;
-using Nethermind.Abi;
-using Newtonsoft.Json;
+using FluentAssertions;
+using Nethermind.Core.Crypto;
+using NUnit.Framework;
 
-namespace Nethermind.Consensus.AuRa.Json
+namespace Nethermind.Baseline.Test
 {
-    public class AbiTypeConverter : JsonConverter<AbiType>
+    [TestFixture]
+    public class BaselineTreeNodeTests
     {
-        public override void WriteJson(JsonWriter writer, AbiType value, JsonSerializer serializer)
+        [Test]
+        public void On_creation_sets_the_fields_properly()
         {
-            writer.WriteValue(value.Name);
+            byte[] bytes = new byte[32];
+            bytes[1] = 44;
+            BaselineTreeNode treeNode = new BaselineTreeNode(new Keccak(bytes), 5);
+            treeNode.Hash.Should().Be(new Keccak(bytes));
+            treeNode.NodeIndex.Should().Be(5);
         }
-
-        public override AbiType ReadJson(JsonReader reader, Type objectType, AbiType existingValue, bool hasExistingValue, JsonSerializer serializer)
-        {
-            throw new NotSupportedException();
-        }
-
-        public override bool CanRead { get; } = false;
     }
 }

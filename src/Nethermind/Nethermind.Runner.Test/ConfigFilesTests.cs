@@ -20,6 +20,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using FluentAssertions;
+using Nethermind.Baseline.Config;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.DataMarketplace.Core.Configs;
@@ -146,6 +147,13 @@ namespace Nethermind.Runner.Test
         public void IsMining_enabled_for_ndm_consumer_local(string configWildcard)
         {
             Test<IInitConfig, bool>(configWildcard, c => c.IsMining, true);
+        }
+        
+        [TestCase("spaceneth", true)]
+        [TestCase("^spaceneth", false)]
+        public void Baseline_is_disabled_by_default(string configWildcard, bool enabled)
+        {
+            Test<IBaselineConfig, bool>(configWildcard, c => c.Enabled, enabled);
         }
 
         [TestCase("ndm", true)]

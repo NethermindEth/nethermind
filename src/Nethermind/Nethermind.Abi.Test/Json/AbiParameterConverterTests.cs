@@ -19,7 +19,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using FluentAssertions;
-using Nethermind.Consensus.AuRa.Json;
+using Nethermind.Blockchain.Contracts.Json;
 using Newtonsoft.Json;
 using NUnit.Framework;
 

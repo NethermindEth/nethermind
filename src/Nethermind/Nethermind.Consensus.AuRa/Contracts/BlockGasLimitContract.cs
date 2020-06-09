@@ -15,20 +15,16 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
 using Nethermind.Abi;
-using Nethermind.Blockchain.Processing;
-using Nethermind.Consensus.AuRa.Json;
+using Nethermind.Blockchain.Contracts.Json;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public class BlockGasLimitContract : Contract, IActivatedAtBlock
+    public class BlockGasLimitContract : Blockchain.Contracts.Contract, IActivatedAtBlock
     {
-        private static readonly AbiDefinition Definition = new AbiDefinitionParser().Parse<BlockGasLimitContract>();
         private ConstantContract Constant { get; }
         public long Activation { get; }
         
@@ -47,9 +43,12 @@ namespace Nethermind.Consensus.AuRa.Contracts
         public UInt256? BlockGasLimit(BlockHeader parentHeader)
         {
             this.BlockActivationCheck(parentHeader);
-            var function = Definition.GetFunction(nameof(BlockGasLimit));
-            var bytes = Constant.CallRaw(parentHeader, function, Address.Zero);
-            return (bytes?.Length ?? 0) == 0 ? (UInt256?) null : (UInt256) AbiEncoder.Decode(function.GetReturnInfo(), bytes)[0];
+            var function = nameof(BlockGasLimit);
+            var returnData = Constant.CallRaw(parentHeader, function, Address.Zero);
+            return (returnData?.Length ?? 0) == 0 ? (UInt256?) null : (UInt256) returnData[0];
         }
+
+        protected override AbiDefinition AbiDefinition { get; }
+            = new AbiDefinitionParser().Parse<BlockGasLimitContract>();
     }
 }

@@ -18,9 +18,7 @@
 using System;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Core;
-using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.State;
 
@@ -28,12 +26,12 @@ namespace Nethermind.Consensus.AuRa.Transactions
 {
     public class TxPermissionFilter : ITxPermissionFilter
     {
-        private readonly TransactionPermissionContract _contract;
+        private readonly VersionedContract<TransactionPermissionContract> _contract;
         private readonly ITxPermissionFilter.Cache _cache;
         private readonly IStateProvider _stateProvider;
         private readonly ILogger _logger;
-        
-        public TxPermissionFilter(TransactionPermissionContract contract, ITxPermissionFilter.Cache cache, IStateProvider stateProvider, ILogManager logManager)
+
+        public TxPermissionFilter(VersionedContract<TransactionPermissionContract> contract, ITxPermissionFilter.Cache cache, IStateProvider stateProvider, ILogManager logManager)
         {
             _contract = contract ?? throw new ArgumentNullException(nameof(contract));
             _cache = cache ?? throw new ArgumentNullException(nameof(cache));
@@ -95,20 +93,9 @@ namespace Nethermind.Consensus.AuRa.Transactions
             return txPermissions;
         }
 
-        private TransactionPermissionContract.ITransactionPermissionVersionedContract GetVersionedContract(BlockHeader blockHeader)
+        private TransactionPermissionContract GetVersionedContract(BlockHeader blockHeader)
         {
-            TransactionPermissionContract.ITransactionPermissionVersionedContract versionedContract;
-            if (_cache.VersionedContracts.TryGet(blockHeader.Hash, out var version))
-            {
-                versionedContract = _contract.GetVersionedContract(version);
-            }
-            else
-            {
-                versionedContract = _contract.GetVersionedContract(blockHeader);
-                _cache.VersionedContracts.Set(blockHeader.Hash, versionedContract.Version);
-            }
-
-            return versionedContract;
+            return _contract.ResolveVersion(blockHeader);
         }
 
         private TransactionPermissionContract.TxPermissions GetTxType(Transaction tx)

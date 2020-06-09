@@ -23,23 +23,23 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
 using Newtonsoft.Json.Serialization;
 
-namespace Nethermind.Consensus.AuRa.Json
+namespace Nethermind.Blockchain.Contracts.Json
 {
     public class AbiDefinitionParser : IAbiDefinitionParser
     {
         private readonly JsonSerializer _serializer;
-        
+
         public AbiDefinitionParser()
         {
             _serializer = JsonSerializer.CreateDefault(GetJsonSerializerSettings());
         }
-        
+
         public AbiDefinition Parse(string json)
         {
             using var reader = new StringReader(json);
             return Parse(reader);
         }
-        
+
         public AbiDefinition Parse<T>()
         {
             using var reader = LoadResource(typeof(T));
@@ -57,6 +57,7 @@ namespace Nethermind.Consensus.AuRa.Json
             using var reader = LoadResource(type);
             return reader.ReadToEnd();
         }
+
         public string Serialize(AbiDefinition contract)
         {
             var builder = new StringBuilder();
@@ -64,20 +65,23 @@ namespace Nethermind.Consensus.AuRa.Json
             _serializer.Serialize(writer, contract);
             return builder.ToString();
         }
-        
+
         private AbiDefinition Parse(TextReader textReader)
         {
             using var reader = new JsonTextReader(textReader);
             return _serializer.Deserialize<AbiDefinition>(reader);
         }
-        
+
         private static StreamReader LoadResource(Type type)
         {
             var jsonResource = type.FullName.Replace("+", ".") + ".json";
+#if DEBUG
+            var names = type.Assembly.GetManifestResourceNames();
+#endif
             var stream = type.Assembly.GetManifestResourceStream(jsonResource) ?? throw new ArgumentException($"Resource for {jsonResource} not found.");
             return new StreamReader(stream);
         }
-        
+
         private static JsonSerializerSettings GetJsonSerializerSettings()
         {
             var jsonSerializerSettings = new JsonSerializerSettings();

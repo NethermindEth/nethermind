@@ -74,7 +74,7 @@ namespace Nethermind.AuRa.Test.Contract
                 Hash = new Keccak("0x0652461cead47b6e1436fc631debe06bde8bcdd2dad3b9d21df5cf092078c6d3"), 
                 To = _contractAddress,
                 SenderAddress = Address.SystemUser,
-                GasLimit = Consensus.AuRa.Contracts.Contract.DefaultContractGasLimit,
+                GasLimit = Blockchain.Contracts.Contract.DefaultContractGasLimit,
                 GasPrice = 0,
                 Nonce = 0
             };

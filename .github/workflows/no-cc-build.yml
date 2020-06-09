@@ -27,6 +27,9 @@ jobs:
     - name: Nethermind.AuRa.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.AuRa.Test
+    - name: Nethermind.Baseline.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.Baseline.Test
     - name: Nethermind.BeaconNode.Eth1Bridge.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.BeaconNode.Eth1Bridge.Test
@@ -36,7 +39,6 @@ jobs:
     - name: Nethermind.BeaconNode.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.BeaconNode.Test
-
     - name: Nethermind.Blockchain.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Blockchain.Test
