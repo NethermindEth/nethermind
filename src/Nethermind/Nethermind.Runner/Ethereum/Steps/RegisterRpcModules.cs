@@ -39,6 +39,8 @@ using Nethermind.Baseline.Config;
 using Nethermind.Baseline.JsonRpc;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Vault.JsonRpc;
+using Nethermind.Vault.Config;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
@@ -70,6 +72,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             INdmConfig ndmConfig = _context.Config<INdmConfig>();
             IJsonRpcConfig rpcConfig = _context.Config<IJsonRpcConfig>();
             IBaselineConfig baselineConfig = _context.Config<IBaselineConfig>();
+            IVaultConfig vaultConfig = _context.Config<IVaultConfig>();
             INetworkConfig networkConfig = _context.Config<INetworkConfig>();
             if (ndmConfig.Enabled && !(_context.NdmInitializer is null) && ndmConfig.ProxyEnabled)
             {
@@ -128,6 +131,13 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             TxPoolModule txPoolModule = new TxPoolModule(_context.BlockTree, _context.TxPoolInfoProvider, _context.LogManager);
             _context.RpcModuleProvider.Register(new SingletonModulePool<ITxPoolModule>(txPoolModule, true));
+            
+            if (vaultConfig.Enabled)
+            {
+                VaultModule vaultModule = new VaultModule(vaultConfig, _context.LogManager);
+                _context.RpcModuleProvider.Register(new SingletonModulePool<IVaultModule>(vaultModule, true));
+                if (logger?.IsInfo ?? false) logger!.Info($"Vault RPC Module has been enabled");
+            }
 
             NetModule netModule = new NetModule(_context.LogManager, new NetBridge(_context.Enode, _context.SyncServer));
             _context.RpcModuleProvider.Register(new SingletonModulePool<INetModule>(netModule, true));

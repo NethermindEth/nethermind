@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2020 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,38 +15,28 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using Nethermind.Core.Attributes;
+using Nethermind.JsonRpc.Modules;
+using Nethermind.Logging;
+using Nethermind.Vault.Config;
 
-namespace Nethermind.JsonRpc.Modules
+namespace Nethermind.Vault.JsonRpc
 {
-    [Todo(Improve.Refactor, "Can we use string instead to avoid coupling and introduce conventions?")]
-    public enum ModuleType
+    public class VaultModuleFactory : ModuleFactoryBase<IVaultModule>
     {
-        Admin,
-        Clique,
-        Db,
-        Debug,
-        Eth,
-        NdmProvider,
-        NdmConsumer,
-        Net,
-        Parity,
-        Personal,
-        Proof,
-        Trace,
-        TxPool,
-        Web3,
-        Baseline,
-        Vault,
-    }
-
-    public class RpcModuleAttribute : Attribute
-    {
-        public ModuleType ModuleType { get; }
-
-        public RpcModuleAttribute(ModuleType moduleType)
+        private readonly ILogManager _logManager;
+        private readonly IVaultConfig _vaultConfig;
+        
+        public VaultModuleFactory(
+            IVaultConfig vaultConfig,
+            ILogManager logManager)
         {
-            ModuleType = moduleType;
+            _vaultConfig = vaultConfig ?? throw new ArgumentNullException(nameof(vaultConfig));
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+        }
+        
+        public override IVaultModule Create()
+        {
+            return new VaultModule(_vaultConfig, _logManager);
         }
     }
 }
