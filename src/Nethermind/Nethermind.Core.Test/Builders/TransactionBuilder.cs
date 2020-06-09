@@ -116,6 +116,7 @@ namespace Nethermind.Core.Test.Builders
         // TODO: auto create ecdsa here
         public TransactionBuilder<T> SignedAndResolved(IEthereumEcdsa ecdsa, PrivateKey privateKey, bool isEip155Enabled = true)
         {
+            // make sure that you do not change anything in the tx after signing as this will lead to a different recovered address
             ecdsa.Sign(privateKey, TestObjectInternal, isEip155Enabled);
             TestObjectInternal.SenderAddress = privateKey.Address;
             return this;
