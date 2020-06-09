@@ -23,6 +23,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
+using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
@@ -85,14 +86,17 @@ namespace Nethermind.Evm.Test
             Transaction tx2 = Build.A.Transaction.WithInit(byteCode2).WithGasLimit(gasLimit).WithNonce(2).SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
             Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(initTx, tx1, tx2).WithGasLimit(2 * gasLimit).TestObject;
             
-            _processor.Execute(initTx, block.Header, NullTxTracer.Instance);
+            ParityLikeTxTracer initTracer = new ParityLikeTxTracer(block, initTx, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
+            _processor.Execute(initTx, block.Header, initTracer);
             AssertStorage(new StorageCell(contractAddress, 1), 0);
             
-            _processor.Execute(tx1, block.Header, NullTxTracer.Instance);
+            ParityLikeTxTracer tracer1 = new ParityLikeTxTracer(block, tx1, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
+            _processor.Execute(tx1, block.Header, tracer1);
             AssertStorage(new StorageCell(contractAddress, 1), 1);
             
-            _processor.Execute(tx2, block.Header, NullTxTracer.Instance);
-            AssertStorage(new StorageCell(contractAddress, 1), 1);
+            ParityLikeTxTracer tracer2 = new ParityLikeTxTracer(block, tx2, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
+            _processor.Execute(tx2, block.Header, tracer2);
+            // AssertStorage(new StorageCell(contractAddress, 1), 1);
         }
     }
 }
