@@ -109,16 +109,19 @@ namespace Nethermind.Evm.Test
             byte[] baseInitCode = Prepare.EvmCode
                 .ForInitOf(
                     Prepare.EvmCode
+                        .PushData(2)
+                        .PushData(2)
+                        .Op(Instruction.SSTORE)
                         .PushData(1)
                         .Op(Instruction.SLOAD)
                         .PushData(1)
                         .Op(Instruction.EQ)
-                        .PushData(17)
+                        .PushData(22)
                         .Op(Instruction.JUMPI)
                         .PushData(1)
                         .PushData(1)
                         .Op(Instruction.SSTORE)
-                        .PushData(21)
+                        .PushData(26)
                         .Op(Instruction.JUMP)
                         .Op(Instruction.JUMPDEST)
                         .PushData(0)
@@ -190,6 +193,7 @@ namespace Nethermind.Evm.Test
             tracer = new ParityLikeTxTracer(block, tx5, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
             _processor.Execute(tx5, block.Header, tracer);
             AssertStorage(new StorageCell(deploymentAddress, 1), 1);
+            AssertStorage(new StorageCell(deploymentAddress, 2), 2);
         }
     }
 }
