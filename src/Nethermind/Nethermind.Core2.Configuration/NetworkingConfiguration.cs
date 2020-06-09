@@ -15,16 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-<<<<<<< HEAD:src/Nethermind/Nethermind.JsonRpc.Test/TestWallet.cs
-namespace Nethermind.JsonRpc.Test
-{
-    public class TestWallet
-    {
-        public TestWallet()
-        {
-            
-        }
-=======
 using System;
 
 namespace Nethermind.Core2.Configuration
@@ -38,6 +28,5 @@ namespace Nethermind.Core2.Configuration
         public TimeSpan MaximumGossipClockDisparity { get; set; }
         public TimeSpan ResponseTimeout { get; set; }
         public TimeSpan TimeToFirstByteTimeout { get; set; }
->>>>>>> master:src/Nethermind/Nethermind.Core2.Configuration/NetworkingConfiguration.cs
     }
 }
