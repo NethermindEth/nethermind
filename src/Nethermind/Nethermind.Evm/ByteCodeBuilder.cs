@@ -58,6 +58,11 @@ namespace Nethermind.Evm
 
         public Prepare ForInitOf(byte[] codeToBeDeployed)
         {
+            if (codeToBeDeployed.Length > 32)
+            {
+                throw new NotSupportedException();
+            }
+            
             StoreDataInMemory(0, codeToBeDeployed.PadRight(32));
             PushData(codeToBeDeployed.Length);
             PushData(0);
