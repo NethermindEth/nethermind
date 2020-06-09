@@ -31,7 +31,7 @@ using NUnit.Framework;
 
 namespace Nethermind.AuRa.Test.Transactions
 {
-    public class GeneratedTxSourceApproverTests
+    public class GeneratedTxSourceSealerTests
     {
         [Test]
         public void transaction_is_addable_to_block_after_fill()
@@ -41,9 +41,10 @@ namespace Nethermind.AuRa.Test.Transactions
             var tx = Build.A.GeneratedTransaction.TestObject;
             var timestamper = Substitute.For<ITimestamper>();
             var stateReader = Substitute.For<IStateReader>();
+            var nodeAddress = TestItem.AddressA;
             
             UInt256 expectedNonce = 10;
-            stateReader.GetNonce(blockHeader.StateRoot, tx.SenderAddress).Returns(expectedNonce);
+            stateReader.GetNonce(blockHeader.StateRoot, nodeAddress).Returns(expectedNonce - 1);
             
             ulong expectedTimeStamp = 100;
             timestamper.EpochSeconds.Returns(expectedTimeStamp);
@@ -53,7 +54,7 @@ namespace Nethermind.AuRa.Test.Transactions
             innerTxSource.GetTransactions(blockHeader, gasLimit).Returns(new[] {tx});
             
             TxSealer txSealer = new TxSealer(new BasicWallet(Build.A.PrivateKey.TestObject), timestamper, chainId);
-            var transactionFiller = new GeneratedTxSourceSealer(innerTxSource, txSealer, stateReader, tx.SenderAddress);
+            var transactionFiller = new GeneratedTxSourceSealer(innerTxSource, txSealer, stateReader, nodeAddress);
             
             var txResult= transactionFiller.GetTransactions(blockHeader, gasLimit).First();
 

@@ -29,17 +29,23 @@ namespace Nethermind.Facade.Transactions
         private readonly IBasicWallet _wallet;
         private readonly ITimestamper _timestamper;
         private readonly int _chainId;
-            
-        public TxSealer(IBasicWallet wallet, ITimestamper timestamper, int chainId)
+        private readonly bool _allowExistingSignature;
+
+        public TxSealer(IBasicWallet wallet, ITimestamper timestamper, int chainId, bool allowExistingSignature = true)
         {
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
             _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
             _chainId = chainId;
+            _allowExistingSignature = allowExistingSignature;
         }
 
         public virtual void Seal(Transaction tx)
         {
-            _wallet.Sign(tx, _chainId);
+            if (tx.Signature == null || !_allowExistingSignature)
+            {
+                _wallet.Sign(tx, _chainId);
+            }
+
             tx.Hash = tx.CalculateHash();
             tx.Timestamp = _timestamper.EpochSeconds;
         }

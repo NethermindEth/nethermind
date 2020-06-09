@@ -111,15 +111,22 @@ namespace Nethermind.Consensus.AuRa.Validators
         {
             try
             {
-                if (_logger.IsTrace) _logger.Trace($"Reporting {type} misbehaviour (cause: {cause}) at block #{blockNumber} from {validator}");
-
-                var transaction = createReportTransactionDelegate(validator, blockNumber, proof);
-                if (transaction != null)
+                if (!Validators.Contains(ValidatorContract.NodeAddress))
                 {
-                    var posdao = IsPosdao(blockNumber);
-                    var txSender = posdao ? _posdaoTxSender : _nonPosdaoTxSender;
-                    SendTransaction(txSender, transaction); 
-                    if (_logger.IsWarn) _logger.Warn($"Reported {type} validator {validator} at block {blockNumber}");
+                    if (_logger.IsTrace) _logger.Trace($"Skipping reporting {type} misbehaviour (cause: {cause}) at block #{blockNumber} from {validator} as we are not validator");
+                }
+                else
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Reporting {type} misbehaviour (cause: {cause}) at block #{blockNumber} from {validator}");
+
+                    var transaction = createReportTransactionDelegate(validator, blockNumber, proof);
+                    if (transaction != null)
+                    {
+                        var posdao = IsPosdao(blockNumber);
+                        var txSender = posdao ? _posdaoTxSender : _nonPosdaoTxSender;
+                        SendTransaction(txSender, transaction);
+                        if (_logger.IsWarn) _logger.Warn($"Reported {type} validator {validator} at block {blockNumber}");
+                    }
                 }
             }
             catch (Exception e)

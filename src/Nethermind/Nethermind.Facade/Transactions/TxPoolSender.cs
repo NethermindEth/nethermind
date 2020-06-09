@@ -45,23 +45,13 @@ namespace Nethermind.Facade.Transactions
 
         public Keccak SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
-            bool seal = tx.Signature == null;
-
-            for (int i = 0; i < _sealers.Length; i++)
+            foreach (var sealer in _sealers)
             {
-                var sealer = _sealers[i];
-                if (seal)
-                {
-                    sealer.Seal(tx);
-                }
+                sealer.Seal(tx);
                 
                 AddTxResult result = _txPool.AddTransaction(tx, txHandlingOptions);
-                
-                if (result == AddTxResult.OwnNonceAlreadyUsed && (txHandlingOptions & TxHandlingOptions.ManagedNonce) == TxHandlingOptions.ManagedNonce)
-                {
-                    seal = true;
-                }
-                else
+
+                if (result != AddTxResult.OwnNonceAlreadyUsed || (txHandlingOptions & TxHandlingOptions.ManagedNonce) != TxHandlingOptions.ManagedNonce)
                 {
                     break;
                 }

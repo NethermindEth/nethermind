@@ -38,10 +38,12 @@ namespace Nethermind.AuRa.Test
         {
             var blockGasLimitContract1 = Substitute.For<IBlockGasLimitContract>();
             blockGasLimitContract1.ActivationBlock.Returns(3);
+            blockGasLimitContract1.Activation.Returns(3);
             blockGasLimitContract1.BlockGasLimit(Arg.Any<BlockHeader>()).Returns(1000u);
             var blockGasLimitContract2 = Substitute.For<IBlockGasLimitContract>();
-            blockGasLimitContract1.ActivationBlock.Returns(5);
-            blockGasLimitContract1.BlockGasLimit(Arg.Any<BlockHeader>()).Returns(3000000u);
+            blockGasLimitContract2.ActivationBlock.Returns(5);
+            blockGasLimitContract2.Activation.Returns(5);
+            blockGasLimitContract2.BlockGasLimit(Arg.Any<BlockHeader>()).Returns(3000000u);
             
             var gasLimitOverride = new AuRaContractGasLimitOverride(
                 new List<IBlockGasLimitContract>() {blockGasLimitContract1, blockGasLimitContract2}, 

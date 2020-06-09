@@ -27,7 +27,7 @@ namespace Nethermind.Facade.Transactions
     {
         private readonly ITxPool _txPool;
 
-        public TxNonceTxPoolReserveSealer(IBasicWallet wallet, ITimestamper timestamper, int chainId, ITxPool txPool) : base(wallet, timestamper, chainId)
+        public TxNonceTxPoolReserveSealer(IBasicWallet wallet, ITimestamper timestamper, int chainId, ITxPool txPool) : base(wallet, timestamper, chainId, false)
         {
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
         }
