@@ -37,6 +37,17 @@ namespace Nethermind.Consensus.Clique
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
         }
 
+        public bool ProduceBlock(Keccak parentHash)
+        {
+            if (_cliqueBlockProducer == null)
+            {
+                return false;
+            }
+            
+            _cliqueBlockProducer?.ProduceOnTopOf(parentHash);
+            return true;
+        }
+
         public void CastVote(Address signer, bool vote)
         {
             if (_cliqueBlockProducer == null)
