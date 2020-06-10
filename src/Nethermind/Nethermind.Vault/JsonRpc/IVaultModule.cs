@@ -18,6 +18,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.Vault.Styles;
 
 namespace Nethermind.Vault.JsonRpc
 {
@@ -28,7 +29,7 @@ namespace Nethermind.Vault.JsonRpc
             Description = "Creates a Vault",
             IsReadOnly = false,
             IsImplemented = true)]
-        Task<ResultWrapper<object>> vault_createVault(string data);
+        Task<ResultWrapper<object>> vault_createVault(VaultArgs args);
 
         [JsonRpcMethod(
             Description = "Displays a list of Vaults",
@@ -46,7 +47,7 @@ namespace Nethermind.Vault.JsonRpc
             Description = "Generates a new symmetric key or asymmetric keypair",
             IsReadOnly = false,
             IsImplemented = true)]
-        Task<ResultWrapper<object>> vault_createKey(string vaultId, string data);
+        Task<ResultWrapper<object>> vault_createKey(string vaultId, KeyArgs args);
 
         [JsonRpcMethod(
             Description = "Deletes a key from Vault",
@@ -64,7 +65,7 @@ namespace Nethermind.Vault.JsonRpc
             Description = "Creates a new secret within the vault",
             IsReadOnly = false,
             IsImplemented = true)]
-        Task<ResultWrapper<object>> vault_createSecret(string vaultId, string data);
+        Task<ResultWrapper<object>> vault_createSecret(string vaultId, SecretArgs args);
 
         [JsonRpcMethod(
             Description = "Permanently removes the specified secret from the vault",

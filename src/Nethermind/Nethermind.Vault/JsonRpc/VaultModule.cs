@@ -20,6 +20,7 @@ using Nethermind.JsonRpc;
 using Nethermind.Vault.Config;
 using System.Collections.Generic;
 using Newtonsoft.Json;
+using Nethermind.Vault.Styles;
 
 namespace Nethermind.Vault.JsonRpc
 {
@@ -39,13 +40,11 @@ namespace Nethermind.Vault.JsonRpc
             _initVault = new provide.Vault(_vaultConfig.Host, _vaultConfig.Path, _vaultConfig.Scheme , _vaultConfig.Token);
         }
 
-        public async Task<ResultWrapper<object>> vault_createKey(string vaultId, string data)
+        public async Task<ResultWrapper<object>> vault_createKey(string vaultId, KeyArgs args )
         {
             try 
             {
-                var args = JsonConvert.DeserializeObject<Dictionary<string, object>>(data);
-
-                var result = await _initVault.CreateVaultKey(_vaultConfig.Token, vaultId, args);   
+                var result = await _initVault.CreateVaultKey(_vaultConfig.Token, vaultId, args.ToDictionary());   
 
                 return ReturnResult(result);
             } 
@@ -55,13 +54,11 @@ namespace Nethermind.Vault.JsonRpc
             }
         }
 
-        public async Task<ResultWrapper<object>> vault_createSecret(string vaultId, string data)
+        public async Task<ResultWrapper<object>> vault_createSecret(string vaultId, SecretArgs args)
         {
             try 
             {
-                var args = JsonConvert.DeserializeObject<Dictionary<string, object>>(data);
-
-                var result = await _initVault.CreateVaultSecret(_vaultConfig.Token, vaultId, args);   
+                var result = await _initVault.CreateVaultSecret(_vaultConfig.Token, vaultId, args.ToDictionary());   
 
                 return ReturnResult(result);
             } 
@@ -71,13 +68,11 @@ namespace Nethermind.Vault.JsonRpc
             }
         }
 
-        public async Task<ResultWrapper<object>> vault_createVault(string data)
+        public async Task<ResultWrapper<object>> vault_createVault(VaultArgs args)
         {
             try 
             {
-                var args = JsonConvert.DeserializeObject<Dictionary<string, object>>(data);
-
-                var result = await _initVault.CreateVault(_vaultConfig.Token, args); 
+                var result = await _initVault.CreateVault(_vaultConfig.Token, args.ToDictionary()); 
 
                 return ReturnResult(result);
             } 
