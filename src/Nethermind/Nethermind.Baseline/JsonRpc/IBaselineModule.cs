@@ -68,7 +68,7 @@ namespace Nethermind.Baseline.JsonRpc
         Task<ResultWrapper<Keccak>> baseline_deployBytecode(Address address, string byteCode);
 
         [JsonRpcMethod(
-            Description = "describe",
+            Description = "Gets siblings path / proof of the given leaf.",
             IsReadOnly = true,
             IsImplemented = true)]
         Task<ResultWrapper<BaselineTreeNode[]>> baseline_getSiblings(Address contractAddress, long leafIndex);
