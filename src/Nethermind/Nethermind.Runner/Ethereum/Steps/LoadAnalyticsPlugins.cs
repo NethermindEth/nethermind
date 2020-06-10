@@ -139,12 +139,12 @@ namespace Nethermind.Runner.Ethereum.Steps
                         if (grpcConfig.Enabled)
                         {
                             if(_logger.IsWarn) _logger.Warn($"Initializing gRPC for {type.Name}");
-                            pluginLoader?.Init(_context.FileSystem, _context.TxPool, _context.MainBlockProcessor, new GrpcPublisher(_context.GrpcServer!), _context.LogManager);
+                            pluginLoader?.Init(_context.FileSystem, _context.TxPool, _context.BlockTree, _context.MainBlockProcessor, new GrpcPublisher(_context.GrpcServer!), _context.LogManager);
                         }
                         else
                         {
                             if(_logger.IsWarn) _logger.Warn($"Initializing log publisher for {type.Name}");
-                            pluginLoader?.Init(_context.FileSystem, _context.TxPool, _context.MainBlockProcessor, new LogDataPublisher(_context.LogManager), _context.LogManager);
+                            pluginLoader?.Init(_context.FileSystem, _context.TxPool, _context.BlockTree, _context.MainBlockProcessor, new LogDataPublisher(_context.LogManager), _context.LogManager);
                         }
                     }
                 }

@@ -109,7 +109,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             foreach (IProducer producer in _context.Producers)
             {
                 var bridge = new TxPublisherBridge(producer);
-                pluginLoader?.Init(_context.FileSystem, _context.TxPool, _context.MainBlockProcessor, bridge, _context.LogManager);
+                pluginLoader?.Init(_context.FileSystem, _context.TxPool, _context.BlockTree, _context.MainBlockProcessor, bridge, _context.LogManager);
             }
         }
 
