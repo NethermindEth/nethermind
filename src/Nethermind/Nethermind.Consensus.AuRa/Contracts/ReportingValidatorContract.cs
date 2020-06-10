@@ -15,7 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Abi;
-using Nethermind.Consensus.AuRa.Json;
+using Nethermind.Blockchain.Contracts;
+using Nethermind.Blockchain.Contracts.Json;
 using Nethermind.Core;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
@@ -53,18 +54,15 @@ namespace Nethermind.Consensus.AuRa.Contracts
         Transaction ReportBenign(Address maliciousMiningAddress, UInt256 blockNumber);
     }
 
-    public class ReportingValidatorContract : Contract, IReportingValidatorContract
+    public sealed class ReportingValidatorContract : Contract, IReportingValidatorContract
     {
         public Address NodeAddress { get; }
         
-        private static readonly AbiDefinition Definition = new AbiDefinitionParser().Parse<ReportingValidatorContract>();
-        
         public ReportingValidatorContract(
-            ITransactionProcessor transactionProcessor, 
             IAbiEncoder abiEncoder, 
             Address contractAddress,
             Address nodeAddress)
-            : base(transactionProcessor, abiEncoder, contractAddress)
+            : base(abiEncoder, contractAddress)
         {
             NodeAddress = nodeAddress;
         }
@@ -80,7 +78,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// <param name="blockNumber">The block number where the misbehavior was observed.</param>
         /// <param name="proof">Proof of misbehavior.</param>
         /// <returns>Transaction to be added to pool.</returns>
-        public Transaction ReportMalicious(Address maliciousMiningAddress, UInt256 blockNumber, byte[] proof) => GenerateTransaction<GeneratedTransaction>(Definition.GetFunction(nameof(ReportMalicious)), NodeAddress, maliciousMiningAddress, blockNumber, proof);
+        public Transaction ReportMalicious(Address maliciousMiningAddress, UInt256 blockNumber, byte[] proof) => GenerateTransaction<GeneratedTransaction>(nameof(ReportMalicious), NodeAddress, maliciousMiningAddress, blockNumber, proof);
 
         /// <summary>
         /// Reports that the benign validator misbehaved at the specified block.
@@ -92,6 +90,6 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// <param name="maliciousMiningAddress">The mining address of the malicious validator.</param>
         /// <param name="blockNumber">The block number where the misbehavior was observed.</param>
         /// <returns>Transaction to be added to pool.</returns>
-        public Transaction ReportBenign(Address maliciousMiningAddress, UInt256 blockNumber) => GenerateTransaction<GeneratedTransaction>(Definition.GetFunction(nameof(ReportBenign)), NodeAddress, maliciousMiningAddress, blockNumber);
+        public Transaction ReportBenign(Address maliciousMiningAddress, UInt256 blockNumber) => GenerateTransaction<GeneratedTransaction>(nameof(ReportBenign), NodeAddress, maliciousMiningAddress, blockNumber);
     }
 }

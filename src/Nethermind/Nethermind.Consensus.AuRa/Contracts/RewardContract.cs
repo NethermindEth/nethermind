@@ -18,8 +18,9 @@ using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using Nethermind.Abi;
+using Nethermind.Blockchain.Contracts;
+using Nethermind.Blockchain.Contracts.Json;
 using Nethermind.Blockchain.Rewards;
-using Nethermind.Consensus.AuRa.Json;
 using Nethermind.Core;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
@@ -47,12 +48,10 @@ namespace Nethermind.Consensus.AuRa.Contracts
         (Address[] Addresses, UInt256[] Rewards) Reward(BlockHeader blockHeader, Address[] benefactors, ushort[] kind);
     }
 
-    public class RewardContract : Contract, IRewardContract
+    public sealed class RewardContract : CallableContract, IRewardContract
     {
         public long Activation { get; }
-        
-        private static readonly AbiDefinition Definition = new AbiDefinitionParser().Parse<RewardContract>();
-        
+
         public RewardContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress, long transitionBlock) : base(transactionProcessor, abiEncoder, contractAddress)
         {
             Activation = transitionBlock;
@@ -75,7 +74,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// </param>
         public (Address[] Addresses, UInt256[] Rewards) Reward(BlockHeader blockHeader, Address[] benefactors, ushort[] kind)
         {
-            var result = Call(blockHeader, Definition.GetFunction(nameof(Reward)), Address.SystemUser, benefactors, kind);
+            var result = Call(blockHeader, nameof(Reward), Address.SystemUser, benefactors, kind);
             return ((Address[]) result[0], (UInt256[]) result[1]);
         }
     }

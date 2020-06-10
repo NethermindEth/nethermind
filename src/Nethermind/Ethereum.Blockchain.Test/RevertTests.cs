@@ -26,7 +26,7 @@ using NUnit.Framework;
 namespace Ethereum.Blockchain.Test
 {
     [TestFixture][Parallelizable(ParallelScope.All)]
-    public class RevertTests : BlockchainTestBase
+    public class RevertTests : GeneralStateTestBase
     {
         /// <summary>
         /// This tests can only happen on the pre Byzantium networks and all of these networks sync fine
@@ -46,7 +46,7 @@ namespace Ethereum.Blockchain.Test
         };
         
         [TestCaseSource(nameof(LoadTests))]
-        public void Test(BlockchainTest test)
+        public void Test(GeneralStateTest test)
         {
             if (ignored.Any(i => test.Name.Contains(i)))
             {
@@ -56,6 +56,7 @@ namespace Ethereum.Blockchain.Test
             Assert.True(RunTest(test).Pass);
         }
         
-        public static IEnumerable<BlockchainTest> LoadTests() { return new DirectoryTestsSource("stRevertTest").LoadTests(); }
+        public static IEnumerable<GeneralStateTest> LoadTests() { var loader = new DirectoryTestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stRevertTest");
+            return (IEnumerable<GeneralStateTest>)loader.LoadTests(); }
     }
 }

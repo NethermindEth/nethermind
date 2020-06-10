@@ -22,16 +22,17 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
+using Ethereum.Test.Base.Interfaces;
 using Nethermind.Logging;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Runner
 {
-    public class PerfStateTest : BlockchainTestBase, IStateTestRunner
+    public class PerfStateTest : GeneralStateTestBase, IStateTestRunner
     {
-        private readonly IBlockchainTestsSource _testsSource;
+        private readonly ITestSourceLoader _testsSource;
 
-        public PerfStateTest(IBlockchainTestsSource testsSource)
+        public PerfStateTest(ITestSourceLoader testsSource)
         {
             _testsSource = testsSource ?? throw new ArgumentNullException(nameof(testsSource));
         }
@@ -41,9 +42,9 @@ namespace Nethermind.Blockchain.Test.Runner
             List<EthereumTestResult> results = new List<EthereumTestResult>();
             Console.WriteLine($"RUNNING tests");
             Stopwatch stopwatch = new Stopwatch();
-            IEnumerable<BlockchainTest> tests = _testsSource.LoadTests();
+            IEnumerable<GeneralStateTest> tests = (IEnumerable<GeneralStateTest>)_testsSource.LoadTests();
             bool isNewLine = true;
-            foreach (BlockchainTest test in tests)
+            foreach (GeneralStateTest test in tests)
             {
                 if (test.LoadFailure != null)
                 {

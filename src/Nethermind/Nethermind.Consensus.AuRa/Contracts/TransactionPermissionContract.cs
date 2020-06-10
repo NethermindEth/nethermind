@@ -17,36 +17,30 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Abi;
+using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public interface ITransactionPermissionContract : IActivatedAtBlock
+    public interface ITransactionPermissionContract : IVersionedContract
     {
-        ITransactionPermissionVersionedContract GetVersionedContract(BlockHeader parentHeader);
-        ITransactionPermissionVersionedContract GetVersionedContract(UInt256 version);
-        
-        public interface ITransactionPermissionVersionedContract
-        {
-            /// <summary>
-            /// Defines the allowed transaction types which may be initiated by the specified sender with
-            /// the specified gas price and data. Used by node's engine each time a transaction is about to be
-            /// included into a block.
-            /// </summary>
-            /// <param name="parentHeader"></param>
-            /// <param name="tx"></param>
-            /// <returns><see cref="TxPermissions"/>Set of allowed transactions types and <see cref="bool"/> If `true` is returned, the same permissions will be applied from the same sender without calling this contract again.</returns>
-            (TxPermissions Permissions, bool ShouldCache) AllowedTxTypes(BlockHeader parentHeader, Transaction tx);
-            
-            /// <summary>
-            /// Returns the contract's version number needed for node's engine.
-            /// </summary>
-            UInt256 Version { get; }
-        }
+        /// <summary>
+        /// Returns the contract version number needed for node's engine.
+        /// </summary>
+        UInt256 Version { get; }
+
+        /// <summary>
+        /// Defines the allowed transaction types which may be initiated by the specified sender with
+        /// the specified gas price and data. Used by node's engine each time a transaction is about to be
+        /// included into a block.
+        /// </summary>
+        /// <param name="parentHeader"></param>
+        /// <param name="tx"></param>
+        /// <returns><see cref="TxPermissions"/>Set of allowed transactions types and <see cref="bool"/> If `true` is returned, the same permissions will be applied from the same sender without calling this contract again.</returns>
+        (TxPermissions Permissions, bool ShouldCache) AllowedTxTypes(BlockHeader parentHeader, Transaction tx);
         
         [Flags]
         public enum TxPermissions : uint
@@ -55,80 +49,69 @@ namespace Nethermind.Consensus.AuRa.Contracts
             /// No permissions
             /// </summary>
             None = 0x0,
-            
+
             /// <summary>
             /// 0x01 - basic transaction (e.g. ether transferring to user wallet)
             /// </summary>
             Basic = 0b00000001,
-            
+
             /// <summary>
             /// 0x02 - contract call
             /// </summary>
             Call = 0b00000010,
-            
+
             /// <summary>
             /// 0x04 - contract creation
             /// </summary>
             Create = 0b00000100,
-            
+
             /// <summary>
             /// 0x08 - private transaction
             /// </summary>
             Private = 0b00001000,
-            
+
             All = 0xffffffff,
         }
     }
-    
-    public partial class TransactionPermissionContract : Contract, ITransactionPermissionContract
+
+    public abstract class TransactionPermissionContract : Contract, ITransactionPermissionContract
     {
-        private readonly IDictionary<UInt256, ITransactionPermissionContract.ITransactionPermissionVersionedContract> _versionedContracts;
-        private readonly IVersionContract _versionContract;
-
-        public TransactionPermissionContract(ITransactionProcessor transactionProcessor,
-            IAbiEncoder abiEncoder,
-            Address contractAddress,
-            long activationBlock,
-            IReadOnlyTransactionProcessorSource readOnlyReadOnlyTransactionProcessorSource) 
-            : base(transactionProcessor, abiEncoder, contractAddress)
+        public virtual UInt256 ContractVersion(BlockHeader blockHeader)
         {
-            Activation = activationBlock;
-            var constantContract = GetConstant(readOnlyReadOnlyTransactionProcessorSource);
-            _versionedContracts = GetContracts(constantContract).ToDictionary(c => c.Version);
-            _versionContract = (IVersionContract) _versionedContracts.Values.First(c => c is IVersionContract);
-        }
-
-        private IEnumerable<ITransactionPermissionContract.ITransactionPermissionVersionedContract> GetContracts(ConstantContract constant)
-        {
-            yield return new V1(constant);
-            yield return new V2(constant);
-            yield return new V3(constant);
-        }
-
-        public long Activation { get; }
-
-        public ITransactionPermissionContract.ITransactionPermissionVersionedContract GetVersionedContract(BlockHeader parentHeader)
-        {
-            this.BlockActivationCheck(parentHeader);
-            
             try
             {
-                UInt256 version = _versionContract.ContractVersion(parentHeader);
-                return GetVersionedContract(version);
+                return Constant.Call<UInt256>(blockHeader, nameof(ContractVersion), Address.Zero);
             }
-            catch (AuRaException)
+            catch (Exception)
             {
-                return _versionedContracts[UInt256.One];
+                return UInt256.One;;
             }
         }
-        
-        public ITransactionPermissionContract.ITransactionPermissionVersionedContract GetVersionedContract(UInt256 version) => _versionedContracts.TryGetValue(version, out var contract) ? contract : null;
-        
-        private interface IVersionContract
+
+        /// <summary>
+        /// Returns the contract version number needed for node's engine.
+        /// </summary>
+        public abstract UInt256 Version { get; }
+
+        /// <summary>
+        /// Defines the allowed transaction types which may be initiated by the specified sender with
+        /// the specified gas price and data. Used by node's engine each time a transaction is about to be
+        /// included into a block.
+        /// </summary>
+        /// <param name="parentHeader"></param>
+        /// <param name="tx"></param>
+        /// <returns><see cref="ITransactionPermissionContract.TxPermissions"/>Set of allowed transactions types and <see cref="bool"/> If `true` is returned, the same permissions will be applied from the same sender without calling this contract again.</returns>
+        public abstract (ITransactionPermissionContract.TxPermissions Permissions, bool ShouldCache) AllowedTxTypes(BlockHeader parentHeader, Transaction tx);
+
+        protected ConstantContract Constant { get; }
+
+        protected TransactionPermissionContract(
+            IAbiEncoder abiEncoder,
+            Address contractAddress,
+            IReadOnlyTransactionProcessorSource readOnlyReadOnlyTransactionProcessorSource)
+            : base(abiEncoder, contractAddress)
         {
-            AbiDefinition Definition { get; }
-            ConstantContract Constant { get; }
-            public UInt256 ContractVersion(BlockHeader blockHeader) => Constant.Call<UInt256>(blockHeader, Definition.GetFunction(nameof(ContractVersion)), Address.Zero);
+            Constant = GetConstant(readOnlyReadOnlyTransactionProcessorSource);
         }
     }
 }

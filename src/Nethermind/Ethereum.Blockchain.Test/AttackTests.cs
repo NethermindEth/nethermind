@@ -23,14 +23,18 @@ using NUnit.Framework;
 namespace Ethereum.Blockchain.Test
 {
     [TestFixture][Parallelizable(ParallelScope.All)]
-    public class AttackTests : BlockchainTestBase
+    public class AttackTests : GeneralStateTestBase
     {
         [TestCaseSource(nameof(LoadTests))]
-        public void Test(BlockchainTest test)
+        public void Test(GeneralStateTest test)
         {
             Assert.True(RunTest(test).Pass);
         }
         
-        public static IEnumerable<BlockchainTest> LoadTests() { return new DirectoryTestsSource("stAttackTest").LoadTests(); }
+        public static IEnumerable<GeneralStateTest> LoadTests() 
+        { 
+            var loader = new DirectoryTestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stAttackTest");
+            return (IEnumerable<GeneralStateTest>)loader.LoadTests(); 
+        }
     }
 }

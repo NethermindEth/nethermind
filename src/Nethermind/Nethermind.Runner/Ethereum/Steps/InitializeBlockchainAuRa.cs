@@ -16,8 +16,6 @@
 
 using System;
 using System.Linq;
-using Nethermind.Abi;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus.AuRa;
@@ -26,7 +24,6 @@ using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Rewards;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
-using Nethermind.Core;
 using Nethermind.Evm;
 using Nethermind.Facade.Transactions;
 using Nethermind.Runner.Ethereum.Context;
@@ -137,9 +134,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.TxFilterCache = new ITxPermissionFilter.Cache();
                 
                 var txPermissionFilter = new TxPermissionFilter(
-                    new TransactionPermissionContract(
-                        _context.TransactionProcessor,
-                        _context.AbiEncoder,
+                    new VersionedTransactionPermissionContract(_context.AbiEncoder,
                         _context.ChainSpec.Parameters.TransactionPermissionContract,
                         _context.ChainSpec.Parameters.TransactionPermissionContractTransition ?? 0, 
                         GetReadOnlyTransactionProcessorSource()),
@@ -165,7 +160,6 @@ namespace Nethermind.Runner.Ethereum.Steps
                 var gasLimitOverride = new AuRaContractGasLimitOverride(
                     blockGasLimitContractTransitions.Select(blockGasLimitContractTransition =>
                         new BlockGasLimitContract(
-                            _context.TransactionProcessor,
                             _context.AbiEncoder,
                             blockGasLimitContractTransition.Value,
                             blockGasLimitContractTransition.Key,

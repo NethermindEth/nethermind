@@ -219,7 +219,9 @@ namespace Nethermind.Network.Discovery.Lifecycle
             if (newState == NodeLifecycleState.New)
             {
                 //if node is just discovered we send ping to confirm it is active
+#pragma warning disable 4014
                 SendPingAsync();
+#pragma warning restore 4014
             }
             else if (newState == NodeLifecycleState.Active)
             {
@@ -247,7 +249,9 @@ namespace Nethermind.Network.Discovery.Lifecycle
 
                 if (DateTime.UtcNow - _lastPingSent > TimeSpan.FromSeconds(5))
                 {
+#pragma warning disable 4014
                     SendPingAsync();
+#pragma warning restore 4014
                 }
                 else
                 {

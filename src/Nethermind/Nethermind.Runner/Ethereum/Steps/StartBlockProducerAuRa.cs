@@ -159,7 +159,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     IReadOnlyTransactionProcessorSource txProcessorSource, 
                     Address nodeAddress) =>
                     randomnessContractAddressPerBlock
-                        .Select(kvp => new RandomContract(transactionProcessor, 
+                        .Select(kvp => new RandomContract( 
                             abiEncoder, 
                             kvp.Value, 
                             txProcessorSource, 
@@ -223,9 +223,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_context.ChainSpec.Parameters.TransactionPermissionContract != null)
             {
                 var txPermissionFilter = new TxPermissionFilter(
-                    new TransactionPermissionContract(
-                        environment.TransactionProcessor,
-                        _context.AbiEncoder,
+                    new VersionedTransactionPermissionContract(_context.AbiEncoder,
                         _context.ChainSpec.Parameters.TransactionPermissionContract,
                         _context.ChainSpec.Parameters.TransactionPermissionContractTransition ?? 0, 
                         readOnlyTransactionProcessorSource),
@@ -252,7 +250,6 @@ namespace Nethermind.Runner.Ethereum.Steps
                 var gasLimitOverride = new AuRaContractGasLimitOverride(
                     blockGasLimitContractTransitions.Select(blockGasLimitContractTransition =>
                         new BlockGasLimitContract(
-                            environment.TransactionProcessor,
                             _context.AbiEncoder,
                             blockGasLimitContractTransition.Value,
                             blockGasLimitContractTransition.Key,

@@ -35,6 +35,10 @@ namespace Nethermind.Consensus.AuRa.Rewards
         
         public AuRaRewardCalculator(AuRaParameters auRaParameters, IAbiEncoder abiEncoder, ITransactionProcessor transactionProcessor)
         {
+            if (auRaParameters == null) throw new ArgumentNullException(nameof(auRaParameters));
+            if (abiEncoder == null) throw new ArgumentNullException(nameof(abiEncoder));
+            if (transactionProcessor == null) throw new ArgumentNullException(nameof(transactionProcessor));
+
             IList<IRewardContract> BuildTransitions()
             {
                 var contracts = new List<IRewardContract>();

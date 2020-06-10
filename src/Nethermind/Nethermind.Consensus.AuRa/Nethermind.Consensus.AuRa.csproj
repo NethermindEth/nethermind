@@ -5,34 +5,34 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\Nethermind.Abi\Nethermind.Abi.csproj" />
-      <ProjectReference Include="..\Nethermind.Blockchain\Nethermind.Blockchain.csproj" />
-      <ProjectReference Include="..\Nethermind.Consensus.Ethash\Nethermind.Consensus.Ethash.csproj" />
-      <ProjectReference Include="..\Nethermind.Facade\Nethermind.Facade.csproj" />
-      <ProjectReference Include="..\Nethermind.Specs\Nethermind.Specs.csproj" />
+        <ProjectReference Include="..\Nethermind.Abi\Nethermind.Abi.csproj" />
+        <ProjectReference Include="..\Nethermind.Blockchain\Nethermind.Blockchain.csproj" />
+        <ProjectReference Include="..\Nethermind.Consensus.Ethash\Nethermind.Consensus.Ethash.csproj" />
+        <ProjectReference Include="..\Nethermind.Facade\Nethermind.Facade.csproj" />
+        <ProjectReference Include="..\Nethermind.Specs\Nethermind.Specs.csproj" />
     </ItemGroup>
 
     <ItemGroup>
-      <PackageReference Include="Nito.Collections.Deque" Version="1.0.4" />
+        <PackageReference Include="Nito.Collections.Deque" Version="1.0.4" />
     </ItemGroup>
 
     <ItemGroup>
-      <None Remove="Contracts\RandomContract.json" />
-      <EmbeddedResource Include="Contracts\RandomContract.json" />
-      <None Remove="Contracts\ReportingValidatorContract.json" />
-      <EmbeddedResource Include="Contracts\ReportingValidatorContract.json" />
-      <None Remove="Contracts\RewardContract.json" />
-      <EmbeddedResource Include="Contracts\RewardContract.json" />
-      <None Remove="Contracts\ValidatorContract.json" />
-      <EmbeddedResource Include="Contracts\ValidatorContract.json" />
-      <None Remove="Contracts\TransactionPermissionContract.V1.json" />
-      <EmbeddedResource Include="Contracts\TransactionPermissionContract.V1.json" />
-      <None Remove="Contracts\TransactionPermissionContract.V2.json" />
-      <EmbeddedResource Include="Contracts\TransactionPermissionContract.V2.json" />
-      <None Remove="Contracts\TransactionPermissionContract.V3.json" />
-      <EmbeddedResource Include="Contracts\TransactionPermissionContract.V3.json" />
-      <None Remove="Contracts\BlockGasLimitContract.json" />
-      <EmbeddedResource Include="Contracts\BlockGasLimitContract.json" />
+        <None Remove="Contracts\RandomContract.json" />
+        <None Remove="Contracts\ReportingValidatorContract.json" />
+        <None Remove="Contracts\RewardContract.json" />
+        <None Remove="Contracts\ValidatorContract.json" />
+        <None Remove="Contracts\TransactionPermissionContractV1.json" />
+        <None Remove="Contracts\TransactionPermissionContractV2.json" />
+        <None Remove="Contracts\TransactionPermissionContractV3.json" />
+        <None Remove="Contracts\BlockGasLimitContract.json" />
+        <EmbeddedResource Include="Contracts\RandomContract.json" />
+        <EmbeddedResource Include="Contracts\ReportingValidatorContract.json" />
+        <EmbeddedResource Include="Contracts\RewardContract.json" />
+        <EmbeddedResource Include="Contracts\ValidatorContract.json" />
+        <EmbeddedResource Include="Contracts\TransactionPermissionContractV1.json" />
+        <EmbeddedResource Include="Contracts\TransactionPermissionContractV2.json" />
+        <EmbeddedResource Include="Contracts\TransactionPermissionContractV3.json" />
+        <EmbeddedResource Include="Contracts\BlockGasLimitContract.json" />
     </ItemGroup>
 
 </Project>

@@ -25,14 +25,15 @@ namespace Ethereum.Transition.Test
 {
     [TestFixture]
     [Parallelizable(ParallelScope.All)]
-    public class HomesteadToEip150Tests : LegacyBlockchainTestBase
+    public class HomesteadToEip150Tests : BlockchainTestBase
     {
         [TestCaseSource(nameof(LoadTests))]
-        public async Task Test(LegacyBlockchainTest test)
+        public async Task Test(BlockchainTest test)
         {    
             await RunTest(test);
         }
         
-        public static IEnumerable<LegacyBlockchainTest> LoadTests() { return new DirectoryTestsSource("bcHomesteadToEIP150").LoadLegacyTests(); }
+        public static IEnumerable<BlockchainTest> LoadTests() { var loader = new DirectoryTestsSourceLoader(new LoadLegacyBlockchainTestsStrategy(), "bcHomesteadToEIP150");
+        return (IEnumerable<BlockchainTest>)loader.LoadTests(); }
     }
 }

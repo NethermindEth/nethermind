@@ -84,7 +84,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             ReadOnlyBlockTree readOnlyTree = new ReadOnlyBlockTree(_blockTree);
             IReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
             ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, readOnlyTree, _specProvider, _logManager);
-            
+
             var blockchainBridge = new BlockchainBridge(
                 readOnlyTxProcessingEnv.StateReader,
                 readOnlyTxProcessingEnv.StateProvider,
@@ -98,6 +98,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 readOnlyTxProcessingEnv.TransactionProcessor,
                 _ethereumEcdsa,
                 _bloomStorage,
+                Timestamper.Default,
                 _logManager,
                 _isMining,
                 _rpcConfig.FindLogBlockDepthLimit);
