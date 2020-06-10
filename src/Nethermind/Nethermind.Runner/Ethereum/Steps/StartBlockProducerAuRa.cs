@@ -226,7 +226,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                     new VersionedTransactionPermissionContract(_context.AbiEncoder,
                         _context.ChainSpec.Parameters.TransactionPermissionContract,
                         _context.ChainSpec.Parameters.TransactionPermissionContractTransition ?? 0, 
-                        readOnlyTransactionProcessorSource),
+                        readOnlyTransactionProcessorSource,
+                        _context.TransactionPermissionContractVersions),
                     _context.TxFilterCache,
                     environment.StateProvider,
                     _context.LogManager);

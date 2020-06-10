@@ -19,6 +19,8 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Abi;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
+using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 
@@ -29,11 +31,13 @@ namespace Nethermind.Consensus.AuRa.Contracts
         public VersionedTransactionPermissionContract(IAbiEncoder abiEncoder,
             Address contractAddress,
             long activation,
-            IReadOnlyTransactionProcessorSource readOnlyReadOnlyTransactionProcessorSource)
+            IReadOnlyTransactionProcessorSource readOnlyReadOnlyTransactionProcessorSource, 
+            ICache<Keccak, UInt256> cache)
             : base(
                 CreateAllVersions(abiEncoder,
                     contractAddress,
                     readOnlyReadOnlyTransactionProcessorSource),
+                cache,
                 activation)
         {
         }

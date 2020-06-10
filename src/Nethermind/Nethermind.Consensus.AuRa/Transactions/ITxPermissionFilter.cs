@@ -19,6 +19,7 @@ using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
@@ -28,7 +29,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
         
         public class Cache
         {
-            private const int MaxCacheSize = 4096;
+            public const int MaxCacheSize = 4096;
             
             internal ICache<(Keccak ParentHash, Address Sender), ITransactionPermissionContract.TxPermissions?> Permissions { get; } =
                 new LruCacheWithRecycling<(Keccak ParentHash, Address Sender), ITransactionPermissionContract.TxPermissions?>(MaxCacheSize, "TxPermissions");

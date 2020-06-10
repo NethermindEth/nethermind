@@ -31,6 +31,8 @@ using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -47,7 +49,7 @@ namespace Nethermind.AuRa.Test.Transactions
     public class TxPermissionFilterTest
     {
         private const string ContractAddress = "0xAB5b100cf7C8deFB3c8f3C48474223997A50fB13";
-        private static Address _contractAddress = new Address(ContractAddress);
+        private static readonly Address _contractAddress = new Address(ContractAddress);
         
         private static readonly ITransactionPermissionContract.TxPermissions[] TxTypes = new[]
         {
@@ -178,7 +180,7 @@ namespace Nethermind.AuRa.Test.Transactions
             var chain = await chainFactory();
             var head = chain.BlockTree.Head;
             var isAllowed = chain.TxPermissionFilter.IsAllowed(tx, head.Header);
-            // chain.TxPermissionFilter.Current.Version.Should().Be(version);
+            chain.TransactionPermissionContractVersions.Get(head.Header.Hash).Should().Be(version);
             return (isAllowed, chain.TxPermissionFilterCache.Permissions.Contains((head.Hash, tx.SenderAddress)));
         }
 
@@ -201,8 +203,7 @@ namespace Nethermind.AuRa.Test.Transactions
             {
                 var chain = await chainTask;
                 chain.TxPermissionFilterCache.Permissions.Clear();
-                // TODO: clear
-                // chain.TxPermissionFilterCache.VersionedContracts.Clear();
+                chain.TransactionPermissionContractVersions.Clear();
                 return chain;
             };
 
@@ -219,32 +220,23 @@ namespace Nethermind.AuRa.Test.Transactions
 
         [TestCase(1, ExpectedResult = true)]
         [TestCase(3, ExpectedResult = true)]
-        [TestCase(4, ExpectedResult = false)]
-        [TestCase(5, ExpectedResult = false)]
-        [TestCase(10, ExpectedResult = false)]
         public bool allows_transactions_before_transitions(long blockNumber)
         {
             var transactionPermissionContract = new VersionedTransactionPermissionContract(new AbiEncoder(), 
                 TestItem.AddressA,
                 5, 
-                Substitute.For<IReadOnlyTransactionProcessorSource>());
+                Substitute.For<IReadOnlyTransactionProcessorSource>(), new LruCacheWithRecycling<Keccak, UInt256>(100, "TestCache"));
             
             var filter = new TxPermissionFilter(transactionPermissionContract, new ITxPermissionFilter.Cache(), Substitute.For<IStateProvider>(), LimboLogs.Instance);
-            try
-            {
-                return filter.IsAllowed(Build.A.Transaction.TestObject, Build.A.BlockHeader.WithNumber(blockNumber).TestObject);
-            }
-            catch (Exception)
-            {
-                // TODO: previously it was throwing exceptions as well
-                return false;
-            }
+            return filter.IsAllowed(Build.A.Transaction.WithSenderAddress(TestItem.AddressB).TestObject, Build.A.BlockHeader.WithNumber(blockNumber).TestObject);
         }
 
         public class TestTxPermissionsBlockchain : TestContractBlockchain
         {
             public TxPermissionFilter TxPermissionFilter { get; private set; }
             public ITxPermissionFilter.Cache TxPermissionFilterCache { get; private set; }
+            
+            public ICache<Keccak, UInt256> TransactionPermissionContractVersions { get; private set; }
             
             protected override BlockProcessor CreateBlockProcessor()
             {
@@ -254,8 +246,9 @@ namespace Nethermind.AuRa.Test.Transactions
                     ValidatorType = AuRaParameters.ValidatorType.List
                 };
 
+                TransactionPermissionContractVersions = new LruCacheWithRecycling<Keccak, UInt256>(ITxPermissionFilter.Cache.MaxCacheSize, nameof(TransactionPermissionContract));
                 var transactionPermissionContract = new VersionedTransactionPermissionContract(new AbiEncoder(), _contractAddress, 1,
-                    new ReadOnlyTransactionProcessorSource(DbProvider, BlockTree, SpecProvider, LimboLogs.Instance));
+                    new ReadOnlyTransactionProcessorSource(DbProvider, BlockTree, SpecProvider, LimboLogs.Instance), TransactionPermissionContractVersions);
 
                 TxPermissionFilterCache = new ITxPermissionFilter.Cache();
                 TxPermissionFilter = new TxPermissionFilter(transactionPermissionContract, TxPermissionFilterCache, State, LimboLogs.Instance);
