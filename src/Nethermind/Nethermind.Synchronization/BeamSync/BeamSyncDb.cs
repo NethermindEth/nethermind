@@ -262,8 +262,7 @@ namespace Nethermind.Synchronization.BeamSync
 
         public bool KeyExists(byte[] key)
         {
-            throw new NotSupportedException("Key exists is not supported by beam sync in fix modes.");
-            return _tempDb.KeyExists(key);
+            throw new NotSupportedException("Key exists is not supported by beam sync.");
         }
 
         public IDb Innermost => _stateDb.Innermost;

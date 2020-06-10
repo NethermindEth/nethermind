@@ -20,11 +20,11 @@ using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Analytics;
 using Nethermind.Logging;
 using Nethermind.PubSub;
 using Nethermind.Runner.Analytics;
 using Nethermind.Runner.Ethereum.Context;
-using Nethermind.TxPool.Analytics;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
@@ -109,7 +109,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             foreach (IProducer producer in _context.Producers)
             {
                 var bridge = new TxPublisherBridge(producer);
-                pluginLoader?.Init(_context.FileSystem, _context.TxPool, bridge, _context.LogManager);
+                pluginLoader?.Init(_context.FileSystem, _context.TxPool, _context.MainBlockProcessor, bridge, _context.LogManager);
             }
         }
 

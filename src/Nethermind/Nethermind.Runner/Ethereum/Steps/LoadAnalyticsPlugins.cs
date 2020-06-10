@@ -20,10 +20,10 @@ using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Analytics;
 using Nethermind.Grpc;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
-using Nethermind.TxPool.Analytics;
 using YamlDotNet.Serialization.TypeInspectors;
 
 namespace Nethermind.Runner.Ethereum.Steps
@@ -139,12 +139,12 @@ namespace Nethermind.Runner.Ethereum.Steps
                         if (grpcConfig.Enabled)
                         {
                             if(_logger.IsWarn) _logger.Warn($"Initializing gRPC for {type.Name}");
-                            pluginLoader?.Init(_context.FileSystem, _context.TxPool, new GrpcPublisher(_context.GrpcServer!), _context.LogManager);
+                            pluginLoader?.Init(_context.FileSystem, _context.TxPool, _context.MainBlockProcessor, new GrpcPublisher(_context.GrpcServer!), _context.LogManager);
                         }
                         else
                         {
                             if(_logger.IsWarn) _logger.Warn($"Initializing log publisher for {type.Name}");
-                            pluginLoader?.Init(_context.FileSystem, _context.TxPool, new LogDataPublisher(_context.LogManager), _context.LogManager);
+                            pluginLoader?.Init(_context.FileSystem, _context.TxPool, _context.MainBlockProcessor, new LogDataPublisher(_context.LogManager), _context.LogManager);
                         }
                     }
                 }
