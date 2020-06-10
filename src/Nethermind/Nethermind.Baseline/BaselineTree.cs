@@ -164,7 +164,10 @@ namespace Nethermind.Baseline
 
             if (nodeIndex < minNodeIndex || nodeIndex > maxNodeIndex)
             {
-                throw new ArgumentOutOfRangeException(nameof(nodeIndex), $"Node index at row {row} should be in the range of [{minNodeIndex},{maxNodeIndex}] and was {nodeIndex}");
+                throw new ArgumentOutOfRangeException(
+                    nameof(nodeIndex),
+                    $"Node index at row {row} should be in the range of " +
+                    $"[{minNodeIndex},{maxNodeIndex}] and was {nodeIndex}");
             }
         }
 
@@ -241,11 +244,30 @@ namespace Nethermind.Baseline
                 uint siblingIndex = GetSiblingIndexAtRow((uint) proofRow, indexAtRow);
                 ulong siblingNodeIndex = GetNodeIndex((uint) proofRow, siblingIndex);
                 ulong nodeIndex = GetNodeIndex((uint) proofRow, indexAtRow);
-                proof[TreeHeight - proofRow] = new BaselineTreeNode(new Keccak(LoadValue(siblingNodeIndex).AsSpan().ToArray()), siblingNodeIndex);
+                Keccak hashAsKeccak = new Keccak(LoadValue(siblingNodeIndex).AsSpan().ToArray());
+                proof[TreeHeight - proofRow] = new BaselineTreeNode(hashAsKeccak, siblingNodeIndex);
                 indexAtRow = GetIndexAtRow((uint) proofRow - 1u, GetParentIndex(nodeIndex));
             }
 
             return proof;
+        }
+        
+        public BaselineTreeNode GetLeaf(uint leafIndex)
+        {
+            ulong nodeIndex = GetNodeIndex(LeafRow, leafIndex);
+            Bytes32 value = LoadValue(LeafRow, leafIndex);
+            return new BaselineTreeNode(new Keccak(value.AsSpan().ToArray()), nodeIndex); 
+        }
+        
+        public BaselineTreeNode[] GetLeaves(params uint[] leafIndexes)
+        {
+             BaselineTreeNode[] leaves = new BaselineTreeNode[leafIndexes.Length];
+             for (int i = 0; i < leafIndexes.Length; i++)
+             {
+                 leaves[i] = GetLeaf(leafIndexes[i]);
+             }
+             
+             return leaves;
         }
 
         protected abstract byte[] Hash(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b);

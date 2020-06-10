@@ -20,4 +20,11 @@
       <ProjectReference Include="..\Nethermind.JsonRpc.Test\Nethermind.JsonRpc.Test.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+      <None Remove="testBytecode" />
+      <Content Include="testBytecode">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </Content>
+    </ItemGroup>
+
 </Project>
