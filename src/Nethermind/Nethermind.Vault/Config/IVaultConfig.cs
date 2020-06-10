@@ -23,7 +23,7 @@ namespace Nethermind.Vault.Config
         [ConfigItem(Description = "If 'true' then the Vault is enabled", DefaultValue = "false")]
         bool Enabled { get; }
 
-        [ConfigItem(Description = "Address of the Vault service endpoint", DefaultValue = "null")]
+        [ConfigItem(Description = "Address of the Vault service endpoint", DefaultValue = "vault.provide.services")]
         string Host { get; }
 
         [ConfigItem(Description = "Authorization token required to access Provide Services Vault", DefaultValue = "null")]
