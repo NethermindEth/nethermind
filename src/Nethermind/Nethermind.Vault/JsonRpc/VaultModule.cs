@@ -125,7 +125,7 @@ namespace Nethermind.Vault.JsonRpc
             }
         }
 
-        public async Task<ResultWrapper<object>> vault_listSecrets(string vaultId, string keyId)
+        public async Task<ResultWrapper<object>> vault_listSecrets(string vaultId)
         {
             try 
             {

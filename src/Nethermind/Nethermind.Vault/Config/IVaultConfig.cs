@@ -21,18 +21,18 @@ namespace Nethermind.Vault.Config
     public interface IVaultConfig : IConfig
     {
         [ConfigItem(Description = "If 'true' then the Vault is enabled", DefaultValue = "false")]
-        bool Enabled { get; }
+        bool Enabled { get; set; }
 
         [ConfigItem(Description = "Address of the Vault service endpoint", DefaultValue = "vault.provide.services")]
-        string Host { get; }
+        string Host { get; set; }
 
         [ConfigItem(Description = "Authorization token required to access Provide Services Vault", DefaultValue = "null")]
-        string Token { get; }
+        string Token { get; set; }
 
         [ConfigItem(Description = "The Vault's URI scheme", DefaultValue = "https")]
-        string Scheme { get; }
+        string Scheme { get; set; }
 
         [ConfigItem(Description = "Path to the Vault's api", DefaultValue = "api/v1")]
-        string Path { get; }
+        string Path { get; set; }
     }
 }

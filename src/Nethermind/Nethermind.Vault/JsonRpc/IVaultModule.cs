@@ -59,7 +59,7 @@ namespace Nethermind.Vault.JsonRpc
             Description = "Retrieves a list of the secrets secured within the vault",
             IsReadOnly = false,
             IsImplemented = true)]
-        Task<ResultWrapper<object>> vault_listSecrets(string vaultId, string keyId);
+        Task<ResultWrapper<object>> vault_listSecrets(string vaultId);
 
         [JsonRpcMethod(
             Description = "Creates a new secret within the vault",
