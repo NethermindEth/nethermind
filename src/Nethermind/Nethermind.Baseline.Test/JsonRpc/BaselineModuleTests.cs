@@ -11,6 +11,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Data;
@@ -73,6 +74,84 @@ namespace Nethermind.Baseline.Test.JsonRpc
         }
         
         [Test]
+        public async Task deploy_bytecode_deploys_the_contract()
+        {
+            var spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
+            TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
+            testRpc.TestWallet.UnlockAccount(TestItem.Addresses[0], new SecureString());
+            await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
+            
+            BaselineModule baselineModule = new BaselineModule(
+                testRpc.TxPoolBridge,
+                testRpc.LogFinder,
+                testRpc.BlockTree,
+                _abiEncoder,
+                _fileSystem,
+                new MemDb(),
+                LimboLogs.Instance);
+            
+            var result = await baselineModule.baseline_deployBytecode(
+                TestItem.Addresses[0],
+                File.ReadAllText("testBytecode"));
+            result.Data.Should().NotBe(null);
+            result.ErrorCode.Should().Be(0);
+            result.Result.Error.Should().BeNull();
+            result.Result.ResultType.Should().Be(ResultType.Success);
+            
+            await testRpc.AddBlock();
+
+            testRpc.BlockTree.Head.Number.Should().Be(5);
+            testRpc.BlockTree.Head.Transactions.Should().Contain(tx => tx.IsContractCreation);
+
+            var code = testRpc.StateReader
+                .GetCode(testRpc.BlockTree.Head.StateRoot, ContractAddress.From(TestItem.Addresses[0], 0));
+
+            code.Should().NotBeEmpty();
+        }
+        
+        [TestCase(" ")]
+        [TestCase(null)]
+        [TestCase("x")]
+        [TestCase("1")]
+        [TestCase("123")]
+        [TestCase("1g")]
+        [TestCase("0x1")]
+        public async Task deploy_bytecode_validates_input(string bytecode)
+        {
+            var spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
+            TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
+            testRpc.TestWallet.UnlockAccount(TestItem.Addresses[0], new SecureString());
+            await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
+            
+            BaselineModule baselineModule = new BaselineModule(
+                testRpc.TxPoolBridge,
+                testRpc.LogFinder,
+                testRpc.BlockTree,
+                _abiEncoder,
+                _fileSystem,
+                new MemDb(),
+                LimboLogs.Instance);
+            
+            var result = await baselineModule.baseline_deployBytecode(
+                TestItem.Addresses[0],
+                bytecode); // invalid input
+
+            result.Data.Should().Be(null);
+            result.ErrorCode.Should().Be(ErrorCodes.InvalidInput);
+            result.Result.Error.Should().NotBeNull();
+            result.Result.ResultType.Should().Be(ResultType.Failure);
+            await testRpc.AddBlock();
+
+            testRpc.BlockTree.Head.Number.Should().Be(5);
+            testRpc.BlockTree.Head.Transactions.Should().NotContain(tx => tx.IsContractCreation);
+
+            var code = testRpc.StateReader
+                .GetCode(testRpc.BlockTree.Head.StateRoot, ContractAddress.From(TestItem.Addresses[0], 0));
+
+            code.Should().BeEmpty();
+        }
+        
+        [Test]
         public async Task deploy_returns_an_error_when_file_is_missing()
         {
             var spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
@@ -116,7 +195,11 @@ namespace Nethermind.Baseline.Test.JsonRpc
 
             ReceiptForRpc receipt = (await testRpc.EthModule.eth_getTransactionReceipt(txHash)).Data;
             
-            Keccak insertLeafTxHash = (await baselineModule.baseline_insertLeaf(TestItem.Addresses[1], receipt.ContractAddress, TestItem.KeccakH)).Data;
+            Keccak insertLeafTxHash = (
+                await baselineModule.baseline_insertLeaf(
+                    TestItem.Addresses[1], 
+                    receipt.ContractAddress,
+                    TestItem.KeccakH)).Data;
             await testRpc.AddBlock();
             
             ReceiptForRpc insertLeafReceipt = (await testRpc.EthModule.eth_getTransactionReceipt(insertLeafTxHash)).Data;
@@ -147,10 +230,14 @@ namespace Nethermind.Baseline.Test.JsonRpc
             ReceiptForRpc receipt = (await testRpc.EthModule.eth_getTransactionReceipt(txHash)).Data;
 
             Keccak[] leaves = Enumerable.Repeat(TestItem.KeccakH, leafCount).ToArray();
-            Keccak insertLeavesTxHash = (await baselineModule.baseline_insertLeaves(TestItem.Addresses[1], receipt.ContractAddress, leaves)).Data;
+            Keccak insertLeavesTxHash = (await baselineModule.baseline_insertLeaves(
+                TestItem.Addresses[1],
+                receipt.ContractAddress,
+                leaves)).Data;
             await testRpc.AddBlock();
             
-            ReceiptForRpc insertLeafReceipt = (await testRpc.EthModule.eth_getTransactionReceipt(insertLeavesTxHash)).Data;
+            ReceiptForRpc insertLeafReceipt = (await testRpc.EthModule.eth_getTransactionReceipt(
+                insertLeavesTxHash)).Data;
             insertLeafReceipt.Logs.Should().HaveCount(1);
             insertLeafReceipt.Logs[0].Data.Length.Should().Be(128 + leafCount * 32);
         }
@@ -175,7 +262,8 @@ namespace Nethermind.Baseline.Test.JsonRpc
 
             ReceiptForRpc receipt = (await testRpc.EthModule.eth_getTransactionReceipt(txHash)).Data;
 
-            await baselineModule.baseline_insertLeaf(TestItem.Addresses[1], receipt.ContractAddress, TestItem.KeccakH);
+            await baselineModule.baseline_insertLeaf(
+                TestItem.Addresses[1], receipt.ContractAddress, TestItem.KeccakH);
             await testRpc.AddBlock();
 
             await baselineModule.baseline_track(receipt.ContractAddress);
@@ -186,6 +274,194 @@ namespace Nethermind.Baseline.Test.JsonRpc
             result.Result.Error.Should().Be(null);
             result.ErrorCode.Should().Be(0);
             result.Data.Should().HaveCount(32);
+        }
+        
+        [Test]
+        public async Task can_get_leaf_fails_on_not_tracked()
+        {
+            SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
+            TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
+            BaselineModule baselineModule = new BaselineModule(
+                testRpc.TxPoolBridge,
+                testRpc.LogFinder,
+                testRpc.BlockTree,
+                _abiEncoder,
+                _fileSystem,
+                new MemDb(),
+                LimboLogs.Instance);
+            
+            await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
+            Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
+            await testRpc.AddBlock();
+
+            ReceiptForRpc receipt = (await testRpc.EthModule.eth_getTransactionReceipt(txHash)).Data;
+
+            await baselineModule.baseline_insertLeaf(TestItem.Addresses[1], receipt.ContractAddress, TestItem.KeccakH);
+            await testRpc.AddBlock();
+            
+            var result = await baselineModule.baseline_getLeaf(receipt.ContractAddress, 0);
+
+            result.Result.ResultType.Should().Be(ResultType.Failure);
+            result.ErrorCode.Should().Be(ErrorCodes.InvalidInput);
+        }
+        
+        [Test]
+        public async Task can_get_leaf_fails_on_wrong_index()
+        {
+            SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
+            TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
+            BaselineModule baselineModule = new BaselineModule(
+                testRpc.TxPoolBridge,
+                testRpc.LogFinder,
+                testRpc.BlockTree,
+                _abiEncoder,
+                _fileSystem,
+                new MemDb(),
+                LimboLogs.Instance);
+            
+            await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
+            Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
+            await testRpc.AddBlock();
+
+            ReceiptForRpc receipt = (await testRpc.EthModule.eth_getTransactionReceipt(txHash)).Data;
+
+            await baselineModule.baseline_insertLeaf(TestItem.Addresses[1], receipt.ContractAddress, TestItem.KeccakH);
+            await testRpc.AddBlock();
+
+            await baselineModule.baseline_track(receipt.ContractAddress);
+            var result = await baselineModule.baseline_getLeaf(receipt.ContractAddress, (UInt256)uint.MaxValue + 1);
+            await testRpc.AddBlock();
+            
+            result.Result.ResultType.Should().Be(ResultType.Failure);
+            result.ErrorCode.Should().Be(ErrorCodes.InvalidInput);
+        }
+        
+        [Test]
+        public async Task can_get_leaf_after_leaf_is_added()
+        {
+            SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
+            TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
+            BaselineModule baselineModule = new BaselineModule(
+                testRpc.TxPoolBridge,
+                testRpc.LogFinder,
+                testRpc.BlockTree,
+                _abiEncoder,
+                _fileSystem,
+                new MemDb(),
+                LimboLogs.Instance);
+            
+            await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
+            Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
+            await testRpc.AddBlock();
+
+            ReceiptForRpc receipt = (await testRpc.EthModule.eth_getTransactionReceipt(txHash)).Data;
+
+            await baselineModule.baseline_insertLeaf(TestItem.Addresses[1], receipt.ContractAddress, TestItem.KeccakH);
+            await testRpc.AddBlock();
+
+            await baselineModule.baseline_track(receipt.ContractAddress);
+            var result = await baselineModule.baseline_getLeaf(receipt.ContractAddress, 0);
+            await testRpc.AddBlock();
+            
+            result.Result.ResultType.Should().Be(ResultType.Success);
+            result.Result.Error.Should().Be(null);
+            result.ErrorCode.Should().Be(0);
+            result.Data.Hash.Should().NotBe(Keccak.Zero);
+        }
+        
+        [Test]
+        public async Task can_get_leaves_after_leaf_is_added()
+        {
+            SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
+            TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
+            BaselineModule baselineModule = new BaselineModule(
+                testRpc.TxPoolBridge,
+                testRpc.LogFinder,
+                testRpc.BlockTree,
+                _abiEncoder,
+                _fileSystem,
+                new MemDb(),
+                LimboLogs.Instance);
+            
+            await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
+            Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
+            await testRpc.AddBlock();
+
+            ReceiptForRpc receipt = (await testRpc.EthModule.eth_getTransactionReceipt(txHash)).Data;
+
+            await baselineModule.baseline_insertLeaf(TestItem.Addresses[1], receipt.ContractAddress, TestItem.KeccakH);
+            await testRpc.AddBlock();
+
+            await baselineModule.baseline_track(receipt.ContractAddress);
+            var result = await baselineModule.baseline_getLeaves(receipt.ContractAddress, 0, 1);
+            await testRpc.AddBlock();
+            
+            result.Result.ResultType.Should().Be(ResultType.Success);
+            result.Result.Error.Should().Be(null);
+            result.ErrorCode.Should().Be(0);
+            result.Data[0].Hash.Should().NotBe(Keccak.Zero);
+            result.Data[1].Hash.Should().Be(Keccak.Zero);
+        }
+        
+        [Test]
+        public async Task can_get_leaves_fails_if_not_tracking()
+        {
+            SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
+            TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
+            BaselineModule baselineModule = new BaselineModule(
+                testRpc.TxPoolBridge,
+                testRpc.LogFinder,
+                testRpc.BlockTree,
+                _abiEncoder,
+                _fileSystem,
+                new MemDb(),
+                LimboLogs.Instance);
+            
+            await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
+            Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
+            await testRpc.AddBlock();
+
+            ReceiptForRpc receipt = (await testRpc.EthModule.eth_getTransactionReceipt(txHash)).Data;
+
+            await baselineModule.baseline_insertLeaf(TestItem.Addresses[1], receipt.ContractAddress, TestItem.KeccakH);
+            await testRpc.AddBlock();
+            
+            var result = await baselineModule.baseline_getLeaves(receipt.ContractAddress, 0, 1);
+            await testRpc.AddBlock();
+            
+            result.Result.ResultType.Should().Be(ResultType.Failure);
+            result.ErrorCode.Should().Be(ErrorCodes.InvalidInput);
+        }
+        
+        [Test]
+        public async Task can_get_leaves_fails_if_any_index_invalid()
+        {
+            SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
+            TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
+            BaselineModule baselineModule = new BaselineModule(
+                testRpc.TxPoolBridge,
+                testRpc.LogFinder,
+                testRpc.BlockTree,
+                _abiEncoder,
+                _fileSystem,
+                new MemDb(),
+                LimboLogs.Instance);
+            
+            await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
+            Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
+            await testRpc.AddBlock();
+
+            ReceiptForRpc receipt = (await testRpc.EthModule.eth_getTransactionReceipt(txHash)).Data;
+
+            await baselineModule.baseline_track(receipt.ContractAddress);
+            await baselineModule.baseline_insertLeaf(TestItem.Addresses[1], receipt.ContractAddress, TestItem.KeccakH);
+            await testRpc.AddBlock();
+            
+            var result = await baselineModule.baseline_getLeaves(receipt.ContractAddress, 0, (UInt256)uint.MaxValue + 1);
+            await testRpc.AddBlock();
+            
+            result.Result.ResultType.Should().Be(ResultType.Failure);
+            result.ErrorCode.Should().Be(ErrorCodes.InvalidInput);
         }
         
         [Test]
@@ -218,10 +494,14 @@ namespace Nethermind.Baseline.Test.JsonRpc
             receipt2.Status.Should().Be(1);
             receipt3.Status.Should().Be(1);
 
-            await baselineModule.baseline_insertLeaves(TestItem.Addresses[1], receipt.ContractAddress, TestItem.KeccakG, TestItem.KeccakH);
-            await baselineModule.baseline_insertLeaves(TestItem.Addresses[1], receipt2.ContractAddress, TestItem.KeccakE, TestItem.KeccakF);
-            await baselineModule.baseline_insertLeaf(TestItem.Addresses[1], receipt3.ContractAddress, TestItem.KeccakG);
-            await baselineModule.baseline_insertLeaf(TestItem.Addresses[1], receipt3.ContractAddress, TestItem.KeccakH);
+            await baselineModule.baseline_insertLeaves(
+                TestItem.Addresses[1], receipt.ContractAddress, TestItem.KeccakG, TestItem.KeccakH);
+            await baselineModule.baseline_insertLeaves(
+                TestItem.Addresses[1], receipt2.ContractAddress, TestItem.KeccakE, TestItem.KeccakF);
+            await baselineModule.baseline_insertLeaf(
+                TestItem.Addresses[1], receipt3.ContractAddress, TestItem.KeccakG);
+            await baselineModule.baseline_insertLeaf(
+                TestItem.Addresses[1], receipt3.ContractAddress, TestItem.KeccakH);
             
             await testRpc.AddBlock();
             await testRpc.AddBlock();

@@ -21,10 +21,10 @@ namespace Nethermind.Baseline
 {
     public readonly struct BaselineTreeNode
     {
-        public BaselineTreeNode(Keccak hash, ulong nodeNodeIndex)
+        public BaselineTreeNode(Keccak hash, ulong nodeIndex)
         {
             Hash = hash;
-            NodeIndex = nodeNodeIndex;
+            NodeIndex = nodeIndex;
         }
         
         /// <summary>

@@ -16,6 +16,7 @@
 // 
 
 using System;
+using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
@@ -290,6 +291,44 @@ namespace Nethermind.Baseline.Test
                 {
                     proof[proofRow].Hash.Should().Be(Keccak.Zero, proofRow.ToString());
                 }
+            }
+        }
+        
+        [TestCase(uint.MinValue)]
+        [TestCase(1u)]
+        [TestCase(2u)]
+        [TestCase(23u)]
+        public void Can_get_leaf(uint nodesCount)
+        {
+            BaselineTree baselineTree = BuildATree();
+            for (int i = 0; i < nodesCount; i++)
+            {
+                baselineTree.Insert(_testLeaves[0]);    
+            }
+
+            for (int i = 0; i < nodesCount; i++)
+            {
+                baselineTree.GetLeaf((uint)i).Hash.Should().NotBe(Keccak.Zero);
+            }
+        }
+        
+        [TestCase(uint.MinValue)]
+        [TestCase(1u)]
+        [TestCase(2u)]
+        [TestCase(23u)]
+        public void Can_get_leaves(uint nodesCount)
+        {
+            BaselineTree baselineTree = BuildATree();
+            for (int i = 0; i < nodesCount; i++)
+            {
+                baselineTree.Insert(_testLeaves[0]);    
+            }
+
+            var leafIndexes = Enumerable.Range(0, (int) nodesCount).Select(l => (uint) l).ToArray();
+            var result = baselineTree.GetLeaves(leafIndexes);
+            for (int i = 0; i < result.Length; i++)
+            {
+                result[i].Hash.Should().NotBe(Keccak.Zero);
             }
         }
     }
