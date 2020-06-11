@@ -191,6 +191,12 @@ namespace Nethermind.Runner.Test
             Test<INetworkConfig, string>(configWildcard, c => c.LocalIp, (string) null);
             Test<INetworkConfig, int>(configWildcard, c => c.ActivePeersMaxCount, activePeers);
         }
+        
+        [TestCase("*")]
+        public void Network_diag_tracer_disabled_by_default(string configWildcard)
+        {
+            Test<INetworkConfig, bool>(configWildcard, c => c.DiagTracerEnabled, false);
+        }
 
         [TestCase("*", 2048)]
         public void Tx_pool_defaults_are_correct(string configWildcard, int poolSize)

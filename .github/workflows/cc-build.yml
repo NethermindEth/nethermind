@@ -68,6 +68,9 @@ jobs:
     - name: Nethermind.Core2.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Core2.Test
+    - name: Nethermind.DepositContract.Test
+      run: |
+        dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.DepositContract.Test
     - name: Nethermind.Cryptography.Bls.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Cryptography.Bls.Test
