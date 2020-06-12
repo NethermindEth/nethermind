@@ -100,7 +100,7 @@ namespace Nethermind.Serialization.Json
 
         public void Serialize<T>(Stream stream, T value, bool indented = false)
         {
-            StreamWriter streamWriter = new StreamWriter(stream);
+            using StreamWriter streamWriter = new StreamWriter(stream, leaveOpen: true);
             using JsonTextWriter jsonTextWriter = new JsonTextWriter(streamWriter);
             if (indented)
             {

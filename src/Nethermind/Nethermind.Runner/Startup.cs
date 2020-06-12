@@ -25,6 +25,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Nethermind.Config;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc;
 using Nethermind.Serialization.Json;
 using Nethermind.WebSockets;
@@ -88,16 +89,36 @@ namespace Nethermind.Runner
                     JsonRpcResult result = await jsonRpcProcessor.ProcessAsync(request);
 
                     ctx.Response.ContentType = "application/json";
-                    if (result.IsCollection)
-                    {
-                        _jsonSerializer.Serialize(ctx.Response.Body, result.Responses);
-                    }
-                    else
-                    {
-                        _jsonSerializer.Serialize(ctx.Response.Body, result.Response);
-                    }
 
-                    await ctx.Response.CompleteAsync();
+                    Stream resultStream = jsonRpcConfig.BufferResponses ? new MemoryStream() : ctx.Response.Body;
+                    
+                    try
+                    {
+                        if (result.IsCollection)
+                        {
+                            _jsonSerializer.Serialize(resultStream, result.Responses);
+                        }
+                        else
+                        {
+                            _jsonSerializer.Serialize(resultStream, result.Response);
+                        }
+
+                        if (jsonRpcConfig.BufferResponses)
+                        {
+                            ctx.Response.ContentLength = resultStream.Length;
+                            resultStream.Seek(0, SeekOrigin.Begin);
+                            await resultStream.CopyToAsync(ctx.Response.Body);
+                        }
+
+                        await ctx.Response.CompleteAsync();
+                    }
+                    finally
+                    {
+                        if (jsonRpcConfig.BufferResponses)
+                        {
+                            await resultStream.DisposeAsync();
+                        }
+                    }
                 }
             });
         }
