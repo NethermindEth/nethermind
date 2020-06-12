@@ -203,6 +203,12 @@ namespace Nethermind.Runner.Test
         {
             Test<ITxPoolConfig, int>(configWildcard, c => c.Size, poolSize);
         }
+        
+        [TestCase("*")]
+        public void Memory_hint_is_null_by_default(string configWildcard)
+        {
+            Test<IInitConfig, long?>(configWildcard, c => c.MemoryHint, (long?)null);
+        }
 
         [TestCase("^spaceneth", false)]
         public void Json_defaults_are_correct(string configWildcard, bool jsonEnabled)
