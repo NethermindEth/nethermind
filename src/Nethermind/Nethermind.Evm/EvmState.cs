@@ -36,7 +36,7 @@ namespace Nethermind.Evm
                 _capacity = capacity;
             }
 
-            private static readonly ConcurrentStack<byte[]> _bytesOnStackPool = new ConcurrentStack<byte[]>();
+            private readonly ConcurrentStack<byte[]> _bytesOnStackPool = new ConcurrentStack<byte[]>();
 
             private int _bytesOnStackCreated;
 
