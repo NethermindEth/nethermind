@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
@@ -108,37 +107,6 @@ namespace Nethermind.Evm.Benchmark
             _storageProvider = new StorageProvider(stateDb, _stateProvider, new OneLoggerLogManager(NullLogger.Instance));
             _virtualMachine = new VirtualMachine(_stateProvider, _storageProvider, _blockhashProvider, MainnetSpecProvider.Instance, new OneLoggerLogManager(NullLogger.Instance));
         }
-
-        // prog1
-        //     Code which calls the identity precompile with zero arguments:
-        //
-        // byte(vm.JUMPDEST), //  [ count ]
-        // // push args for the call
-        // byte(vm.PUSH1), 0, // out size
-        // byte(vm.DUP1),       // out offset
-        // byte(vm.DUP1),       // out insize
-        // byte(vm.DUP1),       // in offset
-        // byte(vm.PUSH1), 0x4, // address of identity
-        // byte(vm.GAS), // gas
-        // byte(vm.STATICCALL),
-        // byte(vm.POP),      // pop return value
-        // byte(vm.PUSH1), 0, // jumpdestination
-        // byte(vm.JUMP),
-        // prog2
-        //     And code which doesn't do the call, but instead just pops the arguments off the stack:
-        //
-        // byte(vm.JUMPDEST), //  [ count ]
-        // // push args for the call
-        // byte(vm.PUSH1), 0, // out size
-        // byte(vm.DUP1),       // out offset
-        // byte(vm.DUP1),       // out insize
-        // byte(vm.DUP1),       // in offset
-        // byte(vm.PUSH1), 0x4, // address of identity
-        // byte(vm.GAS), // gas
-        //
-        // byte(vm.POP),byte(vm.POP),byte(vm.POP),byte(vm.POP),byte(vm.POP),byte(vm.POP),
-        // byte(vm.PUSH1), 0, // jumpdestination
-        // byte(vm.JUMP),
 
         [Benchmark]
         public void ExecuteCode()
