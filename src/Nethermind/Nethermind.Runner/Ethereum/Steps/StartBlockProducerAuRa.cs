@@ -56,7 +56,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         protected override void BuildProducer()
         {
-            if (_context.NodeKey == null) throw new StepDependencyException(nameof(_context.NodeKey));
+            if (_context.Signer == null) throw new StepDependencyException(nameof(_context.Signer));
             if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
             
             _auraConfig = _context.Config<IAuraConfig>();
@@ -77,7 +77,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 stepCalculator,
                 _context.ReportingValidator,
                 _auraConfig,
-                _context.NodeKey.Address,
+                _context.Signer,
                 GetGasLimitOverride(producerContext.ReadOnlyTxProcessingEnv, producerContext.ReadOnlyTransactionProcessorSource));
         }
 
@@ -90,7 +90,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_context.ValidatorStore == null) throw new StepDependencyException(nameof(_context.ValidatorStore));
             if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
             if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
-            if (_context.NodeKey == null) throw new StepDependencyException(nameof(_context.NodeKey));
+            if (_context.Signer == null) throw new StepDependencyException(nameof(_context.Signer));
 
             var chainSpecAuRa = _context.ChainSpec.AuRa;
             
@@ -106,7 +106,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     NullTxSender.Instance,
                     NullTxPool.Instance, 
                     _context.LogManager,
-                    _context.NodeKey.Address,
+                    _context.Signer,
                     _context.ReportingContractValidatorCache,
                     chainSpecAuRa.PosdaoTransition,
                     true)
@@ -150,32 +150,30 @@ namespace Nethermind.Runner.Ethereum.Steps
                 return false;
             }
 
-            bool CheckAddRandomnessTransactions(IList<ITxSource> list, IDictionary<long, Address> randomnessContractAddress, PrivateKey nodeKey)
+            bool CheckAddRandomnessTransactions(IList<ITxSource> list, IDictionary<long, Address> randomnessContractAddress, ISigner signer)
             {
                 IList<IRandomContract> GetRandomContracts(
                     IDictionary<long, Address> randomnessContractAddressPerBlock, 
-                    ITransactionProcessor transactionProcessor, 
                     IAbiEncoder abiEncoder,
                     IReadOnlyTransactionProcessorSource txProcessorSource, 
-                    Address nodeAddress) =>
+                    ISigner signer) =>
                     randomnessContractAddressPerBlock
                         .Select(kvp => new RandomContract( 
                             abiEncoder, 
                             kvp.Value, 
                             txProcessorSource, 
                             kvp.Key, 
-                            nodeAddress))
+                            signer))
                         .ToArray<IRandomContract>();
                 
                 if (randomnessContractAddress?.Any() == true)
                 {
                     var randomContractTxSource = new RandomContractTxSource(
-                        GetRandomContracts(randomnessContractAddress,
-                            readOnlyTxProcessingEnv.TransactionProcessor, _context.AbiEncoder,
+                        GetRandomContracts(randomnessContractAddress, _context.AbiEncoder,
                             readOnlyTransactionProcessorSource,
-                            nodeKey.Address),
+                            signer),
                         new EciesCipher(_context.CryptoRandom),
-                        nodeKey,
+                        signer,
                         _context.CryptoRandom);
 
                     list.Insert(0, randomContractTxSource);
@@ -187,20 +185,20 @@ namespace Nethermind.Runner.Ethereum.Steps
             
             if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
             if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
-            if (_context.NodeKey == null) throw new StepDependencyException(nameof(_context.NodeKey));
+            if (_context.Signer == null) throw new StepDependencyException(nameof(_context.Signer));
 
             IList<ITxSource> txSources = new List<ITxSource> { base.CreateTxSourceForProducer(readOnlyTxProcessingEnv, readOnlyTransactionProcessorSource) };
             bool needSigner = false;
             
             needSigner |= CheckAddPosdaoTransactions(txSources, _context.ChainSpec.AuRa.PosdaoTransition);
-            needSigner |= CheckAddRandomnessTransactions(txSources, _context.ChainSpec.AuRa.RandomnessContractAddress, _context.NodeKey);
+            needSigner |= CheckAddRandomnessTransactions(txSources, _context.ChainSpec.AuRa.RandomnessContractAddress, _context.Signer);
 
             ITxSource txSource = txSources.Count > 1 ? new CompositeTxSource(txSources.ToArray()) : txSources[0];
 
             if (needSigner)
             {
-                TxSealer transactionSealer = new TxSealer(new BasicWallet(_context.NodeKey), _context.Timestamper, _context.BlockTree.ChainId); 
-                txSource = new GeneratedTxSourceSealer(txSource, transactionSealer, readOnlyTxProcessingEnv.StateReader, _context.NodeKey.Address);
+                TxSealer transactionSealer = new TxSealer(_context.Signer, _context.Timestamper); 
+                txSource = new GeneratedTxSourceSealer(txSource, transactionSealer, readOnlyTxProcessingEnv.StateReader, _context.Signer);
             }
 
             var txPermissionFilter = GetTxPermissionFilter(readOnlyTxProcessingEnv, readOnlyTransactionProcessorSource);

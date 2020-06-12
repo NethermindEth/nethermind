@@ -17,6 +17,7 @@
 
 using System;
 using System.Security;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
@@ -34,11 +35,10 @@ namespace Nethermind.Facade
         /// <summary>
         /// </summary>
         /// <param name="txPool">TX pool / mempool that stores all pending transactions.</param>
-        /// <param name="wallet">Wallet for new transactions signing</param>
+        /// <param name="txSigner">Transaction signer</param>
         /// <param name="timestamper">Timestamper for stamping the arriving transactions.</param>
-        /// <param name="chainId">Chain ID to signing transactions for.</param>
-        public TxPoolBridge(ITxPool txPool, IWallet wallet, ITimestamper timestamper, int chainId) 
-            : this(txPool, new TxPoolSender(txPool, wallet, timestamper, chainId))
+        public TxPoolBridge(ITxPool txPool, ITxSigner txSigner, ITimestamper timestamper) 
+            : this(txPool, new TxPoolSender(txPool, txSigner, timestamper))
         {
         }
 

@@ -20,6 +20,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Clique;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -92,7 +93,7 @@ namespace Nethermind.Clique.Test
             _currentSigner = _signers[currentSignerIndex];
             _snapshotManager = new SnapshotManager(config, db, _blockTree, ecdsa, LimboLogs.Instance);
             _sealValidator = new CliqueSealValidator(config, _snapshotManager, LimboLogs.Instance);
-            _clique = new CliqueSealer(new BasicWallet(_currentSigner), config, _snapshotManager, _currentSigner.Address, LimboLogs.Instance);
+            _clique = new CliqueSealer(new Signer(ChainId.Rinkeby, _currentSigner), config, _snapshotManager, LimboLogs.Instance);
         }
 
         [Test]

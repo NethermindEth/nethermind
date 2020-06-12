@@ -65,7 +65,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
     {
         private readonly IAbiEncoder _abiEncoder;
         private readonly IStateProvider _stateProvider;
-        private readonly Address _nodeAddress;
+        private readonly ISigner _signer;
 
         private static readonly IEqualityComparer<LogEntry> LogEntryEqualityComparer = new LogEntryAddressAndTopicEqualityComparer();
 
@@ -77,12 +77,12 @@ namespace Nethermind.Consensus.AuRa.Contracts
             Address contractAddress, 
             IStateProvider stateProvider,
             IReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource,
-            Address nodeAddress) 
+            ISigner signer) 
             : base(transactionProcessor, abiEncoder, contractAddress)
         {
             _abiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
-            _nodeAddress = nodeAddress ?? throw new ArgumentNullException(nameof(nodeAddress));
+            _signer = signer ?? throw new ArgumentNullException(nameof(signer));
             Constant = GetConstant(readOnlyTransactionProcessorSource);
         }
 

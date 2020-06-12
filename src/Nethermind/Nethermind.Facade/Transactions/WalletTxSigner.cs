@@ -13,26 +13,28 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System;
-using System.IO;
-using System.Security;
+using Nethermind.Consensus;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Crypto;
+using Nethermind.Wallet;
 
-namespace Nethermind.Wallet
+namespace Nethermind.Facade.Transactions
 {
-    public interface IWallet : IBasicWallet
+    public class WalletTxSigner : ITxSigner
     {
-        void Import(byte[] keyData, SecureString passphrase);
-        Address NewAccount(SecureString passphrase);
-        bool UnlockAccount(Address address, SecureString passphrase, TimeSpan? timeSpan = null);
-        bool LockAccount(Address address);
-        bool IsUnlocked(Address address);
-        Signature Sign(Keccak message, Address address, SecureString passphrase = null);
-        Address[] GetAccounts();
-        event EventHandler<AccountLockedEventArgs> AccountLocked;
-        event EventHandler<AccountUnlockedEventArgs> AccountUnlocked;
+        private readonly IBasicWallet _wallet;
+        private readonly int _chainId;
+
+        public WalletTxSigner(IBasicWallet wallet, int chainId)
+        {
+            _wallet = wallet;
+            _chainId = chainId;
+        }
+        
+        public void Sign(Transaction tx)
+        {
+            _wallet.Sign(tx, _chainId);
+        }
     }
 }

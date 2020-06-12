@@ -52,7 +52,7 @@ namespace Nethermind.Consensus.Clique
         private readonly ISealer _sealer;
         private readonly ISnapshotManager _snapshotManager;
         private readonly ICliqueConfig _config;
-        private readonly Address _address;
+        private readonly ISigner _signer;
         private readonly ConcurrentDictionary<Address, bool> _proposals = new ConcurrentDictionary<Address, bool>();
 
         private readonly CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
@@ -67,7 +67,7 @@ namespace Nethermind.Consensus.Clique
             ICryptoRandom cryptoRandom,
             ISnapshotManager snapshotManager,
             ISealer cliqueSealer,
-            Address address,
+            ISigner signer,
             ICliqueConfig config,
             ILogManager logManager)
         {
@@ -81,7 +81,7 @@ namespace Nethermind.Consensus.Clique
             _sealer = cliqueSealer ?? throw new ArgumentNullException(nameof(cliqueSealer));
             _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
             _config = config ?? throw new ArgumentNullException(nameof(config));
-            _address = address ?? throw new ArgumentNullException(nameof(address));
+            _signer = signer ?? throw new ArgumentNullException(nameof(signer));
             _wiggle = new WiggleRandomizer(_cryptoRandom, _snapshotManager);
 
             _timer.AutoReset = false;
@@ -302,7 +302,7 @@ namespace Nethermind.Consensus.Clique
                 return null;
             }
 
-            if (!_sealer.CanSeal(parentHeader.Number + 1, parentHeader.Hash))
+            if (!_sealer.CanSeal(parentHeader.Number + 1, parentHeader.Hash) || !_signer.CanSign)
             {
                 if (_logger.IsTrace) _logger.Trace($"Not allowed to sign block ({parentBlock.Number + 1})");
                 _recentNotAllowedParent = parentHeader.Hash;
@@ -351,7 +351,7 @@ namespace Nethermind.Consensus.Clique
             }
 
             // Set the correct difficulty
-            header.Difficulty = CalculateDifficulty(snapshot, _address);
+            header.Difficulty = CalculateDifficulty(snapshot, _signer.SigningAddress);
             header.TotalDifficulty = parentBlock.TotalDifficulty + header.Difficulty;
             if (_logger.IsDebug) _logger.Debug($"Setting total difficulty to {parentBlock.TotalDifficulty} + {header.Difficulty}.");
 
@@ -388,7 +388,7 @@ namespace Nethermind.Consensus.Clique
             var selectedTxs = _txSource.GetTransactions(parentBlock.Header, header.GasLimit);
             Block block = new Block(header, selectedTxs, new BlockHeader[0]);
             header.TxRoot = new TxTrie(block.Transactions).RootHash;
-            block.Header.Author = _address;
+            block.Header.Author = _signer.SigningAddress;
             return block;
         }
 

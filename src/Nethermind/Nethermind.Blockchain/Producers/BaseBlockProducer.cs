@@ -39,6 +39,7 @@ namespace Nethermind.Blockchain.Producers
 
         private readonly ISealer _sealer;
         private readonly IStateProvider _stateProvider;
+        private readonly ISigner _signer;
         private readonly ITimestamper _timestamper;
         private readonly ITxSource _txSource;
         protected ILogger Logger { get; }
@@ -50,6 +51,7 @@ namespace Nethermind.Blockchain.Producers
             IBlockTree blockTree,
             IBlockProcessingQueue blockProcessingQueue,
             IStateProvider stateProvider,
+            ISigner signer,
             ITimestamper timestamper,
             ILogManager logManager)
         {
@@ -59,6 +61,7 @@ namespace Nethermind.Blockchain.Producers
             BlockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             BlockProcessingQueue = blockProcessingQueue ?? throw new ArgumentNullException(nameof(blockProcessingQueue));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
+            _signer = signer ?? throw new ArgumentNullException(nameof(signer));
             _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
             Logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
@@ -78,7 +81,7 @@ namespace Nethermind.Blockchain.Producers
                 {
                     if (Logger.IsWarn) Logger.Warn($"Preparing new block - parent header is null");
                 }
-                else if (_sealer.CanSeal(parentHeader.Number + 1, parentHeader.Hash))
+                else if (_signer.CanSign && _sealer.CanSeal(parentHeader.Number + 1, parentHeader.Hash))
                 {
                     return ProduceNewBlock(parentHeader, token);
                 }
@@ -154,7 +157,7 @@ namespace Nethermind.Blockchain.Producers
             BlockHeader header = new BlockHeader(
                 parent.Hash,
                 Keccak.OfAnEmptySequenceRlp,
-                Address.Zero,
+                _signer.SigningAddress,
                 difficulty,
                 parent.Number + 1,
                 GetGasLimit(parent),
@@ -163,7 +166,7 @@ namespace Nethermind.Blockchain.Producers
             {
                 TotalDifficulty = parent.TotalDifficulty + difficulty
             };
-
+            
             if (Logger.IsDebug) Logger.Debug($"Setting total difficulty to {parent.TotalDifficulty} + {difficulty}.");
 
             var transactions = _txSource.GetTransactions(parent, header.GasLimit);

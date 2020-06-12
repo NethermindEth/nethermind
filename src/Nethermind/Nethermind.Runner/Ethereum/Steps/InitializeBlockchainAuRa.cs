@@ -86,7 +86,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         {
             if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
             if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
-            if (_context.NodeKey == null) throw new StepDependencyException(nameof(_context.NodeKey));
+            if (_context.Signer == null) throw new StepDependencyException(nameof(_context.Signer));
 
             var chainSpecAuRa = _context.ChainSpec.AuRa;
             
@@ -108,10 +108,10 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _context.ReceiptStorage, 
                     _context.ValidatorStore,
                     _context.FinalizationManager,
-                    new TxPoolSender(_context.TxPool, new BasicWallet(_context.NodeKey), _context.Timestamper, _context.ChainSpec.ChainId), 
+                    new TxPoolSender(_context.TxPool, _context.Signer, _context.Timestamper), 
                     _context.TxPool,
                     _context.LogManager,
-                    _context.NodeKey.Address,
+                    _context.Signer,
                     _context.ReportingContractValidatorCache,
                     chainSpecAuRa.PosdaoTransition,
                     false)
@@ -181,15 +181,13 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_context.DbProvider == null) throw new StepDependencyException(nameof(_context.DbProvider));
             if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
             if (_context.EthereumEcdsa == null) throw new StepDependencyException(nameof(_context.EthereumEcdsa));
-            if (_context.NodeKey == null) throw new StepDependencyException(nameof(_context.NodeKey));
-            
             
             _context.ValidatorStore = new ValidatorStore(_context.DbProvider.BlockInfosDb);
 
             AuRaStepCalculator auRaStepCalculator = new AuRaStepCalculator(_context.ChainSpec.AuRa.StepDuration, _context.Timestamper, _context.LogManager);
             _context.SealValidator = _sealValidator = new AuRaSealValidator(_context.ChainSpec.AuRa, auRaStepCalculator, _context.ValidatorStore, _context.EthereumEcdsa, _context.LogManager);
             _context.RewardCalculatorSource = AuRaRewardCalculator.GetSource(_context.ChainSpec.AuRa, _context.AbiEncoder);
-            _context.Sealer = new AuRaSealer(_context.BlockTree, _context.ValidatorStore, auRaStepCalculator, _context.NodeKey.Address, new BasicWallet(_context.NodeKey), new ValidSealerStrategy(), _context.LogManager);
+            _context.Sealer = new AuRaSealer(_context.BlockTree, _context.ValidatorStore, auRaStepCalculator, _context.Signer, new ValidSealerStrategy(), _context.LogManager);
         }
 
         private IReadOnlyTransactionProcessorSource GetReadOnlyTransactionProcessorSource() => 

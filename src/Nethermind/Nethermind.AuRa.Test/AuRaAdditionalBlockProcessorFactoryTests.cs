@@ -20,6 +20,7 @@ using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
@@ -56,7 +57,7 @@ namespace Nethermind.AuRa.Test
                 Substitute.For<ITxSender>(),
                 Substitute.For<ITxPool>(),
                 LimboLogs.Instance,
-                Address.Zero,
+                Substitute.For<ISigner>(),
                 new ReportingContractBasedValidator.Cache(),
                 long.MaxValue);
 

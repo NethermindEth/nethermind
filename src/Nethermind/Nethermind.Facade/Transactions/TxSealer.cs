@@ -16,26 +16,24 @@
 // 
 
 using System;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.TxPool;
-using Nethermind.Wallet;
 
 namespace Nethermind.Facade.Transactions
 {
     public class TxSealer : ITxSealer
     {
-        private readonly IBasicWallet _wallet;
+        private readonly ITxSigner _txSigner;
         private readonly ITimestamper _timestamper;
-        private readonly int _chainId;
         private readonly bool _allowExistingSignature;
 
-        public TxSealer(IBasicWallet wallet, ITimestamper timestamper, int chainId, bool allowExistingSignature = true)
+        public TxSealer(ITxSigner txSigner, ITimestamper timestamper, bool allowExistingSignature = true)
         {
-            _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
+            _txSigner = txSigner ?? throw new ArgumentNullException(nameof(txSigner));
             _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
-            _chainId = chainId;
             _allowExistingSignature = allowExistingSignature;
         }
 
@@ -43,7 +41,7 @@ namespace Nethermind.Facade.Transactions
         {
             if (tx.Signature == null || !_allowExistingSignature)
             {
-                _wallet.Sign(tx, _chainId);
+                _txSigner.Sign(tx);
             }
 
             tx.Hash = tx.CalculateHash();

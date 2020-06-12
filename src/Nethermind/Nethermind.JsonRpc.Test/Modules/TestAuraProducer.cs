@@ -43,7 +43,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             IAuRaStepCalculator auRaStepCalculator,
             IReportingValidator reportingValidator,
             IAuraConfig config,
-            Address nodeAddress) : base(transactionSource, processor, stateProvider, sealer, blockTree, blockProcessingQueue, timestamper, logManager, auRaStepCalculator, reportingValidator, config, nodeAddress)
+            ISigner signer) : base(transactionSource, processor, stateProvider, sealer, blockTree, blockProcessingQueue, timestamper, logManager, auRaStepCalculator, reportingValidator, config, signer)
         {
         }
 

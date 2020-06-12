@@ -17,6 +17,7 @@
 using System;
 using FluentAssertions;
 using Nethermind.Abi;
+using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -53,14 +54,14 @@ namespace Nethermind.AuRa.Test.Contract
         [Test]
         public void constructor_throws_ArgumentNullException_on_null_encoder()
         {
-            Action action = () => new ValidatorContract(_transactionProcessor, null, _contractAddress, _stateProvider, _readOnlyTransactionProcessorSource, TestItem.AddressD);
+            Action action = () => new ValidatorContract(_transactionProcessor, null, _contractAddress, _stateProvider, _readOnlyTransactionProcessorSource, new Signer(0, TestItem.PrivateKeyD));
             action.Should().Throw<ArgumentNullException>();
         }
         
         [Test]
         public void constructor_throws_ArgumentNullException_on_null_contractAddress()
         {
-            Action action = () => new ValidatorContract(_transactionProcessor, new AbiEncoder(), null, _stateProvider, _readOnlyTransactionProcessorSource, TestItem.AddressD);
+            Action action = () => new ValidatorContract(_transactionProcessor, new AbiEncoder(), null, _stateProvider, _readOnlyTransactionProcessorSource, new Signer(0, TestItem.PrivateKeyD));
             action.Should().Throw<ArgumentNullException>();
         }
         
@@ -80,7 +81,7 @@ namespace Nethermind.AuRa.Test.Contract
             };
             expectation.Hash = expectation.CalculateHash();
             
-            var contract = new ValidatorContract(_transactionProcessor, new AbiEncoder(), _contractAddress, _stateProvider, _readOnlyTransactionProcessorSource, TestItem.AddressD);
+            var contract = new ValidatorContract(_transactionProcessor, new AbiEncoder(), _contractAddress, _stateProvider, _readOnlyTransactionProcessorSource, new Signer(0, TestItem.PrivateKeyD));
             
             contract.FinalizeChange(_block.Header);
             

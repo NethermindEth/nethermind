@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Blockchain.Contracts.Json;
@@ -56,15 +57,16 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
     public sealed class ReportingValidatorContract : Contract, IReportingValidatorContract
     {
-        public Address NodeAddress { get; }
+        private readonly ISigner _signer;
+        public Address NodeAddress => _signer.SigningAddress;
         
         public ReportingValidatorContract(
             IAbiEncoder abiEncoder, 
             Address contractAddress,
-            Address nodeAddress)
+            ISigner signer)
             : base(abiEncoder, contractAddress)
         {
-            NodeAddress = nodeAddress;
+            _signer = signer ?? throw new ArgumentNullException(nameof(signer));
         }
 
         /// <summary>

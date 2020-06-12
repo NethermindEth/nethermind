@@ -17,6 +17,7 @@
 
 using System;
 using System.Security;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
@@ -38,8 +39,8 @@ namespace Nethermind.Facade.Transactions
             if (sealers.Length == 0) throw new ArgumentException("Sealers can not be empty.", nameof(sealers));
         }
 
-        public TxPoolSender(ITxPool txPool, IBasicWallet wallet, ITimestamper timestamper, int chainId)
-            : this(txPool, new TxSealer(wallet, timestamper, chainId), new TxNonceTxPoolReserveSealer(wallet, timestamper, chainId, txPool))
+        public TxPoolSender(ITxPool txPool, ITxSigner txSigner, ITimestamper timestamper)
+            : this(txPool, new TxSealer(txSigner, timestamper), new TxNonceTxPoolReserveSealer(txSigner, timestamper, txPool))
         {
         }
 

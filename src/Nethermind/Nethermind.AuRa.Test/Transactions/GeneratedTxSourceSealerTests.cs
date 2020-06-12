@@ -17,6 +17,7 @@
 
 using System.Linq;
 using FluentAssertions;
+using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
@@ -53,8 +54,8 @@ namespace Nethermind.AuRa.Test.Transactions
             var innerTxSource = Substitute.For<ITxSource>();
             innerTxSource.GetTransactions(blockHeader, gasLimit).Returns(new[] {tx});
             
-            TxSealer txSealer = new TxSealer(new BasicWallet(Build.A.PrivateKey.TestObject), timestamper, chainId);
-            var transactionFiller = new GeneratedTxSourceSealer(innerTxSource, txSealer, stateReader, nodeAddress);
+            TxSealer txSealer = new TxSealer(new Signer(chainId, Build.A.PrivateKey.TestObject), timestamper);
+            var transactionFiller = new GeneratedTxSourceSealer(innerTxSource, txSealer, stateReader, new Signer(0, TestItem.PrivateKeyA));
             
             var txResult= transactionFiller.GetTransactions(blockHeader, gasLimit).First();
 

@@ -20,6 +20,7 @@ using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 using Nethermind.Facade;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
@@ -56,29 +57,15 @@ namespace Nethermind.JsonRpc.Modules.Personal
         [RequiresSecurityReview("Consider removing any operations that allow to provide passphrase in JSON RPC")]
         public ResultWrapper<bool> personal_unlockAccount(Address address, string passphrase)
         {
-            var notSecuredHere = new SecureString();
-            foreach (char c in passphrase)
-            {
-                notSecuredHere.AppendChar(c);
-            }
-            
-            notSecuredHere.MakeReadOnly();
-
+            var notSecuredHere = passphrase.Secure();
             var unlocked = _bridge.UnlockAccount(address, notSecuredHere);
-
             return ResultWrapper<bool>.Success(unlocked);
         }
 
         [RequiresSecurityReview("Consider removing any operations that allow to provide passphrase in JSON RPC")]
         public ResultWrapper<Address> personal_newAccount(string passphrase)
         {
-            var notSecuredHere = new SecureString();
-            foreach (char c in passphrase)
-            {
-                notSecuredHere.AppendChar(c);
-            }
-            
-            notSecuredHere.MakeReadOnly();
+            var notSecuredHere = passphrase.Secure();
             return ResultWrapper<Address>.Success(_bridge.NewAccount(notSecuredHere));
         }
 
@@ -108,12 +95,7 @@ namespace Nethermind.JsonRpc.Modules.Personal
             {
                 if (passphrase != null)
                 {
-                    var notSecuredHere = new SecureString();
-                    foreach (char c in passphrase)
-                    {
-                        notSecuredHere.AppendChar(c);
-                    }
-                    
+                    var notSecuredHere = passphrase.Secure();                    
                     _bridge.UnlockAccount(address, notSecuredHere);
                 }
             }

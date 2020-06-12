@@ -18,6 +18,8 @@ using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
+using Nethermind.Consensus;
+using Nethermind.Crypto;
 using Nethermind.KeyStore;
 using Nethermind.KeyStore.Config;
 using Nethermind.Network;
@@ -58,15 +60,14 @@ namespace Nethermind.Runner.Ethereum.Steps
 
                 _context.Wallet = _context.Config<IInitConfig>() switch
                 {
-                    var config when config.EnableUnsecuredDevWallet && config.KeepDevWalletInMemory
-                    => new DevWallet(_context.Config<IWalletConfig>(), _context.LogManager),
-                    var config when config.EnableUnsecuredDevWallet && !config.KeepDevWalletInMemory
-                    => new DevKeyStoreWallet(_context.KeyStore, _context.LogManager),
-                    _ => NullWallet.Instance
+                    var config when config.EnableUnsecuredDevWallet && config.KeepDevWalletInMemory => new DevWallet(_context.Config<IWalletConfig>(), _context.LogManager),
+                    var config when config.EnableUnsecuredDevWallet && !config.KeepDevWalletInMemory => new DevKeyStoreWallet(_context.KeyStore, _context.LogManager),
+                    _ => new ProtectedKeyStoreWallet(_context.KeyStore, new ProtectedPrivateKeyFactory(_context.CryptoRandom, _context.Timestamper), _context.Timestamper, _context.LogManager),
                 };
 
                 INodeKeyManager nodeKeyManager = new NodeKeyManager(_context.CryptoRandom, _context.KeyStore, keyStoreConfig, _context.LogManager);
                 _context.NodeKey = nodeKeyManager.LoadNodeKey();
+                _context.OriginalSignerKey = nodeKeyManager.LoadSignerKey();
                 _context.Enode = new Enode(_context.NodeKey.PublicKey, IPAddress.Parse(networkConfig.ExternalIp), networkConfig.P2PPort);
                 
                 _context.LogManager.SetGlobalVariable("enode", _context.Enode.ToString());

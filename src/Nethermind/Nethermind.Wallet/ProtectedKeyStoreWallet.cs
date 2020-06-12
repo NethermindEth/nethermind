@@ -15,39 +15,38 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.Caching;
 using System.Security;
 using Nethermind.Core;
-using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.KeyStore;
 using Nethermind.Logging;
 using Nethermind.Secp256k1;
-using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Wallet
 {
-    [DoNotUseInSecuredContext("For dev purposes only")]
-    public class DevKeyStoreWallet : IWallet
+    public class ProtectedKeyStoreWallet : IWallet
     {
+        private static readonly TimeSpan DefaultExpirationTime = TimeSpan.FromMinutes(5);
+        
         private readonly IKeyStore _keyStore;
+        private readonly IProtectedPrivateKeyFactory _protectedPrivateKeyFactory;
+        private readonly ITimestamper _timestamper;
         private readonly ILogger _logger;
 
-        private readonly Dictionary<Address, PrivateKey> _unlockedAccounts = new Dictionary<Address, PrivateKey>();
+        private readonly MemoryCache _unlockedAccounts;
         public event EventHandler<AccountLockedEventArgs> AccountLocked;
         public event EventHandler<AccountUnlockedEventArgs> AccountUnlocked;
 
-        public DevKeyStoreWallet(IKeyStore keyStore, ILogManager logManager, bool createTestAccounts = true)
+        public ProtectedKeyStoreWallet(IKeyStore keyStore, IProtectedPrivateKeyFactory protectedPrivateKeyFactory, ITimestamper timestamper, ILogManager logManager)
         {
-            _keyStore = keyStore;
+            _keyStore = keyStore ?? throw new ArgumentNullException(nameof(keyStore));
+            _protectedPrivateKeyFactory = protectedPrivateKeyFactory ?? throw new ArgumentNullException(nameof(protectedPrivateKeyFactory));
+            _timestamper = timestamper ?? Timestamper.Default;
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-
-            if (createTestAccounts)
-            {
-                this.SetupTestAccounts(3);
-            }
+            _unlockedAccounts = new MemoryCache(nameof(ProtectedKeyStoreWallet));
         }
 
         public void Import(byte[] keyData, SecureString passphrase)
@@ -55,20 +54,12 @@ namespace Nethermind.Wallet
             _keyStore.StoreKey(new PrivateKey(keyData), passphrase);
         }
 
-        public Address[] GetAccounts()
-        {
-            return _keyStore.GetKeyAddresses().Addresses.ToArray();
-        }
+        public Address[] GetAccounts() => _keyStore.GetKeyAddresses().Addresses.ToArray();
 
         public Address NewAccount(SecureString passphrase)
         {
             (PrivateKey privateKey, _) = _keyStore.GenerateKey(passphrase);
             return privateKey.Address;
-        }
-
-        public bool UnlockAccount(Address address, SecureString passphrase)
-        {
-            return UnlockAccount(address, passphrase, TimeSpan.FromSeconds(300));
         }
 
         public bool UnlockAccount(Address address, SecureString passphrase, TimeSpan? timeSpan)
@@ -77,26 +68,32 @@ namespace Nethermind.Wallet
             {
                 return false;
             }
-            
-            if (_unlockedAccounts.ContainsKey(address)) return true;
-
-            (PrivateKey key, Result result) = _keyStore.GetKey(address, passphrase);
-            if (result.ResultType == ResultType.Success)
+            else if (IsUnlocked(address))
             {
-                if (_logger.IsInfo) _logger.Info($"Unlocking account: {address}");
-                _unlockedAccounts.Add(key.Address, key);
-                AccountUnlocked?.Invoke(this, new AccountUnlockedEventArgs(address));
                 return true;
             }
+            else
+            {
+                (PrivateKey key, Result result) = _keyStore.GetKey(address, passphrase);
+                if (result.ResultType == ResultType.Success)
+                {
+                    if (_logger.IsInfo) _logger.Info($"Unlocking account: {address}");
+                    _unlockedAccounts.Add(key.Address.ToString(), _protectedPrivateKeyFactory.Create(key),
+                        new CacheItemPolicy() {Priority = CacheItemPriority.NotRemovable, AbsoluteExpiration = _timestamper.UtcNowOffset + (timeSpan ?? DefaultExpirationTime)});
+                    AccountUnlocked?.Invoke(this, new AccountUnlockedEventArgs(address));
+                    return true;
+                }
 
-            if (_logger.IsError) _logger.Error($"Failed to unlock the account: {address}");
-            return false;
+                if (_logger.IsError) _logger.Error($"Failed to unlock the account: {address}");
+                return false;
+            }
         }
 
         public bool LockAccount(Address address)
         {
             AccountLocked?.Invoke(this, new AccountLockedEventArgs(address));
-            return _unlockedAccounts.Remove(address);
+            _unlockedAccounts.Remove(address.ToString());
+            return true;
         }
         
         public void Sign(Transaction tx, int chainId)
@@ -105,38 +102,21 @@ namespace Nethermind.Wallet
             IBasicWallet.Sign(this, tx, chainId);
         }
 
-        public bool IsUnlocked(Address address) => _unlockedAccounts.ContainsKey(address);
-        
+        public bool IsUnlocked(Address address) => _unlockedAccounts.Contains(address.ToString());
+
         public Signature Sign(Keccak message, Address address, SecureString passphrase)
-        {
-            PrivateKey key;
-            if (_unlockedAccounts.ContainsKey(address))
-            {
-                key = _unlockedAccounts[address];
-            }
-            else
+            => SignCore(message, address, () =>
             {
                 if (passphrase == null) throw new SecurityException("Passphrase missing when trying to sign a message");
-
-                key = _keyStore.GetKey(address, passphrase).PrivateKey;
-            }
-
-            var rs = Proxy.SignCompact(message.Bytes, key.KeyBytes, out int v);
-            return new Signature(rs, v);
-        }
+                return _keyStore.GetKey(address, passphrase).PrivateKey;
+            });
         
-        public Signature Sign(Keccak message, Address address)
-        {
-            PrivateKey key;
-            if (_unlockedAccounts.ContainsKey(address))
-            {
-                key = _unlockedAccounts[address];
-            }
-            else
-            {
-                throw new SecurityException("Can only sign without passphrase when account is unlocked.");
-            }
+        public Signature Sign(Keccak message, Address address) => SignCore(message, address, () => throw new SecurityException("Can only sign without passphrase when account is unlocked."));
 
+        private Signature SignCore(Keccak message, Address address, Func<PrivateKey> getPrivateKeyWhenNotFound)
+        {
+            var protectedPrivateKey = (ProtectedPrivateKey) _unlockedAccounts.Get(address.ToString());
+            using PrivateKey key = protectedPrivateKey != null ? protectedPrivateKey.Unprotect() : getPrivateKeyWhenNotFound();
             var rs = Proxy.SignCompact(message.Bytes, key.KeyBytes, out int v);
             return new Signature(rs, v);
         }

@@ -58,9 +58,9 @@ namespace Nethermind.Runner.Ethereum.Steps
         private const string PeersDbPath = "peers";
 
         private readonly EthereumRunnerContext _ctx;
-        private ILogger _logger;
-        private INetworkConfig _networkConfig;
-        private ISyncConfig _syncConfig;
+        private readonly ILogger _logger;
+        private readonly INetworkConfig _networkConfig;
+        private readonly ISyncConfig _syncConfig;
 
         public InitializeNetwork(EthereumRunnerContext context)
         {
@@ -245,7 +245,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             IDiscoveryConfig discoveryConfig = _ctx.Config<IDiscoveryConfig>();
 
-            SameKeyGenerator privateKeyProvider = new SameKeyGenerator(_ctx.NodeKey);
+            SameKeyGenerator privateKeyProvider = new SameKeyGenerator(_ctx.NodeKey.Unprotect());
             DiscoveryMessageFactory discoveryMessageFactory = new DiscoveryMessageFactory(_ctx.Timestamper);
             NodeIdResolver nodeIdResolver = new NodeIdResolver(_ctx.EthereumEcdsa);
             IPResolver ipResolver = new IPResolver(_networkConfig, _ctx.LogManager);
@@ -355,7 +355,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             _ctx._messageSerializationService.Register(new ReceiptsMessageSerializer(_ctx.SpecProvider));
 
             HandshakeService encryptionHandshakeServiceA = new HandshakeService(_ctx._messageSerializationService, eciesCipher,
-                _ctx.CryptoRandom, new Ecdsa(), _ctx.NodeKey, _ctx.LogManager);
+                _ctx.CryptoRandom, new Ecdsa(), _ctx.NodeKey.Unprotect(), _ctx.LogManager);
 
             _ctx._messageSerializationService.Register(Assembly.GetAssembly(typeof(HiMessageSerializer)));
 

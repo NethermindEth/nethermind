@@ -13,26 +13,33 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
 using System;
-using System.IO;
+using System.Linq;
 using System.Security;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 
 namespace Nethermind.Wallet
 {
-    public interface IWallet : IBasicWallet
+    public static class WalletExtensions
     {
-        void Import(byte[] keyData, SecureString passphrase);
-        Address NewAccount(SecureString passphrase);
-        bool UnlockAccount(Address address, SecureString passphrase, TimeSpan? timeSpan = null);
-        bool LockAccount(Address address);
-        bool IsUnlocked(Address address);
-        Signature Sign(Keccak message, Address address, SecureString passphrase = null);
-        Address[] GetAccounts();
-        event EventHandler<AccountLockedEventArgs> AccountLocked;
-        event EventHandler<AccountUnlockedEventArgs> AccountUnlocked;
+        public static void SetupTestAccounts(this IWallet wallet, byte count)
+        {
+            byte[] keySeed = new byte[32];
+            keySeed[31] = 1;
+            for (int i = 0; i < count; i++)
+            {
+                PrivateKey key = new PrivateKey(keySeed);
+                SecureString secureString = string.Empty.Secure();
+                if (wallet.GetAccounts().All(a => a != key.Address))
+                {
+                    wallet.Import(keySeed, secureString);
+                }
+
+                wallet.UnlockAccount(key.Address, secureString, TimeSpan.FromHours(24));
+                keySeed[31]++;
+            }
+        }
     }
 }

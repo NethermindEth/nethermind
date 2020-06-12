@@ -35,7 +35,6 @@ namespace Nethermind.Consensus.AuRa
         private readonly IAuRaStepCalculator _auRaStepCalculator;
         private readonly IReportingValidator _reportingValidator;
         private readonly IAuraConfig _config;
-        private readonly Address _nodeAddress;
         private readonly IGasLimitOverride _gasLimitOverride;
 
         public AuRaBlockProducer(
@@ -50,15 +49,14 @@ namespace Nethermind.Consensus.AuRa
             IAuRaStepCalculator auRaStepCalculator,
             IReportingValidator reportingValidator,
             IAuraConfig config,
-            Address nodeAddress, 
+            ISigner signer, 
             IGasLimitOverride gasLimitOverride = null) 
-            : base(txSource, processor, sealer, blockTree, blockProcessingQueue, stateProvider, timestamper, logManager, "AuRa")
+            : base(txSource, processor, sealer, blockTree, blockProcessingQueue, stateProvider, signer, timestamper, logManager, "AuRa")
         {
             _auRaStepCalculator = auRaStepCalculator ?? throw new ArgumentNullException(nameof(auRaStepCalculator));
             _reportingValidator = reportingValidator ?? throw new ArgumentNullException(nameof(reportingValidator));
             _config = config ?? throw new ArgumentNullException(nameof(config));
             CanProduce = _config.AllowAuRaPrivateChains;
-            _nodeAddress = nodeAddress ?? throw new ArgumentNullException(nameof(nodeAddress));
             _gasLimitOverride = gasLimitOverride;
         }
 
@@ -74,7 +72,6 @@ namespace Nethermind.Consensus.AuRa
         {
             var block = base.PrepareBlock(parent);
             block.Header.AuRaStep = _auRaStepCalculator.CurrentStep;
-            block.Header.Beneficiary = _nodeAddress;
             return block;
         }
 

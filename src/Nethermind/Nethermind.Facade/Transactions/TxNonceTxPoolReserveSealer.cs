@@ -16,6 +16,7 @@
 // 
 
 using System;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.TxPool;
@@ -27,7 +28,7 @@ namespace Nethermind.Facade.Transactions
     {
         private readonly ITxPool _txPool;
 
-        public TxNonceTxPoolReserveSealer(IBasicWallet wallet, ITimestamper timestamper, int chainId, ITxPool txPool) : base(wallet, timestamper, chainId, false)
+        public TxNonceTxPoolReserveSealer(ITxSigner txSigner, ITimestamper timestamper, ITxPool txPool) : base(txSigner, timestamper, false)
         {
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
         }

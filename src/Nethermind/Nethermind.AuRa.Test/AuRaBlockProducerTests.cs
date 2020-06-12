@@ -100,7 +100,7 @@ namespace Nethermind.AuRa.Test
                             AuRaStepCalculator,
                             NullReportingValidator.Instance, 
                             auraConfig,
-                            NodeAddress);
+                            new Signer(0, TestItem.PrivateKeyA));
                     }
         }
 

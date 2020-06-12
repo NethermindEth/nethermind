@@ -50,6 +50,11 @@ namespace Nethermind.KeyStore
             return (_privateKeys[address], Result.Success);
         }
 
+        public (ProtectedPrivateKey PrivateKey, Result Result) GetProtectedKey(Address address, SecureString password)
+        {
+            return (new ProtectedPrivateKey(_privateKeys[address]), Result.Success);
+        }
+
         public (KeyStoreItem KeyData, Result Result) GetKeyData(Address address)
         {
             throw new System.NotImplementedException();
@@ -61,6 +66,11 @@ namespace Nethermind.KeyStore
         }
 
         public (PrivateKey PrivateKey, Result Result) GenerateKey(SecureString password)
+        {
+            throw new System.NotImplementedException();
+        }
+
+        public (ProtectedPrivateKey PrivateKey, Result Result) GenerateProtectedKey(SecureString password)
         {
             throw new System.NotImplementedException();
         }

@@ -13,26 +13,19 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System;
-using System.IO;
-using System.Security;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 
-namespace Nethermind.Wallet
+namespace Nethermind.Consensus
 {
-    public interface IWallet : IBasicWallet
+    public interface ISigner : ITxSigner
     {
-        void Import(byte[] keyData, SecureString passphrase);
-        Address NewAccount(SecureString passphrase);
-        bool UnlockAccount(Address address, SecureString passphrase, TimeSpan? timeSpan = null);
-        bool LockAccount(Address address);
-        bool IsUnlocked(Address address);
-        Signature Sign(Keccak message, Address address, SecureString passphrase = null);
-        Address[] GetAccounts();
-        event EventHandler<AccountLockedEventArgs> AccountLocked;
-        event EventHandler<AccountUnlockedEventArgs> AccountUnlocked;
+        Address SigningAddress { get; }
+        ProtectedPrivateKey Key { get; }
+        Signature Sign(Keccak message);
+        bool CanSign { get; }
     }
 }

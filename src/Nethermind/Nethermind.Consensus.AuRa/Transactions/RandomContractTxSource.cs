@@ -38,18 +38,18 @@ namespace Nethermind.Consensus.AuRa.Transactions
     public class RandomContractTxSource : ITxSource
     {
         private readonly IEciesCipher _eciesCipher;
-        private readonly PrivateKey _privateKey;
+        private readonly ISigner _singer;
         private readonly IList<IRandomContract> _contracts;
         private readonly ICryptoRandom _random;
 
         public RandomContractTxSource(IList<IRandomContract> contracts,
             IEciesCipher eciesCipher,
-            PrivateKey privateKey, 
+            ISigner signer, 
             ICryptoRandom cryptoRandom)
         {
             _contracts = contracts ?? throw new ArgumentNullException(nameof(contracts));
             _eciesCipher = eciesCipher ?? throw new ArgumentNullException(nameof(eciesCipher));
-            _privateKey = privateKey ?? throw new ArgumentNullException(nameof(privateKey));
+            _singer = signer ?? throw new ArgumentNullException(nameof(signer));
             _random = cryptoRandom;
         }
         
@@ -75,13 +75,14 @@ namespace Nethermind.Consensus.AuRa.Transactions
                     byte[] bytes = new byte[32];
                     _random.GenerateRandomBytes(bytes);
                     var hash = Keccak.Compute(bytes);
-                    var cipher = _eciesCipher.Encrypt(_privateKey.PublicKey, bytes);
+                    var cipher = _eciesCipher.Encrypt(_singer.Key.PublicKey, bytes);
                     return contract.CommitHash(hash, cipher);
                 }
                 case IRandomContract.Phase.Reveal:
                 {
                     var (hash, cipher) = contract.GetCommitAndCipher(parent, round);
-                    byte[] bytes = _eciesCipher.Decrypt(_privateKey, cipher).Item2;
+                    using PrivateKey privateKey = _singer.Key.Unprotect();
+                    byte[] bytes = _eciesCipher.Decrypt(privateKey, cipher).Item2;
                     if (bytes?.Length != 32)
                     {
                         // This can only happen if there is a bug in the smart contract, or if the entire network goes awry.

@@ -41,10 +41,11 @@ namespace Nethermind.Blockchain.Producers
             IBlockTree blockTree,
             IBlockProcessingQueue blockProcessingQueue,
             IStateProvider stateProvider,
+            ISigner signer,
             ITimestamper timestamper,
             ILogManager logManager,
             IDifficultyCalculator difficultyCalculator) 
-            : base(txSource, processor, sealer, blockTree, blockProcessingQueue, stateProvider, timestamper, logManager)
+            : base(txSource, processor, sealer, blockTree, blockProcessingQueue, stateProvider, signer, timestamper, logManager)
         {
             _difficultyCalculator = difficultyCalculator ?? throw new ArgumentNullException(nameof(difficultyCalculator));
         }

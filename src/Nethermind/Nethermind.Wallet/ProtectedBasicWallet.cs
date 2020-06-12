@@ -13,26 +13,35 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
 using System;
-using System.IO;
-using System.Security;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
+using Nethermind.Secp256k1;
 
 namespace Nethermind.Wallet
 {
-    public interface IWallet : IBasicWallet
+    public class ProtectedBasicWallet : IBasicWallet
     {
-        void Import(byte[] keyData, SecureString passphrase);
-        Address NewAccount(SecureString passphrase);
-        bool UnlockAccount(Address address, SecureString passphrase, TimeSpan? timeSpan = null);
-        bool LockAccount(Address address);
-        bool IsUnlocked(Address address);
-        Signature Sign(Keccak message, Address address, SecureString passphrase = null);
-        Address[] GetAccounts();
-        event EventHandler<AccountLockedEventArgs> AccountLocked;
-        event EventHandler<AccountUnlockedEventArgs> AccountUnlocked;
+        private readonly ProtectedPrivateKey _privateKey;
+
+        public ProtectedBasicWallet(PrivateKey privateKey)
+        {
+            _privateKey = new ProtectedPrivateKey(privateKey ?? throw new ArgumentNullException(nameof(privateKey)));
+        }
+
+        public ProtectedBasicWallet(ProtectedPrivateKey privateKey)
+        {
+            _privateKey = privateKey ?? throw new ArgumentNullException(nameof(privateKey));
+        }
+
+        public Signature Sign(Keccak message, Address address)
+        {
+            using var key = _privateKey.Unprotect();
+            var rs = Proxy.SignCompact(message.Bytes, key.KeyBytes, out int v);
+            return new Signature(rs, v);
+        }
     }
 }

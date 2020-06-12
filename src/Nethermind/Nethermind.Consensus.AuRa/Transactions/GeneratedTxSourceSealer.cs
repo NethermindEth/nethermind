@@ -32,19 +32,19 @@ namespace Nethermind.Consensus.AuRa.Transactions
         private readonly ITxSource _innerSource;
         private readonly ITxSealer _txSealer;
         private readonly IStateReader _stateReader;
-        private readonly Address _nodeAddress;
+        private readonly ISigner _signer;
 
-        public GeneratedTxSourceSealer(ITxSource innerSource, ITxSealer txSealer, IStateReader stateReader, Address nodeAddress)
+        public GeneratedTxSourceSealer(ITxSource innerSource, ITxSealer txSealer, IStateReader stateReader, ISigner signer)
         {
             _innerSource = innerSource ?? throw new ArgumentNullException(nameof(innerSource));
             _txSealer = txSealer ?? throw new ArgumentNullException(nameof(txSealer));
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
-            _nodeAddress = nodeAddress ?? throw new ArgumentNullException(nameof(nodeAddress));
+            _signer = signer ?? throw new ArgumentNullException(nameof(signer));
         }
         
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
         {
-            var nodeNonce = _stateReader.GetNonce(parent.StateRoot, _nodeAddress);
+            var nodeNonce = _stateReader.GetNonce(parent.StateRoot, _signer.SigningAddress);
             
             return _innerSource.GetTransactions(parent, gasLimit).Select(tx =>
             {

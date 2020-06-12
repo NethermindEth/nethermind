@@ -44,7 +44,7 @@ namespace Nethermind.Consensus.AuRa
         private readonly ITxSender _txSender;
         private readonly ITxPool _txPool;
         private readonly ILogManager _logManager;
-        private readonly Address _nodeAddress;
+        private readonly ISigner _signer;
         private readonly ReportingContractBasedValidator.Cache _reportingValidatorCache;
         private readonly long _posdaoTransition;
         private readonly bool _forSealing;
@@ -60,7 +60,7 @@ namespace Nethermind.Consensus.AuRa
             ITxSender txSender,
             ITxPool txPool,
             ILogManager logManager,
-            Address nodeAddress,
+            ISigner signer,
             ReportingContractBasedValidator.Cache reportingValidatorCache,
             long posdaoTransition,
             bool forSealing = false)
@@ -76,7 +76,7 @@ namespace Nethermind.Consensus.AuRa
             _txSender = txSender;
             _txPool = txPool;
             _logManager = logManager;
-            _nodeAddress = nodeAddress;
+            _signer = signer;
             _reportingValidatorCache = reportingValidatorCache;
             _posdaoTransition = posdaoTransition;
             _forSealing = forSealing;
@@ -84,8 +84,8 @@ namespace Nethermind.Consensus.AuRa
 
         public IAuRaValidator CreateValidatorProcessor(AuRaParameters.Validator validator, BlockHeader parentHeader = null, long? startBlock = null)
         {
-            IValidatorContract GetValidatorContract() => new ValidatorContract(_transactionProcessor, _abiEncoder, validator.GetContractAddress(), _stateProvider, _readOnlyReadOnlyTransactionProcessorSource, _nodeAddress);
-            IReportingValidatorContract GetReportingValidatorContract() => new ReportingValidatorContract(_abiEncoder, validator.GetContractAddress(), _nodeAddress);
+            IValidatorContract GetValidatorContract() => new ValidatorContract(_transactionProcessor, _abiEncoder, validator.GetContractAddress(), _stateProvider, _readOnlyReadOnlyTransactionProcessorSource, _signer);
+            IReportingValidatorContract GetReportingValidatorContract() => new ReportingValidatorContract(_abiEncoder, validator.GetContractAddress(), _signer);
 
             var validSealerStrategy = new ValidSealerStrategy();
             long startBlockNumber = startBlock ?? AuRaValidatorBase.DefaultStartBlockNumber;

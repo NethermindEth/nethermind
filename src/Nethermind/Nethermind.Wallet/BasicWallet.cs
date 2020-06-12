@@ -36,7 +36,5 @@ namespace Nethermind.Wallet
             var rs = Proxy.SignCompact(message.Bytes, _privateKey.KeyBytes, out int v);
             return new Signature(rs, v);
         }
-
-        public bool IsUnlocked(Address address) => _privateKey.Address == address;
     }
 }
