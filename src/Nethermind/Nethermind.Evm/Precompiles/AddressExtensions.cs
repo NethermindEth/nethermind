@@ -38,6 +38,7 @@ namespace Nethermind.Evm.Precompiles
                 1 => true,
                 2 => true,
                 3 => true,
+                4 => true,
                 5 => releaseSpec.IsEip198Enabled,
                 6 => releaseSpec.IsEip196Enabled,
                 7 => releaseSpec.IsEip196Enabled,
