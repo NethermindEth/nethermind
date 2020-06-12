@@ -47,6 +47,34 @@ namespace Nethermind.Evm.Benchmark
         [GlobalSetup]
         public void GlobalSetup()
         {
+            byte[] bytecode1 = Prepare.EvmCode
+                .Op(Instruction.JUMPDEST)
+                .PushData(0)
+                .Op(Instruction.DUP1)
+                .Op(Instruction.DUP1)
+                .Op(Instruction.DUP1)
+                .PushData(4)
+                .Op(Instruction.GAS)
+                .Op(Instruction.STATICCALL)
+                .Op(Instruction.POP)
+                .PushData(0)
+                .Op(Instruction.JUMP)
+                .Done;
+            
+            byte[] bytecode2 = Prepare.EvmCode
+                .Op(Instruction.JUMPDEST)
+                .PushData(0)
+                .Op(Instruction.DUP1)
+                .Op(Instruction.DUP1)
+                .Op(Instruction.DUP1)
+                .PushData(4)
+                .Op(Instruction.GAS)
+                .Op(Instruction.STATICCALL)
+                .Op(Instruction.POP)
+                .PushData(0)
+                .Op(Instruction.JUMP)
+                .Done;
+
             ByteCode = Bytes.FromHexString(Environment.GetEnvironmentVariable("NETH.BENCHMARK.BYTECODE"));
             Console.WriteLine($"Running benchmark for bytecode {ByteCode?.ToHexString()}");
             IDb codeDb = new StateDb();
@@ -70,9 +98,40 @@ namespace Nethermind.Evm.Benchmark
             _environment.TransferValue = 0;
             _environment.CurrentBlock = _header;
             
-            _evmState = new EvmState(long.MaxValue, _environment, ExecutionType.Transaction, false, true, false);
+            _evmState = new EvmState(long.MaxValue, _environment, ExecutionType.Transaction, true, false);
         }
 
+        // prog1
+        //     Code which calls the identity precompile with zero arguments:
+        //
+        // byte(vm.JUMPDEST), //  [ count ]
+        // // push args for the call
+        // byte(vm.PUSH1), 0, // out size
+        // byte(vm.DUP1),       // out offset
+        // byte(vm.DUP1),       // out insize
+        // byte(vm.DUP1),       // in offset
+        // byte(vm.PUSH1), 0x4, // address of identity
+        // byte(vm.GAS), // gas
+        // byte(vm.STATICCALL),
+        // byte(vm.POP),      // pop return value
+        // byte(vm.PUSH1), 0, // jumpdestination
+        // byte(vm.JUMP),
+        // prog2
+        //     And code which doesn't do the call, but instead just pops the arguments off the stack:
+        //
+        // byte(vm.JUMPDEST), //  [ count ]
+        // // push args for the call
+        // byte(vm.PUSH1), 0, // out size
+        // byte(vm.DUP1),       // out offset
+        // byte(vm.DUP1),       // out insize
+        // byte(vm.DUP1),       // in offset
+        // byte(vm.PUSH1), 0x4, // address of identity
+        // byte(vm.GAS), // gas
+        //
+        // byte(vm.POP),byte(vm.POP),byte(vm.POP),byte(vm.POP),byte(vm.POP),byte(vm.POP),
+        // byte(vm.PUSH1), 0, // jumpdestination
+        // byte(vm.JUMP),
+        
         [Benchmark]
         public void ExecuteCode()
         {
