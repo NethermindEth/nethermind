@@ -331,6 +331,12 @@ namespace Nethermind.Runner.Test
             Test<IBloomConfig, bool>(configWildcard, c => c.MigrationStatistics, false);
             Test<IBloomConfig, int[]>(configWildcard, c => c.IndexLevelBucketSizes, (cf, p) => p.Should().BeEquivalentTo(levels ?? new BloomConfig().IndexLevelBucketSizes));
         }
+        
+        [TestCase("*")]
+        public void BufferResponses_rpc_is_off(string configWildcard)
+        {
+            Test<IJsonRpcConfig, bool>(configWildcard, c => c.BufferResponses, false);
+        }
 
         private static ConfigProvider GetConfigProviderFromFile(string configFile)
         {
