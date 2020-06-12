@@ -191,11 +191,23 @@ namespace Nethermind.Runner.Test
             Test<INetworkConfig, string>(configWildcard, c => c.LocalIp, (string) null);
             Test<INetworkConfig, int>(configWildcard, c => c.ActivePeersMaxCount, activePeers);
         }
+        
+        [TestCase("*")]
+        public void Network_diag_tracer_disabled_by_default(string configWildcard)
+        {
+            Test<INetworkConfig, bool>(configWildcard, c => c.DiagTracerEnabled, false);
+        }
 
         [TestCase("*", 2048)]
         public void Tx_pool_defaults_are_correct(string configWildcard, int poolSize)
         {
             Test<ITxPoolConfig, int>(configWildcard, c => c.Size, poolSize);
+        }
+        
+        [TestCase("*")]
+        public void Memory_hint_is_null_by_default(string configWildcard)
+        {
+            Test<IInitConfig, long?>(configWildcard, c => c.MemoryHint, (long?)null);
         }
 
         [TestCase("^spaceneth", false)]
@@ -318,6 +330,12 @@ namespace Nethermind.Runner.Test
             Test<IBloomConfig, bool>(configWildcard, c => c.Migration, false);
             Test<IBloomConfig, bool>(configWildcard, c => c.MigrationStatistics, false);
             Test<IBloomConfig, int[]>(configWildcard, c => c.IndexLevelBucketSizes, (cf, p) => p.Should().BeEquivalentTo(levels ?? new BloomConfig().IndexLevelBucketSizes));
+        }
+        
+        [TestCase("*")]
+        public void BufferResponses_rpc_is_off(string configWildcard)
+        {
+            Test<IJsonRpcConfig, bool>(configWildcard, c => c.BufferResponses, false);
         }
 
         private static ConfigProvider GetConfigProviderFromFile(string configFile)
