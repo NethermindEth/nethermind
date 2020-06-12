@@ -677,11 +677,11 @@ namespace Nethermind.State
         private void Push(ChangeType changeType, Address address, Account touchedAccount)
         {
             SetupCache(address);
-            // if (changeType == ChangeType.Touch
-            //     && _changes[_intraBlockCache[address].Peek()].ChangeType == ChangeType.Touch)
-            // {
-            //     return;
-            // }
+            if (changeType == ChangeType.Touch
+                && _changes[_intraBlockCache[address].Peek()].ChangeType == ChangeType.Touch)
+            {
+                return;
+            }
             
             IncrementChangePosition();
             _intraBlockCache[address].Push(_currentPosition);
