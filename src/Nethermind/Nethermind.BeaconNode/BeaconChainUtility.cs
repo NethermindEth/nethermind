@@ -29,7 +29,7 @@ using Nethermind.Logging.Microsoft;
 
 namespace Nethermind.BeaconNode
 {
-    public class BeaconChainUtility
+    public class BeaconChainUtility : IBeaconChainUtility
     {
         private readonly ChainConstants _chainConstants;
         private readonly ICryptographyService _cryptographyService;

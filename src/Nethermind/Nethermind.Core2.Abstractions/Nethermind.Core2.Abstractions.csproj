@@ -15,4 +15,8 @@
       <PackageReference Include="System.Runtime.CompilerServices.Unsafe" Version="4.7.1" />
     </ItemGroup>
 
+    <ItemGroup>
+      <ProjectReference Include="..\..\Dirichlet\Nethermind.Dirichlet.Numerics\Nethermind.Dirichlet.Numerics.csproj" />
+    </ItemGroup>
+
 </Project>

@@ -17,6 +17,8 @@
 using System;
 using System.Buffers.Binary;
 using System.Linq;
+using System.Runtime.InteropServices;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core2.Crypto
 {
@@ -31,15 +33,35 @@ namespace Nethermind.Core2.Crypto
             _bytes = new byte[Length];
         }
 
-        public Root(ReadOnlySpan<byte> span)
+        public Root(UInt256 span)
+            : this(MemoryMarshal.Cast<UInt256, byte>(MemoryMarshal.CreateReadOnlySpan(ref span, 1)))
         {
-            if (span.Length != Length)
+        }
+        
+        public Root(ReadOnlySpan<byte> span)
+            : this(span.ToArray())
+        {
+        }
+
+        public void AsInt(out UInt256 intRoot)
+        {
+            UInt256.CreateFromLittleEndian(out intRoot, _bytes.AsSpan());
+        }
+        
+        public static Root Wrap(byte[] bytes)
+        {
+            return new Root(bytes);
+        }
+        
+        private Root(byte[] bytes)
+        {
+            if (bytes.Length != Length)
             {
-                throw new ArgumentOutOfRangeException(nameof(span), span.Length,
+                throw new ArgumentOutOfRangeException(nameof(bytes), bytes.Length,
                     $"{nameof(Root)} must have exactly {Length} bytes");
             }
 
-            _bytes = span.ToArray();
+            _bytes = bytes;
         }
 
         public Root(string hex)
@@ -49,16 +71,17 @@ namespace Nethermind.Core2.Crypto
             {
                 throw new ArgumentOutOfRangeException(nameof(hex), bytes.Length, $"{nameof(Root)} must have exactly {Length} bytes");
             }
+
             _bytes = bytes;
         }
-        
+
         public static Root Zero { get; } = new Root(new byte[Length]);
 
         public ReadOnlySpan<byte> AsSpan()
         {
             return new ReadOnlySpan<byte>(_bytes);
         }
-        
+
         public override int GetHashCode()
         {
             return BinaryPrimitives.ReadInt32LittleEndian(AsSpan().Slice(0, 4));
@@ -66,6 +89,7 @@ namespace Nethermind.Core2.Crypto
 
         public static bool operator ==(Root left, Root right)
         {
+            if (ReferenceEquals(left, right)) return true;
             return left.Equals(right);
         }
 
@@ -100,6 +124,5 @@ namespace Nethermind.Core2.Crypto
             // lexicographic compare
             return other is null ? 1 : AsSpan().SequenceCompareTo(other.AsSpan());
         }
-
     }
 }

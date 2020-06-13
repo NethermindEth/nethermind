@@ -30,7 +30,7 @@ namespace Nethermind.BeaconNode
 {
     public class BeaconStateAccessor
     {
-        private readonly BeaconChainUtility _beaconChainUtility;
+        private readonly IBeaconChainUtility _beaconChainUtility;
         private readonly ChainConstants _chainConstants;
         private readonly ICryptographyService _cryptographyService;
         private readonly IOptionsMonitor<MiscellaneousParameters> _miscellaneousParameterOptions;
@@ -45,7 +45,7 @@ namespace Nethermind.BeaconNode
             IOptionsMonitor<StateListLengths> stateListLengthOptions,
             IOptionsMonitor<SignatureDomains> signatureDomainOptions,
             ICryptographyService cryptographyService,
-            BeaconChainUtility beaconChainUtility)
+            IBeaconChainUtility beaconChainUtility)
         {
             _chainConstants = chainConstants;
             _cryptographyService = cryptographyService;

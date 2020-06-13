@@ -38,7 +38,7 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
 {
     public class QuickStartMockEth1GenesisProvider : IEth1GenesisProvider
     {
-        private readonly BeaconChainUtility _beaconChainUtility;
+        private readonly IBeaconChainUtility _beaconChainUtility;
         private readonly ChainConstants _chainConstants;
         private readonly ICryptographyService _cryptographyService;
 
@@ -64,7 +64,7 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
             IOptionsMonitor<SignatureDomains> signatureDomainOptions,
             IOptionsMonitor<QuickStartParameters> quickStartParameterOptions,
             ICryptographyService cryptographyService,
-            BeaconChainUtility beaconChainUtility)
+            IBeaconChainUtility beaconChainUtility)
         {
             _logger = logger;
             _chainConstants = chainConstants;
@@ -119,8 +119,7 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
 
             return privateKeySpan.ToArray();
         }
-
-
+        
         public Task<Eth1GenesisData> GetEth1GenesisDataAsync(CancellationToken cancellationToken)
         {
             QuickStartParameters quickStartParameters = _quickStartParameterOptions.CurrentValue;
@@ -256,6 +255,7 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
             return Task.FromResult(eth1GenesisData);
         }
 
+        // why not using existing operations? - need to review
         private static IList<IList<Bytes32>> CalculateMerkleTreeFromLeaves(IEnumerable<Bytes32> values,
             int layerCount = 32)
         {
@@ -282,6 +282,7 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
             return tree;
         }
 
+        // why is this not in Merkleizer?
         private static IList<Bytes32> GetMerkleProof(IList<IList<Bytes32>> tree, int itemIndex, int? treeLength = null)
         {
             List<Bytes32> proof = new List<Bytes32>();
@@ -297,6 +298,7 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
             return proof;
         }
 
+        // why not use the one from merkleizer?
         private static byte[] Hash(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
         {
             Span<byte> combined = new Span<byte>(new byte[64]);

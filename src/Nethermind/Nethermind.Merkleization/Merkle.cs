@@ -15,15 +15,16 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics.X86;
-using Nethermind.Core2;
+using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using Nethermind.Dirichlet.Numerics;
 using Chunk = Nethermind.Dirichlet.Numerics.UInt256;
 
-namespace Nethermind.Ssz
+namespace Nethermind.Merkleization
 {
     public static partial class Merkle
     {
@@ -442,6 +443,46 @@ namespace Nethermind.Ssz
             merkleizer.CalculateRoot(out root);
         }
 
+        public static void Ize(out UInt256 root, List<ItemOrRoot<DepositData>> value, ulong limit)
+        {
+            int length = value.Count;
+            if (limit == 0 && length == 1)
+            {
+                Merkle.Ize(out root, value[0]);
+                return;
+            }
+
+            int depth = NextPowerOfTwoExponent(limit == 0UL ? (ulong) length : limit);
+            Merkleizer merkleizer = new Merkleizer(depth);
+            for (int i = 0; i < length; i++)
+            {
+                Merkle.Ize(out UInt256 subroot, value[i]);
+                merkleizer.Feed(subroot);
+            }
+
+            merkleizer.CalculateRoot(out root);
+        }
+        
+        public static void Ize(out UInt256 root, List<DepositData> value, ulong limit)
+        {
+            int length = value.Count;
+            if (limit == 0 && length == 1)
+            {
+                Merkle.Ize(out root, value[0]);
+                return;
+            }
+
+            int depth = NextPowerOfTwoExponent(limit == 0UL ? (ulong) length : limit);
+            Merkleizer merkleizer = new Merkleizer(depth);
+            for (int i = 0; i < length; i++)
+            {
+                Merkle.Ize(out UInt256 subroot, value[i]);
+                merkleizer.Feed(subroot);
+            }
+
+            merkleizer.CalculateRoot(out root);
+        }
+        
         public static void Ize(out UInt256 root, ReadOnlySpan<UInt256> value, ulong limit = 0UL)
         {
             if (limit == 0 && value.Length == 1)

@@ -27,6 +27,7 @@ using Nethermind.Core2.Types;
 using Microsoft.Extensions.Options;
 using Nethermind.Core2.Cryptography.Ssz;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Merkleization;
 using Nethermind.Ssz;
 
 namespace Nethermind.Core2.Cryptography
@@ -64,6 +65,23 @@ namespace Nethermind.Core2.Cryptography
             _bls = BLS.Create(blsParameters);
             
             Nethermind.Ssz.Ssz.Init(
+                chainConstants.DepositContractTreeDepth, 
+                chainConstants.JustificationBitsLength,
+                miscellaneousParameters.MaximumValidatorsPerCommittee,
+                timeParameters.SlotsPerEpoch,
+                timeParameters.SlotsPerEth1VotingPeriod,
+                timeParameters.SlotsPerHistoricalRoot,
+                stateListLengths.EpochsPerHistoricalVector,
+                stateListLengths.EpochsPerSlashingsVector,
+                stateListLengths.HistoricalRootsLimit,
+                stateListLengths.ValidatorRegistryLimit,
+                maxOperationsPerBlock.MaximumProposerSlashings,
+                maxOperationsPerBlock.MaximumAttesterSlashings,
+                maxOperationsPerBlock.MaximumAttestations,
+                maxOperationsPerBlock.MaximumDeposits,
+                maxOperationsPerBlock.MaximumVoluntaryExits);
+            
+            Nethermind.Merkleization.Merkle.Init(
                 chainConstants.DepositContractTreeDepth, 
                 chainConstants.JustificationBitsLength,
                 miscellaneousParameters.MaximumValidatorsPerCommittee,
@@ -230,7 +248,14 @@ namespace Nethermind.Core2.Cryptography
             return new Root(bytes);
         }
 
-        Root ICryptographyService.HashTreeRoot(IList<DepositData> depositData)
+        Root ICryptographyService.HashTreeRoot(List<DepositData> depositData)
+        {
+            Merkle.Ize(out UInt256 root, depositData);
+            Span<byte> bytes = MemoryMarshal.Cast<UInt256, byte>(MemoryMarshal.CreateSpan(ref root, 1));
+            return new Root(bytes);
+        }
+        
+        Root ICryptographyService.HashTreeRoot(List<ItemOrRoot<DepositData>> depositData)
         {
             Merkle.Ize(out UInt256 root, depositData);
             Span<byte> bytes = MemoryMarshal.Cast<UInt256, byte>(MemoryMarshal.CreateSpan(ref root, 1));

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,13 +14,20 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-namespace Nethermind.Core2.Configuration
+using Nethermind.Core2.Crypto;
+
+namespace Nethermind.Core2.Containers
 {
-    public class StateListLengths
+    public struct ItemOrRoot<T> where T : class 
     {
-        public ulong EpochsPerHistoricalVector { get; set; }
-        public ulong EpochsPerSlashingsVector { get; set; }
-        public ulong HistoricalRootsLimit { get; set; }
-        public ulong ValidatorRegistryLimit { get; set; }
+        public ItemOrRoot(T item)
+        {
+            Item = item;
+            Root = null;
+        }
+        
+        public T Item { get; set; }
+
+        public Root? Root { get; set; }
     }
 }

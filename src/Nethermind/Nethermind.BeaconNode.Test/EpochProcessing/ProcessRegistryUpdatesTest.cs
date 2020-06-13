@@ -39,7 +39,7 @@ namespace Nethermind.BeaconNode.Test.EpochProcessing
             ChainConstants chainConstants = testServiceProvider.GetService<ChainConstants>();
             TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
 
-            BeaconChainUtility beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
+            IBeaconChainUtility beaconChainUtility = testServiceProvider.GetService<IBeaconChainUtility>();
             BeaconStateAccessor beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
 
             int index = 0;
@@ -123,7 +123,7 @@ namespace Nethermind.BeaconNode.Test.EpochProcessing
             GweiValues gweiValues = testServiceProvider.GetService<IOptions<GweiValues>>().Value;
             TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
 
-            BeaconChainUtility beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
+            IBeaconChainUtility beaconChainUtility = testServiceProvider.GetService<IBeaconChainUtility>();
             BeaconStateAccessor beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
 
             int index = 0;
@@ -158,7 +158,7 @@ namespace Nethermind.BeaconNode.Test.EpochProcessing
             ChainConstants chainConstants = testServiceProvider.GetService<ChainConstants>();
             GweiValues gweiValues = testServiceProvider.GetService<IOptions<GweiValues>>().Value;
 
-            BeaconChainUtility beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
+            IBeaconChainUtility beaconChainUtility = testServiceProvider.GetService<IBeaconChainUtility>();
             BeaconStateAccessor beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
 
             Validator validator = state.Validators[index];

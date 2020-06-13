@@ -31,7 +31,7 @@ namespace Nethermind.BeaconNode
 {
     public class BeaconStateTransition
     {
-        private readonly BeaconChainUtility _beaconChainUtility;
+        private readonly IBeaconChainUtility _beaconChainUtility;
         private readonly BeaconStateAccessor _beaconStateAccessor;
         private readonly BeaconStateMutator _beaconStateMutator;
         private readonly ChainConstants _chainConstants;
@@ -53,7 +53,7 @@ namespace Nethermind.BeaconNode
             IOptionsMonitor<MaxOperationsPerBlock> maxOperationsPerBlockOptions,
             IOptionsMonitor<SignatureDomains> signatureDomainOptions,
             ICryptographyService cryptographyService,
-            BeaconChainUtility beaconChainUtility,
+            IBeaconChainUtility beaconChainUtility,
             BeaconStateAccessor beaconStateAccessor,
             BeaconStateMutator beaconStateMutator)
         {

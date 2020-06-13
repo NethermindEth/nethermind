@@ -14,32 +14,29 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Collections;
-using System.Linq;
-using Nethermind.Core2;
-using Nethermind.Core2.Containers;
-using Nethermind.Core2.Crypto;
-using Nethermind.Core2.Types;
-using Nethermind.Dirichlet.Numerics;
-using Chunk = Nethermind.Dirichlet.Numerics.UInt256;
+using System;
+using Microsoft.Extensions.Options;
 
-namespace Nethermind.Ssz
+namespace Nethermind.Core2.Configuration
 {
-    public static partial class Merkle
+    public class StaticOptionsMonitor<T> : IOptionsMonitor<T>
+        where T : class, new()
     {
-        public static void IzeBitvector(out UInt256 root, BitArray value)
+        public StaticOptionsMonitor(T currentValue)
         {
-            Merkleizer merkleizer = new Merkleizer(0);
-            merkleizer.FeedBitvector(value);
-            merkleizer.CalculateRoot(out root);
-        }
-        
-        public static void IzeBitlist(out UInt256 root, BitArray value, ulong maximumBitlistLength)
-        {
-            Merkleizer merkleizer = new Merkleizer(0);
-            merkleizer.FeedBitlist(value, maximumBitlistLength);
-            merkleizer.CalculateRoot(out root);
+            CurrentValue = currentValue;
         }
 
+        public T CurrentValue { get; }
+
+        public T Get(string name)
+        {
+            return CurrentValue;
+        }
+
+        public IDisposable OnChange(Action<T, string> listener)
+        {
+            return EmptyDisposable.Instance;
+        }
     }
 }

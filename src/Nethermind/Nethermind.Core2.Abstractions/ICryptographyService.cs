@@ -36,8 +36,15 @@ namespace Nethermind.Core2
         Root HashTreeRoot(BeaconBlockHeader beaconBlockHeader);
         Root HashTreeRoot(BeaconState beaconState);
         Root HashTreeRoot(DepositData depositData);
+
+        public Root HashTreeRoot(ItemOrRoot<DepositData> depositData)
+        {
+            return depositData.Root ?? (depositData.Root = HashTreeRoot(depositData.Item));
+        }
+        
         Root HashTreeRoot(DepositMessage depositMessage);
-        Root HashTreeRoot(IList<DepositData> depositData);
+        Root HashTreeRoot(List<ItemOrRoot<DepositData>> depositData);
+        Root HashTreeRoot(List<DepositData> depositData);
         Root HashTreeRoot(Epoch epoch);
         Root HashTreeRoot(HistoricalBatch historicalBatch);
         Root HashTreeRoot(SigningRoot signingRoot);

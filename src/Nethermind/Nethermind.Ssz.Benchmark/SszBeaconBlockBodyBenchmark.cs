@@ -21,6 +21,7 @@ using Nethermind.Core2;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
+using Nethermind.Merkleization;
 
 namespace Nethermind.Ssz.Benchmarks
 {
@@ -60,7 +61,7 @@ namespace Nethermind.Ssz.Benchmarks
                 TestSig1);
 
             Deposit deposit = new Deposit(
-                new Bytes32[Ssz.DepositContractTreeDepth + 1],
+                new Bytes32[Merkle.DepositContractTreeDepth + 1],
                 depositData);
 
             IndexedAttestation indexedAttestation1 = new IndexedAttestation(

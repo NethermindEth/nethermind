@@ -29,7 +29,7 @@ namespace Nethermind.BeaconNode
             services.AddSingleton<INodeStart, NodeStart>();
             services.AddSingleton<GenesisChainStart>();
             services.AddSingleton<IEth1Genesis>(provider => provider.GetRequiredService<GenesisChainStart>());
-            services.AddSingleton<BeaconChainUtility>();
+            services.AddSingleton<IBeaconChainUtility, BeaconChainUtility>();
             services.AddSingleton<BeaconStateAccessor>();
             services.AddSingleton<BeaconStateTransition>();
             services.AddSingleton<BeaconStateMutator>();

@@ -23,16 +23,15 @@ using Nethermind.Core2;
 using Nethermind.Core2.Configuration;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
-using Nethermind.Core2.Cryptography.Ssz;
 using Nethermind.Core2.Types;
 namespace Nethermind.BeaconNode.Test.Helpers
 {
     public static class TestDeposit
     {
-        public static (Deposit, Root) BuildDeposit(IServiceProvider testServiceProvider, BeaconState? state, IList<DepositData> depositDataList, BlsPublicKey publicKey, byte[] privateKey, Gwei amount, Bytes32 withdrawalCredentials, bool signed)
+        public static (Deposit, Root) BuildDeposit(IServiceProvider testServiceProvider, BeaconState? state, List<DepositData> depositDataList, BlsPublicKey publicKey, byte[] privateKey, Gwei amount, Bytes32 withdrawalCredentials, bool signed)
         {
             ChainConstants chainConstants = testServiceProvider.GetService<ChainConstants>();
-            BeaconChainUtility beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
+            IBeaconChainUtility beaconChainUtility = testServiceProvider.GetService<IBeaconChainUtility>();
             ICryptographyService cryptographyService = testServiceProvider.GetService<ICryptographyService>();
 
             DepositData depositData = BuildDepositData(testServiceProvider, publicKey, privateKey, amount, withdrawalCredentials, state, signed);
@@ -49,10 +48,16 @@ namespace Nethermind.BeaconNode.Test.Helpers
             {
                 indexBytes.Slice(0, 8).Reverse();
             }
+            
             Bytes32 indexHash = new Bytes32(indexBytes);
             proof.Add(indexHash);
             Bytes32 leaf = new Bytes32(cryptographyService.HashTreeRoot(depositData).AsSpan());
             bool checkValid = beaconChainUtility.IsValidMerkleBranch(leaf, proof, chainConstants.DepositContractTreeDepth + 1, (ulong)index, root);
+            if (!checkValid)
+            {
+                throw new Exception($"Invalid Merkle branch for deposit for validator public key {depositData.PublicKey}");
+            }
+            
             Deposit deposit = new Deposit(proof, depositData);
             return (deposit, root);
         }
@@ -75,7 +80,7 @@ namespace Nethermind.BeaconNode.Test.Helpers
             TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
             MaxOperationsPerBlock maxOperationsPerBlock = testServiceProvider.GetService<IOptions<MaxOperationsPerBlock>>().Value;
 
-            BeaconChainUtility beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
+            IBeaconChainUtility beaconChainUtility = testServiceProvider.GetService<IBeaconChainUtility>();
             BeaconStateAccessor beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
             BeaconStateTransition beaconStateTransition = testServiceProvider.GetService<BeaconStateTransition>();
 
@@ -116,7 +121,7 @@ namespace Nethermind.BeaconNode.Test.Helpers
             InitialValues initialValues = testServiceProvider.GetService<IOptions<InitialValues>>().Value;
             TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
 
-            BeaconChainUtility beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
+            IBeaconChainUtility beaconChainUtility = testServiceProvider.GetService<IBeaconChainUtility>();
             BeaconStateAccessor beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
 
             byte[][] privateKeys = TestKeys.PrivateKeys(timeParameters).ToArray();
@@ -145,7 +150,7 @@ namespace Nethermind.BeaconNode.Test.Helpers
         public static void SignDepositData(IServiceProvider testServiceProvider, DepositData depositData, byte[] privateKey, BeaconState? state)
         {
             SignatureDomains signatureDomains = testServiceProvider.GetService<IOptions<SignatureDomains>>().Value;
-            BeaconChainUtility beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
+            IBeaconChainUtility beaconChainUtility = testServiceProvider.GetService<IBeaconChainUtility>();
             ICryptographyService cryptographyService = testServiceProvider.GetService<ICryptographyService>();
 
             Domain domain;

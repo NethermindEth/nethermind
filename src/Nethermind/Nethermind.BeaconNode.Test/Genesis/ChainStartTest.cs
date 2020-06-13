@@ -67,7 +67,7 @@ namespace Nethermind.BeaconNode.Test.Genesis
 
             LoggerFactory loggerFactory = new LoggerFactory(new[]
             {
-                new ConsoleLoggerProvider(TestOptionsMonitor.Create(new ConsoleLoggerOptions()))
+                new ConsoleLoggerProvider(Core2.Configuration.Static.OptionsMonitor<ConsoleLoggerOptions>())
             });
 
             ICryptographyService cryptographyService = testServiceProvider.GetService<ICryptographyService>();
