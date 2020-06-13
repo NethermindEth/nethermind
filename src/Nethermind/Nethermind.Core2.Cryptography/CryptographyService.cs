@@ -255,7 +255,7 @@ namespace Nethermind.Core2.Cryptography
             return new Root(bytes);
         }
         
-        Root ICryptographyService.HashTreeRoot(List<ItemOrRoot<DepositData>> depositData)
+        Root ICryptographyService.HashTreeRoot(List<Ref<DepositData>> depositData)
         {
             Merkle.Ize(out UInt256 root, depositData);
             Span<byte> bytes = MemoryMarshal.Cast<UInt256, byte>(MemoryMarshal.CreateSpan(ref root, 1));

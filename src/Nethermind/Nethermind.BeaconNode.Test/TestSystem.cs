@@ -173,7 +173,7 @@ namespace Nethermind.BeaconNode.Test
                 throw new NotImplementedException();
             }
 
-            public Root HashTreeRoot(List<ItemOrRoot<DepositData>> depositData)
+            public Root HashTreeRoot(List<Ref<DepositData>> depositData)
             {
                 throw new NotImplementedException();
             }

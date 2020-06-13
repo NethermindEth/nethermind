@@ -453,6 +453,25 @@ namespace Nethermind.Merkleization
             Merkle.Ize(out _chunks[^1], value);
             Feed(_chunks[^1]);
         }
+        
+        public void Feed(Ref<DepositData> value)
+        {
+            if (value.Root is null)
+            {
+                if (value.Item == null)
+                {
+                    return;
+                }
+                
+                Merkle.Ize(out _chunks[^1], value);
+                value.Root = new Root(_chunks[^1]);
+                Feed(_chunks[^1]);
+            }
+            else
+            {
+                Feed(value.Root);
+            }
+        }
 
         public static UInt256 GetSubroot(DepositData depositData)
         {
@@ -467,7 +486,7 @@ namespace Nethermind.Merkleization
         //     Feed(_chunks[^1]);
         // }
 
-        public void Feed(List<ItemOrRoot<DepositData>> value, ulong maxLength)
+        public void Feed(List<Ref<DepositData>> value, ulong maxLength)
         {
             Merkle.Ize(out _chunks[^1], value, maxLength);
             Merkle.MixIn(ref _chunks[^1], value.Count);

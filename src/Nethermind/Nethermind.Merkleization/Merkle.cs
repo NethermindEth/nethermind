@@ -443,7 +443,7 @@ namespace Nethermind.Merkleization
             merkleizer.CalculateRoot(out root);
         }
 
-        public static void Ize(out UInt256 root, List<ItemOrRoot<DepositData>> value, ulong limit)
+        public static void Ize(out UInt256 root, List<Ref<DepositData>> value, ulong limit)
         {
             int length = value.Count;
             if (limit == 0 && length == 1)

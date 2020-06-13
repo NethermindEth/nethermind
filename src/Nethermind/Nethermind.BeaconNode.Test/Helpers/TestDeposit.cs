@@ -58,7 +58,7 @@ namespace Nethermind.BeaconNode.Test.Helpers
                 throw new Exception($"Invalid Merkle branch for deposit for validator public key {depositData.PublicKey}");
             }
             
-            Deposit deposit = new Deposit(proof, depositData);
+            Deposit deposit = new Deposit(proof, depositData.OrRoot);
             return (deposit, root);
         }
 

@@ -18,9 +18,9 @@ using Nethermind.Core2.Crypto;
 
 namespace Nethermind.Core2.Containers
 {
-    public struct ItemOrRoot<T> where T : class 
+    public struct Ref<T> where T : class 
     {
-        public ItemOrRoot(T item)
+        public Ref(T item)
         {
             Item = item;
             Root = null;
@@ -29,5 +29,8 @@ namespace Nethermind.Core2.Containers
         public T Item { get; set; }
 
         public Root? Root { get; set; }
+        
+        // for Item we can describe the location -> Memory / DB / other?
+        // ChangeLocation(TargetLocation) -> this way we can move from memory to the database and back - use object or ssz format for each location
     }
 }

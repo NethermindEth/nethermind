@@ -417,30 +417,31 @@ namespace Nethermind.BeaconNode
                 state.Eth1Data.DepositRoot);
             if (!isValid)
             {
-                throw new Exception($"Invalid Merkle branch for deposit for validator public key {deposit.Data.PublicKey}");
+                throw new Exception($"Invalid Merkle branch for deposit for validator public key {deposit.Data.Item.PublicKey}");
             }
 
             // Deposits must be processed in order
             state.IncreaseEth1DepositIndex();
 
-            BlsPublicKey publicKey = deposit.Data.PublicKey;
-            Gwei amount = deposit.Data.Amount;
+            DepositData depositData = deposit.Data.Item;
+            BlsPublicKey publicKey = depositData.PublicKey;
+            Gwei amount = depositData.Amount;
             List<BlsPublicKey> validatorPublicKeys = state.Validators.Select(x => x.PublicKey).ToList();
 
             if (!validatorPublicKeys.Contains(publicKey))
             {
                 // Verify the deposit signature (proof of possession) which is not checked by the deposit contract
                 DepositMessage depositMessage = new DepositMessage(
-                    deposit.Data.PublicKey,
-                    deposit.Data.WithdrawalCredentials,
-                    deposit.Data.Amount);
+                    depositData.PublicKey,
+                    depositData.WithdrawalCredentials,
+                    depositData.Amount);
                 // Fork-agnostic domain since deposits are valid across forks
                 Domain domain = _beaconChainUtility.ComputeDomain(_signatureDomainOptions.CurrentValue.Deposit);
 
                 Root depositMessageRoot = _cryptographyService.HashTreeRoot(depositMessage);
                 Root signingRoot = _beaconChainUtility.ComputeSigningRoot(depositMessageRoot, domain);
 
-                if (!_cryptographyService.BlsVerify(publicKey, signingRoot, deposit.Data.Signature))
+                if (!_cryptographyService.BlsVerify(publicKey, signingRoot, depositData.Signature))
                 {
                     return;
                 }
@@ -448,7 +449,7 @@ namespace Nethermind.BeaconNode
                 Gwei effectiveBalance = Gwei.Min(amount - (amount % gweiValues.EffectiveBalanceIncrement), gweiValues.MaximumEffectiveBalance);
                 Validator newValidator = new Validator(
                     publicKey,
-                    deposit.Data.WithdrawalCredentials,
+                    depositData.WithdrawalCredentials,
                     effectiveBalance,
                     false,
                     _chainConstants.FarFutureEpoch,

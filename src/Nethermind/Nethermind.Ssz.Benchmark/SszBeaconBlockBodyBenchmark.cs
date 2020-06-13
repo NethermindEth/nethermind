@@ -62,7 +62,7 @@ namespace Nethermind.Ssz.Benchmarks
 
             Deposit deposit = new Deposit(
                 new Bytes32[Merkle.DepositContractTreeDepth + 1],
-                depositData);
+                depositData.OrRoot);
 
             IndexedAttestation indexedAttestation1 = new IndexedAttestation(
                 new ValidatorIndex[8],
@@ -113,6 +113,13 @@ namespace Nethermind.Ssz.Benchmarks
         [Benchmark(Baseline = true)]
         public void Current()
         {
+            Ssz.Encode(_encoded, _body);
+        }
+        
+        [Benchmark(Baseline = true)]
+        public void Cortex()
+        {
+            
             Ssz.Encode(_encoded, _body);
         }
     }

@@ -27,19 +27,19 @@ namespace Nethermind.Core2.Containers
     {
         private readonly List<Bytes32> _proof;
 
-        public Deposit(IEnumerable<Bytes32> proof, DepositData data)
+        public Deposit(IEnumerable<Bytes32> proof, Ref<DepositData> data)
         {
             _proof = new List<Bytes32>(proof);
             Data = data;
         }
 
-        public DepositData Data { get; }
+        public Ref<DepositData> Data { get; }
 
         public IReadOnlyList<Bytes32> Proof => _proof.AsReadOnly();
 
         public override string ToString()
         {           
-            return $"I:{Proof[^1].ToString().Substring(0, 12)} P:{Data.PublicKey.ToString().Substring(0, 12)} A:{Data.Amount}";
+            return $"I:{Proof[^1].ToString().Substring(0, 12)} P:{Data.Item.PublicKey.ToString().Substring(0, 12)} A:{Data.Item.Amount}";
         }
         
         public bool Equals(Deposit other)

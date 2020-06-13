@@ -162,7 +162,7 @@ namespace Nethermind.Core2.Cryptography
                 miscellaneousParameters.MaximumValidatorsPerCommittee);
         }
 
-        public Root HashTreeRoot(List<ItemOrRoot<DepositData>> depositData)
+        public Root HashTreeRoot(List<Ref<DepositData>> depositData)
         {
             throw new InvalidOperationException();
             // return depositData.HashTreeRoot(_chainConstants.MaximumDepositContracts);

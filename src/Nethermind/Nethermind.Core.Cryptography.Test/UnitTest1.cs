@@ -56,14 +56,14 @@ namespace Nethermind.Core.Cryptography.Test
                 Default.Options<StateListLengths>(),
                 Default.Options<MaxOperationsPerBlock>());
             
-            List<ItemOrRoot<DepositData>> depositDataOrRoots = new List<ItemOrRoot<DepositData>>();
-            depositDataOrRoots.Add(new ItemOrRoot<DepositData>(new DepositData(BlsPublicKey.Zero, Bytes32.Zero, Gwei.One, BlsSignature.Zero)));
-            depositDataOrRoots.Add(new ItemOrRoot<DepositData>(new DepositData(BlsPublicKey.Zero, Bytes32.Zero, Gwei.One, BlsSignature.Zero)));
+            List<Ref<DepositData>> depositDataOrRoots = new List<Ref<DepositData>>();
+            depositDataOrRoots.Add(new Ref<DepositData>(new DepositData(BlsPublicKey.Zero, Bytes32.Zero, Gwei.One, BlsSignature.Zero)));
+            depositDataOrRoots.Add(new Ref<DepositData>(new DepositData(BlsPublicKey.Zero, Bytes32.Zero, Gwei.One, BlsSignature.Zero)));
             Root a = service.HashTreeRoot(depositDataOrRoots);
             
-            List<ItemOrRoot<DepositData>> depositData = new List<ItemOrRoot<DepositData>>();
-            depositData.Add(new ItemOrRoot<DepositData>(new DepositData(BlsPublicKey.Zero, Bytes32.Zero, Gwei.One, BlsSignature.Zero)));
-            depositData.Add(new ItemOrRoot<DepositData>(new DepositData(BlsPublicKey.Zero, Bytes32.Zero, Gwei.One, BlsSignature.Zero)));
+            List<Ref<DepositData>> depositData = new List<Ref<DepositData>>();
+            depositData.Add(new Ref<DepositData>(new DepositData(BlsPublicKey.Zero, Bytes32.Zero, Gwei.One, BlsSignature.Zero)));
+            depositData.Add(new Ref<DepositData>(new DepositData(BlsPublicKey.Zero, Bytes32.Zero, Gwei.One, BlsSignature.Zero)));
             Root b = service.HashTreeRoot(depositData);
             
             Assert.AreEqual(a, b);

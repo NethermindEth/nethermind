@@ -156,7 +156,7 @@ namespace Nethermind.Merkleization
             merkleizer.CalculateRoot(out root);
         }
         
-        public static void Ize(out UInt256 root, ItemOrRoot<DepositData> container)
+        public static void Ize(out UInt256 root, Ref<DepositData> container)
         {
             if (container.Root is null)
             {
@@ -169,7 +169,7 @@ namespace Nethermind.Merkleization
             }
         }
 
-        public static void Ize(out UInt256 root, List<ItemOrRoot<DepositData>> value)
+        public static void Ize(out UInt256 root, List<Ref<DepositData>> value)
         {
             Merkleizer merkleizer = new Merkleizer(0);
             merkleizer.Feed(value, Merkle.MaximumDepositContracts);

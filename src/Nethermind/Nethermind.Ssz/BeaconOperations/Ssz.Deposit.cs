@@ -78,7 +78,7 @@ namespace Nethermind.Ssz
         {
             if (span.Length != Ssz.DepositLength()) ThrowTargetLength<Deposit>(span.Length, Ssz.DepositLength());
             Encode(span.Slice(0, Ssz.DepositLengthOfProof()), container.Proof);
-            Encode(span.Slice(Ssz.DepositLengthOfProof()), container.Data);
+            Encode(span.Slice(Ssz.DepositLengthOfProof()), container.Data.Item);
         }
 
         public static Deposit DecodeDeposit(ReadOnlySpan<byte> span)
@@ -86,7 +86,7 @@ namespace Nethermind.Ssz
             if (span.Length != Ssz.DepositLength()) ThrowSourceLength<Deposit>(span.Length, Ssz.DepositLength());
             Bytes32[] proof = DecodeBytes32s(span.Slice(0, Ssz.DepositLengthOfProof()));
             DepositData data = DecodeDepositData(span.Slice(Ssz.DepositLengthOfProof()));
-            Deposit deposit = new Deposit(proof, data);
+            Deposit deposit = new Deposit(proof, data.OrRoot);
             return deposit;
         }
     }

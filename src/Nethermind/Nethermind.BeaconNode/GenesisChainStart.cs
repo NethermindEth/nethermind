@@ -99,7 +99,7 @@ namespace Nethermind.BeaconNode
                 stateListLengths.EpochsPerSlashingsVector, _chainConstants.JustificationBitsLength);
 
             // Process deposits
-            List<DepositData> depositDataList = new List<DepositData>();
+            List<Ref<DepositData>> depositDataList = new List<Ref<DepositData>>();
             foreach (Deposit deposit in deposits)
             {
                 depositDataList.Add(deposit.Data);
