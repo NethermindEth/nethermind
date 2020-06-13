@@ -46,11 +46,15 @@ namespace Nethermind.Runner.Ethereum.Steps
         public Task Execute(CancellationToken _)
         {
             MemoryHintMan memoryHintMan = new MemoryHintMan(_context.LogManager);
-            uint cpuCount = (uint)Environment.ProcessorCount;
+            uint cpuCount = (uint) Environment.ProcessorCount;
             if (_initConfig.MemoryHint.HasValue)
             {
-                memoryHintMan.UpdateDbConfig((ulong)_initConfig.MemoryHint.Value, cpuCount, _syncConfig, _dbConfig);
-                memoryHintMan.UpdateNetworkConfig((ulong)_initConfig.MemoryHint.Value, cpuCount, _networkConfig);
+                if (_initConfig.DiagnosticMode != DiagnosticMode.MemDb)
+                {
+                    memoryHintMan.UpdateDbConfig((ulong) _initConfig.MemoryHint.Value, cpuCount, _syncConfig, _dbConfig);
+                }
+
+                memoryHintMan.UpdateNetworkConfig((ulong) _initConfig.MemoryHint.Value, cpuCount, _networkConfig);
             }
 
             return Task.CompletedTask;
