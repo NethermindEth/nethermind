@@ -183,24 +183,7 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
                 depositDataList.Add(depositData);
                 //int depositDataLength = (ulong) 1 << _chainConstants.DepositContractTreeDepth;
                 Root root = _cryptographyService.HashTreeRoot(depositDataList);
-                IEnumerable<Bytes32> allLeaves = depositDataList.Select(x =>
-                    new Bytes32(_cryptographyService.HashTreeRoot((DepositData) x).AsSpan()));
-                for (int i = 0; i < depositDataList.Count; i++)
-                {
-                    
-                }
-                
-                IList<IList<Bytes32>> tree = CalculateMerkleTreeFromLeaves(allLeaves);
-                MemMerkleTreeStore memMerkleTreeStore = new MemMerkleTreeStore(); 
-                MerkleTree merkleTree = new ShaMerkleTree(memMerkleTreeStore);
-                foreach (Bytes32 bytes32 in allLeaves)
-                {
-                    merkleTree.Insert(bytes32);
-                }
-
-
-                IList<Bytes32> merkleProof = GetMerkleProof(tree, index, 32);
-                List<Bytes32> proof = new List<Bytes32>(merkleProof);
+                var proof = CalculateProof(depositDataList, index);
 
                 byte[] indexBytes = new byte[32];
                 BinaryPrimitives.WriteInt32LittleEndian(indexBytes, index + 1);
@@ -253,6 +236,31 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
                     eth1GenesisData.Deposits.Count, null);
 
             return Task.FromResult(eth1GenesisData);
+        }
+        
+        /// <summary>
+        /// TODO: Optimize it a lot
+        /// </summary>
+        /// <param name="depositDataList"></param>
+        /// <param name="index"></param>
+        /// <returns></returns>
+        private List<Bytes32> CalculateProof(List<DepositData> depositDataList, int index)
+        {
+            IEnumerable<Bytes32> allLeaves = depositDataList.Select(x =>
+                new Bytes32(_cryptographyService.HashTreeRoot(x).AsSpan()));
+            
+            
+            MemMerkleTreeStore memMerkleTreeStore = new MemMerkleTreeStore(); 
+            MerkleTree merkleTree = new ShaMerkleTree(memMerkleTreeStore);
+            foreach (Bytes32 bytes32 in allLeaves)
+            {
+                merkleTree.Insert(bytes32);
+            }
+
+            IList<IList<Bytes32>> tree = CalculateMerkleTreeFromLeaves(allLeaves);
+            IList<Bytes32> merkleProof = GetMerkleProof(tree, index, 32);
+            List<Bytes32> proof = new List<Bytes32>(merkleProof);
+            return proof;
         }
 
         // why not using existing operations? - need to review
