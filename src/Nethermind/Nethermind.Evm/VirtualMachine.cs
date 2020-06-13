@@ -77,7 +77,7 @@ namespace Nethermind.Evm
         private readonly Stack<EvmState> _stateStack = new Stack<EvmState>();
         private readonly IStorageProvider _storage;
         private Address _parityTouchBugAccount;
-        private Dictionary<Address, IPrecompiledContract> _precompiles;
+        private Dictionary<Address, CodeInfo> _precompiles { get; set; }
         private byte[] _returnDataBuffer = new byte[0];
         private ITxTracer _txTracer;
 
@@ -368,8 +368,13 @@ namespace Nethermind.Evm
             }
         }
 
-        public CodeInfo GetCachedCodeInfo(Address codeSource)
+        public CodeInfo GetCachedCodeInfo(Address codeSource, IReleaseSpec releaseSpec)
         {
+            if (codeSource.IsPrecompiled(releaseSpec))
+            {
+                return _precompiles[codeSource];
+            }
+            
             Keccak codeHash = _state.GetCodeHash(codeSource);
             CodeInfo cachedCodeInfo = _codeCache.Get(codeHash);
             if (cachedCodeInfo == null)
@@ -394,17 +399,17 @@ namespace Nethermind.Evm
 
         private void InitializePrecompiledContracts()
         {
-            _precompiles = new Dictionary<Address, IPrecompiledContract>
+            _precompiles = new Dictionary<Address, CodeInfo>
             {
-                [EcRecoverPrecompiledContract.Instance.Address] = EcRecoverPrecompiledContract.Instance,
-                [Sha256PrecompiledContract.Instance.Address] = Sha256PrecompiledContract.Instance,
-                [Ripemd160PrecompiledContract.Instance.Address] = Ripemd160PrecompiledContract.Instance,
-                [IdentityPrecompiledContract.Instance.Address] = IdentityPrecompiledContract.Instance,
-                [Bn128AddPrecompiledContract.Instance.Address] = Bn128AddPrecompiledContract.Instance,
-                [Bn128MulPrecompiledContract.Instance.Address] = Bn128MulPrecompiledContract.Instance,
-                [Bn128PairingPrecompiledContract.Instance.Address] = Bn128PairingPrecompiledContract.Instance,
-                [ModExpPrecompiledContract.Instance.Address] = ModExpPrecompiledContract.Instance,
-                [Blake2BPrecompiledContract.Instance.Address] = Blake2BPrecompiledContract.Instance,
+                [EcRecoverPrecompiledContract.Instance.Address] = new CodeInfo(EcRecoverPrecompiledContract.Instance),
+                [Sha256PrecompiledContract.Instance.Address] = new CodeInfo(Sha256PrecompiledContract.Instance),
+                [Ripemd160PrecompiledContract.Instance.Address] = new CodeInfo(Ripemd160PrecompiledContract.Instance),
+                [IdentityPrecompiledContract.Instance.Address] = new CodeInfo(IdentityPrecompiledContract.Instance),
+                [Bn128AddPrecompiledContract.Instance.Address] = new CodeInfo(Bn128AddPrecompiledContract.Instance),
+                [Bn128MulPrecompiledContract.Instance.Address] = new CodeInfo(Bn128MulPrecompiledContract.Instance),
+                [Bn128PairingPrecompiledContract.Instance.Address] = new CodeInfo(Bn128PairingPrecompiledContract.Instance),
+                [ModExpPrecompiledContract.Instance.Address] = new CodeInfo(ModExpPrecompiledContract.Instance),
+                [Blake2BPrecompiledContract.Instance.Address] = new CodeInfo(Blake2BPrecompiledContract.Instance),
             };
         }
 
@@ -430,7 +435,7 @@ namespace Nethermind.Evm
             UInt256 transferValue = state.Env.TransferValue;
             long gasAvailable = state.GasAvailable;
 
-            IPrecompiledContract precompile = _precompiles[state.Env.CodeInfo.PrecompileAddress];
+            IPrecompiledContract precompile = state.Env.CodeInfo.PrecompiledContract;
             long baseGasCost = precompile.BaseGasCost(spec);
             long dataGasCost = precompile.DataGasCost(callData, spec);
 
@@ -516,7 +521,7 @@ namespace Nethermind.Evm
                 }
             }
 
-            if (vmState.Env.CodeInfo.MachineCode == null || vmState.Env.CodeInfo.MachineCode.Length == 0)
+            if (vmState.Env.CodeInfo.MachineCode.Length == 0)
             {
                 return CallResult.Empty;
             }
@@ -1328,9 +1333,9 @@ namespace Nethermind.Evm
                         }
 
                         Address address = stack.PopAddress();
-                        byte[] accountCode = GetCachedCodeInfo(address)?.MachineCode;
-                        BigInteger codeSize = accountCode?.Length ?? BigInteger.Zero;
-                        stack.PushUInt(ref codeSize);
+                        byte[] accountCode = GetCachedCodeInfo(address, spec).MachineCode;
+                        UInt256 codeSize = (UInt256)accountCode.Length;
+                        stack.PushUInt256(ref codeSize);
                         break;
                     }
                     case Instruction.EXTCODECOPY:
@@ -1347,7 +1352,7 @@ namespace Nethermind.Evm
                         }
 
                         UpdateMemoryCost(ref dest, length);
-                        byte[] externalCode = GetCachedCodeInfo(address)?.MachineCode;
+                        byte[] externalCode = GetCachedCodeInfo(address, spec).MachineCode;
                         ZeroPaddedSpan callDataSlice = externalCode.SliceWithZeroPadding(src, (int) length);
                         vmState.Memory.Save(ref dest, callDataSlice);
                         if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long) dest, callDataSlice.ToArray());
@@ -2108,7 +2113,7 @@ namespace Nethermind.Evm
                         int storageSnapshot = _storage.TakeSnapshot();
 
                         bool accountExists = _state.AccountExists(contractAddress);
-                        if (accountExists && ((GetCachedCodeInfo(contractAddress)?.MachineCode?.Length ?? 0) != 0 || _state.GetNonce(contractAddress) != 0))
+                        if (accountExists && (GetCachedCodeInfo(contractAddress, spec).MachineCode.Length != 0 || _state.GetNonce(contractAddress) != 0))
                         {
                             /* we get the snapshot before this as there is a possibility with that we will touch an empty account and remove it even if the REVERT operation follows */
                             if (isTrace) _logger.Trace($"Contract collision at {contractAddress}");
@@ -2142,7 +2147,6 @@ namespace Nethermind.Evm
                             callGas,
                             callEnv,
                             instruction == Instruction.CREATE2 ? ExecutionType.Create2 : ExecutionType.Create,
-                            false,
                             false,
                             stateSnapshot,
                             storageSnapshot,
@@ -2208,8 +2212,7 @@ namespace Nethermind.Evm
                             EndInstructionTraceError(StaticCallViolationErrorText);
                             return CallResult.StaticCallViolationException;
                         }
-
-                        bool isPrecompile = codeSource.IsPrecompiled(spec);
+                        
                         Address sender = instruction == Instruction.DELEGATECALL ? env.Sender : env.ExecutingAccount;
                         Address target = instruction == Instruction.CALL || instruction == Instruction.STATICCALL ? codeSource : env.ExecutingAccount;
 
@@ -2309,7 +2312,7 @@ namespace Nethermind.Evm
                         callEnv.TransferValue = transferValue;
                         callEnv.Value = callValue;
                         callEnv.InputData = callData;
-                        callEnv.CodeInfo = isPrecompile ? new CodeInfo(codeSource) : GetCachedCodeInfo(codeSource);
+                        callEnv.CodeInfo = GetCachedCodeInfo(codeSource, spec);
 
                         if (isTrace) _logger.Trace($"Tx call gas {gasLimitUl}");
                         if (outputLength == 0)
@@ -2345,7 +2348,6 @@ namespace Nethermind.Evm
                             gasLimitUl,
                             callEnv,
                             executionType,
-                            isPrecompile,
                             false,
                             stateSnapshot,
                             storageSnapshot,
