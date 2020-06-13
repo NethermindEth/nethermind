@@ -14,12 +14,16 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Threading.Tasks;
+using System.IO.Abstractions;
+using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Processing;
+using Nethermind.Logging;
+using Nethermind.TxPool;
 
-namespace Nethermind.TxPool.Analytics
+namespace Nethermind.Blockchain.Analytics
 {
-    public interface IDataPublisher
+    public interface IAnalyticsPluginLoader
     {
-        Task PublishAsync<T>(T data) where T : class;
+        IAnalyticsPlugin Init(IFileSystem fileSystem, ITxPool txPool, IBlockFinder blockFinder,IBlockProcessor blockProcessor, IDataPublisher dataPublisher, ILogManager logManager);
     }
 }

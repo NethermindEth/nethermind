@@ -71,8 +71,8 @@ namespace Nethermind.Evm
         private List<LogEntry> _logs;
         public int StackHead = 0;
 
-        public EvmState(long gasAvailable, ExecutionEnvironment env, ExecutionType executionType, bool isPrecompile, bool isTopLevel, bool isContinuation)
-            : this(gasAvailable, env, executionType, isPrecompile, isTopLevel, -1, -1, 0L, 0L, false, isContinuation, false)
+        public EvmState(long gasAvailable, ExecutionEnvironment env, ExecutionType executionType, bool isTopLevel, bool isContinuation)
+            : this(gasAvailable, env, executionType, isTopLevel, -1, -1, 0L, 0L, false, isContinuation, false)
         {
             GasAvailable = gasAvailable;
             Env = env;
@@ -82,7 +82,6 @@ namespace Nethermind.Evm
             long gasAvailable,
             ExecutionEnvironment env,
             ExecutionType executionType,
-            bool isPrecompile,
             bool isTopLevel,
             int stateSnapshot,
             int storageSnapshot,
@@ -94,7 +93,6 @@ namespace Nethermind.Evm
         {
             GasAvailable = gasAvailable;
             ExecutionType = executionType;
-            IsPrecompile = isPrecompile;
             IsTopLevel = isTopLevel;
             StateSnapshot = stateSnapshot;
             StorageSnapshot = storageSnapshot;
@@ -136,7 +134,7 @@ namespace Nethermind.Evm
         public long GasAvailable { get; set; }
         public int ProgramCounter { get; set; }
         internal ExecutionType ExecutionType { get; }
-        internal bool IsPrecompile { get; }
+        internal bool IsPrecompile => Env.CodeInfo.IsPrecompile;
         public bool IsTopLevel { get; }
         internal long OutputDestination { get; }
         internal long OutputLength { get; }

@@ -48,7 +48,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             : base(sealEngineType)
         {
         }
-
+ 
         public static Builder ForTest(SealEngineType sealEngineType)
         {
             return new Builder(sealEngineType);

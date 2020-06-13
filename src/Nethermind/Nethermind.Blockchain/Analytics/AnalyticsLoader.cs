@@ -1,6 +1,6 @@
 using System;
 
-namespace Nethermind.TxPool.Analytics
+namespace Nethermind.Blockchain.Analytics
 {
     [AttributeUsage(AttributeTargets.Class)]
     public class AnalyticsLoaderAttribute : Attribute
