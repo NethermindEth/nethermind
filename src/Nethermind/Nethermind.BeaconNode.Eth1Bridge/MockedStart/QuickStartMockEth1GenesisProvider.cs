@@ -32,6 +32,7 @@ using Nethermind.Core2.Eth1;
 using Nethermind.Core2.Types;
 using Nethermind.Cryptography;
 using Nethermind.Logging.Microsoft;
+using Nethermind.Ssz;
 
 namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
 {
@@ -185,7 +186,18 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
                 Root root = _cryptographyService.HashTreeRoot(depositDataList);
                 IEnumerable<Bytes32> allLeaves = depositDataList.Select(x =>
                     new Bytes32(_cryptographyService.HashTreeRoot((DepositData) x).AsSpan()));
+                for (int i = 0; i < depositDataList.Count; i++)
+                {
+                    
+                }
+                
                 IList<IList<Bytes32>> tree = CalculateMerkleTreeFromLeaves(allLeaves);
+                MemMerkleTreeStore memMerkleTreeStore = new MemMerkleTreeStore(); 
+                MerkleTree merkleTree = new ShaMerkleTree(memMerkleTreeStore);
+                foreach (Bytes32 bytes32 in allLeaves)
+                {
+                    merkleTree.Insert(bytes32);
+                }
 
 
                 IList<Bytes32> merkleProof = GetMerkleProof(tree, index, 32);

@@ -13,19 +13,11 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
 
-namespace Nethermind.Baseline
+namespace Nethermind.Ssz
 {
-    public readonly struct MerkleTreeNode
+    public interface IKeyValueStore<in TKey, TValue>
     {
-        public MerkleTreeNode(Bytes32 hash, uint index)
-        {
-            Hash = hash;
-            Index = index;
-        }
-        
-        public Bytes32 Hash { get; }
-        public uint Index { get; } // 32bit index for 32 depth of a tree
+        byte[]? this[TKey key] { get; set; }
     }
 }

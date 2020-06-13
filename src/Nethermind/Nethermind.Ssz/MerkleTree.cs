@@ -1,11 +1,11 @@
 using System;
+using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
-using Nethermind.Serialization.Rlp;
-using Nethermind.Trie;
+using Nethermind.Core2.Types;
 
-[assembly: InternalsVisibleTo("Nethermind.Baseline.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Ssz.Test")]
 
-namespace Nethermind.Baseline
+namespace Nethermind.Ssz
 {
     /// <summary>
     /// This will be moved to Eth2
@@ -20,14 +20,12 @@ namespace Nethermind.Baseline
         public const uint TreeWidth = uint.MaxValue / 2 + 1;
         public const uint MaxLeafIndex = TreeWidth - 1;
 
-        private readonly IKeyValueStore _keyValueStore;
-        private protected int TruncationLength { get; }
+        private readonly IKeyValueStore<uint, byte[]> _keyValueStore;
 
-        private static byte[] _countKey;
+        private static uint _countKey = uint.MaxValue;
 
         static MerkleTree()
         {
-            _countKey = Rlp.Encode(uint.MaxValue).Bytes;
         }
 
         /// <summary>
@@ -37,18 +35,19 @@ namespace Nethermind.Baseline
 
         public uint Count { get; set; }
 
-        public MerkleTree(IKeyValueStore keyValueStore, int truncationLength = 0)
+        public MerkleTree(IKeyValueStore<uint, byte[]> keyValueStore)
         {
             _keyValueStore = keyValueStore ?? throw new ArgumentNullException(nameof(keyValueStore));
-            TruncationLength = truncationLength;
 
-            byte[] countBytes = _keyValueStore[_countKey];
-            Count = countBytes == null ? 0 : new RlpStream(countBytes).DecodeUInt();
+            byte[]? countBytes = _keyValueStore[_countKey];
+            Count = countBytes == null ? 0 : BinaryPrimitives.ReadUInt32LittleEndian(countBytes);
         }
 
         private void StoreCountInTheDb()
         {
-            _keyValueStore[_countKey] = Rlp.Encode(Count).Bytes;
+            byte[] countBytes = new byte[4];
+            BinaryPrimitives.WriteUInt32LittleEndian(countBytes, Count);
+            _keyValueStore[_countKey] = countBytes;
         }
 
         private Bytes32 LoadValue(uint level, uint indexAtLevel)
@@ -58,7 +57,8 @@ namespace Nethermind.Baseline
 
         private void SaveValue(uint nodeIndex, byte[] hashBytes)
         {
-            _keyValueStore[Rlp.Encode(nodeIndex).Bytes] = hashBytes;
+            
+            _keyValueStore[nodeIndex] = hashBytes;
         }
 
         private void SaveValue(uint nodeIndex, Bytes32 hash)
@@ -82,7 +82,7 @@ namespace Nethermind.Baseline
 
         private Bytes32 LoadValue(uint nodeIndex)
         {
-            byte[] nodeHashBytes = _keyValueStore[Rlp.Encode(nodeIndex).Bytes];
+            byte[]? nodeHashBytes = _keyValueStore[nodeIndex];
             if (nodeHashBytes == null)
             {
                 return Bytes32.Wrap(ZeroHashesInternal[31 - GetLevel(nodeIndex)]);
@@ -178,7 +178,7 @@ namespace Nethermind.Baseline
         [MethodImpl(MethodImplOptions.Synchronized)]
         public void Insert(Bytes32 leaf)
         {
-            _keyValueStore[Rlp.Encode(Count).Bytes] = leaf.AsSpan().ToArray();
+            _keyValueStore[Count] = leaf.AsSpan().ToArray();
 
             uint indexAtLevel = Count;
             uint siblingIndexAtLevel = GetSiblingIndex(LeafLevel, indexAtLevel);

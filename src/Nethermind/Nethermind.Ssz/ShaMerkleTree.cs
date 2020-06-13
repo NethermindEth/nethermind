@@ -18,9 +18,8 @@
 using System;
 using System.Collections.ObjectModel;
 using System.Security.Cryptography;
-using Nethermind.Trie;
 
-namespace Nethermind.Baseline
+namespace Nethermind.Ssz
 {
     public class ShaMerkleTree : MerkleTree
     {
@@ -41,8 +40,8 @@ namespace Nethermind.Baseline
         /// </summary>
         public static ReadOnlyCollection<byte[]> ZeroHashes => Array.AsReadOnly(_zeroHashes);
 
-        public ShaMerkleTree(IKeyValueStore keyValueStore, int truncationLength = 0)
-            : base(keyValueStore, truncationLength)
+        public ShaMerkleTree(IKeyValueStore<uint, byte[]> keyValueStore)
+            : base(keyValueStore)
         {
             
         }
@@ -61,7 +60,7 @@ namespace Nethermind.Baseline
 
         protected override byte[] Hash(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
         {
-            return HashStatic(a.Slice(TruncationLength, 32 - TruncationLength), b.Slice(TruncationLength, 32 - TruncationLength));
+            return HashStatic(a, b);
         }
     }
 }
