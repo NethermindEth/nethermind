@@ -33,7 +33,7 @@ namespace Nethermind.Runner
     {
         private ILogger _logger;
 
-        public const ulong MinMemoryHint = 256_000_000;
+        public const ulong MinMemoryHint = 64_000_000;
 
         public MemoryHintMan(ILogManager logManager)
         {
@@ -292,7 +292,7 @@ namespace Nethermind.Runner
 
         private static void ValidateMemoryHint(ulong memoryHint)
         {
-            if (memoryHint < 256.MB())
+            if (memoryHint < 64.MB())
             {
                 throw new ArgumentOutOfRangeException(nameof(memoryHint), $"Memory hint has to be >= {MinMemoryHint}.");
             }
