@@ -38,7 +38,7 @@ namespace Nethermind.Ssz.Benchmarks
             }
         }
 
-        [Params(1, 4, 32)]
+        [Params(1, 32, 128, 1024)]
         public int ItemsCount { get; set; }
 
         [Benchmark(Baseline = true)]
@@ -57,7 +57,7 @@ namespace Nethermind.Ssz.Benchmarks
             ShaMerkleTree shaMerkleTree = new ShaMerkleTree(new MemMerkleTreeStore());
             for (int i = 0; i < ItemsCount; i++)
             {
-                shaMerkleTree.Insert(_bytes[ItemsCount]);
+                shaMerkleTree.Insert(_bytes[i]);
                 shaMerkleTree.GetProof((uint)i);
             }
         }
