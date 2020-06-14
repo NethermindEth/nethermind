@@ -122,6 +122,8 @@ namespace Nethermind.Ssz
                 throw new IndexOutOfRangeException("Root node has no siblings.");
             }
             
+            return indexAtLevel ^ 1;
+
             if (indexAtLevel % 2 == 0)
             {
                 return indexAtLevel + 1;

@@ -257,6 +257,8 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
                 merkleTree.Insert(bytes32);
             }
 
+            MerkleTreeNode[] proofExp = merkleTree.GetProof((uint) index);
+
             IList<IList<Bytes32>> tree = CalculateMerkleTreeFromLeaves(allLeaves);
             IList<Bytes32> merkleProof = GetMerkleProof(tree, index, 32);
             List<Bytes32> proof = new List<Bytes32>(merkleProof);
