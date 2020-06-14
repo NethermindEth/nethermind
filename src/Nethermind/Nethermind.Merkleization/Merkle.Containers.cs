@@ -23,65 +23,65 @@ using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Merkleization
 {
-     public partial class Merkle
-    {
-        public static int DepositContractTreeDepth { get; private set; }
-        private static int JustificationBitsLength;
-        internal static ulong MaximumDepositContracts { get; private set; }
-        
-        internal static uint MaxValidatorsPerCommittee { get; private set; }
-        
-        internal static uint SlotsPerEpoch { get; private set; }
-        internal static int SlotsPerEth1VotingPeriod { get; private set; }
-        public static int SlotsPerHistoricalRoot { get; private set; }
-        
-        public static int EpochsPerHistoricalVector { get; private set; }
-        public static int EpochsPerSlashingsVector { get; private set; }
-        internal static ulong HistoricalRootsLimit { get; private set; }
-        internal static ulong ValidatorRegistryLimit { get; private set; }
-        
-        internal static uint MaxProposerSlashings { get; private set; }
-        internal static uint MaxAttesterSlashings { get; private set; }
-        internal static uint MaxAttestations { get; private set; }
-        internal static uint MaxDeposits { get; private set; }
-        internal static uint MaxVoluntaryExits { get; private set; }
-
-        public static void Init(int depositContractTreeDepth,
-            int justificationBitsLength,
-            ulong maximumValidatorsPerCommittee,
-            ulong slotsPerEpoch,
-            ulong slotsPerEth1VotingPeriod,
-            ulong slotsPerHistoricalRoot,
-            ulong epochsPerHistoricalVector,
-            ulong epochsPerSlashingsVector,
-            ulong historicalRootsLimit,
-            ulong validatorRegistryLimit,
-            ulong maximumProposerSlashings,
-            ulong maximumAttesterSlashings,
-            ulong maximumAttestations,
-            ulong maximumDeposits,
-            ulong maximumVoluntaryExits
-        )
-        {
-            DepositContractTreeDepth = depositContractTreeDepth;
-            JustificationBitsLength = justificationBitsLength;
-            MaxValidatorsPerCommittee = (uint)maximumValidatorsPerCommittee;
-            SlotsPerEpoch = (uint)slotsPerEpoch;
-            SlotsPerEth1VotingPeriod = (int)slotsPerEth1VotingPeriod;
-            SlotsPerHistoricalRoot = (int)slotsPerHistoricalRoot;
-            EpochsPerHistoricalVector = (int)epochsPerHistoricalVector;
-            EpochsPerSlashingsVector = (int)epochsPerSlashingsVector;
-            HistoricalRootsLimit = historicalRootsLimit;
-            ValidatorRegistryLimit = validatorRegistryLimit;
-            MaxProposerSlashings = (uint)maximumProposerSlashings;
-            MaxAttesterSlashings = (uint)maximumAttesterSlashings;
-            MaxAttestations = (uint)maximumAttestations;
-            MaxDeposits = (uint)maximumDeposits;
-            MaxVoluntaryExits = (uint)maximumVoluntaryExits;
-
-            MaximumDepositContracts = (ulong) 1 << depositContractTreeDepth;
-        }
-    }
+    //  public partial class Merkle
+    // {
+    //     public static int DepositContractTreeDepth { get; private set; }
+    //     private static int JustificationBitsLength;
+    //     internal static ulong MaximumDepositContracts { get; private set; }
+    //     
+    //     internal static uint MaxValidatorsPerCommittee { get; private set; }
+    //     
+    //     internal static uint SlotsPerEpoch { get; private set; }
+    //     internal static int SlotsPerEth1VotingPeriod { get; private set; }
+    //     public static int SlotsPerHistoricalRoot { get; private set; }
+    //     
+    //     public static int EpochsPerHistoricalVector { get; private set; }
+    //     public static int EpochsPerSlashingsVector { get; private set; }
+    //     internal static ulong HistoricalRootsLimit { get; private set; }
+    //     internal static ulong ValidatorRegistryLimit { get; private set; }
+    //     
+    //     internal static uint MaxProposerSlashings { get; private set; }
+    //     internal static uint MaxAttesterSlashings { get; private set; }
+    //     internal static uint MaxAttestations { get; private set; }
+    //     internal static uint MaxDeposits { get; private set; }
+    //     internal static uint MaxVoluntaryExits { get; private set; }
+    //
+    //     public static void Init(int depositContractTreeDepth,
+    //         int justificationBitsLength,
+    //         ulong maximumValidatorsPerCommittee,
+    //         ulong slotsPerEpoch,
+    //         ulong slotsPerEth1VotingPeriod,
+    //         ulong slotsPerHistoricalRoot,
+    //         ulong epochsPerHistoricalVector,
+    //         ulong epochsPerSlashingsVector,
+    //         ulong historicalRootsLimit,
+    //         ulong validatorRegistryLimit,
+    //         ulong maximumProposerSlashings,
+    //         ulong maximumAttesterSlashings,
+    //         ulong maximumAttestations,
+    //         ulong maximumDeposits,
+    //         ulong maximumVoluntaryExits
+    //     )
+    //     {
+    //         DepositContractTreeDepth = depositContractTreeDepth;
+    //         JustificationBitsLength = justificationBitsLength;
+    //         MaxValidatorsPerCommittee = (uint)maximumValidatorsPerCommittee;
+    //         SlotsPerEpoch = (uint)slotsPerEpoch;
+    //         SlotsPerEth1VotingPeriod = (int)slotsPerEth1VotingPeriod;
+    //         SlotsPerHistoricalRoot = (int)slotsPerHistoricalRoot;
+    //         EpochsPerHistoricalVector = (int)epochsPerHistoricalVector;
+    //         EpochsPerSlashingsVector = (int)epochsPerSlashingsVector;
+    //         HistoricalRootsLimit = historicalRootsLimit;
+    //         ValidatorRegistryLimit = validatorRegistryLimit;
+    //         MaxProposerSlashings = (uint)maximumProposerSlashings;
+    //         MaxAttesterSlashings = (uint)maximumAttesterSlashings;
+    //         MaxAttestations = (uint)maximumAttestations;
+    //         MaxDeposits = (uint)maximumDeposits;
+    //         MaxVoluntaryExits = (uint)maximumVoluntaryExits;
+    //
+    //         MaximumDepositContracts = (ulong) 1 << depositContractTreeDepth;
+    //     }
+    // }
     
     public static partial class Merkle
     {
@@ -172,14 +172,14 @@ namespace Nethermind.Merkleization
         public static void Ize(out UInt256 root, List<Ref<DepositData>> value)
         {
             Merkleizer merkleizer = new Merkleizer(0);
-            merkleizer.Feed(value, Merkle.MaximumDepositContracts);
+            merkleizer.Feed(value, Ssz.Ssz.MaximumDepositContracts);
             merkleizer.CalculateRoot(out root);
         }
         
         public static void Ize(out UInt256 root, List<DepositData> value)
         {
             Merkleizer merkleizer = new Merkleizer(0);
-            merkleizer.Feed(value, Merkle.MaximumDepositContracts);
+            merkleizer.Feed(value, Ssz.Ssz.MaximumDepositContracts);
             merkleizer.CalculateRoot(out root);
         }
 
@@ -212,11 +212,11 @@ namespace Nethermind.Merkleization
             merkleizer.Feed(container.RandaoReveal);
             merkleizer.Feed(container.Eth1Data);
             merkleizer.Feed(container.Graffiti);
-            merkleizer.Feed(container.ProposerSlashings, Merkle.MaxProposerSlashings);
-            merkleizer.Feed(container.AttesterSlashings, Merkle.MaxAttesterSlashings);
-            merkleizer.Feed(container.Attestations, Merkle.MaxAttestations);
-            merkleizer.Feed(container.Deposits, Merkle.MaxDeposits);
-            merkleizer.Feed(container.VoluntaryExits, Merkle.MaxVoluntaryExits);
+            merkleizer.Feed(container.ProposerSlashings, Ssz.Ssz.MaxProposerSlashings);
+            merkleizer.Feed(container.AttesterSlashings, Ssz.Ssz.MaxAttesterSlashings);
+            merkleizer.Feed(container.Attestations, Ssz.Ssz.MaxAttestations);
+            merkleizer.Feed(container.Deposits, Ssz.Ssz.MaxDeposits);
+            merkleizer.Feed(container.VoluntaryExits, Ssz.Ssz.MaxVoluntaryExits);
             merkleizer.CalculateRoot(out root);
         }
         
@@ -235,14 +235,14 @@ namespace Nethermind.Merkleization
             merkleizer.Feed(container.LatestBlockHeader);
             merkleizer.Feed(container.BlockRoots);
             merkleizer.Feed(container.StateRoots);
-            merkleizer.Feed(container.HistoricalRoots.ToArray(), Merkle.HistoricalRootsLimit);
+            merkleizer.Feed(container.HistoricalRoots.ToArray(), Ssz.Ssz.HistoricalRootsLimit);
             merkleizer.Feed(container.Eth1Data);
-            merkleizer.Feed(container.Eth1DataVotes.ToArray(), (uint)Merkle.SlotsPerEth1VotingPeriod);
+            merkleizer.Feed(container.Eth1DataVotes.ToArray(), (uint)Ssz.Ssz.SlotsPerEth1VotingPeriod);
             merkleizer.Feed(container.Eth1DepositIndex);
-            merkleizer.Feed(container.Validators, Merkle.ValidatorRegistryLimit);
+            merkleizer.Feed(container.Validators, Ssz.Ssz.ValidatorRegistryLimit);
             merkleizer.Feed(container.Balances.ToArray().ToArray());
-            merkleizer.Feed(container.PreviousEpochAttestations, Merkle.MaxAttestations * Merkle.SlotsPerEpoch);
-            merkleizer.Feed(container.CurrentEpochAttestations, Merkle.MaxAttestations * Merkle.SlotsPerEpoch);
+            merkleizer.Feed(container.PreviousEpochAttestations, Ssz.Ssz.MaxAttestations * Ssz.Ssz.SlotsPerEpoch);
+            merkleizer.Feed(container.CurrentEpochAttestations, Ssz.Ssz.MaxAttestations * Ssz.Ssz.SlotsPerEpoch);
             merkleizer.FeedBitvector(container.JustificationBits);
             merkleizer.Feed(container.PreviousJustifiedCheckpoint);
             merkleizer.Feed(container.CurrentJustifiedCheckpoint);
@@ -269,7 +269,7 @@ namespace Nethermind.Merkleization
             }
             
             Merkleizer merkleizer = new Merkleizer(2);
-            merkleizer.FeedBitlist(container.AggregationBits, Merkle.MaxValidatorsPerCommittee);
+            merkleizer.FeedBitlist(container.AggregationBits, Ssz.Ssz.MaxValidatorsPerCommittee);
             merkleizer.Feed(container.Data);
             merkleizer.Feed(container.Signature);
             merkleizer.CalculateRoot(out root);
@@ -284,7 +284,7 @@ namespace Nethermind.Merkleization
             }
 
             Merkleizer merkleizer = new Merkleizer(2);
-            merkleizer.Feed(container.AttestingIndices.ToArray(), Merkle.MaxValidatorsPerCommittee);
+            merkleizer.Feed(container.AttestingIndices.ToArray(), Ssz.Ssz.MaxValidatorsPerCommittee);
             merkleizer.Feed(container.Data);
             merkleizer.Feed(container.Signature);
             merkleizer.CalculateRoot(out root);
@@ -299,7 +299,7 @@ namespace Nethermind.Merkleization
             }
             
             Merkleizer merkleizer = new Merkleizer(2);
-            merkleizer.FeedBitlist(container.AggregationBits, Merkle.MaxValidatorsPerCommittee);
+            merkleizer.FeedBitlist(container.AggregationBits, Ssz.Ssz.MaxValidatorsPerCommittee);
             merkleizer.Feed(container.Data);
             merkleizer.Feed(container.InclusionDelay);
             merkleizer.Feed(container.ProposerIndex);

@@ -81,7 +81,7 @@ namespace Nethermind.Core2.Cryptography
                 maxOperationsPerBlock.MaximumDeposits,
                 maxOperationsPerBlock.MaximumVoluntaryExits);
             
-            Nethermind.Merkleization.Merkle.Init(
+            Nethermind.Ssz.Ssz.Init(
                 chainConstants.DepositContractTreeDepth, 
                 chainConstants.JustificationBitsLength,
                 miscellaneousParameters.MaximumValidatorsPerCommittee,
