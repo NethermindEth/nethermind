@@ -25,7 +25,6 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Nethermind.BeaconNode.Storage;
 using Nethermind.Core2;
 using Nethermind.Core2.Configuration;
-using Nethermind.Core2.Containers;
 using Nethermind.Core2.Types;
 using Nethermind.Merkleization;
 using NSubstitute;
@@ -99,16 +98,18 @@ namespace Nethermind.BeaconNode.Test.Genesis
                 chainConstants, miscellaneousParameterOptions, timeParameterOptions, maxOperationsPerBlockOptions,
                 forkChoiceConfigurationOptions, signatureDomainOptions,
                 cryptographyService, beaconChainUtility, beaconStateAccessor, beaconStateTransition);
+            
+            DepositStore depositStore = new DepositStore(cryptographyService, chainConstants);
+            
             GenesisChainStart genesisChainStart = new GenesisChainStart(loggerFactory.CreateLogger<GenesisChainStart>(),
                 chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions,
                 timeParameterOptions, stateListLengthOptions,
-                cryptographyService, store, beaconStateAccessor, beaconStateTransition, forkChoice);
+                cryptographyService, store, beaconStateAccessor, beaconStateTransition, forkChoice, depositStore);
 
             // Act
             Bytes32 eth1BlockHash = Bytes32.Zero;
             ulong eth1Timestamp = 106185600uL; // 1973-05-14
-            IMerkleList deposits = new ShaMerkleTree();
-            bool success = await genesisChainStart.TryGenesisAsync(eth1BlockHash, eth1Timestamp, deposits);
+            bool success = await genesisChainStart.TryGenesisAsync(eth1BlockHash, eth1Timestamp);
 
             // Assert
             success.ShouldBeFalse();

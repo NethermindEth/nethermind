@@ -30,39 +30,40 @@ namespace Nethermind.BeaconNode.Test.Helpers
 {
     public static class TestDeposit
     {
-        public static (Deposit, Root) BuildDeposit(IServiceProvider testServiceProvider, BeaconState? state, List<Ref<DepositData>> depositDataList, BlsPublicKey publicKey, byte[] privateKey, Gwei amount, Bytes32 withdrawalCredentials, bool signed)
+        public static DepositData BuildDeposit(IServiceProvider testServiceProvider, BeaconState? state, BlsPublicKey publicKey, byte[] privateKey, Gwei amount, Bytes32 withdrawalCredentials, bool signed)
         {
-            ChainConstants chainConstants = testServiceProvider.GetService<ChainConstants>();
-            IBeaconChainUtility beaconChainUtility = testServiceProvider.GetService<IBeaconChainUtility>();
-            ICryptographyService cryptographyService = testServiceProvider.GetService<ICryptographyService>();
+            // ChainConstants chainConstants = testServiceProvider.GetService<ChainConstants>();
+            // IBeaconChainUtility beaconChainUtility = testServiceProvider.GetService<IBeaconChainUtility>();
+            // ICryptographyService cryptographyService = testServiceProvider.GetService<ICryptographyService>();
 
-            Ref<DepositData> depositData = BuildDepositData(testServiceProvider, publicKey, privateKey, amount, withdrawalCredentials, state, signed)
-                .OrRoot;
-            int index = depositDataList.Count;
-            depositDataList.Add(depositData);
-            Root root = cryptographyService.HashTreeRoot(depositDataList);
-            IEnumerable<Bytes32> allLeaves = depositDataList.Select(x => new Bytes32(cryptographyService.HashTreeRoot(x).AsSpan()));
-            IList<IList<Bytes32>> tree = TestSecurity.CalculateMerkleTreeFromLeaves(allLeaves);
-            IList<Bytes32> merkleProof = TestSecurity.GetMerkleProof(tree, index, 32);
-            List<Bytes32> proof = new List<Bytes32>(merkleProof);
-            Span<byte> indexBytes = new Span<byte>(new byte[32]);
-            BitConverter.TryWriteBytes(indexBytes, (ulong)index + 1);
-            if (!BitConverter.IsLittleEndian)
-            {
-                indexBytes.Slice(0, 8).Reverse();
-            }
-            
-            Bytes32 indexHash = new Bytes32(indexBytes);
-            proof.Add(indexHash);
-            Bytes32 leaf = new Bytes32(cryptographyService.HashTreeRoot(depositData).AsSpan());
-            bool checkValid = beaconChainUtility.IsValidMerkleBranch(leaf, proof, chainConstants.DepositContractTreeDepth + 1, (ulong)index, root);
-            if (!checkValid)
-            {
-                throw new Exception($"Invalid Merkle branch for deposit for validator public key {depositData.Item.PublicKey}");
-            }
-            
-            Deposit deposit = new Deposit(proof, depositData);
-            return (deposit, root);
+            DepositData depositData = BuildDepositData(testServiceProvider, publicKey, privateKey, amount, withdrawalCredentials, state, signed);
+            // int index = depositDataList.Count;
+            // depositDataList.Add(depositData);
+            // Root root = cryptographyService.HashTreeRoot(depositDataList);
+            // IEnumerable<Bytes32> allLeaves = depositDataList.Select(x => new Bytes32(cryptographyService.HashTreeRoot(x).AsSpan()));
+            // IList<IList<Bytes32>> tree = TestSecurity.CalculateMerkleTreeFromLeaves(allLeaves);
+            // IList<Bytes32> merkleProof = TestSecurity.GetMerkleProof(tree, index, 32);
+            // List<Bytes32> proof = new List<Bytes32>(merkleProof);
+            // Span<byte> indexBytes = new Span<byte>(new byte[32]);
+            // BitConverter.TryWriteBytes(indexBytes, (ulong)index + 1);
+            // if (!BitConverter.IsLittleEndian)
+            // {
+            //     indexBytes.Slice(0, 8).Reverse();
+            // }
+            //
+            // Bytes32 indexHash = new Bytes32(indexBytes);
+            // proof.Add(indexHash);
+            // Bytes32 leaf = new Bytes32(cryptographyService.HashTreeRoot(depositData).AsSpan());
+            // bool checkValid = beaconChainUtility.IsValidMerkleBranch(leaf, proof, chainConstants.DepositContractTreeDepth + 1, (ulong)index, root);
+            // if (!checkValid)
+            // {
+            //     throw new Exception($"Invalid Merkle branch for deposit for validator public key {depositData.PublicKey}");
+            // }
+            //
+            // Deposit deposit = new Deposit(proof, depositData);
+            // return (deposit, root);
+
+            return depositData;
         }
 
         public static DepositData BuildDepositData(IServiceProvider testServiceProvider, BlsPublicKey publicKey, byte[] privateKey, Gwei amount, Bytes32 withdrawalCredentials, BeaconState? state, bool signed)
@@ -75,7 +76,7 @@ namespace Nethermind.BeaconNode.Test.Helpers
             return depositData;
         }
 
-        public static (IMerkleList, Root) PrepareGenesisDeposits(IServiceProvider testServiceProvider, int genesisValidatorCount, Gwei amount, bool signed)
+        public static IList<DepositData> PrepareGenesisDeposits(IServiceProvider testServiceProvider, int genesisValidatorCount, Gwei amount, bool signed)
         {
             ChainConstants chainConstants = testServiceProvider.GetService<ChainConstants>();
             MiscellaneousParameters miscellaneousParameters = testServiceProvider.GetService<IOptions<MiscellaneousParameters>>().Value;
@@ -97,9 +98,7 @@ namespace Nethermind.BeaconNode.Test.Helpers
             {
                 publicKeys = privateKeys.Select(x => new BlsPublicKey(x)).ToArray();
             }
-            List<Ref<DepositData>> depositDataList = new List<Ref<DepositData>>();
-            List<Deposit> genesisDeposits = new List<Deposit>();
-            Root root = Root.Zero;
+            List<DepositData> depositDataList = new List<DepositData>();
             for (int validatorIndex = 0; validatorIndex < genesisValidatorCount; validatorIndex++)
             {
                 BlsPublicKey publicKey = publicKeys[validatorIndex];
@@ -108,18 +107,12 @@ namespace Nethermind.BeaconNode.Test.Helpers
                 byte[] withdrawalCredentialBytes = TestSecurity.Hash(publicKey.AsSpan());
                 withdrawalCredentialBytes[0] = initialValues.BlsWithdrawalPrefix;
                 Bytes32 withdrawalCredentials = new Bytes32(withdrawalCredentialBytes);
-                (Deposit deposit, Root depositRoot) = BuildDeposit(testServiceProvider, null, depositDataList, publicKey, privateKey, amount, withdrawalCredentials, signed);
-                root = depositRoot;
-                genesisDeposits.Add(deposit);
+                DepositData depositData =
+                    BuildDeposit(testServiceProvider, null, publicKey, privateKey, amount, withdrawalCredentials, signed);
+                depositDataList.Add(depositData);
             }
-            
-            ShaMerkleTree shaMerkleTree = new ShaMerkleTree();
-            foreach (Ref<DepositData> depositData in depositDataList)
-            {
-                shaMerkleTree.Insert(Bytes32.Wrap(depositData.Root.Bytes));
-            }
-            
-            return (shaMerkleTree, root);
+
+            return depositDataList;
         }
 
         /// <summary>
@@ -133,6 +126,7 @@ namespace Nethermind.BeaconNode.Test.Helpers
 
             IBeaconChainUtility beaconChainUtility = testServiceProvider.GetService<IBeaconChainUtility>();
             BeaconStateAccessor beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
+            IDepositStore depositStore = testServiceProvider.GetService<IDepositStore>();
 
             byte[][] privateKeys = TestKeys.PrivateKeys(timeParameters).ToArray();
             BlsPublicKey[] publicKeys = TestKeys.PublicKeys(timeParameters).ToArray();
@@ -146,13 +140,13 @@ namespace Nethermind.BeaconNode.Test.Helpers
                 withdrawalCredentialBytes[0] = initialValues.BlsWithdrawalPrefix;
                 withdrawalCredentials = new Bytes32(withdrawalCredentialBytes);
             }
-
-            List<Ref<DepositData>> depositDataList = new List<Ref<DepositData>>();
-            (Deposit deposit, Root depositRoot) = BuildDeposit(testServiceProvider, state, depositDataList, publicKey, privateKey, amount, withdrawalCredentials, signed);
-
+            
+            DepositData depositData = BuildDeposit(testServiceProvider, state, publicKey, privateKey, amount, withdrawalCredentials, signed);
+            Deposit deposit = depositStore.Place(depositData);
+            
             state.SetEth1DepositIndex(0);
-            state.Eth1Data.SetDepositRoot(depositRoot);
-            state.Eth1Data.SetDepositCount((ulong)depositDataList.Count);
+            state.Eth1Data.SetDepositRoot(depositStore.DepositData.Root);
+            state.Eth1Data.SetDepositCount((ulong)depositStore.Deposits.Count);
 
             return deposit;
         }

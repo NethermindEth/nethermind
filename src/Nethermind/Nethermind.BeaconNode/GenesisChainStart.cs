@@ -36,6 +36,7 @@ namespace Nethermind.BeaconNode
         private readonly ChainConstants _chainConstants;
         private readonly ICryptographyService _cryptographyService;
         private readonly IForkChoice _forkChoice;
+        private readonly IDepositStore _depositStore;
         private readonly IOptionsMonitor<GweiValues> _gweiValueOptions;
         private readonly IOptionsMonitor<InitialValues> _initialValueOptions;
         private readonly ILogger _logger;
@@ -55,12 +56,14 @@ namespace Nethermind.BeaconNode
             IStore store,
             BeaconStateAccessor beaconStateAccessor,
             BeaconStateTransition beaconStateTransition,
-            IForkChoice forkChoice)
+            IForkChoice forkChoice,
+            IDepositStore depositStore)
         {
             _logger = logger;
             _beaconStateAccessor = beaconStateAccessor;
             _beaconStateTransition = beaconStateTransition;
             _forkChoice = forkChoice;
+            _depositStore = depositStore;
             _chainConstants = chainConstants;
             _miscellaneousParameterOptions = miscellaneousParameterOptions;
             _gweiValueOptions = gweiValueOptions;
@@ -71,11 +74,10 @@ namespace Nethermind.BeaconNode
             _store = store;
         }
 
-        public BeaconState InitializeBeaconStateFromEth1(Bytes32 eth1BlockHash, ulong eth1Timestamp,
-            IMerkleList depositsTree)
+        public BeaconState InitializeBeaconStateFromEth1(Bytes32 eth1BlockHash, ulong eth1Timestamp)
         {
             if (_logger.IsInfo())
-                Log.InitializeBeaconState(_logger, eth1BlockHash, eth1Timestamp, depositsTree.Count, null);
+                Log.InitializeBeaconState(_logger, eth1BlockHash, eth1Timestamp, (uint)_depositStore.Deposits.Count, null);
 
             InitialValues initialValues = _initialValueOptions.CurrentValue;
             GweiValues gweiValues = _gweiValueOptions.CurrentValue;
@@ -89,7 +91,7 @@ namespace Nethermind.BeaconNode
 
             ulong genesisTime = eth1Timestamp - (eth1Timestamp % timeParameters.MinimumGenesisDelay)
                                 + (2 * timeParameters.MinimumGenesisDelay);
-            Eth1Data eth1Data = new Eth1Data(Root.Zero, depositsTree.Count, eth1BlockHash);
+            Eth1Data eth1Data = new Eth1Data(Root.Zero, (uint)_depositStore.Deposits.Count, eth1BlockHash);
 
             Root emptyBlockBodyRoot = _cryptographyService.HashTreeRoot(BeaconBlockBody.Zero);
             BeaconBlockHeader latestBlockHeader = new BeaconBlockHeader(emptyBlockBodyRoot);
@@ -100,8 +102,12 @@ namespace Nethermind.BeaconNode
             BeaconState state = new BeaconState(genesisTime, fork, eth1Data, latestBlockHeader, randaoMixes,
                 timeParameters.SlotsPerHistoricalRoot, stateListLengths.EpochsPerHistoricalVector,
                 stateListLengths.EpochsPerSlashingsVector, _chainConstants.JustificationBitsLength);
-
-            state.Eth1Data.SetDepositRoot(depositsTree.Root);
+            
+            state.Eth1Data.SetDepositRoot(_depositStore.DepositData.Root);
+            foreach (Deposit deposit in _depositStore.Deposits)
+            {
+                _beaconStateTransition.ProcessDeposit(state, deposit);
+            }
 
             // Process activations
             for (int validatorIndex = 0; validatorIndex < state.Validators.Count; validatorIndex++)
@@ -144,11 +150,11 @@ namespace Nethermind.BeaconNode
         /// <param name="eth1Timestamp"></param>
         /// <param name="deposits"></param>
         /// <returns></returns>
-        public async Task<bool> TryGenesisAsync(Bytes32 eth1BlockHash, ulong eth1Timestamp, IMerkleList deposits)
+        public async Task<bool> TryGenesisAsync(Bytes32 eth1BlockHash, ulong eth1Timestamp)
         {
-            if (_logger.IsDebug()) LogDebug.TryGenesis(_logger, eth1BlockHash, eth1Timestamp, deposits.Count, null);
+            if (_logger.IsDebug()) LogDebug.TryGenesis(_logger, eth1BlockHash, eth1Timestamp, (uint)_depositStore.Deposits.Count, null);
 
-            BeaconState candidateState = InitializeBeaconStateFromEth1(eth1BlockHash, eth1Timestamp, deposits);
+            BeaconState candidateState = InitializeBeaconStateFromEth1(eth1BlockHash, eth1Timestamp);
             if (IsValidGenesisState(candidateState))
             {
                 BeaconState genesisState = candidateState;

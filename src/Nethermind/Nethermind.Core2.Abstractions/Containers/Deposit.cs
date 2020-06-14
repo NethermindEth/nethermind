@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using Nethermind.Core2.Types;
 
@@ -31,8 +32,9 @@ namespace Nethermind.Core2.Containers
             Data = data;
         }
 
-        public Ref<DepositData> Data { get; }
+        public Ref<DepositData> Data { get; } 
 
+        [DebuggerHidden]
         public IReadOnlyList<Bytes32> Proof => _proof.AsReadOnly();
 
         public override string ToString()

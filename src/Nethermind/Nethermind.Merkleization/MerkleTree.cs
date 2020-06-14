@@ -269,8 +269,13 @@ namespace Nethermind.Merkleization
 
         private byte[] _countBytes = new byte[32];
 
-        public List<Bytes32> GetProof(in uint leafIndex)
+        public IList<Bytes32> GetProof(in uint leafIndex)
         {
+            if (leafIndex >= Count)
+            {
+                throw new InvalidOperationException("Unpexected query for a proof for a value beyond Count");
+            }
+            
             Index index = new Index(LeafRow, leafIndex);
             List<Bytes32> proof = new List<Bytes32>();
 
