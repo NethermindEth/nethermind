@@ -40,7 +40,7 @@ namespace Nethermind.Ssz
         /// </summary>
         public static ReadOnlyCollection<byte[]> ZeroHashes => Array.AsReadOnly(_zeroHashes);
 
-        public ShaMerkleTree(IKeyValueStore<uint, byte[]> keyValueStore)
+        public ShaMerkleTree(IKeyValueStore<ulong, byte[]> keyValueStore)
             : base(keyValueStore)
         {
             

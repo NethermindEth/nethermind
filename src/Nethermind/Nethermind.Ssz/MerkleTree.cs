@@ -12,17 +12,16 @@ namespace Nethermind.Ssz
     /// </summary>
     public abstract class MerkleTree
     {
-        private const int LeafLevel = 31;
-        public const int TreeDepth = 32;
-        private const uint MaxNodes = uint.MaxValue;
-        private const uint MaxNodeIndex = MaxNodes - 1;
-        private const uint FirstLeafIndexAsNodeIndex = MaxNodes / 2;
-        public const uint TreeWidth = uint.MaxValue / 2 + 1;
-        public const uint MaxLeafIndex = TreeWidth - 1;
+        private const int LeafRow = 32;
+        private const int LeafLevel = 0;
+        public const int TreeHeight = 32;
+        private const ulong FirstLeafIndexAsNodeIndex = MaxNodes / 2;
+        private const ulong MaxNodes = (1ul << (TreeHeight + 1)) - 1ul;
+        private const ulong MaxNodeIndex = MaxNodes - 1;
 
-        private readonly IKeyValueStore<uint, byte[]> _keyValueStore;
+        private readonly IKeyValueStore<ulong, byte[]> _keyValueStore;
 
-        private static uint _countKey = uint.MaxValue;
+        private static ulong _countKey = ulong.MaxValue;
 
         static MerkleTree()
         {
@@ -35,7 +34,7 @@ namespace Nethermind.Ssz
 
         public uint Count { get; set; }
 
-        public MerkleTree(IKeyValueStore<uint, byte[]> keyValueStore)
+        public MerkleTree(IKeyValueStore<ulong, byte[]> keyValueStore)
         {
             _keyValueStore = keyValueStore ?? throw new ArgumentNullException(nameof(keyValueStore));
 
@@ -55,123 +54,134 @@ namespace Nethermind.Ssz
             return LoadValue(GetNodeIndex(level, indexAtLevel));
         }
 
-        private void SaveValue(uint nodeIndex, byte[] hashBytes)
+        private void SaveValue(ulong nodeIndex, byte[] hashBytes)
         {
-            
             _keyValueStore[nodeIndex] = hashBytes;
         }
 
-        private void SaveValue(uint nodeIndex, Bytes32 hash)
+        private void SaveValue(ulong nodeIndex, Bytes32 hash)
         {
             SaveValue(nodeIndex, hash.AsSpan().ToArray());
         }
 
-        internal static uint GetLevel(uint nodeIndex)
+        internal static uint GetRow(ulong nodeIndex)
         {
             ValidateNodeIndex(nodeIndex);
-            for (uint level = 0; level < LeafLevel; level++)
+            for (uint row = 0; row < LeafRow; row++)
             {
-                if (2ul << (int) level >= (ulong) nodeIndex + 2)
+                if (2ul << (int) row >= nodeIndex + 2)
                 {
-                    return level;
+                    return row;
                 }
             }
 
-            return 31;
+            return LeafRow;
         }
 
-        private Bytes32 LoadValue(uint nodeIndex)
+        private Bytes32 LoadValue(ulong nodeIndex)
         {
             byte[]? nodeHashBytes = _keyValueStore[nodeIndex];
             if (nodeHashBytes == null)
             {
-                return Bytes32.Wrap(ZeroHashesInternal[31 - GetLevel(nodeIndex)]);
+                return Bytes32.Wrap(ZeroHashesInternal[LeafRow - GetRow(nodeIndex)]);
             }
 
             return Bytes32.Wrap(nodeHashBytes);
         }
 
-        internal static uint GetIndexAtLevel(uint level, uint nodeIndex)
+        internal static uint GetIndexAtRow(uint row, ulong nodeIndex)
         {
-            ValidateLevel(level);
-            ValidateNodeIndex(nodeIndex);
+            ValidateRow(row);
+            ValidateNodeIndex(row, nodeIndex);
 
-            uint indexAtLevel = nodeIndex - ((1u << (int) level) - 1);
-            ValidateIndexAtLevel(level, indexAtLevel);
-            return indexAtLevel;
+            uint indexAtRow = (uint)(nodeIndex - ((1ul << (int) row) - 1));
+            ValidateIndexAtRow(row, indexAtRow);
+            return indexAtRow;
         }
 
-        internal static uint GetLeafIndex(uint nodeIndex)
+        internal static uint GetLeafIndex(ulong nodeIndex)
         {
-            if (nodeIndex == uint.MaxValue ||
-                nodeIndex < FirstLeafIndexAsNodeIndex)
-            {
-                throw new IndexOutOfRangeException($"Leaf indices start at {FirstLeafIndexAsNodeIndex}");
-            }
-
-            return nodeIndex - FirstLeafIndexAsNodeIndex;
+            ValidateNodeIndex(LeafRow, nodeIndex);
+            return (uint)(nodeIndex - FirstLeafIndexAsNodeIndex);
         }
 
-        internal static uint GetSiblingIndex(uint level, uint indexAtLevel)
+        internal static uint GetSiblingIndex(uint row, uint indexAtRow)
         {
-            ValidateLevel(level);
-            ValidateIndexAtLevel(level, indexAtLevel);
+            ValidateRow(row);
+            ValidateIndexAtRow(row, indexAtRow);
 
-            if (level == 0)
+            if (row == 0)
             {
-                throw new IndexOutOfRangeException("Root node has no siblings.");
+                throw new ArgumentOutOfRangeException("Root node has no siblings.");
             }
             
-            return indexAtLevel ^ 1;
-
-            if (indexAtLevel % 2 == 0)
-            {
-                return indexAtLevel + 1;
-            }
-
-            return indexAtLevel - 1;
+            return indexAtRow ^ 1;
         }
 
-        internal static void ValidateNodeIndex(uint nodeIndex)
+        internal static void ValidateNodeIndex(ulong nodeIndex)
         {
             if (nodeIndex > MaxNodeIndex)
             {
-                throw new IndexOutOfRangeException($"Node index should be between 0 and {MaxNodeIndex}");
+                throw new ArgumentOutOfRangeException($"Node index should be between 0 and {MaxNodeIndex}");
             }
         }
-
-        internal static void ValidateLevel(uint level)
+        
+        private static ulong GetMinNodeIndex(uint row)
         {
-            if (level > LeafLevel)
+            return (1ul << (int) row) - 1;
+        }
+
+        private static ulong GetMaxNodeIndex(uint row)
+        {
+            return (1ul << (int) (row + 1u)) - 2;
+        }
+        
+        private static void ValidateNodeIndex(uint row, ulong nodeIndex)
+        {
+            ulong minNodeIndex = GetMinNodeIndex(row);
+            ulong maxNodeIndex = GetMaxNodeIndex(row);
+
+            if (nodeIndex < minNodeIndex || nodeIndex > maxNodeIndex)
             {
-                throw new IndexOutOfRangeException($"Tree level should be between 0 and {LeafLevel}");
+                throw new ArgumentOutOfRangeException(
+                    nameof(nodeIndex),
+                    $"Node index at row {row} should be in the range of " +
+                    $"[{minNodeIndex},{maxNodeIndex}] and was {nodeIndex}");
             }
         }
 
-        internal static void ValidateIndexAtLevel(uint level, uint indexAtLevel)
+        internal static void ValidateRow(uint row)
         {
-            uint maxIndexAtLevel = (1u << (int) level) - 1u;
-            if (indexAtLevel > maxIndexAtLevel)
+            if (row > LeafRow)
             {
-                throw new IndexOutOfRangeException($"Tree level {level} should only has indices between 0 and {maxIndexAtLevel}");
+                throw new ArgumentOutOfRangeException($"Tree level should be between 0 and {LeafRow}");
             }
         }
 
-        internal static uint GetNodeIndex(uint level, uint indexAtLevel)
+        internal static void ValidateIndexAtRow(uint row, uint indexAtRow)
         {
-            ValidateLevel(level);
-            ValidateIndexAtLevel(level, indexAtLevel);
-
-            return (1u << (int) level) - 1u + indexAtLevel;
+            uint maxIndexAtRow = (uint)((1ul << (int) row) - 1u);
+            if (indexAtRow > maxIndexAtRow)
+            {
+                throw new ArgumentOutOfRangeException($"Tree level {row} should only have indices between 0 and {maxIndexAtRow}");
+            }
         }
 
-        internal static uint GetParentIndex(uint nodeIndex)
+        internal static ulong GetNodeIndex(uint row, uint indexAtRow)
+        {
+            ValidateRow(row);
+            ValidateIndexAtRow(row, indexAtRow);
+
+            return (1ul << (int) row) - 1u + indexAtRow;
+        }
+
+        internal static ulong GetParentIndex(ulong nodeIndex)
         {
             ValidateNodeIndex(nodeIndex);
 
             if (nodeIndex == 0)
             {
-                throw new IndexOutOfRangeException("Root node has no parent");
+                throw new ArgumentOutOfRangeException("Root node has no parent");
             }
 
             return (nodeIndex + 1) / 2 - 1;
@@ -182,27 +192,29 @@ namespace Nethermind.Ssz
         {
             _keyValueStore[Count] = leaf.AsSpan().ToArray();
 
-            uint indexAtLevel = Count;
-            uint siblingIndexAtLevel = GetSiblingIndex(LeafLevel, indexAtLevel);
+            uint indexAtRow = Count;
+            uint siblingIndexAtRow = GetSiblingIndex(LeafRow, indexAtRow);
             Bytes32 hash = leaf;
-            Bytes32 siblingHash = LoadValue(LeafLevel, siblingIndexAtLevel);
+            Bytes32 siblingHash = LoadValue(LeafRow, siblingIndexAtRow);
 
-            uint nodeIndex = GetNodeIndex(LeafLevel, Count);
+            ulong nodeIndex = GetNodeIndex(LeafRow, Count);
             SaveValue(nodeIndex, hash);
 
-            for (int level = LeafLevel; level > 0; level--)
+            for (int row = LeafRow; row > 0; row--)
             {
-                uint parentIndex = GetParentIndex(GetNodeIndex((uint) level, indexAtLevel));
+                ulong parentIndex = GetParentIndex(GetNodeIndex((uint) row, indexAtRow));
                 var parentHash = Hash(hash.AsSpan(), siblingHash.AsSpan());
                 SaveValue(parentIndex, parentHash);
 
-                indexAtLevel = GetIndexAtLevel((uint) level - 1, parentIndex);
+                indexAtRow = GetIndexAtRow((uint) row - 1, parentIndex);
 
-                if (level != 1)
+                if (row != 1)
                 {
-                    siblingIndexAtLevel = GetSiblingIndex((uint) level - 1, indexAtLevel);
+                    siblingIndexAtRow = GetSiblingIndex((uint) row - 1, indexAtRow);
                     hash = Bytes32.Wrap(parentHash);
-                    siblingHash = LoadValue((uint) level - 1, siblingIndexAtLevel);
+                    
+                    // we can quickly / efficiently find out that it will be a zero hash
+                    siblingHash = LoadValue((uint) row - 1, siblingIndexAtRow);
                 }
             }
 
@@ -212,21 +224,58 @@ namespace Nethermind.Ssz
 
         public MerkleTreeNode[] GetProof(uint leafIndex)
         {
-            ValidateIndexAtLevel(LeafLevel, leafIndex);
+            ValidateIndexAtRow(LeafRow, leafIndex);
 
-            MerkleTreeNode[] proof = new MerkleTreeNode[TreeDepth - 1];
+            MerkleTreeNode[] proof = new MerkleTreeNode[TreeHeight];
 
-            uint indexAtLevel = leafIndex;
-            for (int proofLevel = 31; proofLevel > 0; proofLevel--)
+            uint indexAtRow = leafIndex;
+            for (int proofRow = LeafRow; proofRow > 0; proofRow--)
             {
-                uint siblingIndex = GetSiblingIndex((uint) proofLevel, indexAtLevel);
-                uint siblingNodeIndex = GetNodeIndex((uint) proofLevel, siblingIndex);
-                uint nodeIndex = GetNodeIndex((uint) proofLevel, indexAtLevel);
-                proof[31 - proofLevel] = new MerkleTreeNode(LoadValue(siblingNodeIndex), siblingNodeIndex);
-                indexAtLevel = GetIndexAtLevel((uint) proofLevel - 1u, GetParentIndex(nodeIndex));
+                uint siblingIndex = GetSiblingIndex((uint) proofRow, indexAtRow);
+                ulong siblingNodeIndex = GetNodeIndex((uint) proofRow, siblingIndex);
+                ulong nodeIndex = GetNodeIndex((uint) proofRow, indexAtRow);
+                proof[TreeHeight - proofRow] = new MerkleTreeNode(LoadValue(siblingNodeIndex), siblingNodeIndex);
+                indexAtRow = GetIndexAtRow((uint) proofRow - 1u, GetParentIndex(nodeIndex));
             }
 
             return proof;
+        }
+        
+        public MerkleTreeNode[] GetProofWithRoot(uint leafIndex)
+        {
+            ValidateIndexAtRow(LeafRow, leafIndex);
+
+            MerkleTreeNode[] proof = new MerkleTreeNode[TreeHeight];
+
+            uint indexAtRow = leafIndex;
+            for (int proofRow = LeafRow; proofRow > 0; proofRow--)
+            {
+                uint siblingIndex = GetSiblingIndex((uint) proofRow, indexAtRow);
+                ulong siblingNodeIndex = GetNodeIndex((uint) proofRow, siblingIndex);
+                ulong nodeIndex = GetNodeIndex((uint) proofRow, indexAtRow);
+                proof[LeafRow - proofRow] = new MerkleTreeNode(LoadValue(siblingNodeIndex), siblingNodeIndex);
+                indexAtRow = GetIndexAtRow((uint) proofRow - 1u, GetParentIndex(nodeIndex));
+            }
+
+            return proof;
+        }
+        
+        public MerkleTreeNode GetLeaf(uint leafIndex)
+        {
+            ulong nodeIndex = GetNodeIndex(LeafRow, leafIndex);
+            Bytes32 value = LoadValue(LeafRow, leafIndex);
+            return new MerkleTreeNode(Bytes32.Wrap(value.AsSpan().ToArray()), nodeIndex); 
+        }
+        
+        public MerkleTreeNode[] GetLeaves(params uint[] leafIndexes)
+        {
+            MerkleTreeNode[] leaves = new MerkleTreeNode[leafIndexes.Length];
+            for (int i = 0; i < leafIndexes.Length; i++)
+            {
+                leaves[i] = GetLeaf(leafIndexes[i]);
+            }
+             
+            return leaves;
         }
 
         protected abstract byte[] Hash(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b);

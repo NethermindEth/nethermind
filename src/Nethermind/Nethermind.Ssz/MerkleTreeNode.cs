@@ -21,13 +21,13 @@ namespace Nethermind.Ssz
 {
     public readonly struct MerkleTreeNode
     {
-        public MerkleTreeNode(Bytes32 hash, uint index)
+        public MerkleTreeNode(Bytes32 hash, ulong index)
         {
             Hash = hash;
             Index = index;
         }
         
         public Bytes32 Hash { get; }
-        public uint Index { get; } // 32bit index for 32 depth of a tree
+        public ulong Index { get; } // 32bit index for 32 depth of a tree
     }
 }

@@ -16,6 +16,7 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Diagnostics;
 using System.Linq;
 
 namespace Nethermind.Core2.Types
@@ -60,6 +61,7 @@ namespace Nethermind.Core2.Types
 
         public static Bytes32 Zero { get; } = new Bytes32(new byte[Length]);
 
+        [DebuggerStepThrough]
         public ReadOnlySpan<byte> AsSpan()
         {
             return new ReadOnlySpan<byte>(_bytes);
