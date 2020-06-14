@@ -325,30 +325,5 @@ namespace Nethermind.BeaconNode
 
             return true;
         }
-
-        /// <summary>
-        /// Check if 'leaf' at 'index' verifies against the Merkle 'root' and 'branch'
-        /// </summary>
-        public bool IsValidMerkleBranch(Bytes32 leaf, IReadOnlyList<Bytes32> branch, int depth, ulong index, Root root)
-        {
-            Bytes32 value = leaf;
-            for (int testDepth = 0; testDepth < depth; testDepth++)
-            {
-                Bytes32 branchValue = branch[testDepth];
-                ulong indexAtDepth = index / ((ulong) 1 << testDepth);
-                if (indexAtDepth % 2 == 0)
-                {
-                    // Branch on right
-                    value = _cryptographyService.Hash(value, branchValue);
-                }
-                else
-                {
-                    // Branch on left
-                    value = _cryptographyService.Hash(branchValue, value);
-                }
-            }
-
-            return value.AsSpan().SequenceEqual(root.AsSpan());
-        }
     }
 }

@@ -9,6 +9,8 @@ namespace Nethermind.BeaconNode
         IList<Deposit> Deposits { get; }
         
         Deposit Place(DepositData deposit);
+        
+        bool Verify(Deposit deposit);
 
         // TODO: maybe make it internal?
         IMerkleList DepositData { get; set; }

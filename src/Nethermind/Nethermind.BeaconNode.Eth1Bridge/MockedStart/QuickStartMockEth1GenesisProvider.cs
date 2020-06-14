@@ -15,8 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Collections.Generic;
-using System.IO;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
@@ -130,21 +128,7 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
                     amount,
                     signatureDomains);
                 
-                Deposit deposit = _depositStore.Place(depositData);
-                int index = _depositStore.Deposits.Count;
-
-                // noe need to validate here but better for testing
-                bool isValid = _beaconChainUtility.IsValidMerkleBranch(
-                    Bytes32.Wrap(deposit.Data.Root.Bytes),
-                    deposit.Proof,
-                    _chainConstants.DepositContractTreeDepth + 1,
-                    (ulong) index - 1,
-                    _depositStore.DepositData.Root);
-                
-                if (!isValid)
-                {
-                    throw new InvalidDataException("Invalid deposit");
-                }
+                _depositStore.Place(depositData);
             }
 
             ulong eth1Timestamp = quickStartParameters.Eth1Timestamp;

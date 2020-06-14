@@ -12,6 +12,7 @@ namespace Nethermind.BeaconNode
     public class DepositStore : IDepositStore
     {
         private readonly ICryptographyService _crypto;
+        private readonly ChainConstants _chainConstants;
 
         // keep in the storage
         // split storage of deposit data and deposit where deposit is deposit data + proof
@@ -20,6 +21,7 @@ namespace Nethermind.BeaconNode
         public DepositStore(ICryptographyService crypto, ChainConstants chainConstants)
         {
             _crypto = crypto;
+            _chainConstants = chainConstants;
         }
         
         public Deposit Place(DepositData depositData)
@@ -40,6 +42,21 @@ namespace Nethermind.BeaconNode
             return deposit;
         }
 
+        public bool Verify(Deposit deposit)
+        {
+            // TODO: need to be able to delete?
+            // generally need to understand how the verification would work here and the current code at least
+            // encapsulates deposits creation and verification
+            
+            Root depositDataRoot = _crypto.HashTreeRoot(deposit.Data);
+            Bytes32 rootBytes = new Bytes32(depositDataRoot.AsSpan());
+            VerificationData.Insert(Bytes32.Wrap(deposit.Data.Root.Bytes));
+            bool isValid = VerificationData.VerifyProof(rootBytes, deposit.Proof, VerificationData.Count - 1);
+            return isValid;
+        }
+
         public IMerkleList DepositData { get; set; } = new ShaMerkleTree();
+        
+        public IMerkleList VerificationData { get; set; } = new ShaMerkleTree();
     }
 }

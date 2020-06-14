@@ -71,7 +71,8 @@ namespace Nethermind.BeaconNode.Test.Genesis
             });
 
             ICryptographyService cryptographyService = testServiceProvider.GetService<ICryptographyService>();
-
+            IDepositStore depositStore = new DepositStore(cryptographyService, chainConstants);
+            
             BeaconChainUtility beaconChainUtility = new BeaconChainUtility(
                 loggerFactory.CreateLogger<BeaconChainUtility>(),
                 chainConstants, miscellaneousParameterOptions, initialValueOptions, gweiValueOptions,
@@ -87,7 +88,7 @@ namespace Nethermind.BeaconNode.Test.Genesis
                 loggerFactory.CreateLogger<BeaconStateTransition>(),
                 chainConstants, gweiValueOptions, timeParameterOptions, stateListLengthOptions,
                 rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions, signatureDomainOptions,
-                cryptographyService, beaconChainUtility, beaconStateAccessor, beaconStateMutator);
+                cryptographyService, beaconChainUtility, beaconStateAccessor, beaconStateMutator, depositStore);
             SimpleLatestMessageDrivenGreedyHeaviestObservedSubtree simpleLmdGhost =
                 new SimpleLatestMessageDrivenGreedyHeaviestObservedSubtree(
                     loggerFactory.CreateLogger<SimpleLatestMessageDrivenGreedyHeaviestObservedSubtree>(),
@@ -98,9 +99,7 @@ namespace Nethermind.BeaconNode.Test.Genesis
                 chainConstants, miscellaneousParameterOptions, timeParameterOptions, maxOperationsPerBlockOptions,
                 forkChoiceConfigurationOptions, signatureDomainOptions,
                 cryptographyService, beaconChainUtility, beaconStateAccessor, beaconStateTransition);
-            
-            DepositStore depositStore = new DepositStore(cryptographyService, chainConstants);
-            
+
             GenesisChainStart genesisChainStart = new GenesisChainStart(loggerFactory.CreateLogger<GenesisChainStart>(),
                 chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions,
                 timeParameterOptions, stateListLengthOptions,

@@ -77,10 +77,5 @@ namespace Nethermind.BeaconNode
         /// Check if ``indexed_attestation`` has valid indices and signature.
         /// </summary>
         bool IsValidIndexedAttestation(BeaconState state, IndexedAttestation indexedAttestation, Domain domain);
-
-        /// <summary>
-        /// Check if 'leaf' at 'index' verifies against the Merkle 'root' and 'branch'
-        /// </summary>
-        bool IsValidMerkleBranch(Bytes32 leaf, IReadOnlyList<Bytes32> branch, int depth, ulong index, Root root);
     }
 }

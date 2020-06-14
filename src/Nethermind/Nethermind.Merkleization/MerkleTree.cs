@@ -269,6 +269,29 @@ namespace Nethermind.Merkleization
 
         private byte[] _countBytes = new byte[32];
 
+        /// <summary>
+        /// Check if 'leaf' at 'index' verifies against the Merkle 'root' and 'branch'
+        /// </summary>
+        public bool VerifyProof(Bytes32 leaf, IReadOnlyList<Bytes32> proof, in uint leafIndex)
+        {
+            Index index = new Index(LeafRow, leafIndex);
+            byte[] value = leaf.Unwrap();
+            
+            for (int testDepth = 0; testDepth < TreeHeight; testDepth++)
+            {
+                Bytes32 branchValue = proof[testDepth];
+                value = index.IsLeftSibling()
+                    ? Hash(value.AsSpan(), branchValue.AsSpan())
+                    : Hash(branchValue.AsSpan(), value.AsSpan());
+
+                index = index.Parent();
+            }
+            
+            // MixIn count
+            value = Hash(value.AsSpan(), proof[^1].AsSpan());
+            return value.AsSpan().SequenceEqual(Root.AsSpan());
+        }
+        
         public IList<Bytes32> GetProof(in uint leafIndex)
         {
             if (leafIndex >= Count)
