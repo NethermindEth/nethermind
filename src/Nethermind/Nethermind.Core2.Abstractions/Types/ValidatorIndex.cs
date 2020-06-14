@@ -20,9 +20,10 @@ using System.Diagnostics;
 namespace Nethermind.Core2.Types
 {
     [DebuggerDisplay("{Number}")]
-    public struct ValidatorIndex : IEquatable<ValidatorIndex>, IComparable<ValidatorIndex>
+    public readonly struct ValidatorIndex : IEquatable<ValidatorIndex>, IComparable<ValidatorIndex>
     {
-        public static ValidatorIndex? None => default;
+        // TODO: this does not look right?
+        public static ValidatorIndex None => default;
         
         public static ValidatorIndex Zero => new ValidatorIndex(0);
 

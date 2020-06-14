@@ -422,9 +422,18 @@ namespace Nethermind.BeaconNode
             DepositData depositData = deposit.Data.Item;
             BlsPublicKey publicKey = depositData.PublicKey;
             Gwei amount = depositData.Amount;
-            List<BlsPublicKey> validatorPublicKeys = state.Validators.Select(x => x.PublicKey).ToList();
 
-            if (!validatorPublicKeys.Contains(publicKey))
+            ValidatorIndex? validatorIndex = null;
+            for (int i = 0; i < state.Validators.Count; i++)
+            {
+                if (publicKey.Equals(state.Validators[i].PublicKey))
+                {
+                    validatorIndex = new ValidatorIndex((ulong)i);
+                    break;
+                }
+            }
+            
+            if (validatorIndex is null)
             {
                 // Verify the deposit signature (proof of possession) which is not checked by the deposit contract
                 DepositMessage depositMessage = new DepositMessage(
@@ -456,8 +465,7 @@ namespace Nethermind.BeaconNode
             }
             else
             {
-                ValidatorIndex index = (ulong)validatorPublicKeys.IndexOf(publicKey);
-                _beaconStateMutator.IncreaseBalance(state, index, amount);
+                _beaconStateMutator.IncreaseBalance(state, validatorIndex.Value, amount);
             }
         }
 

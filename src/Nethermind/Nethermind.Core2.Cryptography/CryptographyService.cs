@@ -171,13 +171,13 @@ namespace Nethermind.Core2.Cryptography
 
         public Bytes32 Hash(ReadOnlySpan<byte> bytes)
         {
-            Span<byte> result = new Span<byte>(new byte[Bytes32.Length]);
+            byte[] result = new byte[Bytes32.Length];
             bool success = s_hashAlgorithm.TryComputeHash(bytes, result, out int bytesWritten);
             if (!success || bytesWritten != Bytes32.Length)
             {
                 throw new Exception("Error generating hash value.");
             }
-            return new Bytes32(result);
+            return Bytes32.Wrap(result);
         }
 
         Root ICryptographyService.HashTreeRoot(AttestationData attestationData)
