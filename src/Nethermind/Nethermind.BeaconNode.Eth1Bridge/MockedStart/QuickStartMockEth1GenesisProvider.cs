@@ -18,9 +18,7 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Numerics;
-using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
@@ -32,6 +30,7 @@ using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Eth1;
 using Nethermind.Core2.Types;
 using Nethermind.Cryptography;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging.Microsoft;
 using Nethermind.Merkleization;
 using Nethermind.Ssz;
@@ -124,12 +123,14 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
 
             // Fixed amount
             Gwei amount = gweiValues.MaximumEffectiveBalance;
-
-            // Build deposits
-            List<Ref<DepositData>> depositDataList = new List<Ref<DepositData>>();
+            
             List<Deposit> deposits = new List<Deposit>();
             for (ulong validatorIndex = 0uL; validatorIndex < quickStartParameters.ValidatorCount; validatorIndex++)
             {
+                if (validatorIndex > 1000)
+                {
+                    
+                }
                 byte[] privateKey = GeneratePrivateKey(validatorIndex);
 
                 // Public Key
@@ -161,33 +162,31 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
                 BlsSignature depositDataSignature = new BlsSignature(destination);
                 depositData.SetSignature(depositDataSignature);
 
-                // Deposit
-
-                // TODO: This seems a very inefficient way (copied from tests) as it recalculates the merkle tree each time
-                // (you only need to add one node)
-
-                // TODO: Add some tests around quick start, then improve
-
-                int index = depositDataList.Count;
+                int index = deposits.Count;
                 Ref<DepositData> depositDataRef = depositData.OrRoot;
-                depositDataList.Add(depositDataRef);
-                //int depositDataLength = (ulong) 1 << _chainConstants.DepositContractTreeDepth;
-                Root root = _cryptographyService.HashTreeRoot(depositDataList);
-                var proof = CalculateProof(depositDataList, index);
+
+                Merkle.Ize(out UInt256 root2Num, depositDataRef);
+                Root leaf = new Root(root2Num);
+                _shaMerkleTree.Insert(Bytes32.Wrap(leaf.Bytes));
+                var proof2 = _shaMerkleTree.GetProof((uint)index);
 
                 byte[] indexBytes = new byte[32];
                 BinaryPrimitives.WriteInt32LittleEndian(indexBytes, index + 1);
                 Bytes32 indexHash = new Bytes32(indexBytes);
-                proof.Add(indexHash);
-                Bytes32 leaf = new Bytes32(_cryptographyService.HashTreeRoot(depositDataRef).AsSpan());
-                bool isValid = _beaconChainUtility.IsValidMerkleBranch(leaf, proof, _chainConstants.DepositContractTreeDepth + 1,
-                    (ulong) index, root);
+                proof2.Add(indexHash);
+                bool isValid = _beaconChainUtility.IsValidMerkleBranch(
+                    Bytes32.Wrap(leaf.Bytes),
+                    proof2,
+                    _chainConstants.DepositContractTreeDepth + 1,
+                    (ulong) index,
+                    Root.Wrap(_shaMerkleTree.Root.Unwrap()));
+                
                 if (!isValid)
                 {
                     throw new InvalidDataException("Invalid deposit");
                 }
                 
-                Deposit deposit = new Deposit(proof, depositDataRef);
+                Deposit deposit = new Deposit(proof2, depositDataRef);
 
                 if (_logger.IsEnabled(LogLevel.Debug))
                     LogDebug.QuickStartAddValidator(_logger, validatorIndex, publicKey.ToString().Substring(0, 12),
@@ -232,31 +231,6 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
             return Task.FromResult(eth1GenesisData);
         }
         
-        /// <summary>
-        /// TODO: Optimize it a lot
-        /// </summary>
-        /// <param name="depositDataList"></param>
-        /// <param name="index"></param>
-        /// <returns></returns>
-        private List<Bytes32> CalculateProof(List<Ref<DepositData>> depositDataList, int index)
-        {
-            IEnumerable<Bytes32> allLeaves = depositDataList.Select(x =>
-                new Bytes32(_cryptographyService.HashTreeRoot(x).AsSpan()));
-            
-            
-            MemMerkleTreeStore memMerkleTreeStore = new MemMerkleTreeStore(); 
-            MerkleTree merkleTree = new ShaMerkleTree(memMerkleTreeStore);
-            foreach (Bytes32 bytes32 in allLeaves)
-            {
-                merkleTree.Insert(bytes32);
-            }
-
-            MerkleTreeNode[] proofExp = merkleTree.GetProof((uint) index);
-
-            IList<IList<Bytes32>> tree = OldMerkleHelper.CalculateMerkleTreeFromLeaves(allLeaves);
-            IList<Bytes32> merkleProof = OldMerkleHelper.GetMerkleProof(tree, index, 32);
-            List<Bytes32> proof = new List<Bytes32>(merkleProof);
-            return proof;
-        }
+        private ShaMerkleTree _shaMerkleTree = new ShaMerkleTree(new MemMerkleTreeStore());
     }
 }

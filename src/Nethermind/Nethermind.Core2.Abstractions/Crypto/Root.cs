@@ -26,11 +26,11 @@ namespace Nethermind.Core2.Crypto
     {
         public const int Length = 32;
 
-        private readonly byte[] _bytes;
+        public byte[] Bytes { get; }
 
         public Root()
         {
-            _bytes = new byte[Length];
+            Bytes = new byte[Length];
         }
 
         public Root(UInt256 span)
@@ -45,14 +45,14 @@ namespace Nethermind.Core2.Crypto
 
         public void AsInt(out UInt256 intRoot)
         {
-            UInt256.CreateFromLittleEndian(out intRoot, _bytes.AsSpan());
+            UInt256.CreateFromLittleEndian(out intRoot, Bytes.AsSpan());
         }
         
         public static Root Wrap(byte[] bytes)
         {
             return new Root(bytes);
         }
-        
+
         private Root(byte[] bytes)
         {
             if (bytes.Length != Length)
@@ -61,25 +61,25 @@ namespace Nethermind.Core2.Crypto
                     $"{nameof(Root)} must have exactly {Length} bytes");
             }
 
-            _bytes = bytes;
+            Bytes = bytes;
         }
 
         public Root(string hex)
         {
-            byte[] bytes = Bytes.FromHexString(hex);
+            byte[] bytes = Nethermind.Core2.Bytes.FromHexString(hex);
             if (bytes.Length != Length)
             {
                 throw new ArgumentOutOfRangeException(nameof(hex), bytes.Length, $"{nameof(Root)} must have exactly {Length} bytes");
             }
 
-            _bytes = bytes;
+            Bytes = bytes;
         }
 
         public static Root Zero { get; } = new Root(new byte[Length]);
 
         public ReadOnlySpan<byte> AsSpan()
         {
-            return new ReadOnlySpan<byte>(_bytes);
+            return new ReadOnlySpan<byte>(Bytes);
         }
 
         public override int GetHashCode()
@@ -111,7 +111,7 @@ namespace Nethermind.Core2.Crypto
         {
             if (ReferenceEquals(null, other)) return false;
             if (ReferenceEquals(this, other)) return true;
-            return _bytes.SequenceEqual(other._bytes);
+            return Bytes.SequenceEqual(other.Bytes);
         }
 
         public override bool Equals(object? obj)

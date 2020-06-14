@@ -16,6 +16,7 @@
 // 
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -270,18 +271,18 @@ namespace Nethermind.Ssz.Test
                 baselineTree.Insert(_testLeaves[0]);    
             }
             
-            MerkleTreeNode[] proof = baselineTree.GetProof(0);
+            IList<Bytes32> proof = baselineTree.GetProof(0);
             proof.Should().HaveCount(MerkleTree.TreeHeight);
 
             for (int proofRow = 0; proofRow < MerkleTree.TreeHeight; proofRow++)
             {
                 if (nodesCount > 1 >> proofRow)
                 {
-                    proof[proofRow].Hash.Should().NotBe(Bytes32.Zero, proofRow.ToString());
+                    proof[proofRow].Should().NotBe(Bytes32.Zero, proofRow.ToString());
                 }
                 else
                 {
-                    proof[proofRow].Hash.Should().Be(Bytes32.Wrap(ShaMerkleTree.ZeroHashes[proofRow]), proofRow.ToString());
+                    proof[proofRow].Should().Be(Bytes32.Wrap(ShaMerkleTree.ZeroHashes[proofRow]), proofRow.ToString());
                 }
             }
         }

@@ -42,12 +42,8 @@ namespace Nethermind.HashLib.Crypto
             base.Initialize();
         }
 
-        private static int _count;
-        
         protected override byte[] GetResult()
         {
-            Interlocked.Increment(ref _count);
-            Console.WriteLine(_count);
             return Converters.ConvertUIntsToBytesSwapOrder(m_state);
         }
     }

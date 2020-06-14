@@ -25,7 +25,7 @@ namespace Nethermind.Ssz.Benchmarks
     [MemoryDiagnoser]
     public class GetProofBenchmarks
     {
-        private Bytes32[] _bytes = new Bytes32[32];
+        private Bytes32[] _bytes = new Bytes32[1024];
 
         [GlobalSetup]
         public void GlobalSetup()
@@ -33,7 +33,7 @@ namespace Nethermind.Ssz.Benchmarks
             for (int i = 0; i < _bytes.Length; i++)
             {
                 byte[] bytes = new byte[32];
-                bytes[i] = (byte) i;
+                bytes[i % 32] = (byte) i;
                 _bytes[i] = Bytes32.Wrap(bytes);
             }
         }

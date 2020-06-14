@@ -58,14 +58,17 @@ namespace Nethermind.BeaconNode.Host
                     {
                         configureLogging.AddConsole();
                     }
-                    if (hostContext.Configuration.GetSection("Logging:Seq").Exists())
-                    {
-                        configureLogging.AddSeq(hostContext.Configuration.GetSection("Logging:Seq"));
-                    }
-                    if (hostContext.Configuration.GetSection("Logging:Elasticsearch").Exists())
-                    {
-                        configureLogging.AddElasticsearch();
-                    }
+                    // this causes MASSIVE slowdown on BeaconNode start - please review
+                    // (try with 10000 validators with and without logging)
+                    
+                    // if (hostContext.Configuration.GetSection("Logging:Seq").Exists())
+                    // {
+                    //     configureLogging.AddSeq(hostContext.Configuration.GetSection("Logging:Seq"));
+                    // }
+                    // if (hostContext.Configuration.GetSection("Logging:Elasticsearch").Exists())
+                    // {
+                    //     configureLogging.AddElasticsearch();
+                    // }
                 })
                 .ConfigureAppConfiguration((hostContext, config) =>
                 {

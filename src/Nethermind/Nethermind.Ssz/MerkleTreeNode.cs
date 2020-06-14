@@ -15,6 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Diagnostics;
+using Nethermind.Core2;
 using Nethermind.Core2.Types;
 
 namespace Nethermind.Ssz
@@ -29,5 +31,10 @@ namespace Nethermind.Ssz
         
         public Bytes32 Hash { get; }
         public ulong Index { get; } // 32bit index for 32 depth of a tree
+
+        public override string ToString()
+        {
+            return $"{Hash.Unwrap().ToHexString(true)}, {Index}";
+        }
     }
 }
