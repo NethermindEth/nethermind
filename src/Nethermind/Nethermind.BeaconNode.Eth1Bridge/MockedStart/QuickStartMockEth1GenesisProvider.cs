@@ -41,7 +41,7 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
     {
         private readonly IBeaconChainUtility _beaconChainUtility;
         private readonly ChainConstants _chainConstants;
-        private readonly ICryptographyService _cryptographyService;
+        private readonly ICryptographyService _crypto;
 
         private readonly IOptionsMonitor<GweiValues> _gweiValueOptions;
         private readonly IOptionsMonitor<InitialValues> _initialValueOptions;
@@ -60,7 +60,7 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
             IOptionsMonitor<TimeParameters> timeParameterOptions,
             IOptionsMonitor<SignatureDomains> signatureDomainOptions,
             IOptionsMonitor<QuickStartParameters> quickStartParameterOptions,
-            ICryptographyService cryptographyService,
+            ICryptographyService crypto,
             IBeaconChainUtility beaconChainUtility)
         {
             _logger = logger;
@@ -70,7 +70,7 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
             _timeParameterOptions = timeParameterOptions;
             _signatureDomainOptions = signatureDomainOptions;
             _quickStartParameterOptions = quickStartParameterOptions;
-            _cryptographyService = cryptographyService;
+            _crypto = crypto;
             _beaconChainUtility = beaconChainUtility;
         }
 
@@ -85,7 +85,7 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
                 throw new Exception("Error getting input for quick start private key generation.");
             }
 
-            Bytes32 hash32 = _cryptographyService.Hash(input);
+            Bytes32 hash32 = _crypto.Hash(input);
             ReadOnlySpan<byte> hash = hash32.AsSpan();
             // Mocked start interop specifies to convert the hash as little endian (which is the default for BigInteger)
             BigInteger value = new BigInteger(hash.ToArray(), isUnsigned: true);
@@ -127,56 +127,56 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
             List<Deposit> deposits = new List<Deposit>();
             for (ulong validatorIndex = 0uL; validatorIndex < quickStartParameters.ValidatorCount; validatorIndex++)
             {
-                if (validatorIndex > 1000)
-                {
-                    
-                }
                 byte[] privateKey = GeneratePrivateKey(validatorIndex);
 
                 // Public Key
-                BLSParameters blsParameters = new BLSParameters()
+                BLSParameters blsParameters = new BLSParameters
                 {
                     PrivateKey = privateKey
                 };
+                
                 using BLS bls = BLS.Create(blsParameters);
                 byte[] publicKeyBytes = new byte[BlsPublicKey.Length];
                 bls.TryExportBlsPublicKey(publicKeyBytes, out int publicKeyBytesWritten);
                 BlsPublicKey publicKey = new BlsPublicKey(publicKeyBytes);
 
                 // Withdrawal Credentials
-                byte[] withdrawalCredentialBytes = _cryptographyService.Hash(publicKey.AsSpan()).AsSpan().ToArray();
-                withdrawalCredentialBytes[0] = initialValues.BlsWithdrawalPrefix;
-                Bytes32 withdrawalCredentials = new Bytes32(withdrawalCredentialBytes);
+                Bytes32 withdrawalCredentials = _crypto.Hash(publicKey.AsSpan());
+                withdrawalCredentials.Unwrap()[0] = initialValues.BlsWithdrawalPrefix;
 
                 // Build deposit data
                 DepositData depositData = new DepositData(publicKey, withdrawalCredentials, amount, BlsSignature.Zero);
 
                 // Sign deposit data
                 Domain domain = _beaconChainUtility.ComputeDomain(signatureDomains.Deposit);
-                DepositMessage depositMessage = new DepositMessage(depositData.PublicKey,
-                    depositData.WithdrawalCredentials, depositData.Amount);
-                Root depositMessageRoot = _cryptographyService.HashTreeRoot(depositMessage);
+                DepositMessage depositMessage = new DepositMessage(
+                    depositData.PublicKey,
+                    depositData.WithdrawalCredentials,
+                    depositData.Amount);
+                
+                Root depositMessageRoot = _crypto.HashTreeRoot(depositMessage);
                 Root depositDataSigningRoot = _beaconChainUtility.ComputeSigningRoot(depositMessageRoot, domain);
-                byte[] destination = new byte[96];
-                bls.TrySignData(depositDataSigningRoot.AsSpan(), destination, out int bytesWritten);
-                BlsSignature depositDataSignature = new BlsSignature(destination);
+                byte[] signatureBytes = new byte[96];
+                bls.TrySignData(depositDataSigningRoot.AsSpan(), signatureBytes, out int bytesWritten);
+                
+                BlsSignature depositDataSignature = new BlsSignature(signatureBytes);
                 depositData.SetSignature(depositDataSignature);
 
                 int index = deposits.Count;
                 Ref<DepositData> depositDataRef = depositData.OrRoot;
 
-                Merkle.Ize(out UInt256 root2Num, depositDataRef);
-                Root leaf = new Root(root2Num);
-                _shaMerkleTree.Insert(Bytes32.Wrap(leaf.Bytes));
-                var proof2 = _shaMerkleTree.GetProof((uint)index);
+                Root leaf = _crypto.HashTreeRoot(depositDataRef);
+                Bytes32 leafBytes = Bytes32.Wrap(leaf.Bytes);
+                _shaMerkleTree.Insert(leafBytes);
+                var proof = _shaMerkleTree.GetProof((uint)index);
 
                 byte[] indexBytes = new byte[32];
                 BinaryPrimitives.WriteInt32LittleEndian(indexBytes, index + 1);
                 Bytes32 indexHash = new Bytes32(indexBytes);
-                proof2.Add(indexHash);
+                proof.Add(indexHash);
                 bool isValid = _beaconChainUtility.IsValidMerkleBranch(
-                    Bytes32.Wrap(leaf.Bytes),
-                    proof2,
+                    leafBytes,
+                    proof,
                     _chainConstants.DepositContractTreeDepth + 1,
                     (ulong) index,
                     Root.Wrap(_shaMerkleTree.Root.Unwrap()));
@@ -186,8 +186,7 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
                     throw new InvalidDataException("Invalid deposit");
                 }
                 
-                Deposit deposit = new Deposit(proof2, depositDataRef);
-
+                Deposit deposit = new Deposit(proof, depositDataRef);
                 if (_logger.IsEnabled(LogLevel.Debug))
                     LogDebug.QuickStartAddValidator(_logger, validatorIndex, publicKey.ToString().Substring(0, 12),
                         null);

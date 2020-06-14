@@ -89,10 +89,7 @@ namespace Nethermind.BeaconNode
         /// </summary>
         public Domain ComputeDomain(DomainType domainType, ForkVersion? forkVersion = null)
         {
-            if (forkVersion == null)
-            {
-                forkVersion = _initialValueOptions.CurrentValue.GenesisForkVersion;
-            }
+            forkVersion ??= _initialValueOptions.CurrentValue.GenesisForkVersion;
 
             Span<byte> combined = stackalloc byte[Domain.Length];
             domainType.AsSpan().CopyTo(combined);
