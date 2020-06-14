@@ -273,7 +273,7 @@ namespace Nethermind.Ssz.Test
             }
             
             IList<Bytes32> proof = baselineTree.GetProof(0);
-            proof.Should().HaveCount(MerkleTree.TreeHeight);
+            proof.Should().HaveCount(MerkleTree.TreeHeight + 1);
 
             for (int proofRow = 0; proofRow < MerkleTree.TreeHeight; proofRow++)
             {

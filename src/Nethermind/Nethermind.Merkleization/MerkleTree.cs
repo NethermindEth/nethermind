@@ -313,15 +313,21 @@ namespace Nethermind.Merkleization
             }
             
             Index index = new Index(LeafRow, leafIndex);
-            List<Bytes32> proof = new List<Bytes32>();
+            Bytes32[] proof = new Bytes32[TreeHeight + 1];
 
+            int i = 0;
             for (int proofRow = LeafRow; proofRow > 0; proofRow--)
             {
                 Index siblingIndex = index.Sibling();
-                proof.Add(LoadValue(siblingIndex));
+                proof[i++] = LoadValue(siblingIndex);
                 index = index.Parent();
             }
 
+            byte[] indexBytes = new byte[32];
+            BinaryPrimitives.WriteUInt32LittleEndian(indexBytes, Count);
+            Bytes32 indexHash = Bytes32.Wrap(indexBytes);
+            proof[TreeHeight] = indexHash;
+            
             return proof;
         }
 
@@ -329,7 +335,7 @@ namespace Nethermind.Merkleization
         {
             Index index = new Index(LeafRow, leafIndex);
             Bytes32 value = LoadValue(index);
-            return new MerkleTreeNode(Bytes32.Wrap(value.AsSpan().ToArray()), index.NodeIndex);
+            return new MerkleTreeNode(value, index.NodeIndex);
         }
 
         public MerkleTreeNode[] GetLeaves(params uint[] leafIndexes)

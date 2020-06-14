@@ -32,11 +32,7 @@ namespace Nethermind.BeaconNode
             DepositData.Insert(leafBytes);
             
             var proof = DepositData.GetProof(DepositData.Count - 1);
-            byte[] indexBytes = new byte[32];
-            BinaryPrimitives.WriteUInt32LittleEndian(indexBytes, DepositData.Count);
-            Bytes32 indexHash = new Bytes32(indexBytes);
-            proof.Add(indexHash);
-            
+
             Deposit deposit = new Deposit(proof, depositDataRef);
             Deposits.Add(deposit);
             return deposit;
