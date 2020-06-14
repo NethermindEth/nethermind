@@ -240,9 +240,15 @@ namespace Nethermind.Merkleization
 
             for (int row = LeafRow; row > 0; row--)
             {
-                var parentHash = index.IsLeftSibling()
-                    ? Hash(hash.AsSpan(), siblingHash.AsSpan())
-                    : Hash(siblingHash.AsSpan(), hash.AsSpan());
+                byte[] parentHash = new byte[32]; 
+                if(index.IsLeftSibling())
+                {
+                    Hash(hash.AsSpan(), siblingHash.AsSpan(), parentHash);
+                }
+                else
+                {
+                    Hash(siblingHash.AsSpan(), hash.AsSpan(), parentHash);
+                }
 
                 Index parentIndex = index.Parent();
                 SaveValue(parentIndex, parentHash);
@@ -259,7 +265,9 @@ namespace Nethermind.Merkleization
                 else
                 {
                     BinaryPrimitives.WriteUInt32LittleEndian(_countBytes, Count + 1);
-                    Root = Root.Wrap(Hash(parentHash, _countBytes));
+                    byte[] rootBytes = new byte[32];
+                    Hash(parentHash, _countBytes, rootBytes);
+                    Root = Root.Wrap(rootBytes);
                 }
             }
 
@@ -280,15 +288,20 @@ namespace Nethermind.Merkleization
             for (int testDepth = 0; testDepth < TreeHeight; testDepth++)
             {
                 Bytes32 branchValue = proof[testDepth];
-                value = index.IsLeftSibling()
-                    ? Hash(value.AsSpan(), branchValue.AsSpan())
-                    : Hash(branchValue.AsSpan(), value.AsSpan());
+                if (index.IsLeftSibling())
+                {
+                    Hash(value.AsSpan(), branchValue.AsSpan(), value);
+                }
+                else
+                {
+                    Hash(branchValue.AsSpan(), value.AsSpan(), value);    
+                }
 
                 index = index.Parent();
             }
             
             // MixIn count
-            value = Hash(value.AsSpan(), proof[^1].AsSpan());
+            Hash(value.AsSpan(), proof[^1].AsSpan(), value);
             return value.AsSpan().SequenceEqual(Root.AsSpan());
         }
         
@@ -347,6 +360,6 @@ namespace Nethermind.Merkleization
 
         public Root Root { get; set; }
         
-        protected abstract byte[] Hash(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b);
+        protected abstract void Hash(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b, Span<byte> target);
     }
 }

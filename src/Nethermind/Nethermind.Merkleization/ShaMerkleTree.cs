@@ -32,7 +32,8 @@ namespace Nethermind.Merkleization
             _zeroHashes[0] = new byte[32];
             for (int index = 1; index < 32; index++)
             {
-                _zeroHashes[index] = HashStatic(_zeroHashes[index - 1], _zeroHashes[index - 1]);
+                _zeroHashes[index] = new byte[32];
+                HashStatic(_zeroHashes[index - 1], _zeroHashes[index - 1], _zeroHashes[index]);
             }
         }
         
@@ -47,21 +48,20 @@ namespace Nethermind.Merkleization
         {
         }
 
-        private static byte[] HashStatic(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
+        private static void HashStatic(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b, Span<byte> target)
         {
-            Span<byte> combined = new Span<byte>(new byte[a.Length + b.Length]);
+            Span<byte> combined = stackalloc byte[a.Length + b.Length];
             a.CopyTo(combined);
             b.CopyTo(combined.Slice(a.Length));
             
-            // TryComputeHash here?
-            return _hashAlgorithm.ComputeHash(combined.ToArray());
+            _hashAlgorithm.TryComputeHash(combined, target, out int bytesWritten);
         }
 
         protected override byte[][] ZeroHashesInternal => _zeroHashes;
 
-        protected override byte[] Hash(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
+        protected override void Hash(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b, Span<byte> target)
         {
-            return HashStatic(a, b);
+            HashStatic(a, b, target);
         }
     }
 }
