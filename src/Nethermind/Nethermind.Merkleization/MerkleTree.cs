@@ -141,7 +141,7 @@ namespace Nethermind.Merkleization
         /// <summary>
         /// Zero hashes will always be stored as 32 bytes (not truncated)
         /// </summary>
-        protected abstract byte[][] ZeroHashesInternal { get; }
+        protected abstract Bytes32[] ZeroHashesInternal { get; }
 
         public uint Count { get; set; }
 
@@ -175,7 +175,7 @@ namespace Nethermind.Merkleization
             byte[]? nodeHashBytes = _keyValueStore[index.NodeIndex];
             if (nodeHashBytes == null)
             {
-                return Bytes32.Wrap(ZeroHashesInternal[LeafRow - index.Row]);
+                return ZeroHashesInternal[LeafRow - index.Row];
             }
 
             return Bytes32.Wrap(nodeHashBytes);

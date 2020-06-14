@@ -22,8 +22,7 @@ namespace Nethermind.Core2.Types
     [DebuggerDisplay("{Number}")]
     public readonly struct ValidatorIndex : IEquatable<ValidatorIndex>, IComparable<ValidatorIndex>
     {
-        // TODO: this does not look right?
-        public static ValidatorIndex None => default;
+        public static ValidatorIndex? None => default;
         
         public static ValidatorIndex Zero => new ValidatorIndex(0);
 

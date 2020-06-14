@@ -259,8 +259,7 @@ namespace Nethermind.Ssz.Test
                 baselineTree.Count.Should().Be(i + 1);
             }
         }
-
-        [TestCase(uint.MinValue)]
+        
         [TestCase(1u)]
         [TestCase(2u)]
         [TestCase(23u)]
@@ -283,7 +282,7 @@ namespace Nethermind.Ssz.Test
                 }
                 else
                 {
-                    proof[proofRow].Should().Be(Bytes32.Wrap(ShaMerkleTree.ZeroHashes[proofRow]), proofRow.ToString());
+                    proof[proofRow].Should().Be(ShaMerkleTree.ZeroHashes[proofRow], proofRow.ToString());
                 }
             }
         }

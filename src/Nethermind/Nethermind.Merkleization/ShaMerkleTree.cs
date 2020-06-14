@@ -18,26 +18,27 @@
 using System;
 using System.Collections.ObjectModel;
 using System.Security.Cryptography;
+using Nethermind.Core2.Types;
 using Nethermind.Ssz;
 
 namespace Nethermind.Merkleization
 {
     public class ShaMerkleTree : MerkleTree
     {
-        private static readonly byte[][] _zeroHashes = new byte[32][];
+        private static readonly Bytes32[] _zeroHashes = new Bytes32[32];
         private static readonly HashAlgorithm _hashAlgorithm = SHA256.Create();
         
         static ShaMerkleTree()
         {
-            _zeroHashes[0] = new byte[32];
+            _zeroHashes[0] = new Bytes32();
             for (int index = 1; index < 32; index++)
             {
-                _zeroHashes[index] = new byte[32];
-                HashStatic(_zeroHashes[index - 1], _zeroHashes[index - 1], _zeroHashes[index]);
+                _zeroHashes[index] = new Bytes32();
+                HashStatic(_zeroHashes[index - 1].Unwrap(), _zeroHashes[index - 1].Unwrap(), _zeroHashes[index].Unwrap());
             }
         }
         
-        public static ReadOnlyCollection<byte[]> ZeroHashes => Array.AsReadOnly(_zeroHashes);
+        public static ReadOnlyCollection<Bytes32> ZeroHashes => Array.AsReadOnly(_zeroHashes);
 
         public ShaMerkleTree(IKeyValueStore<ulong, byte[]> keyValueStore)
             : base(keyValueStore)
@@ -57,7 +58,7 @@ namespace Nethermind.Merkleization
             _hashAlgorithm.TryComputeHash(combined, target, out int bytesWritten);
         }
 
-        protected override byte[][] ZeroHashesInternal => _zeroHashes;
+        protected override Bytes32[] ZeroHashesInternal => _zeroHashes;
 
         protected override void Hash(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b, Span<byte> target)
         {
