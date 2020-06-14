@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.Running;
 
 namespace Nethermind.Ssz.Benchmarks
@@ -21,11 +22,16 @@ namespace Nethermind.Ssz.Benchmarks
     public static class Program
     {
         public static void Main(string[] args)
+#if DEBUG
+=> BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args, new DebugInProcessConfig());
+#else
         {
-//            BenchmarkRunner.Run<SszUIntBenchmarks>();
-//            BenchmarkRunner.Run<SszBoolBenchmarks>();
-            BenchmarkRunner.Run<SszBeaconBlockHeaderBenchmark>();
-            BenchmarkRunner.Run<SszBeaconBlockBodyBenchmark>();
+            // BenchmarkRunner.Run<SszUIntBenchmarks>();
+            // BenchmarkRunner.Run<SszBoolBenchmarks>();
+            // BenchmarkRunner.Run<SszBeaconBlockHeaderBenchmark>();
+            // BenchmarkRunner.Run<SszBeaconBlockBodyBenchmark>();
+            BenchmarkRunner.Run<GetProofBenchmarks>();
         }
+#endif
     }
 }

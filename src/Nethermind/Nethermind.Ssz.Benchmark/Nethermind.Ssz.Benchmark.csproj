@@ -12,6 +12,7 @@
     </ItemGroup>
 
     <ItemGroup>
+      <ProjectReference Include="..\Nethermind.Merkleization\Nethermind.Merkleization.csproj" />
       <ProjectReference Include="..\Nethermind.Ssz\Nethermind.Ssz.csproj" />
     </ItemGroup>
 

@@ -241,25 +241,6 @@ namespace Nethermind.Ssz
             return proof;
         }
         
-        public MerkleTreeNode[] GetProofWithRoot(uint leafIndex)
-        {
-            ValidateIndexAtRow(LeafRow, leafIndex);
-
-            MerkleTreeNode[] proof = new MerkleTreeNode[TreeHeight];
-
-            uint indexAtRow = leafIndex;
-            for (int proofRow = LeafRow; proofRow > 0; proofRow--)
-            {
-                uint siblingIndex = GetSiblingIndex((uint) proofRow, indexAtRow);
-                ulong siblingNodeIndex = GetNodeIndex((uint) proofRow, siblingIndex);
-                ulong nodeIndex = GetNodeIndex((uint) proofRow, indexAtRow);
-                proof[LeafRow - proofRow] = new MerkleTreeNode(LoadValue(siblingNodeIndex), siblingNodeIndex);
-                indexAtRow = GetIndexAtRow((uint) proofRow - 1u, GetParentIndex(nodeIndex));
-            }
-
-            return proof;
-        }
-        
         public MerkleTreeNode GetLeaf(uint leafIndex)
         {
             ulong nodeIndex = GetNodeIndex(LeafRow, leafIndex);

@@ -74,6 +74,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Core.Cryptograph
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Merkleization", "Nethermind.Merkleization\Nethermind.Merkleization.csproj", "{3C7CC06A-9FAE-4DE2-BF93-AC1D5EC633DD}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Ssz.Benchmark", "Nethermind.Ssz.Benchmark\Nethermind.Ssz.Benchmark.csproj", "{CF819EE6-60D9-43FA-84A1-77D41FD20541}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -212,6 +214,10 @@ Global
 		{359CB477-96DF-4A84-83D6-1A6B8E82410F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{D013F1F4-1C24-4ED0-83A5-86E338746104}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{D013F1F4-1C24-4ED0-83A5-86E338746104}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{CF819EE6-60D9-43FA-84A1-77D41FD20541}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{CF819EE6-60D9-43FA-84A1-77D41FD20541}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{CF819EE6-60D9-43FA-84A1-77D41FD20541}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{CF819EE6-60D9-43FA-84A1-77D41FD20541}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{4FFCC84D-DC26-4429-84D4-8809DD52B851} = {0F737A2F-A2C5-4A7E-A225-27F093A4C105}

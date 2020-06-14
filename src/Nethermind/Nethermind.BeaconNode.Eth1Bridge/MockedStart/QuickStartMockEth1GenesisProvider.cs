@@ -17,6 +17,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Security.Cryptography;
@@ -32,6 +33,7 @@ using Nethermind.Core2.Eth1;
 using Nethermind.Core2.Types;
 using Nethermind.Cryptography;
 using Nethermind.Logging.Microsoft;
+using Nethermind.Merkleization;
 using Nethermind.Ssz;
 
 namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
@@ -52,10 +54,6 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
         private static readonly BigInteger s_curveOrder =
             BigInteger.Parse("52435875175126190479447740508185965837690552500527637822603658699938581184513");
 
-        private static readonly HashAlgorithm s_hashAlgorithm = SHA256.Create();
-
-        private static readonly byte[][] s_zeroHashes = new byte[32][];
-
         public QuickStartMockEth1GenesisProvider(ILogger<QuickStartMockEth1GenesisProvider> logger,
             ChainConstants chainConstants,
             IOptionsMonitor<GweiValues> gweiValueOptions,
@@ -75,15 +73,6 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
             _quickStartParameterOptions = quickStartParameterOptions;
             _cryptographyService = cryptographyService;
             _beaconChainUtility = beaconChainUtility;
-        }
-
-        static QuickStartMockEth1GenesisProvider()
-        {
-            s_zeroHashes[0] = new byte[32];
-            for (int index = 1; index < 32; index++)
-            {
-                s_zeroHashes[index] = Hash(s_zeroHashes[index - 1], s_zeroHashes[index - 1]);
-            }
         }
 
         public byte[] GeneratePrivateKey(ulong index)
@@ -191,8 +180,13 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
                 Bytes32 indexHash = new Bytes32(indexBytes);
                 proof.Add(indexHash);
                 Bytes32 leaf = new Bytes32(_cryptographyService.HashTreeRoot(depositDataRef).AsSpan());
-                _beaconChainUtility.IsValidMerkleBranch(leaf, proof, _chainConstants.DepositContractTreeDepth + 1,
+                bool isValid = _beaconChainUtility.IsValidMerkleBranch(leaf, proof, _chainConstants.DepositContractTreeDepth + 1,
                     (ulong) index, root);
+                if (!isValid)
+                {
+                    throw new InvalidDataException("Invalid deposit");
+                }
+                
                 Deposit deposit = new Deposit(proof, depositDataRef);
 
                 if (_logger.IsEnabled(LogLevel.Debug))
@@ -257,64 +251,12 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
                 merkleTree.Insert(bytes32);
             }
 
-            MerkleTreeNode[] proofExp = merkleTree.GetProofWithRoot((uint) index);
+            MerkleTreeNode[] proofExp = merkleTree.GetProof((uint) index);
 
-            IList<IList<Bytes32>> tree = CalculateMerkleTreeFromLeaves(allLeaves);
-            IList<Bytes32> merkleProof = GetMerkleProof(tree, index, 32);
+            IList<IList<Bytes32>> tree = OldMerkleHelper.CalculateMerkleTreeFromLeaves(allLeaves);
+            IList<Bytes32> merkleProof = OldMerkleHelper.GetMerkleProof(tree, index, 32);
             List<Bytes32> proof = new List<Bytes32>(merkleProof);
             return proof;
-        }
-
-        // why not using existing operations? - need to review
-        private static IList<IList<Bytes32>> CalculateMerkleTreeFromLeaves(IEnumerable<Bytes32> values,
-            int layerCount = 32)
-        {
-            List<Bytes32> workingValues = new List<Bytes32>(values);
-            List<IList<Bytes32>> tree = new List<IList<Bytes32>>(new[] {workingValues.ToArray()});
-            for (int height = 0; height < layerCount; height++)
-            {
-                if (workingValues.Count % 2 == 1)
-                {
-                    workingValues.Add(new Bytes32(s_zeroHashes[height]));
-                }
-
-                List<Bytes32> hashes = new List<Bytes32>();
-                for (int index = 0; index < workingValues.Count; index += 2)
-                {
-                    byte[] hash = Hash(workingValues[index].AsSpan(), workingValues[index + 1].AsSpan());
-                    hashes.Add(new Bytes32(hash));
-                }
-
-                tree.Add(hashes.ToArray());
-                workingValues = hashes;
-            }
-
-            return tree;
-        }
-
-        // why is this not in Merkleizer?
-        private static IList<Bytes32> GetMerkleProof(IList<IList<Bytes32>> tree, int itemIndex, int? treeLength = null)
-        {
-            List<Bytes32> proof = new List<Bytes32>();
-            for (int height = 0; height < (treeLength ?? tree.Count); height++)
-            {
-                int subindex = (itemIndex / (1 << height)) ^ 1;
-                Bytes32 value = subindex < tree[height].Count
-                    ? tree[height][subindex]
-                    : new Bytes32(s_zeroHashes[height]);
-                proof.Add(value);
-            }
-
-            return proof;
-        }
-
-        // why not use the one from merkleizer?
-        private static byte[] Hash(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
-        {
-            Span<byte> combined = new Span<byte>(new byte[64]);
-            a.CopyTo(combined);
-            b.CopyTo(combined.Slice(32));
-            return s_hashAlgorithm.ComputeHash(combined.ToArray());
         }
     }
 }

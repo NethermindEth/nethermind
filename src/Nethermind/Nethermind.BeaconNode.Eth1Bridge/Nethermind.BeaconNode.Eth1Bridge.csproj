@@ -21,6 +21,7 @@
       <ProjectReference Include="..\Nethermind.Core2.Abstractions\Nethermind.Core2.Abstractions.csproj" />
       <ProjectReference Include="..\Nethermind.Core2.Configuration\Nethermind.Core2.Configuration.csproj" />
       <ProjectReference Include="..\Nethermind.Logging.Microsoft\Nethermind.Logging.Microsoft.csproj" />
+      <ProjectReference Include="..\Nethermind.Merkleization\Nethermind.Merkleization.csproj" />
       <ProjectReference Include="..\Nethermind.Ssz\Nethermind.Ssz.csproj" />
     </ItemGroup>
 
