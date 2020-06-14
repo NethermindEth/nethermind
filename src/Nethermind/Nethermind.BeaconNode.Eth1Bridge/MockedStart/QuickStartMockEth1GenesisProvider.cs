@@ -123,6 +123,7 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
             // Fixed amount
             Gwei amount = gweiValues.MaximumEffectiveBalance;
             
+            ShaMerkleTree depositTree = new ShaMerkleTree(new MemMerkleTreeStore());
             List<Deposit> deposits = new List<Deposit>();
             for (ulong validatorIndex = 0uL; validatorIndex < quickStartParameters.ValidatorCount; validatorIndex++)
             {
@@ -166,8 +167,8 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
 
                 Root leaf = _crypto.HashTreeRoot(depositDataRef);
                 Bytes32 leafBytes = Bytes32.Wrap(leaf.Bytes);
-                _shaMerkleTree.Insert(leafBytes);
-                var proof = _shaMerkleTree.GetProof((uint)index);
+                depositTree.Insert(leafBytes);
+                var proof = depositTree.GetProof((uint)index);
 
                 byte[] indexBytes = new byte[32];
                 BinaryPrimitives.WriteInt32LittleEndian(indexBytes, index + 1);
@@ -178,7 +179,7 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
                     proof,
                     _chainConstants.DepositContractTreeDepth + 1,
                     (ulong) index,
-                    _shaMerkleTree.Root);
+                    depositTree.Root);
                 
                 if (!isValid)
                 {
@@ -220,7 +221,7 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
                 }
             }
 
-            var eth1GenesisData = new Eth1GenesisData(quickStartParameters.Eth1BlockHash, eth1Timestamp, _shaMerkleTree);
+            var eth1GenesisData = new Eth1GenesisData(quickStartParameters.Eth1BlockHash, eth1Timestamp, depositTree);
 
             if (_logger.IsEnabled(LogLevel.Debug))
                 LogDebug.QuickStartGenesisDataCreated(_logger, eth1GenesisData.BlockHash, eth1GenesisData.Timestamp,
@@ -228,7 +229,5 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
 
             return Task.FromResult(eth1GenesisData);
         }
-        
-        private ShaMerkleTree _shaMerkleTree = new ShaMerkleTree(new MemMerkleTreeStore());
     }
 }
