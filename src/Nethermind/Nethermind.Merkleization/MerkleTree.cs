@@ -233,7 +233,7 @@ namespace Nethermind.Merkleization
         {
             Index index = new Index(LeafRow, Count);
             Index siblingIndex = index.Sibling();
-            Bytes32 hash = leaf;
+            byte[] hash = leaf.Unwrap();
             Bytes32 siblingHash = LoadValue(siblingIndex);
 
             SaveValue(index, hash);
@@ -257,7 +257,7 @@ namespace Nethermind.Merkleization
                 if (row != 1)
                 {
                     siblingIndex = index.Sibling();
-                    hash = Bytes32.Wrap(parentHash);
+                    hash = parentHash;
 
                     // we can quickly / efficiently find out that it will be a zero hash
                     siblingHash = LoadValue(siblingIndex);
