@@ -27,6 +27,7 @@ using Nethermind.Core2;
 using Nethermind.Core2.Configuration;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Types;
+using Nethermind.Merkleization;
 using NSubstitute;
 using Shouldly;
 
@@ -106,7 +107,7 @@ namespace Nethermind.BeaconNode.Test.Genesis
             // Act
             Bytes32 eth1BlockHash = Bytes32.Zero;
             ulong eth1Timestamp = 106185600uL; // 1973-05-14
-            Deposit[] deposits = Array.Empty<Deposit>();
+            IMerkleList deposits = new ShaMerkleTree();
             bool success = await genesisChainStart.TryGenesisAsync(eth1BlockHash, eth1Timestamp, deposits);
 
             // Assert

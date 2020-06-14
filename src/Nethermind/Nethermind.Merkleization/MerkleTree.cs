@@ -2,16 +2,19 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using Nethermind.Core2;
+using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
+using Nethermind.Ssz;
 
 [assembly: InternalsVisibleTo("Nethermind.Ssz.Test")]
 
-namespace Nethermind.Ssz
+namespace Nethermind.Merkleization
 {
     /// <summary>
     /// This will be moved to Eth2
     /// </summary>
-    public abstract class MerkleTree
+    public abstract class MerkleTree : IMerkleList
     {
         private const int LeafRow = 32;
         private const int LeafLevel = 0;
@@ -256,7 +259,7 @@ namespace Nethermind.Ssz
                 else
                 {
                     BinaryPrimitives.WriteUInt32LittleEndian(_countBytes, Count + 1);
-                    Root = Bytes32.Wrap(Hash(parentHash, _countBytes));
+                    Root = Root.Wrap(Hash(parentHash, _countBytes));
                 }
             }
 
@@ -314,7 +317,7 @@ namespace Nethermind.Ssz
             return new Index(nodeIndex).Parent().NodeIndex;
         }
 
-        public Bytes32 Root { get; set; }
+        public Root Root { get; set; }
         
         protected abstract byte[] Hash(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b);
     }

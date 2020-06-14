@@ -15,11 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Diagnostics;
 using Nethermind.Core2;
 using Nethermind.Core2.Types;
 
-namespace Nethermind.Ssz
+namespace Nethermind.Merkleization
 {
     public readonly struct MerkleTreeNode
     {

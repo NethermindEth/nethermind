@@ -25,6 +25,7 @@ using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using Nethermind.Logging.Microsoft;
+using Nethermind.Merkleization;
 
 namespace Nethermind.BeaconNode
 {
@@ -71,22 +72,24 @@ namespace Nethermind.BeaconNode
         }
 
         public BeaconState InitializeBeaconStateFromEth1(Bytes32 eth1BlockHash, ulong eth1Timestamp,
-            IList<Deposit> deposits)
+            IMerkleList depositsTree)
         {
             if (_logger.IsInfo())
-                Log.InitializeBeaconState(_logger, eth1BlockHash, eth1Timestamp, deposits.Count, null);
+                Log.InitializeBeaconState(_logger, eth1BlockHash, eth1Timestamp, depositsTree.Count, null);
 
             InitialValues initialValues = _initialValueOptions.CurrentValue;
             GweiValues gweiValues = _gweiValueOptions.CurrentValue;
             TimeParameters timeParameters = _timeParameterOptions.CurrentValue;
             StateListLengths stateListLengths = _stateListLengthOptions.CurrentValue;
 
-            Fork fork = new Fork(initialValues.GenesisForkVersion, initialValues.GenesisForkVersion,
+            Fork fork = new Fork(
+                initialValues.GenesisForkVersion,
+                initialValues.GenesisForkVersion,
                 _chainConstants.GenesisEpoch);
 
             ulong genesisTime = eth1Timestamp - (eth1Timestamp % timeParameters.MinimumGenesisDelay)
                                 + (2 * timeParameters.MinimumGenesisDelay);
-            Eth1Data eth1Data = new Eth1Data(Root.Zero, (ulong) deposits.Count, eth1BlockHash);
+            Eth1Data eth1Data = new Eth1Data(Root.Zero, depositsTree.Count, eth1BlockHash);
 
             Root emptyBlockBodyRoot = _cryptographyService.HashTreeRoot(BeaconBlockBody.Zero);
             BeaconBlockHeader latestBlockHeader = new BeaconBlockHeader(emptyBlockBodyRoot);
@@ -98,15 +101,7 @@ namespace Nethermind.BeaconNode
                 timeParameters.SlotsPerHistoricalRoot, stateListLengths.EpochsPerHistoricalVector,
                 stateListLengths.EpochsPerSlashingsVector, _chainConstants.JustificationBitsLength);
 
-            // Process deposits
-            List<Ref<DepositData>> depositDataList = new List<Ref<DepositData>>();
-            foreach (Deposit deposit in deposits)
-            {
-                depositDataList.Add(deposit.Data);
-                Root depositRoot = _cryptographyService.HashTreeRoot(depositDataList);
-                state.Eth1Data.SetDepositRoot(depositRoot);
-                _beaconStateTransition.ProcessDeposit(state, deposit);
-            }
+            state.Eth1Data.SetDepositRoot(depositsTree.Root);
 
             // Process activations
             for (int validatorIndex = 0; validatorIndex < state.Validators.Count; validatorIndex++)
@@ -149,7 +144,7 @@ namespace Nethermind.BeaconNode
         /// <param name="eth1Timestamp"></param>
         /// <param name="deposits"></param>
         /// <returns></returns>
-        public async Task<bool> TryGenesisAsync(Bytes32 eth1BlockHash, ulong eth1Timestamp, IList<Deposit> deposits)
+        public async Task<bool> TryGenesisAsync(Bytes32 eth1BlockHash, ulong eth1Timestamp, IMerkleList deposits)
         {
             if (_logger.IsDebug()) LogDebug.TryGenesis(_logger, eth1BlockHash, eth1Timestamp, deposits.Count, null);
 

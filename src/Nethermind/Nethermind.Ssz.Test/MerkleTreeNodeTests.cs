@@ -17,6 +17,7 @@
 
 using FluentAssertions;
 using Nethermind.Core2.Types;
+using Nethermind.Merkleization;
 using NUnit.Framework;
 
 namespace Nethermind.Ssz.Test

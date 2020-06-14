@@ -18,8 +18,9 @@
 using System;
 using System.Collections.ObjectModel;
 using System.Security.Cryptography;
+using Nethermind.Ssz;
 
-namespace Nethermind.Ssz
+namespace Nethermind.Merkleization
 {
     public class ShaMerkleTree : MerkleTree
     {
@@ -35,15 +36,15 @@ namespace Nethermind.Ssz
             }
         }
         
-        /// <summary>
-        /// Zero hashes are always 32 bytes long (not truncated)
-        /// </summary>
         public static ReadOnlyCollection<byte[]> ZeroHashes => Array.AsReadOnly(_zeroHashes);
 
         public ShaMerkleTree(IKeyValueStore<ulong, byte[]> keyValueStore)
             : base(keyValueStore)
         {
-            
+        }
+        
+        public ShaMerkleTree() : base(new MemMerkleTreeStore())
+        {
         }
 
         private static byte[] HashStatic(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)

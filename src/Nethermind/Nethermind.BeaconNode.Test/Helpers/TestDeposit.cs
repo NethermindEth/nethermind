@@ -24,17 +24,20 @@ using Nethermind.Core2.Configuration;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
+using Nethermind.Merkleization;
+
 namespace Nethermind.BeaconNode.Test.Helpers
 {
     public static class TestDeposit
     {
-        public static (Deposit, Root) BuildDeposit(IServiceProvider testServiceProvider, BeaconState? state, List<DepositData> depositDataList, BlsPublicKey publicKey, byte[] privateKey, Gwei amount, Bytes32 withdrawalCredentials, bool signed)
+        public static (Deposit, Root) BuildDeposit(IServiceProvider testServiceProvider, BeaconState? state, List<Ref<DepositData>> depositDataList, BlsPublicKey publicKey, byte[] privateKey, Gwei amount, Bytes32 withdrawalCredentials, bool signed)
         {
             ChainConstants chainConstants = testServiceProvider.GetService<ChainConstants>();
             IBeaconChainUtility beaconChainUtility = testServiceProvider.GetService<IBeaconChainUtility>();
             ICryptographyService cryptographyService = testServiceProvider.GetService<ICryptographyService>();
 
-            DepositData depositData = BuildDepositData(testServiceProvider, publicKey, privateKey, amount, withdrawalCredentials, state, signed);
+            Ref<DepositData> depositData = BuildDepositData(testServiceProvider, publicKey, privateKey, amount, withdrawalCredentials, state, signed)
+                .OrRoot;
             int index = depositDataList.Count;
             depositDataList.Add(depositData);
             Root root = cryptographyService.HashTreeRoot(depositDataList);
@@ -55,10 +58,10 @@ namespace Nethermind.BeaconNode.Test.Helpers
             bool checkValid = beaconChainUtility.IsValidMerkleBranch(leaf, proof, chainConstants.DepositContractTreeDepth + 1, (ulong)index, root);
             if (!checkValid)
             {
-                throw new Exception($"Invalid Merkle branch for deposit for validator public key {depositData.PublicKey}");
+                throw new Exception($"Invalid Merkle branch for deposit for validator public key {depositData.Item.PublicKey}");
             }
             
-            Deposit deposit = new Deposit(proof, depositData.OrRoot);
+            Deposit deposit = new Deposit(proof, depositData);
             return (deposit, root);
         }
 
@@ -72,7 +75,7 @@ namespace Nethermind.BeaconNode.Test.Helpers
             return depositData;
         }
 
-        public static (IList<Deposit>, Root) PrepareGenesisDeposits(IServiceProvider testServiceProvider, int genesisValidatorCount, Gwei amount, bool signed)
+        public static (IMerkleList, Root) PrepareGenesisDeposits(IServiceProvider testServiceProvider, int genesisValidatorCount, Gwei amount, bool signed)
         {
             ChainConstants chainConstants = testServiceProvider.GetService<ChainConstants>();
             MiscellaneousParameters miscellaneousParameters = testServiceProvider.GetService<IOptions<MiscellaneousParameters>>().Value;
@@ -94,7 +97,7 @@ namespace Nethermind.BeaconNode.Test.Helpers
             {
                 publicKeys = privateKeys.Select(x => new BlsPublicKey(x)).ToArray();
             }
-            List<DepositData> depositDataList = new List<DepositData>();
+            List<Ref<DepositData>> depositDataList = new List<Ref<DepositData>>();
             List<Deposit> genesisDeposits = new List<Deposit>();
             Root root = Root.Zero;
             for (int validatorIndex = 0; validatorIndex < genesisValidatorCount; validatorIndex++)
@@ -109,7 +112,14 @@ namespace Nethermind.BeaconNode.Test.Helpers
                 root = depositRoot;
                 genesisDeposits.Add(deposit);
             }
-            return (genesisDeposits, root);
+            
+            ShaMerkleTree shaMerkleTree = new ShaMerkleTree();
+            foreach (Ref<DepositData> depositData in depositDataList)
+            {
+                shaMerkleTree.Insert(Bytes32.Wrap(depositData.Root.Bytes));
+            }
+            
+            return (shaMerkleTree, root);
         }
 
         /// <summary>
@@ -137,7 +147,7 @@ namespace Nethermind.BeaconNode.Test.Helpers
                 withdrawalCredentials = new Bytes32(withdrawalCredentialBytes);
             }
 
-            List<DepositData> depositDataList = new List<DepositData>();
+            List<Ref<DepositData>> depositDataList = new List<Ref<DepositData>>();
             (Deposit deposit, Root depositRoot) = BuildDeposit(testServiceProvider, state, depositDataList, publicKey, privateKey, amount, withdrawalCredentials, signed);
 
             state.SetEth1DepositIndex(0);

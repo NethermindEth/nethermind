@@ -1,6 +1,7 @@
 using System.Collections.Generic;
+using Nethermind.Ssz;
 
-namespace Nethermind.Ssz
+namespace Nethermind.Merkleization
 {
     public class MemMerkleTreeStore : IKeyValueStore<ulong, byte[]>
     {

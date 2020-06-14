@@ -55,8 +55,8 @@ namespace Nethermind.BeaconNode
                 new EventId(1000, nameof(BeaconNodeWorkerExecuteStarted)),
                 "Beacon Node {ProductTokenVersion} worker started; data directory '{DataDirectory}' (environment {Environment}) [{ThreadId}]");
         
-        public static readonly Action<ILogger, Bytes32, ulong, int, Exception?> InitializeBeaconState =
-            LoggerMessage.Define<Bytes32, ulong, int>(LogLevel.Information,
+        public static readonly Action<ILogger, Bytes32, ulong, uint, Exception?> InitializeBeaconState =
+            LoggerMessage.Define<Bytes32, ulong, uint>(LogLevel.Information,
                 new EventId(1300, nameof(InitializeBeaconState)),
                 "Initialise beacon state from ETH1 block {Eth1BlockHash}, time {Eth1Timestamp}, with {DepositCount} deposits.");
 

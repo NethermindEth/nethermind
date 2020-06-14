@@ -22,7 +22,7 @@ namespace Nethermind.Core2.Eth1
 {
     public class Eth1GenesisData
     {
-        public Eth1GenesisData(Bytes32 blockHash, ulong timestamp, IList<Deposit> deposits)
+        public Eth1GenesisData(Bytes32 blockHash, ulong timestamp, IMerkleList deposits)
         {
             BlockHash = blockHash;
             Timestamp = timestamp;
@@ -31,6 +31,6 @@ namespace Nethermind.Core2.Eth1
 
         public Bytes32 BlockHash { get; }
         public ulong Timestamp { get; }
-        public IList<Deposit> Deposits { get; }
+        public IMerkleList Deposits { get; }
     }
 }

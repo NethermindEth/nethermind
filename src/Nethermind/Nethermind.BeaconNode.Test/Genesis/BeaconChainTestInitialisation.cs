@@ -22,6 +22,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Nethermind.Core2.Configuration;
 using Nethermind.BeaconNode.Test.Helpers;
+using Nethermind.Core2;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
@@ -47,7 +48,7 @@ namespace Nethermind.BeaconNode.Test.Genesis
 
             int depositCount = miscellaneousParameters.MinimumGenesisActiveValidatorCount;
 
-            (IList<Deposit> deposits, Root depositRoot) = TestDeposit.PrepareGenesisDeposits(testServiceProvider, depositCount, gweiValues.MaximumEffectiveBalance, signed: useBls);
+            (IMerkleList deposits, Root depositRoot) = TestDeposit.PrepareGenesisDeposits(testServiceProvider, depositCount, gweiValues.MaximumEffectiveBalance, signed: useBls);
 
             Bytes32 eth1BlockHash = new Bytes32(Enumerable.Repeat((byte)0x12, 32).ToArray());
             ulong eth1Timestamp = miscellaneousParameters.MinimumGenesisTime;

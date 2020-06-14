@@ -30,7 +30,6 @@ using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Eth1;
 using Nethermind.Core2.Types;
 using Nethermind.Cryptography;
-using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging.Microsoft;
 using Nethermind.Merkleization;
 using Nethermind.Ssz;
@@ -179,7 +178,7 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
                     proof,
                     _chainConstants.DepositContractTreeDepth + 1,
                     (ulong) index,
-                    Root.Wrap(_shaMerkleTree.Root.Unwrap()));
+                    _shaMerkleTree.Root);
                 
                 if (!isValid)
                 {
@@ -221,7 +220,7 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
                 }
             }
 
-            var eth1GenesisData = new Eth1GenesisData(quickStartParameters.Eth1BlockHash, eth1Timestamp, deposits);
+            var eth1GenesisData = new Eth1GenesisData(quickStartParameters.Eth1BlockHash, eth1Timestamp, _shaMerkleTree);
 
             if (_logger.IsEnabled(LogLevel.Debug))
                 LogDebug.QuickStartGenesisDataCreated(_logger, eth1GenesisData.BlockHash, eth1GenesisData.Timestamp,

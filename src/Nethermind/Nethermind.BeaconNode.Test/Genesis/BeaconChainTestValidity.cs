@@ -22,6 +22,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Nethermind.Core2.Configuration;
 using Nethermind.BeaconNode.Test.Helpers;
+using Nethermind.Core2;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
@@ -40,7 +41,7 @@ namespace Nethermind.BeaconNode.Test.Genesis
             BeaconNode.GenesisChainStart beaconChain = testServiceProvider.GetService<BeaconNode.GenesisChainStart>();
 
             int depositCount = miscellaneousParameters.MinimumGenesisActiveValidatorCount;
-            (IList<Deposit> deposits, _) = TestDeposit.PrepareGenesisDeposits(testServiceProvider, depositCount, gweiValues.MaximumEffectiveBalance, signed: true);
+            (IMerkleList deposits, _) = TestDeposit.PrepareGenesisDeposits(testServiceProvider, depositCount, gweiValues.MaximumEffectiveBalance, signed: true);
             Bytes32 eth1BlockHash = new Bytes32(Enumerable.Repeat((byte)0x12, 32).ToArray());
             ulong eth1Timestamp = eth1TimestampOverride ?? miscellaneousParameters.MinimumGenesisTime;
             BeaconState state = beaconChain.InitializeBeaconStateFromEth1(eth1BlockHash, eth1Timestamp, deposits);
@@ -112,7 +113,7 @@ namespace Nethermind.BeaconNode.Test.Genesis
             BeaconNode.GenesisChainStart beaconChain = testServiceProvider.GetService<BeaconNode.GenesisChainStart>();
 
             int depositCount = miscellaneousParameters.MinimumGenesisActiveValidatorCount + 1;
-            (IList<Deposit> deposits, _) = TestDeposit.PrepareGenesisDeposits(testServiceProvider, depositCount, gweiValues.MaximumEffectiveBalance, signed: true);
+            (IMerkleList deposits, _) = TestDeposit.PrepareGenesisDeposits(testServiceProvider, depositCount, gweiValues.MaximumEffectiveBalance, signed: true);
             Bytes32 eth1BlockHash = new Bytes32(Enumerable.Repeat((byte)0x12, 32).ToArray());
             ulong eth1Timestamp = miscellaneousParameters.MinimumGenesisTime;
 
@@ -135,7 +136,7 @@ namespace Nethermind.BeaconNode.Test.Genesis
             BeaconNode.GenesisChainStart beaconChain = testServiceProvider.GetService<BeaconNode.GenesisChainStart>();
 
             int depositCount = miscellaneousParameters.MinimumGenesisActiveValidatorCount - 1;
-            (IList<Deposit> deposits, _) = TestDeposit.PrepareGenesisDeposits(testServiceProvider, depositCount, gweiValues.MaximumEffectiveBalance, signed: true);
+            (IMerkleList deposits, _) = TestDeposit.PrepareGenesisDeposits(testServiceProvider, depositCount, gweiValues.MaximumEffectiveBalance, signed: true);
             Bytes32 eth1BlockHash = new Bytes32(Enumerable.Repeat((byte)0x12, 32).ToArray());
             ulong eth1Timestamp = miscellaneousParameters.MinimumGenesisTime;
 
