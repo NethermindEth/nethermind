@@ -34,8 +34,6 @@ namespace Nethermind.RocksDbExtractor.Modules.Data
         
         private readonly string _path;
 
-        // private static IDataProvider GetBlocksDataProvider() => new BlocksDataProvider();
-
         public DataModule(string path)
         {
             _path = path;
@@ -43,14 +41,14 @@ namespace Nethermind.RocksDbExtractor.Modules.Data
 
         public Window Init()
         {
-            var window4 = new Window("WINDOW4")
+            var mainWindow = new Window("local")
             {
                 X = 0,
                 Y = 10,
-                Width = Dim.Fill(),
+                Width = 50,
                 Height = Dim.Fill()
             };
-            Application.Top.Add(window4);
+            Application.Top.Add(mainWindow);
 
             var dataFolders = System.IO.Directory.GetDirectories(_path, "*");
 
@@ -59,16 +57,16 @@ namespace Nethermind.RocksDbExtractor.Modules.Data
             {
                 var dataFolder = dataPath.Split(Path.DirectorySeparatorChar).Last();
                 var dataFolderBtn = new Button(1, i++, $"{dataFolder}");
-                window4.Add(dataFolderBtn);
+                mainWindow.Add(dataFolderBtn);
                 dataFolderBtn.Clicked = () =>
                 {
-                    var window5 = new Window($"{dataFolder}")
-                    {
-                        X = 50,
-                        Y = 10,
-                        Width = 50,
-                        Height = Dim.Fill()
-                    };
+                    // var dataWindow = new Window($"{dataFolder}")
+                    // {
+                    //     X = 50,
+                    //     Y = 10,
+                    //     Width = 50,
+                    //     Height = Dim.Fill()
+                    // };
 
                     if (!Providers.TryGetValue(dataFolder, out var dataProviderFactory))
                     {
@@ -76,14 +74,14 @@ namespace Nethermind.RocksDbExtractor.Modules.Data
                         return;
                     }
 
-                    dataProviderFactory().Init(dataPath);
+                    dataProviderFactory().Init(_path);
                     
-                    Application.Top.Add(window5);
-                    Application.Run(window5);
+                    // Application.Top.Add(dataWindow);
+                    // Application.Run(dataWindow);
                 };
             }
             
-            return window4;
+            return mainWindow;
         }
     }
 }

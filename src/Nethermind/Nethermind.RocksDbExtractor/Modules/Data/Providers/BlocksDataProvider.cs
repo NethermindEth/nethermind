@@ -36,33 +36,43 @@ namespace Nethermind.RocksDbExtractor.Modules.Data.Providers
             var blocksBytes = dbOnTheRocks.GetAll();
             
             var blockDecoder = new BlockDecoder();
-            var blocks = blocksBytes
+                var blocks = blocksBytes
                 .Select(b => blockDecoder.Decode(b.Value.AsRlpStream()))
                 .OrderBy(b => b.Number)
                 .ToList();
             
-            var window = new Window("Blocks");
+            var window = new Window("Blocks")
+            {
+                X = 50,
+                Y = 10,
+                Width = 100,
+                Height = Dim.Fill()
+            };
             var y = 1;
             foreach (var block in blocks)
             {
-                var blockBtn = new Button(1, y++, $"{block.Hash}");
+                var blockBtn = new Button(1, y++, $"{block.Number} {block.Hash}");
+                
+
                 blockBtn.Clicked = () =>
                 {
-                    var window6 = new Window("window6")
+                    var window6 = new Window("block details")
                     {
-                        X = 100,
+                        X = 150,
                         Y = 10,
-                        Width = 50,
+                        Width = 150,
                         Height = Dim.Fill()
                     };
                     Application.Top.Add(window6);
                             
-                    var btnlabel = new Label(1, 1, $"{blockBtn}");
+                    var btnlabel = new Label(1, 1, $"Block {block.Number} {block.Hash}");
                     window6.Add(btnlabel);
-                    Application.Run();
+                    Application.Run(window6);
                 };
                 window.Add(blockBtn);
             }
+            Application.Top.Add(window);
+            Application.Run(window);
         }
     }
 }
