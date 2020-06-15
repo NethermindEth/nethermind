@@ -102,7 +102,9 @@ namespace Nethermind.Consensus.AuRa
             }
             else if (_logger.IsDebug) _logger.Debug($"Skip seal block {blockNumber}: {_signer.SigningAddress} is not proposer of AuRa step {currentStep}.");
 
-            return stepNotYetProduced && isThisNodeTurn;
+            return _signer.CanSign && stepNotYetProduced && isThisNodeTurn;
         }
+
+        public Address Address => _signer.SigningAddress;
     }
 }

@@ -21,17 +21,6 @@ namespace Nethermind.DepositContract.Test.JsonRpc
     [TestFixture]
     public class BaselineModuleTests
     {
-        private IFileSystem _fileSystem;
-
-        [SetUp]
-        public void SetUp()
-        {
-            _fileSystem = Substitute.For<IFileSystem>();
-            const string expectedFilePath = "contracts/validator_registration.json";
-            _fileSystem.File.ReadAllLinesAsync(expectedFilePath).Returns(File.ReadAllLines(expectedFilePath));
-            _fileSystem.File.ReadAllText(expectedFilePath).Returns(File.ReadAllText(expectedFilePath));
-        }
-
         [Test]
         public async Task deploy_deploys_the_contract()
         {
@@ -43,7 +32,7 @@ namespace Nethermind.DepositContract.Test.JsonRpc
             DepositModule depositModule = new DepositModule(
                 testRpc.TxPoolBridge,
                 testRpc.LogFinder,
-                new DepositConfig(),
+                new DepositConfig() {DepositContractAddress = TestItem.AddressA.ToString()},
                 LimboLogs.Instance);
             
             var result = await depositModule.deposit_deploy(TestItem.Addresses[0]);
@@ -112,7 +101,7 @@ namespace Nethermind.DepositContract.Test.JsonRpc
             DepositModule depositModule = new DepositModule(
                 testRpc.TxPoolBridge,
                 testRpc.LogFinder,
-                new DepositConfig(),
+                new DepositConfig() {DepositContractAddress = TestItem.AddressA.ToString()},
                 LimboLogs.Instance);
             
             await depositModule.deposit_deploy(TestItem.Addresses[0]);

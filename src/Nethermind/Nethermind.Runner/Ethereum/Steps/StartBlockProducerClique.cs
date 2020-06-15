@@ -51,7 +51,6 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.CryptoRandom,
                 _context.SnapshotManager,
                 _context.Sealer,
-                _context.Signer,
                 cliqueConfig,
                 _context.LogManager);
         }

@@ -77,7 +77,6 @@ namespace Nethermind.Runner.Ethereum.Steps
                 stepCalculator,
                 _context.ReportingValidator,
                 _auraConfig,
-                _context.Signer,
                 GetGasLimitOverride(producerContext.ReadOnlyTxProcessingEnv, producerContext.ReadOnlyTransactionProcessorSource));
         }
 

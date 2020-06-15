@@ -28,16 +28,15 @@ namespace Nethermind.Consensus
         private readonly TimeSpan _miningDelay;
         private readonly bool _exact;
 
-        public FakeSealer()
+        public FakeSealer() : this(Address.Zero, TimeSpan.Zero, false)
         {
-            _miningDelay = TimeSpan.Zero;
-            _exact = false;
         }
 
-        public FakeSealer(TimeSpan miningDelay, bool exact = true)
+        public FakeSealer(Address address, TimeSpan miningDelay, bool exact = true)
         {
             _miningDelay = miningDelay;
             _exact = exact;
+            Address = address;
         }
 
         private static readonly Random Random = new Random();
@@ -62,6 +61,8 @@ namespace Nethermind.Consensus
         {
             return true;
         }
+
+        public Address Address { get; }
 
         public bool ValidateParams(BlockHeader parent, BlockHeader header)
         {

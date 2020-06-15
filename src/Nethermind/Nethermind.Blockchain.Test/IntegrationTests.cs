@@ -62,7 +62,7 @@ namespace Nethermind.Blockchain.Test
             ILogger logger = logManager.GetClassLogger();
 
             /* spec */
-            FakeSealer sealer = new FakeSealer(miningDelay);
+            FakeSealer sealer = new FakeSealer(TestItem.AddressA, miningDelay);
 
             RopstenSpecProvider specProvider = RopstenSpecProvider.Instance;
 
@@ -125,7 +125,7 @@ namespace Nethermind.Blockchain.Test
             blockchainProcessor.Start();
 
             var transactionSelector = new TxPoolTxSource(txPool, stateReader, logManager);
-            MinedBlockProducer minedBlockProducer = new MinedBlockProducer(transactionSelector, blockchainProcessor, sealer, blockTree, blockchainProcessor, stateProvider,  new Signer(specProvider.ChainId, TestItem.PrivateKeyA), 
+            MinedBlockProducer minedBlockProducer = new MinedBlockProducer(transactionSelector, blockchainProcessor, sealer, blockTree, blockchainProcessor, stateProvider, 
                 timestamper, LimboLogs.Instance, difficultyCalculator);
             minedBlockProducer.Start();
 

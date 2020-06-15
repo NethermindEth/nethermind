@@ -18,6 +18,7 @@ using System;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -46,7 +47,7 @@ namespace Nethermind.Mining.Test
             header.Bloom = Bloom.Empty;
 
             Block block = new Block(header);
-            EthashSealer ethashSealer = new EthashSealer(new Ethash(LimboLogs.Instance), LimboLogs.Instance);
+            EthashSealer ethashSealer = new EthashSealer(new Ethash(LimboLogs.Instance), NullSigner.Instance, LimboLogs.Instance);
             await ethashSealer.MineAsync(new CancellationTokenSource(TimeSpan.FromSeconds(600)).Token, block, validNonce - 3);
 
             Assert.AreEqual(validNonce, block.Header.Nonce);
@@ -66,7 +67,7 @@ namespace Nethermind.Mining.Test
             header.Bloom = Bloom.Empty;
 
             Block block = new Block(header);
-            EthashSealer ethashSealer = new EthashSealer(new Ethash(LimboLogs.Instance), LimboLogs.Instance);
+            EthashSealer ethashSealer = new EthashSealer(new Ethash(LimboLogs.Instance), NullSigner.Instance, LimboLogs.Instance);
             await ethashSealer.MineAsync(new CancellationTokenSource(TimeSpan.FromMilliseconds(2000)).Token, block, badNonce).ContinueWith(t =>
             {
                 Assert.True(t.IsCanceled);
@@ -87,7 +88,7 @@ namespace Nethermind.Mining.Test
             Block block = new Block(blockHeader);
 
             IEthash ethash = new Ethash(LimboLogs.Instance);
-            EthashSealer ethashSealer = new EthashSealer(ethash, LimboLogs.Instance);
+            EthashSealer ethashSealer = new EthashSealer(ethash, NullSigner.Instance, LimboLogs.Instance);
             await ethashSealer.MineAsync(CancellationToken.None, block, 7217048144105167954);
 
             Assert.True(ethash.Validate(block.Header));

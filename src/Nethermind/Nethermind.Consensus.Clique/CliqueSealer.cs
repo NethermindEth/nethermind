@@ -92,6 +92,11 @@ namespace Nethermind.Consensus.Clique
         public bool CanSeal(long blockNumber, Keccak parentHash)
         {
             Snapshot snapshot = _snapshotManager.GetOrCreateSnapshot(blockNumber - 1, parentHash);
+            if (!_signer.CanSign)
+            {
+                return false;
+            }
+            
             if (!snapshot.Signers.ContainsKey(_signer.SigningAddress))
             {
                 if (_logger.IsTrace) _logger.Trace("Not on the signers list");
@@ -116,5 +121,7 @@ namespace Nethermind.Consensus.Clique
 
             return true;
         }
+
+        public Address Address => _signer.SigningAddress;
     }
 }

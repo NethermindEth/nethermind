@@ -39,7 +39,9 @@ namespace Nethermind.Consensus
         {
             return true;
         }
-        
+
+        public Address Address => Address.Zero;
+
         public bool ValidateParams(BlockHeader parent, BlockHeader header)
         {
             return true;

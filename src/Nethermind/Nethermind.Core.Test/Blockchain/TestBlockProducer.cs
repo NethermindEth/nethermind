@@ -30,8 +30,8 @@ namespace Nethermind.Core.Test.Blockchain
 {
     public class TestBlockProducer : BaseLoopBlockProducer
     {
-        public TestBlockProducer(ITxSource transactionSource, IBlockchainProcessor processor, IStateProvider stateProvider, ISigner signer, ISealer sealer, IBlockTree blockTree, IBlockProcessingQueue blockProcessingQueue, ITimestamper timestamper, ILogManager logManager)
-            : base(transactionSource, processor, sealer, blockTree, blockProcessingQueue, stateProvider, signer, timestamper, logManager, "a")
+        public TestBlockProducer(ITxSource transactionSource, IBlockchainProcessor processor, IStateProvider stateProvider, ISealer sealer, IBlockTree blockTree, IBlockProcessingQueue blockProcessingQueue, ITimestamper timestamper, ILogManager logManager)
+            : base(transactionSource, processor, sealer, blockTree, blockProcessingQueue, stateProvider, timestamper, logManager, "a")
         {
         }
 

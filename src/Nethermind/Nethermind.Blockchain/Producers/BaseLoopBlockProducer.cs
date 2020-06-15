@@ -42,11 +42,10 @@ namespace Nethermind.Blockchain.Producers
             IBlockTree blockTree,
             IBlockProcessingQueue blockProcessingQueue,
             IStateProvider stateProvider,
-            ISigner signer,
             ITimestamper timestamper,
             ILogManager logManager,
             string name) 
-            : base(txSource, processor, sealer, blockTree, blockProcessingQueue, stateProvider, signer, timestamper, logManager)
+            : base(txSource, processor, sealer, blockTree, blockProcessingQueue, stateProvider, timestamper, logManager)
         {
             _name = name;
         }

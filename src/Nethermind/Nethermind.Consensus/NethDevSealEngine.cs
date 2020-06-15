@@ -25,8 +25,9 @@ namespace Nethermind.Consensus
 {
     public class NethDevSealEngine : ISealer, ISealValidator
     {
-        private NethDevSealEngine()
+        private NethDevSealEngine(Address address = null)
         {
+            Address = address ?? Address.Zero;
         }
 
         public static NethDevSealEngine Instance { get; } = new NethDevSealEngine();
@@ -42,6 +43,8 @@ namespace Nethermind.Consensus
         {
             return true;
         }
+
+        public Address Address { get; }
 
         public bool ValidateParams(BlockHeader parent, BlockHeader header)
         {

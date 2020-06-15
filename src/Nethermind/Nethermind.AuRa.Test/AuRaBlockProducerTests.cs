@@ -71,6 +71,7 @@ namespace Nethermind.AuRa.Test
             	TransactionSource.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<long>()).Returns(Array.Empty<Transaction>());
                 Sealer.CanSeal(Arg.Any<long>(), Arg.Any<Keccak>()).Returns(true);
                 Sealer.SealBlock(Arg.Any<Block>(), Arg.Any<CancellationToken>()).Returns(c => Task.FromResult(c.Arg<Block>()));
+                Sealer.Address.Returns(TestItem.AddressA);
                 BlockProcessingQueue.IsEmpty.Returns(true);
                 AuRaStepCalculator.TimeToNextStep.Returns(StepDelay);
                 BlockTree.BestKnownNumber.Returns(1);
@@ -99,8 +100,7 @@ namespace Nethermind.AuRa.Test
                             LimboLogs.Instance,
                             AuRaStepCalculator,
                             NullReportingValidator.Instance, 
-                            auraConfig,
-                            new Signer(0, TestItem.PrivateKeyA));
+                            auraConfig);
                     }
         }
 

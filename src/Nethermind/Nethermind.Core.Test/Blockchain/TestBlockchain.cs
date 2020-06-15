@@ -63,8 +63,6 @@ namespace Nethermind.Core.Test.Blockchain
         public MemDbProvider DbProvider { get; set; }
         public ISpecProvider SpecProvider { get; set; }
         
-        public ISigner Signer { get; set; }
-
         protected TestBlockchain(SealEngineType sealEngineType)
         {
             _sealEngineType = sealEngineType;
@@ -120,9 +118,8 @@ namespace Nethermind.Core.Test.Blockchain
 
             StateReader = new StateReader(StateDb, CodeDb, LimboLogs.Instance);
             TxPoolTxSource txPoolTxSource = new TxPoolTxSource(TxPool, StateReader, LimboLogs.Instance);
-            ISealer sealer = new FakeSealer(TimeSpan.Zero);
-            Signer = new Signer(ChainId.Mainnet, TestItem.PrivateKeyD);
-            BlockProducer = new TestBlockProducer(txPoolTxSource, chainProcessor, State, Signer, sealer, BlockTree, chainProcessor, Timestamper, LimboLogs.Instance);
+            ISealer sealer = new FakeSealer(TestItem.AddressD, TimeSpan.Zero);
+            BlockProducer = new TestBlockProducer(txPoolTxSource, chainProcessor, State, sealer, BlockTree, chainProcessor, Timestamper, LimboLogs.Instance);
             BlockProducer.Start();
 
             _resetEvent = new AutoResetEvent(false);

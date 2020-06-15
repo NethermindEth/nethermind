@@ -43,7 +43,6 @@ namespace Nethermind.Runner.Ethereum.Steps
                 producerChain.TxSource,
                 producerChain.ChainProcessor,
                 producerChain.ReadOnlyStateProvider,
-                _context.Signer,
                 _context.BlockTree,
                 _context.BlockProcessingQueue,
                 _context.TxPool,

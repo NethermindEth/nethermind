@@ -49,9 +49,8 @@ namespace Nethermind.Consensus.AuRa
             IAuRaStepCalculator auRaStepCalculator,
             IReportingValidator reportingValidator,
             IAuraConfig config,
-            ISigner signer, 
             IGasLimitOverride gasLimitOverride = null) 
-            : base(txSource, processor, sealer, blockTree, blockProcessingQueue, stateProvider, signer, timestamper, logManager, "AuRa")
+            : base(txSource, processor, sealer, blockTree, blockProcessingQueue, stateProvider, timestamper, logManager, "AuRa")
         {
             _auRaStepCalculator = auRaStepCalculator ?? throw new ArgumentNullException(nameof(auRaStepCalculator));
             _reportingValidator = reportingValidator ?? throw new ArgumentNullException(nameof(reportingValidator));

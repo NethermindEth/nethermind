@@ -39,9 +39,8 @@ namespace Nethermind.Blockchain.Producers
             IBlockTree blockTree,
             IBlockProcessingQueue blockProcessingQueue,
             IStateProvider stateProvider,
-            ISigner signer,
             ITimestamper timestamper,
-            ILogManager logManager) : base(txSource, processor, NullSealEngine.Instance, blockTree, blockProcessingQueue, stateProvider, signer, timestamper, logManager, "Dev")
+            ILogManager logManager) : base(txSource, processor, NullSealEngine.Instance, blockTree, blockProcessingQueue, stateProvider, timestamper, logManager, "Dev")
         {
         }
 
