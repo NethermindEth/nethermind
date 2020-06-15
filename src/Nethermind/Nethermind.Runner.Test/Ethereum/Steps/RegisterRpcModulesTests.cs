@@ -15,7 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Threading;
+using Nethermind.Blockchain;
 using Nethermind.Config;
+using Nethermind.Core.Specs;
+using Nethermind.Evm.Tracing;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Proof;
@@ -23,6 +26,8 @@ using Nethermind.Logging;
 using Nethermind.Runner.Ethereum;
 using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Runner.Ethereum.Steps;
+using Nethermind.TxPool;
+using Nethermind.Wallet;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -64,9 +69,15 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
 
             IRpcModuleProvider rpcModuleProvider = Substitute.For<IRpcModuleProvider>();
 
-            EthereumRunnerContext context = new EthereumRunnerContext(configProvider, LimboLogs.Instance);
-            context.ConfigProvider = configProvider;
-            context.RpcModuleProvider = rpcModuleProvider;
+            EthereumRunnerContext context = new EthereumRunnerContext(configProvider, LimboLogs.Instance)
+                {
+                    ConfigProvider = configProvider,
+                    RpcModuleProvider = rpcModuleProvider,
+                    TxPool = Substitute.For<ITxPool>(),
+                    BlockTree = Substitute.For<IBlockTree>(),
+                    Wallet = Substitute.For<IWallet>(),
+                    SpecProvider = Substitute.For<ISpecProvider>()
+                };
 
             RegisterRpcModules registerRpcModules = new RegisterRpcModules(context);
             registerRpcModules.Execute(CancellationToken.None);

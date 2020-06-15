@@ -44,12 +44,12 @@ namespace Nethermind.Consensus.AuRa
                 return _minimalContractGasLimit.Value;
             }
         }
-        private readonly IList<BlockGasLimitContract> _contracts;
+        private readonly IList<IBlockGasLimitContract> _contracts;
         private readonly IGasLimitOverride.Cache _cache;
         private readonly bool _minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract;
         private readonly ILogger _logger;
         
-        public AuRaContractGasLimitOverride(IList<BlockGasLimitContract> contracts, IGasLimitOverride.Cache cache, bool minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract, ILogManager logManager)
+        public AuRaContractGasLimitOverride(IList<IBlockGasLimitContract> contracts, IGasLimitOverride.Cache cache, bool minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract, ILogManager logManager)
         {
             _contracts = contracts ?? throw new ArgumentNullException(nameof(contracts));
             _cache = cache ?? throw new ArgumentNullException(nameof(cache));
@@ -88,7 +88,7 @@ namespace Nethermind.Consensus.AuRa
             }
         }
 
-        private UInt256? GetContractGasLimit(BlockHeader parent, BlockGasLimitContract contract)
+        private UInt256? GetContractGasLimit(BlockHeader parent, IBlockGasLimitContract contract)
         {
             try
             {

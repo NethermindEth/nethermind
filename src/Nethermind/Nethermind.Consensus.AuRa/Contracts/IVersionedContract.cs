@@ -22,7 +22,6 @@ namespace Nethermind.Consensus.AuRa.Contracts
 {
     public interface IVersionedContract
     {
-        public bool SupportsContractVersion { get; }
         public UInt256 ContractVersion(BlockHeader blockHeader);
     }
 }

@@ -36,5 +36,6 @@ namespace Nethermind.KeyStore.Config
         public string TestNodeKey { get; set; }
         public string BlockAuthorAccount { get; set; }
         public string BlockAuthorPassword { get; set; }
+        public string BlockAuthorPasswordFilePath { get; set; }
     }
 }

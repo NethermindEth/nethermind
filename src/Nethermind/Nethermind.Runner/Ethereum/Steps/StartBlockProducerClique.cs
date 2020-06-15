@@ -34,7 +34,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         {
             if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
             if (_context.SnapshotManager == null) throw new StepDependencyException(nameof(_context.SnapshotManager));
-            if (_context.NodeKey == null) throw new StepDependencyException(nameof(_context.NodeKey));
+            if (_context.Signer == null) throw new StepDependencyException(nameof(_context.Signer));
             if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
             if (_context.Sealer == null) throw new StepDependencyException(nameof(_context.Sealer));
 
@@ -51,7 +51,6 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.CryptoRandom,
                 _context.SnapshotManager,
                 _context.Sealer,
-                _context.NodeKey.Address,
                 cliqueConfig,
                 _context.LogManager);
         }

@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -41,12 +42,10 @@ namespace Nethermind.Consensus.AuRa
             _stepCalculator = stepCalculator ?? throw new ArgumentNullException(nameof(stepCalculator));
             _validatorStore = validatorStore?? throw new ArgumentNullException(nameof(validatorStore));
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
-            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager.GetClassLogger<AuRaSealValidator>() ?? throw new ArgumentNullException(nameof(logManager));
         }
-
-        public void HintValidationRange(Guid guid, long start, long end)
-        {
-        }
+        
+        public IReportingValidator ReportingValidator { get; set; } = NullReportingValidator.Instance;
 
         public bool ValidateParams(BlockHeader parent, BlockHeader header)
         {
@@ -67,11 +66,13 @@ namespace Nethermind.Consensus.AuRa
             else if (header.AuRaStep == parent.AuRaStep)
             {
                 if (_logger.IsWarn) _logger.Warn($"Multiple blocks proposed for step {header.AuRaStep}. Block {header.Number}, hash {header.Hash} is duplicate.");
+                ReportingValidator.ReportMalicious(header.Beneficiary, header.Number, Bytes.Empty, IReportingValidator.MaliciousCause.DuplicateStep);
                 return false;
             }
             else if (header.AuRaStep < parent.AuRaStep && header.Number >= _parameters.ValidateStepTransition)
             {
                 if (_logger.IsError) _logger.Error($"Block {header.Number}, hash {header.Hash} step {header.AuRaStep} is lesser than parents step {parent.AuRaStep}.");
+                ReportingValidator.ReportMalicious(header.Beneficiary, header.Number, Bytes.Empty, IReportingValidator.MaliciousCause.DuplicateStep);
                 return false;
             }
 
@@ -80,6 +81,7 @@ namespace Nethermind.Consensus.AuRa
             if (header.AuRaStep > currentStep + rejectedStepDrift)
             {
                 if (_logger.IsError) _logger.Error($"Block {header.Number}, hash {header.Hash} step {header.AuRaStep} is from the future. Current step is {currentStep}.");
+                ReportingValidator.ReportBenign(header.Beneficiary, header.Number, IReportingValidator.BenignCause.FutureBlock);
                 return false;
             }
 
@@ -87,17 +89,16 @@ namespace Nethermind.Consensus.AuRa
             {
                 if (_logger.IsWarn) _logger.Warn($"Block {header.Number}, hash {header.Hash} step {header.AuRaStep} is {(header.AuRaStep == currentStep + 1 ? _stepCalculator.TimeToNextStep.ToString("g") :  string.Empty)} too early. Current step is {currentStep}.");
             }
-
-            if (header.AuRaStep - parent.AuRaStep != 1)
-            {
-                // report_skipped
-            }
-
+            
+            // if (!ValidateEmptySteps())
+            // ReportBenign
+            ReportingValidator.TryReportSkipped(header, parent);
+            
             // Report malice if the validator produced other sibling blocks in the same step.
             if (_receivedSteps.ContainsOrInsert(header, _validatorStore.GetValidators().Length))
             {
                 if (_logger.IsDebug) _logger.Debug($"Validator {header.Beneficiary} produced sibling blocks in the same step {header.AuRaStep} in block {header.Number}.");
-                // report malicious
+                ReportingValidator.ReportMalicious(header.Beneficiary, header.Number, Bytes.Empty, IReportingValidator.MaliciousCause.SiblingBlocksInSameStep);
             }
             
             if (header.Number >= _parameters.ValidateScoreTransition)
@@ -115,7 +116,7 @@ namespace Nethermind.Consensus.AuRa
                     return false;                    
                 }
             }
-
+            
             return true;
         }
 
@@ -132,7 +133,7 @@ namespace Nethermind.Consensus.AuRa
             }
             
             // cannot call: _validator.IsValidSealer(header.Author); because we can call it only when previous step was processed.
-            // this responsibility delegated to actual validator during processing with AuRaSealerValidator
+            // this responsibility delegated to actual validator during processing with AuRaValidator and IValidSealerStrategy
             return true;
         }
 

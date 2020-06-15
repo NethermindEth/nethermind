@@ -41,6 +41,7 @@ using Nethermind.Baseline.JsonRpc;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.DepositContract;
+using Nethermind.Facade.Transactions;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
@@ -57,7 +58,11 @@ namespace Nethermind.Runner.Ethereum.Steps
         public virtual Task Execute(CancellationToken cancellationToken)
         {
             if (_context.RpcModuleProvider == null) throw new StepDependencyException(nameof(_context.RpcModuleProvider));
-
+            if (_context.TxPool == null) throw new StepDependencyException(nameof(_context.TxPool));
+            if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
+            if (_context.Wallet == null) throw new StepDependencyException(nameof(_context.Wallet));
+            if (_context.SpecProvider == null) throw new StepDependencyException(nameof(_context.SpecProvider));
+            
             ILogger logger = _context.LogManager.GetClassLogger();
             IJsonRpcConfig jsonRpcConfig = _context.Config<IJsonRpcConfig>();
             if (!jsonRpcConfig.Enabled)
@@ -132,7 +137,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (depositConfig.DepositContractAddress != null)
             {
                 TxPoolBridge txPoolBridge = new TxPoolBridge(
-                    _context.TxPool, _context.Wallet, _context.Timestamper, _context.SpecProvider.ChainId);
+                    _context.TxPool, new WalletTxSigner(_context.Wallet, _context.SpecProvider.ChainId), _context.Timestamper);
                 DepositModule depositModule = new DepositModule(txPoolBridge, logFinder, depositConfig, _context.LogManager);
                 _context.RpcModuleProvider.Register(new SingletonModulePool<IDepositModule>(depositModule, true));
             }

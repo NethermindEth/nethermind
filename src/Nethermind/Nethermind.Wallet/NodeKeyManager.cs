@@ -35,7 +35,11 @@ namespace Nethermind.Wallet
         private readonly IKeyStoreConfig _config;
         private readonly ILogger _logger;
 
-        public NodeKeyManager(ICryptoRandom cryptoRandom, IKeyStore keyStore, IKeyStoreConfig config, ILogManager logManager)
+        public NodeKeyManager(
+            ICryptoRandom cryptoRandom, 
+            IKeyStore keyStore, 
+            IKeyStoreConfig config, 
+            ILogManager logManager)
         {
             _cryptoRandom = cryptoRandom ?? throw new ArgumentNullException(nameof(cryptoRandom));
             _keyStore = keyStore ?? throw new ArgumentNullException(nameof(keyStore));
@@ -66,45 +70,8 @@ namespace Nethermind.Wallet
         }
         
         [DoNotUseInSecuredContext("This stored the node key in plaintext - it is just one step further to the full node key protection")]
-        public PrivateKey LoadNodeKey()
+        public ProtectedPrivateKey LoadNodeKey()
         {
-            if(_config.BlockAuthorAccount != null)
-            {
-                SecureString password;
-                if(_config.BlockAuthorPassword != null)
-                {
-                    password = new SecureString();
-                    foreach (var character in _config.BlockAuthorPassword)
-                    {
-                        password.AppendChar(character);
-                    }
-                    
-                    password.MakeReadOnly();
-                }
-                else
-                {
-                    password = ConsoleUtils.ReadSecret($"Provide password for validator account {_config.BlockAuthorAccount}");    
-                }
-                
-                try
-                {
-                    (PrivateKey privateKey, Result result) = _keyStore.GetKey(new Address(_config.BlockAuthorAccount), password);
-                    if (result == Result.Success)
-                    {
-                        return privateKey;
-                    }
-                    else
-                    {
-                        if(_logger.IsError) _logger.Error($"Not able to unlock the key for {_config.BlockAuthorAccount}");
-                        // continue to the other methods
-                    }
-                }
-                catch (Exception e)
-                {
-                    if(_logger.IsError) _logger.Error($"Not able to unlock the key for {_config.BlockAuthorAccount}", e);
-                }
-            }
-            
             // this is not secure at all but this is just the node key, nothing critical so far, will use the key store here later and allow to manage by password when launching the node
             if (_config.TestNodeKey == null)
             {
@@ -125,11 +92,51 @@ namespace Nethermind.Wallet
                     if(_logger.IsInfo) _logger.Info(nodeKeyPassword.Unsecure());
                 }
 
-
-                return new PrivateKey(File.ReadAllBytes(newPath));
+                using var privateKey = new PrivateKey(File.ReadAllBytes(newPath));
+                return new ProtectedPrivateKey(privateKey, _cryptoRandom);
             }
 
-            return new PrivateKey(_config.TestNodeKey);
+            return new ProtectedPrivateKey(new PrivateKey(_config.TestNodeKey), _cryptoRandom);
+        }
+
+        public ProtectedPrivateKey LoadSignerKey()
+        {
+            if(_config.BlockAuthorAccount != null)
+            {
+                SecureString password = GetBlockAuthorPassword();
+
+                try
+                {
+                    (ProtectedPrivateKey privateKey, Result result) = _keyStore.GetProtectedKey(new Address(_config.BlockAuthorAccount), password);
+                    if (result == Result.Success)
+                    {
+                        return privateKey;
+                    }
+                    else
+                    {
+                        if(_logger.IsError) _logger.Error($"Not able to unlock the key for {_config.BlockAuthorAccount}");
+                        // continue to the other methods
+                    }
+                }
+                catch (Exception e)
+                {
+                    if(_logger.IsError) _logger.Error($"Not able to unlock the key for {_config.BlockAuthorAccount}", e);
+                }
+            }
+
+            return LoadNodeKey();
+        }
+
+        private SecureString GetBlockAuthorPassword()
+        {
+            string blockAuthorPasswordFilePath = _config.BlockAuthorPasswordFilePath?.GetApplicationResourcePath();
+            string password = File.Exists(blockAuthorPasswordFilePath)
+                ? File.ReadAllText(blockAuthorPasswordFilePath)
+                : _config.BlockAuthorPassword;
+            
+            return  password != null
+                ? password.Secure() 
+                : ConsoleUtils.ReadSecret($"Provide password for validator account {_config.BlockAuthorAccount}");
         }
     }
 }

@@ -14,7 +14,9 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Dirichlet.Numerics;
 
@@ -46,6 +48,8 @@ namespace Nethermind.Specs.ChainSpecStyle
     /// </summary>
     public class AuRaParameters
     {
+        public const long TransitionDisabled = long.MaxValue;
+        
         public IDictionary<long, long> StepDuration { get; set; }
 
         public UInt256 BlockReward { get; set; }
@@ -63,6 +67,8 @@ namespace Nethermind.Specs.ChainSpecStyle
         public long ValidateScoreTransition { get; set; }
         
         public long ValidateStepTransition { get; set; }
+        
+        public long PosdaoTransition { get; set; }
 		
         public Validator Validators { get; set; }
 
@@ -98,10 +104,24 @@ namespace Nethermind.Specs.ChainSpecStyle
             /// Addresses for validator.
             /// </summary>
             /// <remarks>
-            /// For <seealso cref="ValidatorType"/> of type <see cref="AuRaParameters.ValidatorType.Contract"/> and <see cref="AuRaParameters.ValidatorType.ReportingContract"/> we expect only one address.
+            /// For <seealso cref="ValidatorType"/> of type <see cref="AuRaParameters.ValidatorType.List"/> should contain at least one address.
+            /// For <seealso cref="ValidatorType"/> of type <see cref="AuRaParameters.ValidatorType.Contract"/> and <see cref="AuRaParameters.ValidatorType.ReportingContract"/> should contain exactly one address.
             /// For <seealso cref="ValidatorType"/> of type <see cref="AuRaParameters.ValidatorType.Multi"/> will be empty.
             /// </remarks>
             public Address[] Addresses { get; set; }
+            
+            public Address GetContractAddress()
+            {
+                switch (ValidatorType)
+                {
+                    case ValidatorType.Contract:
+                    case ValidatorType.ReportingContract:
+                        return Addresses?.FirstOrDefault() ?? throw new ArgumentException("Missing contract address for AuRa validator.", nameof(Addresses));
+                    default:
+                        throw new InvalidOperationException($"AuRa validator {ValidatorType} doesn't have contract address.");
+                }
+                
+            }
         }
     }
 }

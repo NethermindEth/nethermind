@@ -16,6 +16,7 @@
 // 
 
 using Nethermind.Abi;
+using Nethermind.Blockchain.Contracts;
 using Nethermind.Blockchain.Contracts.Json;
 using Nethermind.Core;
 using Nethermind.Dirichlet.Numerics;
@@ -23,18 +24,22 @@ using Nethermind.Evm;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public class BlockGasLimitContract : Blockchain.Contracts.Contract, IActivatedAtBlock
+    public interface IBlockGasLimitContract : IActivatedAtBlock
+    {
+        UInt256? BlockGasLimit(BlockHeader parentHeader);
+    }
+
+    public sealed class BlockGasLimitContract : Contract, IBlockGasLimitContract
     {
         private ConstantContract Constant { get; }
         public long Activation { get; }
         
         public BlockGasLimitContract(
-            ITransactionProcessor transactionProcessor, 
             IAbiEncoder abiEncoder, 
             Address contractAddress,
             long transitionBlock,
             IReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource) 
-            : base(transactionProcessor, abiEncoder, contractAddress)
+            : base(abiEncoder, contractAddress)
         {
             Activation = transitionBlock;
             Constant = GetConstant(readOnlyTransactionProcessorSource);
@@ -47,8 +52,5 @@ namespace Nethermind.Consensus.AuRa.Contracts
             var returnData = Constant.CallRaw(parentHeader, function, Address.Zero);
             return (returnData?.Length ?? 0) == 0 ? (UInt256?) null : (UInt256) returnData[0];
         }
-
-        protected override AbiDefinition AbiDefinition { get; }
-            = new AbiDefinitionParser().Parse<BlockGasLimitContract>();
     }
 }

@@ -21,10 +21,9 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Facade
 {
-    public interface ITxPoolBridge
+    public interface ITxPoolBridge : ITxSender
     {
         Transaction GetPendingTransaction(Keccak txHash);
         Transaction[] GetPendingTransactions();
-        Keccak SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions);
     }
 }

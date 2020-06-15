@@ -31,18 +31,16 @@ namespace Nethermind.Consensus.Clique
     public class CliqueSealer : ISealer
     {
         private readonly ILogger _logger;
-        private readonly Address _sealerAddress;
         private readonly ISnapshotManager _snapshotManager;
-        private readonly IBasicWallet _wallet;
-        private ICliqueConfig _config;
+        private readonly ISigner _signer;
+        private readonly ICliqueConfig _config;
 
-        public CliqueSealer(IBasicWallet wallet, ICliqueConfig config, ISnapshotManager snapshotManager, Address sealerAddress, ILogManager logManager)
+        public CliqueSealer(ISigner signer, ICliqueConfig config, ISnapshotManager snapshotManager, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
-            _sealerAddress = sealerAddress ?? throw new ArgumentNullException(nameof(sealerAddress));
             _config = config ?? throw new ArgumentNullException(nameof(config));
-            _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
+            _signer = signer ?? throw new ArgumentNullException(nameof(signer));
 
             if (config.Epoch == 0) config.Epoch = Clique.DefaultEpochLength;
         }
@@ -80,7 +78,7 @@ namespace Nethermind.Consensus.Clique
 
             // Sign all the things!
             Keccak headerHash = SnapshotManager.CalculateCliqueHeaderHash(header);
-            Signature signature = _wallet.Sign(headerHash, _sealerAddress);
+            Signature signature = _signer.Sign(headerHash);
             // Copy signature bytes (R and S)
             var signatureBytes = signature.Bytes;
             Array.Copy(signatureBytes, 0, header.ExtraData, header.ExtraData.Length - Clique.ExtraSealLength, signatureBytes.Length);
@@ -94,15 +92,20 @@ namespace Nethermind.Consensus.Clique
         public bool CanSeal(long blockNumber, Keccak parentHash)
         {
             Snapshot snapshot = _snapshotManager.GetOrCreateSnapshot(blockNumber - 1, parentHash);
-            if (!snapshot.Signers.ContainsKey(_sealerAddress))
+            if (!_signer.CanSign)
+            {
+                return false;
+            }
+            
+            if (!snapshot.Signers.ContainsKey(_signer.Address))
             {
                 if (_logger.IsTrace) _logger.Trace("Not on the signers list");
                 return false;
             }
 
-            if (_snapshotManager.HasSignedRecently(snapshot, blockNumber, _sealerAddress))
+            if (_snapshotManager.HasSignedRecently(snapshot, blockNumber, _signer.Address))
             {
-                if (_snapshotManager.HasSignedRecently(snapshot, blockNumber, _sealerAddress))
+                if (_snapshotManager.HasSignedRecently(snapshot, blockNumber, _signer.Address))
                 {
                     if (_logger.IsTrace) _logger.Trace("Signed recently");
                     return false;
@@ -110,7 +113,7 @@ namespace Nethermind.Consensus.Clique
             }
             
             // If we're amongst the recent signers, wait for the next block
-            if (_snapshotManager.HasSignedRecently(snapshot, blockNumber, _sealerAddress))
+            if (_snapshotManager.HasSignedRecently(snapshot, blockNumber, _signer.Address))
             {
                 if (_logger.IsTrace) _logger.Trace("Signed recently");
                 return false;
@@ -118,5 +121,7 @@ namespace Nethermind.Consensus.Clique
 
             return true;
         }
+
+        public Address Address => _signer.Address;
     }
 }

@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,27 +13,23 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Serialization.Rlp;
+using Nethermind.Crypto;
 
-namespace Nethermind.Wallet
+namespace Nethermind.Consensus
 {
-    public interface IBasicWallet
+    public class NullSigner : ISigner
     {
-        Signature Sign(Keccak message, Address address);
+        public static readonly NullSigner Instance = new NullSigner();
         
-        void Sign(Transaction tx, int chainId)
-        {
-            Sign(this, tx, chainId);
-        }
-        
-        protected static void Sign(IBasicWallet @this, Transaction tx, int chainId)
-        {
-            Keccak hash = Keccak.Compute(Rlp.Encode(tx, true, true, chainId).Bytes);
-            tx.Signature = @this.Sign(hash, tx.SenderAddress);
-            tx.Signature.V = tx.Signature.V + 8 + 2 * chainId;
-        }
+        public void Sign(Transaction tx) { }
+
+        public Address Address { get; } = Address.Zero;
+        public Signature Sign(Keccak message) { return new Signature(new byte[65]); }
+
+        public bool CanSign { get; } = true;
     }
 }

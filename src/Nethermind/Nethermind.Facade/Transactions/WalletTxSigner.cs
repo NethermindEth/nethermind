@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,28 +13,28 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System;
+using Nethermind.Consensus;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Crypto;
-using Nethermind.Secp256k1;
+using Nethermind.Wallet;
 
-namespace Nethermind.Wallet
+namespace Nethermind.Facade.Transactions
 {
-    public class BasicWallet : IBasicWallet
+    public class WalletTxSigner : ITxSigner
     {
-        private readonly PrivateKey _privateKey;
+        private readonly IWallet _wallet;
+        private readonly int _chainId;
 
-        public BasicWallet(PrivateKey privateKey)
+        public WalletTxSigner(IWallet wallet, int chainId)
         {
-            _privateKey = privateKey ?? throw new ArgumentNullException(nameof(privateKey));
+            _wallet = wallet;
+            _chainId = chainId;
         }
         
-        public Signature Sign(Keccak message, Address address)
+        public void Sign(Transaction tx)
         {
-            var rs = Proxy.SignCompact(message.Bytes, _privateKey.KeyBytes, out int v);
-            return new Signature(rs, v);
+            _wallet.Sign(tx, _chainId);
         }
     }
 }

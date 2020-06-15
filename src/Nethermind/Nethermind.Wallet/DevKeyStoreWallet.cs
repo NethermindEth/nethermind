@@ -32,7 +32,6 @@ namespace Nethermind.Wallet
     [DoNotUseInSecuredContext("For dev purposes only")]
     public class DevKeyStoreWallet : IWallet
     {
-        private static readonly byte[] KeySeed = new byte[32];
         private readonly IKeyStore _keyStore;
         private readonly ILogger _logger;
 
@@ -47,26 +46,13 @@ namespace Nethermind.Wallet
 
             if (createTestAccounts)
             {
-                KeySeed[31] = 1;
-                for (int i = 0; i < 3; i++)
-                {
-                    PrivateKey key = new PrivateKey(KeySeed);
-                    if (GetAccounts().All(a => a != key.Address))
-                    {
-                        SecureString secureString = new SecureString();
-                        secureString.MakeReadOnly();
-                        _keyStore.StoreKey(key, secureString);
-                    }
-
-                    _unlockedAccounts.Add(key.Address, key);
-                    KeySeed[31]++;
-                }
+                this.SetupTestAccounts(3);
             }
         }
 
         public void Import(byte[] keyData, SecureString passphrase)
         {
-            throw new NotSupportedException();
+            _keyStore.StoreKey(new PrivateKey(keyData), passphrase);
         }
 
         public Address[] GetAccounts()
@@ -85,7 +71,7 @@ namespace Nethermind.Wallet
             return UnlockAccount(address, passphrase, TimeSpan.FromSeconds(300));
         }
 
-        public bool UnlockAccount(Address address, SecureString passphrase, TimeSpan timeSpan)
+        public bool UnlockAccount(Address address, SecureString passphrase, TimeSpan? timeSpan)
         {
             if (address == Address.Zero)
             {
@@ -111,12 +97,6 @@ namespace Nethermind.Wallet
         {
             AccountLocked?.Invoke(this, new AccountLockedEventArgs(address));
             return _unlockedAccounts.Remove(address);
-        }
-        
-        public void Sign(Transaction tx, int chainId)
-        {
-            if (_logger.IsDebug) _logger.Debug($"Signing transaction: {tx.Value} to {tx.To}");
-            IBasicWallet.Sign(this, tx, chainId);
         }
 
         public bool IsUnlocked(Address address) => _unlockedAccounts.ContainsKey(address);
@@ -148,7 +128,7 @@ namespace Nethermind.Wallet
             }
             else
             {
-                throw new SecurityException("can only sign without passphrase when account is unlocked.");
+                throw new SecurityException("Can only sign without passphrase when account is unlocked.");
             }
 
             var rs = Proxy.SignCompact(message.Bytes, key.KeyBytes, out int v);

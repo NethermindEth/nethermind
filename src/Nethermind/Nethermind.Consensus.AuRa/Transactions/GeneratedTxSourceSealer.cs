@@ -20,47 +20,52 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.State;
+using Nethermind.TxPool;
 using Nethermind.Wallet;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
-    public class GeneratedTxSourceApprover : ITxSource
+    public class GeneratedTxSourceSealer : ITxSource
     {
         private readonly ITxSource _innerSource;
-        private readonly IBasicWallet _wallet;
-        private readonly ITimestamper _timestamper;
+        private readonly ITxSealer _txSealer;
         private readonly IStateReader _stateReader;
-        private readonly int _chainId;
 
-        public GeneratedTxSourceApprover(ITxSource innerSource, IBasicWallet wallet, ITimestamper timestamper, IStateReader stateReader, int chainId)
+        public GeneratedTxSourceSealer(ITxSource innerSource, ITxSealer txSealer, IStateReader stateReader)
         {
-            _innerSource = innerSource ??  throw new ArgumentNullException(nameof(innerSource));
-            _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
-            _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
+            _innerSource = innerSource ?? throw new ArgumentNullException(nameof(innerSource));
+            _txSealer = txSealer ?? throw new ArgumentNullException(nameof(txSealer));
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
-            _chainId = chainId;
         }
         
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit) =>
-            _innerSource.GetTransactions(parent, gasLimit).Select(tx =>
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
+        {
+            IDictionary<Address, UInt256> nonces = new Dictionary<Address, UInt256>();
+            
+            return _innerSource.GetTransactions(parent, gasLimit).Select(tx =>
             {
                 if (tx is GeneratedTransaction)
                 {
-                    ApproveTx(parent, tx);
+                    tx.Nonce = CalculateNonce(tx.SenderAddress, parent.StateRoot, nonces);
+                    _txSealer.Seal(tx);
                 }
 
                 return tx;
             });
-
-        private void ApproveTx(BlockHeader parent, Transaction tx)
-        {
-            tx.Nonce = _stateReader.GetNonce(parent.StateRoot, tx.SenderAddress);
-            _wallet.Sign(tx, _chainId);
-            tx.Hash = tx.CalculateHash();
-            tx.Timestamp = _timestamper.EpochSeconds;
         }
 
+        private UInt256 CalculateNonce(Address address, Keccak stateRoot, IDictionary<Address, UInt256> nonces)
+        {
+            if (!nonces.TryGetValue(address, out var nonce))
+            {
+                nonce = _stateReader.GetNonce(stateRoot, address);
+            }
+             
+            return nonces[address] = ++nonce;
+        }
     }
 }
