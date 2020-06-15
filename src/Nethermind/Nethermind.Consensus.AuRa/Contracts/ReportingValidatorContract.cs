@@ -58,7 +58,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
     public sealed class ReportingValidatorContract : Contract, IReportingValidatorContract
     {
         private readonly ISigner _signer;
-        public Address NodeAddress => _signer.SigningAddress;
+        public Address NodeAddress => _signer.Address;
         
         public ReportingValidatorContract(
             IAbiEncoder abiEncoder, 

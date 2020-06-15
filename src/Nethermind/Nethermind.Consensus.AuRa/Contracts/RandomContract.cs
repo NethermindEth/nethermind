@@ -139,7 +139,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// <remarks>
         /// The mining address of validator is last contract parameter.
         /// </remarks>
-        private bool SentReveal(BlockHeader parentHeader, UInt256 collectRound) => Constant.Call<bool>(parentHeader, nameof(SentReveal), _signer.SigningAddress, collectRound, _signer);
+        private bool SentReveal(BlockHeader parentHeader, UInt256 collectRound) => Constant.Call<bool>(parentHeader, nameof(SentReveal), _signer.Address, collectRound, _signer);
 
         /// <summary>
         /// Returns a boolean flag indicating whether the specified validator has committed their secret's hash for the specified collection round.
@@ -150,14 +150,14 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// <remarks>
         /// The mining address of validator is last contract parameter.
         /// </remarks>
-        private bool IsCommitted(BlockHeader parentHeader, UInt256 collectRound) => Constant.Call<bool>(parentHeader, nameof(IsCommitted), _signer.SigningAddress, collectRound, _signer);
+        private bool IsCommitted(BlockHeader parentHeader, UInt256 collectRound) => Constant.Call<bool>(parentHeader, nameof(IsCommitted), _signer.Address, collectRound, _signer);
 
         /// <summary>
         /// Returns the serial number of the current collection round.
         /// </summary>
         /// <param name="parentHeader">Block header on which this is to be executed on.</param>
         /// <returns>Serial number of the current collection round.</returns>
-        private UInt256 CurrentCollectRound(BlockHeader parentHeader) => Constant.Call<UInt256>(parentHeader, nameof(CurrentCollectRound), _signer.SigningAddress);
+        private UInt256 CurrentCollectRound(BlockHeader parentHeader) => Constant.Call<UInt256>(parentHeader, nameof(CurrentCollectRound), _signer.Address);
 
         /// <summary>
         /// Returns a boolean flag indicating whether the current phase of the current collection round is a `commits phase`.
@@ -165,7 +165,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// </summary>
         /// <param name="parentHeader">Block header on which this is to be executed on.</param>
         /// <returns>Boolean flag indicating whether the current phase of the current collection round is a `commits phase`.</returns>
-        private bool IsCommitPhase(BlockHeader parentHeader) => Constant.Call<bool>(parentHeader, nameof(IsCommitPhase), _signer.SigningAddress);
+        private bool IsCommitPhase(BlockHeader parentHeader) => Constant.Call<bool>(parentHeader, nameof(IsCommitPhase), _signer.Address);
 
         /// <summary>
         /// Returns the Keccak-256 hash and cipher of the validator's secret for the specified collection round and the specified validator stored by the validator through the `commitHash` function.
@@ -178,7 +178,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// </remarks>
         public (Keccak Hash, byte[] Cipher) GetCommitAndCipher(BlockHeader parentHeader, UInt256 collectRound)
         {
-            var (hash, cipher) = Constant.Call<byte[], byte[]>(parentHeader, nameof(GetCommitAndCipher), _signer.SigningAddress, collectRound, _signer);
+            var (hash, cipher) = Constant.Call<byte[], byte[]>(parentHeader, nameof(GetCommitAndCipher), _signer.Address, collectRound, _signer);
             return (new Keccak(hash), cipher);
         }
 
@@ -190,7 +190,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// <param name="secretHash">The Keccak-256 hash of the validator's secret.</param>
         /// <param name="cipher">The cipher of the validator's secret. Can be used by the node to restore the lost secret after the node is restarted (see the `getCipher` getter).</param>
         /// <returns>Transaction to be included in block.</returns>
-        public Transaction CommitHash(in Keccak secretHash, byte[] cipher) => GenerateTransaction<GeneratedTransaction>(nameof(CommitHash), _signer.SigningAddress, secretHash.Bytes, cipher);
+        public Transaction CommitHash(in Keccak secretHash, byte[] cipher) => GenerateTransaction<GeneratedTransaction>(nameof(CommitHash), _signer.Address, secretHash.Bytes, cipher);
 
         /// <summary>
         /// Called by the validator's node to XOR its number with the current random seed.
@@ -199,6 +199,6 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// </summary>
         /// <param name="number">The validator's number.</param>
         /// <returns>Transaction to be included in block.</returns>
-        public Transaction RevealNumber(UInt256 number) => GenerateTransaction<GeneratedTransaction>(nameof(RevealNumber), _signer.SigningAddress, number);
+        public Transaction RevealNumber(UInt256 number) => GenerateTransaction<GeneratedTransaction>(nameof(RevealNumber), _signer.Address, number);
     }
 }

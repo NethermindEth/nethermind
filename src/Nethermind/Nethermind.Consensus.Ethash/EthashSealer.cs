@@ -66,7 +66,7 @@ namespace Nethermind.Consensus.Ethash
             return true;
         }
 
-        public Address Address => _signer.SigningAddress;
+        public Address Address => _signer.Address;
 
         internal async Task<Block> MineAsync(CancellationToken cancellationToken, Block processed, ulong? startNonce)
         {

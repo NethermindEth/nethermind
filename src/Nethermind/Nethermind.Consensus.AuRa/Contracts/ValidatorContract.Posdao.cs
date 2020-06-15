@@ -55,7 +55,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// through the `InitiateChange` event and saved for later use by the `finalizeChange` function.
         /// See https://openethereum.github.io/wiki/Validator-Set.html for more info about the `InitiateChange` event.
         /// </summary>
-        public Transaction EmitInitiateChange() => GenerateTransaction<GeneratedTransaction>(nameof(EmitInitiateChange), _signer.SigningAddress);
+        public Transaction EmitInitiateChange() => GenerateTransaction<GeneratedTransaction>(nameof(EmitInitiateChange), _signer.Address);
         
         // This was mistakenly put here in POSDAO it should belong to ReportingValidatorContract
         public bool ShouldValidatorReport(Address validatorAddress, Address maliciousMiningAddress, in UInt256 blockNumber, BlockHeader parentHeader) => 

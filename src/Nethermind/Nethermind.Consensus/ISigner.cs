@@ -23,7 +23,7 @@ namespace Nethermind.Consensus
 {
     public interface ISigner : ITxSigner
     {
-        Address SigningAddress { get; }
+        Address Address { get; }
         Signature Sign(Keccak message);
         bool CanSign { get; }
     }

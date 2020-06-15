@@ -44,7 +44,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
         
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
         {
-            var nodeNonce = _stateReader.GetNonce(parent.StateRoot, _signer.SigningAddress);
+            var nodeNonce = _stateReader.GetNonce(parent.StateRoot, _signer.Address);
             
             return _innerSource.GetTransactions(parent, gasLimit).Select(tx =>
             {

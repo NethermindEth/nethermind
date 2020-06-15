@@ -89,7 +89,7 @@ namespace Nethermind.Consensus.AuRa
             bool IsThisNodeTurn(long step)
             {
                 var validators = _validatorStore.GetValidators();
-                return _validSealerStrategy.IsValidSealer(validators, _signer.SigningAddress, step);
+                return _validSealerStrategy.IsValidSealer(validators, _signer.Address, step);
             }
 
             long currentStep = _auRaStepCalculator.CurrentStep;
@@ -98,13 +98,13 @@ namespace Nethermind.Consensus.AuRa
             if (isThisNodeTurn)
             {
                 if (_logger.IsWarn && !stepNotYetProduced) _logger.Warn($"Cannot seal block {blockNumber}: AuRa step {currentStep} already produced.");
-                else if (_logger.IsDebug && stepNotYetProduced) _logger.Debug($"Can seal block {blockNumber}: {_signer.SigningAddress} is correct proposer of AuRa step {currentStep}.");
+                else if (_logger.IsDebug && stepNotYetProduced) _logger.Debug($"Can seal block {blockNumber}: {_signer.Address} is correct proposer of AuRa step {currentStep}.");
             }
-            else if (_logger.IsDebug) _logger.Debug($"Skip seal block {blockNumber}: {_signer.SigningAddress} is not proposer of AuRa step {currentStep}.");
+            else if (_logger.IsDebug) _logger.Debug($"Skip seal block {blockNumber}: {_signer.Address} is not proposer of AuRa step {currentStep}.");
 
             return _signer.CanSign && stepNotYetProduced && isThisNodeTurn;
         }
 
-        public Address Address => _signer.SigningAddress;
+        public Address Address => _signer.Address;
     }
 }

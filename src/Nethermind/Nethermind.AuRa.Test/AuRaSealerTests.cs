@@ -59,7 +59,7 @@ namespace Nethermind.AuRa.Test
             _validatorStore = Substitute.For<IValidatorStore>();
             _validSealerStrategy = Substitute.For<IValidSealerStrategy>();
             var signer = new Signer(ChainId.Mainnet, Build.A.PrivateKey.TestObject);
-            _address = signer.SigningAddress;
+            _address = signer.Address;
             
             _auRaSealer = new AuRaSealer(
                 _blockTree,
