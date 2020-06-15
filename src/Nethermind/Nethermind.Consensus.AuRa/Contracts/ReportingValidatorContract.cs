@@ -36,11 +36,11 @@ namespace Nethermind.Consensus.AuRa.Contracts
         ///     <cref>https://openethereum.github.io/wiki/Validator-Set.html#reporting-contract</cref>
         /// </seealso>
         /// </summary>
-        /// <param name="maliciousMiningAddress">The mining address of the malicious validator.</param>
+        /// <param name="maliciousMinerAddress">The mining address of the malicious validator.</param>
         /// <param name="blockNumber">The block number where the misbehavior was observed.</param>
         /// <param name="proof">Proof of misbehavior.</param>
         /// <returns>Transaction to be added to pool.</returns>
-        Transaction ReportMalicious(Address maliciousMiningAddress, UInt256 blockNumber, byte[] proof);
+        Transaction ReportMalicious(Address maliciousMinerAddress, UInt256 blockNumber, byte[] proof);
 
         /// <summary>
         /// Reports that the benign validator misbehaved at the specified block.
@@ -49,10 +49,10 @@ namespace Nethermind.Consensus.AuRa.Contracts
         ///     <cref>https://openethereum.github.io/wiki/Validator-Set.html#reporting-contract</cref>
         /// </seealso>
         /// </summary>
-        /// <param name="maliciousMiningAddress">The mining address of the malicious validator.</param>
+        /// <param name="maliciousMinerAddress">The mining address of the malicious validator.</param>
         /// <param name="blockNumber">The block number where the misbehavior was observed.</param>
         /// <returns>Transaction to be added to pool.</returns>
-        Transaction ReportBenign(Address maliciousMiningAddress, UInt256 blockNumber);
+        Transaction ReportBenign(Address maliciousMinerAddress, UInt256 blockNumber);
     }
 
     public sealed class ReportingValidatorContract : Contract, IReportingValidatorContract
@@ -76,11 +76,11 @@ namespace Nethermind.Consensus.AuRa.Contracts
         ///     <cref>https://openethereum.github.io/wiki/Validator-Set.html#reporting-contract</cref>
         /// </seealso>
         /// </summary>
-        /// <param name="maliciousMiningAddress">The mining address of the malicious validator.</param>
+        /// <param name="maliciousMinerAddress">The mining address of the malicious validator.</param>
         /// <param name="blockNumber">The block number where the misbehavior was observed.</param>
         /// <param name="proof">Proof of misbehavior.</param>
         /// <returns>Transaction to be added to pool.</returns>
-        public Transaction ReportMalicious(Address maliciousMiningAddress, UInt256 blockNumber, byte[] proof) => GenerateTransaction<GeneratedTransaction>(nameof(ReportMalicious), NodeAddress, maliciousMiningAddress, blockNumber, proof);
+        public Transaction ReportMalicious(Address maliciousMinerAddress, UInt256 blockNumber, byte[] proof) => GenerateTransaction<GeneratedTransaction>(nameof(ReportMalicious), NodeAddress, maliciousMinerAddress, blockNumber, proof);
 
         /// <summary>
         /// Reports that the benign validator misbehaved at the specified block.
@@ -89,9 +89,9 @@ namespace Nethermind.Consensus.AuRa.Contracts
         ///     <cref>https://openethereum.github.io/wiki/Validator-Set.html#reporting-contract</cref>
         /// </seealso>
         /// </summary>
-        /// <param name="maliciousMiningAddress">The mining address of the malicious validator.</param>
+        /// <param name="maliciousMinerAddress">The mining address of the malicious validator.</param>
         /// <param name="blockNumber">The block number where the misbehavior was observed.</param>
         /// <returns>Transaction to be added to pool.</returns>
-        public Transaction ReportBenign(Address maliciousMiningAddress, UInt256 blockNumber) => GenerateTransaction<GeneratedTransaction>(nameof(ReportBenign), NodeAddress, maliciousMiningAddress, blockNumber);
+        public Transaction ReportBenign(Address maliciousMinerAddress, UInt256 blockNumber) => GenerateTransaction<GeneratedTransaction>(nameof(ReportBenign), NodeAddress, maliciousMinerAddress, blockNumber);
     }
 }

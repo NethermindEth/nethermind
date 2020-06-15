@@ -37,7 +37,7 @@ namespace Nethermind.AuRa.Test.Validators
     public class ReportingContractBasedValidatorTests
     {
         private static readonly Address NodeAddress = TestItem.AddressB;
-        private static readonly Address MaliciousMiningAddress = TestItem.AddressA;
+        private static readonly Address MaliciousMinerAddress = TestItem.AddressA;
         
         [Test]
         public void Report_malicious_sends_transaction([Values(true, false)] bool reportingValidator)
@@ -45,8 +45,8 @@ namespace Nethermind.AuRa.Test.Validators
             var context = new TestContext(true);
             var proof = TestItem.KeccakA.Bytes;
             var transaction = Build.A.Transaction.TestObject;
-            context.ReportingValidatorContract.ReportMalicious(MaliciousMiningAddress, 5, proof).Returns(transaction);
-            context.Validator.ReportMalicious(reportingValidator ? MaliciousMiningAddress : NodeAddress, 5, proof, IReportingValidator.MaliciousCause.DuplicateStep);
+            context.ReportingValidatorContract.ReportMalicious(MaliciousMinerAddress, 5, proof).Returns(transaction);
+            context.Validator.ReportMalicious(reportingValidator ? MaliciousMinerAddress : NodeAddress, 5, proof, IReportingValidator.MaliciousCause.DuplicateStep);
             context.TxSender.Received(reportingValidator ? 1 : 0).SendTransaction(transaction, TxHandlingOptions.ManagedNonce | TxHandlingOptions.PersistentBroadcast);
         }
         
@@ -55,8 +55,8 @@ namespace Nethermind.AuRa.Test.Validators
         {
             var context = new TestContext(true);
             var transaction = Build.A.Transaction.TestObject;
-            context.ReportingValidatorContract.ReportBenign(MaliciousMiningAddress, (UInt256) blockNumber).Returns(transaction);
-            context.Validator.ReportBenign(MaliciousMiningAddress, blockNumber, IReportingValidator.BenignCause.FutureBlock);
+            context.ReportingValidatorContract.ReportBenign(MaliciousMinerAddress, (UInt256) blockNumber).Returns(transaction);
+            context.Validator.ReportBenign(MaliciousMinerAddress, blockNumber, IReportingValidator.BenignCause.FutureBlock);
             context.TxSender.Received(1).SendTransaction(transaction, TxHandlingOptions.ManagedNonce | TxHandlingOptions.PersistentBroadcast);            
         }
         
@@ -69,20 +69,20 @@ namespace Nethermind.AuRa.Test.Validators
             var context = new TestContext(false, cache);
             for (ulong i = 5; i < 20; i++)
             {
-                context.ReportingValidatorContract.ReportMalicious(MaliciousMiningAddress, i, proof).Returns(transaction);
-                context.Validator.ReportMalicious(MaliciousMiningAddress, (long) i, proof, IReportingValidator.MaliciousCause.DuplicateStep);
+                context.ReportingValidatorContract.ReportMalicious(MaliciousMinerAddress, i, proof).Returns(transaction);
+                context.Validator.ReportMalicious(MaliciousMinerAddress, (long) i, proof, IReportingValidator.MaliciousCause.DuplicateStep);
             }
             
             context = new TestContext(false, cache);
             for (ulong i = 5; i < 20; i++)
             {
-                context.ReportingValidatorContract.ReportMalicious(MaliciousMiningAddress, i, proof).Returns(transaction);
+                context.ReportingValidatorContract.ReportMalicious(MaliciousMinerAddress, i, proof).Returns(transaction);
             }
 
             var block = Build.A.Block.WithNumber(blockNumber).TestObject;
             
             context.ContractBasedValidator.ValidatorContract
-                .ShouldValidatorReport(NodeAddress, MaliciousMiningAddress, Arg.Any<UInt256>(), block.Header)
+                .ShouldValidatorReport(NodeAddress, MaliciousMinerAddress, Arg.Any<UInt256>(), block.Header)
                 .Returns(0 < validatorsToReport, Enumerable.Range(1, 15).Select(i => i < validatorsToReport).ToArray());
 
             
@@ -106,17 +106,17 @@ namespace Nethermind.AuRa.Test.Validators
             var context = new TestContext(true);
             var proof = TestItem.KeccakA.Bytes;
             var transaction = Build.A.Transaction.TestObject;
-            context.ContractBasedValidator.Validators = new[] {MaliciousMiningAddress, NodeAddress};
+            context.ContractBasedValidator.Validators = new[] {MaliciousMinerAddress, NodeAddress};
             for (ulong i = 5; i < 20; i++)
             {
-                context.ReportingValidatorContract.ReportMalicious(MaliciousMiningAddress, i, proof).Returns(transaction);
-                context.Validator.ReportMalicious(MaliciousMiningAddress, (long) i, proof, IReportingValidator.MaliciousCause.DuplicateStep);
+                context.ReportingValidatorContract.ReportMalicious(MaliciousMinerAddress, i, proof).Returns(transaction);
+                context.Validator.ReportMalicious(MaliciousMinerAddress, (long) i, proof, IReportingValidator.MaliciousCause.DuplicateStep);
             }
 
             var parent = Build.A.BlockHeader.WithNumber(parentBlockNumber).TestObject;
             bool isPosDao = parentBlockNumber + 1 >= context.PosdaoTransition;
             context.ContractBasedValidator.ValidatorContract
-                .ShouldValidatorReport(NodeAddress, MaliciousMiningAddress, Arg.Any<UInt256>(), parent)
+                .ShouldValidatorReport(NodeAddress, MaliciousMinerAddress, Arg.Any<UInt256>(), parent)
                 .Returns(0 < validatorsToReport, Enumerable.Range(1, 15).Select(i => i < validatorsToReport).ToArray());
 
             var initChangeTransaction = Build.A.Transaction.TestObject;
@@ -157,7 +157,7 @@ namespace Nethermind.AuRa.Test.Validators
             {
                 var parentHeader = Build.A.BlockHeader.TestObject;
                 var validatorContract = Substitute.For<IValidatorContract>();
-                var validators = initialValidators ?? new[] {MaliciousMiningAddress, NodeAddress};
+                var validators = initialValidators ?? new[] {MaliciousMinerAddress, NodeAddress};
                 validatorContract.GetValidators(parentHeader).Returns(validators);
                 
                 ContractBasedValidator = new ContractBasedValidator(

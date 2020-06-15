@@ -37,7 +37,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// </summary>
         Transaction EmitInitiateChange();
 
-        bool ShouldValidatorReport(Address validatorAddress, Address maliciousMiningAddress, in UInt256 blockNumber, BlockHeader parentHeader);
+        bool ShouldValidatorReport(Address validatorAddress, Address maliciousMinerAddress, in UInt256 blockNumber, BlockHeader parentHeader);
     }
 
     public partial class ValidatorContract
@@ -58,7 +58,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         public Transaction EmitInitiateChange() => GenerateTransaction<GeneratedTransaction>(nameof(EmitInitiateChange), _signer.Address);
         
         // This was mistakenly put here in POSDAO it should belong to ReportingValidatorContract
-        public bool ShouldValidatorReport(Address validatorAddress, Address maliciousMiningAddress, in UInt256 blockNumber, BlockHeader parentHeader) => 
-            Constant.Call<bool>(parentHeader, nameof(ShouldValidatorReport), Address.SystemUser, validatorAddress, maliciousMiningAddress, blockNumber);
+        public bool ShouldValidatorReport(Address validatorAddress, Address maliciousMinerAddress, in UInt256 blockNumber, BlockHeader parentHeader) => 
+            Constant.Call<bool>(parentHeader, nameof(ShouldValidatorReport), Address.SystemUser, validatorAddress, maliciousMinerAddress, blockNumber);
     }
 }
