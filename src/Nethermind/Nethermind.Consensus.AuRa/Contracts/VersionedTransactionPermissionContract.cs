@@ -31,12 +31,12 @@ namespace Nethermind.Consensus.AuRa.Contracts
         public VersionedTransactionPermissionContract(IAbiEncoder abiEncoder,
             Address contractAddress,
             long activation,
-            IReadOnlyTransactionProcessorSource readOnlyReadOnlyTransactionProcessorSource, 
+            IReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource, 
             ICache<Keccak, UInt256> cache)
             : base(
                 CreateAllVersions(abiEncoder,
                     contractAddress,
-                    readOnlyReadOnlyTransactionProcessorSource),
+                    readOnlyTransactionProcessorSource),
                 cache,
                 activation)
         {
@@ -44,54 +44,54 @@ namespace Nethermind.Consensus.AuRa.Contracts
         
         private static TransactionPermissionContractV1 CreateV1(IAbiEncoder abiEncoder,
             Address contractAddress,
-            IReadOnlyTransactionProcessorSource readOnlyReadOnlyTransactionProcessorSource)
+            IReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource)
         {
             return new TransactionPermissionContractV1(
                 abiEncoder,
                 contractAddress,
-                readOnlyReadOnlyTransactionProcessorSource);
+                readOnlyTransactionProcessorSource);
         }
 
         private static TransactionPermissionContractV2 CreateV2(IAbiEncoder abiEncoder,
             Address contractAddress,
-            IReadOnlyTransactionProcessorSource readOnlyReadOnlyTransactionProcessorSource)
+            IReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource)
         {
             return new TransactionPermissionContractV2(
                 abiEncoder,
                 contractAddress,
-                readOnlyReadOnlyTransactionProcessorSource);
+                readOnlyTransactionProcessorSource);
         }
 
         private static TransactionPermissionContractV3 CreateV3(IAbiEncoder abiEncoder,
             Address contractAddress,
-            IReadOnlyTransactionProcessorSource readOnlyReadOnlyTransactionProcessorSource)
+            IReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource)
         {
             return new TransactionPermissionContractV3(
                 abiEncoder,
                 contractAddress,
-                readOnlyReadOnlyTransactionProcessorSource);
+                readOnlyTransactionProcessorSource);
         }
 
         private static Dictionary<UInt256, ITransactionPermissionContract> CreateAllVersions(IAbiEncoder abiEncoder,
             Address contractAddress,
-            IReadOnlyTransactionProcessorSource readOnlyReadOnlyTransactionProcessorSource)
+            IReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource)
         {
             return new Dictionary<UInt256, ITransactionPermissionContract>
             {
                 {
                     UInt256.One, CreateV1(abiEncoder,
                         contractAddress,
-                        readOnlyReadOnlyTransactionProcessorSource)
+                        readOnlyTransactionProcessorSource)
                 },
                 {
                     2, CreateV2(abiEncoder,
                         contractAddress,
-                        readOnlyReadOnlyTransactionProcessorSource)
+                        readOnlyTransactionProcessorSource)
                 },
                 {
                     3, CreateV3(abiEncoder,
                         contractAddress,
-                        readOnlyReadOnlyTransactionProcessorSource)
+                        readOnlyTransactionProcessorSource)
                 },
             };
         }

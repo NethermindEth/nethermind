@@ -95,14 +95,14 @@ namespace Nethermind.Consensus.AuRa.Contracts
         public RandomContract(
             IAbiEncoder abiEncoder,
             Address contractAddress,
-            IReadOnlyTransactionProcessorSource readOnlyReadOnlyTransactionProcessorSource,
+            IReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource,
             long transitionBlock,
             ISigner signer)
             : base(abiEncoder, contractAddress)
         {
             _signer = signer;
             Activation = transitionBlock;
-            Constant = GetConstant(readOnlyReadOnlyTransactionProcessorSource);
+            Constant = GetConstant(readOnlyTransactionProcessorSource);
         }
 
         public long Activation { get; }

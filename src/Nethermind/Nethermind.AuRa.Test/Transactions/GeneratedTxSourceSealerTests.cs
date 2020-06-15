@@ -39,7 +39,7 @@ namespace Nethermind.AuRa.Test.Transactions
         {
             int chainId = 5;
             var blockHeader = Build.A.BlockHeader.TestObject;
-            var tx = Build.A.GeneratedTransaction.TestObject;
+            var tx = Build.A.GeneratedTransaction.WithSenderAddress(TestItem.AddressA).TestObject;
             var timestamper = Substitute.For<ITimestamper>();
             var stateReader = Substitute.For<IStateReader>();
             var nodeAddress = TestItem.AddressA;
@@ -55,7 +55,7 @@ namespace Nethermind.AuRa.Test.Transactions
             innerTxSource.GetTransactions(blockHeader, gasLimit).Returns(new[] {tx});
             
             TxSealer txSealer = new TxSealer(new Signer(chainId, Build.A.PrivateKey.TestObject), timestamper);
-            var transactionFiller = new GeneratedTxSourceSealer(innerTxSource, txSealer, stateReader, new Signer(0, TestItem.PrivateKeyA));
+            var transactionFiller = new GeneratedTxSourceSealer(innerTxSource, txSealer, stateReader);
             
             var txResult= transactionFiller.GetTransactions(blockHeader, gasLimit).First();
 

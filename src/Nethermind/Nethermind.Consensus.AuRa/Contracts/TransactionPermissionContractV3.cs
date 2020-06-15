@@ -31,8 +31,8 @@ namespace Nethermind.Consensus.AuRa.Contracts
         public TransactionPermissionContractV3(
             IAbiEncoder abiEncoder,
             Address contractAddress,
-            IReadOnlyTransactionProcessorSource readOnlyReadOnlyTransactionProcessorSource)
-            : base(abiEncoder, contractAddress, readOnlyReadOnlyTransactionProcessorSource)
+            IReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource)
+            : base(abiEncoder, contractAddress, readOnlyTransactionProcessorSource)
         {
         }
 

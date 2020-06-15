@@ -197,7 +197,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (needSigner)
             {
                 TxSealer transactionSealer = new TxSealer(_context.Signer, _context.Timestamper); 
-                txSource = new GeneratedTxSourceSealer(txSource, transactionSealer, readOnlyTxProcessingEnv.StateReader, _context.Signer);
+                txSource = new GeneratedTxSourceSealer(txSource, transactionSealer, readOnlyTxProcessingEnv.StateReader);
             }
 
             var txPermissionFilter = GetTxPermissionFilter(readOnlyTxProcessingEnv, readOnlyTransactionProcessorSource);

@@ -27,10 +27,10 @@ namespace Nethermind.Blockchain.Contracts
         /// <summary>
         /// Gets constant version of the contract. Allowing to call contract methods without state modification.
         /// </summary>
-        /// <param name="readOnlyReadOnlyTransactionProcessorSource">Source of readonly <see cref="ITransactionProcessor"/> to call transactions.</param>
+        /// <param name="readOnlyTransactionProcessorSource">Source of readonly <see cref="ITransactionProcessor"/> to call transactions.</param>
         /// <returns>Constant version of the contract.</returns>
-        protected ConstantContract GetConstant(IReadOnlyTransactionProcessorSource readOnlyReadOnlyTransactionProcessorSource) =>
-            new ConstantContract(this, readOnlyReadOnlyTransactionProcessorSource);
+        protected ConstantContract GetConstant(IReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource) =>
+            new ConstantContract(this, readOnlyTransactionProcessorSource);
 
         /// <summary>
         /// Constant version of the contract. Allows to call contract methods without state modification.
@@ -38,17 +38,17 @@ namespace Nethermind.Blockchain.Contracts
         public class ConstantContract
         {
             private readonly Contract _contract;
-            private readonly IReadOnlyTransactionProcessorSource _readOnlyReadOnlyTransactionProcessorSource;
+            private readonly IReadOnlyTransactionProcessorSource _readOnlyTransactionProcessorSource;
 
-            public ConstantContract(Contract contract, IReadOnlyTransactionProcessorSource readOnlyReadOnlyTransactionProcessorSource)
+            public ConstantContract(Contract contract, IReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource)
             {
                 _contract = contract;
-                _readOnlyReadOnlyTransactionProcessorSource = readOnlyReadOnlyTransactionProcessorSource ?? throw new ArgumentNullException(nameof(readOnlyReadOnlyTransactionProcessorSource));
+                _readOnlyTransactionProcessorSource = readOnlyTransactionProcessorSource ?? throw new ArgumentNullException(nameof(readOnlyTransactionProcessorSource));
             }
 
             private byte[] Call(BlockHeader parentHeader, Transaction transaction)
             {
-                using var readOnlyTransactionProcessor = _readOnlyReadOnlyTransactionProcessorSource.Get(GetState(parentHeader));
+                using var readOnlyTransactionProcessor = _readOnlyTransactionProcessorSource.Get(GetState(parentHeader));
                 return CallCore(readOnlyTransactionProcessor, parentHeader, transaction, true);
             }
 

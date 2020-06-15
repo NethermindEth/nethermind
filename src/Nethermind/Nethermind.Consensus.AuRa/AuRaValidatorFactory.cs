@@ -36,7 +36,7 @@ namespace Nethermind.Consensus.AuRa
         private readonly IStateProvider _stateProvider;
         private readonly IAbiEncoder _abiEncoder;
         private readonly ITransactionProcessor _transactionProcessor;
-        private readonly IReadOnlyTransactionProcessorSource _readOnlyReadOnlyTransactionProcessorSource;
+        private readonly IReadOnlyTransactionProcessorSource _readOnlyTransactionProcessorSource;
         private readonly IBlockTree _blockTree;
         private readonly IReceiptFinder _receiptFinder;
         private readonly IValidatorStore _validatorStore;
@@ -68,7 +68,7 @@ namespace Nethermind.Consensus.AuRa
             _stateProvider = stateProvider;
             _abiEncoder = abiEncoder;
             _transactionProcessor = transactionProcessor;
-            _readOnlyReadOnlyTransactionProcessorSource = readOnlyTransactionProcessorSource;
+            _readOnlyTransactionProcessorSource = readOnlyTransactionProcessorSource;
             _blockTree = blockTree;
             _receiptFinder = receiptFinder;
             _validatorStore = validatorStore;
@@ -84,7 +84,7 @@ namespace Nethermind.Consensus.AuRa
 
         public IAuRaValidator CreateValidatorProcessor(AuRaParameters.Validator validator, BlockHeader parentHeader = null, long? startBlock = null)
         {
-            IValidatorContract GetValidatorContract() => new ValidatorContract(_transactionProcessor, _abiEncoder, validator.GetContractAddress(), _stateProvider, _readOnlyReadOnlyTransactionProcessorSource, _signer);
+            IValidatorContract GetValidatorContract() => new ValidatorContract(_transactionProcessor, _abiEncoder, validator.GetContractAddress(), _stateProvider, _readOnlyTransactionProcessorSource, _signer);
             IReportingValidatorContract GetReportingValidatorContract() => new ReportingValidatorContract(_abiEncoder, validator.GetContractAddress(), _signer);
 
             var validSealerStrategy = new ValidSealerStrategy();

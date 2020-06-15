@@ -20,7 +20,9 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
@@ -32,30 +34,38 @@ namespace Nethermind.Consensus.AuRa.Transactions
         private readonly ITxSource _innerSource;
         private readonly ITxSealer _txSealer;
         private readonly IStateReader _stateReader;
-        private readonly ISigner _signer;
 
-        public GeneratedTxSourceSealer(ITxSource innerSource, ITxSealer txSealer, IStateReader stateReader, ISigner signer)
+        public GeneratedTxSourceSealer(ITxSource innerSource, ITxSealer txSealer, IStateReader stateReader)
         {
             _innerSource = innerSource ?? throw new ArgumentNullException(nameof(innerSource));
             _txSealer = txSealer ?? throw new ArgumentNullException(nameof(txSealer));
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
-            _signer = signer ?? throw new ArgumentNullException(nameof(signer));
         }
         
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
         {
-            var nodeNonce = _stateReader.GetNonce(parent.StateRoot, _signer.Address);
+            IDictionary<Address, UInt256> nonces = new Dictionary<Address, UInt256>();
             
             return _innerSource.GetTransactions(parent, gasLimit).Select(tx =>
             {
                 if (tx is GeneratedTransaction)
                 {
-                    tx.Nonce = ++nodeNonce;
+                    tx.Nonce = CalculateNonce(tx.SenderAddress, parent.StateRoot, nonces);
                     _txSealer.Seal(tx);
                 }
 
                 return tx;
             });
+        }
+
+        private UInt256 CalculateNonce(Address address, Keccak stateRoot, IDictionary<Address, UInt256> nonces)
+        {
+            if (!nonces.TryGetValue(address, out var nonce))
+            {
+                nonce = _stateReader.GetNonce(stateRoot, address);
+            }
+             
+            return nonces[address] = ++nonce;
         }
     }
 }

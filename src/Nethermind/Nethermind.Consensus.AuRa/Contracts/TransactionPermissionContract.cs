@@ -108,10 +108,10 @@ namespace Nethermind.Consensus.AuRa.Contracts
         protected TransactionPermissionContract(
             IAbiEncoder abiEncoder,
             Address contractAddress,
-            IReadOnlyTransactionProcessorSource readOnlyReadOnlyTransactionProcessorSource)
+            IReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource)
             : base(abiEncoder, contractAddress)
         {
-            Constant = GetConstant(readOnlyReadOnlyTransactionProcessorSource);
+            Constant = GetConstant(readOnlyTransactionProcessorSource);
         }
     }
 }
