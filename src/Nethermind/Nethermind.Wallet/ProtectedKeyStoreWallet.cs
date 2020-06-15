@@ -96,12 +96,6 @@ namespace Nethermind.Wallet
             return true;
         }
         
-        public void Sign(Transaction tx, int chainId)
-        {
-            if (_logger.IsDebug) _logger.Debug($"Signing transaction: {tx.Value} to {tx.To}");
-            IBasicWallet.Sign(this, tx, chainId);
-        }
-
         public bool IsUnlocked(Address address) => _unlockedAccounts.Contains(address.ToString());
 
         public Signature Sign(Keccak message, Address address, SecureString passphrase)

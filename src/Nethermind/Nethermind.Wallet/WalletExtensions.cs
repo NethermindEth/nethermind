@@ -18,7 +18,10 @@
 using System;
 using System.Linq;
 using System.Security;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Wallet
 {
@@ -41,5 +44,12 @@ namespace Nethermind.Wallet
                 keySeed[31]++;
             }
         }
+        public static void Sign(this IWallet @this, Transaction tx, int chainId)
+        {
+            Keccak hash = Keccak.Compute(Rlp.Encode(tx, true, true, chainId).Bytes);
+            tx.Signature = @this.Sign(hash, tx.SenderAddress);
+            tx.Signature.V = tx.Signature.V + 8 + 2 * chainId;
+        }
+        
     }
 }

@@ -23,10 +23,10 @@ namespace Nethermind.Facade.Transactions
 {
     public class WalletTxSigner : ITxSigner
     {
-        private readonly IBasicWallet _wallet;
+        private readonly IWallet _wallet;
         private readonly int _chainId;
 
-        public WalletTxSigner(IBasicWallet wallet, int chainId)
+        public WalletTxSigner(IWallet wallet, int chainId)
         {
             _wallet = wallet;
             _chainId = chainId;

@@ -61,6 +61,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             _enabled = true;
             _timestamper = new Timestamper();
             _wallet = Substitute.For<IWallet>();
+            _wallet.Sign(Arg.Any<Keccak>(), Arg.Any<Address>()).Returns(new Signature(new byte[65]));
             _logManager = LimboLogs.Instance;
             _host = "127.0.0.1";
             _address = Address.FromNumber(2);

@@ -28,7 +28,6 @@ namespace Nethermind.Consensus
         public void Sign(Transaction tx) { }
 
         public Address SigningAddress { get; } = Address.Zero;
-        public ProtectedPrivateKey Key { get; } = null;
         public Signature Sign(Keccak message) { return new Signature(new byte[65]); }
 
         public bool CanSign { get; } = true;

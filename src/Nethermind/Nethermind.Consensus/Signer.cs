@@ -31,8 +31,6 @@ namespace Nethermind.Consensus
         private bool _canSign = true;
 
         public Address SigningAddress => _key.Address;
-        
-        public ProtectedPrivateKey Key => _key;
 
         public bool CanSign
         {

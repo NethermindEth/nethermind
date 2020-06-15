@@ -38,18 +38,18 @@ namespace Nethermind.Consensus.AuRa.Transactions
     public class RandomContractTxSource : ITxSource
     {
         private readonly IEciesCipher _eciesCipher;
-        private readonly ISigner _singer;
+        private readonly ProtectedPrivateKey _cryptoKey;
         private readonly IList<IRandomContract> _contracts;
         private readonly ICryptoRandom _random;
 
         public RandomContractTxSource(IList<IRandomContract> contracts,
             IEciesCipher eciesCipher,
-            ISigner signer, 
+            ProtectedPrivateKey cryptoKey, 
             ICryptoRandom cryptoRandom)
         {
             _contracts = contracts ?? throw new ArgumentNullException(nameof(contracts));
             _eciesCipher = eciesCipher ?? throw new ArgumentNullException(nameof(eciesCipher));
-            _singer = signer ?? throw new ArgumentNullException(nameof(signer));
+            _cryptoKey = cryptoKey ?? throw new ArgumentNullException(nameof(cryptoKey));
             _random = cryptoRandom;
         }
         
@@ -75,13 +75,13 @@ namespace Nethermind.Consensus.AuRa.Transactions
                     byte[] bytes = new byte[32];
                     _random.GenerateRandomBytes(bytes);
                     var hash = Keccak.Compute(bytes);
-                    var cipher = _eciesCipher.Encrypt(_singer.Key.PublicKey, bytes);
+                    var cipher = _eciesCipher.Encrypt(_cryptoKey.PublicKey, bytes);
                     return contract.CommitHash(hash, cipher);
                 }
                 case IRandomContract.Phase.Reveal:
                 {
                     var (hash, cipher) = contract.GetCommitAndCipher(parent, round);
-                    using PrivateKey privateKey = _singer.Key.Unprotect();
+                    using PrivateKey privateKey = _cryptoKey.Unprotect();
                     byte[] bytes = _eciesCipher.Decrypt(privateKey, cipher).Item2;
                     if (bytes?.Length != 32)
                     {
