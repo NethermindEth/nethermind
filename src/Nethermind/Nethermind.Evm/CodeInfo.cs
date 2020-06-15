@@ -15,7 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections;
-using Nethermind.Core;
+using Nethermind.Core.Extensions;
+using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Evm
 {
@@ -27,15 +28,17 @@ namespace Nethermind.Evm
         {
             MachineCode = code;
         }
-        
-        public CodeInfo(Address precompileAddress)
-        {
-            PrecompileAddress = precompileAddress;
-        }
 
-        public bool IsPrecompile => PrecompileAddress != null;
+        public bool IsPrecompile => PrecompiledContract != null;
+        
+        public CodeInfo(IPrecompiledContract precompiledContract)
+        {
+            PrecompiledContract = precompiledContract;
+            MachineCode = Bytes.Empty;
+        }
+        
         public byte[] MachineCode { get; set; }
-        public Address PrecompileAddress { get; set; }
+        public IPrecompiledContract PrecompiledContract { get; set; }
 
         public bool ValidateJump(int destination)
         {

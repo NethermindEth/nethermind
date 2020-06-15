@@ -190,7 +190,7 @@ namespace Nethermind.Evm
 
                     if (_stateProvider.AccountExists(recipient))
                     {
-                        if ((_virtualMachine.GetCachedCodeInfo(recipient)?.MachineCode?.Length ?? 0) != 0 || _stateProvider.GetNonce(recipient) != 0)
+                        if (_virtualMachine.GetCachedCodeInfo(recipient, spec).MachineCode.Length != 0 || _stateProvider.GetNonce(recipient) != 0)
                         {
                             if (_logger.IsTrace)
                             {
@@ -203,9 +203,7 @@ namespace Nethermind.Evm
                         _stateProvider.UpdateStorageRoot(recipient, Keccak.EmptyTreeHash);
                     }
                 }
-
-                bool isPrecompile = recipient.IsPrecompiled(spec);
-
+                
                 ExecutionEnvironment env = new ExecutionEnvironment();
                 env.Value = value;
                 env.TransferValue = value;
@@ -215,11 +213,11 @@ namespace Nethermind.Evm
                 env.CurrentBlock = block;
                 env.GasPrice = gasPrice;
                 env.InputData = data ?? new byte[0];
-                env.CodeInfo = isPrecompile ? new CodeInfo(recipient) : machineCode == null ? _virtualMachine.GetCachedCodeInfo(recipient) : new CodeInfo(machineCode);
+                env.CodeInfo = machineCode == null ? _virtualMachine.GetCachedCodeInfo(recipient, spec) : new CodeInfo(machineCode);
                 env.Originator = sender;
 
                 ExecutionType executionType = transaction.IsContractCreation ? ExecutionType.Create : ExecutionType.Call;
-                using (EvmState state = new EvmState(unspentGas, env, executionType, isPrecompile, true, false))
+                using (EvmState state = new EvmState(unspentGas, env, executionType, true, false))
                 {
                     substate = _virtualMachine.Run(state, txTracer);
                     unspentGas = state.GasAvailable;
