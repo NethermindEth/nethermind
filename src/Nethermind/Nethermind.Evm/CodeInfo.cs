@@ -63,8 +63,10 @@ namespace Nethermind.Evm
             {
                 //Instruction instruction = (Instruction)code[index];
                 byte instruction = MachineCode[index];                
-                //if (instruction == Instruction.JUMPDEST)
-                if (instruction == 0x5b)
+                //if (instruction == Instruction.JUMPDEST
+                //    || instruction == Instruction.BEGINSUB)
+                if (instruction == 0x5b 
+                    || instruction == 0x5e)
                 {
                     _validJumpDestinations.Set(index, true);
                 }

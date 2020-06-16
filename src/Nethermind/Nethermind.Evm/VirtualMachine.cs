@@ -2579,6 +2579,12 @@ namespace Nethermind.Evm
                             return CallResult.InvalidInstructionException;
                         }
                         
+                        if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
+                        {
+                            EndInstructionTraceError(OutOfGasErrorText);
+                            return CallResult.OutOfGasException;
+                        }
+                        
                         break;
                     }
                     case Instruction.RETURNSUB:
@@ -2587,6 +2593,12 @@ namespace Nethermind.Evm
                         {
                             EndInstructionTraceError(BadInstructionErrorText);
                             return CallResult.InvalidInstructionException;
+                        }
+                        
+                        if (!UpdateGas(GasCostOf.Low, ref gasAvailable))
+                        {
+                            EndInstructionTraceError(OutOfGasErrorText);
+                            return CallResult.OutOfGasException;
                         }
 
                         break;
@@ -2597,6 +2609,12 @@ namespace Nethermind.Evm
                         {
                             EndInstructionTraceError(BadInstructionErrorText);
                             return CallResult.InvalidInstructionException;
+                        }
+                        
+                        if (!UpdateGas(GasCostOf.High, ref gasAvailable))
+                        {
+                            EndInstructionTraceError(OutOfGasErrorText);
+                            return CallResult.OutOfGasException;
                         }
                         
                         break;

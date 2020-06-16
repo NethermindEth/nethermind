@@ -163,9 +163,9 @@ namespace Nethermind.Evm
         LOG3 = 0xa3,
         LOG4 = 0xa4,
         
-        BEGINSUB = 0xb2,
-        JUMPSUB = 0xb3,
-        RETURNSUB = 0xb7,
+        BEGINSUB = 0x5c,
+        RETURNSUB = 0x5d,
+        JUMPSUB = 0x5e,
 
         CREATE = 0xf0,
         CALL = 0xf1,

@@ -210,7 +210,13 @@ namespace Nethermind.Evm
             PushData(new[] {data});
             return this;
         }
-
+        
+        public Prepare FromCode(string data)
+        {
+            _byteCode.AddRange(Bytes.FromHexString(data));
+            return this;
+        }
+        
         public Prepare Data(string data)
         {
             _byteCode.AddRange(Bytes.FromHexString(data));
