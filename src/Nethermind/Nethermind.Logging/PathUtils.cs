@@ -55,7 +55,7 @@ namespace Nethermind.Logging
                 return Path.Combine(ExecutingDirectory, resourcePath);
             }
 
-            return Path.IsPathRooted(overridePrefixPath)
+            return Path.IsPathRooted(overridePrefixPath) || IsExplicitlyRelative(overridePrefixPath)
                 ? Path.Combine(overridePrefixPath, resourcePath)
                 : Path.Combine(ExecutingDirectory, overridePrefixPath, resourcePath);
         }
