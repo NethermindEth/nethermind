@@ -89,6 +89,9 @@ namespace Nethermind.Evm
         MSIZE = 0x59,
         GAS = 0x5a,
         JUMPDEST = 0x5b,
+        BEGINSUB = 0x5c,
+        RETURNSUB = 0x5d,
+        JUMPSUB = 0x5e,
         
         PUSH1 = 0x60,
         PUSH2 = 0x61,
@@ -162,10 +165,6 @@ namespace Nethermind.Evm
         LOG2 = 0xa2,
         LOG3 = 0xa3,
         LOG4 = 0xa4,
-        
-        BEGINSUB = 0x5c,
-        RETURNSUB = 0x5d,
-        JUMPSUB = 0x5e,
 
         CREATE = 0xf0,
         CALL = 0xf1,

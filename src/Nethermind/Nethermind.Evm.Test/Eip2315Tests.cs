@@ -62,7 +62,7 @@ namespace Nethermind.Evm.Test
             TestState.CreateAccount(TestItem.AddressC, 100.Ether());
 
             byte[] code = Prepare.EvmCode
-                .FromCode("0x6800000000000000000c5e005c60115e5d5c5d")
+                .FromCode("0x6801000000000000000c5e005c60115e5d5c5d")
                 .Done;
 
             var result = Execute(code);
