@@ -29,16 +29,16 @@ namespace Nethermind.Evm
             MachineCode = code;
         }
 
-        public bool IsPrecompile => PrecompiledContract != null;
+        public bool IsPrecompile => Precompile != null;
         
-        public CodeInfo(IPrecompiledContract precompiledContract)
+        public CodeInfo(IPrecompile precompile)
         {
-            PrecompiledContract = precompiledContract;
+            Precompile = precompile;
             MachineCode = Bytes.Empty;
         }
         
         public byte[] MachineCode { get; set; }
-        public IPrecompiledContract PrecompiledContract { get; set; }
+        public IPrecompile Precompile { get; set; }
 
         public bool ValidateJump(int destination)
         {

@@ -22,10 +22,10 @@ using Nethermind.Crypto;
 
 namespace Nethermind.Evm.Precompiles
 {
-    public class Blake2BPrecompiledContract : IPrecompiledContract
+    public class Blake2FPrecompile : IPrecompile
     {
         private const int RequiredInputLength = 213;
-        public static readonly IPrecompiledContract Instance = new Blake2BPrecompiledContract();
+        public static readonly IPrecompile Instance = new Blake2FPrecompile();
 
         public Address Address { get; } = Address.FromNumber(9);
 

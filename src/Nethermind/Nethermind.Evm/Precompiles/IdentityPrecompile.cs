@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,51 +14,34 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Security.Cryptography;
-using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 
 namespace Nethermind.Evm.Precompiles
 {
-    public class Sha256PrecompiledContract : IPrecompiledContract
+    public class IdentityPrecompile : IPrecompile
     {
-        private static ThreadLocal<SHA256> _sha256 = new ThreadLocal<SHA256>();
-        
-        public static readonly IPrecompiledContract Instance = new Sha256PrecompiledContract();
+        public static readonly IPrecompile Instance = new IdentityPrecompile();
 
-        private Sha256PrecompiledContract()
+        private IdentityPrecompile()
         {
-            InitIfNeeded();
         }
 
-        private static void InitIfNeeded()
-        {
-            if (!_sha256.IsValueCreated)
-            {
-                var sha = SHA256.Create();
-                sha.Initialize();
-                _sha256.Value = sha;
-            }
-        }
-
-        public Address Address { get; } = Address.FromNumber(2);
+        public Address Address { get; } = Address.FromNumber(4);
 
         public long BaseGasCost(IReleaseSpec releaseSpec)
         {
-            return 60L;
+            return 15L;
         }
 
         public long DataGasCost(byte[] inputData, IReleaseSpec releaseSpec)
         {
-            return 12L * EvmPooledMemory.Div32Ceiling((ulong) inputData.Length);
+            return 3L * EvmPooledMemory.Div32Ceiling((ulong)inputData.Length);
         }
 
         public (byte[], bool) Run(byte[] inputData)
         {
-            Metrics.Sha256Precompile++;
-            InitIfNeeded();
-            return (_sha256.Value.ComputeHash(inputData), true);
+            return (inputData, true);
         }
     }
 }

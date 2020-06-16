@@ -25,7 +25,7 @@ namespace Nethermind.Evm.Precompiles
     {
         private static byte[] _nineteenZeros = new byte[19];
 
-        public static bool IsPrecompiled(this Address address, IReleaseSpec releaseSpec)
+        public static bool IsPrecompile(this Address address, IReleaseSpec releaseSpec)
         {
             if (!Bytes.AreEqual(address.Bytes.AsSpan(0, 19), _nineteenZeros))
             {

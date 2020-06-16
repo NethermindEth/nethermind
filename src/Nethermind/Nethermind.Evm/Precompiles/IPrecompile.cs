@@ -19,7 +19,7 @@ using Nethermind.Core.Specs;
 
 namespace Nethermind.Evm.Precompiles
 {
-    public interface IPrecompiledContract
+    public interface IPrecompile
     {
         Address Address { get; }
 

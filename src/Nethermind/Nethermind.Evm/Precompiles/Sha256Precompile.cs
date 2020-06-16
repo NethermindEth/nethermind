@@ -14,46 +14,51 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Security.Cryptography;
+using System.Threading;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
 
 namespace Nethermind.Evm.Precompiles
 {
-    public class Ripemd160PrecompiledContract : IPrecompiledContract
+    public class Sha256Precompile : IPrecompile
     {
-        public static readonly IPrecompiledContract Instance = new Ripemd160PrecompiledContract();
+        private static ThreadLocal<SHA256> _sha256 = new ThreadLocal<SHA256>();
+        
+        public static readonly IPrecompile Instance = new Sha256Precompile();
 
-        // missing in .NET Core
-//        private static RIPEMD160 _ripemd;
-
-        private Ripemd160PrecompiledContract()
+        private Sha256Precompile()
         {
-            // missing in .NET Core
-//            _ripemd = RIPEMD160.Create();
-//            _ripemd.Initialize();
+            InitIfNeeded();
         }
 
-        public Address Address { get; } = Address.FromNumber(3);
+        private static void InitIfNeeded()
+        {
+            if (!_sha256.IsValueCreated)
+            {
+                var sha = SHA256.Create();
+                sha.Initialize();
+                _sha256.Value = sha;
+            }
+        }
+
+        public Address Address { get; } = Address.FromNumber(2);
 
         public long BaseGasCost(IReleaseSpec releaseSpec)
         {
-            return 600L;
+            return 60L;
         }
 
         public long DataGasCost(byte[] inputData, IReleaseSpec releaseSpec)
         {
-            return 120L * EvmPooledMemory.Div32Ceiling((ulong)inputData.Length);
+            return 12L * EvmPooledMemory.Div32Ceiling((ulong) inputData.Length);
         }
 
         public (byte[], bool) Run(byte[] inputData)
         {
-            Metrics.Ripemd160Precompile++;
-            
-            // missing in .NET Core
-//            return _ripemd.ComputeHash(inputData).PadLeft(32);
-            return (Ripemd.Compute(inputData).PadLeft(32), true);
+            Metrics.Sha256Precompile++;
+            InitIfNeeded();
+            return (_sha256.Value.ComputeHash(inputData), true);
         }
     }
 }

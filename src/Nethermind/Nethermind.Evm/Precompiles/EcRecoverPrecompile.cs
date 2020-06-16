@@ -25,11 +25,11 @@ using Nethermind.Logging;
 
 namespace Nethermind.Evm.Precompiles
 {
-    public class EcRecoverPrecompiledContract : IPrecompiledContract
+    public class EcRecoverPrecompile : IPrecompile
     {
-        public static readonly IPrecompiledContract Instance = new EcRecoverPrecompiledContract();
+        public static readonly IPrecompile Instance = new EcRecoverPrecompile();
 
-        private EcRecoverPrecompiledContract()
+        private EcRecoverPrecompile()
         {
         }
 

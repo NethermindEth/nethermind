@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,33 +15,45 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 
 namespace Nethermind.Evm.Precompiles
 {
-    public class IdentityPrecompiledContract : IPrecompiledContract
+    public class Ripemd160Precompile : IPrecompile
     {
-        public static readonly IPrecompiledContract Instance = new IdentityPrecompiledContract();
+        public static readonly IPrecompile Instance = new Ripemd160Precompile();
 
-        private IdentityPrecompiledContract()
+        // missing in .NET Core
+//        private static RIPEMD160 _ripemd;
+
+        private Ripemd160Precompile()
         {
+            // missing in .NET Core
+//            _ripemd = RIPEMD160.Create();
+//            _ripemd.Initialize();
         }
 
-        public Address Address { get; } = Address.FromNumber(4);
+        public Address Address { get; } = Address.FromNumber(3);
 
         public long BaseGasCost(IReleaseSpec releaseSpec)
         {
-            return 15L;
+            return 600L;
         }
 
         public long DataGasCost(byte[] inputData, IReleaseSpec releaseSpec)
         {
-            return 3L * EvmPooledMemory.Div32Ceiling((ulong)inputData.Length);
+            return 120L * EvmPooledMemory.Div32Ceiling((ulong)inputData.Length);
         }
 
         public (byte[], bool) Run(byte[] inputData)
         {
-            return (inputData, true);
+            Metrics.Ripemd160Precompile++;
+            
+            // missing in .NET Core
+//            return _ripemd.ComputeHash(inputData).PadLeft(32);
+            return (Ripemd.Compute(inputData).PadLeft(32), true);
         }
     }
 }

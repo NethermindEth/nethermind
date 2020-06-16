@@ -25,11 +25,11 @@ namespace Nethermind.Evm.Precompiles
     /// <summary>
     ///     Code adapted from ethereumJ (https://github.com/ethereum/ethereumj)
     /// </summary>
-    public class Bn128MulPrecompiledContract : IPrecompiledContract
+    public class Bn128MulPrecompile : IPrecompile
     {
-        public static IPrecompiledContract Instance = new Bn128MulPrecompiledContract();
+        public static IPrecompile Instance = new Bn128MulPrecompile();
 
-        private Bn128MulPrecompiledContract()
+        private Bn128MulPrecompile()
         {
         }
 

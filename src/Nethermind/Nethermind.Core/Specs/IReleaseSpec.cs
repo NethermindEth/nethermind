@@ -171,7 +171,7 @@ namespace Nethermind.Core.Specs
         bool IsEip2028Enabled { get; }
 
         /// <summary>
-        /// Istanbul Blake2b precompile
+        /// Istanbul Blake2F precompile
         /// </summary>
         bool IsEip152Enabled { get; }
         

@@ -560,7 +560,7 @@ namespace Nethermind.Evm.Test.Tracing
         public void Can_trace_precompile_calls()
         {
             byte[] code = Prepare.EvmCode
-                .Call(IdentityPrecompiledContract.Instance.Address, 50000)
+                .Call(IdentityPrecompile.Instance.Address, 50000)
                 .Op(Instruction.STOP)
                 .Done;
 
@@ -574,7 +574,7 @@ namespace Nethermind.Evm.Test.Tracing
             };
 
             Assert.AreEqual("call", trace.Action.Subtraces[0].CallType, "[0] type");
-            Assert.AreEqual(IdentityPrecompiledContract.Instance.Address, trace.Action.Subtraces[0].To, "[0] to");
+            Assert.AreEqual(IdentityPrecompile.Instance.Address, trace.Action.Subtraces[0].To, "[0] to");
         }
 
         [Test]

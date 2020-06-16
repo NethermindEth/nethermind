@@ -370,7 +370,7 @@ namespace Nethermind.Evm
 
         public CodeInfo GetCachedCodeInfo(Address codeSource, IReleaseSpec releaseSpec)
         {
-            if (codeSource.IsPrecompiled(releaseSpec))
+            if (codeSource.IsPrecompile(releaseSpec))
             {
                 return _precompiles[codeSource];
             }
@@ -401,15 +401,15 @@ namespace Nethermind.Evm
         {
             _precompiles = new Dictionary<Address, CodeInfo>
             {
-                [EcRecoverPrecompiledContract.Instance.Address] = new CodeInfo(EcRecoverPrecompiledContract.Instance),
-                [Sha256PrecompiledContract.Instance.Address] = new CodeInfo(Sha256PrecompiledContract.Instance),
-                [Ripemd160PrecompiledContract.Instance.Address] = new CodeInfo(Ripemd160PrecompiledContract.Instance),
-                [IdentityPrecompiledContract.Instance.Address] = new CodeInfo(IdentityPrecompiledContract.Instance),
-                [Bn128AddPrecompiledContract.Instance.Address] = new CodeInfo(Bn128AddPrecompiledContract.Instance),
-                [Bn128MulPrecompiledContract.Instance.Address] = new CodeInfo(Bn128MulPrecompiledContract.Instance),
-                [Bn128PairingPrecompiledContract.Instance.Address] = new CodeInfo(Bn128PairingPrecompiledContract.Instance),
-                [ModExpPrecompiledContract.Instance.Address] = new CodeInfo(ModExpPrecompiledContract.Instance),
-                [Blake2BPrecompiledContract.Instance.Address] = new CodeInfo(Blake2BPrecompiledContract.Instance),
+                [EcRecoverPrecompile.Instance.Address] = new CodeInfo(EcRecoverPrecompile.Instance),
+                [Sha256Precompile.Instance.Address] = new CodeInfo(Sha256Precompile.Instance),
+                [Ripemd160Precompile.Instance.Address] = new CodeInfo(Ripemd160Precompile.Instance),
+                [IdentityPrecompile.Instance.Address] = new CodeInfo(IdentityPrecompile.Instance),
+                [Bn128AddPrecompile.Instance.Address] = new CodeInfo(Bn128AddPrecompile.Instance),
+                [Bn128MulPrecompile.Instance.Address] = new CodeInfo(Bn128MulPrecompile.Instance),
+                [Bn128PairingPrecompile.Instance.Address] = new CodeInfo(Bn128PairingPrecompile.Instance),
+                [ModExpPrecompile.Instance.Address] = new CodeInfo(ModExpPrecompile.Instance),
+                [Blake2FPrecompile.Instance.Address] = new CodeInfo(Blake2FPrecompile.Instance),
             };
         }
 
@@ -435,7 +435,7 @@ namespace Nethermind.Evm
             UInt256 transferValue = state.Env.TransferValue;
             long gasAvailable = state.GasAvailable;
 
-            IPrecompiledContract precompile = state.Env.CodeInfo.PrecompiledContract;
+            IPrecompile precompile = state.Env.CodeInfo.Precompile;
             long baseGasCost = precompile.BaseGasCost(spec);
             long dataGasCost = precompile.DataGasCost(callData, spec);
 
@@ -1795,6 +1795,7 @@ namespace Nethermind.Evm
                         }
 
                         programCounter = jumpDestInt;
+                        programCounter++
                         break;
                     }
                     case Instruction.JUMPI:
