@@ -67,7 +67,7 @@ namespace Nethermind.Evm.Test
 
             var result = Execute(code);
             result.StatusCode.Should().Be(0);
-            result.Error.Should().Be("invalid jump destination");
+            result.Error.Should().Be(EvmExceptionType.InvalidJumpDestination.ToString());
         }
         
         [Test]
@@ -109,7 +109,7 @@ namespace Nethermind.Evm.Test
 
             var result = Execute(code);
             result.StatusCode.Should().Be(0);
-            result.Error.Should().Be("InvalidSubroutineEntry");
+            result.Error.Should().Be(EvmExceptionType.InvalidSubroutineEntry.ToString());
         }
     }
 }

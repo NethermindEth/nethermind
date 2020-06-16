@@ -562,7 +562,7 @@ namespace Nethermind.Evm
                     _txTracer.ReportOperationRemainingGas(gasAvailable);
                 }
             }
-
+            
             void EndInstructionTraceError(EvmExceptionType evmExceptionType)
             {
                 if (traceOpcodes)
@@ -570,6 +570,29 @@ namespace Nethermind.Evm
                     _txTracer.ReportOperationError(evmExceptionType);
                     _txTracer.ReportOperationRemainingGas(gasAvailable);
                 }
+            }
+
+            void Jump(in UInt256 jumpDest)
+            {
+                if (jumpDest > int.MaxValue)
+                {
+                    Metrics.EvmExceptions++;
+                    EndInstructionTraceError(EvmExceptionType.InvalidJumpDestination);
+                    // https://github.com/NethermindEth/nethermind/issues/140
+                    throw new InvalidJumpDestinationException();
+//                            return CallResult.InvalidJumpDestination;
+                }
+
+                int jumpDestInt = (int)jumpDest;
+                if (!env.CodeInfo.ValidateJump(jumpDestInt))
+                {
+                    // https://github.com/NethermindEth/nethermind/issues/140
+                    EndInstructionTraceError(EvmExceptionType.InvalidJumpDestination);
+                    throw new InvalidJumpDestinationException();
+//                            return CallResult.InvalidJumpDestination;
+                }
+
+                programCounter = jumpDestInt;
             }
 
             void UpdateMemoryCost(ref UInt256 position, in UInt256 length)
@@ -1772,25 +1795,7 @@ namespace Nethermind.Evm
                         }
 
                         stack.PopUInt256(out UInt256 jumpDest);
-                        if (jumpDest > int.MaxValue)
-                        {
-                            Metrics.EvmExceptions++;
-                            EndInstructionTraceError(EvmExceptionType.InvalidJumpDestination);
-                            // https://github.com/NethermindEth/nethermind/issues/140
-                            throw new InvalidJumpDestinationException();
-//                            return CallResult.InvalidJumpDestination;
-                        }
-
-                        int jumpDestInt = (int) jumpDest;
-                        if (!env.CodeInfo.ValidateJump(jumpDestInt))
-                        {
-                            // https://github.com/NethermindEth/nethermind/issues/140
-                            EndInstructionTraceError(EvmExceptionType.InvalidJumpDestination);
-                            throw new InvalidJumpDestinationException();
-//                            return CallResult.InvalidJumpDestination;
-                        }
-
-                        programCounter = jumpDestInt;
+                        Jump(jumpDest);
                         break;
                     }
                     case Instruction.JUMPI:
@@ -2614,6 +2619,9 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
                         
+                        stack.PopUInt256(out UInt256 jumpDest);
+                        Jump(jumpDest);
+
                         break;
                     }
                     default:
