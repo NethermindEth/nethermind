@@ -109,7 +109,7 @@ namespace Nethermind.Evm.Test
 
             var result = Execute(code);
             result.StatusCode.Should().Be(0);
-            result.Error.Should().Be("invalid subroutine entry");
+            result.Error.Should().Be("InvalidSubroutineEntry");
         }
     }
 }
