@@ -2571,6 +2571,36 @@ namespace Nethermind.Evm
 
                         break;
                     }
+                    case Instruction.BEGINSUB:
+                    {
+                        if (!spec.IsEip2315Enabled)
+                        {
+                            EndInstructionTraceError(BadInstructionErrorText);
+                            return CallResult.InvalidInstructionException;
+                        }
+                        
+                        throw new NotImplementedException();
+                    }
+                    case Instruction.RETURNSUB:
+                    {
+                        if (!spec.IsEip2315Enabled)
+                        {
+                            EndInstructionTraceError(BadInstructionErrorText);
+                            return CallResult.InvalidInstructionException;
+                        }
+                        
+                        throw new NotImplementedException();
+                    }
+                    case Instruction.JUMPSUB:
+                    {
+                        if (!spec.IsEip2315Enabled)
+                        {
+                            EndInstructionTraceError(BadInstructionErrorText);
+                            return CallResult.InvalidInstructionException;
+                        }
+                        
+                        throw new NotImplementedException();
+                    }
                     default:
                     {
                         EndInstructionTraceError(BadInstructionErrorText);

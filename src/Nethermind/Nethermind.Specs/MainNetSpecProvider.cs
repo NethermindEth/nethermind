@@ -68,14 +68,15 @@ namespace Nethermind.Specs
             return MuirGlacier.Instance;
         }
 
-        public static long HomesteadBlockNumber => 1150000;
+        public const long HomesteadBlockNumber = 1150000;
         public long? DaoBlockNumber => 1920000;
-        public static long TangerineWhistleBlockNumber => 2463000;
-        public static long SpuriousDragonBlockNumber => 2675000;
-        public static long ByzantiumBlockNumber => 4370000;
-        public static long ConstantinopleFixBlockNumber => 7280000;
-        public static long IstanbulBlockNumber => 9069000;
-        public static long MuirGlacierBlockNumber => 9200000;
+        public const long TangerineWhistleBlockNumber = 2463000;
+        public const long SpuriousDragonBlockNumber = 2675000;
+        public const long ByzantiumBlockNumber = 4370000;
+        public const long ConstantinopleFixBlockNumber = 7280000;
+        public const long IstanbulBlockNumber = 9069000;
+        public const long MuirGlacierBlockNumber = 9200000;
+        public const long BerlinBlockNumber = long.MaxValue - 1;
 
         public int ChainId => 1;
 
