@@ -64,8 +64,13 @@ namespace Nethermind.Specs
             {
                 return Istanbul.Instance;
             }
+            
+            if (blockNumber < BerlinBlockNumber)
+            {
+                return MuirGlacier.Instance;
+            }
 
-            return MuirGlacier.Instance;
+            return Berlin.Instance;
         }
 
         public const long HomesteadBlockNumber = 1150000;
@@ -89,7 +94,8 @@ namespace Nethermind.Specs
             ByzantiumBlockNumber,
             ConstantinopleFixBlockNumber,
             IstanbulBlockNumber,
-            MuirGlacierBlockNumber
+            MuirGlacierBlockNumber,
+            BerlinBlockNumber
         };
 
         private MainnetSpecProvider()

@@ -51,6 +51,11 @@ namespace Nethermind.Network
             long next = 0;
             for (int i = 0; i < specProvider.TransitionBlocks.Length; i++)
             {
+                if (specProvider.TransitionBlocks[i] >= long.MaxValue - 100)
+                {
+                    continue;
+                }
+                
                 long transition = specProvider.TransitionBlocks[i];
                 if (transition > headNumber)
                 {
