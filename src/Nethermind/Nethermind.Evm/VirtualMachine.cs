@@ -2607,12 +2607,13 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        vmState.ReturnStack[vmState.ReturnStackHead++] = programCounter;
                         if (vmState.ReturnStackHead == EvmStack.ReturnStackSize)
                         {
                             EndInstructionTraceError(EvmExceptionType.StackOverflow);
                             return CallResult.StackOverflowException;
                         }
+                        
+                        vmState.ReturnStack[vmState.ReturnStackHead++] = programCounter;
                         
                         stack.PopUInt256(out UInt256 jumpDest);
                         Jump(jumpDest, true);
