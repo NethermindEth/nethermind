@@ -2579,7 +2579,7 @@ namespace Nethermind.Evm
                             return CallResult.InvalidInstructionException;
                         }
                         
-                        throw new NotImplementedException();
+                        break;
                     }
                     case Instruction.RETURNSUB:
                     {
@@ -2588,8 +2588,8 @@ namespace Nethermind.Evm
                             EndInstructionTraceError(BadInstructionErrorText);
                             return CallResult.InvalidInstructionException;
                         }
-                        
-                        throw new NotImplementedException();
+
+                        break;
                     }
                     case Instruction.JUMPSUB:
                     {
@@ -2599,7 +2599,7 @@ namespace Nethermind.Evm
                             return CallResult.InvalidInstructionException;
                         }
                         
-                        throw new NotImplementedException();
+                        break;
                     }
                     default:
                     {
