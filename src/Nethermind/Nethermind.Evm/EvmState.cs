@@ -101,7 +101,9 @@ namespace Nethermind.Evm
 
         private HashSet<Address> _destroyList;
         private List<LogEntry> _logs;
-        public int StackHead = 0;
+        
+        public int DataStackHead = 0;
+        public int ReturnStackHead = 0;
 
         public EvmState(long gasAvailable, ExecutionEnvironment env, ExecutionType executionType, bool isTopLevel, bool isContinuation)
             : this(gasAvailable, env, executionType, isTopLevel, -1, -1, 0L, 0L, false, isContinuation, false)

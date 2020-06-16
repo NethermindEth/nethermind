@@ -523,8 +523,8 @@ namespace Nethermind.Evm
             }
 
             vmState.InitStacks();
-            EvmStack stack = new EvmStack(vmState.DataStack.AsSpan(), vmState.StackHead, _txTracer);
-            int stackHead = vmState.StackHead;
+            EvmStack stack = new EvmStack(vmState.DataStack.AsSpan(), vmState.DataStackHead, _txTracer);
+            int stackHead = vmState.DataStackHead;
             long gasAvailable = vmState.GasAvailable;
             int programCounter = vmState.ProgramCounter;
             Span<byte> code = env.CodeInfo.MachineCode.AsSpan();
@@ -533,7 +533,7 @@ namespace Nethermind.Evm
             {
                 state.ProgramCounter = pc;
                 state.GasAvailable = gas;
-                state.StackHead = stackHead;
+                state.DataStackHead = stackHead;
             }
 
             void StartInstructionTrace(Instruction instruction, EvmStack stackValue)
@@ -2601,6 +2601,12 @@ namespace Nethermind.Evm
                         {
                             EndInstructionTraceError(EvmExceptionType.OutOfGas);
                             return CallResult.OutOfGasException;
+                        }
+
+                        if (vmState.ReturnStackHead == 0)
+                        {
+                            EndInstructionTraceError(EvmExceptionType.InvalidSubroutineReturn);
+                            return CallResult.InvalidSubroutineReturn;
                         }
 
                         break;

@@ -81,7 +81,7 @@ namespace Nethermind.Evm.Test
 
             var result = Execute(code);
             result.StatusCode.Should().Be(0);
-            result.Error.Should().Be("invalid retsub");
+            result.Error.Should().Be(EvmExceptionType.InvalidSubroutineReturn.ToString());
         }
         
         [Test]
