@@ -527,7 +527,7 @@ namespace Nethermind.Evm
             }
 
             vmState.InitStacks();
-            EvmStack stack = new EvmStack(vmState.BytesOnStack.AsSpan(), vmState.StackHead, _txTracer);
+            EvmStack stack = new EvmStack(vmState.DataStack.AsSpan(), vmState.StackHead, _txTracer);
             int stackHead = vmState.StackHead;
             long gasAvailable = vmState.GasAvailable;
             int programCounter = vmState.ProgramCounter;
@@ -1840,9 +1840,8 @@ namespace Nethermind.Evm
                             EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
-
-                        UInt256 pc = (UInt256) (programCounter - 1);
-                        stack.PushUInt256(ref pc);
+                        
+                        stack.PushUInt32(programCounter - 1);
                         break;
                     }
                     case Instruction.MSIZE:
