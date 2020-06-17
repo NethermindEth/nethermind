@@ -111,6 +111,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     {
                         Address address = new Address(unlockAccount);
                         wallet.UnlockAccount(address, GetPassword(i), TimeSpan.FromDays(1000));
+                        if (_logger.IsInfo) _logger.Info($"Unlocked account: {unlockAccount}");
                     }
                     catch (Exception e)
                     {
