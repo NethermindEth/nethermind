@@ -15,13 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Runtime.InteropServices;
+using System.Numerics;
 using mcl;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto.ZkSnarks;
-using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Evm.Precompiles
 {
@@ -34,6 +33,7 @@ namespace Nethermind.Evm.Precompiles
 
         private Bn256AddPrecompile()
         {
+            BN256.init();
         }
 
         public Address Address { get; } = Address.FromNumber(6);
@@ -91,67 +91,26 @@ namespace Nethermind.Evm.Precompiles
             byte[] x2 = inputData.Slice(64, 32);
             byte[] y2 = inputData.Slice(96, 32);
 
-
-            Span<byte> something = new byte[96];
-            x1.AsSpan().CopyTo(something.Slice(0, 32));
-            y1.AsSpan().CopyTo(something.Slice(32, 32));
-            oneBytes.AsSpan().CopyTo(something.Slice(64, 32));
-            var one = Fp.One;
-
             var a = new Fp(x1);
             var b = new Fp(y1);
-            var c = new Fp(oneBytes);
-            bool isValid = b.IsValid();
-
-            BN256.init();
+            var c = new Fp(x2);
+            var d = new Fp(y2);
             
-
-            BN256.Fp ap = new BN256.Fp();
-            BN256.Fp bp = new BN256.Fp();
-            BN256.Fp cp = new BN256.Fp();
-            ap.SetStr(a.ToString(), 0);
-            bp.SetStr(b.ToString(), 0);
-            cp.SetStr(c.ToString(), 0);
-
-            byte[] oa = new byte[32];
-            byte[] ob = new byte[32];
-            byte[] oc = new byte[32];
-
-            // ap.Serialize(oa, 0);
-            // bp.Serialize(ob, 0);
-            // cp.Serialize(oc, 31);
-
-            // ap.Mul(cp, cp);
+            BN256.G1 g1a = new BN256.G1();
+            g1a.setStr($"1 {a} {b}", 0);
+            BN256.G1 g1b = new BN256.G1();
+            g1b.setStr($"1 {c} {d}", 0);
             
-            string ast = ap.GetStr(0);
-            string bs = bp.GetStr(0);
-            string cs = cp.GetStr(0);
-            
-            BN256.G1 gaaa = new BN256.G1();
-            // gaaa.setStr($"1 {ast} {bs}", 0);
-            gaaa.setStr($"2 {ast}", 0);
-            for (int i = 0; i < 1024; i++)
-            {
-                try
-                {
-                    string aas = gaaa.GetStr(i);
-                    Console.WriteLine(aas);
-                }
-                catch (Exception e)
-                {
-                    Console.WriteLine($"{i} BAD");
-                }
-            }
-            
-            
-            string g1s2 = gaaa.GetStr(0);
-            
-            gaaa.setStr($"3 {ast}", 0);
-            string g1s3 = gaaa.GetStr(0);
+            BN256.G1 result = new BN256.G1();
+            result.Add(g1a, g1b);
 
+            string[] resultStrings = result.GetStr(0).Split(" ");
+            var resA = BigInteger.Parse(resultStrings[1]);
+            var resB = BigInteger.Parse(resultStrings[2]);
+            
+            var encoded = (EncodeResult(resA.ToBigEndianByteArray(32), resB.ToBigEndianByteArray(32)), true).Item1.ToHexString();
+            
             Bn128Fp p1 = Bn128Fp.Create(x1, y1);
-            bool isOn = p1.IsOnCurve();
-            
             if (p1 == null)
             {
                 return (Bytes.Empty, false);
@@ -165,7 +124,9 @@ namespace Nethermind.Evm.Precompiles
 
             Bn128Fp res = p1.Add(p2).ToEthNotation();
 
-            return (EncodeResult(res.X.GetBytes(), res.Y.GetBytes()), true);
+            var encodedOld = (EncodeResult(res.X.GetBytes(), res.Y.GetBytes()), true).Item1.ToHexString();
+
+            return (Bytes.FromHexString(encodedOld), true);
         }
 
         private static byte[] EncodeResult(byte[] w1, byte[] w2)
