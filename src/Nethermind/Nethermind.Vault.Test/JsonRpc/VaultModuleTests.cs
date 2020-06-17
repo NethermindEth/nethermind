@@ -1,3 +1,4 @@
+using System;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
@@ -30,9 +31,9 @@ namespace Nethermind.Vault.Test.JsonRpc
             _config.Host = "localhost";
             _config.Scheme = "http";
             _config.Path = "api/v1";
-            _config.Token = "bearer token";
+            _config.Token = "12345";
             _initVault = new provide.Vault(_config.Host, _config.Path, _config.Scheme, _config.Token);
-            _vaultId = "12345-12345";
+            _vaultId = "vaultId";
             _message = "Test message";
             _signature = "12345";
             _keyArgs = KeyArgs.Default;
@@ -54,6 +55,7 @@ namespace Nethermind.Vault.Test.JsonRpc
             _keyArgs.Usage = "sign/verify";
 
             var result = await vaultModule.vault_createKey(_vaultId, _keyArgs);
+            Console.WriteLine(result.Result.Error);
 
             result.Result.Error.Should().NotBeNull();
             result.Data.Should().BeNull();
@@ -153,7 +155,7 @@ namespace Nethermind.Vault.Test.JsonRpc
                 _config,
                 LimboLogs.Instance);
 
-            var result = await vaultModule.vault_listVaults();
+            var result = await vaultModule.vault_listKeys(_vaultId);
 
             result.Result.Error.Should().NotBeNull();
             result.Data.Should().BeNull();

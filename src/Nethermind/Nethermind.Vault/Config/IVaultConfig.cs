@@ -34,5 +34,8 @@ namespace Nethermind.Vault.Config
 
         [ConfigItem(Description = "Path to the Vault's api", DefaultValue = "api/v1")]
         string Path { get; set; }
+
+        [ConfigItem(Description = "VaultId of the Vault that will be used for key/secrets storage", DefaultValue = "null")]
+        string VaultId { get; set; }
     }
 }

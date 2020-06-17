@@ -14,15 +14,27 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using Nethermind.Vault.Styles;
+
 namespace Nethermind.Vault
 {
     public interface IVaultManager
     {
-        //TODO
-        IVault CreateVault(string token);
-        IVault[] ListVaults(string token);
-        IVault[] ListVaultKeys(string token, string vaultID);
-        IVault CreateVaultKey(string token, string vaultID);
-        IVault DeleteVaultKey(string token, string vaultID, string keyID);
+        Task<string> NewVault(Dictionary<string, object> parameters);
+        Task<string[]> GetVaults();
+
+        Task<string> SetWalletVault(string vaultId = null);
+
+        public Task<string> NewVault(VaultArgs args)
+        {
+            return NewVault(new Dictionary<string, object> 
+            {
+                {
+                    "vaultArgs", args
+                }
+            });
+        }
     }
 }

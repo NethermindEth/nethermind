@@ -32,7 +32,8 @@ namespace Nethermind.Vault.Test
             var host = "localhost:8080";
             var scheme = "http";
             var path = "api/v2";
-            var token = "bearer 12345";
+            var token = "12345";
+            var vaultId = "vaultId";
             VaultConfig config = new VaultConfig();
             config.Enabled.Should().BeFalse();
             config.Enabled = true;
@@ -47,6 +48,8 @@ namespace Nethermind.Vault.Test
             config.Path.Should().Be(path);
             config.Token = token;
             config.Token.Should().Be(token);
+            config.VaultId = vaultId;
+            config.VaultId.Should().Be(vaultId);
         }
         [Test]
         public void defaults_are_fine()
@@ -56,6 +59,7 @@ namespace Nethermind.Vault.Test
             var scheme = ((ConfigItemAttribute)(typeof(IVaultConfig).GetProperty("Scheme").GetCustomAttribute(typeof(ConfigItemAttribute)))).DefaultValue;
             var path = ((ConfigItemAttribute)(typeof(IVaultConfig).GetProperty("Path").GetCustomAttribute(typeof(ConfigItemAttribute)))).DefaultValue;
             var token = ((ConfigItemAttribute)(typeof(IVaultConfig).GetProperty("Token").GetCustomAttribute(typeof(ConfigItemAttribute)))).DefaultValue;
+            var vaultId = ((ConfigItemAttribute)(typeof(IVaultConfig).GetProperty("VaultId").GetCustomAttribute(typeof(ConfigItemAttribute)))).DefaultValue;
             config.Host = "vault.provide.services";
             config.Scheme = "https";
             config.Path = "api/v1";
@@ -63,6 +67,7 @@ namespace Nethermind.Vault.Test
             config.Scheme.Should().Be(scheme);
             config.Path.Should().Be(path);
             config.Token.Should().BeNull();
+            config.VaultId.Should().BeNull();
         }
     }
 }
