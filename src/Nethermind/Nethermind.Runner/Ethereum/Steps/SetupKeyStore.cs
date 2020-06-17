@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.IO;
 using System.Net;
 using System.Security;
 using System.Threading;
@@ -83,7 +84,21 @@ namespace Nethermind.Runner.Ethereum.Steps
         private void UnlockAccounts(IKeyStoreConfig config, IWallet wallet)
         {
             string? GetPasswordN(int n, string[] passwords) => passwords?.Length > 0 ? passwords[Math.Min(n, passwords.Length - 1)] : null;
-            SecureString GetPassword(int n) => (GetPasswordN(n, config.PasswordFiles) ?? GetPasswordN(n, config.Passwords) ?? string.Empty).Secure();
+            SecureString GetPassword(int n)
+            {
+                string? password = GetPasswordN(n, config.PasswordFiles);
+                if (password != null)
+                {
+                    string passwordPath = password.GetApplicationResourcePath();
+                    password = File.Exists(passwordPath)
+                        ? File.ReadAllText(passwordPath)
+                        : null;
+                }
+                
+                password ??= GetPasswordN(n, config.Passwords) ?? string.Empty;
+
+                return password.Secure();
+            }
 
             for (int i = 0; i < config.UnlockAccounts.Length; i++)
             {
