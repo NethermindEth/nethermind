@@ -133,14 +133,14 @@ namespace Nethermind.Wallet
 
             string password = null;
             var index = Array.IndexOf(_config.UnlockAccounts, _config.BlockAuthorAccount);
-            if (index > 0)
+            if (index >= 0)
             {
                 password = GetPasswordN(index, _config.PasswordFiles);
                 if (password != null)
                 {
                     string blockAuthorPasswordFilePath = password.GetApplicationResourcePath();
                     password = File.Exists(blockAuthorPasswordFilePath)
-                        ? File.ReadAllText(blockAuthorPasswordFilePath)
+                        ? File.ReadAllText(blockAuthorPasswordFilePath).Trim()
                         : null;
                 }
                 

@@ -93,7 +93,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 {
                     string passwordPath = password.GetApplicationResourcePath();
                     password = File.Exists(passwordPath)
-                        ? File.ReadAllText(passwordPath)
+                        ? File.ReadAllText(passwordPath).Trim()
                         : null;
                 }
                 
