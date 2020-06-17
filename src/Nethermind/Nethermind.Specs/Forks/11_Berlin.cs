@@ -21,22 +21,22 @@ using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Specs.Forks
 {
-    public class ConstantinopleFix : IReleaseSpec
+    public class Berlin : IReleaseSpec
     {
         private static IReleaseSpec _instance;
 
-        private ConstantinopleFix()
+        private Berlin()
         {
         }
 
-        public static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new ConstantinopleFix());
+        public static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new Berlin());
 
         public long MaximumExtraDataSize => 32;
         public long MaxCodeSize => 24576;
         public long MinGasLimit => 5000;
         public long GasLimitBoundDivisor => 0x0400;
         public UInt256 BlockReward { get; } = UInt256.Parse("2000000000000000000");
-        public long DifficultyBombDelay => 5000000L;
+        public long DifficultyBombDelay => 9000000L;
         public long DifficultyBoundDivisor => 0x0800;
         public int MaximumUncleCount => 2;
         public bool IsTimeAdjustmentPostOlympic => true;
@@ -61,13 +61,13 @@ namespace Nethermind.Specs.Forks
         public bool IsEip1052Enabled => true;
         public bool IsEip1283Enabled => false;
         public bool IsEip1234Enabled => true;
-        public bool IsEip1344Enabled => false;
-        public bool IsEip2028Enabled => false;
-        public bool IsEip152Enabled => false;
-        public bool IsEip1108Enabled => false;
-        public bool IsEip1884Enabled => false;
-        public bool IsEip2200Enabled => false;
-        public bool IsEip2315Enabled => false;
+        public bool IsEip1344Enabled => true;
+        public bool IsEip2028Enabled => true;
+        public bool IsEip152Enabled => true;
+        public bool IsEip1108Enabled => true;
+        public bool IsEip1884Enabled => true;
+        public bool IsEip2200Enabled => true;
+        public bool IsEip2315Enabled => true;
         public bool IsEip158IgnoredAccount(Address address) => false;
     }
 }
