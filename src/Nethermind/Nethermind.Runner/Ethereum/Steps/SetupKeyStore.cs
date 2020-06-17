@@ -102,8 +102,12 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             for (int i = 0; i < config.UnlockAccounts.Length; i++)
             {
-                Address address = new Address(config.UnlockAccounts[i]);
-                wallet.UnlockAccount(address, GetPassword(i), TimeSpan.FromDays(1000));
+                string unlockAccount = config.UnlockAccounts[i];
+                if (unlockAccount != config.BlockAuthorAccount)
+                {
+                    Address address = new Address(unlockAccount);
+                    wallet.UnlockAccount(address, GetPassword(i), TimeSpan.FromDays(1000));
+                }
             }
         }
     }
