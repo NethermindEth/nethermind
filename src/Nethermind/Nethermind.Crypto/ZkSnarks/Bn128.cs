@@ -87,7 +87,7 @@ namespace Nethermind.Crypto.ZkSnarks
             return affine.IsZero() ? Zero : affine;
         }
 
-        protected bool IsOnCurve()
+        public bool IsOnCurve()
         {
             if (IsZero())
             {

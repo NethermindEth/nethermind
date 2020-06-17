@@ -31,6 +31,7 @@ namespace Nethermind.Evm.Precompiles
             {
                 return false;
             }
+            
 
             int precompileCode = address[19];
             return precompileCode switch

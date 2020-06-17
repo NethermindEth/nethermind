@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Numerics;
 using Nethermind.Core.Extensions;
 
@@ -39,7 +40,11 @@ namespace Nethermind.Crypto.ZkSnarks
         
         public Fp(byte[] bytes)
         {
-            _value = bytes.ToUnsignedBigInteger();
+            _value = bytes.ToUnsignedBigInteger() % Parameters.P;
+            if (_value > Parameters.P)
+            {
+                throw new InvalidOperationException();
+            }
         }
 
         public static readonly Fp Zero = new Fp(BigInteger.Zero);
