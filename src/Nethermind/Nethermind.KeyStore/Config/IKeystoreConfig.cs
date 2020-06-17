@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Config;
 using Nethermind.Core;
 
@@ -37,7 +38,8 @@ namespace Nethermind.KeyStore.Config
         int IVSize { get; }
         string TestNodeKey { get; set; }
         string BlockAuthorAccount { get; set; }
-        string BlockAuthorPassword { get; set; }
-        string BlockAuthorPasswordFilePath { get; set; }
+        string[] Passwords { get; set; }
+        string[] PasswordsFiles { get; set; }
+        string[] UnlockAccounts { get; set; }
     }
 }

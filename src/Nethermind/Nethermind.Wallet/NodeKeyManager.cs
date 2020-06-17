@@ -16,6 +16,7 @@
 
 using System;
 using System.IO;
+using System.Linq;
 using System.Security;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
@@ -56,8 +57,7 @@ namespace Nethermind.Wallet
         [DoNotUseInSecuredContext("This is not a strong security for the node key - just a minor protection against JSON RPC use for the node key")]
         private SecureString CreateNodeKeyPassword(int size)
         {
-            char[] chars =
-                "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890".ToCharArray();
+            char[] chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890".ToCharArray();
             byte[] data = _cryptoRandom.GenerateRandomBytes(size);
             SecureString secureString = new SecureString();
             for (int i = 0; i < data.Length; i++)
@@ -129,12 +129,25 @@ namespace Nethermind.Wallet
 
         private SecureString GetBlockAuthorPassword()
         {
-            string blockAuthorPasswordFilePath = _config.BlockAuthorPasswordFilePath?.GetApplicationResourcePath();
-            string password = File.Exists(blockAuthorPasswordFilePath)
-                ? File.ReadAllText(blockAuthorPasswordFilePath)
-                : _config.BlockAuthorPassword;
+            string GetPasswordN(int n, string[] passwords) => passwords?.Length > 0 ? passwords[Math.Min(n, passwords.Length - 1)] : null;
+
+            string password = null;
+            var index = Array.IndexOf(_config.UnlockAccounts, _config.BlockAuthorAccount);
+            if (index > 0)
+            {
+                password = GetPasswordN(index, _config.PasswordsFiles);
+                if (password != null)
+                {
+                    string blockAuthorPasswordFilePath = password.GetApplicationResourcePath();
+                    password = File.Exists(blockAuthorPasswordFilePath)
+                        ? File.ReadAllText(blockAuthorPasswordFilePath)
+                        : null;
+                }
+                
+                password ??= GetPasswordN(index, _config.Passwords);
+            }
             
-            return  password != null
+            return password != null
                 ? password.Secure() 
                 : ConsoleUtils.ReadSecret($"Provide password for validator account {_config.BlockAuthorAccount}");
         }
