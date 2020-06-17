@@ -16,6 +16,7 @@
 
 using System;
 using System.IO;
+using System.IO.Abstractions;
 using System.Net;
 using System.Security;
 using System.Threading;
@@ -38,12 +39,10 @@ namespace Nethermind.Runner.Ethereum.Steps
     public class SetupKeyStore : IStep
     {
         private readonly EthereumRunnerContext _context;
-        private readonly ILogger _logger;
 
         public SetupKeyStore(EthereumRunnerContext context)
         {
             _context = context;
-            _logger = context.LogManager.GetClassLogger<SetupKeyStore>();
         }
 
         public async Task Execute(CancellationToken cancellationToken)
@@ -72,7 +71,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _ => new ProtectedKeyStoreWallet(_context.KeyStore, new ProtectedPrivateKeyFactory(_context.CryptoRandom, _context.Timestamper), _context.Timestamper, _context.LogManager),
                 };
 
-                UnlockAccounts(keyStoreConfig, _context.Wallet);
+                new AccountUnlocker(keyStoreConfig, _context.Wallet, new FileSystem(), _context.LogManager).UnlockAccounts();
 
                 INodeKeyManager nodeKeyManager = new NodeKeyManager(_context.CryptoRandom, _context.KeyStore, keyStoreConfig, _context.LogManager);
                 _context.NodeKey = nodeKeyManager.LoadNodeKey();
@@ -81,46 +80,6 @@ namespace Nethermind.Runner.Ethereum.Steps
                 
                 _context.LogManager.SetGlobalVariable("enode", _context.Enode.ToString());
             }, cancellationToken);
-        }
-
-        private void UnlockAccounts(IKeyStoreConfig config, IWallet wallet)
-        {
-            string? GetPasswordN(int n, string[] passwords) => passwords?.Length > 0 ? passwords[Math.Min(n, passwords.Length - 1)] : null;
-            SecureString GetPassword(int n)
-            {
-                string? password = GetPasswordN(n, config.PasswordFiles);
-                if (password != null)
-                {
-                    string passwordPath = password.GetApplicationResourcePath();
-                    password = File.Exists(passwordPath)
-                        ? File.ReadAllText(passwordPath).Trim()
-                        : null;
-                }
-                
-                password ??= GetPasswordN(n, config.Passwords) ?? string.Empty;
-
-                return password.Secure();
-            }
-
-            for (int i = 0; i < config.UnlockAccounts.Length; i++)
-            {
-                string unlockAccount = config.UnlockAccounts[i];
-                if (unlockAccount != config.BlockAuthorAccount)
-                {
-                    try
-                    {
-                        Address address = new Address(unlockAccount);
-                        if (wallet.UnlockAccount(address, GetPassword(i), TimeSpan.FromDays(1000)))
-                        {
-                            if (_logger.IsInfo) _logger.Info($"Unlocked account: {unlockAccount}");
-                        }
-                    }
-                    catch (Exception e)
-                    {
-                        if (_logger.IsError) _logger.Error($"Couldn't unlock account {unlockAccount}.", e);
-                    }
-                }
-            }
         }
     }
 }
