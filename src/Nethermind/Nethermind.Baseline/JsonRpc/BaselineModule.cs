@@ -28,6 +28,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Facade;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
@@ -53,7 +54,14 @@ namespace Nethermind.Baseline.JsonRpc
 
         private BaselineMetadata _metadata;
 
-        public BaselineModule(ITxPoolBridge txPoolBridge, ILogFinder logFinder, IBlockFinder blockFinder, IAbiEncoder abiEncoder, IFileSystem fileSystem, IDb baselineDb, ILogManager logManager)
+        public BaselineModule(
+            ITxPoolBridge txPoolBridge,
+            ILogFinder logFinder,
+            IBlockFinder blockFinder,
+            IAbiEncoder abiEncoder,
+            IFileSystem fileSystem,
+            IDb baselineDb,
+            ILogManager logManager)
         {
             _abiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
             _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
@@ -107,7 +115,10 @@ namespace Nethermind.Baseline.JsonRpc
                 return Task.FromResult(ResultWrapper<Keccak>.Fail("Cannot insert zero hash", ErrorCodes.InvalidInput));
             }
 
-            var txData = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, ContractMerkleTree.InsertLeafAbiSig, hash);
+            var txData = _abiEncoder.Encode(
+                AbiEncodingStyle.IncludeSignature,
+                ContractMerkleTree.InsertLeafAbiSig,
+                hash);
 
             Transaction tx = new Transaction();
             tx.Value = 0;
@@ -121,20 +132,26 @@ namespace Nethermind.Baseline.JsonRpc
             return Task.FromResult(ResultWrapper<Keccak>.Success(txHash));
         }
 
-        public Task<ResultWrapper<Keccak>> baseline_insertLeaves(Address address, Address contractAddress, params Keccak[] hashes)
+        public Task<ResultWrapper<Keccak>> baseline_insertLeaves(
+            Address address,
+            Address contractAddress,
+            params Keccak[] hashes)
         {
             for (int i = 0; i < hashes.Length; i++)
             {
                 if (hashes[i] == Keccak.Zero)
                 {
-                    return Task.FromResult(ResultWrapper<Keccak>.Fail("Cannot insert zero hash", ErrorCodes.InvalidInput));
+                    var result = ResultWrapper<Keccak>.Fail("Cannot insert zero hash", ErrorCodes.InvalidInput);
+                    return Task.FromResult(result);
                 }
             }
 
-            var txData = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, ContractMerkleTree.InsertLeavesAbiSig, new object[] {hashes});
+            var txData = _abiEncoder.Encode(
+                AbiEncodingStyle.IncludeSignature,
+                ContractMerkleTree.InsertLeavesAbiSig,
+                new object[] {hashes});
 
             Transaction tx = new Transaction();
-
             tx.Value = 0;
             tx.Data = txData;
             tx.To = contractAddress;
@@ -145,6 +162,73 @@ namespace Nethermind.Baseline.JsonRpc
             Keccak txHash = _txPoolBridge.SendTransaction(tx, TxHandlingOptions.ManagedNonce);
 
             return Task.FromResult(ResultWrapper<Keccak>.Success(txHash));
+        }
+
+        public Task<ResultWrapper<BaselineTreeNode>> baseline_getLeaf(Address contractAddress, UInt256 leafIndex)
+        {
+            bool isTracked = _baselineTrees.TryGetValue(contractAddress, out BaselineTree? tree);
+            bool isLeafIndexValid = !(leafIndex > MerkleTree.MaxLeafIndex || leafIndex < 0L);
+
+            ResultWrapper<BaselineTreeNode> result;
+            if (!isLeafIndexValid)
+            {
+                result = ResultWrapper<BaselineTreeNode>.Fail(
+                    $"{leafIndex} is not a valid leaf index",
+                    ErrorCodes.InvalidInput);
+            }
+            else if (!isTracked)
+            {
+                result = ResultWrapper<BaselineTreeNode>.Fail(
+                    $"{contractAddress} tree is not tracked",
+                    ErrorCodes.InvalidInput);
+            }
+            else
+            {
+                // everything in memory
+                tree = RebuildEntireTree(contractAddress);
+                result = ResultWrapper<BaselineTreeNode>.Success(tree.GetLeaf((uint) leafIndex));
+            }
+
+            return Task.FromResult(result);
+        }
+
+        public Task<ResultWrapper<BaselineTreeNode[]>> baseline_getLeaves(
+            Address contractAddress,
+            params UInt256[] leafIndexes)
+        {
+            bool isTracked = _baselineTrees.TryGetValue(contractAddress, out BaselineTree? tree);
+            bool leafIndexesAreValid = true;
+            foreach (UInt256 leafIndex in leafIndexes)
+            {
+                if (leafIndex > MerkleTree.MaxLeafIndex || leafIndex < 0L)
+                {
+                    leafIndexesAreValid = false;
+                    break;
+                }
+            }
+
+            ResultWrapper<BaselineTreeNode[]> result;
+            if (!isTracked)
+            {
+                result = ResultWrapper<BaselineTreeNode[]>.Fail(
+                    $"one of the leaf indexes is not valid",
+                    ErrorCodes.InvalidInput);
+            }
+            else if (!leafIndexesAreValid)
+            {
+                result = ResultWrapper<BaselineTreeNode[]>.Fail(
+                    $"{contractAddress} tree is not tracked",
+                    ErrorCodes.InvalidInput);
+            }
+            else
+            {
+                // everything in memory
+                tree = RebuildEntireTree(contractAddress);
+                result = ResultWrapper<BaselineTreeNode[]>.Success(
+                    tree.GetLeaves(leafIndexes.Select(i => (uint) i).ToArray()));
+            }
+
+            return Task.FromResult(result);
         }
 
         /// <summary>
@@ -170,16 +254,83 @@ namespace Nethermind.Baseline.JsonRpc
 
         public async Task<ResultWrapper<Keccak>> baseline_deploy(Address address, string contractType)
         {
-            byte[] bytecode;
+            ResultWrapper<Keccak> result;
             try
             {
-                bytecode = await GetContractBytecode(contractType);
+                var bytecode = await GetContractBytecode(contractType);
+                try
+                {
+                    Keccak txHash = DeployBytecode(address, contractType, bytecode);
+                    result = ResultWrapper<Keccak>.Success(txHash);
+                }
+                catch (Exception e)
+                {
+                    result = ResultWrapper<Keccak>.Fail(
+                        $"Provided bytecode could not be deployed. {e}",
+                        ErrorCodes.InternalError);
+                }
             }
-            catch (IOException)
+            catch (IOException e)
             {
-                return ResultWrapper<Keccak>.Fail($"{contractType} bytecode could not be loaded.", ErrorCodes.ResourceNotFound);
+                result = ResultWrapper<Keccak>.Fail(
+                    $"{contractType} bytecode could not be loaded. {e}",
+                    ErrorCodes.ResourceNotFound);
+            }
+            catch (Exception e)
+            {
+                result = ResultWrapper<Keccak>.Fail(
+                    $"{contractType} bytecode could not be loaded. {e}",
+                    ErrorCodes.InternalError);
             }
 
+            return result;
+        }
+
+        private static bool IsHex(string value)
+        {
+            if (value is null || value.Length % 2 != 0)
+                return false;
+
+            if (value.StartsWith("0x"))
+            {
+                value = value.Substring(2);
+            }
+
+            return value.All(
+                c => (c >= '0' && c <= '9') ||
+                     (c >= 'a' && c <= 'f') ||
+                     (c >= 'A' && c <= 'F'));
+        }
+
+        public Task<ResultWrapper<Keccak>> baseline_deployBytecode(Address address, string byteCode)
+        {
+            ResultWrapper<Keccak> result;
+
+            if (!IsHex(byteCode))
+            {
+                result = ResultWrapper<Keccak>.Fail("Provided bytecode could not be parsed.", ErrorCodes.InvalidInput);
+            }
+            else
+            {
+                var bytecodeBytes = Bytes.FromHexString(byteCode);
+                try
+                {
+                    Keccak txHash = DeployBytecode(address, "bytecode", bytecodeBytes);
+                    result = ResultWrapper<Keccak>.Success(txHash);
+                }
+                catch (Exception e)
+                {
+                    result = ResultWrapper<Keccak>.Fail(
+                        $"Provided bytecode could not be deployed. {e}",
+                        ErrorCodes.InternalError);
+                }
+            }
+
+            return Task.FromResult(result);
+        }
+
+        private Keccak DeployBytecode(Address address, string contractType, byte[] bytecode)
+        {
             Transaction tx = new Transaction();
             tx.Value = 0;
             tx.Init = bytecode;
@@ -191,8 +342,7 @@ namespace Nethermind.Baseline.JsonRpc
 
             _logger.Info($"Sent transaction at price {tx.GasPrice} to {tx.SenderAddress}");
             _logger.Info($"Contract {contractType} has been deployed");
-
-            return ResultWrapper<Keccak>.Success(txHash);
+            return txHash;
         }
 
         private BaselineTree RebuildEntireTree(Address treeAddress)
@@ -242,13 +392,18 @@ namespace Nethermind.Baseline.JsonRpc
         {
             if (leafIndex > MerkleTree.MaxLeafIndex || leafIndex < 0L)
             {
-                return Task.FromResult(ResultWrapper<BaselineTreeNode[]>.Fail($"{leafIndex} is not a valid leaf index", ErrorCodes.InvalidInput));
+                return Task.FromResult(ResultWrapper<BaselineTreeNode[]>.Fail(
+                    $"{leafIndex} is not a valid leaf index",
+                    ErrorCodes.InvalidInput));
             }
 
             bool isTracked = _baselineTrees.TryGetValue(contractAddress, out BaselineTree? tree);
             if (!isTracked)
             {
-                return Task.FromResult(ResultWrapper<BaselineTreeNode[]>.Fail($"{contractAddress} tree is not tracked", ErrorCodes.InvalidInput));
+                var result = ResultWrapper<BaselineTreeNode[]>.Fail(
+                    $"{contractAddress} tree is not tracked",
+                    ErrorCodes.InvalidInput);
+                return Task.FromResult(result);
             }
 
             // everything in memory
@@ -260,14 +415,14 @@ namespace Nethermind.Baseline.JsonRpc
         public Task<ResultWrapper<bool>> baseline_track(Address contractAddress)
         {
             // can potentially warn user if tree is not deployed at the address
-
             if (TryAddTree(contractAddress))
             {
                 UpdateMetadata(contractAddress);
                 return Task.FromResult(ResultWrapper<bool>.Success(true));
             }
 
-            return Task.FromResult(ResultWrapper<bool>.Fail($"{contractAddress} is already tracked", ErrorCodes.InvalidInput));
+            var result = ResultWrapper<bool>.Fail($"{contractAddress} is already tracked", ErrorCodes.InvalidInput);
+            return Task.FromResult(result);
         }
 
         public Task<ResultWrapper<Address[]>> baseline_getTracked()

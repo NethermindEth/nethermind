@@ -14,13 +14,11 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.IO.Abstractions;
-using Nethermind.Logging;
+using System;
 
-namespace Nethermind.TxPool.Analytics
+namespace Nethermind.Blockchain.Analytics
 {
-    public interface IAnalyticsPluginLoader
+    public interface IAnalyticsPlugin : IDisposable
     {
-        IAnalyticsPlugin Init(IFileSystem fileSystem, ITxPool txPool, IDataPublisher dataPublisher, ILogManager logManager);
     }
 }

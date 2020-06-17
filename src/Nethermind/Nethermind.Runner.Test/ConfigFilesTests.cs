@@ -31,6 +31,7 @@ using Nethermind.Monitoring.Config;
 using Nethermind.Network.Config;
 using Nethermind.PubSub.Kafka;
 using Nethermind.Db.Blooms;
+using Nethermind.Db.Rocks.Config;
 using Nethermind.Runner.Analytics;
 using Nethermind.TxPool;
 using NUnit.Framework;
@@ -171,6 +172,43 @@ namespace Nethermind.Runner.Test
             Test<IAnalyticsConfig, bool>(configWildcard, c => c.StreamTransactions, false);
             Test<IAnalyticsConfig, bool>(configWildcard, c => c.LogPublishedData, false);
         }
+        
+        [TestCase("fast")]
+        public void External_caches_in_fast_blocks(string configWildcard)
+        {
+            Test<IDbConfig, bool>(configWildcard, c => c.HeadersDbCacheIndexAndFilterBlocks, false);
+            Test<IDbConfig, bool>(configWildcard, c => c.ReceiptsDbCacheIndexAndFilterBlocks, false);
+            Test<IDbConfig, bool>(configWildcard, c => c.BlocksDbCacheIndexAndFilterBlocks, false);
+            Test<IDbConfig, bool>(configWildcard, c => c.BlockInfosDbCacheIndexAndFilterBlocks, false);
+        }
+        
+        [TestCase("^archive", true)]
+        [TestCase("archive", true)]
+        public void Cache_state_index(string configWildcard, bool expectedValue)
+        {
+            Test<IDbConfig, bool>(configWildcard, c => c.CacheIndexAndFilterBlocks, expectedValue);
+        }
+        
+        [TestCase("mainnet archive", 12000000000)]
+        [TestCase("mainnet ^archive", 6000000000)]
+        [TestCase("goerli archive", 3000000000)]
+        [TestCase("goerli ^archive", 1500000000)]
+        [TestCase("rinkeby archive", 6000000000)]
+        [TestCase("rinkeby ^archive", 3000000000)]
+        [TestCase("ropsten archive", 6000000000)]
+        [TestCase("ropsten ^archive", 3000000000)]
+        [TestCase("xdai archive", 6000000000)]
+        [TestCase("xdai ^archive", 3000000000)]
+        [TestCase("poacore archive", 6000000000)]
+        [TestCase("poacore ^archive", 3000000000)]
+        [TestCase("sokol archive", 6000000000)]
+        [TestCase("sokol ^archive", 3000000000)]
+        [TestCase("spaceneth.cfg", 128000000)]
+        [TestCase("spaceneth_persistent.cfg", 512000000)]
+        public void Memory_hint_values_are_correct(string configWildcard, long expectedValue)
+        {
+            Test<IInitConfig, long?>(configWildcard, c => c.MemoryHint, expectedValue);
+        }
 
         [TestCase("*")]
         public void Metrics_disabled_by_default(string configWildcard)
@@ -190,6 +228,12 @@ namespace Nethermind.Runner.Test
             Test<INetworkConfig, string>(configWildcard, c => c.ExternalIp, (string) null);
             Test<INetworkConfig, string>(configWildcard, c => c.LocalIp, (string) null);
             Test<INetworkConfig, int>(configWildcard, c => c.ActivePeersMaxCount, activePeers);
+        }
+        
+        [TestCase("*")]
+        public void Network_diag_tracer_disabled_by_default(string configWildcard)
+        {
+            Test<INetworkConfig, bool>(configWildcard, c => c.DiagTracerEnabled, false);
         }
 
         [TestCase("*", 2048)]
@@ -318,6 +362,18 @@ namespace Nethermind.Runner.Test
             Test<IBloomConfig, bool>(configWildcard, c => c.Migration, false);
             Test<IBloomConfig, bool>(configWildcard, c => c.MigrationStatistics, false);
             Test<IBloomConfig, int[]>(configWildcard, c => c.IndexLevelBucketSizes, (cf, p) => p.Should().BeEquivalentTo(levels ?? new BloomConfig().IndexLevelBucketSizes));
+        }
+        
+        [TestCase("*")]
+        public void BufferResponses_rpc_is_off(string configWildcard)
+        {
+            Test<IJsonRpcConfig, bool>(configWildcard, c => c.BufferResponses, false);
+        }
+        
+        [TestCase("*")]
+        public void Arena_order_is_default(string configWildcard)
+        {
+            Test<INetworkConfig, int>(configWildcard, c => c.NettyArenaOrder, 11);
         }
 
         private static ConfigProvider GetConfigProviderFromFile(string configFile)

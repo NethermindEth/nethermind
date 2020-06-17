@@ -35,7 +35,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             {
                 return Constant.Call<UInt256>(blockHeader, nameof(ContractVersion), Address.Zero);
             }
-            catch (Exception e)
+            catch (Exception)
             {
                 return UInt256.One;;
             }
