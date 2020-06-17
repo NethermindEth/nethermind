@@ -385,7 +385,7 @@ namespace Nethermind.KeyStore
                 var files = FindKeyFiles(address);
                 if (files.Length == 0)
                 {
-                    if(_logger.IsError) _logger.Error($"A private key for address: {address} does not exists.");
+                    if(_logger.IsError) _logger.Error($"A private key for address: {address} does not exists in directory {GetStoreDirectory()}.");
                     return null;
                 }
                 
