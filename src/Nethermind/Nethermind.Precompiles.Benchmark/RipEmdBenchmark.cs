@@ -8,7 +8,7 @@ namespace Nethermind.Precompiles.Benchmark
     [SimpleJob(RuntimeMoniker.NetCoreApp31)]
     public class RipEmdBenchmark : PrecompileBenchmarkBase
     {
-        protected override IPrecompiledContract Precompile => Ripemd160PrecompiledContract.Instance;
+        protected override IPrecompile Precompile => Ripemd160Precompile.Instance;
         protected override string InputsDirectory => "ripemd";
     }
 }

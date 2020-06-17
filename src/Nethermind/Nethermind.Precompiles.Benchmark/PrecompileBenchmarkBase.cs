@@ -30,7 +30,7 @@ namespace Nethermind.Precompiles.Benchmark
     [SuppressMessage("ReSharper", "UnusedAutoPropertyAccessor.Global")]
     public abstract class PrecompileBenchmarkBase
     {
-        protected abstract IPrecompiledContract Precompile { get; }
+        protected abstract IPrecompile Precompile { get; }
 
         protected abstract string InputsDirectory { get; }
         

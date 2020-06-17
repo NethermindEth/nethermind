@@ -8,7 +8,7 @@ namespace Nethermind.Precompiles.Benchmark
     [SimpleJob(RuntimeMoniker.NetCoreApp31)]
     public class BnPairBenchmark : PrecompileBenchmarkBase
     {
-        protected override IPrecompiledContract Precompile => Bn128PairingPrecompiledContract.Instance;
+        protected override IPrecompile Precompile => Bn128PairingPrecompile.Instance;
         protected override string InputsDirectory => "bnpair";
     }
 }

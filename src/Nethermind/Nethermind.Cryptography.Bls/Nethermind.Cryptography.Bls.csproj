@@ -38,10 +38,18 @@ Based on the Herumi cryptography library.
   </ItemGroup>
 
   <ItemGroup>
+    <None Include="runtimes\win-x64\native\mclbn256.dll" Link="mclbn256.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Pack>true</Pack>
+      <PackagePath>runtimes/win-x64/native/mclbn256.dll</PackagePath>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
     <None Include="runtimes\win-x64\native\bls384_256.dll" Link="bls384_256.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Pack>true</Pack>
-      <PackagePath>runtimes/linux-x64/native/libbls384_256.dll</PackagePath>
+      <PackagePath>runtimes/win-x64/native/libbls384_256.dll</PackagePath>
     </None>
   </ItemGroup>
 

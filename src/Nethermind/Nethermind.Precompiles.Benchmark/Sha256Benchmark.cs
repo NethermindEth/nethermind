@@ -8,7 +8,7 @@ namespace Nethermind.Precompiles.Benchmark
     [SimpleJob(RuntimeMoniker.NetCoreApp31)]
     public class Sha256Benchmark : PrecompileBenchmarkBase
     {
-        protected override IPrecompiledContract Precompile => Sha256PrecompiledContract.Instance;
+        protected override IPrecompile Precompile => Sha256Precompile.Instance;
         protected override string InputsDirectory => "sha256";
     }
 }

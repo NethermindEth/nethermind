@@ -26,7 +26,7 @@ namespace Nethermind.Benchmarks.Evm
     [SimpleJob(RuntimeMoniker.NetCoreApp31)]
     public class Bn128PairingBenchmark
     {
-        private IPrecompiledContract _precompile = Bn128PairingPrecompiledContract.Instance;
+        private IPrecompile _precompile = Bn128PairingPrecompile.Instance;
         
         private byte[] _data;
 
@@ -42,7 +42,7 @@ namespace Nethermind.Benchmarks.Evm
         [GlobalSetup]
         public void Setup()
         {
-            _ = Bn128AddPrecompiledContract.Instance;
+            _ = Bn128AddPrecompile.Instance;
             Span<byte> bytes = new byte[64];
             _scenarios[ScenarioIndex].A.AsSpan().CopyTo(bytes.Slice(0, 32));
             _scenarios[ScenarioIndex].B.AsSpan().CopyTo(bytes.Slice(32, 32));
