@@ -16,68 +16,66 @@
 // 
 
 using System.Linq;
-using Nethermind.Db.Rocks;
+using Nethermind.DataMarketplace.Infrastructure.Rlp;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
+using Nethermind.RocksDbExtractor.rocksdb;
 using Nethermind.Serialization.Json;
-using Nethermind.Serialization.Rlp;
 using Terminal.Gui;
 
 namespace Nethermind.RocksDbExtractor.Modules.Data.Providers
 {
-    public class BlocksDataProvider : IDataProvider
+    public class DataAssetsProvider : IDataProvider
     {
-        public BlocksDataProvider()
+        public DataAssetsProvider()
         {
         }
         
         public void Init(string path)
         {
-            var dbOnTheRocks = new BlocksRocksDb(path, new DbConfig(), LimboLogs.Instance);
-            var blocksBytes = dbOnTheRocks.GetAll();
+            var dbOnTheRocks = new DataAssetsRocksDb(path, new DbConfig(), LimboLogs.Instance);
+            var dataAssetsBytes = dbOnTheRocks.GetAll();
             
-            var blockDecoder = new BlockDecoder();
-            var blocks = blocksBytes
-                .Select(b => blockDecoder.Decode(b.Value.AsRlpStream()))
-                .OrderBy(b => b.Number)
-                .ToList();
+            var dataAssetDecoder = new DataAssetDecoder();
+            var dataAssets = dataAssetsBytes
+                .Select(b => dataAssetDecoder.Decode(b.Value.AsRlpStream()));
             
-            var window = new Window("Blocks")
+            var window = new Window("Data assets")
             {
                 X = 50,
                 Y = 10,
                 Width = 80,
                 Height = Dim.Fill()
             };
-            
-            if (!blocks.Any())
+            if (!dataAssets.Any())
             {
                 MessageBox.Query(40, 7, "Info", "No data.");
                 window.FocusPrev();
                 return;
             }
             var y = 1;
-            foreach (var block in blocks)
+            foreach (var dataAsset in dataAssets)
             {
-                var blockBtn = new Button(1, y++, $"Number: {block.Number}, Hash: {block.Hash}");
-                
+                var dataAssetsBtn = new Button(1, y++, $"Name: {dataAsset.Name}");
 
-                blockBtn.Clicked = () =>
+                dataAssetsBtn.Clicked = () =>
                 {
-                    var blockDetailsWindow = new Window("Block details")
+                    var dataAssetDetailsWindow = new Window("Data asset details")
                     {
                         X = 130,
                         Y = 10,
                         Width = Dim.Fill(),
                         Height = Dim.Fill()
                     };
-                    Application.Top.Add(blockDetailsWindow);
+                    Application.Top.Add(dataAssetDetailsWindow);
+
                     var serializer = new EthereumJsonSerializer();
-                    var blockLbl = new Label(1,1, serializer.Serialize(block, true));
-                    blockDetailsWindow.Add(blockLbl);
-                    Application.Run(blockDetailsWindow);
+                    var dataAssetLbl = new Label(1, 1, serializer.Serialize(dataAsset, true));
+                            
+                    dataAssetDetailsWindow.Add(dataAssetLbl);
+                    Application.Run(dataAssetDetailsWindow);
                 };
-                window.Add(blockBtn);
+                window.Add(dataAssetsBtn);
             }
             Application.Top.Add(window);
             Application.Run(window);

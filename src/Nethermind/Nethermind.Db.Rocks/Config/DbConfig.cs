@@ -92,6 +92,36 @@ namespace Nethermind.Db.Rocks.Config
         public ulong BloomDbBlockCacheSize { get; set; } = 1.KiB();
         public bool BloomDbCacheIndexAndFilterBlocks { get; set; } = false;
         
+        public bool DataAssetsDbCacheIndexAndFilterBlocks { get; set; } = false;
+        public ulong DataAssetsDbBlockCacheSize { get; set; } = 1.KiB();
+        public ulong DataAssetsDbWriteBufferSize { get; set; } = 1.KiB();
+        public uint DataAssetsDbWriteBufferNumber { get; set; } = 4;
+        
+        public bool ProviderSessionsDbCacheIndexAndFilterBlocks { get; set; } = false;
+        public ulong ProviderSessionsDbBlockCacheSize { get; set; } = 1.KiB();
+        public ulong ProviderSessionsDbWriteBufferSize { get; set; } = 1.KiB();
+        public uint ProviderSessionsDbWriteBufferNumber { get; set; } = 4;
+        
+        public bool ConsumersDbCacheIndexAndFilterBlocks { get; set; } = false;
+        public ulong ConsumersDbBlockCacheSize { get; set; } = 1.KiB();
+        public ulong ConsumersDbWriteBufferSize { get; set; } = 1.KiB();
+        public uint ConsumersDbWriteBufferNumber { get; set; } = 4;
+        
+        public bool PaymentClaimsDbCacheIndexAndFilterBlocks { get; set; } = false;
+        public ulong PaymentClaimsDbBlockCacheSize { get; set; } = 1.KiB();
+        public ulong PaymentClaimsDbWriteBufferSize { get; set; } = 1.KiB();
+        public uint PaymentClaimsDbWriteBufferNumber { get; set; } = 4;
+        
+        public bool ProviderDepositApprovalsDbCacheIndexAndFilterBlocks { get; set; } = false;
+        public ulong ProviderDepositApprovalsDbBlockCacheSize { get; set; } = 1.KiB();
+        public ulong ProviderDepositApprovalsDbWriteBufferSize { get; set; } = 1.KiB();
+        public uint ProviderDepositApprovalsDbWriteBufferNumber { get; set; } = 4;   
+        
+        public bool ProviderReceiptsDbCacheIndexAndFilterBlocks { get; set; } = false;
+        public ulong ProviderReceiptsDbBlockCacheSize { get; set; } = 1.KiB();
+        public ulong ProviderReceiptsDbWriteBufferSize { get; set; } = 1.KiB();
+        public uint ProviderReceiptsDbWriteBufferNumber { get; set; } = 4;
+        
         public uint RecycleLogFileNum { get; set; } = 0;
         public bool WriteAheadLogSync { get; set; } = false;
     }

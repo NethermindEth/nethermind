@@ -16,6 +16,8 @@
 // 
 
 using System;
+using System.Linq;
+using Nethermind.DataMarketplace.Infrastructure.Rlp;
 using Terminal.Gui;
 
 namespace Nethermind.RocksDbExtractor.Modules.Main
@@ -26,6 +28,7 @@ namespace Nethermind.RocksDbExtractor.Modules.Main
         
         public Window Init()
         {
+            AddDecoders();
             var window = new Window ("NDM RocksDb Extractor")
             {
                 X = 0,
@@ -48,14 +51,20 @@ namespace Nethermind.RocksDbExtractor.Modules.Main
                 var pathString = pathTxtField.Text.ToString();
                 if (double.TryParse(pathString, out _))
                 {
-                    MessageBox.ErrorQuery(30, 6, "Error", "Path can not be a number.");
+                    MessageBox.ErrorQuery(40, 7, "Error", "Path can not be a number.");
                     pathTxtField.Text = string.Empty;
                     return;
                 }
 
                 if (string.IsNullOrEmpty(pathString))
                 {
-                    MessageBox.ErrorQuery(30, 6, "Error", "Path can not be empty.");
+                    MessageBox.ErrorQuery(40, 7, "Error", "Path can not be empty.");
+                    return;
+                }
+
+                if (!System.IO.Directory.GetDirectories(pathString, "*").Any())
+                {
+                    MessageBox.ErrorQuery(40, 7, "Error", "Directory is empty.");
                     return;
                 }
 
@@ -65,6 +74,28 @@ namespace Nethermind.RocksDbExtractor.Modules.Main
             window.Add(quitBtn, pathLbl, pathTxtField, okBtn);
 
             return window;
+        }
+        
+        private static void AddDecoders()
+        {
+            DataDeliveryReceiptDecoder.Init();
+            DataDeliveryReceiptRequestDecoder.Init();
+            DataDeliveryReceiptToMergeDecoder.Init();
+            DataDeliveryReceiptDetailsDecoder.Init();
+            DataAssetDecoder.Init();
+            DataAssetRuleDecoder.Init();
+            DataAssetRulesDecoder.Init();
+            DataAssetProviderDecoder.Init();
+            DataRequestDecoder.Init();
+            DepositDecoder.Init();
+            DepositApprovalDecoder.Init();
+            EarlyRefundTicketDecoder.Init();
+            EthRequestDecoder.Init();
+            FaucetResponseDecoder.Init();
+            FaucetRequestDetailsDecoder.Init();
+            SessionDecoder.Init();
+            TransactionInfoDecoder.Init();
+            UnitsRangeDecoder.Init();
         }
     }
 }

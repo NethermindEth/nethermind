@@ -29,7 +29,17 @@ namespace Nethermind.RocksDbExtractor.Modules.Data
         private static readonly IDictionary<string, Func<IDataProvider>> Providers =
             new Dictionary<string, Func<IDataProvider>>
             {
-                ["blocks"] = () => new BlocksDataProvider()
+                ["blocks"] = () => new BlocksDataProvider(),
+                ["dataAssets"] = () => new DataAssetsProvider(),
+                ["providerReceipts"] = () => new ProviderReceiptsProvider(),
+                ["consumerReceipts"] = () => new ConsumerReceiptsProvider(),
+                ["providerSessions"] = () => new ProviderSessionsProvider(),
+                ["consumerSessions"] = () => new ConsumerSessionsProvider(),
+                ["providerDepositApprovals"] = () => new ProviderDepositApprovalsProvider(),
+                ["consumerDepositApprovals"] = () => new ConsumerDepositApprovalsProvider(),
+                ["paymentClaims"] = () => new PaymentClaimsProvider(),
+                ["deposits"] = () => new DepositsProvider(),
+                ["consumers"] = () => new ConsumersProvider()
             };
         
         private readonly string _path;
@@ -50,37 +60,64 @@ namespace Nethermind.RocksDbExtractor.Modules.Data
             };
             Application.Top.Add(mainWindow);
 
-            var dataFolders = System.IO.Directory.GetDirectories(_path, "*");
+            var dataPaths = System.IO.Directory.GetDirectories(_path, "*");
 
             var i = 1;
-            foreach (var dataPath in dataFolders)
+            var dataFolderButtons = new List<Button>();
+            foreach (var dataPath in dataPaths)
             {
                 var dataFolder = dataPath.Split(Path.DirectorySeparatorChar).Last();
                 var dataFolderBtn = new Button(1, i++, $"{dataFolder}");
+                dataFolderButtons.Add(dataFolderBtn);
                 mainWindow.Add(dataFolderBtn);
                 dataFolderBtn.Clicked = () =>
                 {
-                    // var dataWindow = new Window($"{dataFolder}")
-                    // {
-                    //     X = 50,
-                    //     Y = 10,
-                    //     Width = 50,
-                    //     Height = Dim.Fill()
-                    // };
-
-                    if (!Providers.TryGetValue(dataFolder, out var dataProviderFactory))
+                    if (System.IO.Directory.GetDirectories(dataPath, "*").Any())
                     {
-                        MessageBox.ErrorQuery(1, 1, "Data provider", "Data provider not found");
-                        return;
-                    }
+                        foreach (var dataFolderBtn in dataFolderButtons)
+                        {
+                            mainWindow.Remove(dataFolderBtn);
+                        }
+                        
+                        var innerDataPaths = System.IO.Directory.GetDirectories(dataPath, "*");
+                        var i = 1;
+                        foreach (var innerDataPath in innerDataPaths)
+                        {
+                            var innerDataFolder = innerDataPath.Split(Path.DirectorySeparatorChar).Last();
+                            var innerDataFolderBtn = new Button(1, i++, $"{innerDataFolder}");
+                            mainWindow.Add(innerDataFolderBtn);
+                            innerDataFolderBtn.Clicked = () =>
+                            {
+                                if (!Providers.TryGetValue(innerDataFolder, out var dataProviderFactory))
+                                {
+                                    MessageBox.ErrorQuery(40, 7, "Error", "Data provider not found");
+                                    return;
+                                }
+                            
+                                if (!System.IO.Directory.GetDirectories(innerDataPath, "*").Any())
+                                {
+                                    dataProviderFactory().Init(dataPath);
+                                }
+                            };
 
-                    dataProviderFactory().Init(_path);
+                        }
+                    }
                     
-                    // Application.Top.Add(dataWindow);
-                    // Application.Run(dataWindow);
+                    // if (!System.IO.Directory.GetDirectories(dataPath, "*").Any() &&
+                    //     !Providers.TryGetValue(dataFolder, out _))
+                    // {
+                    //     MessageBox.ErrorQuery(40, 7, "Error", "Data provider not found");
+                    // }
+                    //
+                    // if (!System.IO.Directory.GetDirectories(dataPath, "*").Any())
+                    // {
+                    //     Providers.TryGetValue(dataFolder, out var dataProviderFactory);
+                    //     dataProviderFactory().Init(_path);
+                    // }
+
                 };
             }
-            
+
             return mainWindow;
         }
     }

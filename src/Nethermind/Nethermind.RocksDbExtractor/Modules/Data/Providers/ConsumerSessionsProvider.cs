@@ -16,71 +16,70 @@
 // 
 
 using System.Linq;
-using Nethermind.Db.Rocks;
+using Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.Databases;
+using Nethermind.DataMarketplace.Consumers.Infrastructure.Rlp;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
-using Nethermind.Serialization.Rlp;
 using Terminal.Gui;
 
 namespace Nethermind.RocksDbExtractor.Modules.Data.Providers
 {
-    public class BlocksDataProvider : IDataProvider
+    public class ConsumerSessionsProvider : IDataProvider
     {
-        public BlocksDataProvider()
+        public ConsumerSessionsProvider()
         {
         }
         
         public void Init(string path)
         {
-            var dbOnTheRocks = new BlocksRocksDb(path, new DbConfig(), LimboLogs.Instance);
-            var blocksBytes = dbOnTheRocks.GetAll();
+            var dbOnTheRocks = new ConsumerSessionsRocksDb(path, new DbConfig(), LimboLogs.Instance);
+            var consumerSessionsBytes = dbOnTheRocks.GetAll();
             
-            var blockDecoder = new BlockDecoder();
-            var blocks = blocksBytes
-                .Select(b => blockDecoder.Decode(b.Value.AsRlpStream()))
-                .OrderBy(b => b.Number)
-                .ToList();
+            var consumerSessionsDecoder = new ConsumerSessionDecoder();
+            var consumerSessions = consumerSessionsBytes
+                .Select(b => consumerSessionsDecoder.Decode(b.Value.AsRlpStream()));
             
-            var window = new Window("Blocks")
+            var window = new Window("Consumer sessions")
             {
                 X = 50,
                 Y = 10,
                 Width = 80,
                 Height = Dim.Fill()
             };
-            
-            if (!blocks.Any())
+            if (!consumerSessions.Any())
             {
                 MessageBox.Query(40, 7, "Info", "No data.");
                 window.FocusPrev();
                 return;
             }
             var y = 1;
-            foreach (var block in blocks)
+            foreach (var consumerSession in consumerSessions)
             {
-                var blockBtn = new Button(1, y++, $"Number: {block.Number}, Hash: {block.Hash}");
-                
+                var consumerSessionBtn = new Button(1, y++, $"DepositId: {consumerSession.DepositId}," +
+                                                            $"ConsumerAddress: {consumerSession.ConsumerAddress}");
 
-                blockBtn.Clicked = () =>
+                consumerSessionBtn.Clicked = () =>
                 {
-                    var blockDetailsWindow = new Window("Block details")
+                    var consumerSessionDetailsWindow = new Window("Session details")
                     {
                         X = 130,
                         Y = 10,
                         Width = Dim.Fill(),
                         Height = Dim.Fill()
                     };
-                    Application.Top.Add(blockDetailsWindow);
+                    Application.Top.Add(consumerSessionDetailsWindow);
                     var serializer = new EthereumJsonSerializer();
-                    var blockLbl = new Label(1,1, serializer.Serialize(block, true));
-                    blockDetailsWindow.Add(blockLbl);
-                    Application.Run(blockDetailsWindow);
+                    var consumerSessionLbl = new Label(1, 1, serializer.Serialize(consumerSession, true));
+                    consumerSessionDetailsWindow.Add(consumerSessionLbl);
+                    Application.Run(consumerSessionDetailsWindow);
                 };
-                window.Add(blockBtn);
+                window.Add(consumerSessionBtn);
             }
+
             Application.Top.Add(window);
             Application.Run(window);
         }
     }
 }
+

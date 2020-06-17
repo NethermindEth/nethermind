@@ -15,70 +15,72 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Linq;
-using Nethermind.Db.Rocks;
+using Nethermind.DataMarketplace.Providers.Infrastructure.Rlp;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
+using Nethermind.RocksDbExtractor.rocksdb;
 using Nethermind.Serialization.Json;
-using Nethermind.Serialization.Rlp;
 using Terminal.Gui;
 
 namespace Nethermind.RocksDbExtractor.Modules.Data.Providers
 {
-    public class BlocksDataProvider : IDataProvider
+    public class PaymentClaimsProvider : IDataProvider
     {
-        public BlocksDataProvider()
+        private static readonly string NewLine = Environment.NewLine;
+
+        public PaymentClaimsProvider()
         {
         }
-        
+
         public void Init(string path)
         {
-            var dbOnTheRocks = new BlocksRocksDb(path, new DbConfig(), LimboLogs.Instance);
-            var blocksBytes = dbOnTheRocks.GetAll();
-            
-            var blockDecoder = new BlockDecoder();
-            var blocks = blocksBytes
-                .Select(b => blockDecoder.Decode(b.Value.AsRlpStream()))
-                .OrderBy(b => b.Number)
-                .ToList();
-            
-            var window = new Window("Blocks")
+            var dbOnTheRocks = new PaymentClaimsRocksDb(path, new DbConfig(), LimboLogs.Instance);
+            var paymentClaimsBytes = dbOnTheRocks.GetAll();
+
+            var paymentClaimsDecoder = new PaymentClaimDecoder();
+            var paymentClaims = paymentClaimsBytes
+                .Select(b => paymentClaimsDecoder.Decode(b.Value.AsRlpStream()));
+
+            var window = new Window("Payment claims")
             {
                 X = 50,
                 Y = 10,
                 Width = 80,
                 Height = Dim.Fill()
             };
-            
-            if (!blocks.Any())
+            if (!paymentClaims.Any())
             {
                 MessageBox.Query(40, 7, "Info", "No data.");
                 window.FocusPrev();
                 return;
             }
             var y = 1;
-            foreach (var block in blocks)
+            foreach (var paymentClaim in paymentClaims)
             {
-                var blockBtn = new Button(1, y++, $"Number: {block.Number}, Hash: {block.Hash}");
-                
+                var paymentClaimBtn = new Button(1, y++, $"AssetName: {paymentClaim.AssetName}," +
+                                                         $"DepositId: {paymentClaim.DepositId}");
 
-                blockBtn.Clicked = () =>
+                paymentClaimBtn.Clicked = () =>
                 {
-                    var blockDetailsWindow = new Window("Block details")
+                    var paymentClaimsDetailsWindow = new Window("Payment claim details")
                     {
                         X = 130,
                         Y = 10,
                         Width = Dim.Fill(),
                         Height = Dim.Fill()
                     };
-                    Application.Top.Add(blockDetailsWindow);
+                    Application.Top.Add(paymentClaimsDetailsWindow);
+
                     var serializer = new EthereumJsonSerializer();
-                    var blockLbl = new Label(1,1, serializer.Serialize(block, true));
-                    blockDetailsWindow.Add(blockLbl);
-                    Application.Run(blockDetailsWindow);
+                    var paymentClaimLbl = new Label(1, 1, serializer.Serialize(paymentClaim, true));
+                    paymentClaimsDetailsWindow.Add(paymentClaimLbl);
+                    Application.Run(paymentClaimsDetailsWindow);
                 };
-                window.Add(blockBtn);
+                window.Add(paymentClaimBtn);
             }
+
             Application.Top.Add(window);
             Application.Run(window);
         }

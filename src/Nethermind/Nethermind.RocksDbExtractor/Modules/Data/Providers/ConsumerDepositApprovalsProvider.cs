@@ -16,68 +16,65 @@
 // 
 
 using System.Linq;
-using Nethermind.Db.Rocks;
+using Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.Databases;
+using Nethermind.DataMarketplace.Infrastructure.Rlp;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
-using Nethermind.Serialization.Rlp;
 using Terminal.Gui;
 
 namespace Nethermind.RocksDbExtractor.Modules.Data.Providers
 {
-    public class BlocksDataProvider : IDataProvider
+    public class ConsumerDepositApprovalsProvider : IDataProvider
     {
-        public BlocksDataProvider()
+        public ConsumerDepositApprovalsProvider()
         {
         }
         
         public void Init(string path)
         {
-            var dbOnTheRocks = new BlocksRocksDb(path, new DbConfig(), LimboLogs.Instance);
-            var blocksBytes = dbOnTheRocks.GetAll();
+            var dbOnTheRocks = new ConsumerDepositApprovalsRocksDb(path, new DbConfig(), LimboLogs.Instance);
+            var depositApprovalsBytes = dbOnTheRocks.GetAll();
             
-            var blockDecoder = new BlockDecoder();
-            var blocks = blocksBytes
-                .Select(b => blockDecoder.Decode(b.Value.AsRlpStream()))
-                .OrderBy(b => b.Number)
-                .ToList();
+            var depositApprovalDecoder = new DepositApprovalDecoder();
+            var depositApprovals = depositApprovalsBytes
+                .Select(b => depositApprovalDecoder.Decode(b.Value.AsRlpStream()));
             
-            var window = new Window("Blocks")
+            var window = new Window("Consumer deposit approvals")
             {
                 X = 50,
                 Y = 10,
                 Width = 80,
                 Height = Dim.Fill()
             };
-            
-            if (!blocks.Any())
+            if (!depositApprovals.Any())
             {
                 MessageBox.Query(40, 7, "Info", "No data.");
                 window.FocusPrev();
                 return;
             }
             var y = 1;
-            foreach (var block in blocks)
+            foreach (var depositApproval in depositApprovals)
             {
-                var blockBtn = new Button(1, y++, $"Number: {block.Number}, Hash: {block.Hash}");
-                
+                var depositApprovalBtn = new Button(1, y++, $"AssetName: {depositApproval.AssetName}," +
+                                                            $"State: {depositApproval.State}");
 
-                blockBtn.Clicked = () =>
+                depositApprovalBtn.Clicked = () =>
                 {
-                    var blockDetailsWindow = new Window("Block details")
+                    var depositApprovalDetailsWindow = new Window("Deposit approval details")
                     {
                         X = 130,
                         Y = 10,
                         Width = Dim.Fill(),
                         Height = Dim.Fill()
                     };
-                    Application.Top.Add(blockDetailsWindow);
+                    Application.Top.Add(depositApprovalDetailsWindow);
                     var serializer = new EthereumJsonSerializer();
-                    var blockLbl = new Label(1,1, serializer.Serialize(block, true));
-                    blockDetailsWindow.Add(blockLbl);
-                    Application.Run(blockDetailsWindow);
+                    var depositApprovalLbl = new Label(1,1, serializer.Serialize(depositApproval, true));
+                    depositApprovalDetailsWindow.Add(depositApprovalLbl);
+                    Application.Run(depositApprovalDetailsWindow);
                 };
-                window.Add(blockBtn);
+                window.Add(depositApprovalBtn);
             }
             Application.Top.Add(window);
             Application.Run(window);

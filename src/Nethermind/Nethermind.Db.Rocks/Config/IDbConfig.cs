@@ -79,19 +79,49 @@ namespace Nethermind.Db.Rocks.Config
         uint ConfigsDbWriteBufferNumber { get; set; }
         ulong ConfigsDbBlockCacheSize { get; set; }
         bool ConfigsDbCacheIndexAndFilterBlocks { get; set; }
-        
+
         ulong EthRequestsDbWriteBufferSize { get; set; }
         uint EthRequestsDbWriteBufferNumber { get; set; }
         ulong EthRequestsDbBlockCacheSize { get; set; }
         bool EthRequestsDbCacheIndexAndFilterBlocks { get; set; }
-        
+
         ulong BloomDbWriteBufferSize { get; set; }
         uint BloomDbWriteBufferNumber { get; set; }
         ulong BloomDbBlockCacheSize { get; set; }
         bool BloomDbCacheIndexAndFilterBlocks { get; set; }
+
+        ulong DataAssetsDbBlockCacheSize { get; set; }
+        ulong DataAssetsDbWriteBufferSize { get; set; }
+        uint DataAssetsDbWriteBufferNumber { get; set; }
+
+        bool ProviderSessionsDbCacheIndexAndFilterBlocks { get; set; }
+        ulong ProviderSessionsDbBlockCacheSize { get; set; }
+        ulong ProviderSessionsDbWriteBufferSize { get; set; }
+        uint ProviderSessionsDbWriteBufferNumber { get; set; }
+
+        bool ConsumersDbCacheIndexAndFilterBlocks { get; set; }
+        ulong ConsumersDbBlockCacheSize { get; set; }
+        ulong ConsumersDbWriteBufferSize { get; set; }
+        uint ConsumersDbWriteBufferNumber { get; set; }
+
+        bool PaymentClaimsDbCacheIndexAndFilterBlocks { get; set; }
+        ulong PaymentClaimsDbBlockCacheSize { get; set; }
+        ulong PaymentClaimsDbWriteBufferSize { get; set; }
+        uint PaymentClaimsDbWriteBufferNumber { get; set; }
         
+        bool ProviderDepositApprovalsDbCacheIndexAndFilterBlocks { get; set; }
+        ulong ProviderDepositApprovalsDbBlockCacheSize { get; set; }
+        ulong ProviderDepositApprovalsDbWriteBufferSize { get; set; }
+        uint ProviderDepositApprovalsDbWriteBufferNumber { get; set; }
+        
+        bool ProviderReceiptsDbCacheIndexAndFilterBlocks { get; set; }
+        ulong ProviderReceiptsDbBlockCacheSize { get; set; }
+        ulong ProviderReceiptsDbWriteBufferSize { get; set; }
+        uint ProviderReceiptsDbWriteBufferNumber { get; set; }
+
+
         uint RecycleLogFileNum { get; set; }
         bool WriteAheadLogSync { get; set; }
-        
+
     }
 }
