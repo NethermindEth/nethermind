@@ -38,10 +38,12 @@ namespace Nethermind.Runner.Ethereum.Steps
     public class SetupKeyStore : IStep
     {
         private readonly EthereumRunnerContext _context;
+        private readonly ILogger _logger;
 
         public SetupKeyStore(EthereumRunnerContext context)
         {
             _context = context;
+            _logger = context.LogManager.GetClassLogger<SetupKeyStore>();
         }
 
         public async Task Execute(CancellationToken cancellationToken)
@@ -78,7 +80,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.Enode = new Enode(_context.NodeKey.PublicKey, IPAddress.Parse(networkConfig.ExternalIp), networkConfig.P2PPort);
                 
                 _context.LogManager.SetGlobalVariable("enode", _context.Enode.ToString());
-            });
+            }, cancellationToken);
         }
 
         private void UnlockAccounts(IKeyStoreConfig config, IWallet wallet)
@@ -105,8 +107,15 @@ namespace Nethermind.Runner.Ethereum.Steps
                 string unlockAccount = config.UnlockAccounts[i];
                 if (unlockAccount != config.BlockAuthorAccount)
                 {
-                    Address address = new Address(unlockAccount);
-                    wallet.UnlockAccount(address, GetPassword(i), TimeSpan.FromDays(1000));
+                    try
+                    {
+                        Address address = new Address(unlockAccount);
+                        wallet.UnlockAccount(address, GetPassword(i), TimeSpan.FromDays(1000));
+                    }
+                    catch (Exception e)
+                    {
+                        if (_logger.IsError) _logger.Error($"Couldn't unlock account {unlockAccount}.", e);
+                    }
                 }
             }
         }
