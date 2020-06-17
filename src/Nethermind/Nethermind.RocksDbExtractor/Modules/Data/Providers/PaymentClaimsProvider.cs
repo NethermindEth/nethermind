@@ -45,9 +45,9 @@ namespace Nethermind.RocksDbExtractor.Modules.Data.Providers
 
             var window = new Window("Payment claims")
             {
-                X = 50,
+                X = 0,
                 Y = 10,
-                Width = 80,
+                Width = Dim.Fill(),
                 Height = Dim.Fill()
             };
             if (!paymentClaims.Any())
@@ -66,7 +66,7 @@ namespace Nethermind.RocksDbExtractor.Modules.Data.Providers
                 {
                     var paymentClaimsDetailsWindow = new Window("Payment claim details")
                     {
-                        X = 130,
+                        X = 0,
                         Y = 10,
                         Width = Dim.Fill(),
                         Height = Dim.Fill()

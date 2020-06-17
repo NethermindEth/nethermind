@@ -55,7 +55,7 @@ namespace Nethermind.RocksDbExtractor.Modules.Data
             {
                 X = 0,
                 Y = 10,
-                Width = 50,
+                Width = Dim.Fill(),
                 Height = Dim.Fill()
             };
             Application.Top.Add(mainWindow);
@@ -103,17 +103,18 @@ namespace Nethermind.RocksDbExtractor.Modules.Data
                         }
                     }
                     
-                    // if (!System.IO.Directory.GetDirectories(dataPath, "*").Any() &&
-                    //     !Providers.TryGetValue(dataFolder, out _))
-                    // {
-                    //     MessageBox.ErrorQuery(40, 7, "Error", "Data provider not found");
-                    // }
-                    //
-                    // if (!System.IO.Directory.GetDirectories(dataPath, "*").Any())
-                    // {
-                    //     Providers.TryGetValue(dataFolder, out var dataProviderFactory);
-                    //     dataProviderFactory().Init(_path);
-                    // }
+                    if (!System.IO.Directory.GetDirectories(dataPath, "*").Any() &&
+                        !Providers.TryGetValue(dataFolder, out _))
+                    {
+                        MessageBox.Query(40, 7, "Error", "Data provider not found");
+                        return;
+                    }
+                    
+                    if (!System.IO.Directory.GetDirectories(dataPath, "*").Any())
+                    {
+                        Providers.TryGetValue(dataFolder, out var dataProviderFactory);
+                        dataProviderFactory().Init(_path);
+                    }
 
                 };
             }

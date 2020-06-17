@@ -42,9 +42,9 @@ namespace Nethermind.RocksDbExtractor.Modules.Data.Providers
             
             var window = new Window("Consumer deposit approvals")
             {
-                X = 50,
+                X = 0,
                 Y = 10,
-                Width = 80,
+                Width = Dim.Fill(),
                 Height = Dim.Fill()
             };
             if (!depositApprovals.Any())
@@ -63,7 +63,7 @@ namespace Nethermind.RocksDbExtractor.Modules.Data.Providers
                 {
                     var depositApprovalDetailsWindow = new Window("Deposit approval details")
                     {
-                        X = 130,
+                        X = 0,
                         Y = 10,
                         Width = Dim.Fill(),
                         Height = Dim.Fill()

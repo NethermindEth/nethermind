@@ -42,9 +42,9 @@ namespace Nethermind.RocksDbExtractor.Modules.Data.Providers
             
             var window = new Window("Consumers")
             {
-                X = 50,
+                X = 0,
                 Y = 10,
-                Width = 80,
+                Width = Dim.Fill(),
                 Height = Dim.Fill()
             };
             if (!consumers.Any())
@@ -62,7 +62,7 @@ namespace Nethermind.RocksDbExtractor.Modules.Data.Providers
                 {
                     var consumerDetailsWindow = new Window("Consumer details")
                     {
-                        X = 130,
+                        X = 0,
                         Y = 10,
                         Width = Dim.Fill(),
                         Height = Dim.Fill()

@@ -42,9 +42,9 @@ namespace Nethermind.RocksDbExtractor.Modules.Data.Providers
 
             var window = new Window("Provider sessions")
             {
-                X = 50,
+                X = 0,
                 Y = 10,
-                Width = 80,
+                Width = Dim.Fill(),
                 Height = Dim.Fill()
             };
             
@@ -65,7 +65,7 @@ namespace Nethermind.RocksDbExtractor.Modules.Data.Providers
                 {
                     var providerSessionDetailsWindow = new Window("Session details")
                     {
-                        X = 130,
+                        X = 0,
                         Y = 10,
                         Width = Dim.Fill(),
                         Height = Dim.Fill()

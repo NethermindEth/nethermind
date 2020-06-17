@@ -44,9 +44,9 @@ namespace Nethermind.RocksDbExtractor.Modules.Data.Providers
             
             var window = new Window("Blocks")
             {
-                X = 50,
+                X = 0,
                 Y = 10,
-                Width = 80,
+                Width = Dim.Fill(),
                 Height = Dim.Fill()
             };
             
@@ -66,7 +66,7 @@ namespace Nethermind.RocksDbExtractor.Modules.Data.Providers
                 {
                     var blockDetailsWindow = new Window("Block details")
                     {
-                        X = 130,
+                        X = 0,
                         Y = 10,
                         Width = Dim.Fill(),
                         Height = Dim.Fill()
