@@ -83,7 +83,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         private void UnlockAccounts(IKeyStoreConfig config, IWallet wallet)
         {
             string? GetPasswordN(int n, string[] passwords) => passwords?.Length > 0 ? passwords[Math.Min(n, passwords.Length - 1)] : null;
-            SecureString GetPassword(int n) => (GetPasswordN(n, config.PasswordsFiles) ?? GetPasswordN(n, config.Passwords) ?? string.Empty).Secure();
+            SecureString GetPassword(int n) => (GetPasswordN(n, config.PasswordFiles) ?? GetPasswordN(n, config.Passwords) ?? string.Empty).Secure();
 
             for (int i = 0; i < config.UnlockAccounts.Length; i++)
             {

@@ -39,7 +39,7 @@ namespace Nethermind.KeyStore.Config
         string TestNodeKey { get; set; }
         string BlockAuthorAccount { get; set; }
         string[] Passwords { get; set; }
-        string[] PasswordsFiles { get; set; }
+        string[] PasswordFiles { get; set; }
         string[] UnlockAccounts { get; set; }
     }
 }
