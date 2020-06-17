@@ -23,6 +23,7 @@ namespace Nethermind.Evm
     public class CodeInfo
     {
         private BitArray _validJumpDestinations;
+        private BitArray _validJumpSubDestinations;
 
         public CodeInfo(byte[] code)
         {
@@ -40,36 +41,45 @@ namespace Nethermind.Evm
         public byte[] MachineCode { get; set; }
         public IPrecompile Precompile { get; set; }
 
-        public bool ValidateJump(int destination)
+        public bool ValidateJump(int destination, bool isSubroutine)
         {
             if (_validJumpDestinations == null)
             {
                 CalculateJumpDestinations();
             }
 
-            if (destination < 0 || destination >= MachineCode.Length || !_validJumpDestinations.Get(destination))
+            if (destination < 0 || destination >= MachineCode.Length ||
+                (isSubroutine ? !_validJumpSubDestinations.Get(destination) : !_validJumpDestinations.Get(destination)))
             {
                 return false;
             }
 
             return true;
         }
-
+      
         private void CalculateJumpDestinations()
         {
             _validJumpDestinations = new BitArray(MachineCode.Length);
+            _validJumpSubDestinations = new BitArray(MachineCode.Length);
+            
             int index = 0;
             while (index < MachineCode.Length)
             {
                 //Instruction instruction = (Instruction)code[index];
                 byte instruction = MachineCode[index];                
-                //if (instruction == Instruction.JUMPDEST)
+                
+                //if (instruction == Instruction.JUMPDEST
                 if (instruction == 0x5b)
                 {
                     _validJumpDestinations.Set(index, true);
                 }
-
+                //if (instruction == Instruction.BEGINSUB
+                else if (instruction == 0x5c)
+                {
+                    _validJumpSubDestinations.Set(index, true);
+                }
                 //if (instruction >= Instruction.PUSH1 && instruction <= Instruction.PUSH32)
+                
                 if (instruction >= 0x60 && instruction <= 0x7f)
                 {
                     //index += instruction - Instruction.PUSH1 + 2;

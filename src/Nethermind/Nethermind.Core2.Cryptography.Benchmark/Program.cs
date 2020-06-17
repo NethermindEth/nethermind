@@ -14,31 +14,15 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
+using BenchmarkDotNet.Running;
 
-namespace Nethermind.Evm
+namespace Nethermind.Core2.Cryptography.Benchmark
 {
-    public abstract class EvmException : Exception
+    public static class Program
     {
-        public abstract EvmExceptionType ExceptionType { get; }
-    }
-    
-    public enum EvmExceptionType
-    {
-        None,
-        BadInstruction,
-        StackOverflow,
-        StackUnderflow,
-        OutOfGas,
-        InvalidSubroutineEntry,
-        InvalidSubroutineReturn,
-        InvalidJumpDestination,
-        AccessViolation,
-        StaticCallViolation,
-        PrecompileFailure,
-        TransactionCollision,
-        NotEnoughBalance,
-        Other,
-        Revert
+        public static void Main(string[] args)
+        {
+            BenchmarkRunner.Run<Sha256Benchmark>();
+        }
     }
 }
