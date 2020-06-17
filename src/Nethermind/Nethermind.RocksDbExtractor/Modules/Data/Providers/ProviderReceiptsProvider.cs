@@ -36,7 +36,7 @@ namespace Nethermind.RocksDbExtractor.Modules.Data.Providers
             var dbOnTheRocks = new ProviderReceiptsRocksDb(path, new DbConfig(), LimboLogs.Instance);
             var receiptsBytes = dbOnTheRocks.GetAll();
             
-            var receiptDecoder = new DataDeliveryReceiptDecoder();
+            var receiptDecoder = new DataDeliveryReceiptDetailsDecoder();
             var receipts = receiptsBytes
                 .Select(b => receiptDecoder.Decode(b.Value.AsRlpStream()));
             
@@ -56,7 +56,7 @@ namespace Nethermind.RocksDbExtractor.Modules.Data.Providers
             var y = 1;
             foreach (var receipt in receipts)
             {
-                var receiptBtn = new Button(1, y++, $"Consumed units: {receipt.ConsumedUnits}, StatusCode: {receipt.StatusCode}");
+                var receiptBtn = new Button(1, y++, $"Id: {receipt.Id}, DepositId: {receipt.DepositId}");
 
                 receiptBtn.Clicked = () =>
                 {
