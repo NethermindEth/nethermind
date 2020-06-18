@@ -38,7 +38,7 @@ jobs:
       if: matrix.os == 'windows-latest'
       with:
         name: windows_artifact
-        path: mcl/bin/mclbn384_256.dll
+        path: mcl/bin/mclbn256.dll
     - name: Building MCL for Linux
       if: matrix.os == 'ubuntu-latest'
       run: |
@@ -52,7 +52,7 @@ jobs:
       if: matrix.os == 'ubuntu-latest'
       with:
         name: linux_artifact
-        path: mcl/lib/libmclbn384_256.so
+        path: mcl/lib/libmclbn256.so
     - name: Building MCL for OSX
       if: matrix.os == 'macOS-latest'
       run: |
@@ -63,4 +63,4 @@ jobs:
       if: matrix.os == 'macOS-latest'
       with:
         name: darwin_artifact
-        path: mcl/lib/libmclbn384_256.dylib
+        path: mcl/lib/libmclbn256.dylib
