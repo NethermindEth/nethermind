@@ -68,9 +68,8 @@ namespace Nethermind.Evm.Precompiles
             {
                 a.setStr($"3 {x.ToString()}", 0);
             }
-
-            BigInteger sBigInt = inputDataSpan.Slice(64, 32).ToUnsignedBigInteger();
-            Bn256.G1 resultAlt = MulAlternative(ref a, sBigInt);
+            
+            Bn256.G1 resultAlt = MulAlternative(ref a, s);
 
             string[] resultStrings = resultAlt.GetStr(0).Split(" ");
             UInt256 resA = UInt256.Parse(resultStrings[1]);
@@ -79,7 +78,7 @@ namespace Nethermind.Evm.Precompiles
             return (EncodeResult(resA, resB), true);
         }
 
-        private static Bn256.G1 Mul(ref Bn256.G1 g1, BigInteger s)
+        private static Bn256.G1 Mul(ref Bn256.G1 g1, UInt256 s)
         {
             // this one is returning different values - probably SetStr on Fp is wrong here
             
@@ -92,7 +91,7 @@ namespace Nethermind.Evm.Precompiles
             return res;
         }
         
-        private static Bn256.G1 MulAlternative(ref Bn256.G1 g1, BigInteger s)
+        private static Bn256.G1 MulAlternative(ref Bn256.G1 g1, UInt256 s)
         {
             if (s.IsZero) // P * 0 = 0
             {
@@ -107,7 +106,7 @@ namespace Nethermind.Evm.Precompiles
             Bn256.G1 res = new Bn256.G1();
             res.Clear();
 
-            int bitLength = s.BitLength();
+            int bitLength = ((BigInteger)s).BitLength();
             for (int i = bitLength - 1; i >= 0; i--)
             {
                 res.Dbl(res);

@@ -27,7 +27,7 @@ namespace Nethermind.Dirichlet.Benchmark
 {
     [MemoryDiagnoser]
     [SimpleJob(RuntimeMoniker.NetCoreApp31)]
-    public class TestBitBenchmarks
+    public class ConversionBenchmarks
     {
         private BigInteger[] _scenariosBI = new BigInteger[3];
         private UInt256[] _scenariosU = new UInt256[3];
@@ -45,28 +45,30 @@ namespace Nethermind.Dirichlet.Benchmark
             _scenariosU[0] = a;
             _scenariosU[1] = b;
             _scenariosU[2] = c;
-            
+
             _scenariosBI[0] = a;
             _scenariosBI[1] = b;
             _scenariosBI[2] = c;
         }
 
-        [Benchmark(Baseline = true)]
-        public void Current()
+        [Benchmark]
+        public BigInteger Current_uint256_to_bigint()
         {
-            for (int i = 0; i < 256; i++)
-            {
-                _scenariosBI[ScenarioIndex].TestBit(i);
-            }
+            return _scenariosU[ScenarioIndex];
         }
 
         [Benchmark]
-        public void Improved()
+        public UInt256 Current_bigint_to_uint256()
         {
-            for (int i = 0; i < 256; i++)
-            {
-                _scenariosU[ScenarioIndex].TestBit(i);
-            }
+            UInt256.Create(out UInt256 res, _scenariosBI[ScenarioIndex]);
+            return res;
+        }
+        
+        [Benchmark]
+        public UInt256 Improved_bigint_to_uint256()
+        {
+            UInt256.CreateImproved(out UInt256 res, _scenariosBI[ScenarioIndex]);
+            return res;
         }
     }
 }
