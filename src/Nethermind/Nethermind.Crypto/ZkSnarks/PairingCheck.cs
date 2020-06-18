@@ -25,10 +25,10 @@ namespace Nethermind.Crypto.ZkSnarks
     /// </summary>
     public class PairingCheck
     {
-        public static readonly UInt256 LoopCount = UInt256.Parse("29793968203157093288");
-        public static readonly BigInteger LoopCountBI = LoopCount;
-        public static readonly int LoopCountBitLength = LoopCountBI.BitLength();
-        public static IReadOnlyDictionary<int, bool> _loopTestBits;
+        private static readonly UInt256 LoopCount = UInt256.Parse("29793968203157093288");
+        private static readonly BigInteger LoopCountBI = LoopCount;
+        private static readonly int LoopCountBitLength = LoopCountBI.BitLength();
+        private static IReadOnlyDictionary<int, bool> _loopTestBits;
 
         static PairingCheck()
         {

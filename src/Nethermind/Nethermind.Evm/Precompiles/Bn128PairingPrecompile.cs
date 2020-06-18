@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -55,11 +56,7 @@ namespace Nethermind.Evm.Precompiles
         public (byte[], bool) Run(byte[] inputData)
         {
             Metrics.Bn128PairingPrecompile++;
-            
-            if (inputData == null)
-            {
-                inputData = Bytes.Empty;
-            }
+            inputData ??= Bytes.Empty;
 
             // fail if input len is not a multiple of PAIR_SIZE
             if (inputData.Length % PairSize > 0)
@@ -90,10 +87,10 @@ namespace Nethermind.Evm.Precompiles
             return (resultBytes, true);
         }
 
-        private (Bn128Fp, Bn128Fp2) DecodePair(byte[] input, int offset)
+        private (Bn128Fp, Bn128Fp2) DecodePair(Span<byte> input, int offset)
         {
-            byte[] x = input.Slice(offset + 0, 32);
-            byte[] y = input.Slice(offset + 32, 32);
+            Span<byte> x = input.Slice(offset + 0, 32);
+            Span<byte> y = input.Slice(offset + 32, 32);
 
             Bn128Fp p1 = Bn128Fp.CreateInG1(x, y);
 
@@ -104,12 +101,12 @@ namespace Nethermind.Evm.Precompiles
             }
 
             // (b, a)
-            byte[] b = input.Slice(offset + 64, 32);
-            byte[] a = input.Slice(offset + 96, 32);
+            Span<byte> b = input.Slice(offset + 64, 32);
+            Span<byte> a = input.Slice(offset + 96, 32);
 
             // (d, c)
-            byte[] d = input.Slice(offset + 128, 32);
-            byte[] c = input.Slice(offset + 160, 32);
+            Span<byte> d = input.Slice(offset + 128, 32);
+            Span<byte> c = input.Slice(offset + 160, 32);
 
             Bn128Fp2 p2 = Bn128Fp2.CreateInG2(a, b, c, d);
 

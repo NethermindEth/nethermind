@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Numerics;
 
 namespace Nethermind.Crypto.ZkSnarks
@@ -45,7 +46,7 @@ namespace Nethermind.Crypto.ZkSnarks
             new Fp(BigInteger.Parse("21888242871839275222246405745257275088696311157297823662689037894645226208582"))
         };
 
-        public Fp2(byte[] aa, byte[] bb)
+        public Fp2(Span<byte> aa, Span<byte> bb)
             : this(new Fp(aa), new Fp(bb))
         {
         }

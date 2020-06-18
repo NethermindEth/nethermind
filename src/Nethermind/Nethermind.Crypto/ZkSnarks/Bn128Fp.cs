@@ -74,7 +74,7 @@ namespace Nethermind.Crypto.ZkSnarks
         /// <param name="x"></param>
         /// <param name="y"></param>
         /// <returns></returns>
-        public static Bn128Fp CreateInG1(byte[] x, byte[] y)
+        public static Bn128Fp CreateInG1(Span<byte> x, Span<byte> y)
         {
             Bn128Fp p = Create(x, y);
             if (p == null)

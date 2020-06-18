@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Numerics;
 
 namespace Nethermind.Crypto.ZkSnarks
@@ -57,7 +58,7 @@ namespace Nethermind.Crypto.ZkSnarks
         /// <param name="cc"></param>
         /// <param name="dd"></param>
         /// <returns></returns>
-        public static Bn128Fp2 Create(byte[] aa, byte[] bb, byte[] cc, byte[] dd)
+        public static Bn128Fp2 Create(Span<byte> aa, Span<byte> bb, Span<byte> cc, Span<byte> dd)
         {
             Fp2 x = new Fp2(aa, bb);
             Fp2 y = new Fp2(cc, dd);
@@ -83,7 +84,7 @@ namespace Nethermind.Crypto.ZkSnarks
         /// <param name="c"></param>
         /// <param name="d"></param>
         /// <returns></returns>
-        public static Bn128Fp2 CreateInG2(byte[] a, byte[] b, byte[] c, byte[] d)
+        public static Bn128Fp2 CreateInG2(Span<byte> a, Span<byte> b, Span<byte> c, Span<byte> d)
         {
             Bn128Fp2 p = Create(a, b, c, d);
 
