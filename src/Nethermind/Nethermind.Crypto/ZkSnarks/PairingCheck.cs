@@ -26,24 +26,16 @@ namespace Nethermind.Crypto.ZkSnarks
     public class PairingCheck
     {
         private static readonly UInt256 LoopCount = UInt256.Parse("29793968203157093288");
-        private static readonly BigInteger LoopCountBI = BigInteger.Parse("29793968203157093288");
+        private static readonly BigInteger LoopCountBI = LoopCount;
         private static readonly int LoopCountBitLength = LoopCountBI.BitLength();
         private static IReadOnlyDictionary<int, bool> _loopTestBits;
-        private static IReadOnlyDictionary<int, bool> _loopTestBitsOld;
 
         static PairingCheck()
         {
             Dictionary<int, bool> loopTestBits = new Dictionary<int, bool>();
-            Dictionary<int, bool> loopTestBitsBi = new Dictionary<int, bool>();
             for (int i = 0; i < 256; i++)
             {
                 loopTestBits[i] = LoopCount.TestBit(i);
-                loopTestBitsBi[i] = LoopCountBI.TestBit(i);
-
-                if (loopTestBits[i] != loopTestBitsBi[i])
-                {
-                    
-                }
             }
             
             _loopTestBits = loopTestBits;
@@ -252,7 +244,7 @@ namespace Nethermind.Crypto.ZkSnarks
             return v;
         }
 
-        private class Precomputed
+        private readonly struct Precomputed
         {
             public Bn128Fp2 G2 { get; }
             public EllCoeffs Coeffs { get; }
@@ -264,7 +256,7 @@ namespace Nethermind.Crypto.ZkSnarks
             }
         }
 
-        private class Pair
+        private readonly struct Pair
         {
             private Bn128Fp G1 { get; }
             private Bn128Fp2 G2 { get; }
@@ -287,7 +279,7 @@ namespace Nethermind.Crypto.ZkSnarks
             }
         }
 
-        private class EllCoeffs
+        private readonly struct EllCoeffs
         {
             public Fp2 Ell0 { get; }
             public Fp2 EllVw { get; }
