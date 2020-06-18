@@ -394,20 +394,21 @@ namespace Nethermind.Crypto.Bn256
             public static Bn256.G1 Create(UInt256 x, UInt256 y)
             {
                 Bn256.G1 g1 = new Bn256.G1();
-                if (x.IsZero)
+                if (x.IsZero && y.IsZero)
                 {
                     g1.Clear();
                 }
                 else
                 {
-                    if (y.IsEven)
-                    {
-                        g1.setStr($"2 {x.ToString()}", 0);
-                    }
-                    else
-                    {
-                        g1.setStr($"3 {x.ToString()}", 0);
-                    }
+                    g1.setStr($"1 {x.ToString()} {y.ToString()}", 0);
+                    // if (y.IsEven)
+                    // {
+                    //     g1.setStr($"2 {x.ToString()}", 0);
+                    // }
+                    // else
+                    // {
+                    //     g1.setStr($"3 {x.ToString()}", 0);
+                    // }
                 }
 
                 return g1;

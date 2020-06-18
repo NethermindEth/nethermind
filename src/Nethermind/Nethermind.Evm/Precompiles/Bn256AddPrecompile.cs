@@ -50,7 +50,7 @@ namespace Nethermind.Evm.Precompiles
 
             inputData ??= Bytes.Empty;
             Span<byte> inputDataSpan = stackalloc byte[128];
-            inputData.AsSpan().CopyTo(inputDataSpan.Slice(0, inputData.Length));
+            inputData.AsSpan(0, Math.Min(128, inputData.Length)).CopyTo(inputDataSpan.Slice(0, Math.Min(128, inputData.Length)));
 
             UInt256.CreateFromBigEndian(out UInt256 x1, inputDataSpan.Slice(0, 32));
             UInt256.CreateFromBigEndian(out UInt256 y1, inputDataSpan.Slice(32, 32));
@@ -58,17 +58,37 @@ namespace Nethermind.Evm.Precompiles
             UInt256.CreateFromBigEndian(out UInt256 y2, inputDataSpan.Slice(96, 32));
 
             Bn256.G1 a = Bn256.G1.Create(x1, y1);
+            if (!a.IsValid())
+            {
+                return (Bytes.Empty, false);
+            }
+            
             Bn256.G1 b = Bn256.G1.Create(x2, y2);
+            if (!b.IsValid())
+            {
+                return (Bytes.Empty, false);
+            }
 
             Bn256.G1 result = new Bn256.G1();
             result.Add(a, b);
+
+            byte[] encodedResult;
+            if (result.IsZero())
+            {
+                encodedResult = ZeroResult;
+            }
+            else
+            {
+                string[] resultStrings = result.GetStr(0).Split(" ");
+                UInt256 resA = UInt256.Parse(resultStrings[1]);
+                UInt256 resB = UInt256.Parse(resultStrings[2]);
+                encodedResult = EncodeResult(resA, resB);
+            }
             
-            string[] resultStrings = result.GetStr(0).Split(" ");
-            UInt256 resA = UInt256.Parse(resultStrings[1]);
-            UInt256 resB = UInt256.Parse(resultStrings[2]);
-            
-            return (EncodeResult(resA, resB), true);
+            return (encodedResult, true);
         }
+        
+        private static byte[] ZeroResult = new byte[64];
 
         private static byte[] EncodeResult(UInt256 w1, UInt256 w2)
         {
