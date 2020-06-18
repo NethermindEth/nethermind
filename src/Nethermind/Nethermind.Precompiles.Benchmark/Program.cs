@@ -32,6 +32,7 @@ namespace Nethermind.Precompiles.Benchmark
             // BenchmarkRunner.Run<Blake2fBenchmark>();
             // BenchmarkRunner.Run<KeccakBenchmark>();
             BenchmarkRunner.Run<BnPairBenchmark>();
+            BenchmarkRunner.Run<Bn256PairingBenchmark>();
             BenchmarkRunner.Run<BnAddBenchmark>();
             BenchmarkRunner.Run<Bn256AddBenchmark>();
             BenchmarkRunner.Run<BnMulBenchmark>();

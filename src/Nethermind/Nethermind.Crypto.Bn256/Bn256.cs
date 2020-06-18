@@ -394,10 +394,17 @@ namespace Nethermind.Crypto.Bn256
                     throw new ArgumentException("mclBnG1_serialize");
                 }
             }
-            
-            public static Bn256.G1 Create(UInt256 x, UInt256 y)
+
+            public static Bn256.G1 CreateFromBigEndian(Span<byte> x, Span<byte> y)
             {
-                Bn256.G1 g1 = new Bn256.G1();
+                UInt256.CreateFromBigEndian(out UInt256 xInt, x);
+                UInt256.CreateFromBigEndian(out UInt256 yInt, y);
+                return Create(xInt, yInt);
+            }
+            
+            public static G1 Create(UInt256 x, UInt256 y)
+            {
+                G1 g1 = new G1();
                 if (x.IsZero && y.IsZero)
                 {
                     g1.Clear();
@@ -545,6 +552,30 @@ namespace Nethermind.Crypto.Bn256
                 }
 
                 return sb.ToString();
+            }
+
+            public static G2 CreateFromBigEndian(Span<byte> a, Span<byte> b, Span<byte> c, Span<byte> d)
+            {
+                UInt256.CreateFromBigEndian(out UInt256 aInt, a);
+                UInt256.CreateFromBigEndian(out UInt256 bInt, b);
+                UInt256.CreateFromBigEndian(out UInt256 cInt, c);
+                UInt256.CreateFromBigEndian(out UInt256 dInt, d);
+                return Create(aInt, bInt, cInt, dInt);
+            }
+            
+            public static G2 Create(UInt256 a, UInt256 b, UInt256 c, UInt256 d)
+            {
+                G2 g2 = new G2();
+                if (a.IsZero && b.IsZero && c.IsZero && d.IsZero)
+                {
+                    g2.Clear();
+                }
+                else
+                {
+                    g2.setStr($"1 {a.ToString()} {b.ToString()} {c.ToString()} {d.ToString()}", 0);
+                }
+
+                return g2;
             }
 
             public void Neg(G2 x)

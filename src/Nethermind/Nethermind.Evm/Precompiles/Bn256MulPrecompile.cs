@@ -26,6 +26,9 @@ using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Evm.Precompiles
 {
+    /// <summary>
+    /// https://github.com/herumi/mcl/blob/master/api.md
+    /// </summary>
     public class Bn256MulPrecompile : IPrecompile
     {
         public static IPrecompile Instance = new Bn256MulPrecompile();
