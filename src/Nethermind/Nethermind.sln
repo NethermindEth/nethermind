@@ -222,8 +222,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.DepositContract.
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Cryptography.Bls", "Nethermind.Cryptography.Bls\Nethermind.Cryptography.Bls.csproj", "{1A581DDC-020D-4725-89E3-437D15FEF97F}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "bn256", "..\..\..\mcl\ffi\cs\bn256.csproj", "{E9D06B1B-EA22-4EF4-BA4B-422F7625966B}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Crypto.Bn256", "Nethermind.Crypto.Bn256\Nethermind.Crypto.Bn256.csproj", "{A897629E-6AA0-41F0-A5A5-FD33F607D8A3}"
 EndProject
 Global
@@ -604,10 +602,6 @@ Global
 		{1A581DDC-020D-4725-89E3-437D15FEF97F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{1A581DDC-020D-4725-89E3-437D15FEF97F}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{1A581DDC-020D-4725-89E3-437D15FEF97F}.Release|Any CPU.Build.0 = Release|Any CPU
-		{E9D06B1B-EA22-4EF4-BA4B-422F7625966B}.Debug|Any CPU.ActiveCfg = Debug|x64
-		{E9D06B1B-EA22-4EF4-BA4B-422F7625966B}.Debug|Any CPU.Build.0 = Debug|x64
-		{E9D06B1B-EA22-4EF4-BA4B-422F7625966B}.Release|Any CPU.ActiveCfg = Release|x64
-		{E9D06B1B-EA22-4EF4-BA4B-422F7625966B}.Release|Any CPU.Build.0 = Release|x64
 		{A897629E-6AA0-41F0-A5A5-FD33F607D8A3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{A897629E-6AA0-41F0-A5A5-FD33F607D8A3}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{A897629E-6AA0-41F0-A5A5-FD33F607D8A3}.Release|Any CPU.ActiveCfg = Release|Any CPU
