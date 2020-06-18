@@ -59,16 +59,7 @@ namespace Nethermind.Evm.Precompiles
             UInt256.CreateFromBigEndian(out UInt256 y, inputDataSpan.Slice(32, 32));
             UInt256.CreateFromBigEndian(out UInt256 s, inputDataSpan.Slice(64, 32));
 
-            Bn256.G1 a = new Bn256.G1();
-            if (y.IsEven)
-            {
-                a.setStr($"2 {x.ToString()}", 0);
-            }
-            else
-            {
-                a.setStr($"3 {x.ToString()}", 0);
-            }
-            
+            Bn256.G1 a = Bn256.G1.Create(x, y);
             Bn256.G1 resultAlt = MulAlternative(ref a, s);
 
             string[] resultStrings = resultAlt.GetStr(0).Split(" ");

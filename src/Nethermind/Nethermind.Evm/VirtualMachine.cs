@@ -401,7 +401,7 @@ namespace Nethermind.Evm
                 [Sha256Precompile.Instance.Address] = new CodeInfo(Sha256Precompile.Instance),
                 [Ripemd160Precompile.Instance.Address] = new CodeInfo(Ripemd160Precompile.Instance),
                 [IdentityPrecompile.Instance.Address] = new CodeInfo(IdentityPrecompile.Instance),
-                [Bn128AddPrecompile.Instance.Address] = new CodeInfo(Bn128AddPrecompile.Instance),
+                [Bn128AddPrecompile.Instance.Address] = new CodeInfo(Bn256AddPrecompile.Instance),
                 [Bn128MulPrecompile.Instance.Address] = new CodeInfo(Bn128MulPrecompile.Instance),
                 [Bn128PairingPrecompile.Instance.Address] = new CodeInfo(Bn128PairingPrecompile.Instance),
                 [ModExpPrecompile.Instance.Address] = new CodeInfo(ModExpPrecompile.Instance),

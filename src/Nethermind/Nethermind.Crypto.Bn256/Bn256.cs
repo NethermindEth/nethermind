@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Runtime.InteropServices;
 using System.Text;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Crypto.Bn256
 {
@@ -388,6 +389,28 @@ namespace Nethermind.Crypto.Bn256
                 {
                     throw new ArgumentException("mclBnG1_serialize");
                 }
+            }
+            
+            public static Bn256.G1 Create(UInt256 x, UInt256 y)
+            {
+                Bn256.G1 g1 = new Bn256.G1();
+                if (x.IsZero)
+                {
+                    g1.Clear();
+                }
+                else
+                {
+                    if (y.IsEven)
+                    {
+                        g1.setStr($"2 {x.ToString()}", 0);
+                    }
+                    else
+                    {
+                        g1.setStr($"3 {x.ToString()}", 0);
+                    }
+                }
+
+                return g1;
             }
 
             public void setStr(String s, int ioMode)

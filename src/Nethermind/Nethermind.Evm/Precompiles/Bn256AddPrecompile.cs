@@ -57,25 +57,8 @@ namespace Nethermind.Evm.Precompiles
             UInt256.CreateFromBigEndian(out UInt256 x2, inputDataSpan.Slice(64, 32));
             UInt256.CreateFromBigEndian(out UInt256 y2, inputDataSpan.Slice(96, 32));
 
-            Bn256.G1 a = new Bn256.G1();
-            if (y1.IsEven)
-            {
-                a.setStr($"2 {x1.ToString()}", 0);
-            }
-            else
-            {
-                a.setStr($"3 {x1.ToString()}", 0);
-            }
-
-            Bn256.G1 b = new Bn256.G1();
-            if (y2.IsEven)
-            {
-                b.setStr($"2 {x2.ToString()}", 0);
-            }
-            else
-            {
-                b.setStr($"3 {x2.ToString()}", 0);    
-            }
+            Bn256.G1 a = Bn256.G1.Create(x1, y1);
+            Bn256.G1 b = Bn256.G1.Create(x2, y2);
 
             Bn256.G1 result = new Bn256.G1();
             result.Add(a, b);
