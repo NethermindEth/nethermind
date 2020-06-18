@@ -27,7 +27,7 @@ namespace Nethermind.Evm.Precompiles
     {
         public static IPrecompile Instance = new Bn256AddPrecompile();
 
-        private Bn256AddPrecompile()
+        static Bn256AddPrecompile()
         {
             Bn256.init();
         }

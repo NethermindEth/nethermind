@@ -17,6 +17,7 @@
 using System;
 using System.Numerics;
 using System.Security.Cryptography;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Crypto
 {
@@ -84,6 +85,11 @@ namespace Nethermind.Crypto
         }
 
         public static bool TestBit(this BigInteger a, int i)
+        {
+            return (a & (BigInteger.One << i)) != 0;
+        }
+        
+        public static bool TestBit(this UInt256 a, int i)
         {
             return (a & (BigInteger.One << i)) != 0;
         }
