@@ -35,11 +35,7 @@ namespace Nethermind.Crypto.ZkSnarks
 
         public Fp(BigInteger value)
         {
-            _value = value % Parameters.P;
-            if (_value > Parameters.P)
-            {
-                throw new InvalidOperationException();
-            }
+            _value = value;
         }
         
         public Fp(Span<byte> bytes)
