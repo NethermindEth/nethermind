@@ -30,11 +30,5 @@
   </ItemGroup>
   <ItemGroup>
     <None Remove="mclbn256.dll" />
-    <Content Include="mclbn256.dll">
-      <Link>mclbn256.dll</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <Pack>true</Pack>
-      <PackagePath>runtimes/win-x64/native/mclbn256.dll</PackagePath>
-    </Content>
   </ItemGroup>
 </Project>
