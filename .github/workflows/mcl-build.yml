@@ -33,14 +33,13 @@ jobs:
       run: |
         call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
         cd D:\a\nethermind\nethermind\mcl && call mklib.bat dll
-        cd D:\a\nethermind\nethermind\mcl\lib && ls -al
       shell: cmd
     - uses: actions/upload-artifact@v1
       name: Uploading Windows artifact
       if: matrix.os == 'windows-latest'
       with:
         name: windows_artifact
-        path: mcl/lib/mclbn384_256.dll
+        path: mcl/bin/mclbn384_256.dll
     - name: Building MCL for Linux
       if: matrix.os == 'ubuntu-latest'
       run: |
