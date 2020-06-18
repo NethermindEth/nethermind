@@ -1,9 +1,9 @@
 name: MCL Build
 
-# on:
-#   repository_dispatch:
-#     types: mcl_build
-on: push
+on:
+  repository_dispatch:
+    types: mcl_build
+
 jobs:
   mcl-building:
     name: Building mcl
