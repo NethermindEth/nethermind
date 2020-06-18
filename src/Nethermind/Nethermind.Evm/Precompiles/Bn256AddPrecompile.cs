@@ -29,6 +29,8 @@ namespace Nethermind.Evm.Precompiles
     public class Bn256AddPrecompile : IPrecompile
     {
         public static IPrecompile Instance = new Bn256AddPrecompile();
+        
+        private static byte[] _zeroResult = new byte[64];
 
         static Bn256AddPrecompile()
         {
@@ -78,7 +80,7 @@ namespace Nethermind.Evm.Precompiles
             byte[] encodedResult;
             if (result.IsZero())
             {
-                encodedResult = ZeroResult;
+                encodedResult = _zeroResult;
             }
             else
             {
@@ -90,8 +92,6 @@ namespace Nethermind.Evm.Precompiles
             
             return (encodedResult, true);
         }
-        
-        private static byte[] ZeroResult = new byte[64];
 
         private static byte[] EncodeResult(UInt256 w1, UInt256 w2)
         {

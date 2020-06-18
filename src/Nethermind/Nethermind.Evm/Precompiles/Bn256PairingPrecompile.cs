@@ -36,6 +36,7 @@ namespace Nethermind.Evm.Precompiles
 
         private Bn256PairingPrecompile()
         {
+            Bn256.init();
         }
 
         public Address Address { get; } = Address.FromNumber(8);
