@@ -366,15 +366,13 @@ namespace Nethermind.Crypto.Bn256
             {
                 mclBnG1_clear(ref this);
             }
-
-            // public void Deserialize(byte[] data, int len)
-            // {
-            //     if (mclBnG1_deserialize(ref this, data, len) != 0)
-            //     {
-            //         throw new ArgumentException("mclBnFr_deserialize");
-            //     }
-            // }
             
+            /// <summary>
+            /// This does not work - if you can fix it then we can replace the usage of string in Bn256 precompiles
+            /// </summary>
+            /// <param name="data"></param>
+            /// <param name="len"></param>
+            /// <exception cref="ArgumentException"></exception>
             public void Deserialize(byte[] data, int len)
             {
                 if (mclBnG1_deserialize(ref this, data, len) != 0)
@@ -383,6 +381,12 @@ namespace Nethermind.Crypto.Bn256
                 }
             }
             
+            /// <summary>
+            /// This does not work - if you can fix it then we can replace the usage of string in Bn256 precompiles
+            /// </summary>
+            /// <param name="data"></param>
+            /// <param name="len"></param>
+            /// <exception cref="ArgumentException"></exception>
             public void Serialize(byte[] data, int len)
             {
                 if (mclBnG1_serialize(data, len, this) != 0)
@@ -400,6 +404,7 @@ namespace Nethermind.Crypto.Bn256
                 }
                 else
                 {
+                    /* we cannot use compressed form as we are using mcl for validating the x,y pair */
                     g1.setStr($"1 {x.ToString()} {y.ToString()}", 0);
                     // if (y.IsEven)
                     // {
