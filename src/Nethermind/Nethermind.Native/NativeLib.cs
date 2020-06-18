@@ -48,9 +48,9 @@ namespace Nethermind.Native
             OsPlatform platform = GetPlatform();
             string libPath = platform switch
             {
-                OsPlatform.Windows => $"runtimes\\linux-x64\\native\\lib{libraryName}.so",
-                OsPlatform.Linux => $"runtimes\\linux-x64\\native\\lib{libraryName}.dylib",
-                OsPlatform.Mac => $"runtimes\\win-x64\\native\\{libraryName}.dll",
+                OsPlatform.Linux => $"runtimes\\linux-x64\\native\\lib{libraryName}.so",
+                OsPlatform.Mac => $"runtimes\\osx-x64\\native\\lib{libraryName}.dylib",
+                OsPlatform.Windows => $"runtimes\\win-x64\\native\\{libraryName}.dll",
                 _ => throw new NotSupportedException($"Platform support missing: {platform}")
             };
 
