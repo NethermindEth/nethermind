@@ -26,7 +26,8 @@ using Nethermind.Dirichlet.Numerics;
 namespace Nethermind.Dirichlet.Benchmark
 {
     [MemoryDiagnoser]
-    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
+    [ShortRunJob]
+    // [SimpleJob(RuntimeMoniker.NetCoreApp31)]
     public class ConversionBenchmarks
     {
         private BigInteger[] _scenariosBI = new BigInteger[3];
@@ -56,18 +57,18 @@ namespace Nethermind.Dirichlet.Benchmark
         {
             return _scenariosU[ScenarioIndex];
         }
-
+        
         [Benchmark]
         public UInt256 Current_bigint_to_uint256()
         {
-            UInt256.Create(out UInt256 res, _scenariosBI[ScenarioIndex]);
+            UInt256.CreateOld(out UInt256 res, _scenariosBI[ScenarioIndex]);
             return res;
         }
         
         [Benchmark]
         public UInt256 Improved_bigint_to_uint256()
         {
-            UInt256.CreateImproved(out UInt256 res, _scenariosBI[ScenarioIndex]);
+            UInt256.Create(out UInt256 res, _scenariosBI[ScenarioIndex]);
             return res;
         }
     }
