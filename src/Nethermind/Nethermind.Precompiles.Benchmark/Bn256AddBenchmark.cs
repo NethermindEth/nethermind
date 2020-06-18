@@ -6,8 +6,8 @@ namespace Nethermind.Precompiles.Benchmark
 {
     [HtmlExporter]
     [MemoryDiagnoser]
-    // [SimpleJob(RuntimeMoniker.NetCoreApp31)]
-    [DryJob(RuntimeMoniker.NetCoreApp31)]
+    [ShortRunJob(RuntimeMoniker.NetCoreApp31)]
+    // [DryJob(RuntimeMoniker.NetCoreApp31)]
     public class Bn256AddBenchmark : PrecompileBenchmarkBase
     {
         protected override IPrecompile Precompile => Bn256AddPrecompile.Instance;

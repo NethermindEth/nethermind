@@ -25,7 +25,21 @@ namespace Nethermind.Crypto.ZkSnarks
     /// </summary>
     public class PairingCheck
     {
-        public static readonly BigInteger LoopCount = BigInteger.Parse("29793968203157093288");
+        public static readonly UInt256 LoopCount = UInt256.Parse("29793968203157093288");
+        public static readonly BigInteger LoopCountBI = LoopCount;
+        public static readonly int LoopCountBitLength = LoopCountBI.BitLength();
+        public static IReadOnlyDictionary<int, bool> _loopTestBits;
+
+        static PairingCheck()
+        {
+            Dictionary<int, bool> loopTestBits = new Dictionary<int, bool>();
+            for (int i = 0; i < 256; i++)
+            {
+                loopTestBits[i] = LoopCount.TestBit(i);
+            }
+            
+            _loopTestBits = loopTestBits;
+        }
 
         private readonly List<Pair> _pairs = new List<Pair>();
         private Fp12 _product = Fp12.One;
@@ -78,13 +92,13 @@ namespace Nethermind.Crypto.ZkSnarks
             int idx = 0;
 
             // for each bit except most significant one
-            for (int i = LoopCount.BitLength() - 2; i >= 0; i--)
+            for (int i = LoopCountBitLength - 2; i >= 0; i--)
             {
                 EllCoeffs cInLoop = coeffs[idx++];
                 f = f.Squared();
                 f = f.MulBy024(cInLoop.Ell0, g1.Y.Mul(cInLoop.EllVw), g1.X.Mul(cInLoop.EllVv));
 
-                if (LoopCount.TestBit(i))
+                if (_loopTestBits[i])
                 {
                     cInLoop = coeffs[idx++];
                     f = f.MulBy024(cInLoop.Ell0, g1.Y.Mul(cInLoop.EllVw), g1.X.Mul(cInLoop.EllVv));
@@ -107,14 +121,14 @@ namespace Nethermind.Crypto.ZkSnarks
             Bn128Fp2 addend = baseElement;
 
             // for each bit except most significant one
-            for (int i = LoopCount.BitLength() - 2; i >= 0; i--)
+            for (int i = LoopCountBitLength - 2; i >= 0; i--)
             {
                 Precomputed doubling = FlippedMillerLoopDoubling(addend);
 
                 addend = doubling.G2;
                 coeffs.Add(doubling.Coeffs);
 
-                if (LoopCount.TestBit(i))
+                if (_loopTestBits[i])
                 {
                     Precomputed additionInLoop = FlippedMillerLoopMixedAddition(baseElement, addend);
                     addend = additionInLoop.G2;
@@ -230,7 +244,7 @@ namespace Nethermind.Crypto.ZkSnarks
             return v;
         }
 
-        private class Precomputed
+        private readonly struct Precomputed
         {
             public Bn128Fp2 G2 { get; }
             public EllCoeffs Coeffs { get; }
@@ -242,7 +256,7 @@ namespace Nethermind.Crypto.ZkSnarks
             }
         }
 
-        public class Pair
+        private readonly struct Pair
         {
             private Bn128Fp G1 { get; }
             private Bn128Fp2 G2 { get; }
@@ -265,7 +279,7 @@ namespace Nethermind.Crypto.ZkSnarks
             }
         }
 
-        private class EllCoeffs
+        private readonly struct EllCoeffs
         {
             public Fp2 Ell0 { get; }
             public Fp2 EllVw { get; }

@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.Running;
 
@@ -35,6 +36,7 @@ namespace Nethermind.Precompiles.Benchmark
             BenchmarkRunner.Run<Bn256AddBenchmark>();
             BenchmarkRunner.Run<BnMulBenchmark>();
             BenchmarkRunner.Run<Bn256MulBenchmark>();
+            Console.ReadLine();
         }
 #endif
     }

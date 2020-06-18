@@ -61,11 +61,6 @@ namespace Nethermind.Crypto
             return bitLength + 1;
         }
 
-        public static int BitLength(this UInt256 a)
-        {
-            throw new NotImplementedException();
-        }
-
         public static bool TestBit(this BigInteger a, int i)
         {
             return (a & (BigInteger.One << i)) != 0;
