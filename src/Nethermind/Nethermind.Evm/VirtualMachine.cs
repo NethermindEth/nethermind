@@ -403,7 +403,7 @@ namespace Nethermind.Evm
                 [IdentityPrecompile.Instance.Address] = new CodeInfo(IdentityPrecompile.Instance),
                 [Bn128AddPrecompile.Instance.Address] = new CodeInfo(Bn256AddPrecompile.Instance),
                 [Bn128MulPrecompile.Instance.Address] = new CodeInfo(Bn256MulPrecompile.Instance),
-                [Bn128PairingPrecompile.Instance.Address] = new CodeInfo(Bn128PairingPrecompile.Instance),
+                [Bn128PairingPrecompile.Instance.Address] = new CodeInfo(Bn256PairingPrecompile.Instance),
                 [ModExpPrecompile.Instance.Address] = new CodeInfo(ModExpPrecompile.Instance),
                 [Blake2FPrecompile.Instance.Address] = new CodeInfo(Blake2FPrecompile.Instance),
             };

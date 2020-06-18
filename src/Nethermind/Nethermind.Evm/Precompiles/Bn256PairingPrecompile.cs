@@ -67,21 +67,27 @@ namespace Nethermind.Evm.Precompiles
                 return (Bytes.Empty, false);
             }
 
-            List<(Bn256.G1 P, Bn256.G2 Q)> _pairs = new List<(Bn256.G1 P, Bn256.G2 Q)>();
-            // iterating over all pairs
-            for (int offset = 0; offset < inputData.Length; offset += PairSize)
+            UInt256 result = UInt256.One;
+            if (inputData.Length > 0)
             {
-                Span<byte> pairData = inputData.Slice(offset, PairSize);
-                (Bn256.G1 P, Bn256.G2 Q) pair = DecodePair(pairData);
-                if (!pair.P.IsValid() || !pair.Q.IsValid())
-                {
-                    return (Bytes.Empty, false);
-                }
+                 List<(Bn256.G1 P, Bn256.G2 Q)> _pairs = new List<(Bn256.G1 P, Bn256.G2 Q)>();
+                 
+                 // iterating over all pairs
+                 for (int offset = 0; offset < inputData.Length; offset += PairSize)
+                 {
+                     Span<byte> pairData = inputData.Slice(offset, PairSize);
+                     (Bn256.G1 P, Bn256.G2 Q) pair = DecodePair(pairData);
+                     if (!pair.P.IsValid() || !pair.Q.IsValid())
+                     {
+                         return (Bytes.Empty, false);
+                     }
 
-                _pairs.Add(pair);
+                     _pairs.Add(pair);
+                 }
+                 
+                 result = RunPairingCheck(_pairs);
             }
 
-            UInt256 result = RunPairingCheck(_pairs);
             byte[] resultBytes = new byte[32];
             result.ToBigEndian(resultBytes);
             return (resultBytes, true);
