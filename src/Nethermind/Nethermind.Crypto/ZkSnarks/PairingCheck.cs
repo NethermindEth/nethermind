@@ -252,7 +252,7 @@ namespace Nethermind.Crypto.ZkSnarks
             return v;
         }
 
-        private readonly struct Precomputed
+        private class Precomputed
         {
             public Bn128Fp2 G2 { get; }
             public EllCoeffs Coeffs { get; }
@@ -264,7 +264,7 @@ namespace Nethermind.Crypto.ZkSnarks
             }
         }
 
-        private readonly struct Pair
+        private class Pair
         {
             private Bn128Fp G1 { get; }
             private Bn128Fp2 G2 { get; }
@@ -287,7 +287,7 @@ namespace Nethermind.Crypto.ZkSnarks
             }
         }
 
-        private readonly struct EllCoeffs
+        private class EllCoeffs
         {
             public Fp2 Ell0 { get; }
             public Fp2 EllVw { get; }
