@@ -1788,7 +1788,7 @@ namespace Nethermind.Evm
                     }
                     case Instruction.JUMP:
                     {
-                        if (!UpdateGas(GasCostOf.Mid + 1, ref gasAvailable))
+                        if (!UpdateGas(GasCostOf.Mid, ref gasAvailable))
                         {
                             EndInstructionTraceError(EvmExceptionType.OutOfGas);
                             return CallResult.OutOfGasException;
@@ -1800,7 +1800,7 @@ namespace Nethermind.Evm
                     }
                     case Instruction.JUMPI:
                     {
-                        if (!UpdateGas(GasCostOf.High + 1, ref gasAvailable))
+                        if (!UpdateGas(GasCostOf.High, ref gasAvailable))
                         {
                             EndInstructionTraceError(EvmExceptionType.OutOfGas);
                             return CallResult.OutOfGasException;
