@@ -18,7 +18,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto.Bn256;
+using Nethermind.Crypto;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Evm.Precompiles
@@ -31,11 +31,6 @@ namespace Nethermind.Evm.Precompiles
         public static IPrecompile Instance = new Bn256AddPrecompile();
         
         private static byte[] _zeroResult = new byte[64];
-
-        static Bn256AddPrecompile()
-        {
-            Bn256.init();
-        }
 
         public Address Address { get; } = Address.FromNumber(6);
 

@@ -222,7 +222,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.DepositContract.
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Cryptography.Bls", "Nethermind.Cryptography.Bls\Nethermind.Cryptography.Bls.csproj", "{1A581DDC-020D-4725-89E3-437D15FEF97F}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Crypto.Bn256", "Nethermind.Crypto.Bn256\Nethermind.Crypto.Bn256.csproj", "{A897629E-6AA0-41F0-A5A5-FD33F607D8A3}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Native", "Nethermind.Native\Nethermind.Native.csproj", "{77C56006-3DE8-4B3B-A0BB-CFD2E28CF8A9}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -602,10 +602,10 @@ Global
 		{1A581DDC-020D-4725-89E3-437D15FEF97F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{1A581DDC-020D-4725-89E3-437D15FEF97F}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{1A581DDC-020D-4725-89E3-437D15FEF97F}.Release|Any CPU.Build.0 = Release|Any CPU
-		{A897629E-6AA0-41F0-A5A5-FD33F607D8A3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{A897629E-6AA0-41F0-A5A5-FD33F607D8A3}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{A897629E-6AA0-41F0-A5A5-FD33F607D8A3}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{A897629E-6AA0-41F0-A5A5-FD33F607D8A3}.Release|Any CPU.Build.0 = Release|Any CPU
+		{77C56006-3DE8-4B3B-A0BB-CFD2E28CF8A9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{77C56006-3DE8-4B3B-A0BB-CFD2E28CF8A9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{77C56006-3DE8-4B3B-A0BB-CFD2E28CF8A9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{77C56006-3DE8-4B3B-A0BB-CFD2E28CF8A9}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

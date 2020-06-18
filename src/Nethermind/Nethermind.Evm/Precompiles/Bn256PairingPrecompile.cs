@@ -19,8 +19,7 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto.Bn256;
-using Nethermind.Crypto.ZkSnarks;
+using Nethermind.Crypto;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Evm.Precompiles
@@ -33,11 +32,6 @@ namespace Nethermind.Evm.Precompiles
         private const int PairSize = 192;
 
         public static IPrecompile Instance = new Bn256PairingPrecompile();
-
-        private Bn256PairingPrecompile()
-        {
-            Bn256.init();
-        }
 
         public Address Address { get; } = Address.FromNumber(8);
 

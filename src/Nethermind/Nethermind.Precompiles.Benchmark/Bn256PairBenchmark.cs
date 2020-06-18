@@ -11,6 +11,6 @@ namespace Nethermind.Precompiles.Benchmark
     public class Bn256PairingBenchmark : PrecompileBenchmarkBase
     {
         protected override IPrecompile Precompile => Bn256PairingPrecompile.Instance;
-        protected override string InputsDirectory => "bnmul";
+        protected override string InputsDirectory => "bnpair";
     }
 }
