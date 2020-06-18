@@ -26,16 +26,24 @@ namespace Nethermind.Crypto.ZkSnarks
     public class PairingCheck
     {
         private static readonly UInt256 LoopCount = UInt256.Parse("29793968203157093288");
-        private static readonly BigInteger LoopCountBI = LoopCount;
+        private static readonly BigInteger LoopCountBI = BigInteger.Parse("29793968203157093288");
         private static readonly int LoopCountBitLength = LoopCountBI.BitLength();
         private static IReadOnlyDictionary<int, bool> _loopTestBits;
+        private static IReadOnlyDictionary<int, bool> _loopTestBitsOld;
 
         static PairingCheck()
         {
             Dictionary<int, bool> loopTestBits = new Dictionary<int, bool>();
+            Dictionary<int, bool> loopTestBitsBi = new Dictionary<int, bool>();
             for (int i = 0; i < 256; i++)
             {
                 loopTestBits[i] = LoopCount.TestBit(i);
+                loopTestBitsBi[i] = LoopCountBI.TestBit(i);
+
+                if (loopTestBits[i] != loopTestBitsBi[i])
+                {
+                    
+                }
             }
             
             _loopTestBits = loopTestBits;
