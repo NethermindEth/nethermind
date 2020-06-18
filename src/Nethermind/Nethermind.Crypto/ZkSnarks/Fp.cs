@@ -44,11 +44,7 @@ namespace Nethermind.Crypto.ZkSnarks
         
         public Fp(Span<byte> bytes)
         {
-            _value = bytes.ToUnsignedBigInteger() % Parameters.P;
-            if (_value > Parameters.P)
-            {
-                throw new InvalidOperationException();
-            }
+            _value = bytes.ToUnsignedBigInteger();
         }
 
         public static readonly Fp Zero = new Fp(BigInteger.Zero);
