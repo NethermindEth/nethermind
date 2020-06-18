@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -59,10 +60,10 @@ namespace Nethermind.Evm.Precompiles
                 inputData = inputData.PadRight(96);
             }
             
-            byte[] x = inputData.Slice(0, 32);
-            byte[] y = inputData.Slice(32, 32);
+            Span<byte> x = inputData.AsSpan().Slice(0, 32);
+            Span<byte> y = inputData.AsSpan().Slice(32, 32);
             
-            byte[] s = inputData.Slice(64, 32);
+            Span<byte> s = inputData.AsSpan().Slice(64, 32);
 
             Bn128Fp p = Bn128Fp.Create(x, y);
             if (p == null)
@@ -70,13 +71,14 @@ namespace Nethermind.Evm.Precompiles
                 return (Bytes.Empty, false);
             }
 
-            Bn128Fp res = p.Mul(s.ToUnsignedBigInteger()).ToEthNotation();
+            BigInteger sInt = s.ToUnsignedBigInteger();
+            Bn128Fp res = p.Mul(sInt).ToEthNotation();
 
             return (EncodeResult(res.X.GetBytes(), res.Y.GetBytes()), true);
         }
         
-        private static byte[] EncodeResult(byte[] w1, byte[] w2) {
-
+        private static byte[] EncodeResult(byte[] w1, byte[] w2)
+        {
             byte[] result = new byte[64];
 
             // TODO: do I need to strip leading zeros here? // probably not

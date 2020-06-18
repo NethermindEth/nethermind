@@ -5,11 +5,11 @@ using Nethermind.Evm.Precompiles;
 namespace Nethermind.Precompiles.Benchmark
 {
     [HtmlExporter]
-    [MemoryDiagnoser]
     [SimpleJob(RuntimeMoniker.NetCoreApp31)]
-    public class BnMulBenchmark : PrecompileBenchmarkBase
+    [MemoryDiagnoser]
+    public class Bn256MulBenchmark : PrecompileBenchmarkBase
     {
-        protected override IPrecompile Precompile => Bn128MulPrecompile.Instance;
+        protected override IPrecompile Precompile => Bn256MulPrecompile.Instance;
         protected override string InputsDirectory => "bnmul";
     }
 }

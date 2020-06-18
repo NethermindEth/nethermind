@@ -59,11 +59,11 @@ namespace Nethermind.Evm.Precompiles
                 inputData = inputData.PadRight(128);
             }
 
-            byte[] x1 = inputData.Slice(0, 32);
-            byte[] y1 = inputData.Slice(32, 32);
+            Span<byte> x1 = inputData.AsSpan().Slice(0, 32);
+            Span<byte> y1 = inputData.AsSpan().Slice(32, 32);
 
-            byte[] x2 = inputData.Slice(64, 32);
-            byte[] y2 = inputData.Slice(96, 32);
+            Span<byte> x2 = inputData.AsSpan().Slice(64, 32);
+            Span<byte> y2 = inputData.AsSpan().Slice(96, 32);
 
             Bn128Fp p1 = Bn128Fp.Create(x1, y1);
             if (p1 == null)

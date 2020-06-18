@@ -96,9 +96,33 @@ namespace Nethermind.Core.Extensions
             }
         }
 
-        public static ulong CountBits(this Span<byte> thisSpan)
+        public static uint BitLength(this Span<byte> thisSpan)
         {
-            ulong result = 0;
+            uint result = 0;
+            if (Lzcnt.IsSupported)
+            {
+                Span<uint> uintSpam = MemoryMarshal.Cast<byte, uint>(thisSpan);
+                for (int i = 0; i < uintSpam.Length; i++)
+                {
+                    uint thisByteCount = Lzcnt.LeadingZeroCount(uintSpam[i]);
+                    result += thisByteCount;
+                    if (thisByteCount != 8)
+                    {
+                        break;
+                    }
+                }
+            }
+            else
+            {
+                throw new NotImplementedException();
+            }
+
+            return result;
+        }
+
+        public static uint CountBits(this Span<byte> thisSpan)
+        {
+            uint result = 0;
             if (Popcnt.IsSupported)
             {
                 Span<uint> uintSpam = MemoryMarshal.Cast<byte, uint>(thisSpan);
@@ -106,16 +130,16 @@ namespace Nethermind.Core.Extensions
                 {
                     result += Popcnt.PopCount(uintSpam[i]);
                 }
-
             }
             else
             {
                 for (int i = 0; i < thisSpan.Length; i++)
                 {
                     int n = thisSpan[i];
-                    while (n > 0) { 
-                        n &= n - 1; 
-                        result++; 
+                    while (n > 0)
+                    {
+                        n &= n - 1;
+                        result++;
                     }
                 }
             }

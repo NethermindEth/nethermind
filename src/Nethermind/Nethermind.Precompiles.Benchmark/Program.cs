@@ -14,7 +14,6 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.Running;
 
 namespace Nethermind.Precompiles.Benchmark
@@ -31,8 +30,10 @@ namespace Nethermind.Precompiles.Benchmark
             // BenchmarkRunner.Run<Blake2fBenchmark>();
             // BenchmarkRunner.Run<KeccakBenchmark>();
             // BenchmarkRunner.Run<BnPairBenchmark>();
-            // BenchmarkRunner.Run<BnAddBenchmark>();
-            // BenchmarkRunner.Run<BnMulBenchmark>();
+            BenchmarkRunner.Run<BnAddBenchmark>();
+            BenchmarkRunner.Run<Bn256AddBenchmark>();
+            BenchmarkRunner.Run<BnMulBenchmark>();
+            BenchmarkRunner.Run<Bn256MulBenchmark>();
         }
 #endif
     }
