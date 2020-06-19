@@ -21,11 +21,12 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto.ZkSnarks;
 using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Evm.Precompiles
+namespace Nethermind.Evm.Precompiles.Bn256
 {
     /// <summary>
     ///     Code adapted from ethereumJ (https://github.com/ethereum/ethereumj)
     /// </summary>
+    [Obsolete("Use Bn256PairingPrecompile instead")]
     public class Bn128PairingPrecompile : IPrecompile
     {
         private const int PairSize = 192;

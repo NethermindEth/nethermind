@@ -27,6 +27,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Precompiles.Bls;
+using Nethermind.Evm.Precompiles.Bn256;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -403,9 +404,9 @@ namespace Nethermind.Evm
                 [Ripemd160Precompile.Instance.Address] = new CodeInfo(Ripemd160Precompile.Instance),
                 [IdentityPrecompile.Instance.Address] = new CodeInfo(IdentityPrecompile.Instance),
                 
-                [Bn128AddPrecompile.Instance.Address] = new CodeInfo(Bn256AddPrecompile.Instance),
-                [Bn128MulPrecompile.Instance.Address] = new CodeInfo(Bn256MulPrecompile.Instance),
-                [Bn128PairingPrecompile.Instance.Address] = new CodeInfo(Bn256PairingPrecompile.Instance),
+                [Bn256AddPrecompile.Instance.Address] = new CodeInfo(Bn256AddPrecompile.Instance),
+                [Bn256MulPrecompile.Instance.Address] = new CodeInfo(Bn256MulPrecompile.Instance),
+                [Bn256PairingPrecompile.Instance.Address] = new CodeInfo(Bn256PairingPrecompile.Instance),
                 [ModExpPrecompile.Instance.Address] = new CodeInfo(ModExpPrecompile.Instance),
                 
                 [Blake2FPrecompile.Instance.Address] = new CodeInfo(Blake2FPrecompile.Instance),

@@ -18,10 +18,9 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
 using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Evm.Precompiles
+namespace Nethermind.Evm.Precompiles.Bn256
 {
     /// <summary>
     /// https://github.com/herumi/mcl/blob/master/api.md
@@ -57,19 +56,19 @@ namespace Nethermind.Evm.Precompiles
             UInt256.CreateFromBigEndian(out UInt256 x2, inputDataSpan.Slice(64, 32));
             UInt256.CreateFromBigEndian(out UInt256 y2, inputDataSpan.Slice(96, 32));
 
-            Bn256.G1 a = Bn256.G1.Create(x1, y1);
+            Crypto.Bn256.G1 a = Crypto.Bn256.G1.Create(x1, y1);
             if (!a.IsValid())
             {
                 return (Bytes.Empty, false);
             }
 
-            Bn256.G1 b = Bn256.G1.Create(x2, y2);
+            Crypto.Bn256.G1 b = Crypto.Bn256.G1.Create(x2, y2);
             if (!b.IsValid())
             {
                 return (Bytes.Empty, false);
             }
 
-            Bn256.G1 result = new Bn256.G1();
+            Crypto.Bn256.G1 result = new Crypto.Bn256.G1();
             result.Add(a, b);
 
             byte[] encodedResult;
