@@ -12,7 +12,7 @@ namespace Nethermind.Crypto
 
         static Bn256()
         {
-            // NativeLibrary.SetDllImportResolver(typeof(Bn256).Assembly, NativeLib.ImportResolver);
+            NativeLibrary.SetDllImportResolver(typeof(Bn256).Assembly, NativeLib.ImportResolver);
             Init();
         }
 
@@ -26,16 +26,16 @@ namespace Nethermind.Crypto
         public static extern void mclBnFr_setInt(ref Fr y, int x);
 
         [DllImport(Bn256Lib)]
-        public static extern int mclBnFr_deserialize(ref Fr y, byte[] bytes, int len);
+        public static extern int mclBnFr_deserialize(ref Fr y, ref byte[] bytes, int len);
 
         [DllImport(Bn256Lib)]
-        public static extern int mclBnFr_serialize(byte[] bytes, int len, Fr y);
+        public static extern int mclBnFr_serialize(ref byte[] bytes, int len, Fr y);
 
         [DllImport(Bn256Lib)]
-        public static extern int mclBnG1_deserialize(ref G1 y, byte[] bytes, int len);
+        public static extern int mclBnG1_deserialize(ref G1 y, ref byte[] bytes, int len);
 
         [DllImport(Bn256Lib)]
-        public static extern int mclBnG1_serialize(byte[] bytes, int len, G1 y);
+        public static extern int mclBnG1_serialize(ref byte[] bytes, int len, G1 y);
 
         [DllImport(Bn256Lib)]
         public static extern int mclBnFr_setStr(ref Fr x, [In] [MarshalAs(UnmanagedType.LPStr)] string buf, long bufSize, int ioMode);

@@ -45,8 +45,6 @@ namespace Nethermind.Native
 
         public static IntPtr ImportResolver(string libraryName, Assembly assembly, DllImportSearchPath? searchPath)
         {
-            return IntPtr.Zero;
-            
             OsPlatform platform = GetPlatform();
             string libPath = platform switch
             {
