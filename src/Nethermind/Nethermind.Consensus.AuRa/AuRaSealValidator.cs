@@ -124,11 +124,11 @@ namespace Nethermind.Consensus.AuRa
         {
             if (header.IsGenesis) return true;
 
-            header.Author ??= GetSealer(header);
+            var author = GetSealer(header);
 
-            if (header.Author != header.Beneficiary)
+            if (author != header.Beneficiary)
             {
-                if (_logger.IsError) _logger.Error($"Author {header.Beneficiary} of the block {header.Number}, hash {header.Hash} doesn't match signer {header.Author}.");
+                if (_logger.IsError) _logger.Error($"Author {header.Beneficiary} of the block {header.Number}, hash {header.Hash} doesn't match signer {author}.");
                 return false;
             }
             
