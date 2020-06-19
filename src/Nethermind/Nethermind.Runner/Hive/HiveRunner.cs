@@ -53,6 +53,7 @@ namespace Nethermind.Runner.Hive
 
         public Task Start(CancellationToken cancellationToken)
         {
+            Console.WriteLine("hive initialization starting");
             _logger.Info("HIVE initialization starting");
             _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
             var hiveConfig = _configurationProvider.GetConfig<IHiveConfig>();

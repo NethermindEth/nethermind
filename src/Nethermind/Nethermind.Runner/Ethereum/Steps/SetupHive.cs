@@ -35,6 +35,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         public async Task Execute(CancellationToken cancellationToken)
         {
+            Console.WriteLine("SetupHive.cs");
             bool hiveEnabled = Environment.GetEnvironmentVariable("NETHERMIND_HIVE_ENABLED")?.ToLowerInvariant() == "true";
             if (hiveEnabled)
             {
