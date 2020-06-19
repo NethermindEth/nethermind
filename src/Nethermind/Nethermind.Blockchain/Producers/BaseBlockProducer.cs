@@ -161,7 +161,8 @@ namespace Nethermind.Blockchain.Producers
                 UInt256.Max(parent.Timestamp + 1, _timestamper.EpochSeconds),
                 Encoding.UTF8.GetBytes("Nethermind"))
             {
-                TotalDifficulty = parent.TotalDifficulty + difficulty
+                TotalDifficulty = parent.TotalDifficulty + difficulty,
+                Author = _sealer.Address
             };
             
             if (Logger.IsDebug) Logger.Debug($"Setting total difficulty to {parent.TotalDifficulty} + {difficulty}.");
