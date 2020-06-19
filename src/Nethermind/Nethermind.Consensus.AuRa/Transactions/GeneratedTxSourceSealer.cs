@@ -69,7 +69,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
                 nonce = _stateReader.GetNonce(stateRoot, address);
             }
              
-            return nonces[address] = ++nonce;
+            return nonces[address] = nonce;
         }
     }
 }
