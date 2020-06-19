@@ -46,7 +46,7 @@ namespace Nethermind.AuRa.Test.Transactions
             var nodeAddress = TestItem.AddressA;
             
             UInt256 expectedNonce = 10;
-            stateReader.GetNonce(blockHeader.StateRoot, nodeAddress).Returns(expectedNonce - 1);
+            stateReader.GetNonce(blockHeader.StateRoot, nodeAddress).Returns(expectedNonce);
             
             ulong expectedTimeStamp = 100;
             timestamper.EpochSeconds.Returns(expectedTimeStamp);
