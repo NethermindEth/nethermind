@@ -50,6 +50,8 @@ namespace Nethermind.Evm.Precompiles.Bls
         }
 
         private const int Len = 64;
+        
+        private readonly byte[] ZeroX16 = new byte[16];
 
         public (byte[], bool) Run(byte[] inputData)
         {
@@ -63,10 +65,21 @@ namespace Nethermind.Evm.Precompiles.Bls
             var x2 = inputDataSpan.Slice(2 * Len, Len);
             var y2 = inputDataSpan.Slice(3 * Len, Len);
 
-            var x1Int = new BigInteger(x1, true, true);
-            var y1Int = new BigInteger(y1, true, true);
-            var x2Int = new BigInteger(x2, true, true);
-            var y2Int = new BigInteger(y2, true, true);
+            if (!Bytes.AreEqual(ZeroX16, x1.Slice(0, 16)) ||
+                !Bytes.AreEqual(ZeroX16, y1.Slice(0, 16)) ||
+                !Bytes.AreEqual(ZeroX16, x2.Slice(0, 16)) ||
+                !Bytes.AreEqual(ZeroX16, y2.Slice(0, 16)))
+            {
+                return (Bytes.Empty, false);
+            }
+            
+            var x1Int = new BigInteger(x1.Slice(16), true, true);
+            var y1Int = new BigInteger(y1.Slice(16), true, true);
+            var x2Int = new BigInteger(x2.Slice(16), true, true);
+            var y2Int = new BigInteger(y2.Slice(16), true, true);
+
+            var x1Copy = x1.Slice(16).ToArray();
+            Bytes.ChangeEndianness8(x1Copy);
             
             MclBls12.G1 a = MclBls12.G1.Create(x1Int, y1Int);
             if (!a.IsValid())
@@ -102,9 +115,13 @@ namespace Nethermind.Evm.Precompiles.Bls
         private static byte[] EncodeResult(BigInteger w1, BigInteger w2)
         {
             byte[] result = new byte[2 * Len];
-            // need to copy
-            w1.TryWriteBytes(result.AsSpan(0 * Len + 16, Len), out _, true, true);
-            w2.TryWriteBytes(result.AsSpan(1 * Len + 16, Len), out _, true, true);
+            Span<byte> bytes = stackalloc byte[64];
+            w1.TryWriteBytes(bytes, out int bytesWritten, true, true);
+            bytes.Slice(0, bytesWritten).CopyTo(result.AsSpan(0 * Len + 16 + 48 - bytesWritten, bytesWritten));
+            
+            w2.TryWriteBytes(bytes, out bytesWritten, true, true);
+            bytes.Slice(0, bytesWritten).CopyTo(result.AsSpan(1 * Len + 16 + 48 - bytesWritten, bytesWritten));
+            
             return result;
         }
     }

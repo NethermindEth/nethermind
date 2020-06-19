@@ -12,7 +12,7 @@ namespace Nethermind.Crypto
 
         static Bn256()
         {
-            NativeLibrary.SetDllImportResolver(typeof(Bn256).Assembly, NativeLib.ImportResolver);
+            LibResolver.Setup();
             Init();
         }
 

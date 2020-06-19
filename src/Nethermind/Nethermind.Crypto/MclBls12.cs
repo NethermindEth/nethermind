@@ -4,7 +4,6 @@ using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Text;
 using Nethermind.Dirichlet.Numerics;
-using Nethermind.Native;
 
 namespace Nethermind.Crypto
 {
@@ -14,7 +13,7 @@ namespace Nethermind.Crypto
 
         static MclBls12()
         {
-            NativeLibrary.SetDllImportResolver(typeof(Bn256).Assembly, NativeLib.ImportResolver);
+            LibResolver.Setup();
             Init();
         }
 
@@ -52,7 +51,7 @@ namespace Nethermind.Crypto
         public static extern unsafe int mclBnFp_deserialize(ref Fr x, void* buf, int bufSize);
         
         [DllImport(MclBls12Lib)]
-        public static extern unsafe int mclBnG1_deserialize(ref G1 x, void* buf, int bufSize);
+        public static extern unsafe int mclBnG1_deserialize([In, Out] ref G1 x, byte* buf, int bufSize);
         
         [DllImport(MclBls12Lib)]
         public static extern unsafe int mclBnG2_deserialize(ref G2 x, void* buf, int bufSize);
@@ -236,13 +235,14 @@ namespace Nethermind.Crypto
 
         public static void Init()
         {
-            // const int curveFr254BNb = 0;
             const int MCLBN_FR_UNIT_SIZE = 4;
             const int MCLBN_FP_UNIT_SIZE = 6;
             const int MCLBN_COMPILED_TIME_VAR = (MCLBN_FR_UNIT_SIZE) * 10 + (MCLBN_FP_UNIT_SIZE);
-            if (mclBn_init(3, MCLBN_COMPILED_TIME_VAR) != 0)
+            const int MCL_BLS12_381 = 5;
+            int initRes = mclBn_init(MCL_BLS12_381, MCLBN_COMPILED_TIME_VAR);
+            if (initRes != 0)
             {
-                throw new InvalidOperationException("mclBn_init");
+                throw new InvalidOperationException($"mclBn_init->{initRes}");
             }
         }
 
@@ -445,7 +445,7 @@ namespace Nethermind.Crypto
         [StructLayout(LayoutKind.Sequential)]
         public struct G1
         {
-            private ulong v00, v01, v02, v03, v04, v05, v06, v07, v08, v09, v10, v11;
+            private ulong v00, v01, v02, v03, v04, v05, v06, v07, v08, v09, v10, v11, v12, v13, v14, v15, v16, v17;
 
             public void Clear()
             {
@@ -459,22 +459,29 @@ namespace Nethermind.Crypto
                 return Create(xInt, yInt);
             }
             
-            public unsafe void Deserialize(Span<byte> data, int len)
+            public unsafe void Deserialize(ReadOnlySpan<byte> data, int len)
             {
-                fixed (byte* dataPtr = &MemoryMarshal.GetReference(data))
+                fixed (byte* dataPtr = data)
                 {
-                    mclBnG1_deserialize(ref this, dataPtr, len);
+                    int readBytes = mclBnG1_deserialize(ref this, dataPtr, len);
                 }
             }
             
-            public unsafe void Serialize(Span<byte> data, int len)
+            public unsafe void Serialize(ReadOnlySpan<byte> data, int len)
             {
-                fixed (byte* dataPtr = &MemoryMarshal.GetReference(data))
+                fixed (byte* dataPtr = data)
                 {
                     mclBnG1_serialize(dataPtr, len, ref this);
                 }
             }
 
+            public static G1 Create(Span<byte> x)
+            {
+                G1 g1 = new G1();
+                g1.Deserialize(x, 48);
+                return g1;
+            }
+            
             public static G1 Create(BigInteger x, BigInteger y)
             {
                 G1 g1 = new G1();
@@ -490,6 +497,9 @@ namespace Nethermind.Crypto
                     // g1.Deserialize(array, 32);
                     
                     // /* we cannot use compressed form as we are using mcl for validating the x,y pair */
+                    // g1.setStr($"1 {x.ToString()} {y.ToString()}", 0);
+                    g1.setStr($"2 {x.ToString()}", 0);
+                    g1.setStr($"3 {x.ToString()}", 0);
                     g1.setStr($"1 {x.ToString()} {y.ToString()}", 0);
                 }
 
@@ -529,7 +539,7 @@ namespace Nethermind.Crypto
 
             public string GetStr(int ioMode)
             {
-                StringBuilder sb = new StringBuilder(1024);
+                StringBuilder sb = new StringBuilder(2048);
                 long size = mclBnG1_getStr(sb, sb.Capacity, ref this, ioMode);
                 if (size == 0)
                 {
