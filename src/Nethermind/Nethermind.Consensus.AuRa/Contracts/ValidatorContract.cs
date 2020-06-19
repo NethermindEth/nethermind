@@ -21,9 +21,7 @@ using Nethermind.Blockchain.Contracts;
 using Nethermind.Blockchain.Contracts.Json;
 using Nethermind.Core;
 using Nethermind.Evm;
-using Nethermind.Logging;
 using Nethermind.State;
-using Newtonsoft.Json;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
@@ -58,7 +56,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// signal will not be recognized.
         /// event InitiateChange(bytes32 indexed _parent_hash, address[] _new_set);
         /// </summary>
-        bool CheckInitiateChangeEvent(BlockHeader blockHeader, TxReceipt[] receipts, out Address[] addresses, ILogger logger);
+        bool CheckInitiateChangeEvent(BlockHeader blockHeader, TxReceipt[] receipts, out Address[] addresses);
 
         void EnsureSystemAccount();
     }
@@ -121,14 +119,12 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// signal will not be recognized.
         /// event InitiateChange(bytes32 indexed _parent_hash, address[] _new_set);
         /// </summary>
-        public bool CheckInitiateChangeEvent(BlockHeader blockHeader, TxReceipt[] receipts, out Address[] addresses, ILogger logger)
+        public bool CheckInitiateChangeEvent(BlockHeader blockHeader, TxReceipt[] receipts, out Address[] addresses)
         {
             var logEntry = new LogEntry(ContractAddress, 
                 Array.Empty<byte>(),
                 new[] {GetEventHash(InitiateChange), blockHeader.ParentHash});
 
-            logger.Info($"InitChangeEvent: Trying to find log {JsonConvert.SerializeObject(logEntry)} in: {JsonConvert.SerializeObject(receipts)}");
-            
             if (blockHeader.TryFindLog(receipts, logEntry, LogEntryEqualityComparer, out var foundEntry))
             {
                 addresses = DecodeAddresses(foundEntry.Data);
