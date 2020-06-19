@@ -236,7 +236,7 @@ namespace Nethermind.Crypto
 
             public void Deserialize(byte[] data, int len)
             {
-                if (mclBnFr_deserialize(ref this, data, len) != 0)
+                if (mclBnFr_deserialize(ref this, ref data, len) != 0)
                 {
                     throw new ArgumentException("mclBnFr_deserialize");
                 }
@@ -244,7 +244,7 @@ namespace Nethermind.Crypto
 
             public void Serialize(byte[] data, int len)
             {
-                if (mclBnFr_serialize(data, len, this) != 0)
+                if (mclBnFr_serialize(ref data, len, this) != 0)
                 {
                     throw new ArgumentException("mclBnFr_serialize");
                 }
@@ -384,7 +384,7 @@ namespace Nethermind.Crypto
             /// <exception cref="ArgumentException"></exception>
             public void Deserialize(byte[] data, int len)
             {
-                if (mclBnG1_deserialize(ref this, data, len) != 0)
+                if (mclBnG1_deserialize(ref this, ref data, len) != 0)
                 {
                     throw new ArgumentException("mclBnG1_deserialize");
                 }
@@ -398,7 +398,7 @@ namespace Nethermind.Crypto
             /// <exception cref="ArgumentException"></exception>
             public void Serialize(byte[] data, int len)
             {
-                if (mclBnG1_serialize(data, len, this) != 0)
+                if (mclBnG1_serialize(ref data, len, this) != 0)
                 {
                     throw new ArgumentException("mclBnG1_serialize");
                 }
