@@ -19,7 +19,10 @@ using System.Collections.Generic;
 
 namespace Nethermind.Evm.Precompiles.Bls
 {
-    internal class Discount
+    /// <summary>
+    /// https://eips.ethereum.org/EIPS/eip-2537
+    /// </summary>
+    internal static class Discount
     {
         public static Dictionary<int, int> For = new Dictionary<int, int>
         {

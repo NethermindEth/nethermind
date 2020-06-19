@@ -20,12 +20,11 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Evm.Precompiles.Bls
 {
     /// <summary>
-    ///     Code adapted from ethereumJ (https://github.com/ethereum/ethereumj)
+    /// https://eips.ethereum.org/EIPS/eip-2537
     /// </summary>
     public class G1AddPrecompile : IPrecompile
     {

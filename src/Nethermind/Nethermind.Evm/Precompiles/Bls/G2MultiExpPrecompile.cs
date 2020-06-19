@@ -23,7 +23,7 @@ using Nethermind.Crypto.ZkSnarks;
 namespace Nethermind.Evm.Precompiles.Bls
 {
     /// <summary>
-    ///     Code adapted from ethereumJ (https://github.com/ethereum/ethereumj)
+    /// https://eips.ethereum.org/EIPS/eip-2537
     /// </summary>
     public class G2MultiExpPrecompile : IPrecompile
     {
@@ -48,49 +48,7 @@ namespace Nethermind.Evm.Precompiles.Bls
 
         public (byte[], bool) Run(byte[] inputData)
         {  
-            Metrics.Bn128AddPrecompile++;
-            
-            if (inputData == null)
-            {
-                inputData = Bytes.Empty;
-            }
-
-            if (inputData.Length < 128)
-            {
-                inputData = inputData.PadRight(128);
-            }
-
-            Span<byte> x1 = inputData.AsSpan().Slice(0, 32);
-            Span<byte> y1 = inputData.AsSpan().Slice(32, 32);
-
-            Span<byte> x2 = inputData.AsSpan().Slice(64, 32);
-            Span<byte> y2 = inputData.AsSpan().Slice(96, 32);
-
-            Bn128Fp p1 = Bn128Fp.Create(x1, y1);
-            if (p1 == null)
-            {
-                return (Bytes.Empty, false);
-            }
-
-            Bn128Fp p2 = Bn128Fp.Create(x2, y2);
-            if (p2 == null)
-            {
-                return (Bytes.Empty, false);
-            }
-
-            Bn128Fp res = p1.Add(p2).ToEthNotation();
-
-            return (EncodeResult(res.X.GetBytes(), res.Y.GetBytes()), true);
-        }
-        
-        private static byte[] EncodeResult(byte[] w1, byte[] w2) {
-
-            byte[] result = new byte[64];
-
-            // TODO: do I need to strip leading zeros here? // probably not
-            w1.AsSpan().WithoutLeadingZeros().CopyTo(result.AsSpan().Slice(32 - w1.Length, w1.Length));
-            w2.AsSpan().WithoutLeadingZeros().CopyTo(result.AsSpan().Slice(64 - w2.Length, w2.Length));
-            return result;
+            throw new NotImplementedException();
         }
     }
 }
