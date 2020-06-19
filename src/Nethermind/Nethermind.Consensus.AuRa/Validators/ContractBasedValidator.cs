@@ -167,7 +167,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             while (block?.Number >= toBlock)
             {
                 var receipts = _receiptFinder.Get(block) ?? Array.Empty<TxReceipt>();
-                if (ValidatorContract.CheckInitiateChangeEvent(block.Header, receipts, out var potentialValidators))
+                if (ValidatorContract.CheckInitiateChangeEvent(block.Header, receipts, out var potentialValidators, _logger))
                 {
                     if (Validators.SequenceEqual(potentialValidators))
                     {
@@ -191,7 +191,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                 ValidatorStore.SetValidators(block.Number, LoadValidatorsFromContract(block.Header));
             }
             
-            if (ValidatorContract.CheckInitiateChangeEvent(block.Header, receipts, out var potentialValidators))
+            if (ValidatorContract.CheckInitiateChangeEvent(block.Header, receipts, out var potentialValidators, _logger))
             {
                 var isProcessingBlock = !options.IsProducingBlock();
                 InitiateChange(block, potentialValidators, isProcessingBlock, Validators.Length == 1);
