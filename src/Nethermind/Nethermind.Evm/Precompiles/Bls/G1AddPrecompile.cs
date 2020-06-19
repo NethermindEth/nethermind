@@ -15,9 +15,11 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Evm.Precompiles.Bls
@@ -28,7 +30,7 @@ namespace Nethermind.Evm.Precompiles.Bls
     public class G1AddPrecompile : IPrecompile
     {
         private static byte[] _zeroResult = new byte[64];
-        
+
         public static IPrecompile Instance = new G1AddPrecompile();
 
         private G1AddPrecompile()
@@ -47,30 +49,38 @@ namespace Nethermind.Evm.Precompiles.Bls
             return 0L;
         }
 
+        private const int Len = 64;
+
         public (byte[], bool) Run(byte[] inputData)
         {
             inputData ??= Bytes.Empty;
-            Span<byte> inputDataSpan = stackalloc byte[128];
-            inputData.AsSpan(0, Math.Min(128, inputData.Length)).CopyTo(inputDataSpan.Slice(0, Math.Min(128, inputData.Length)));
+            Span<byte> inputDataSpan = stackalloc byte[4 * Len];
+            inputData.AsSpan(0, Math.Min(4 * Len, inputData.Length))
+                .CopyTo(inputDataSpan.Slice(0, Math.Min(4 * Len, inputData.Length)));
 
-            UInt256.CreateFromBigEndian(out UInt256 x1, inputDataSpan.Slice(0, 32));
-            UInt256.CreateFromBigEndian(out UInt256 y1, inputDataSpan.Slice(32, 32));
-            UInt256.CreateFromBigEndian(out UInt256 x2, inputDataSpan.Slice(64, 32));
-            UInt256.CreateFromBigEndian(out UInt256 y2, inputDataSpan.Slice(96, 32));
+            var x1 = inputDataSpan.Slice(0 * Len, Len);
+            var y1 = inputDataSpan.Slice(1 * Len, Len);
+            var x2 = inputDataSpan.Slice(2 * Len, Len);
+            var y2 = inputDataSpan.Slice(3 * Len, Len);
 
-            Crypto.Bn256.G1 a = Crypto.Bn256.G1.Create(x1, y1);
+            var x1Int = new BigInteger(x1, true, true);
+            var y1Int = new BigInteger(y1, true, true);
+            var x2Int = new BigInteger(x2, true, true);
+            var y2Int = new BigInteger(y2, true, true);
+            
+            MclBls12.G1 a = MclBls12.G1.Create(x1Int, y1Int);
             if (!a.IsValid())
             {
                 return (Bytes.Empty, false);
             }
 
-            Crypto.Bn256.G1 b = Crypto.Bn256.G1.Create(x2, y2);
+            MclBls12.G1 b = MclBls12.G1.Create(x2Int, y2Int);
             if (!b.IsValid())
             {
                 return (Bytes.Empty, false);
             }
 
-            Crypto.Bn256.G1 result = new Crypto.Bn256.G1();
+            MclBls12.G1 result = new MclBls12.G1();
             result.Add(a, b);
 
             byte[] encodedResult;
@@ -80,22 +90,21 @@ namespace Nethermind.Evm.Precompiles.Bls
             }
             else
             {
-                // encodedResult = new byte[64];
-                // result.Serialize(encodedResult.AsSpan(0, 32), 32);
                 string[] resultStrings = result.GetStr(0).Split(" ");
-                UInt256 resA = UInt256.Parse(resultStrings[1]);
-                UInt256 resB = UInt256.Parse(resultStrings[2]);
-                encodedResult = EncodeResult(resA, resB);
+                BigInteger w1 = BigInteger.Parse(resultStrings[1]);
+                BigInteger w2 = BigInteger.Parse(resultStrings[2]);
+                encodedResult = EncodeResult(w1, w2);
             }
 
             return (encodedResult, true);
         }
-        
-        private static byte[] EncodeResult(UInt256 w1, UInt256 w2)
+
+        private static byte[] EncodeResult(BigInteger w1, BigInteger w2)
         {
-            byte[] result = new byte[64];
-            w1.ToBigEndian(result.AsSpan(0, 32));
-            w2.ToBigEndian(result.AsSpan(32, 32));
+            byte[] result = new byte[2 * Len];
+            // need to copy
+            w1.TryWriteBytes(result.AsSpan(0 * Len + 16, Len), out _, true, true);
+            w2.TryWriteBytes(result.AsSpan(1 * Len + 16, Len), out _, true, true);
             return result;
         }
     }

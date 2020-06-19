@@ -238,9 +238,9 @@ namespace Nethermind.Crypto
         {
             // const int curveFr254BNb = 0;
             const int MCLBN_FR_UNIT_SIZE = 4;
-            const int MCLBN_FP_UNIT_SIZE = 4;
+            const int MCLBN_FP_UNIT_SIZE = 6;
             const int MCLBN_COMPILED_TIME_VAR = (MCLBN_FR_UNIT_SIZE) * 10 + (MCLBN_FP_UNIT_SIZE);
-            if (mclBn_init(4, MCLBN_COMPILED_TIME_VAR) != 0)
+            if (mclBn_init(3, MCLBN_COMPILED_TIME_VAR) != 0)
             {
                 throw new InvalidOperationException("mclBn_init");
             }

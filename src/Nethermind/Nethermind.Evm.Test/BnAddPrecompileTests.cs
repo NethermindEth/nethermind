@@ -45,7 +45,9 @@ namespace Nethermind.Evm.Test
 
             for (int i = 0; i < inputs.Length; i++)
             {
+#pragma warning disable 618
                 IPrecompile precompile128 = Bn128AddPrecompile.Instance;
+#pragma warning restore 618
                 (byte[], bool) result128 = precompile128.Run(inputs[i]);
 
                 IPrecompile precompile256 = Bn256AddPrecompile.Instance;

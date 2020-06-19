@@ -78,7 +78,9 @@ namespace Nethermind.Evm.Test
                 IPrecompile precompile256 = Bn256PairingPrecompile.Instance;
                 (byte[], bool) result256 = precompile256.Run(inputs[i]);
 
+#pragma warning disable 618
                 IPrecompile precompile128 = Bn128PairingPrecompile.Instance;
+#pragma warning restore 618
                 (byte[], bool) result128 = precompile128.Run(inputs[i]);
 
                 result256.Should().BeEquivalentTo(result128, i.ToString());
