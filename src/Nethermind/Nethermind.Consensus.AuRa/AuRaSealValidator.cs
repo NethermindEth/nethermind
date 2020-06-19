@@ -95,7 +95,7 @@ namespace Nethermind.Consensus.AuRa
             ReportingValidator.TryReportSkipped(header, parent);
             
             // Report malice if the validator produced other sibling blocks in the same step.
-            if (_receivedSteps.ContainsOrInsert(header, _validatorStore.GetValidators().Length))
+            if (_receivedSteps.ContainsSiblingOrInsert(header, _validatorStore.GetValidators().Length))
             {
                 if (_logger.IsDebug) _logger.Debug($"Validator {header.Beneficiary} produced sibling blocks in the same step {header.AuRaStep} in block {header.Number}.");
                 ReportingValidator.ReportMalicious(header.Beneficiary, header.Number, Bytes.Empty, IReportingValidator.MaliciousCause.SiblingBlocksInSameStep);
@@ -193,14 +193,15 @@ namespace Nethermind.Consensus.AuRa
             
             private const int CacheSizeFullRoundsMultiplier = 4;
 
-            public bool ContainsOrInsert(BlockHeader header, int validatorCount)
+            public bool ContainsSiblingOrInsert(BlockHeader header, int validatorCount)
             {
                 long step = header.AuRaStep.Value;
                 Address author = header.Beneficiary;
                 var hash = header.Hash;
                 int index = BinarySearch(step);
-                bool contains = index > 0;
+                bool contains = index >= 0;
                 var item = new AuthorBlock(author, hash);
+                bool containsSibling = false;
                 if (contains)
                 {
                     var stepElement = _list[index];
@@ -218,6 +219,7 @@ namespace Nethermind.Consensus.AuRa
                         }
 
                         stepElement.AuthorBlocks.Add(item);
+                        containsSibling = true;
                     }
                 }
                 else
@@ -227,7 +229,7 @@ namespace Nethermind.Consensus.AuRa
                 
                 ClearOldCache(step, validatorCount);
 
-                return contains;
+                return containsSibling;
             }
 
             private int BinarySearch(long step) => _list.BinarySearch(new AuthorBlockForStep(step, null), StepElementComparer.Instance);
