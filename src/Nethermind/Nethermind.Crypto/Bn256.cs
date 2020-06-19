@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Globalization;
+using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Text;
 using Nethermind.Dirichlet.Numerics;
@@ -26,16 +28,37 @@ namespace Nethermind.Crypto
         public static extern void mclBnFr_setInt(ref Fr y, int x);
 
         [DllImport(Bn256Lib)]
-        public static extern int mclBnFr_deserialize(ref Fr y, ref byte[] bytes, int len);
+        public static extern unsafe int mclBnFr_setLittleEndian(ref Fr y, void* bytes, int len);
 
         [DllImport(Bn256Lib)]
-        public static extern int mclBnFr_serialize(ref byte[] bytes, int len, Fr y);
+        public static extern unsafe int mclBnFr_setLittleEndianMod(ref Fr y, void* bytes, int len);
 
         [DllImport(Bn256Lib)]
-        public static extern int mclBnG1_deserialize(ref G1 y, ref byte[] bytes, int len);
+        public static extern unsafe int mclBnFr_serialize(void* buf, int bufSize, ref Fr x);
+        
+        [DllImport(Bn256Lib)]
+        public static extern unsafe int mclBnG1_serialize(void* buf, int bufSize, ref G1 x);
+        
+        [DllImport(Bn256Lib)]
+        public static extern unsafe int mclBnG2_serialize(void* buf, int bufSize, ref G2 x);
+        
+        [DllImport(Bn256Lib)]
+        public static extern unsafe int mclBnGT_serialize(void* buf, int bufSize, ref GT x);
 
         [DllImport(Bn256Lib)]
-        public static extern int mclBnG1_serialize(ref byte[] bytes, int len, G1 y);
+        public static extern unsafe int mclBnFr_deserialize(ref Fr x, void* buf, int bufSize);
+        
+        [DllImport(Bn256Lib)]
+        public static extern unsafe int mclBnFp_deserialize(ref Fr x, void* buf, int bufSize);
+        
+        [DllImport(Bn256Lib)]
+        public static extern unsafe int mclBnG1_deserialize(ref G1 x, void* buf, int bufSize);
+        
+        [DllImport(Bn256Lib)]
+        public static extern unsafe int mclBnG2_deserialize(ref G2 x, void* buf, int bufSize);
+        
+        [DllImport(Bn256Lib)]
+        public static extern unsafe int mclBnGT_deserialize(ref GT x, void* buf, int bufSize);
 
         [DllImport(Bn256Lib)]
         public static extern int mclBnFr_setStr(ref Fr x, [In] [MarshalAs(UnmanagedType.LPStr)] string buf, long bufSize, int ioMode);
@@ -69,12 +92,24 @@ namespace Nethermind.Crypto
 
         [DllImport(Bn256Lib)]
         public static extern void mclBnFr_add(ref Fr z, ref Fr x, ref Fr y);
+        
+        [DllImport(Bn256Lib)]
+        public static extern void mclBnFr_dbl(ref Fr y, ref Fr x);
+        
+        [DllImport(Bn256Lib)]
+        public static extern void mclBnFp_add(ref Fr z, ref Fr x, ref Fr y);
 
         [DllImport(Bn256Lib)]
         public static extern void mclBnFr_sub(ref Fr z, ref Fr x, ref Fr y);
 
         [DllImport(Bn256Lib)]
         public static extern void mclBnFr_mul(ref Fr z, ref Fr x, ref Fr y);
+        
+        [DllImport(Bn256Lib)]
+        public static extern void mclBnFp_mul(ref Fr z, ref Fr x, ref Fr y);
+
+        [DllImport(Bn256Lib)]
+        public static extern void mclBnFr_sqr(ref Fr y, ref Fr x);
 
         [DllImport(Bn256Lib)]
         public static extern void mclBnFr_div(ref Fr z, ref Fr x, ref Fr y);
@@ -84,7 +119,7 @@ namespace Nethermind.Crypto
 
         [DllImport(Bn256Lib)]
         public static extern int mclBnG1_setStr(ref G1 x, [In] [MarshalAs(UnmanagedType.LPStr)] string buf, long bufSize, int ioMode);
-
+        
         [DllImport(Bn256Lib)]
         public static extern int mclBnG1_isValid(ref G1 x);
 
@@ -212,7 +247,7 @@ namespace Nethermind.Crypto
         }
 
         [StructLayout(LayoutKind.Sequential)]
-        public struct Fr
+        public struct Fr : IEquatable<Fr>
         {
             private ulong v0, v1, v2, v3;
 
@@ -233,20 +268,36 @@ namespace Nethermind.Crypto
                     throw new ArgumentException("mclBnFr_setStr" + s);
                 }
             }
-
-            public void Deserialize(byte[] data, int len)
+            
+            public unsafe void Deserialize(Span<byte> data, int len)
             {
-                if (mclBnFr_deserialize(ref this, ref data, len) != 0)
+                fixed (byte* dataPtr = &MemoryMarshal.GetReference(data))
                 {
-                    throw new ArgumentException("mclBnFr_deserialize");
+                    mclBnFr_deserialize(ref this, dataPtr, len);
+                }
+            }
+            
+            public unsafe void DeserializeFp(Span<byte> data, int len)
+            {
+                fixed (byte* dataPtr = &MemoryMarshal.GetReference(data))
+                {
+                    mclBnFp_deserialize(ref this, dataPtr, len);
                 }
             }
 
-            public void Serialize(byte[] data, int len)
+            public unsafe void FrSetLittleEndian(byte[] data, int len)
             {
-                if (mclBnFr_serialize(ref data, len, this) != 0)
+                fixed (byte* serializedPtr = &MemoryMarshal.GetReference(data.AsSpan()))
                 {
-                    throw new ArgumentException("mclBnFr_serialize");
+                    mclBnFr_setLittleEndian(ref this, serializedPtr, len);
+                }
+            }
+
+            public unsafe void FrSetLittleEndianMod(byte[] data, int len)
+            {
+                fixed (byte* serializedPtr = &MemoryMarshal.GetReference(data.AsSpan()))
+                {
+                    mclBnFr_setLittleEndian(ref this, serializedPtr, len);
                 }
             }
 
@@ -259,6 +310,11 @@ namespace Nethermind.Crypto
             {
                 return mclBnFr_isEqual(ref this, ref rhs) == 1;
             }
+            
+            // public override bool Equals(Fr other)
+            // {
+            //     return v0 == other.v0 && v1 == other.v1 && v2 == other.v2 && v3 == other.v3;
+            // }
 
             public bool IsZero()
             {
@@ -314,6 +370,16 @@ namespace Nethermind.Crypto
             {
                 mclBnFr_add(ref this, ref x, ref y);
             }
+            
+            public void Dbl(Fr x)
+            {
+                mclBnFr_dbl(ref this, ref x);
+            }
+            
+            public void AddFp(Fr x, Fr y)
+            {
+                mclBnFp_add(ref this, ref x, ref y);
+            }
 
             public void Sub(Fr x, Fr y)
             {
@@ -323,6 +389,16 @@ namespace Nethermind.Crypto
             public void Mul(Fr x, Fr y)
             {
                 mclBnFr_mul(ref this, ref x, ref y);
+            }
+            
+            public void MulFp(Fr x, Fr y)
+            {
+                mclBnFp_mul(ref this, ref x, ref y);
+            }
+            
+            public void Sqr(Fr x)
+            {
+                mclBnFr_sqr(ref this, ref x);
             }
 
             public void Div(Fr x, Fr y)
@@ -376,41 +452,130 @@ namespace Nethermind.Crypto
                 mclBnG1_clear(ref this);
             }
 
-            /// <summary>
-            /// This does not work - if you can fix it then we can replace the usage of string in Bn256 precompiles
-            /// </summary>
-            /// <param name="data"></param>
-            /// <param name="len"></param>
-            /// <exception cref="ArgumentException"></exception>
-            public void Deserialize(byte[] data, int len)
-            {
-                if (mclBnG1_deserialize(ref this, ref data, len) != 0)
-                {
-                    throw new ArgumentException("mclBnG1_deserialize");
-                }
-            }
-
-            /// <summary>
-            /// This does not work - if you can fix it then we can replace the usage of string in Bn256 precompiles
-            /// </summary>
-            /// <param name="data"></param>
-            /// <param name="len"></param>
-            /// <exception cref="ArgumentException"></exception>
-            public void Serialize(byte[] data, int len)
-            {
-                if (mclBnG1_serialize(ref data, len, this) != 0)
-                {
-                    throw new ArgumentException("mclBnG1_serialize");
-                }
-            }
-
-            public static Bn256.G1 CreateFromBigEndian(Span<byte> x, Span<byte> y)
+            public static G1? CreateFromBigEndian(Span<byte> x, Span<byte> y)
             {
                 UInt256.CreateFromBigEndian(out UInt256 xInt, x);
                 UInt256.CreateFromBigEndian(out UInt256 yInt, y);
                 return Create(xInt, yInt);
             }
+            
+            public unsafe void Deserialize(Span<byte> data, int len)
+            {
+                fixed (byte* dataPtr = &MemoryMarshal.GetReference(data))
+                {
+                    mclBnG1_deserialize(ref this, dataPtr, len);
+                }
+            }
+            
+            public unsafe void Serialize(Span<byte> data, int len)
+            {
+                fixed (byte* dataPtr = &MemoryMarshal.GetReference(data))
+                {
+                    mclBnG1_serialize(dataPtr, len, ref this);
+                }
+            }
 
+            // public static bool IsOnCurve(UInt256 x, UInt256 y)
+            // {
+            //     BigInteger r = BigInteger.Parse("2523648240000001ba344d8000000007ff9f800000000010a10000000000000d", NumberStyles.HexNumber);
+            //     BigInteger p = BigInteger.Parse("2523648240000001ba344d80000000086121000000000013a700000000000013", NumberStyles.HexNumber);
+            //     // return true;
+            //     // no idea why below never works
+            //
+            //     if (x.IsZero && y.IsZero)
+            //     {
+            //         return true;
+            //     }
+            //
+            //     Span<byte> bytesX = stackalloc byte[32];
+            //     x.ToLittleEndian(bytesX);
+            //     Fr xFr = new Fr();
+            //     xFr.Deserialize(bytesX, bytesX.Length);
+            //     
+            //     Fr xFp = new Fr();
+            //     xFp.DeserializeFp(bytesX, bytesX.Length);
+            //     
+            //     Span<byte> bytesY = stackalloc byte[32];
+            //     y.ToLittleEndian(bytesY);
+            //     Fr yFr = new Fr();
+            //     yFr.Deserialize(bytesY, bytesY.Length);
+            //     
+            //     Fr yFp = new Fr();
+            //     yFp.DeserializeFp(bytesY, bytesY.Length);
+            //
+            //     // y^2 = x^3 + 2
+            //     //
+            //     Fr left = new Fr();
+            //     left.Sqr(yFr);
+            //     
+            //     Fr leftAlt = new Fr();
+            //     leftAlt.Mul(yFr, yFr);
+            //
+            //     Fr resAlt = MulAlternative(xFr, y);
+            //     
+            //     Fr leftAltFp = new Fr();
+            //     leftAltFp.MulFp(yFp, yFp);
+            //     
+            //     Fr leftAltFrFp = new Fr();
+            //     leftAltFrFp.MulFp(yFr, yFr);
+            //     
+            //     Fr leftAltFpFR = new Fr();
+            //     leftAltFpFR.Mul(yFp, yFp);
+            //
+            //     Fr leftOp = yFp * yFp;
+            //     Fr leftOp2 = yFr * yFr;
+            //     Fr leftOp3 = yFr * yFp;
+            //     Fr leftOp4 = yFp * yFr;
+            //     
+            //     
+            //     Fr two = new Fr();
+            //     two.SetInt(3);
+            //     //
+            //     Fr right = new Fr();
+            //     right.Sqr(xFr);
+            //     right.Mul(right, xFr);
+            //     right.Add(right, two);
+            //     
+            //     Fr rightAlt = new Fr();
+            //     rightAlt.Mul(xFr, xFr);
+            //     rightAlt.Mul(rightAlt, xFr);
+            //     
+            //     Fr rightAltFp = new Fr();
+            //     rightAltFp.MulFp(xFp, xFp);
+            //     rightAltFp.MulFp(rightAltFp, xFp);
+            //
+            //     return left.Equals(right);
+            //     // return true;
+            // }
+            
+            // private static Fr MulAlternative(Bn256.Fr g1, UInt256 s)
+            // {
+            //     if (s.IsZero) // P * 0 = 0
+            //     {
+            //         g1.Clear();
+            //     }
+            //
+            //     if (g1.IsZero())
+            //     {
+            //         return g1;
+            //     }
+            //
+            //     Fr res = new Bn256.Fr();
+            //     res.Clear();
+            //
+            //     int bitLength = ((BigInteger)s).BitLength();
+            //     for (int i = bitLength - 1; i >= 0; i--)
+            //     {
+            //         res.Dbl(res);
+            //         if (s.TestBit(i))
+            //         {
+            //             res.Add(res, g1);
+            //         }
+            //     }
+            //
+            //     return res;
+            // }
+            
             public static G1 Create(UInt256 x, UInt256 y)
             {
                 G1 g1 = new G1();
@@ -420,16 +585,13 @@ namespace Nethermind.Crypto
                 }
                 else
                 {
-                    /* we cannot use compressed form as we are using mcl for validating the x,y pair */
+                    // cannot deserialize x,y as only the compressed form with x and oddity of y is supported
+                    // Span<byte> array = stackalloc byte[32];
+                    // x.ToLittleEndian(array);
+                    // g1.Deserialize(array, 32);
+                    
+                    // /* we cannot use compressed form as we are using mcl for validating the x,y pair */
                     g1.setStr($"1 {x.ToString()} {y.ToString()}", 0);
-                    // if (y.IsEven)
-                    // {
-                    //     g1.setStr($"2 {x.ToString()}", 0);
-                    // }
-                    // else
-                    // {
-                    //     g1.setStr($"3 {x.ToString()}", 0);
-                    // }
                 }
 
                 return g1;

@@ -62,7 +62,7 @@ namespace Nethermind.Evm.Precompiles
                 return (Bytes.Empty, false);
             }
             
-            Bn256.G1 resultAlt = MulAlternative(ref a, s);
+            Bn256.G1 resultAlt = MulAlternative(a, s);
             
             byte[] encodedResult;
             if (resultAlt.IsZero())
@@ -84,7 +84,7 @@ namespace Nethermind.Evm.Precompiles
 
         private static Bn256.G1 Mul(ref Bn256.G1 g1, UInt256 s)
         {
-            // this one is returning different values - probably SetStr on Fp is wrong here
+            // multiplication in mcl returns totally unexpected values
             
             Fp fp = new Fp(s);
             Bn256.Fr b = new Bn256.Fr();
@@ -95,7 +95,7 @@ namespace Nethermind.Evm.Precompiles
             return res;
         }
         
-        private static Bn256.G1 MulAlternative(ref Bn256.G1 g1, UInt256 s)
+        private static Bn256.G1 MulAlternative(Bn256.G1 g1, UInt256 s)
         {
             if (s.IsZero) // P * 0 = 0
             {

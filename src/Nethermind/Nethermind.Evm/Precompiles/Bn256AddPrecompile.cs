@@ -29,7 +29,7 @@ namespace Nethermind.Evm.Precompiles
     public class Bn256AddPrecompile : IPrecompile
     {
         public static IPrecompile Instance = new Bn256AddPrecompile();
-        
+
         private static byte[] _zeroResult = new byte[64];
 
         public Address Address { get; } = Address.FromNumber(6);
@@ -62,7 +62,7 @@ namespace Nethermind.Evm.Precompiles
             {
                 return (Bytes.Empty, false);
             }
-            
+
             Bn256.G1 b = Bn256.G1.Create(x2, y2);
             if (!b.IsValid())
             {
@@ -79,12 +79,14 @@ namespace Nethermind.Evm.Precompiles
             }
             else
             {
+                // encodedResult = new byte[64];
+                // result.Serialize(encodedResult.AsSpan(0, 32), 32);
                 string[] resultStrings = result.GetStr(0).Split(" ");
                 UInt256 resA = UInt256.Parse(resultStrings[1]);
                 UInt256 resB = UInt256.Parse(resultStrings[2]);
                 encodedResult = EncodeResult(resA, resB);
             }
-            
+
             return (encodedResult, true);
         }
 

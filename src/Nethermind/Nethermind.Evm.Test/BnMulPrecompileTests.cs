@@ -45,12 +45,12 @@ namespace Nethermind.Evm.Test
             for (int i = 0; i < inputs.Length; i++)
             {
                 IPrecompile precompile = Bn128MulPrecompile.Instance;
-                (byte[], bool) result = precompile.Run(inputs[i]);
+                (byte[], bool) result128 = precompile.Run(inputs[i]);
 
                 IPrecompile precompileOld = Bn256MulPrecompile.Instance;
-                (byte[], bool) resultOld = precompileOld.Run(inputs[i]);
+                (byte[], bool) result256 = precompileOld.Run(inputs[i]);
 
-                result.Should().BeEquivalentTo(resultOld, i.ToString());
+                result256.Should().BeEquivalentTo(result128, i.ToString());
             }
         }
     }
