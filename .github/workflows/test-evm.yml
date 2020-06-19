@@ -18,6 +18,10 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install libsnappy-dev libc6-dev libc6
+    - name: Checking dependencies
+      run: |
+        cd src/Nethermind/Nethermind.Crypto/runtimes/linux-x64/native
+        ldd libmclbn256.so
     - name: Nethermind.Evm.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Evm.Test;
