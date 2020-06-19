@@ -26,6 +26,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Evm.Precompiles.Bls;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -401,11 +402,23 @@ namespace Nethermind.Evm
                 [Sha256Precompile.Instance.Address] = new CodeInfo(Sha256Precompile.Instance),
                 [Ripemd160Precompile.Instance.Address] = new CodeInfo(Ripemd160Precompile.Instance),
                 [IdentityPrecompile.Instance.Address] = new CodeInfo(IdentityPrecompile.Instance),
+                
                 [Bn128AddPrecompile.Instance.Address] = new CodeInfo(Bn256AddPrecompile.Instance),
                 [Bn128MulPrecompile.Instance.Address] = new CodeInfo(Bn256MulPrecompile.Instance),
                 [Bn128PairingPrecompile.Instance.Address] = new CodeInfo(Bn256PairingPrecompile.Instance),
                 [ModExpPrecompile.Instance.Address] = new CodeInfo(ModExpPrecompile.Instance),
+                
                 [Blake2FPrecompile.Instance.Address] = new CodeInfo(Blake2FPrecompile.Instance),
+                
+                [G1AddPrecompile.Instance.Address] = new CodeInfo(G1AddPrecompile.Instance),
+                [G1MulPrecompile.Instance.Address] = new CodeInfo(G1MulPrecompile.Instance),
+                [G1MultiExpPrecompile.Instance.Address] = new CodeInfo(G1MultiExpPrecompile.Instance),
+                [G2AddPrecompile.Instance.Address] = new CodeInfo(G2AddPrecompile.Instance),
+                [G2MulPrecompile.Instance.Address] = new CodeInfo(G2MulPrecompile.Instance),
+                [G2MultiExpPrecompile.Instance.Address] = new CodeInfo(G2MultiExpPrecompile.Instance),
+                [PairingPrecompile.Instance.Address] = new CodeInfo(PairingPrecompile.Instance),
+                [MapToG1Precompile.Instance.Address] = new CodeInfo(MapToG1Precompile.Instance),
+                [MapToG2Precompile.Instance.Address] = new CodeInfo(MapToG2Precompile.Instance),
             };
         }
 
