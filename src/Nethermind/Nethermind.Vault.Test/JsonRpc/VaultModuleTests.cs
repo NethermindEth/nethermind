@@ -14,6 +14,7 @@ namespace Nethermind.Vault.Test.JsonRpc
     public class VaultModuleTests
     {
         private provide.Vault _initVault;
+        private VaultModule _vaultModule;
         private IVaultConfig _config;
         private string _vaultId;
         private string _keyId;
@@ -39,22 +40,21 @@ namespace Nethermind.Vault.Test.JsonRpc
             _keyArgs = KeyArgs.Default;
             _vaultArgs = VaultArgs.Default;
             _secretArgs = SecretArgs.Default;
+            _vaultModule = new VaultModule(
+                _config,
+                LimboLogs.Instance);
         }
 
         [Test]
         public async Task create_key_can_create_a_new_key()
         {
-            VaultModule vaultModule = new VaultModule(
-                _config,
-                LimboLogs.Instance);
-            
             _keyArgs.Name = "Test Key";
             _keyArgs.Description = "Test Key used for test purposes";
             _keyArgs.Type = "asymmetric";
             _keyArgs.Spec = "secp256k1";
             _keyArgs.Usage = "sign/verify";
 
-            var result = await vaultModule.vault_createKey(_vaultId, _keyArgs);
+            var result = await _vaultModule.vault_createKey(_vaultId, _keyArgs);
             Console.WriteLine(result.Result.Error);
 
             result.Result.Error.Should().NotBeNull();
@@ -69,14 +69,10 @@ namespace Nethermind.Vault.Test.JsonRpc
         [Test]
         public async Task can_create_a_new_secret()
         {
-            VaultModule vaultModule = new VaultModule(
-                _config,
-                LimboLogs.Instance);
-
             _secretArgs.Name = "Test Secret";
             _secretArgs.Description = "Test Secret used for test purposes";
 
-            var result = await vaultModule.vault_createSecret(_vaultId, _secretArgs);
+            var result = await _vaultModule.vault_createSecret(_vaultId, _secretArgs);
 
             result.Result.Error.Should().NotBeNull();
             result.Data.Should().BeNull();
@@ -91,14 +87,10 @@ namespace Nethermind.Vault.Test.JsonRpc
         [Test]
         public async Task can_create_a_new_vault()
         {
-            VaultModule vaultModule = new VaultModule(
-                _config,
-                LimboLogs.Instance);
-
             _vaultArgs.Name = "Test Vault";
             _vaultArgs.Description = "Test Vault used for test purposes";
 
-            var result = await vaultModule.vault_createVault(_vaultArgs);
+            var result = await _vaultModule.vault_createVault(_vaultArgs);
 
             result.Result.Error.Should().NotBeNull();
             result.Data.Should().BeNull();
@@ -113,11 +105,7 @@ namespace Nethermind.Vault.Test.JsonRpc
         [Test]
         public async Task can_delete_a_key_within_a_given_vault_by_its_key_id()
         {
-            VaultModule vaultModule = new VaultModule(
-                _config,
-                LimboLogs.Instance);
-
-            var result = await vaultModule.vault_deleteKey(_vaultId, _keyId);
+            var result = await _vaultModule.vault_deleteKey(_vaultId, _keyId);
 
             result.Result.Error.Should().NotBeNull();
             result.Data.Should().BeNull();
@@ -132,11 +120,7 @@ namespace Nethermind.Vault.Test.JsonRpc
         [Test]
         public async Task can_delete_a_secret_within_a_given_vault_by_its_secret_id()
         {
-            VaultModule vaultModule = new VaultModule(
-                _config,
-                LimboLogs.Instance);
-
-            var result = await vaultModule.vault_deleteSecret(_vaultId, _keyId);
+            var result = await _vaultModule.vault_deleteSecret(_vaultId, _keyId);
 
             result.Result.Error.Should().NotBeNull();
             result.Data.Should().BeNull();
@@ -151,11 +135,7 @@ namespace Nethermind.Vault.Test.JsonRpc
         [Test]
         public async Task list_keys_can_display_list_of_keys_within_a_given_vault()
         {
-            VaultModule vaultModule = new VaultModule(
-                _config,
-                LimboLogs.Instance);
-
-            var result = await vaultModule.vault_listKeys(_vaultId);
+            var result = await _vaultModule.vault_listKeys(_vaultId);
 
             result.Result.Error.Should().NotBeNull();
             result.Data.Should().BeNull();
@@ -170,11 +150,7 @@ namespace Nethermind.Vault.Test.JsonRpc
         [Test]
         public async Task list_secrets_can_display_list_of_secrets_within_a_given_vault()
         {
-            VaultModule vaultModule = new VaultModule(
-                _config,
-                LimboLogs.Instance);
-
-            var result = await vaultModule.vault_listSecrets(_vaultId);
+            var result = await _vaultModule.vault_listSecrets(_vaultId);
 
             result.Result.Error.Should().NotBeNull();
             result.Data.Should().BeNull();
@@ -189,11 +165,7 @@ namespace Nethermind.Vault.Test.JsonRpc
         [Test]
         public async Task list_vaults_can_display_a_list_of_owned_vaults()
         {
-            VaultModule vaultModule = new VaultModule(
-                _config,
-                LimboLogs.Instance);
-
-            var result = await vaultModule.vault_listVaults();
+            var result = await _vaultModule.vault_listVaults();
 
             result.Result.Error.Should().NotBeNull();
             result.Data.Should().BeNull();
@@ -208,11 +180,7 @@ namespace Nethermind.Vault.Test.JsonRpc
         [Test]
         public async Task can_sign_a_message_with_a_given_key()
         {
-            VaultModule vaultModule = new VaultModule(
-                _config,
-                LimboLogs.Instance);
-
-            var result = await vaultModule.vault_signMessage(_vaultId, _keyId, _message);
+            var result = await _vaultModule.vault_signMessage(_vaultId, _keyId, _message);
 
             result.Result.Error.Should().NotBeNull();
             result.Data.Should().BeNull();
@@ -227,11 +195,7 @@ namespace Nethermind.Vault.Test.JsonRpc
         [Test]
         public async Task can_verify_a_message_with_a_given_key_and_signature()
         {
-            VaultModule vaultModule = new VaultModule(
-                _config,
-                LimboLogs.Instance);
-
-            var result = await vaultModule.vault_verifySignature(_vaultId, _keyId, _message, _signature);
+            var result = await _vaultModule.vault_verifySignature(_vaultId, _keyId, _message, _signature);
 
             result.Result.Error.Should().NotBeNull();
             result.Data.Should().BeNull();

@@ -5,6 +5,7 @@ using Nethermind.Vault.Config;
 using Nethermind.Vault.Styles;
 using NSubstitute;
 using NUnit.Framework;
+using System;
 using System.Threading.Tasks;
 
 namespace Nethermind.Vault.Test
@@ -22,8 +23,8 @@ namespace Nethermind.Vault.Test
             _config.Host = "localhost";
             _config.Scheme = "http";
             _config.Path = "api/v1";
-            _config.Token = "12345";
-            _config.VaultId = "vaultId";
+            _config.Token = "test";
+            _config.VaultId = "ebc1b2fb-1cf8-4daa-adc7-c5aa981c77b2";
             _wallet = new VaultWallet(
                 Substitute.For<IVaultManager>(),
                 _config,
@@ -51,7 +52,6 @@ namespace Nethermind.Vault.Test
             var result = await _wallet.GetAccounts();
 
             result.Should().NotBeNullOrEmpty();
-            result.Should().AllBeOfType<Address>();
             result.Should().Contain(acc);
         }
 
@@ -68,7 +68,6 @@ namespace Nethermind.Vault.Test
             var result = await _wallet.NewAccount(args);
 
             result.Should().NotBeNull();
-            result.Should().BeOfType<Address>();
         }
 
         [Test]
@@ -78,7 +77,6 @@ namespace Nethermind.Vault.Test
             var result = await _wallet.NewAccount(args);
 
             result.Should().NotBeNull();
-            result.Should().BeOfType<Address>();
         }
 
     

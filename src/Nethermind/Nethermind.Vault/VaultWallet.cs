@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -32,7 +33,7 @@ namespace Nethermind.Vault
         private readonly IVaultConfig _vaultConfig;
         private readonly ILogger _logger;
         private readonly provide.Vault _initVault;
-        private Dictionary<Address, string> accounts;
+        private ConcurrentDictionary<Address, string> accounts;
 
 
         public VaultWallet(IVaultManager vaultManager, IVaultConfig vaultConfig, ILogManager logManager)
@@ -42,12 +43,12 @@ namespace Nethermind.Vault
 
             _vaultManager = new VaultManager(_vaultConfig, logManager);
             _initVault = new provide.Vault(_vaultConfig.Host, _vaultConfig.Path, _vaultConfig.Scheme, _vaultConfig.Token);
-            accounts = new Dictionary<Address, string>();
+            accounts = new ConcurrentDictionary<Address, string>();
         }
         
         public async Task<Address[]> GetAccounts()
         {
-            accounts = new Dictionary<Address, string>();
+            accounts = new ConcurrentDictionary<Address, string>();
             var args = new Dictionary<string, object> {};
 
             string vault = await _vaultManager.SetWalletVault(_vaultConfig.VaultId);
@@ -60,7 +61,7 @@ namespace Nethermind.Vault
                     string address = Convert.ToString(key.address);
                     // adds to accounts dict to have addresses assigned to key id's
                     string keyId = Convert.ToString(key.id);
-                    accounts.Add(new Address(address), keyId);
+                    accounts.TryAdd(new Address(address), keyId);
                     accounts.Keys.ToArray();
                 } 
                 catch (ArgumentNullException) {}
@@ -85,7 +86,7 @@ namespace Nethermind.Vault
             dynamic key  = JsonConvert.DeserializeObject(result.Item2);
             string address = Convert.ToString(key.address);
             var account = new Address(address);
-            accounts.Add(account, Convert.ToString(key.id));
+            accounts.TryAdd(account, Convert.ToString(key.id));
             return account;
         }
         public async Task DeleteAccount(Address address)

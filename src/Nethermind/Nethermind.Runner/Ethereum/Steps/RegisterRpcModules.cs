@@ -19,7 +19,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Cli.Modules;
 using Nethermind.DataMarketplace.Core.Configs;
-using Nethermind.Db.Rocks.Config;
 using Nethermind.Facade;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;

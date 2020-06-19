@@ -62,7 +62,7 @@ namespace Nethermind.Vault.Test
 
             result.Should().NotBeNull();
             result.Should().BeOfType<string>();
-            result.Should().Equals(_config.VaultId);
+            Assert.AreEqual(_config.VaultId, result);
         }
 
         [Test]

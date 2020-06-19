@@ -76,7 +76,7 @@ namespace Nethermind.Vault
             {
                 // sets latest vault as default
                 string[] vaults = await GetVaults();
-                return vaults.Last();
+                return vaults[^1];
             }
         }
     }
