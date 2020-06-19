@@ -41,6 +41,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         public LoadGenesisBlock(EthereumRunnerContext context)
         {
+            Console.WriteLine("Initializing genesis block load step");
             _context = context;
             _logger = _context.LogManager.GetClassLogger();
         }
@@ -111,6 +112,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             
             if (!genesisLoaded)
             {
+                Console.WriteLine("Genesis block processing failure");
                 throw new BlockchainException("Genesis block processing failure");
             }
             Console.WriteLine($"Genesis block set. Genesis block : {genesis}");
