@@ -18,7 +18,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto.ZkSnarks;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Evm.Precompiles.Bls
 {
@@ -27,6 +27,8 @@ namespace Nethermind.Evm.Precompiles.Bls
     /// </summary>
     public class G1AddPrecompile : IPrecompile
     {
+        private static byte[] _zeroResult = new byte[64];
+        
         public static IPrecompile Instance = new G1AddPrecompile();
 
         private G1AddPrecompile()
@@ -46,49 +48,54 @@ namespace Nethermind.Evm.Precompiles.Bls
         }
 
         public (byte[], bool) Run(byte[] inputData)
-        {  
-            Metrics.Bn128AddPrecompile++;
-            
-            if (inputData == null)
-            {
-                inputData = Bytes.Empty;
-            }
+        {
+            inputData ??= Bytes.Empty;
+            Span<byte> inputDataSpan = stackalloc byte[128];
+            inputData.AsSpan(0, Math.Min(128, inputData.Length)).CopyTo(inputDataSpan.Slice(0, Math.Min(128, inputData.Length)));
 
-            if (inputData.Length < 128)
-            {
-                inputData = inputData.PadRight(128);
-            }
+            UInt256.CreateFromBigEndian(out UInt256 x1, inputDataSpan.Slice(0, 32));
+            UInt256.CreateFromBigEndian(out UInt256 y1, inputDataSpan.Slice(32, 32));
+            UInt256.CreateFromBigEndian(out UInt256 x2, inputDataSpan.Slice(64, 32));
+            UInt256.CreateFromBigEndian(out UInt256 y2, inputDataSpan.Slice(96, 32));
 
-            Span<byte> x1 = inputData.AsSpan().Slice(0, 32);
-            Span<byte> y1 = inputData.AsSpan().Slice(32, 32);
-
-            Span<byte> x2 = inputData.AsSpan().Slice(64, 32);
-            Span<byte> y2 = inputData.AsSpan().Slice(96, 32);
-
-            Bn128Fp p1 = Bn128Fp.Create(x1, y1);
-            if (p1 == null)
+            Crypto.Bn256.G1 a = Crypto.Bn256.G1.Create(x1, y1);
+            if (!a.IsValid())
             {
                 return (Bytes.Empty, false);
             }
 
-            Bn128Fp p2 = Bn128Fp.Create(x2, y2);
-            if (p2 == null)
+            Crypto.Bn256.G1 b = Crypto.Bn256.G1.Create(x2, y2);
+            if (!b.IsValid())
             {
                 return (Bytes.Empty, false);
             }
 
-            Bn128Fp res = p1.Add(p2).ToEthNotation();
+            Crypto.Bn256.G1 result = new Crypto.Bn256.G1();
+            result.Add(a, b);
 
-            return (EncodeResult(res.X.GetBytes(), res.Y.GetBytes()), true);
+            byte[] encodedResult;
+            if (result.IsZero())
+            {
+                encodedResult = _zeroResult;
+            }
+            else
+            {
+                // encodedResult = new byte[64];
+                // result.Serialize(encodedResult.AsSpan(0, 32), 32);
+                string[] resultStrings = result.GetStr(0).Split(" ");
+                UInt256 resA = UInt256.Parse(resultStrings[1]);
+                UInt256 resB = UInt256.Parse(resultStrings[2]);
+                encodedResult = EncodeResult(resA, resB);
+            }
+
+            return (encodedResult, true);
         }
         
-        private static byte[] EncodeResult(byte[] w1, byte[] w2) {
-
+        private static byte[] EncodeResult(UInt256 w1, UInt256 w2)
+        {
             byte[] result = new byte[64];
-
-            // TODO: do I need to strip leading zeros here? // probably not
-            w1.AsSpan().WithoutLeadingZeros().CopyTo(result.AsSpan().Slice(32 - w1.Length, w1.Length));
-            w2.AsSpan().WithoutLeadingZeros().CopyTo(result.AsSpan().Slice(64 - w2.Length, w2.Length));
+            w1.ToBigEndian(result.AsSpan(0, 32));
+            w2.ToBigEndian(result.AsSpan(32, 32));
             return result;
         }
     }
