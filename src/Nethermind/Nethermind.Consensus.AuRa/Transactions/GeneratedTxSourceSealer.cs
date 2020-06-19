@@ -23,6 +23,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
@@ -34,12 +35,14 @@ namespace Nethermind.Consensus.AuRa.Transactions
         private readonly ITxSource _innerSource;
         private readonly ITxSealer _txSealer;
         private readonly IStateReader _stateReader;
+        private readonly ILogger _logger;
 
-        public GeneratedTxSourceSealer(ITxSource innerSource, ITxSealer txSealer, IStateReader stateReader)
+        public GeneratedTxSourceSealer(ITxSource innerSource, ITxSealer txSealer, IStateReader stateReader, ILogManager logManager)
         {
             _innerSource = innerSource ?? throw new ArgumentNullException(nameof(innerSource));
             _txSealer = txSealer ?? throw new ArgumentNullException(nameof(txSealer));
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
+            _logger = logManager?.GetClassLogger<GeneratedTxSourceSealer>() ?? throw new ArgumentNullException(nameof(logManager));
         }
         
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
@@ -52,6 +55,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
                 {
                     tx.Nonce = CalculateNonce(tx.SenderAddress, parent.StateRoot, nonces);
                     _txSealer.Seal(tx);
+                    if (_logger.IsDebug) _logger.Debug($"Sealed node generated transaction {tx.Hash} from {tx.SenderAddress} to {tx.To} with nonce {tx.Nonce}.");
                 }
 
                 return tx;
