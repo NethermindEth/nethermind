@@ -1,0 +1,27 @@
+name: Standard Build EVM
+
+on: push
+
+jobs:
+  neth-tests:
+    name: Nethermind Tests
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+    steps:
+    - uses: actions/checkout@v2
+    - name: Updating submodules
+      run: git submodule update --init src/Dirichlet src/rocksdb-sharp
+    - name: Installing Linux packages
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install libsnappy-dev libc6-dev libc6
+    - name: Checking dependencies
+      run: |
+        cd src/Nethermind/Nethermind.Crypto/runtimes/linux-x64/native
+        ldd libmclbn256.so
+    - name: Nethermind.Evm.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.Evm.Test;
