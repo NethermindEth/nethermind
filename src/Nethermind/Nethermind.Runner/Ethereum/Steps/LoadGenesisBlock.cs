@@ -56,6 +56,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
             
             // if we already have a database with blocks then we do not need to load genesis from spec
+            Console.WriteLine($"_context.BlockTree.Genesis == null : {_context.BlockTree.Genesis == null}");
             if (_context.BlockTree.Genesis == null)
             {
                 Load();    
@@ -107,10 +108,12 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context.BlockTree.NewHeadBlock += GenesisProcessed;
             _context.BlockTree.SuggestBlock(genesis);
             genesisProcessedEvent.Wait(TimeSpan.FromSeconds(40));
+            
             if (!genesisLoaded)
             {
                 throw new BlockchainException("Genesis block processing failure");
             }
+            Console.WriteLine($"Genesis block set. Genesis block : {genesis}");
         }
 
         /// <summary>
