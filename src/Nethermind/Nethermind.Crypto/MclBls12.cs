@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Globalization;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -7,6 +8,9 @@ namespace Nethermind.Crypto
 {
     public static class MclBls12
     {
+        public static readonly BigInteger P = BigInteger.Parse("1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaab", NumberStyles.AllowHexSpecifier);
+        public static readonly BigInteger R = BigInteger.Parse("73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001", NumberStyles.AllowHexSpecifier);
+        
         private const string MclBls12Lib = "mclbn384_256";
 
         static MclBls12()
