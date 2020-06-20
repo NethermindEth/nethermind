@@ -17,7 +17,7 @@
 
 using System.Collections.Generic;
 
-namespace Nethermind.Evm.Precompiles.Bls
+namespace Nethermind.Evm.Precompiles.Mcl.Bls
 {
     /// <summary>
     /// https://eips.ethereum.org/EIPS/eip-2537

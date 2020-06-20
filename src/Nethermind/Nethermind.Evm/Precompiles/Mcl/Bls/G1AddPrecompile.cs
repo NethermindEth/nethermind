@@ -18,26 +18,26 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto.ZkSnarks;
+using Nethermind.Crypto;
 
-namespace Nethermind.Evm.Precompiles.Bls
+namespace Nethermind.Evm.Precompiles.Mcl.Bls
 {
     /// <summary>
     /// https://eips.ethereum.org/EIPS/eip-2537
     /// </summary>
-    public class MapToG2Precompile : IPrecompile
+    public class G1AddPrecompile : IPrecompile
     {
-        public static IPrecompile Instance = new MapToG2Precompile();
+        public static IPrecompile Instance = new G1AddPrecompile();
 
-        private MapToG2Precompile()
+        private G1AddPrecompile()
         {
         }
 
-        public Address Address { get; } = Address.FromNumber(18);
+        public Address Address { get; } = Address.FromNumber(10);
 
         public long BaseGasCost(IReleaseSpec releaseSpec)
         {
-            return 110000;
+            return 600L;
         }
 
         public long DataGasCost(byte[] inputData, IReleaseSpec releaseSpec)
@@ -46,8 +46,23 @@ namespace Nethermind.Evm.Precompiles.Bls
         }
 
         public (byte[], bool) Run(byte[] inputData)
-        {  
-            throw new NotImplementedException();
+        {
+            Span<byte> inputDataSpan = stackalloc byte[4 * Common.LenFp];
+            Mcl.PrepareInputData(inputData, inputDataSpan);
+
+            (byte[], bool) result;
+            if (Common.TryReadEthG1(inputDataSpan, 0 * Common.LenFp, out MclBls12.G1 a) &&
+                Common.TryReadEthG1(inputDataSpan, 2 * Common.LenFp, out MclBls12.G1 b))
+            {
+                a.Add(a, b);
+                result = (Common.SerializeEthG1(a), true);
+            }
+            else
+            {
+                result = (Bytes.Empty, false);
+            }
+            
+            return result;
         }
     }
 }

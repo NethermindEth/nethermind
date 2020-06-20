@@ -16,53 +16,43 @@
 
 using System;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
 
-namespace Nethermind.Evm.Precompiles.Bls
+namespace Nethermind.Evm.Precompiles.Mcl.Bls
 {
     /// <summary>
     /// https://eips.ethereum.org/EIPS/eip-2537
     /// </summary>
-    public class G1AddPrecompile : IPrecompile
+    public class PairingPrecompile : IPrecompile
     {
-        public static IPrecompile Instance = new G1AddPrecompile();
+        public static IPrecompile Instance = new PairingPrecompile();
 
-        private G1AddPrecompile()
+        private const int PairSize = 384;
+        
+        private PairingPrecompile()
         {
         }
 
-        public Address Address { get; } = Address.FromNumber(10);
+        public Address Address { get; } = Address.FromNumber(16);
 
         public long BaseGasCost(IReleaseSpec releaseSpec)
         {
-            return 600L;
+            return 115000L;
         }
 
         public long DataGasCost(byte[] inputData, IReleaseSpec releaseSpec)
         {
-            return 0L;
+            if (inputData == null)
+            {
+                return 0L;
+            }
+
+            return 23000L * (inputData.Length / PairSize);
         }
 
         public (byte[], bool) Run(byte[] inputData)
-        {
-            Span<byte> inputDataSpan = stackalloc byte[4 * Common.LenFp];
-            Common.PrepareInputData(inputData, inputDataSpan);
-
-            (byte[], bool) result;
-            if (Common.TryReadEthG1(inputDataSpan, 0 * Common.LenFp, out MclBls12.G1 a) &&
-                Common.TryReadEthG1(inputDataSpan, 2 * Common.LenFp, out MclBls12.G1 b))
-            {
-                a.Add(a, b);
-                result = (Common.SerializeEthG1(a), true);
-            }
-            else
-            {
-                result = (Bytes.Empty, false);
-            }
-            
-            return result;
+        {  
+            throw new NotImplementedException();
         }
     }
 }

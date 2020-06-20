@@ -16,7 +16,7 @@
 
 using Nethermind.Specs;
 using Nethermind.Evm.Precompiles;
-using Nethermind.Evm.Precompiles.Bn256;
+using Nethermind.Evm.Precompiles.Mcl.Bn256;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test

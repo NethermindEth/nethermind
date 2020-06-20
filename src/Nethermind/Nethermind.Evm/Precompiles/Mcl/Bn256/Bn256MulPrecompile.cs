@@ -23,7 +23,7 @@ using Nethermind.Crypto;
 using Nethermind.Crypto.ZkSnarks;
 using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Evm.Precompiles.Bn256
+namespace Nethermind.Evm.Precompiles.Mcl.Bn256
 {
     /// <summary>
     /// https://github.com/herumi/mcl/blob/master/api.md
@@ -47,45 +47,28 @@ namespace Nethermind.Evm.Precompiles.Bn256
         public (byte[], bool) Run(byte[] inputData)
         {
             Metrics.Bn128MulPrecompile++;
-            
-            inputData ??= Bytes.Empty;
             Span<byte> inputDataSpan = stackalloc byte[96];
-            inputData.AsSpan(0, Math.Min(96, inputData.Length)).CopyTo(inputDataSpan.Slice(0, Math.Min(96, inputData.Length)));
+            Mcl.PrepareInputData(inputData, inputDataSpan);
 
-            UInt256.CreateFromBigEndian(out UInt256 x, inputDataSpan.Slice(0, 32));
-            UInt256.CreateFromBigEndian(out UInt256 y, inputDataSpan.Slice(32, 32));
-            UInt256.CreateFromBigEndian(out UInt256 s, inputDataSpan.Slice(64, 32));
-
-            Crypto.Bn256.G1 a = Crypto.Bn256.G1.Create(x, y);
-            if (!a.IsValid())
+            (byte[], bool) result;
+            if (Common.TryReadEthG1(inputDataSpan, 0 * Crypto.Bn256.LenFp, out Crypto.Bn256.G1 a))
             {
-                return (Bytes.Empty, false);
-            }
-            
-            Crypto.Bn256.G1 resultAlt = MulAlternative(a, s);
-            
-            byte[] encodedResult;
-            if (resultAlt.IsZero())
-            {
-                encodedResult = ZeroResult;
+                UInt256 scalar = Mcl.ReadScalar(inputDataSpan, 2 * Crypto.Bn256.LenFp);
+                Crypto.Bn256.G1 resultAlt = MulAlternative(a, scalar);
+                result = (Common.SerializeEthG1(resultAlt), true);
             }
             else
             {
-                string[] resultStrings = resultAlt.GetStr(0).Split(" ");
-                UInt256 resA = UInt256.Parse(resultStrings[1]);
-                UInt256 resB = UInt256.Parse(resultStrings[2]);
-                encodedResult = EncodeResult(resA, resB);
+                result = (Bytes.Empty, false);
             }
-            
-            return (encodedResult, true);
+
+            return result;
         }
         
-        private static byte[] ZeroResult = new byte[64];
-
         private static Crypto.Bn256.G1 Mul(ref Crypto.Bn256.G1 g1, UInt256 s)
         {
             // multiplication in mcl returns totally unexpected values
-            
+
             Fp fp = new Fp(s);
             Crypto.Bn256.Fr b = new Crypto.Bn256.Fr();
             b.SetStr($"{fp.ToString()}", 0);
@@ -94,7 +77,7 @@ namespace Nethermind.Evm.Precompiles.Bn256
             res.Mul(g1, b);
             return res;
         }
-        
+
         private static Crypto.Bn256.G1 MulAlternative(Crypto.Bn256.G1 g1, UInt256 s)
         {
             if (s.IsZero) // P * 0 = 0
@@ -110,7 +93,7 @@ namespace Nethermind.Evm.Precompiles.Bn256
             Crypto.Bn256.G1 res = new Crypto.Bn256.G1();
             res.Clear();
 
-            int bitLength = ((BigInteger)s).BitLength();
+            int bitLength = ((BigInteger) s).BitLength();
             for (int i = bitLength - 1; i >= 0; i--)
             {
                 res.Dbl(res);
@@ -121,14 +104,6 @@ namespace Nethermind.Evm.Precompiles.Bn256
             }
 
             return res;
-        }
-        
-        private static byte[] EncodeResult(UInt256 w1, UInt256 w2)
-        {
-            byte[] result = new byte[64];
-            w1.ToBigEndian(result.AsSpan(0, 32));
-            w2.ToBigEndian(result.AsSpan(32, 32));
-            return result;
         }
     }
 }

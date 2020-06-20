@@ -21,7 +21,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Evm.Precompiles.Bn256
+namespace Nethermind.Evm.Precompiles.Mcl.Bn256
 {
     /// <summary>
     /// https://github.com/herumi/mcl/blob/master/api.md

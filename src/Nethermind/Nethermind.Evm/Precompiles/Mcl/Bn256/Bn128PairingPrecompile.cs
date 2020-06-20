@@ -21,7 +21,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto.ZkSnarks;
 using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Evm.Precompiles.Bn256
+namespace Nethermind.Evm.Precompiles.Mcl.Bn256
 {
     /// <summary>
     ///     Code adapted from ethereumJ (https://github.com/ethereum/ethereumj)

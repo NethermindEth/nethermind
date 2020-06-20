@@ -4,7 +4,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Evm.Precompiles.Bls
+namespace Nethermind.Evm.Precompiles.Mcl.Bls
 {
     public static class Common
     {
@@ -64,14 +64,7 @@ namespace Nethermind.Evm.Precompiles.Bls
 
             return result;
         }
-
-        public static UInt256 ReadScalar(in Span<byte> inputDataSpan, in int offset)
-        {
-            Span<byte> s = inputDataSpan.Slice(offset, 32);
-            UInt256.CreateFromBigEndian(out UInt256 scalar, s);
-            return scalar;
-        }
-
+        
         public static bool TryReadEthG1(in Span<byte> inputDataSpan, in int offset, out MclBls12.G1 g1)
         {
             bool success;
@@ -100,13 +93,6 @@ namespace Nethermind.Evm.Precompiles.Bls
             }
 
             return success;
-        }
-        
-        public static void PrepareInputData(byte[] inputData, Span<byte> preparedData)
-        {
-            inputData ??= Bytes.Empty;
-            inputData.AsSpan(0, Math.Min(preparedData.Length, inputData.Length))
-                .CopyTo(preparedData.Slice(0, Math.Min(preparedData.Length, inputData.Length)));
         }
 
         public static bool TryReadEthG2(in Span<byte> inputDataSpan, in int offset, out MclBls12.G2 g2)

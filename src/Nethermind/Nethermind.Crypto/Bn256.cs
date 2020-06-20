@@ -10,6 +10,8 @@ namespace Nethermind.Crypto
     {
         private const string Bn256Lib = "mclbn256";
 
+        public const int LenFp = 32;
+        
         static Bn256()
         {
             LibResolver.Setup();

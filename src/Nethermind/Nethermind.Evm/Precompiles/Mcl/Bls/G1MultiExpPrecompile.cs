@@ -16,40 +16,32 @@
 
 using System;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto.ZkSnarks;
 
-namespace Nethermind.Evm.Precompiles.Bls
+namespace Nethermind.Evm.Precompiles.Mcl.Bls
 {
     /// <summary>
     /// https://eips.ethereum.org/EIPS/eip-2537
     /// </summary>
-    public class PairingPrecompile : IPrecompile
+    public class G1MultiExpPrecompile : IPrecompile
     {
-        public static IPrecompile Instance = new PairingPrecompile();
+        public static IPrecompile Instance = new G1MultiExpPrecompile();
 
-        private const int PairSize = 384;
-        
-        private PairingPrecompile()
+        private G1MultiExpPrecompile()
         {
         }
 
-        public Address Address { get; } = Address.FromNumber(16);
+        public Address Address { get; } = Address.FromNumber(12);
 
         public long BaseGasCost(IReleaseSpec releaseSpec)
         {
-            return 115000L;
+            return 0L;
         }
 
         public long DataGasCost(byte[] inputData, IReleaseSpec releaseSpec)
         {
-            if (inputData == null)
-            {
-                return 0L;
-            }
-
-            return 23000L * (inputData.Length / PairSize);
+            int k = inputData.Length / 192;
+            return 12000L * k * Discount.For[k] / 1000;
         }
 
         public (byte[], bool) Run(byte[] inputData)

@@ -18,37 +18,47 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto.ZkSnarks;
 
-namespace Nethermind.Evm.Precompiles.Bls
+namespace Nethermind.Evm.Precompiles.Mcl.Bn256
 {
     /// <summary>
-    /// https://eips.ethereum.org/EIPS/eip-2537
+    /// https://github.com/herumi/mcl/blob/master/api.md
     /// </summary>
-    public class G2MultiExpPrecompile : IPrecompile
+    public class Bn256AddPrecompile : IPrecompile
     {
-        public static IPrecompile Instance = new G2MultiExpPrecompile();
+        public static IPrecompile Instance = new Bn256AddPrecompile();
 
-        private G2MultiExpPrecompile()
-        {
-        }
-
-        public Address Address { get; } = Address.FromNumber(15);
+        public Address Address { get; } = Address.FromNumber(6);
 
         public long BaseGasCost(IReleaseSpec releaseSpec)
         {
-            return 0L;
+            return releaseSpec.IsEip1108Enabled ? 150L : 500L;
         }
 
         public long DataGasCost(byte[] inputData, IReleaseSpec releaseSpec)
         {
-            int k = inputData.Length / 290;
-            return 55000L * k * Discount.For[k] / 1000;;
+            return 0L;
         }
 
         public (byte[], bool) Run(byte[] inputData)
-        {  
-            throw new NotImplementedException();
+        {
+            Metrics.Bn128AddPrecompile++;
+            Span<byte> inputDataSpan = stackalloc byte[128];
+            Mcl.PrepareInputData(inputData, inputDataSpan);
+
+            (byte[], bool) result;
+            if (Common.TryReadEthG1(inputDataSpan, 0 * Crypto.Bn256.LenFp, out Crypto.Bn256.G1 a) &&
+                Common.TryReadEthG1(inputDataSpan, 2 * Crypto.Bn256.LenFp, out Crypto.Bn256.G1 b))
+            {
+                a.Add(a, b);
+                result = (Common.SerializeEthG1(a), true);
+            }
+            else
+            {
+                result = (Bytes.Empty, false);
+            }
+
+            return result;
         }
     }
 }
