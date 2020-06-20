@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Globalization;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -52,14 +51,14 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bn256
             Mcl.PrepareInputData(inputData, inputDataSpan);
 
             (byte[], bool) result;
-            if (Common.TryReadEthG1(inputDataSpan, 0 * Crypto.Bn256.LenFp, out Crypto.Bn256.G1 a))
+            if (Common.TryReadEthG1(inputDataSpan, 0 * Crypto.ZkSnarks.Bn256.LenFp, out G1 a))
             {
-                Common.ReadFr(inputDataSpan, 2 * Crypto.Bn256.LenFp, out Crypto.Bn256.Fr fr);
+                Common.ReadFr(inputDataSpan, 2 * Crypto.ZkSnarks.Bn256.LenFp, out Fr fr);
                 // UInt256 scalar = Mcl.ReadScalar(inputDataSpan, 2 * Crypto.Bn256.LenFp);
 
                 // Crypto.Bn256.G1 result = MulAlternative(a, scalar);
                 // Crypto.Bn256.G1 mulRes = Mul(a, scalar % Crypto.Bn256.R);
-                Crypto.Bn256.G1 mulRes = Mul(a, fr);
+                G1 mulRes = Mul(a, fr);
                 result = (Common.SerializeEthG1(mulRes), true);
             }
             else
@@ -69,25 +68,25 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bn256
 
             return result;
         }
-        
-        private static Crypto.Bn256.G1 Mul(Crypto.Bn256.G1 g1, Crypto.Bn256.Fr fr)
+
+        private static G1 Mul(G1 g1, Fr fr)
         {
-            Crypto.Bn256.G1 res = new Crypto.Bn256.G1();
+            G1 res = new G1();
             res.Mul(g1, fr);
             return res;
         }
-        
-        private static Crypto.Bn256.G1 Mul(Crypto.Bn256.G1 g1, BigInteger s)
+
+        private static G1 Mul(G1 g1, BigInteger s)
         {
-            Crypto.Bn256.Fr b = new Crypto.Bn256.Fr();
+            Fr b = new Fr();
             b.SetStr($"{s.ToString()}", 10);
 
-            Crypto.Bn256.G1 res = new Crypto.Bn256.G1();
+            G1 res = new G1();
             res.Mul(g1, b);
             return res;
         }
 
-        private static Crypto.Bn256.G1 MulAlternative(Crypto.Bn256.G1 g1, UInt256 s)
+        private static G1 MulAlternative(G1 g1, UInt256 s)
         {
             if (s.IsZero) // P * 0 = 0
             {
@@ -99,7 +98,7 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bn256
                 return g1;
             }
 
-            Crypto.Bn256.G1 res = new Crypto.Bn256.G1();
+            G1 res = new G1();
             res.Clear();
 
             int bitLength = ((BigInteger) s).BitLength();

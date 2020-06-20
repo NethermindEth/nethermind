@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto.ZkSnarks;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Evm.Precompiles.Mcl.Bn256
@@ -63,12 +64,12 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bn256
             UInt256 result = UInt256.One;
             if (inputData.Length > 0)
             {
-                List<(Crypto.Bn256.G1 P, Crypto.Bn256.G2 Q)> pairs = new List<(Crypto.Bn256.G1 P, Crypto.Bn256.G2 Q)>();
+                List<(G1 P, G2 Q)> pairs = new List<(G1 P, G2 Q)>();
                 // iterating over all pairs
                 for (int offset = 0; offset < inputData.Length; offset += PairSize)
                 {
                     Span<byte> pairData = inputData.Slice(offset, PairSize);
-                    (Crypto.Bn256.G1 P, Crypto.Bn256.G2 Q)? pair = DecodePair(pairData);
+                    (G1 P, G2 Q)? pair = DecodePair(pairData);
                     if (pair == null)
                     {
                         return (Bytes.Empty, false);
@@ -85,19 +86,19 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bn256
             return (resultBytes, true);
         }
 
-        private static UInt256 RunPairingCheck(List<(Crypto.Bn256.G1 P, Crypto.Bn256.G2 Q)> _pairs)
+        private static UInt256 RunPairingCheck(List<(G1 P, G2 Q)> _pairs)
         {
-            Crypto.Bn256.GT gt = new Crypto.Bn256.GT();
+            GT gt = new GT();
             for (int i = 0; i < _pairs.Count; i++)
             {
-                (Crypto.Bn256.G1 P, Crypto.Bn256.G2 Q) pair = _pairs[i];
+                (G1 P, G2 Q) pair = _pairs[i];
                 if (i == 0)
                 {
                     gt.MillerLoop(pair.P, pair.Q);
                 }
                 else
                 {
-                    Crypto.Bn256.GT millerLoopRes = new Crypto.Bn256.GT();
+                    GT millerLoopRes = new GT();
                     if (!millerLoopRes.IsOne())
                     {
                         millerLoopRes.MillerLoop(pair.P, pair.Q);
@@ -112,12 +113,12 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bn256
             return result;
         }
 
-        private static (Crypto.Bn256.G1, Crypto.Bn256.G2)? DecodePair(Span<byte> input)
+        private static (G1, G2)? DecodePair(Span<byte> input)
         {
-            (Crypto.Bn256.G1, Crypto.Bn256.G2)? result;
+            (G1, G2)? result;
             
-            if (Common.TryReadEthG1(input, 0, out Crypto.Bn256.G1 p) &&
-                Common.TryReadEthG2(input, 2 * Common.LenFp, out Crypto.Bn256.G2 q))
+            if (Common.TryReadEthG1(input, 0, out G1 p) &&
+                Common.TryReadEthG2(input, 2 * Common.LenFp, out G2 q))
             {
                 result = (p, q);
             }

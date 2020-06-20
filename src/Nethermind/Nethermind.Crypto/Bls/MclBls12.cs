@@ -1,259 +1,530 @@
 ﻿using System;
+using System.Globalization;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Text;
-using Nethermind.Dirichlet.Numerics;
-using Nethermind.Native;
 
-namespace Nethermind.Crypto
+namespace Nethermind.Crypto.Bls
 {
-    public static class Bn256
+    public static class MclBls12
     {
-        public static readonly BigInteger P = BigInteger.Parse("21888242871839275222246405745257275088696311157297823662689037894645226208583");
-        public static readonly BigInteger R = BigInteger.Parse("21888242871839275222246405745257275088548364400416034343698204186575808495617");
+        public static readonly BigInteger P = BigInteger.Parse("1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaab", NumberStyles.AllowHexSpecifier);
+        public static readonly BigInteger R = BigInteger.Parse("73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001", NumberStyles.AllowHexSpecifier);
 
-        private const string Bn256Lib = "mclbn256";
+        private const string MclBls12Lib = "mclbn384_256";
 
-        public const int LenFp = 32;
-        
-        static Bn256()
+        static MclBls12()
         {
             LibResolver.Setup();
             Init();
         }
 
-        [DllImport(Bn256Lib)]
+        [DllImport(MclBls12Lib)]
         public static extern int mclBn_init(int curve, int compiledTimeVar);
 
-        [DllImport(Bn256Lib)]
-        public static extern void mclBnFr_clear(ref Fr x);
-
-        [DllImport(Bn256Lib)]
-        public static extern void mclBnFr_setInt(ref Fr y, int x);
-
-        [DllImport(Bn256Lib)]
-        public static extern unsafe int mclBnFr_setLittleEndian(ref Fr y, void* bytes, int len);
-
-        [DllImport(Bn256Lib)]
-        public static extern unsafe int mclBnFr_setLittleEndianMod(ref Fr y, void* bytes, int len);
-
-        [DllImport(Bn256Lib)]
-        public static extern unsafe int mclBnFr_serialize(void* buf, int bufSize, ref Fr x);
-        
-        [DllImport(Bn256Lib)]
+        [DllImport(MclBls12Lib)]
         public static extern unsafe int mclBnG1_serialize(void* buf, int bufSize, ref G1 x);
-        
-        [DllImport(Bn256Lib)]
+
+        [DllImport(MclBls12Lib)]
         public static extern unsafe int mclBnG2_serialize(void* buf, int bufSize, ref G2 x);
-        
-        [DllImport(Bn256Lib)]
+
+        [DllImport(MclBls12Lib)]
         public static extern unsafe int mclBnGT_serialize(void* buf, int bufSize, ref GT x);
 
-        [DllImport(Bn256Lib)]
-        public static extern unsafe int mclBnFr_deserialize(ref Fr x, void* buf, int bufSize);
-        
-        [DllImport(Bn256Lib)]
-        public static extern unsafe int mclBnFp_deserialize(ref Fr x, void* buf, int bufSize);
-        
-        [DllImport(Bn256Lib)]
-        public static extern unsafe int mclBnG1_deserialize(ref G1 x, void* buf, int bufSize);
-        
-        [DllImport(Bn256Lib)]
+        [DllImport(MclBls12Lib)]
+        public static extern unsafe int mclBnFp_deserialize(ref Fp x, void* buf, int bufSize);
+
+        [DllImport(MclBls12Lib)]
+        public static extern unsafe int mclBnG1_deserialize([In, Out] ref G1 x, byte* buf, int bufSize);
+
+        [DllImport(MclBls12Lib)]
         public static extern unsafe int mclBnG2_deserialize(ref G2 x, void* buf, int bufSize);
-        
-        [DllImport(Bn256Lib)]
+
+        [DllImport(MclBls12Lib)]
         public static extern unsafe int mclBnGT_deserialize(ref GT x, void* buf, int bufSize);
 
-        [DllImport(Bn256Lib)]
+        [DllImport(MclBls12Lib)]
+        public static extern void mclBnFp_clear(ref Fp x);
+
+        [DllImport(MclBls12Lib)]
+        public static extern void mclBnFp_setInt(ref Fp y, int x);
+
+        [DllImport(MclBls12Lib)]
+        public static extern unsafe int mclBnFp_setLittleEndian(ref Fp y, void* bytes, int len);
+
+        [DllImport(MclBls12Lib)]
+        public static extern unsafe int mclBnFp_setLittleEndianMod(ref Fp y, void* bytes, int len);
+
+        [DllImport(MclBls12Lib)]
+        public static extern int mclBnFp_setStr(ref Fp x, [In] [MarshalAs(UnmanagedType.LPStr)] string buf, long bufSize, int ioMode);
+
+        [DllImport(MclBls12Lib)]
+        public static extern int mclBnFp_isValid(ref Fp x);
+
+        [DllImport(MclBls12Lib)]
+        public static extern int mclBnFp_isEqual(ref Fp x, ref Fp y);
+
+        [DllImport(MclBls12Lib)]
+        public static extern int mclBnFp_isZero(ref Fp x);
+
+        [DllImport(MclBls12Lib)]
+        public static extern int mclBnFp_isOne(ref Fp x);
+
+        [DllImport(MclBls12Lib)]
+        public static extern void mclBnFp_setByCSPRNG(ref Fp x);
+
+        [DllImport(MclBls12Lib)]
+        public static extern int mclBnFp_setHashOf(ref Fp x, [In] [MarshalAs(UnmanagedType.LPStr)] string buf, long bufSize);
+
+        [DllImport(MclBls12Lib)]
+        public static extern int mclBnFp_getStr([Out] StringBuilder buf, long maxBufSize, ref Fp x, int ioMode);
+
+        [DllImport(MclBls12Lib)]
+        public static extern void mclBnFp_neg(ref Fp y, ref Fp x);
+
+        [DllImport(MclBls12Lib)]
+        public static extern void mclBnFp_inv(ref Fp y, ref Fp x);
+
+        [DllImport(MclBls12Lib)]
+        public static extern void mclBnFp_add(ref Fp z, ref Fp x, ref Fp y);
+
+        [DllImport(MclBls12Lib)]
+        public static extern void mclBnFp_dbl(ref Fp y, ref Fp x);
+
+        [DllImport(MclBls12Lib)]
+        public static extern void mclBnFp_sub(ref Fp z, ref Fp x, ref Fp y);
+
+        [DllImport(MclBls12Lib)]
+        public static extern void mclBnFp_mul(ref Fp z, ref Fp x, ref Fp y);
+
+        [DllImport(MclBls12Lib)]
+        public static extern void mclBnFp_sqr(ref Fp y, ref Fp x);
+
+        [DllImport(MclBls12Lib)]
+        public static extern void mclBnFp_div(ref Fp z, ref Fp x, ref Fp y);
+
+        [DllImport(MclBls12Lib)]
+        public static extern void mclBnFr_clear(ref Fr x);
+
+        [DllImport(MclBls12Lib)]
+        public static extern void mclBnFr_setInt(ref Fr y, int x);
+
+        [DllImport(MclBls12Lib)]
+        public static extern unsafe int mclBnFr_setLittleEndian(ref Fr y, void* bytes, int len);
+
+        [DllImport(MclBls12Lib)]
+        public static extern unsafe int mclBnFr_setLittleEndianMod(ref Fr y, void* bytes, int len);
+
+        [DllImport(MclBls12Lib)]
         public static extern int mclBnFr_setStr(ref Fr x, [In] [MarshalAs(UnmanagedType.LPStr)] string buf, long bufSize, int ioMode);
 
-        [DllImport(Bn256Lib)]
+        [DllImport(MclBls12Lib)]
         public static extern int mclBnFr_isValid(ref Fr x);
 
-        [DllImport(Bn256Lib)]
+        [DllImport(MclBls12Lib)]
         public static extern int mclBnFr_isEqual(ref Fr x, ref Fr y);
 
-        [DllImport(Bn256Lib)]
+        [DllImport(MclBls12Lib)]
         public static extern int mclBnFr_isZero(ref Fr x);
 
-        [DllImport(Bn256Lib)]
+        [DllImport(MclBls12Lib)]
         public static extern int mclBnFr_isOne(ref Fr x);
 
-        [DllImport(Bn256Lib)]
+        [DllImport(MclBls12Lib)]
         public static extern void mclBnFr_setByCSPRNG(ref Fr x);
 
-        [DllImport(Bn256Lib)]
+        [DllImport(MclBls12Lib)]
         public static extern int mclBnFr_setHashOf(ref Fr x, [In] [MarshalAs(UnmanagedType.LPStr)] string buf, long bufSize);
 
-        [DllImport(Bn256Lib)]
+        [DllImport(MclBls12Lib)]
         public static extern int mclBnFr_getStr([Out] StringBuilder buf, long maxBufSize, ref Fr x, int ioMode);
 
-        [DllImport(Bn256Lib)]
+        [DllImport(MclBls12Lib)]
         public static extern void mclBnFr_neg(ref Fr y, ref Fr x);
 
-        [DllImport(Bn256Lib)]
+        [DllImport(MclBls12Lib)]
         public static extern void mclBnFr_inv(ref Fr y, ref Fr x);
 
-        [DllImport(Bn256Lib)]
+        [DllImport(MclBls12Lib)]
         public static extern void mclBnFr_add(ref Fr z, ref Fr x, ref Fr y);
-        
-        [DllImport(Bn256Lib)]
-        public static extern void mclBnFr_dbl(ref Fr y, ref Fr x);
-        
-        [DllImport(Bn256Lib)]
-        public static extern void mclBnFp_add(ref Fr z, ref Fr x, ref Fr y);
 
-        [DllImport(Bn256Lib)]
+        [DllImport(MclBls12Lib)]
+        public static extern void mclBnFr_dbl(ref Fr y, ref Fr x);
+
+        [DllImport(MclBls12Lib)]
         public static extern void mclBnFr_sub(ref Fr z, ref Fr x, ref Fr y);
 
-        [DllImport(Bn256Lib)]
+        [DllImport(MclBls12Lib)]
         public static extern void mclBnFr_mul(ref Fr z, ref Fr x, ref Fr y);
-        
-        [DllImport(Bn256Lib)]
-        public static extern void mclBnFp_mul(ref Fr z, ref Fr x, ref Fr y);
 
-        [DllImport(Bn256Lib)]
+        [DllImport(MclBls12Lib)]
         public static extern void mclBnFr_sqr(ref Fr y, ref Fr x);
 
-        [DllImport(Bn256Lib)]
+        [DllImport(MclBls12Lib)]
         public static extern void mclBnFr_div(ref Fr z, ref Fr x, ref Fr y);
 
-        [DllImport(Bn256Lib)]
+        [DllImport(MclBls12Lib)]
         public static extern void mclBnG1_clear(ref G1 x);
 
-        [DllImport(Bn256Lib)]
+        [DllImport(MclBls12Lib)]
         public static extern int mclBnG1_setStr(ref G1 x, [In] [MarshalAs(UnmanagedType.LPStr)] string buf, long bufSize, int ioMode);
-        
-        [DllImport(Bn256Lib)]
+
+        [DllImport(MclBls12Lib)]
         public static extern int mclBnG1_isValid(ref G1 x);
 
-        [DllImport(Bn256Lib)]
+        [DllImport(MclBls12Lib)]
         public static extern int mclBnG1_isEqual(ref G1 x, ref G1 y);
 
-        [DllImport(Bn256Lib)]
+        [DllImport(MclBls12Lib)]
         public static extern int mclBnG1_isZero(ref G1 x);
 
-        [DllImport(Bn256Lib)]
+        [DllImport(MclBls12Lib)]
         public static extern int mclBnG1_hashAndMapTo(ref G1 x, [In] [MarshalAs(UnmanagedType.LPStr)] string buf, long bufSize);
 
-        [DllImport(Bn256Lib)]
+        [DllImport(MclBls12Lib)]
         public static extern long mclBnG1_getStr([Out] StringBuilder buf, long maxBufSize, ref G1 x, int ioMode);
 
-        [DllImport(Bn256Lib)]
+        [DllImport(MclBls12Lib)]
         public static extern void mclBnG1_neg(ref G1 y, ref G1 x);
 
-        [DllImport(Bn256Lib)]
+        [DllImport(MclBls12Lib)]
         public static extern void mclBnG1_dbl(ref G1 y, ref G1 x);
 
-        [DllImport(Bn256Lib)]
+        [DllImport(MclBls12Lib)]
         public static extern void mclBnG1_add(ref G1 z, ref G1 x, ref G1 y);
 
-        [DllImport(Bn256Lib)]
+        [DllImport(MclBls12Lib)]
         public static extern void mclBnG1_sub(ref G1 z, ref G1 x, ref G1 y);
 
-        [DllImport(Bn256Lib)]
-        public static extern void mclBnG1_mul(ref G1 z, ref G1 x, ref Fr y);
+        [DllImport(MclBls12Lib)]
+        public static extern void mclBnG1_mul(ref G1 z, ref G1 x, ref Fp y);
 
-        [DllImport(Bn256Lib)]
+        [DllImport(MclBls12Lib)]
         public static extern void mclBnG2_clear(ref G2 x);
 
-        [DllImport(Bn256Lib)]
+        [DllImport(MclBls12Lib)]
         public static extern int mclBnG2_setStr(ref G2 x, [In] [MarshalAs(UnmanagedType.LPStr)] string buf, long bufSize, int ioMode);
 
-        [DllImport(Bn256Lib)]
+        [DllImport(MclBls12Lib)]
         public static extern int mclBnG2_isValid(ref G2 x);
 
-        [DllImport(Bn256Lib)]
+        [DllImport(MclBls12Lib)]
         public static extern int mclBnG2_isEqual(ref G2 x, ref G2 y);
 
-        [DllImport(Bn256Lib)]
+        [DllImport(MclBls12Lib)]
         public static extern int mclBnG2_isZero(ref G2 x);
 
-        [DllImport(Bn256Lib)]
+        [DllImport(MclBls12Lib)]
         public static extern int mclBnG2_hashAndMapTo(ref G2 x, [In] [MarshalAs(UnmanagedType.LPStr)] string buf, long bufSize);
 
-        [DllImport(Bn256Lib)]
+        [DllImport(MclBls12Lib)]
         public static extern long mclBnG2_getStr([Out] StringBuilder buf, long maxBufSize, ref G2 x, int ioMode);
 
-        [DllImport(Bn256Lib)]
+        [DllImport(MclBls12Lib)]
         public static extern void mclBnG2_neg(ref G2 y, ref G2 x);
 
-        [DllImport(Bn256Lib)]
+        [DllImport(MclBls12Lib)]
         public static extern void mclBnG2_dbl(ref G2 y, ref G2 x);
 
-        [DllImport(Bn256Lib)]
+        [DllImport(MclBls12Lib)]
         public static extern void mclBnG2_add(ref G2 z, ref G2 x, ref G2 y);
 
-        [DllImport(Bn256Lib)]
+        [DllImport(MclBls12Lib)]
         public static extern void mclBnG2_sub(ref G2 z, ref G2 x, ref G2 y);
 
-        [DllImport(Bn256Lib)]
-        public static extern void mclBnG2_mul(ref G2 z, ref G2 x, ref Fr y);
+        [DllImport(MclBls12Lib)]
+        public static extern void mclBnG2_mul(ref G2 z, ref G2 x, ref Fp y);
 
-        [DllImport(Bn256Lib)]
+        [DllImport(MclBls12Lib)]
         public static extern void mclBnGT_clear(ref GT x);
 
-        [DllImport(Bn256Lib)]
+        [DllImport(MclBls12Lib)]
         public static extern int mclBnGT_setStr(ref GT x, [In] [MarshalAs(UnmanagedType.LPStr)] string buf, long bufSize, int ioMode);
 
-        [DllImport(Bn256Lib)]
+        [DllImport(MclBls12Lib)]
         public static extern int mclBnGT_isEqual(ref GT x, ref GT y);
 
-        [DllImport(Bn256Lib)]
+        [DllImport(MclBls12Lib)]
         public static extern int mclBnGT_isZero(ref GT x);
 
-        [DllImport(Bn256Lib)]
+        [DllImport(MclBls12Lib)]
         public static extern int mclBnGT_isOne(ref GT x);
 
-        [DllImport(Bn256Lib)]
+        [DllImport(MclBls12Lib)]
         public static extern long mclBnGT_getStr([Out] StringBuilder buf, long maxBufSize, ref GT x, int ioMode);
 
-        [DllImport(Bn256Lib)]
+        [DllImport(MclBls12Lib)]
         public static extern void mclBnGT_neg(ref GT y, ref GT x);
 
-        [DllImport(Bn256Lib)]
+        [DllImport(MclBls12Lib)]
         public static extern void mclBnGT_inv(ref GT y, ref GT x);
 
-        [DllImport(Bn256Lib)]
+        [DllImport(MclBls12Lib)]
         public static extern void mclBnGT_add(ref GT z, ref GT x, ref GT y);
 
-        [DllImport(Bn256Lib)]
+        [DllImport(MclBls12Lib)]
         public static extern void mclBnGT_sub(ref GT z, ref GT x, ref GT y);
 
-        [DllImport(Bn256Lib)]
+        [DllImport(MclBls12Lib)]
         public static extern void mclBnGT_mul(ref GT z, ref GT x, ref GT y);
 
-        [DllImport(Bn256Lib)]
+        [DllImport(MclBls12Lib)]
         public static extern void mclBnGT_div(ref GT z, ref GT x, ref GT y);
 
-        [DllImport(Bn256Lib)]
-        public static extern void mclBnGT_pow(ref GT z, ref GT x, ref Fr y);
+        [DllImport(MclBls12Lib)]
+        public static extern void mclBnGT_pow(ref GT z, ref GT x, ref Fp y);
 
-        [DllImport(Bn256Lib)]
+        [DllImport(MclBls12Lib)]
         public static extern void mclBn_pairing(ref GT z, ref G1 x, ref G2 y);
 
-        [DllImport(Bn256Lib)]
+        [DllImport(MclBls12Lib)]
         public static extern void mclBn_finalExp(ref GT y, ref GT x);
 
-        [DllImport(Bn256Lib)]
+        [DllImport(MclBls12Lib)]
         public static extern void mclBn_millerLoop(ref GT z, ref G1 x, ref G2 y);
+
+        [DllImport(MclBls12Lib)]
+        public static extern int mclBnFp_mapToG1(ref G1 y, ref Fp x);
+
+        [DllImport(MclBls12Lib)]
+        public static extern int mclBn_setMapToMode(int mode);
+
+        [DllImport(MclBls12Lib)]
+        public static extern void mclBnG1_mulVec(ref G1 z, ref G1 x, ref Fp y, int size);
+
+        [DllImport(MclBls12Lib)]
+        public static extern void mclBnG2_mulVec(ref G2 z, ref G2 x, ref Fp y, int size);
+
+        // int mclBnFp2_mapToG2(ref G1 y, ref Fp x);
 
         public static void Init()
         {
-            // const int curveFr254BNb = 0;
             const int MCLBN_FR_UNIT_SIZE = 4;
-            const int MCLBN_FP_UNIT_SIZE = 4;
+            const int MCLBN_FP_UNIT_SIZE = 6;
             const int MCLBN_COMPILED_TIME_VAR = (MCLBN_FR_UNIT_SIZE) * 10 + (MCLBN_FP_UNIT_SIZE);
-            if (mclBn_init(4, MCLBN_COMPILED_TIME_VAR) != 0)
+            const int MCL_BLS12_381 = 5;
+            const int MCL_MAP_TO_MODE_HASH_TO_CURVE_07 = 5; // or 7?
+
+            int initRes = mclBn_init(MCL_BLS12_381, MCLBN_COMPILED_TIME_VAR);
+            if (initRes != 0)
             {
-                throw new InvalidOperationException("mclBn_init");
+                throw new InvalidOperationException($"mclBn_init->{initRes}");
+            }
+
+            int mapModeRes = mclBn_setMapToMode(MCL_MAP_TO_MODE_HASH_TO_CURVE_07);
+            if (mapModeRes != 0)
+            {
+                throw new InvalidOperationException($"mclBn_setMapToMode->{mapModeRes}");
+            }
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct Fp : IEquatable<Fp>
+        {
+            private ulong v0, v1, v2, v3, v4, v5;
+
+            public void Clear()
+            {
+                mclBnFp_clear(ref this);
+            }
+
+            public void SetInt(int x)
+            {
+                mclBnFp_setInt(ref this, x);
+            }
+
+            public void SetStr(string s, int ioMode)
+            {
+                if (mclBnFp_setStr(ref this, s, s.Length, ioMode) != 0)
+                {
+                    throw new ArgumentException("mclBnFp_setStr" + s);
+                }
+            }
+
+            public unsafe void Deserialize(Span<byte> data, int len)
+            {
+                fixed (byte* dataPtr = &MemoryMarshal.GetReference(data))
+                {
+                    mclBnFp_deserialize(ref this, dataPtr, len);
+                }
+            }
+
+            public unsafe void DeserializeFp(Span<byte> data, int len)
+            {
+                fixed (byte* dataPtr = &MemoryMarshal.GetReference(data))
+                {
+                    mclBnFp_deserialize(ref this, dataPtr, len);
+                }
+            }
+
+            public unsafe void FpSetLittleEndian(Span<byte> data, int len)
+            {
+                fixed (byte* serializedPtr = &MemoryMarshal.GetReference(data))
+                {
+                    mclBnFp_setLittleEndian(ref this, serializedPtr, len);
+                }
+            }
+
+            public unsafe void FpSetLittleEndianMod(Span<byte> data, int len)
+            {
+                fixed (byte* serializedPtr = &MemoryMarshal.GetReference(data))
+                {
+                    mclBnFp_setLittleEndianMod(ref this, serializedPtr, len);
+                }
+            }
+
+            public bool IsValid()
+            {
+                return mclBnFp_isValid(ref this) == 1;
+            }
+
+            public bool Equals(Fp rhs)
+            {
+                return mclBnFp_isEqual(ref this, ref rhs) == 1;
+            }
+
+            // public override bool Equals(Fp other)
+            // {
+            //     return v0 == other.v0 && v1 == other.v1 && v2 == other.v2 && v3 == other.v3;
+            // }
+
+            public bool IsZero()
+            {
+                return mclBnFp_isZero(ref this) == 1;
+            }
+
+            public bool IsOne()
+            {
+                return mclBnFp_isOne(ref this) == 1;
+            }
+
+            public void SetByCSPRNG()
+            {
+                mclBnFp_setByCSPRNG(ref this);
+            }
+
+            public void SetHashOf(String s)
+            {
+                if (mclBnFp_setHashOf(ref this, s, s.Length) != 0)
+                {
+                    throw new InvalidOperationException("mclBnFp_setHashOf:" + s);
+                }
+            }
+
+            public string GetStr(int ioMode)
+            {
+                StringBuilder sb = new StringBuilder(1024);
+                long size = mclBnFp_getStr(sb, sb.Capacity, ref this, ioMode);
+                if (size == 0)
+                {
+                    throw new InvalidOperationException("mclBnFp_getStr:");
+                }
+
+                return sb.ToString();
+            }
+
+            public override string ToString()
+            {
+                return GetStr(0);
+            }
+
+            public void Neg(Fp x)
+            {
+                mclBnFp_neg(ref this, ref x);
+            }
+
+            public void Inv(Fp x)
+            {
+                mclBnFp_inv(ref this, ref x);
+            }
+
+            public void Add(Fp x, Fp y)
+            {
+                mclBnFp_add(ref this, ref x, ref y);
+            }
+
+            public void Dbl(Fp x)
+            {
+                mclBnFp_dbl(ref this, ref x);
+            }
+
+            public void AddFp(Fp x, Fp y)
+            {
+                mclBnFp_add(ref this, ref x, ref y);
+            }
+
+            public void Sub(Fp x, Fp y)
+            {
+                mclBnFp_sub(ref this, ref x, ref y);
+            }
+
+            public void Mul(Fp x, Fp y)
+            {
+                mclBnFp_mul(ref this, ref x, ref y);
+            }
+
+            public void MulFp(Fp x, Fp y)
+            {
+                mclBnFp_mul(ref this, ref x, ref y);
+            }
+
+            public void Sqr(Fp x)
+            {
+                mclBnFp_sqr(ref this, ref x);
+            }
+
+            public void Div(Fp x, Fp y)
+            {
+                mclBnFp_div(ref this, ref x, ref y);
+            }
+
+            public static Fp operator -(Fp x)
+            {
+                Fp y = new Fp();
+                y.Neg(x);
+                return y;
+            }
+
+            public static Fp operator +(Fp x, Fp y)
+            {
+                Fp z = new Fp();
+                z.Add(x, y);
+                return z;
+            }
+
+            public static Fp operator -(Fp x, Fp y)
+            {
+                Fp z = new Fp();
+                z.Sub(x, y);
+                return z;
+            }
+
+            public static Fp operator *(Fp x, Fp y)
+            {
+                Fp z = new Fp();
+                z.Mul(x, y);
+                return z;
+            }
+
+            public static Fp operator /(Fp x, Fp y)
+            {
+                Fp z = new Fp();
+                z.Div(x, y);
+                return z;
+            }
+
+            public G1 MapToG1()
+            {
+                G1 g1 = new G1();
+                mclBnFp_mapToG1(ref g1, ref this);
+                return g1;
             }
         }
 
         [StructLayout(LayoutKind.Sequential)]
         public struct Fr : IEquatable<Fr>
         {
-            private ulong v0, v1, v2, v3;
+            private ulong v0, v1, v2, v3, v4, v5;
 
             public void Clear()
             {
@@ -267,30 +538,13 @@ namespace Nethermind.Crypto
 
             public void SetStr(string s, int ioMode)
             {
-                int res = mclBnFr_setStr(ref this, s, s.Length, ioMode);
-                if (res != 0)
+                if (mclBnFr_setStr(ref this, s, s.Length, ioMode) != 0)
                 {
-                    throw new ArgumentException($"mclBnFr_setStr({s})->{res}");
-                }
-            }
-            
-            public unsafe void Deserialize(Span<byte> data, int len)
-            {
-                fixed (byte* dataPtr = &MemoryMarshal.GetReference(data))
-                {
-                    mclBnFr_deserialize(ref this, dataPtr, len);
-                }
-            }
-            
-            public unsafe void DeserializeFp(Span<byte> data, int len)
-            {
-                fixed (byte* dataPtr = &MemoryMarshal.GetReference(data))
-                {
-                    mclBnFp_deserialize(ref this, dataPtr, len);
+                    throw new ArgumentException("mclBnFr_setStr" + s);
                 }
             }
 
-            public unsafe void FrSetLittleEndian(Span<byte> data, int len)
+            public unsafe void SetLittleEndian(Span<byte> data, int len)
             {
                 fixed (byte* serializedPtr = &MemoryMarshal.GetReference(data))
                 {
@@ -298,7 +552,7 @@ namespace Nethermind.Crypto
                 }
             }
 
-            public unsafe void FrSetLittleEndianMod(Span<byte> data, int len)
+            public unsafe void SetLittleEndianMod(Span<byte> data, int len)
             {
                 fixed (byte* serializedPtr = &MemoryMarshal.GetReference(data))
                 {
@@ -315,11 +569,6 @@ namespace Nethermind.Crypto
             {
                 return mclBnFr_isEqual(ref this, ref rhs) == 1;
             }
-            
-            // public override bool Equals(Fr other)
-            // {
-            //     return v0 == other.v0 && v1 == other.v1 && v2 == other.v2 && v3 == other.v3;
-            // }
 
             public bool IsZero()
             {
@@ -375,15 +624,15 @@ namespace Nethermind.Crypto
             {
                 mclBnFr_add(ref this, ref x, ref y);
             }
-            
+
             public void Dbl(Fr x)
             {
                 mclBnFr_dbl(ref this, ref x);
             }
-            
-            public void AddFp(Fr x, Fr y)
+
+            public void AddFr(Fr x, Fr y)
             {
-                mclBnFp_add(ref this, ref x, ref y);
+                mclBnFr_add(ref this, ref x, ref y);
             }
 
             public void Sub(Fr x, Fr y)
@@ -395,12 +644,12 @@ namespace Nethermind.Crypto
             {
                 mclBnFr_mul(ref this, ref x, ref y);
             }
-            
-            public void MulFp(Fr x, Fr y)
+
+            public void MulFr(Fr x, Fr y)
             {
-                mclBnFp_mul(ref this, ref x, ref y);
+                mclBnFr_mul(ref this, ref x, ref y);
             }
-            
+
             public void Sqr(Fr x)
             {
                 mclBnFr_sqr(ref this, ref x);
@@ -450,138 +699,37 @@ namespace Nethermind.Crypto
         [StructLayout(LayoutKind.Sequential)]
         public struct G1
         {
-            private ulong v00, v01, v02, v03, v04, v05, v06, v07, v08, v09, v10, v11;
+            private ulong v00, v01, v02, v03, v04, v05, v06, v07, v08, v09, v10, v11, v12, v13, v14, v15, v16, v17;
 
             public void Clear()
             {
                 mclBnG1_clear(ref this);
             }
 
-            public static G1? CreateFromBigEndian(Span<byte> x, Span<byte> y)
+            public unsafe void Deserialize(ReadOnlySpan<byte> data, int len)
             {
-                UInt256.CreateFromBigEndian(out UInt256 xInt, x);
-                UInt256.CreateFromBigEndian(out UInt256 yInt, y);
-                return Create(xInt, yInt);
-            }
-            
-            public unsafe void Deserialize(Span<byte> data, int len)
-            {
-                fixed (byte* dataPtr = &MemoryMarshal.GetReference(data))
+                fixed (byte* dataPtr = data)
                 {
-                    mclBnG1_deserialize(ref this, dataPtr, len);
+                    int readBytes = mclBnG1_deserialize(ref this, dataPtr, len);
                 }
             }
-            
-            public unsafe void Serialize(Span<byte> data, int len)
+
+            public unsafe void Serialize(ReadOnlySpan<byte> data, int len)
             {
-                fixed (byte* dataPtr = &MemoryMarshal.GetReference(data))
+                fixed (byte* dataPtr = data)
                 {
                     mclBnG1_serialize(dataPtr, len, ref this);
                 }
             }
 
-            // public static bool IsOnCurve(UInt256 x, UInt256 y)
-            // {
-            //     BigInteger r = BigInteger.Parse("2523648240000001ba344d8000000007ff9f800000000010a10000000000000d", NumberStyles.HexNumber);
-            //     BigInteger p = BigInteger.Parse("2523648240000001ba344d80000000086121000000000013a700000000000013", NumberStyles.HexNumber);
-            //     // return true;
-            //     // no idea why below never works
-            //
-            //     if (x.IsZero && y.IsZero)
-            //     {
-            //         return true;
-            //     }
-            //
-            //     Span<byte> bytesX = stackalloc byte[32];
-            //     x.ToLittleEndian(bytesX);
-            //     Fr xFr = new Fr();
-            //     xFr.Deserialize(bytesX, bytesX.Length);
-            //     
-            //     Fr xFp = new Fr();
-            //     xFp.DeserializeFp(bytesX, bytesX.Length);
-            //     
-            //     Span<byte> bytesY = stackalloc byte[32];
-            //     y.ToLittleEndian(bytesY);
-            //     Fr yFr = new Fr();
-            //     yFr.Deserialize(bytesY, bytesY.Length);
-            //     
-            //     Fr yFp = new Fr();
-            //     yFp.DeserializeFp(bytesY, bytesY.Length);
-            //
-            //     // y^2 = x^3 + 2
-            //     //
-            //     Fr left = new Fr();
-            //     left.Sqr(yFr);
-            //     
-            //     Fr leftAlt = new Fr();
-            //     leftAlt.Mul(yFr, yFr);
-            //
-            //     Fr resAlt = MulAlternative(xFr, y);
-            //     
-            //     Fr leftAltFp = new Fr();
-            //     leftAltFp.MulFp(yFp, yFp);
-            //     
-            //     Fr leftAltFrFp = new Fr();
-            //     leftAltFrFp.MulFp(yFr, yFr);
-            //     
-            //     Fr leftAltFpFR = new Fr();
-            //     leftAltFpFR.Mul(yFp, yFp);
-            //
-            //     Fr leftOp = yFp * yFp;
-            //     Fr leftOp2 = yFr * yFr;
-            //     Fr leftOp3 = yFr * yFp;
-            //     Fr leftOp4 = yFp * yFr;
-            //     
-            //     
-            //     Fr two = new Fr();
-            //     two.SetInt(3);
-            //     //
-            //     Fr right = new Fr();
-            //     right.Sqr(xFr);
-            //     right.Mul(right, xFr);
-            //     right.Add(right, two);
-            //     
-            //     Fr rightAlt = new Fr();
-            //     rightAlt.Mul(xFr, xFr);
-            //     rightAlt.Mul(rightAlt, xFr);
-            //     
-            //     Fr rightAltFp = new Fr();
-            //     rightAltFp.MulFp(xFp, xFp);
-            //     rightAltFp.MulFp(rightAltFp, xFp);
-            //
-            //     return left.Equals(right);
-            //     // return true;
-            // }
-            
-            // private static Fr MulAlternative(Bn256.Fr g1, UInt256 s)
-            // {
-            //     if (s.IsZero) // P * 0 = 0
-            //     {
-            //         g1.Clear();
-            //     }
-            //
-            //     if (g1.IsZero())
-            //     {
-            //         return g1;
-            //     }
-            //
-            //     Fr res = new Bn256.Fr();
-            //     res.Clear();
-            //
-            //     int bitLength = ((BigInteger)s).BitLength();
-            //     for (int i = bitLength - 1; i >= 0; i--)
-            //     {
-            //         res.Dbl(res);
-            //         if (s.TestBit(i))
-            //         {
-            //             res.Add(res, g1);
-            //         }
-            //     }
-            //
-            //     return res;
-            // }
-            
-            public static G1 Create(UInt256 x, UInt256 y)
+            public static G1 Create(Span<byte> x)
+            {
+                G1 g1 = new G1();
+                g1.Deserialize(x, 48);
+                return g1;
+            }
+
+            public static G1 Create(BigInteger x, BigInteger y)
             {
                 G1 g1 = new G1();
                 if (x.IsZero && y.IsZero)
@@ -594,9 +742,11 @@ namespace Nethermind.Crypto
                     // Span<byte> array = stackalloc byte[32];
                     // x.ToLittleEndian(array);
                     // g1.Deserialize(array, 32);
-                    
+
                     // /* we cannot use compressed form as we are using mcl for validating the x,y pair */
                     g1.setStr($"1 {x.ToString()} {y.ToString()}", 0);
+                    // g1.setStr($"2 {x.ToString()}", 0);
+                    // g1.setStr($"3 {x.ToString()}", 0);
                 }
 
                 return g1;
@@ -635,7 +785,7 @@ namespace Nethermind.Crypto
 
             public string GetStr(int ioMode)
             {
-                StringBuilder sb = new StringBuilder(1024);
+                StringBuilder sb = new StringBuilder(2048);
                 long size = mclBnG1_getStr(sb, sb.Capacity, ref this, ioMode);
                 if (size == 0)
                 {
@@ -670,7 +820,7 @@ namespace Nethermind.Crypto
                 mclBnG1_sub(ref this, ref x, ref y);
             }
 
-            public void Mul(G1 x, Fr y)
+            public void Mul(G1 x, Fp y)
             {
                 mclBnG1_mul(ref this, ref x, ref y);
             }
@@ -679,8 +829,8 @@ namespace Nethermind.Crypto
         [StructLayout(LayoutKind.Sequential)]
         public struct G2
         {
-            private ulong v00, v01, v02, v03, v04, v05, v06, v07, v08, v09, v10, v11;
-            private ulong v12, v13, v14, v15, v16, v17, v18, v19, v20, v21, v22, v23;
+            private ulong v00, v01, v02, v03, v04, v05, v06, v07, v08, v09, v10, v11, v12, v13, v14, v15, v16, v17;
+            private ulong v18, v19, v20, v21, v22, v23, v24, v25, v26, v27, v28, v29, v30, v31, v32, v33, v34, v35;
 
             public void Clear()
             {
@@ -730,16 +880,16 @@ namespace Nethermind.Crypto
                 return sb.ToString();
             }
 
-            public static G2 CreateFromBigEndian(Span<byte> a, Span<byte> b, Span<byte> c, Span<byte> d)
+            public static G2 CreateFpomBigEndian(Span<byte> a, Span<byte> b, Span<byte> c, Span<byte> d)
             {
-                UInt256.CreateFromBigEndian(out UInt256 aInt, a);
-                UInt256.CreateFromBigEndian(out UInt256 bInt, b);
-                UInt256.CreateFromBigEndian(out UInt256 cInt, c);
-                UInt256.CreateFromBigEndian(out UInt256 dInt, d);
+                var aInt = new BigInteger(a, true, true);
+                var bInt = new BigInteger(b, true, true);
+                var cInt = new BigInteger(c, true, true);
+                var dInt = new BigInteger(d, true, true);
                 return Create(aInt, bInt, cInt, dInt);
             }
 
-            public static G2 Create(UInt256 a, UInt256 b, UInt256 c, UInt256 d)
+            public static G2 Create(BigInteger a, BigInteger b, BigInteger c, BigInteger d)
             {
                 G2 g2 = new G2();
                 if (a.IsZero && b.IsZero && c.IsZero && d.IsZero)
@@ -774,7 +924,7 @@ namespace Nethermind.Crypto
                 mclBnG2_sub(ref this, ref x, ref y);
             }
 
-            public void Mul(G2 x, Fr y)
+            public void Mul(G2 x, Fp y)
             {
                 mclBnG2_mul(ref this, ref x, ref y);
             }
@@ -783,10 +933,10 @@ namespace Nethermind.Crypto
         [StructLayout(LayoutKind.Sequential)]
         public struct GT
         {
-            private ulong v00, v01, v02, v03, v04, v05, v06, v07, v08, v09, v10, v11;
-            private ulong v12, v13, v14, v15, v16, v17, v18, v19, v20, v21, v22, v23;
-            private ulong v24, v25, v26, v27, v28, v29, v30, v31, v32, v33, v34, v35;
-            private ulong v36, v37, v38, v39, v40, v41, v42, v43, v44, v45, v46, v47;
+            private ulong v00, v01, v02, v03, v04, v05, v06, v07, v08, v09, v10, v11, v12, v13, v14, v15, v16, v17;
+            private ulong v18, v19, v20, v21, v22, v23, v24, v25, v26, v27, v28, v29, v30, v31, v32, v33, v34, v35;
+            private ulong v36, v37, v38, v39, v40, v41, v42, v43, v44, v45, v46, v47, v48, v49, v50, v51, v52, v53;
+            private ulong v54, v55, v56, v57, v58, v59, v60, v61, v62, v63, v64, v65, v66, v67, v68, v69, v70, v71;
 
             public void Clear()
             {
@@ -893,7 +1043,7 @@ namespace Nethermind.Crypto
                 return z;
             }
 
-            public void Pow(GT x, Fr y)
+            public void Pow(GT x, Fp y)
             {
                 mclBnGT_pow(ref this, ref x, ref y);
             }

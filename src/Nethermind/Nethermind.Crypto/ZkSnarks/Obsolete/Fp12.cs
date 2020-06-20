@@ -17,7 +17,7 @@
 using System;
 using System.Numerics;
 
-namespace Nethermind.Crypto.ZkSnarks
+namespace Nethermind.Crypto.ZkSnarks.Obsolete
 {
     /// <summary>
     ///     Code adapted from ethereumJ (https://github.com/ethereum/ethereumj)

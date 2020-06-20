@@ -17,7 +17,7 @@
 using System.Collections.Generic;
 using System.Numerics;
 
-namespace Nethermind.Crypto.ZkSnarks
+namespace Nethermind.Crypto.ZkSnarks.Obsolete
 {
     public abstract class Bn128<T, TSelf> where T : IField<T> where TSelf : Bn128<T, TSelf>
     {

@@ -2,6 +2,7 @@ using System;
 using System.Numerics;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
+using Nethermind.Crypto.Bls;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Evm.Precompiles.Mcl.Bls

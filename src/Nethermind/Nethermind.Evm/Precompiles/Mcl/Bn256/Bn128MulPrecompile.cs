@@ -20,6 +20,7 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto.ZkSnarks;
+using Nethermind.Crypto.ZkSnarks.Obsolete;
 
 namespace Nethermind.Evm.Precompiles.Mcl.Bn256
 {

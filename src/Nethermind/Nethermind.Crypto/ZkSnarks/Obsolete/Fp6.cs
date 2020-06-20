@@ -16,7 +16,7 @@
 
 using System.Numerics;
 
-namespace Nethermind.Crypto.ZkSnarks
+namespace Nethermind.Crypto.ZkSnarks.Obsolete
 {
     /// <summary>
     ///     Based on https://eprint.iacr.org/2010/354.pdf

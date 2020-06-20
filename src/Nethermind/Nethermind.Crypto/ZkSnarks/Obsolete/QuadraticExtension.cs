@@ -16,7 +16,7 @@
 
 using System.Collections.Generic;
 
-namespace Nethermind.Crypto.ZkSnarks
+namespace Nethermind.Crypto.ZkSnarks.Obsolete
 {
     public abstract class QuadraticExtension<TBase, TExtension> : IField<TExtension>
         where TBase : IField<TBase>

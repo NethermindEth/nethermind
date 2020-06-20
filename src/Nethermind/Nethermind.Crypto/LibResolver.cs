@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Threading;
+using Nethermind.Crypto.ZkSnarks;
 using Nethermind.Native;
 
 namespace Nethermind.Crypto

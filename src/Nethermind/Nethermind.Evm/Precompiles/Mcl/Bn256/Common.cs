@@ -13,40 +13,40 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bn256
         private static readonly byte[] Zero16 = new byte[16];
         private static readonly byte[] ZeroResult64 = new byte[64];
 
-        public static bool ReadFr(in Span<byte> inputDataSpan, in int offset, out Crypto.Bn256.Fr fr)
+        public static bool ReadFr(in Span<byte> inputDataSpan, in int offset, out Crypto.ZkSnarks.Fr fr)
         {
-            fr = new Crypto.Bn256.Fr();
+            fr = new Crypto.ZkSnarks.Fr();
             Span<byte> changed = inputDataSpan.Slice(offset, 32); 
             Bytes.ChangeEndianness8(changed);
-            fr.FrSetLittleEndianMod(changed, 32);
+            fr.SetLittleEndianMod(changed, 32);
             return true;
         }
         
-        public static bool TryReadEthG1(in Span<byte> inputDataSpan, in int offset, out Crypto.Bn256.G1 g1)
+        public static bool TryReadEthG1(in Span<byte> inputDataSpan, in int offset, out Crypto.ZkSnarks.G1 g1)
         {
             bool success;
             if (inputDataSpan.Length < offset + 2 * LenFp)
             {
-                g1 = new Nethermind.Crypto.Bn256.G1();
+                g1 = new Crypto.ZkSnarks.G1();
                 success = false;
             }
             else
             {
                 UInt256.CreateFromBigEndian(out UInt256 x1Int, inputDataSpan.Slice(offset + 0 * LenFp, LenFp));
                 UInt256.CreateFromBigEndian(out UInt256 y1Int, inputDataSpan.Slice(offset + 1 * LenFp, LenFp));
-                g1 = Crypto.Bn256.G1.Create(x1Int, y1Int);
+                g1 = Crypto.ZkSnarks.G1.Create(x1Int, y1Int);
                 success = g1.IsValid();
             }
 
             return success;
         }
         
-        public static bool TryReadEthG2(in Span<byte> inputDataSpan, in int offset, out Crypto.Bn256.G2 g2)
+        public static bool TryReadEthG2(in Span<byte> inputDataSpan, in int offset, out Crypto.ZkSnarks.G2 g2)
         {
             bool success;
             if (inputDataSpan.Length < offset + 4 * LenFp)
             {
-                g2 = new Nethermind.Crypto.Bn256.G2();
+                g2 = new Crypto.ZkSnarks.G2();
                 success = false;
             }
             else
@@ -55,14 +55,14 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bn256
                 UInt256.CreateFromBigEndian(out UInt256 aInt, inputDataSpan.Slice(offset + 1 * LenFp, LenFp));
                 UInt256.CreateFromBigEndian(out UInt256 dInt, inputDataSpan.Slice(offset + 2 * LenFp, LenFp));
                 UInt256.CreateFromBigEndian(out UInt256 cInt, inputDataSpan.Slice(offset + 3 * LenFp, LenFp));
-                g2 = Crypto.Bn256.G2.Create(aInt, bInt, cInt, dInt);
+                g2 = Crypto.ZkSnarks.G2.Create(aInt, bInt, cInt, dInt);
                 success = g2.IsValid();
             }
 
             return success;
         }
 
-        public static byte[] SerializeEthG1(Crypto.Bn256.G1 g1)
+        public static byte[] SerializeEthG1(Crypto.ZkSnarks.G1 g1)
         {
             byte[] result;
             if (g1.IsZero())

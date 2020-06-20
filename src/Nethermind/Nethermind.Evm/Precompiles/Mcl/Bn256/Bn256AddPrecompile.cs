@@ -18,6 +18,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto.ZkSnarks;
 
 namespace Nethermind.Evm.Precompiles.Mcl.Bn256
 {
@@ -47,8 +48,8 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bn256
             Mcl.PrepareInputData(inputData, inputDataSpan);
 
             (byte[], bool) result;
-            if (Common.TryReadEthG1(inputDataSpan, 0 * Crypto.Bn256.LenFp, out Crypto.Bn256.G1 a) &&
-                Common.TryReadEthG1(inputDataSpan, 2 * Crypto.Bn256.LenFp, out Crypto.Bn256.G1 b))
+            if (Common.TryReadEthG1(inputDataSpan, 0 * Crypto.ZkSnarks.Bn256.LenFp, out G1 a) &&
+                Common.TryReadEthG1(inputDataSpan, 2 * Crypto.ZkSnarks.Bn256.LenFp, out G1 b))
             {
                 a.Add(a, b);
                 result = (Common.SerializeEthG1(a), true);
