@@ -64,6 +64,27 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bls
 
             return result;
         }
+
+        public static bool TryReadFp(in Span<byte> inputDataSpan, in int offset, out MclBls12.Fp fp)
+        {
+            bool success;
+            if (inputDataSpan.Length < offset + LenFp ||
+                !Bytes.AreEqual(Zero16, inputDataSpan.Slice(offset, 16)))
+            {
+                fp = new MclBls12.Fp();
+                success = false;
+            }
+            else
+            {
+                Span<byte> fpBytes = inputDataSpan.Slice(offset + 0 * LenFp, LenFp);
+                BigInteger fpInt = new BigInteger(fpBytes.Slice(16), true, true);
+                fp = new MclBls12.Fp();
+                fp.SetStr(fpInt.ToString(), 10);
+                success = fp.IsValid();
+            }
+
+            return success;
+        }
         
         public static bool TryReadEthG1(in Span<byte> inputDataSpan, in int offset, out MclBls12.G1 g1)
         {

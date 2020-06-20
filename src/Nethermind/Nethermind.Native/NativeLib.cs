@@ -54,7 +54,7 @@ namespace Nethermind.Native
                 _ => throw new NotSupportedException($"Platform support missing: {platform}")
             };
             
-            Console.WriteLine($"Trying to load a lib {libraryName} from {libPath} with search path {searchPath} for asembly {assembly} on platform {platform}");
+            // Console.WriteLine($"Trying to load a lib {libraryName} from {libPath} with search path {searchPath} for asembly {assembly} on platform {platform}");
             NativeLibrary.TryLoad(libPath, assembly, searchPath, out IntPtr libHandle);
             return libHandle;
         }

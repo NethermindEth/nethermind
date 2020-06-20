@@ -33,8 +33,9 @@ namespace Nethermind.Evm.Test
             foreach (var (input, expectedResult) in Inputs)
             {
                 IPrecompile precompile = G1AddPrecompile.Instance;
-                var (output, _) = precompile.Run(input);
+                (byte[] output, bool success) = precompile.Run(input);
                 output.Should().BeEquivalentTo(expectedResult);
+                success.Should().BeTrue();
             }
         }
         
