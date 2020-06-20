@@ -315,6 +315,12 @@ namespace Nethermind.Crypto.Bls
         public static extern int mclBn_setMapToMode(int mode);
 
         [DllImport(MclBls12Lib)]
+        public static extern void mclBn_verifyOrderG1(int doVerify);
+        
+        [DllImport(MclBls12Lib)]
+        public static extern void mclBn_verifyOrderG2(int doVerify);
+
+        [DllImport(MclBls12Lib)]
         public static extern unsafe void mclBnG1_mulVec(ref G1 z, void* x, void* y, int size);
 
         [DllImport(MclBls12Lib)]
@@ -341,6 +347,9 @@ namespace Nethermind.Crypto.Bls
             {
                 throw new InvalidOperationException($"mclBn_setMapToMode->{mapModeRes}");
             }
+            
+            mclBn_verifyOrderG1(1);
+            mclBn_verifyOrderG2(1);
         }
     }
 }
