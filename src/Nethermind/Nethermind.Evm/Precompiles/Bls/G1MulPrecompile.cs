@@ -69,27 +69,28 @@ namespace Nethermind.Evm.Precompiles.Bls
 
         private static MclBls12.G1 MulAlternative(MclBls12.G1 g1, UInt256 s)
         {
-            if (s.IsZero) // P * 0 = 0
+            MclBls12.G1 res;
+            if (s.IsZero)
             {
                 g1.Clear();
             }
 
             if (g1.IsZero())
             {
-                return g1;
+                res = g1;
             }
-
-            MclBls12.G1 res = new MclBls12.G1();
-            res.Clear();
-
-            int bitLength = ((BigInteger)s).BitLength();
-            for (int i = bitLength - 1; i >= 0; i--)
+            else
             {
-                res.Dbl(res);
-                if (s.TestBit(i))
+                res = new MclBls12.G1();
+                int bitLength = ((BigInteger)s).BitLength();
+                for (int i = bitLength - 1; i >= 0; i--)
                 {
-                    res.Add(res, g1);
-                }
+                    res.Dbl(res);
+                    if (s.TestBit(i))
+                    {
+                        res.Add(res, g1);
+                    }
+                }   
             }
 
             return res;

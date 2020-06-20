@@ -51,8 +51,8 @@ namespace Nethermind.Evm.Precompiles.Bls
             Common.PrepareInputData(inputData, inputDataSpan);
 
             (byte[], bool) result;
-            if (Common.TryReadEthG1(inputDataSpan, 0, out MclBls12.G1 a)
-                && Common.TryReadEthG1(inputDataSpan, 2 * Common.LenFp, out MclBls12.G1 b))
+            if (Common.TryReadEthG1(inputDataSpan, 0 * Common.LenFp, out MclBls12.G1 a) &&
+                Common.TryReadEthG1(inputDataSpan, 2 * Common.LenFp, out MclBls12.G1 b))
             {
                 a.Add(a, b);
                 result = (Common.SerializeEthG1(a), true);
