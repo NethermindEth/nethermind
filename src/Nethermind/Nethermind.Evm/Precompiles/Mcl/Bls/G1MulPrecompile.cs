@@ -56,9 +56,9 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bls
             (byte[], bool) result;
             if (Common.TryReadEthG1(inputDataSpan, 0, out G1 a))
             {
-                UInt256 scalar = Mcl.ReadScalar(inputDataSpan, 2 * Common.LenFp);
-                G1 resultAlt = MulAlternative(a, scalar);
-                result = (Common.SerializeEthG1(resultAlt), true);
+                Common.TryReadEthFr(inputDataSpan, 2 * Common.LenFp, out Fr fr);
+                a.Mul(a, fr);
+                result = (Common.SerializeEthG1(a), true);
             }
             else
             {

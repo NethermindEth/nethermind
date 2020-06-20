@@ -23,7 +23,7 @@ namespace Nethermind.Crypto.Bls
     [StructLayout(LayoutKind.Sequential)]
     public struct Fr : IEquatable<Fr>
     {
-        private ulong v0, v1, v2, v3, v4, v5;
+        private ulong v0, v1, v2, v3;
 
         public void Clear()
         {

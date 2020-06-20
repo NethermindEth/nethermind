@@ -92,6 +92,27 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bls
             return success;
         }
         
+        public static bool TryReadEthFr(in Span<byte> inputDataSpan, in int offset, out Fr fr)
+        {
+            bool success;
+            if (inputDataSpan.Length < offset + LenFr)
+            {
+                fr = new Fr();
+                success = false;
+            }
+            else
+            {
+                Span<byte> frBytes = inputDataSpan.Slice(offset, LenFr);
+                fr = new Fr();
+                
+                Bytes.ChangeEndianness8(frBytes);
+                fr.SetLittleEndianMod(frBytes, 32);
+                success = fr.IsValid();
+            }
+
+            return success;
+        }
+        
         public static bool TryReadEthG1(in Span<byte> inputDataSpan, in int offset, out G1 g1)
         {
             bool success;

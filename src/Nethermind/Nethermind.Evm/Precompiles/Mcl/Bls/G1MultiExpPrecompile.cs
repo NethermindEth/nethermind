@@ -16,7 +16,9 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto.Bls;
 
 namespace Nethermind.Evm.Precompiles.Mcl.Bls
 {
@@ -44,9 +46,34 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bls
             return 12000L * k * Discount.For[k] / 1000;
         }
 
+        private const int ItemSize = 160;
+        
         public (byte[], bool) Run(byte[] inputData)
-        {  
-            throw new NotImplementedException();
+        {
+            inputData ??= Bytes.Empty;
+            if (inputData.Length % ItemSize > 0)
+            {
+                // note that it will not happen in case of null / 0 length
+                return (Bytes.Empty, false);
+            }
+
+            int count = inputData.Length / ItemSize;
+            G1 calculated = new G1();
+            Span<G1> inputG1 = new G1[count];
+            Span<Fr> inputFr = new Fr[count];
+
+            for (int i = 0; i < count; i++)
+            {
+                Span<byte> currentBytes = inputData.AsSpan().Slice(i * ItemSize, ItemSize);
+                if (!Common.TryReadEthG1(currentBytes, 0, out inputG1[i]) ||
+                    !Common.TryReadEthFr(currentBytes, 2 * Common.LenFp, out inputFr[i]))
+                {
+                    return (Bytes.Empty, false);
+                }
+            }
+            
+            G1.MultiMul(ref calculated, inputG1, inputFr);
+            return (Common.SerializeEthG1(calculated), true);
         }
     }
 }

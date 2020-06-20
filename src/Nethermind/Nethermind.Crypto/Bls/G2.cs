@@ -119,7 +119,7 @@ namespace Nethermind.Crypto.Bls
             MclBls12.mclBnG2_sub(ref this, ref x, ref y);
         }
 
-        public void Mul(G2 x, Fp y)
+        public void Mul(G2 x, Fr y)
         {
             MclBls12.mclBnG2_mul(ref this, ref x, ref y);
         }
