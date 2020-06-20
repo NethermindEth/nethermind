@@ -20,6 +20,7 @@ using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.JsonRpc.Data;
@@ -35,13 +36,15 @@ namespace Nethermind.JsonRpc.Modules.Parity
         private readonly ITxPool _txPool;
         private readonly IBlockFinder _blockFinder;
         private readonly IReceiptFinder _receiptFinder;
-        
-        public ParityModule(IEcdsa ecdsa, ITxPool txPool, IBlockFinder blockFinder, IReceiptFinder receiptFinder, ILogManager logManager)
+        private readonly IEnode _enode;
+
+        public ParityModule(IEcdsa ecdsa, ITxPool txPool, IBlockFinder blockFinder, IReceiptFinder receiptFinder, IEnode enode, ILogManager logManager)
         {
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
             _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
+            _enode = enode;
         }
 
         public ResultWrapper<ParityTransaction[]> parity_pendingTransactions()
@@ -62,5 +65,7 @@ namespace Nethermind.JsonRpc.Modules.Parity
             IEnumerable<ReceiptForRpc> result = receipts.Zip(block.Transactions, (r, t) => new ReceiptForRpc(t.Hash, r));
             return ResultWrapper<ReceiptForRpc[]>.Success(result.ToArray());
         }
+
+        public ResultWrapper<string> parity_enode() => ResultWrapper<string>.Success(_enode.ToString());
     }
 }

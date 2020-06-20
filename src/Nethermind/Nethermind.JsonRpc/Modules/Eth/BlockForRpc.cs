@@ -35,7 +35,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         public BlockForRpc(Block block, bool includeFullTransactionData)
         {
             _isAuRaBlock = block.Header.AuRaSignature != null;
-            Author = block.Author;
+            Author = block.Author ?? block.Beneficiary;
             Difficulty = block.Difficulty;
             ExtraData = block.ExtraData;
             GasLimit = block.GasLimit;

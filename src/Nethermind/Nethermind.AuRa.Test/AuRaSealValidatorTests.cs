@@ -73,6 +73,13 @@ namespace Nethermind.AuRa.Test
             };
         }
         
+        public enum Repeat
+        {
+            No,
+            Yes,
+            YesChangeHash
+        }
+        
         private static IEnumerable ValidateParamsTests
         {
             get
@@ -89,8 +96,8 @@ namespace Nethermind.AuRa.Test
                     .WithAura(parentStep, Bytes.Empty)
                     .WithBeneficiary(TestItem.AddressB);
 
-                TestCaseData GetTestCaseData(BlockHeaderBuilder parent, BlockHeaderBuilder block, Action<AuRaParameters> paramAction = null) =>
-                    new TestCaseData(parent.TestObject, block.TestObject, paramAction);
+                TestCaseData GetTestCaseData(BlockHeaderBuilder parent, BlockHeaderBuilder block, Action<AuRaParameters> paramAction = null, Repeat repeat = Repeat.No) =>
+                    new TestCaseData(parent.TestObject, block.TestObject, paramAction, repeat);
                 
 
                 yield return GetTestCaseData(GetParentBlock(), GetBlock())
@@ -122,11 +129,17 @@ namespace Nethermind.AuRa.Test
                 
                 yield return GetTestCaseData(GetParentBlock(), GetBlock().WithAura(parentStep - 1, Bytes.Empty), a => a.ValidateScoreTransition = a.ValidateStepTransition = 100)
                     .Returns((true, (object) null)).SetName("Skip step validation due to ValidateStepTransition.").SetCategory("ValidParams");
+                
+                yield return GetTestCaseData(GetParentBlock(), GetBlock(), repeat: Repeat.Yes)
+                    .Returns((true, (object) null)).SetName("Same block twice.");
+                
+                yield return GetTestCaseData(GetParentBlock(), GetBlock(), repeat: Repeat.YesChangeHash)
+                    .Returns((true, IReportingValidator.MaliciousCause.SiblingBlocksInSameStep)).SetName("Sibling in same step.");
             }
         }
 
         [TestCaseSource(nameof(ValidateParamsTests))]
-        public (bool, object) validate_params(BlockHeader parentBlock, BlockHeader block, Action<AuRaParameters> modifyParameters)
+        public (bool, object) validate_params(BlockHeader parentBlock, BlockHeader block, Action<AuRaParameters> modifyParameters, Repeat repeat)
         {
             object cause = null;
             
@@ -141,6 +154,16 @@ namespace Nethermind.AuRa.Test
             if (header?.AuRaStep > parent?.AuRaStep + 1)
             {
                 _reportingValidator.ReportBenign(header.Beneficiary, header.Number, IReportingValidator.BenignCause.SkippedStep);
+            }
+
+            if (repeat != Repeat.No)
+            {
+                if (repeat == Repeat.YesChangeHash)
+                {
+                    block.Hash = Keccak.Compute("AAA");
+                }
+                
+                validateParams = _sealValidator.ValidateParams(parentBlock, block);
             }
            
             return (validateParams, cause);

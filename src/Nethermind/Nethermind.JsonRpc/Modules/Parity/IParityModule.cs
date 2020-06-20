@@ -25,5 +25,6 @@ namespace Nethermind.JsonRpc.Modules.Parity
     {
         ResultWrapper<ParityTransaction[]> parity_pendingTransactions();
         ResultWrapper<ReceiptForRpc[]> parity_getBlockReceipts(BlockParameter blockParameter);
+        ResultWrapper<string> parity_enode();
     }
 }

@@ -25,6 +25,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Facade.Transactions;
+using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Wallet;
 using NSubstitute;
@@ -45,7 +46,7 @@ namespace Nethermind.AuRa.Test.Transactions
             var nodeAddress = TestItem.AddressA;
             
             UInt256 expectedNonce = 10;
-            stateReader.GetNonce(blockHeader.StateRoot, nodeAddress).Returns(expectedNonce - 1);
+            stateReader.GetNonce(blockHeader.StateRoot, nodeAddress).Returns(expectedNonce);
             
             ulong expectedTimeStamp = 100;
             timestamper.EpochSeconds.Returns(expectedTimeStamp);
@@ -55,7 +56,7 @@ namespace Nethermind.AuRa.Test.Transactions
             innerTxSource.GetTransactions(blockHeader, gasLimit).Returns(new[] {tx});
             
             TxSealer txSealer = new TxSealer(new Signer(chainId, Build.A.PrivateKey.TestObject), timestamper);
-            var transactionFiller = new GeneratedTxSourceSealer(innerTxSource, txSealer, stateReader);
+            var transactionFiller = new GeneratedTxSourceSealer(innerTxSource, txSealer, stateReader, LimboLogs.Instance);
             
             var txResult= transactionFiller.GetTransactions(blockHeader, gasLimit).First();
 

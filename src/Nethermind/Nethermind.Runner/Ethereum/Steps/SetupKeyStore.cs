@@ -14,14 +14,20 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+using System.IO;
+using System.IO.Abstractions;
 using System.Net;
+using System.Security;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Consensus;
+using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.KeyStore;
 using Nethermind.KeyStore.Config;
+using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Runner.Ethereum.Context;
@@ -65,13 +71,15 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _ => new ProtectedKeyStoreWallet(_context.KeyStore, new ProtectedPrivateKeyFactory(_context.CryptoRandom, _context.Timestamper), _context.Timestamper, _context.LogManager),
                 };
 
+                new AccountUnlocker(keyStoreConfig, _context.Wallet, new FileSystem(), _context.LogManager).UnlockAccounts();
+
                 INodeKeyManager nodeKeyManager = new NodeKeyManager(_context.CryptoRandom, _context.KeyStore, keyStoreConfig, _context.LogManager);
                 _context.NodeKey = nodeKeyManager.LoadNodeKey();
                 _context.OriginalSignerKey = nodeKeyManager.LoadSignerKey();
                 _context.Enode = new Enode(_context.NodeKey.PublicKey, IPAddress.Parse(networkConfig.ExternalIp), networkConfig.P2PPort);
                 
                 _context.LogManager.SetGlobalVariable("enode", _context.Enode.ToString());
-            });
+            }, cancellationToken);
         }
     }
 }
