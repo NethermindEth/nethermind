@@ -54,10 +54,10 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bls
             Mcl.PrepareInputData(inputData, inputDataSpan);
 
             (byte[], bool) result;
-            if (Common.TryReadEthG1(inputDataSpan, 0, out MclBls12.G1 a))
+            if (Common.TryReadEthG1(inputDataSpan, 0, out G1 a))
             {
                 UInt256 scalar = Mcl.ReadScalar(inputDataSpan, 2 * Common.LenFp);
-                MclBls12.G1 resultAlt = MulAlternative(a, scalar);
+                G1 resultAlt = MulAlternative(a, scalar);
                 result = (Common.SerializeEthG1(resultAlt), true);
             }
             else
@@ -68,9 +68,9 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bls
             return result;
         }
 
-        private static MclBls12.G1 MulAlternative(MclBls12.G1 g1, UInt256 s)
+        private static G1 MulAlternative(G1 g1, UInt256 s)
         {
-            MclBls12.G1 res;
+            G1 res;
             if (s.IsZero)
             {
                 g1.Clear();
@@ -82,7 +82,7 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bls
             }
             else
             {
-                res = new MclBls12.G1();
+                res = new G1();
                 int bitLength = ((BigInteger)s).BitLength();
                 for (int i = bitLength - 1; i >= 0; i--)
                 {

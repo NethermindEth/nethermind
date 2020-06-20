@@ -52,9 +52,9 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bls
             Mcl.PrepareInputData(inputData, inputDataSpan);
 
             (byte[], bool) result;
-            if (Common.TryReadFp(inputDataSpan, 0, out MclBls12.Fp fp))
+            if (Common.TryReadFp(inputDataSpan, 0, out Fp fp))
             {
-                MclBls12.G1 g1 = fp.MapToG1();
+                G1 g1 = fp.MapToG1();
                 result = (Common.SerializeEthG1(g1), true);
             }
             else

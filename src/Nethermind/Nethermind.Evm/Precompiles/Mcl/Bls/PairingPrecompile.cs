@@ -69,12 +69,12 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bls
             UInt256 result = UInt256.One;
             if (inputData.Length > 0)
             {
-                List<(MclBls12.G1 P, MclBls12.G2 Q)> pairs = new List<(MclBls12.G1 P, MclBls12.G2 Q)>();
+                List<(G1 P, G2 Q)> pairs = new List<(G1 P, G2 Q)>();
                 // iterating over all pairs
                 for (int offset = 0; offset < inputData.Length; offset += PairSize)
                 {
                     Span<byte> pairData = inputData.Slice(offset, PairSize);
-                    (MclBls12.G1 P, MclBls12.G2 Q)? pair = DecodePair(pairData);
+                    (G1 P, G2 Q)? pair = DecodePair(pairData);
                     if (pair == null)
                     {
                         return (Bytes.Empty, false);
@@ -91,19 +91,19 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bls
             return (resultBytes, true);
         }
 
-        private static UInt256 RunPairingCheck(List<(MclBls12.G1 P, MclBls12.G2 Q)> _pairs)
+        private static UInt256 RunPairingCheck(List<(G1 P, G2 Q)> _pairs)
         {
-            MclBls12.GT gt = new MclBls12.GT();
+            GT gt = new GT();
             for (int i = 0; i < _pairs.Count; i++)
             {
-                (MclBls12.G1 P, MclBls12.G2 Q) pair = _pairs[i];
+                (G1 P, G2 Q) pair = _pairs[i];
                 if (i == 0)
                 {
                     gt.MillerLoop(pair.P, pair.Q);
                 }
                 else
                 {
-                    MclBls12.GT millerLoopRes = new MclBls12.GT();
+                    GT millerLoopRes = new GT();
                     if (!millerLoopRes.IsOne())
                     {
                         millerLoopRes.MillerLoop(pair.P, pair.Q);
@@ -118,12 +118,12 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bls
             return result;
         }
 
-        private static (MclBls12.G1, MclBls12.G2)? DecodePair(Span<byte> input)
+        private static (G1, G2)? DecodePair(Span<byte> input)
         {
-            (MclBls12.G1, MclBls12.G2)? result;
+            (G1, G2)? result;
 
-            if (Common.TryReadEthG1(input, 0, out MclBls12.G1 p) &&
-                Common.TryReadEthG2(input, 2 * Common.LenFp, out MclBls12.G2 q))
+            if (Common.TryReadEthG1(input, 0, out G1 p) &&
+                Common.TryReadEthG2(input, 2 * Common.LenFp, out G2 q))
             {
                 result = (p, q);
             }

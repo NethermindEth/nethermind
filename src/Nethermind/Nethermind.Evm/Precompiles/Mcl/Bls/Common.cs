@@ -16,7 +16,7 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bls
         private static readonly byte[] ZeroResult128 = new byte[128];
         private static readonly byte[] ZeroResult256 = new byte[256];
 
-        public static byte[] SerializeEthG1(MclBls12.G1 g1)
+        public static byte[] SerializeEthG1(G1 g1)
         {
             byte[] result;
             if (g1.IsZero())
@@ -32,7 +32,7 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bls
             return result;
         }
         
-        public static byte[] SerializeEthG2(MclBls12.G2 g2)
+        public static byte[] SerializeEthG2(G2 g2)
         {
             byte[] result;
             if (g2.IsZero())
@@ -66,20 +66,20 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bls
             return result;
         }
 
-        public static bool TryReadFp(in Span<byte> inputDataSpan, in int offset, out MclBls12.Fp fp)
+        public static bool TryReadFp(in Span<byte> inputDataSpan, in int offset, out Fp fp)
         {
             bool success;
             if (inputDataSpan.Length < offset + LenFp ||
                 !Bytes.AreEqual(Zero16, inputDataSpan.Slice(offset, 16)))
             {
-                fp = new MclBls12.Fp();
+                fp = new Fp();
                 success = false;
             }
             else
             {
                 Span<byte> fpBytes = inputDataSpan.Slice(offset + 0 * LenFp, LenFp);
                 // BigInteger fpInt = new BigInteger(fpBytes.Slice(16), true, true);
-                fp = new MclBls12.Fp();
+                fp = new Fp();
 
                 // fpInt = fpInt % MclBls12.P;
                 
@@ -92,12 +92,12 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bls
             return success;
         }
         
-        public static bool TryReadEthG1(in Span<byte> inputDataSpan, in int offset, out MclBls12.G1 g1)
+        public static bool TryReadEthG1(in Span<byte> inputDataSpan, in int offset, out G1 g1)
         {
             bool success;
             if (inputDataSpan.Length < offset + 2 * LenFp)
             {
-                g1 = new MclBls12.G1();
+                g1 = new G1();
                 success = false;
             }
             else
@@ -109,12 +109,12 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bls
                 {
                     BigInteger x1Int = new BigInteger(x1.Slice(16), true, true);
                     BigInteger y1Int = new BigInteger(y1.Slice(16), true, true);
-                    g1 = MclBls12.G1.Create(x1Int, y1Int);
+                    g1 = G1.Create(x1Int, y1Int);
                     success = g1.IsValid();
                 }
                 else
                 {
-                    g1 = new MclBls12.G1();
+                    g1 = new G1();
                     success = false;
                 }   
             }
@@ -122,12 +122,12 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bls
             return success;
         }
 
-        public static bool TryReadEthG2(in Span<byte> inputDataSpan, in int offset, out MclBls12.G2 g2)
+        public static bool TryReadEthG2(in Span<byte> inputDataSpan, in int offset, out G2 g2)
         {
             bool success;
             if (inputDataSpan.Length < offset + 4 * LenFp)
             {
-                g2 = new MclBls12.G2();
+                g2 = new G2();
                 success = false;
             }
             else
@@ -145,12 +145,12 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bls
                     BigInteger bInt = new BigInteger(b.Slice(16), true, true);
                     BigInteger cInt = new BigInteger(c.Slice(16), true, true);
                     BigInteger dInt = new BigInteger(d.Slice(16), true, true);
-                    g2 = MclBls12.G2.Create(aInt, bInt, cInt, dInt);
+                    g2 = G2.Create(aInt, bInt, cInt, dInt);
                     success = g2.IsValid();
                 }
                 else
                 {
-                    g2 = new MclBls12.G2();
+                    g2 = new G2();
                     success = false;
                 }   
             }

@@ -19,11 +19,6 @@ using Nethermind.Core;
 
 namespace Nethermind.Crypto
 {
-    public interface IProtectedPrivateKeyFactory
-    {
-        ProtectedPrivateKey Create(PrivateKey privateKey);
-    }
-    
     public class ProtectedPrivateKeyFactory : IProtectedPrivateKeyFactory
     {
         private readonly ICryptoRandom _random;

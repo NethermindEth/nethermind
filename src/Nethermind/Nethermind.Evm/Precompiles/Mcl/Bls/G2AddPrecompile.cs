@@ -18,7 +18,6 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
 using Nethermind.Crypto.Bls;
 
 namespace Nethermind.Evm.Precompiles.Mcl.Bls
@@ -52,8 +51,8 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bls
             Mcl.PrepareInputData(inputData, inputDataSpan);
 
             (byte[], bool) result;
-            if (Common.TryReadEthG2(inputDataSpan, 0 * Common.LenFp, out MclBls12.G2 a) &&
-                Common.TryReadEthG2(inputDataSpan, 4 * Common.LenFp, out MclBls12.G2 b))
+            if (Common.TryReadEthG2(inputDataSpan, 0 * Common.LenFp, out G2 a) &&
+                Common.TryReadEthG2(inputDataSpan, 4 * Common.LenFp, out G2 b))
             {
                 a.Add(a, b);
                 result = (Common.SerializeEthG2(a), true);

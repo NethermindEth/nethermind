@@ -34,10 +34,4 @@ namespace Nethermind.Crypto.ZkSnarks.Obsolete
         bool IsZero();
         bool IsValid();
     }
-
-    public static class FieldParams<T>
-    {
-        public static T Zero { get; internal set; }
-        public static T One { get; internal set; }
-    }
 }

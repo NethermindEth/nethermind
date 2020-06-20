@@ -15,76 +15,76 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Text;
-using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Crypto.ZkSnarks
+namespace Nethermind.Crypto.Bls
 {
     [StructLayout(LayoutKind.Sequential)]
     public struct G2
     {
-        private ulong v00, v01, v02, v03, v04, v05, v06, v07, v08, v09, v10, v11;
-        private ulong v12, v13, v14, v15, v16, v17, v18, v19, v20, v21, v22, v23;
+        private ulong v00, v01, v02, v03, v04, v05, v06, v07, v08, v09, v10, v11, v12, v13, v14, v15, v16, v17;
+        private ulong v18, v19, v20, v21, v22, v23, v24, v25, v26, v27, v28, v29, v30, v31, v32, v33, v34, v35;
 
         public void Clear()
         {
-            Bn256.mclBnG2_clear(ref this);
+            MclBls12.mclBnG2_clear(ref this);
         }
 
         public void setStr(String s, int ioMode)
         {
-            if (Bn256.mclBnG2_setStr(ref this, s, s.Length, ioMode) != 0)
+            if (MclBls12.mclBnG2_setStr(ref this, s, s.Length, ioMode) != 0)
             {
-                throw new ArgumentException("Bn256.mclBnG2_setStr:" + s);
+                throw new ArgumentException("MclBls12.mclBnG2_setStr:" + s);
             }
         }
 
         public bool IsValid()
         {
-            return Bn256.mclBnG2_isValid(ref this) == 1;
+            return MclBls12.mclBnG2_isValid(ref this) == 1;
         }
 
         public bool Equals(G2 rhs)
         {
-            return Bn256.mclBnG2_isEqual(ref this, ref rhs) == 1;
+            return MclBls12.mclBnG2_isEqual(ref this, ref rhs) == 1;
         }
 
         public bool IsZero()
         {
-            return Bn256.mclBnG2_isZero(ref this) == 1;
+            return MclBls12.mclBnG2_isZero(ref this) == 1;
         }
 
         public void HashAndMapTo(String s)
         {
-            if (Bn256.mclBnG2_hashAndMapTo(ref this, s, s.Length) != 0)
+            if (MclBls12.mclBnG2_hashAndMapTo(ref this, s, s.Length) != 0)
             {
-                throw new ArgumentException("Bn256.mclBnG2_hashAndMapTo:" + s);
+                throw new ArgumentException("MclBls12.mclBnG2_hashAndMapTo:" + s);
             }
         }
 
         public string GetStr(int ioMode)
         {
             StringBuilder sb = new StringBuilder(1024);
-            long size = Bn256.mclBnG2_getStr(sb, sb.Capacity, ref this, ioMode);
+            long size = MclBls12.mclBnG2_getStr(sb, sb.Capacity, ref this, ioMode);
             if (size == 0)
             {
-                throw new InvalidOperationException("Bn256.mclBnG2_getStr:");
+                throw new InvalidOperationException("MclBls12.mclBnG2_getStr:");
             }
 
             return sb.ToString();
         }
 
-        public static G2 CreateFromBigEndian(Span<byte> a, Span<byte> b, Span<byte> c, Span<byte> d)
+        public static G2 CreateFpomBigEndian(Span<byte> a, Span<byte> b, Span<byte> c, Span<byte> d)
         {
-            UInt256.CreateFromBigEndian(out UInt256 aInt, a);
-            UInt256.CreateFromBigEndian(out UInt256 bInt, b);
-            UInt256.CreateFromBigEndian(out UInt256 cInt, c);
-            UInt256.CreateFromBigEndian(out UInt256 dInt, d);
+            var aInt = new BigInteger(a, true, true);
+            var bInt = new BigInteger(b, true, true);
+            var cInt = new BigInteger(c, true, true);
+            var dInt = new BigInteger(d, true, true);
             return Create(aInt, bInt, cInt, dInt);
         }
 
-        public static G2 Create(UInt256 a, UInt256 b, UInt256 c, UInt256 d)
+        public static G2 Create(BigInteger a, BigInteger b, BigInteger c, BigInteger d)
         {
             G2 g2 = new G2();
             if (a.IsZero && b.IsZero && c.IsZero && d.IsZero)
@@ -101,27 +101,27 @@ namespace Nethermind.Crypto.ZkSnarks
 
         public void Neg(G2 x)
         {
-            Bn256.mclBnG2_neg(ref this, ref x);
+            MclBls12.mclBnG2_neg(ref this, ref x);
         }
 
         public void Dbl(G2 x)
         {
-            Bn256.mclBnG2_dbl(ref this, ref x);
+            MclBls12.mclBnG2_dbl(ref this, ref x);
         }
 
         public void Add(G2 x, G2 y)
         {
-            Bn256.mclBnG2_add(ref this, ref x, ref y);
+            MclBls12.mclBnG2_add(ref this, ref x, ref y);
         }
 
         public void Sub(G2 x, G2 y)
         {
-            Bn256.mclBnG2_sub(ref this, ref x, ref y);
+            MclBls12.mclBnG2_sub(ref this, ref x, ref y);
         }
 
-        public void Mul(G2 x, Fr y)
+        public void Mul(G2 x, Fp y)
         {
-            Bn256.mclBnG2_mul(ref this, ref x, ref y);
+            MclBls12.mclBnG2_mul(ref this, ref x, ref y);
         }
     }
 }
