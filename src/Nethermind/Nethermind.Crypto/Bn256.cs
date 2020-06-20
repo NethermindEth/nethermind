@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Text;
 using Nethermind.Dirichlet.Numerics;
@@ -8,6 +9,9 @@ namespace Nethermind.Crypto
 {
     public static class Bn256
     {
+        public static readonly BigInteger P = BigInteger.Parse("21888242871839275222246405745257275088696311157297823662689037894645226208583");
+        public static readonly BigInteger R = BigInteger.Parse("21888242871839275222246405745257275088548364400416034343698204186575808495617");
+
         private const string Bn256Lib = "mclbn256";
 
         public const int LenFp = 32;
@@ -263,9 +267,10 @@ namespace Nethermind.Crypto
 
             public void SetStr(string s, int ioMode)
             {
-                if (mclBnFr_setStr(ref this, s, s.Length, ioMode) != 0)
+                int res = mclBnFr_setStr(ref this, s, s.Length, ioMode);
+                if (res != 0)
                 {
-                    throw new ArgumentException("mclBnFr_setStr" + s);
+                    throw new ArgumentException($"mclBnFr_setStr({s})->{res}");
                 }
             }
             

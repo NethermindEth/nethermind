@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Globalization;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -54,8 +55,10 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bn256
             if (Common.TryReadEthG1(inputDataSpan, 0 * Crypto.Bn256.LenFp, out Crypto.Bn256.G1 a))
             {
                 UInt256 scalar = Mcl.ReadScalar(inputDataSpan, 2 * Crypto.Bn256.LenFp);
-                Crypto.Bn256.G1 resultAlt = MulAlternative(a, scalar);
-                result = (Common.SerializeEthG1(resultAlt), true);
+
+                // Crypto.Bn256.G1 result = MulAlternative(a, scalar);
+                Crypto.Bn256.G1 mulRes = Mul(a, scalar);
+                result = (Common.SerializeEthG1(mulRes), true);
             }
             else
             {
@@ -65,13 +68,10 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bn256
             return result;
         }
         
-        private static Crypto.Bn256.G1 Mul(ref Crypto.Bn256.G1 g1, UInt256 s)
+        private static Crypto.Bn256.G1 Mul(Crypto.Bn256.G1 g1, BigInteger s)
         {
-            // multiplication in mcl returns totally unexpected values
-
-            Fp fp = new Fp(s);
             Crypto.Bn256.Fr b = new Crypto.Bn256.Fr();
-            b.SetStr($"{fp.ToString()}", 0);
+            b.SetStr($"{(s % Crypto.Bn256.R).ToString()}", 10);
 
             Crypto.Bn256.G1 res = new Crypto.Bn256.G1();
             res.Mul(g1, b);
