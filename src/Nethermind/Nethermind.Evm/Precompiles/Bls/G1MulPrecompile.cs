@@ -15,10 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto.ZkSnarks;
+using Nethermind.Crypto;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Evm.Precompiles.Bls
 {
@@ -47,7 +49,50 @@ namespace Nethermind.Evm.Precompiles.Bls
 
         public (byte[], bool) Run(byte[] inputData)
         {  
-            throw new NotImplementedException();
+            Span<byte> inputDataSpan = stackalloc byte[2 * Common.LenFp + Common.LenFr];
+            Common.PrepareInputData(inputData, inputDataSpan);
+
+            (byte[], bool) result;
+            if (Common.TryReadEthG1(inputDataSpan, 0, out MclBls12.G1 a))
+            {
+                UInt256 scalar = Common.ReadScalar(inputDataSpan, 2 * Common.LenFp);
+                MclBls12.G1 resultAlt = MulAlternative(a, scalar);
+                result = (Common.SerializeEthG1(resultAlt), true);
+            }
+            else
+            {
+                result = (Bytes.Empty, false);
+            }
+
+            return result;
+        }
+
+        private static MclBls12.G1 MulAlternative(MclBls12.G1 g1, UInt256 s)
+        {
+            if (s.IsZero) // P * 0 = 0
+            {
+                g1.Clear();
+            }
+
+            if (g1.IsZero())
+            {
+                return g1;
+            }
+
+            MclBls12.G1 res = new MclBls12.G1();
+            res.Clear();
+
+            int bitLength = ((BigInteger)s).BitLength();
+            for (int i = bitLength - 1; i >= 0; i--)
+            {
+                res.Dbl(res);
+                if (s.TestBit(i))
+                {
+                    res.Add(res, g1);
+                }
+            }
+
+            return res;
         }
     }
 }

@@ -497,10 +497,9 @@ namespace Nethermind.Crypto
                     // g1.Deserialize(array, 32);
                     
                     // /* we cannot use compressed form as we are using mcl for validating the x,y pair */
-                    // g1.setStr($"1 {x.ToString()} {y.ToString()}", 0);
-                    g1.setStr($"2 {x.ToString()}", 0);
-                    g1.setStr($"3 {x.ToString()}", 0);
                     g1.setStr($"1 {x.ToString()} {y.ToString()}", 0);
+                    // g1.setStr($"2 {x.ToString()}", 0);
+                    // g1.setStr($"3 {x.ToString()}", 0);
                 }
 
                 return g1;

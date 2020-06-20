@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -28,8 +27,6 @@ namespace Nethermind.Evm.Precompiles.Bls
     /// </summary>
     public class G1AddPrecompile : IPrecompile
     {
-        private static byte[] _zeroResult = new byte[64];
-
         public static IPrecompile Instance = new G1AddPrecompile();
 
         private G1AddPrecompile()
@@ -48,78 +45,22 @@ namespace Nethermind.Evm.Precompiles.Bls
             return 0L;
         }
 
-        private const int Len = 64;
-        
-        private readonly byte[] ZeroX16 = new byte[16];
-
         public (byte[], bool) Run(byte[] inputData)
         {
-            inputData ??= Bytes.Empty;
-            Span<byte> inputDataSpan = stackalloc byte[4 * Len];
-            inputData.AsSpan(0, Math.Min(4 * Len, inputData.Length))
-                .CopyTo(inputDataSpan.Slice(0, Math.Min(4 * Len, inputData.Length)));
+            Span<byte> inputDataSpan = stackalloc byte[4 * Common.LenFp];
+            Common.PrepareInputData(inputData, inputDataSpan);
 
-            var x1 = inputDataSpan.Slice(0 * Len, Len);
-            var y1 = inputDataSpan.Slice(1 * Len, Len);
-            var x2 = inputDataSpan.Slice(2 * Len, Len);
-            var y2 = inputDataSpan.Slice(3 * Len, Len);
-
-            if (!Bytes.AreEqual(ZeroX16, x1.Slice(0, 16)) ||
-                !Bytes.AreEqual(ZeroX16, y1.Slice(0, 16)) ||
-                !Bytes.AreEqual(ZeroX16, x2.Slice(0, 16)) ||
-                !Bytes.AreEqual(ZeroX16, y2.Slice(0, 16)))
+            (byte[], bool) result;
+            if (Common.TryReadEthG1(inputDataSpan, 0, out MclBls12.G1 a)
+                && Common.TryReadEthG1(inputDataSpan, 2 * Common.LenFp, out MclBls12.G1 b))
             {
-                return (Bytes.Empty, false);
-            }
-            
-            var x1Int = new BigInteger(x1.Slice(16), true, true);
-            var y1Int = new BigInteger(y1.Slice(16), true, true);
-            var x2Int = new BigInteger(x2.Slice(16), true, true);
-            var y2Int = new BigInteger(y2.Slice(16), true, true);
-
-            var x1Copy = x1.Slice(16).ToArray();
-            Bytes.ChangeEndianness8(x1Copy);
-            
-            MclBls12.G1 a = MclBls12.G1.Create(x1Int, y1Int);
-            if (!a.IsValid())
-            {
-                return (Bytes.Empty, false);
-            }
-
-            MclBls12.G1 b = MclBls12.G1.Create(x2Int, y2Int);
-            if (!b.IsValid())
-            {
-                return (Bytes.Empty, false);
-            }
-
-            MclBls12.G1 result = new MclBls12.G1();
-            result.Add(a, b);
-
-            byte[] encodedResult;
-            if (result.IsZero())
-            {
-                encodedResult = _zeroResult;
+                a.Add(a, b);
+                result = (Common.SerializeEthG1(a), true);
             }
             else
             {
-                string[] resultStrings = result.GetStr(0).Split(" ");
-                BigInteger w1 = BigInteger.Parse(resultStrings[1]);
-                BigInteger w2 = BigInteger.Parse(resultStrings[2]);
-                encodedResult = EncodeResult(w1, w2);
+                result = (Bytes.Empty, false);
             }
-
-            return (encodedResult, true);
-        }
-
-        private static byte[] EncodeResult(BigInteger w1, BigInteger w2)
-        {
-            byte[] result = new byte[2 * Len];
-            Span<byte> bytes = stackalloc byte[64];
-            w1.TryWriteBytes(bytes, out int bytesWritten, true, true);
-            bytes.Slice(0, bytesWritten).CopyTo(result.AsSpan(0 * Len + 16 + 48 - bytesWritten, bytesWritten));
-            
-            w2.TryWriteBytes(bytes, out bytesWritten, true, true);
-            bytes.Slice(0, bytesWritten).CopyTo(result.AsSpan(1 * Len + 16 + 48 - bytesWritten, bytesWritten));
             
             return result;
         }
