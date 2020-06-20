@@ -24,6 +24,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Test
 {
+    [Parallelizable(ParallelScope.Self)]
     [TestFixture]
     public class NetworkNodeDecoderTests
     {

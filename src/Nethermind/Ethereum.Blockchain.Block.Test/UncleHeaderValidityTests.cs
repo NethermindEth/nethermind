@@ -25,14 +25,18 @@ namespace Ethereum.Blockchain.Block.Test
 {
     [TestFixture]
     [Parallelizable(ParallelScope.All)]
-    public class UncleHeaderValidityTests : LegacyBlockchainTestBase
+    public class UncleHeaderValidityTests : BlockchainTestBase
     {
         [TestCaseSource(nameof(LoadTests))]
-        public async Task Test(LegacyBlockchainTest test)
+        public async Task Test(BlockchainTest test)
         {
             await RunTest(test);
         }
         
-        public static IEnumerable<LegacyBlockchainTest> LoadTests() { return new DirectoryTestsSource("bcUncleHeaderValidityTest").LoadLegacyTests(); }
+        public static IEnumerable<BlockchainTest> LoadTests()
+        {
+            var loader = new DirectoryTestsSourceLoader(new LoadBlockchainTestsStrategy(), "bcUncleHeaderValidity");
+        return (IEnumerable<BlockchainTest>)loader.LoadTests();
+        }
     }
 }

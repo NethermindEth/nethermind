@@ -20,6 +20,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Clique;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -31,13 +32,15 @@ using Nethermind.Db;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Store;
+using Nethermind.Db.Blooms;
 using Nethermind.Trie;
 using Nethermind.Wallet;
 using NUnit.Framework;
+using BlockTree = Nethermind.Blockchain.BlockTree;
 
 namespace Nethermind.Clique.Test
 {
+    [Parallelizable(ParallelScope.Self)]
     [TestFixture]
     public class CliqueSealEngineTests
     {
@@ -80,7 +83,7 @@ namespace Nethermind.Clique.Test
             MineBlock(_blockTree, block3);
             MineBlock(_blockTree, block4);           
             MineBlock(_blockTree, block5);
-            IEthereumEcdsa ecdsa = new EthereumEcdsa(RinkebySpecProvider.Instance, LimboLogs.Instance);
+            IEthereumEcdsa ecdsa = new EthereumEcdsa(ChainId.Rinkeby, LimboLogs.Instance);
             // Init snapshot db
             IDb db = new MemDb();
             CliqueConfig config = new CliqueConfig();
@@ -90,7 +93,7 @@ namespace Nethermind.Clique.Test
             _currentSigner = _signers[currentSignerIndex];
             _snapshotManager = new SnapshotManager(config, db, _blockTree, ecdsa, LimboLogs.Instance);
             _sealValidator = new CliqueSealValidator(config, _snapshotManager, LimboLogs.Instance);
-            _clique = new CliqueSealer(new BasicWallet(_currentSigner), config, _snapshotManager, _currentSigner.Address, LimboLogs.Instance);
+            _clique = new CliqueSealer(new Signer(ChainId.Rinkeby, _currentSigner), config, _snapshotManager, LimboLogs.Instance);
         }
 
         [Test]

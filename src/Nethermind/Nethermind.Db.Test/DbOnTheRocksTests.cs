@@ -16,8 +16,11 @@
 
 using System;
 using System.Linq;
+using System.Threading.Tasks;
+using Nethermind.Core.Crypto;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
+using Nethermind.Synchronization.Peers;
 using NUnit.Framework;
 
 namespace Nethermind.Db.Test
@@ -48,6 +51,31 @@ namespace Nethermind.Db.Test
                 db.Clear();
                 db.Dispose();
             }
+        }
+
+        [Test]
+        public async Task Dispose_while_writing_does_not_cause_access_violation_exception()
+        {
+            IDbConfig config = new DbConfig();
+            DbOnTheRocks db = new BlocksRocksDb("testDispose1", config);
+
+            Task task = new Task(() =>
+            {
+                while (true)
+                {
+                    db.Set(Keccak.Zero, new byte[] {1, 2, 3});
+                }
+            });
+
+            task.Start();
+
+            await Task.Delay(100);
+            
+            db.Dispose();
+            
+            await Task.Delay(100);
+            
+            task.Dispose();
         }
     }
 }

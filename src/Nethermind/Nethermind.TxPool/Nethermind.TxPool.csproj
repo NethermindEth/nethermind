@@ -12,4 +12,8 @@
       <ProjectReference Include="..\Nethermind.State\Nethermind.State.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+      <PackageReference Include="System.IO.Abstractions" Version="11.0.7" />
+    </ItemGroup>
+
 </Project>

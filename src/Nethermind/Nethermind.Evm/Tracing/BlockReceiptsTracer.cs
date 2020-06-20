@@ -249,11 +249,6 @@ namespace Nethermind.Evm.Tracing
             _otherTracer.ReportReward(author, rewardType, rewardValue);
         }
 
-        public void BeforeRestore(IStateProvider state)
-        {
-            _otherTracer.BeforeRestore(state);
-        }
-
         public void StartNewBlockTrace(Block block)
         {
             if (_otherTracer == null)
@@ -263,7 +258,10 @@ namespace Nethermind.Evm.Tracing
             
             _block = block;
             _currentIndex = 0;
-            TxReceipts = new TxReceipt[_block.Transactions.Length];
+            TxReceipts = _block.Transactions.Length == 0
+                ? Array.Empty<TxReceipt>()
+                : new TxReceipt[_block.Transactions.Length];
+            
             _otherTracer.StartNewBlockTrace(block);
         }
 

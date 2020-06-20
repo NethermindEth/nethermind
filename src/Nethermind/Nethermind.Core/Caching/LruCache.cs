@@ -14,7 +14,6 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Extensions;
@@ -63,6 +62,21 @@ namespace Nethermind.Core.Caching
 
             return default;
         }
+        
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public bool TryGet(TKey key, out TValue value)
+        {
+            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem> node))
+            {
+                value = node.Value.Value;
+                _lruList.Remove(node);
+                _lruList.AddLast(node);
+                return true;
+            }
+
+            value = default;
+            return false;
+        }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
         public void Set(TKey key, TValue val)
@@ -70,6 +84,7 @@ namespace Nethermind.Core.Caching
             if (val == null)
             {
                 Delete(key);
+                return;
             }
 
             if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem> node))
@@ -101,6 +116,9 @@ namespace Nethermind.Core.Caching
                 _cacheMap.Remove(key);
             }
         }
+
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public bool Contains(TKey key) => _cacheMap.ContainsKey(key);
 
         private void RemoveFirst()
         {

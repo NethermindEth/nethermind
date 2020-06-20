@@ -29,7 +29,7 @@ namespace Nethermind.Core2.Types
         
         public ulong Number { get; }
 
-        public static CommitteeIndex None => new CommitteeIndex(ulong.MaxValue - 1);
+        public static CommitteeIndex? None => null;
 
         public static CommitteeIndex One => new CommitteeIndex(1);
 

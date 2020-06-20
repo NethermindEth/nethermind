@@ -47,9 +47,9 @@ namespace Nethermind.Store.Test.Proofs
             Assert.AreEqual(Keccak.OfAnEmptyString, proof.CodeHash);
             Assert.AreEqual(Keccak.EmptyTreeHash, proof.StorageRoot);
             Assert.AreEqual(UInt256.Zero, proof.Balance);
-            Assert.AreEqual(null, proof.StorageProofs[0].Value);
-            Assert.AreEqual(null, proof.StorageProofs[1].Value);
-            Assert.AreEqual(null, proof.StorageProofs[2].Value);
+            Assert.AreEqual(new byte[] {0}, proof.StorageProofs[0].Value);
+            Assert.AreEqual(new byte[] {0}, proof.StorageProofs[1].Value);
+            Assert.AreEqual(new byte[] {0}, proof.StorageProofs[2].Value);
         }
 
         [Test]
@@ -71,9 +71,9 @@ namespace Nethermind.Store.Test.Proofs
             Assert.AreEqual(Keccak.OfAnEmptyString, proof.CodeHash);
             Assert.AreEqual(Keccak.EmptyTreeHash, proof.StorageRoot);
             Assert.AreEqual(UInt256.Zero, proof.Balance);
-            Assert.AreEqual(null, proof.StorageProofs[0].Value);
-            Assert.AreEqual(null, proof.StorageProofs[1].Value);
-            Assert.AreEqual(null, proof.StorageProofs[2].Value);
+            Assert.AreEqual(new byte[] {0}, proof.StorageProofs[0].Value);
+            Assert.AreEqual(new byte[] {0}, proof.StorageProofs[1].Value);
+            Assert.AreEqual(new byte[] {0}, proof.StorageProofs[2].Value);
         }
 
         [Test]
@@ -93,9 +93,9 @@ namespace Nethermind.Store.Test.Proofs
             Assert.AreEqual(Keccak.OfAnEmptyString, proof.CodeHash);
             Assert.AreEqual(Keccak.EmptyTreeHash, proof.StorageRoot);
             Assert.AreEqual(UInt256.Zero, proof.Balance);
-            Assert.AreEqual(null, proof.StorageProofs[0].Value);
-            Assert.AreEqual(null, proof.StorageProofs[1].Value);
-            Assert.AreEqual(null, proof.StorageProofs[2].Value);
+            Assert.AreEqual(new byte[] {0}, proof.StorageProofs[0].Value);
+            Assert.AreEqual(new byte[] {0}, proof.StorageProofs[1].Value);
+            Assert.AreEqual(new byte[] {0}, proof.StorageProofs[2].Value);
         }
 
         [Test]
@@ -470,10 +470,13 @@ namespace Nethermind.Store.Test.Proofs
             tree.Accept(accountProofCollector, tree.RootHash, true);
             AccountProof proof = accountProofCollector.BuildResult();
             Assert.AreEqual("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000", proof.StorageProofs[0].Value?.ToHexString(true) ?? "0x");
-            Assert.AreEqual("0x", proof.StorageProofs[1].Value?.ToHexString(true) ?? "0x");
+            Assert.AreEqual("0x00", proof.StorageProofs[1].Value?.ToHexString(true) ?? "0x");
             Assert.AreEqual("0xab56000000000000000000000000000000000000000000000000000000000000000000000000000000", proof.StorageProofs[2].Value?.ToHexString(true) ?? "0x");
-            Assert.AreEqual("0x", proof.StorageProofs[3].Value?.ToHexString(true) ?? "0x");
+            Assert.AreEqual("0x00", proof.StorageProofs[3].Value?.ToHexString(true) ?? "0x");
             Assert.AreEqual("0xab9a000000000000000000000000000000000000000000000000000000000000000000000000000000", proof.StorageProofs[4].Value?.ToHexString(true) ?? "0x");
+
+            proof.StorageProofs[1].Proof.Should().HaveCount(3);
+            proof.StorageProofs[3].Proof.Should().HaveCount(2);
         }
 
         [Test]

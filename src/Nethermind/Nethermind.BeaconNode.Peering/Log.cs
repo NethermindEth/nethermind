@@ -79,6 +79,26 @@ namespace Nethermind.BeaconNode.Peering
                 new EventId(4051, nameof(UnknownRpcReceived)),
                 "Unknown RPC {RpcDirection} ({RequestResponseFlag}) received, unknown method '{Method}', peer {Peer}, {ByteCount} bytes.");
 
+        public static readonly Action<ILogger, string, Exception?> GossipNotPublishedAsPeeeringNotStarted =
+            LoggerMessage.Define<string>(LogLevel.Warning,
+                new EventId(4052, nameof(GossipNotPublishedAsPeeeringNotStarted)),
+                "Gossip topic '{Topic}' not published as peering not started yet.");
+
+        public static readonly Action<ILogger, string, Exception?> RpcRequestNotSentAsPeeeringNotStarted =
+            LoggerMessage.Define<string>(LogLevel.Warning,
+                new EventId(4053, nameof(RpcRequestNotSentAsPeeeringNotStarted)),
+                "RPC request '{Method}' not sent as peering not started yet.");
+
+        public static readonly Action<ILogger, string, Exception?> RpcResponseNotSentAsPeeeringNotStarted =
+            LoggerMessage.Define<string>(LogLevel.Warning,
+                new EventId(4054, nameof(RpcResponseNotSentAsPeeeringNotStarted)),
+                "RPC response '{Method}' not sent as peering not started yet.");
+
+        public static readonly Action<ILogger, Slot, Root, Exception?> RequestedBlockSkippedSlot =
+            LoggerMessage.Define<Slot, Root>(LogLevel.Warning,
+                new EventId(4055, nameof(RequestedBlockSkippedSlot)),
+                "Requested block missing for slot {Slot} from head {HeadRoot} (may be skipped slot).");
+
         // 5bxx error
 
         public static readonly Action<ILogger, string, string, Exception?> PeerDiscoveredError =
@@ -96,9 +116,9 @@ namespace Nethermind.BeaconNode.Peering
                 new EventId(5052, nameof(RpcReceivedError)),
                 "Peer error processing RPC method, '{Method}': {ErrorMessage}");
 
-        public static readonly Action<ILogger, BeaconBlock, string, Exception?> ProcessGossipSignedBeaconBlockError =
+        public static readonly Action<ILogger, BeaconBlock, string, Exception?> ProcessSignedBeaconBlockError =
             LoggerMessage.Define<BeaconBlock, string>(LogLevel.Error,
-                new EventId(5053, nameof(ProcessGossipSignedBeaconBlockError)),
+                new EventId(5053, nameof(ProcessSignedBeaconBlockError)),
                 "Error handling signed beacon block, {BeaconBlock}: {ErrorMessage}");
         
         public static readonly Action<ILogger, string, string, Exception?> HandleRpcStatusError =

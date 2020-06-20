@@ -20,11 +20,22 @@ namespace Nethermind.Core
 {
     public interface ITimestamper
     {
-        ulong EpochSeconds { get; }
-        ulong EpochMilliseconds { get; }
-        long EpochSecondsLong => (long) EpochSeconds;
-        long EpochMillisecondsLong => (long) EpochMilliseconds;
-        
         DateTime UtcNow { get; }
+
+        public ulong EpochSeconds => (ulong) EpochSecondsLong;
+        public ulong EpochMilliseconds => (ulong) EpochMillisecondsLong;
+        public long EpochSecondsLong => UtcNowOffset.ToUnixTimeSeconds();
+        public long EpochMillisecondsLong => UtcNowOffset.ToUnixTimeMilliseconds();
+
+        public (long Seconds, long Milliseconds) Epoch
+        {
+            get
+            {
+                var offset = UtcNowOffset;
+                return (offset.ToUnixTimeSeconds(), offset.ToUnixTimeMilliseconds());
+            }
+        }
+        
+        public DateTimeOffset UtcNowOffset => new DateTimeOffset(UtcNow);
     }
 }

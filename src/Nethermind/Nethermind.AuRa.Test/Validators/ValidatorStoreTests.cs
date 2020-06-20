@@ -27,7 +27,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Store;
+using Nethermind.Db.Blooms;
 using NUnit.Framework;
 
 namespace Nethermind.AuRa.Test.Validators
@@ -68,33 +68,33 @@ namespace Nethermind.AuRa.Test.Validators
                 yield return new TestCaseData(CreateMemDbWithValidators(), null, new []
                 {
                     (5L, new [] {TestItem.AddressB})
-                }, new [] {TestItem.AddressB}).SetCategory("Add one").SetName("AddToStore");
+                }, new [] {TestItem.AddressB}).SetName("Add one").SetCategory("AddToStore");
 
                 yield return new TestCaseData(CreateMemDbWithValidators(), null, new []
                 {
                     (5L, new [] {TestItem.AddressB}),
                     (10L, new [] {TestItem.AddressC}),
                     (15L, new [] {TestItem.AddressC, TestItem.AddressA})
-                }, new [] {TestItem.AddressC, TestItem.AddressA}).SetCategory("Add multiple, check latest").SetName("AddToStore");
+                }, new [] {TestItem.AddressC, TestItem.AddressA}).SetName("Add multiple, check latest").SetCategory("AddToStore");
 
                 yield return new TestCaseData(CreateMemDbWithValidators(), 12L, new []
                 {
                     (5L, new [] {TestItem.AddressB}),
                     (10L, new [] {TestItem.AddressC}),
                     (15L, new [] {TestItem.AddressC, TestItem.AddressA})
-                }, new [] {TestItem.AddressC}).SetCategory("Add multiple, check history").SetName("AddToStore");
+                }, new [] {TestItem.AddressC}).SetName("Add multiple, check history").SetCategory("AddToStore");
 
                 yield return new TestCaseData(db, null, new []
                 {
                     (20L, new [] {TestItem.AddressB}),
                     (25L, new [] {TestItem.AddressC}),
-                }, new[] {TestItem.AddressC}).SetCategory("Add multiple, initialized db, check latest").SetName("AddToStore");
+                }, new[] {TestItem.AddressC}).SetName("Add multiple, initialized db, check latest").SetCategory("AddToStore");
 
                 yield return new TestCaseData(db, 12L, new []
                 {
                     (20L, new [] {TestItem.AddressB}),
                     (25L, new [] {TestItem.AddressC}),
-                }, new[] {TestItem.AddressA, TestItem.AddressC}).SetCategory("Add multiple, initialized db, check history").SetName("AddToStore");
+                }, new[] {TestItem.AddressA, TestItem.AddressC}).SetName("Add multiple, initialized db, check history").SetCategory("AddToStore");
             }
         }
 

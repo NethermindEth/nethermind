@@ -19,6 +19,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
 {
+    [Parallelizable(ParallelScope.Self)]
     [TestFixture]
     public class NodeDataMessageTests
     {

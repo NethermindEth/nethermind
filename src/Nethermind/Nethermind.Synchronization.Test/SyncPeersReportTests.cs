@@ -23,6 +23,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test
 {
+    [Parallelizable(ParallelScope.Self)]
     [TestFixture]
     public class SyncPeersReportTest
     {
@@ -38,50 +39,44 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public void Can_write_one_uninitialized()
         {
-            ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
             ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
-            PeerInfo peer1 = new PeerInfo(syncPeer);
-            peer1.IsInitialized = false;
-            
-            PeerInfo[] peers = new PeerInfo[] {peer1};
+
+            var syncPeer = BuildPeer(false);
+
+            var peers = new[] {syncPeer};
             syncPeerPool.PeerCount.Returns(peers.Length);
 
             SyncPeersReport report = new SyncPeersReport(syncPeerPool, Substitute.For<INodeStatsManager>(), NoErrorLimboLogs.Instance);
             report.WriteShortReport();
             report.WriteFullReport();
         }
-        
+
         [Test]
         public void Can_write_one_uninitialized_one_initialized()
         {
-            ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
             ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
-            PeerInfo peer1 = new PeerInfo(syncPeer);
-            peer1.IsInitialized = false;
+            var syncPeer = BuildPeer(false);
+            var syncPeer2 = BuildPeer(true);
+
+            var peers = new[] {syncPeer, syncPeer2};
             
-            PeerInfo peer2 = new PeerInfo(syncPeer);
-            peer2.IsInitialized = true;
-            
-            PeerInfo[] peers = new PeerInfo[] {peer1, peer2};
             syncPeerPool.PeerCount.Returns(peers.Length);
 
             SyncPeersReport report = new SyncPeersReport(syncPeerPool, Substitute.For<INodeStatsManager>(), NoErrorLimboLogs.Instance);
             report.WriteShortReport();
             report.WriteFullReport();
         }
-        
+
         [Test]
         public void Can_write_report_update()
         {
-            ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
             ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
-            PeerInfo peer1 = new PeerInfo(syncPeer);
-            peer1.IsInitialized = false;
+
+            var syncPeer = BuildPeer(false);
+            var syncPeer2 = BuildPeer(true);
+
+            var peers = new[] {syncPeer, syncPeer2};
             
-            PeerInfo peer2 = new PeerInfo(syncPeer);
-            peer2.IsInitialized = true;
-            
-            PeerInfo[] peers = new PeerInfo[] {peer1, peer2};
             syncPeerPool.PeerCount.Returns(peers.Length);
 
             syncPeerPool.AllPeers.Returns(peers);
@@ -90,23 +85,27 @@ namespace Nethermind.Synchronization.Test
             report.WriteShortReport();
             report.WriteFullReport();
 
-            peer1.IsInitialized = true;
+            syncPeer.IsInitialized.Returns(true);
             report.WriteShortReport();
             report.WriteFullReport();
         }
-        
+
+        private static PeerInfo BuildPeer(bool initialized)
+        {
+            ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+            PeerInfo peer = new PeerInfo(syncPeer);
+            syncPeer.IsInitialized.Returns(initialized);
+            return peer;
+        }
+
         [Test]
         public void Can_write_report_update_with_allocations()
         {
-            ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
             ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
-            PeerInfo peer1 = new PeerInfo(syncPeer);
-            peer1.IsInitialized = false;
-            
-            PeerInfo peer2 = new PeerInfo(syncPeer);
-            peer2.IsInitialized = true;
-            
-            PeerInfo[] peers = new PeerInfo[] {peer1, peer2};
+            var syncPeer = BuildPeer(false);
+            var syncPeer2 = BuildPeer(true);
+
+            var peers = new[] {syncPeer, syncPeer2};
             syncPeerPool.PeerCount.Returns(peers.Length);
 
             syncPeerPool.AllPeers.Returns(peers);
@@ -115,7 +114,7 @@ namespace Nethermind.Synchronization.Test
             report.WriteShortReport();
             report.WriteFullReport();
 
-            peer1.IsInitialized = true;
+            syncPeer.IsInitialized.Returns(true);
             report.WriteShortReport();
             report.WriteFullReport();
         }

@@ -19,11 +19,13 @@ using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Infrastructure.Rlp;
 using Nethermind.Db;
 using Nethermind.Facade;
+using Nethermind.Facade.Transactions;
 using Nethermind.JsonRpc;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Modules
@@ -64,9 +66,11 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
                 readOnlyTxProcessingEnv.TransactionProcessor,
                 services.Ecdsa,
                 services.BloomStorage,
+                Timestamper.Default,
                 logManager,
                 false,
                 jsonRpcConfig.FindLogBlockDepthLimit);
+            var txPoolBridge = new TxPoolBridge(services.TransactionPool, new WalletTxSigner(services.Wallet, services.SpecProvider.ChainId), services.Timestamper);
             var dataAssetRlpDecoder = new DataAssetDecoder();
             var encoder = new AbiEncoder();
 
@@ -83,7 +87,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
             }
             else
             {
-                ndmBlockchainBridge = new NdmBlockchainBridge(blockchainBridge, services.TransactionPool);
+                ndmBlockchainBridge = new NdmBlockchainBridge(txPoolBridge, blockchainBridge, services.TransactionPool);
             }
 
             var gasPriceService = new GasPriceService(services.HttpClient, configManager, configId, timestamper,

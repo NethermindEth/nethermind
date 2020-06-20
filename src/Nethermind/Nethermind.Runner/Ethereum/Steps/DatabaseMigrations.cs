@@ -18,6 +18,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Timers;
 using Nethermind.Blockchain;
@@ -28,7 +29,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Runner.Ethereum.Steps.Migrations;
-using Nethermind.Store.Bloom;
+using Nethermind.Db.Blooms;
 using Timer = System.Timers.Timer;
 
 namespace Nethermind.Runner.Ethereum.Steps
@@ -43,7 +44,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context = context;
         }
 
-        public Task Execute()
+        public Task Execute(CancellationToken cancellationToken)
         {
             foreach (var migration in CreateMigrations())
             {

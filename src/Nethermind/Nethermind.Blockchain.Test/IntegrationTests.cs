@@ -28,6 +28,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Specs;
@@ -37,7 +38,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.State;
 using Nethermind.State.Repositories;
-using Nethermind.Store.Bloom;
+using Nethermind.Db.Blooms;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
 using NUnit.Framework;
@@ -61,7 +62,7 @@ namespace Nethermind.Blockchain.Test
             ILogger logger = logManager.GetClassLogger();
 
             /* spec */
-            FakeSealer sealer = new FakeSealer(miningDelay);
+            FakeSealer sealer = new FakeSealer(TestItem.AddressA, miningDelay);
 
             RopstenSpecProvider specProvider = RopstenSpecProvider.Instance;
 
@@ -74,17 +75,17 @@ namespace Nethermind.Blockchain.Test
             
             /* store & validation */
 
-            EthereumEcdsa ecdsa = new EthereumEcdsa(specProvider, logManager);
+            EthereumEcdsa ecdsa = new EthereumEcdsa(specProvider.ChainId, logManager);
             MemColumnsDb<ReceiptsColumns> receiptsDb = new MemColumnsDb<ReceiptsColumns>();
             TxPool.TxPool txPool = new TxPool.TxPool(NullTxStorage.Instance, Timestamper.Default, ecdsa, specProvider, new TxPoolConfig(), stateProvider, logManager);
             IReceiptStorage receiptStorage = new PersistentReceiptStorage(receiptsDb, specProvider, new ReceiptsRecovery());
             var blockInfoDb = new MemDb();
             BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), specProvider, txPool, NullBloomStorage.Instance, logManager);
-            Timestamper timestamper = new Timestamper();
+            ITimestamper timestamper = Timestamper.Default;
             DifficultyCalculator difficultyCalculator = new DifficultyCalculator(specProvider);
             HeaderValidator headerValidator = new HeaderValidator(blockTree, sealer, specProvider, logManager);
             OmmersValidator ommersValidator = new OmmersValidator(blockTree, headerValidator, logManager);
-            TxValidator txValidator = new TxValidator(ChainId.Ropsten);
+            TxValidator txValidator = new TxValidator(specProvider.ChainId);
             BlockValidator blockValidator = new BlockValidator(txValidator, headerValidator, ommersValidator, specProvider, logManager);
 
             TestTransactionsGenerator generator = new TestTransactionsGenerator(txPool, ecdsa, TimeSpan.FromMilliseconds(50 * timeMultiplier), LimboLogs.Instance);
@@ -97,7 +98,7 @@ namespace Nethermind.Blockchain.Test
             RewardCalculator rewardCalculator = new RewardCalculator(specProvider);
             BlockProcessor blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator,
                 processor, stateDb, codeDb, stateProvider, storageProvider, txPool, receiptStorage, logManager);
-            BlockchainProcessor blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, new TxSignaturesRecoveryStep(ecdsa, NullTxPool.Instance, LimboLogs.Instance), logManager, false);
+            BlockchainProcessor blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, new TxSignaturesRecoveryStep(ecdsa, NullTxPool.Instance, LimboLogs.Instance), logManager, BlockchainProcessor.Options.NoReceipts);
 
             /* load ChainSpec and init */
             ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
@@ -123,8 +124,9 @@ namespace Nethermind.Blockchain.Test
             blockTree.SuggestBlock(chainSpec.Genesis);
             blockchainProcessor.Start();
 
-            var transactionSelector = new PendingTxSelector(txPool, stateReader, logManager);
-            MinedBlockProducer minedBlockProducer = new MinedBlockProducer(transactionSelector, blockchainProcessor, sealer, blockTree, blockchainProcessor, stateProvider, timestamper, LimboLogs.Instance, difficultyCalculator);
+            var transactionSelector = new TxPoolTxSource(txPool, stateReader, logManager);
+            MinedBlockProducer minedBlockProducer = new MinedBlockProducer(transactionSelector, blockchainProcessor, sealer, blockTree, blockchainProcessor, stateProvider, 
+                timestamper, LimboLogs.Instance, difficultyCalculator);
             minedBlockProducer.Start();
 
             ManualResetEventSlim manualResetEvent = new ManualResetEventSlim(false);

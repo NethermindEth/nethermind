@@ -74,7 +74,7 @@ namespace Nethermind.Network
                 });
             }
 
-            return allPeers;
+            return allPeers.Where(p => !_networkConfig.OnlyStaticPeers || p.Node.IsStatic).ToList();
         }
 
         private void LoadPeersFromDb(List<Peer> peers)

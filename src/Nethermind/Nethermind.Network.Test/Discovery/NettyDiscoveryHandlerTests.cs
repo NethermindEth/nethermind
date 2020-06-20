@@ -17,6 +17,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
+using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Handlers.Logging;
@@ -38,6 +39,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Test.Discovery
 {
+    [Parallelizable(ParallelScope.Self)]
     [TestFixture]
     public class NettyDiscoveryHandlerTests
     {
@@ -45,7 +47,7 @@ namespace Nethermind.Network.Test.Discovery
         private readonly PrivateKey _privateKey2 = new PrivateKey("3a1076bf45ab87712ad64ccb3b10217737f7faacbf2872e88fdd9a537d8fe266");
         private List<IChannel> _channels;
         private List<NettyDiscoveryHandler> _discoveryHandlers;
-        private List<IDiscoveryManager> _discoveryManagers;
+        private List<IDiscoveryManager> _discoveryManagersMocks;
         private readonly IPEndPoint _address = new IPEndPoint(IPAddress.Loopback, 10001);
         private readonly IPEndPoint _address2 = new IPEndPoint(IPAddress.Loopback, 10002);
         private int _channelActivatedCounter;
@@ -55,21 +57,19 @@ namespace Nethermind.Network.Test.Discovery
         {
             _channels = new List<IChannel>();
             _discoveryHandlers = new List<NettyDiscoveryHandler>();
-            _discoveryManagers = new List<IDiscoveryManager>();
+            _discoveryManagersMocks = new List<IDiscoveryManager>();
             _channelActivatedCounter = 0;
-            var discoveryManager = Substitute.For<IDiscoveryManager>();
+            var discoveryManagerMock = Substitute.For<IDiscoveryManager>();
             var messageSerializationService = Build.A.SerializationService().WithDiscovery(_privateKey).TestObject;
 
-            var discoveryManager2 = Substitute.For<IDiscoveryManager>();
+            var discoveryManagerMock2 = Substitute.For<IDiscoveryManager>();
             var messageSerializationService2 = Build.A.SerializationService().WithDiscovery(_privateKey).TestObject;
 
-            await StartUdpChannel("127.0.0.1", 10001, discoveryManager, messageSerializationService);
-            await StartUdpChannel("127.0.0.1", 10002, discoveryManager2, messageSerializationService2);
+            await StartUdpChannel("127.0.0.1", 10001, discoveryManagerMock, messageSerializationService);
+            await StartUdpChannel("127.0.0.1", 10002, discoveryManagerMock2, messageSerializationService2);
 
-            _discoveryManagers.Add(discoveryManager);
-            _discoveryManagers.Add(discoveryManager2);
-
-            Thread.Sleep(50);
+            _discoveryManagersMocks.Add(discoveryManagerMock);
+            _discoveryManagersMocks.Add(discoveryManagerMock2);
 
             Assert.AreEqual(2, _channelActivatedCounter);
         }
@@ -82,7 +82,6 @@ namespace Nethermind.Network.Test.Discovery
         }
 
         [Test]
-        [Ignore("Failing on Mac GitHUb actions - needs review")]
         [Retry(5)]
         public void PingSentReceivedTest()
         {
@@ -91,28 +90,27 @@ namespace Nethermind.Network.Test.Discovery
                 FarAddress = _address2,
                 SourceAddress = _address,
                 DestinationAddress = _address2,
-                ExpirationTime = (long)(new Timestamper().EpochSeconds + 1200),
+                ExpirationTime = (long)(Timestamper.Default.EpochSeconds + 1200),
                 FarPublicKey = _privateKey2.PublicKey
             };
             _discoveryHandlers[0].SendMessage(msg);
             SleepWhileWaiting();
-            _discoveryManagers[1].Received(1).OnIncomingMessage(Arg.Is<DiscoveryMessage>(x => x.MessageType == MessageType.Ping));
+            _discoveryManagersMocks[1].Received(1).OnIncomingMessage(Arg.Is<DiscoveryMessage>(x => x.MessageType == MessageType.Ping));
 
             var msg2 = new PingMessage
             {
                 FarAddress = _address,
                 SourceAddress = _address2,
                 DestinationAddress = _address,
-                ExpirationTime = (long)(new Timestamper().EpochSeconds + 1200),
+                ExpirationTime = (long)(Timestamper.Default.EpochSeconds + 1200),
                 FarPublicKey = _privateKey.PublicKey
             };
             _discoveryHandlers[1].SendMessage(msg2);
             SleepWhileWaiting();
-            _discoveryManagers[0].Received(1).OnIncomingMessage(Arg.Is<DiscoveryMessage>(x => x.MessageType == MessageType.Ping));  
+            _discoveryManagersMocks[0].Received(1).OnIncomingMessage(Arg.Is<DiscoveryMessage>(x => x.MessageType == MessageType.Ping));  
         }
 
         [Test]
-        [Ignore("Failing on Mac GitHUb actions - needs review")]
         [Retry(5)]
         public void PongSentReceivedTest()
         {
@@ -120,32 +118,26 @@ namespace Nethermind.Network.Test.Discovery
             {
                 FarAddress = _address2,
                 PingMdc = new byte[] {1,2,3},
-                ExpirationTime = (long)(new Timestamper().EpochSeconds + 1200),
+                ExpirationTime = (long)(Timestamper.Default.EpochSeconds + 1200),
                 FarPublicKey = _privateKey2.PublicKey
             };
             _discoveryHandlers[0].SendMessage(msg);
             SleepWhileWaiting();
-            _discoveryManagers[1].Received(1).OnIncomingMessage(Arg.Is<DiscoveryMessage>(x => x.MessageType == MessageType.Pong));
+            _discoveryManagersMocks[1].Received(1).OnIncomingMessage(Arg.Is<DiscoveryMessage>(x => x.MessageType == MessageType.Pong));
 
             var msg2 = new PongMessage
             {
                 FarAddress = _address,
                 PingMdc = new byte[] { 1, 2, 3 },
-                ExpirationTime = (long)(new Timestamper().EpochSeconds + 1200),
+                ExpirationTime = (long)(Timestamper.Default.EpochSeconds + 1200),
                 FarPublicKey = _privateKey.PublicKey
             };
             _discoveryHandlers[1].SendMessage(msg2);
             SleepWhileWaiting();
-            _discoveryManagers[0].Received(1).OnIncomingMessage(Arg.Is<DiscoveryMessage>(x => x.MessageType == MessageType.Pong));
+            _discoveryManagersMocks[0].Received(1).OnIncomingMessage(Arg.Is<DiscoveryMessage>(x => x.MessageType == MessageType.Pong));
         }
-
-        private static void SleepWhileWaiting()
-        {
-            Thread.Sleep((TestContext.CurrentContext.CurrentRepeatCount + 1) * 300);
-        }
-
+        
         [Test]
-        [Ignore("Failing on Mac GitHUb actions - needs review")]
         [Retry(5)]
         public void FindNodeSentReceivedTest()
         {
@@ -153,27 +145,26 @@ namespace Nethermind.Network.Test.Discovery
             {
                 FarAddress = _address2,
                 SearchedNodeId = new byte[] { 1, 2, 3 },
-                ExpirationTime = (long)(new Timestamper().EpochSeconds + 1200),
+                ExpirationTime = (long)(Timestamper.Default.EpochSeconds + 1200),
                 FarPublicKey = _privateKey2.PublicKey
             };
             _discoveryHandlers[0].SendMessage(msg);
             SleepWhileWaiting();
-            _discoveryManagers[1].Received(1).OnIncomingMessage(Arg.Is<DiscoveryMessage>(x => x.MessageType == MessageType.FindNode));
+            _discoveryManagersMocks[1].Received(1).OnIncomingMessage(Arg.Is<DiscoveryMessage>(x => x.MessageType == MessageType.FindNode));
 
             var msg2 = new FindNodeMessage
             {
                 FarAddress = _address,
                 SearchedNodeId = new byte[] { 1, 2, 3 },
-                ExpirationTime = (long)(new Timestamper().EpochSeconds + 1200),
+                ExpirationTime = (long)(Timestamper.Default.EpochSeconds + 1200),
                 FarPublicKey = _privateKey.PublicKey
             };
             _discoveryHandlers[1].SendMessage(msg2);
             SleepWhileWaiting();
-            _discoveryManagers[0].Received(1).OnIncomingMessage(Arg.Is<DiscoveryMessage>(x => x.MessageType == MessageType.FindNode));
+            _discoveryManagersMocks[0].Received(1).OnIncomingMessage(Arg.Is<DiscoveryMessage>(x => x.MessageType == MessageType.FindNode));
         }
 
         [Test]
-        [Ignore("Failing on Mac GitHUb actions - needs review")]
         [Retry(5)]
         public void NeighborsSentReceivedTest()
         {
@@ -181,23 +172,23 @@ namespace Nethermind.Network.Test.Discovery
             {
                 FarAddress = _address2,
                 Nodes = new List<Node>().ToArray(),
-                ExpirationTime = (long)(new Timestamper().EpochSeconds + 1200),
+                ExpirationTime = (long)(Timestamper.Default.EpochSeconds + 1200),
                 FarPublicKey = _privateKey2.PublicKey
             };
             _discoveryHandlers[0].SendMessage(msg);
             SleepWhileWaiting();
-            _discoveryManagers[1].Received(1).OnIncomingMessage(Arg.Is<DiscoveryMessage>(x => x.MessageType == MessageType.Neighbors));
+            _discoveryManagersMocks[1].Received(1).OnIncomingMessage(Arg.Is<DiscoveryMessage>(x => x.MessageType == MessageType.Neighbors));
 
             var msg2 = new NeighborsMessage
             {
                 FarAddress = _address,
                 Nodes = new List<Node>().ToArray(),
-                ExpirationTime = (long)(new Timestamper().EpochSeconds + 1200),
+                ExpirationTime = (long)(Timestamper.Default.EpochSeconds + 1200),
                 FarPublicKey = _privateKey.PublicKey
             };
             _discoveryHandlers[1].SendMessage(msg2);
             SleepWhileWaiting();
-            _discoveryManagers[0].Received(1).OnIncomingMessage(Arg.Is<DiscoveryMessage>(x => x.MessageType == MessageType.Neighbors));
+            _discoveryManagersMocks[0].Received(1).OnIncomingMessage(Arg.Is<DiscoveryMessage>(x => x.MessageType == MessageType.Neighbors));
         }
 
         private async Task StartUdpChannel(string address, int port, IDiscoveryManager discoveryManager, IMessageSerializationService service)
@@ -207,7 +198,7 @@ namespace Nethermind.Network.Test.Discovery
             var bootstrap = new Bootstrap();
             bootstrap
                 .Group(group)
-                .Channel<SocketDatagramChannel>()
+                .ChannelFactory(() => new SocketDatagramChannel(AddressFamily.InterNetwork))
                 .Handler(new ActionChannelInitializer<IDatagramChannel>(x => InitializeChannel(x, discoveryManager, service)));
 
             _channels.Add(await bootstrap.BindAsync(IPAddress.Parse(address), port));
@@ -225,6 +216,11 @@ namespace Nethermind.Network.Test.Discovery
             channel.Pipeline
                 .AddLast(new LoggingHandler(DotNetty.Handlers.Logging.LogLevel.TRACE))
                 .AddLast(handler);
+        }
+
+        private static void SleepWhileWaiting()
+        {
+            Thread.Sleep((TestContext.CurrentContext.CurrentRepeatCount + 1) * 300);
         }
     }
 }

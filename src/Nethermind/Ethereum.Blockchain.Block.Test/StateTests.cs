@@ -27,27 +27,19 @@ namespace Ethereum.Blockchain.Block.Test
 {
     [TestFixture]
     [Parallelizable(ParallelScope.All)]
-    public class StateTests : LegacyBlockchainTestBase
+    public class StateTests : BlockchainTestBase
     {
         [Todo(Improve.TestCoverage, "SuicideStorage tests")]
         [TestCaseSource(nameof(LoadTests))]
-        public async Task Test(LegacyBlockchainTest test)
+        public async Task Test(BlockchainTest test)
         {
-            if (test.Name.Contains("randomStatetest94"))
-            {
-                // test has unreasonable amount of gas assigned to the block
-                // it passes but causes the builds to take half an hour
-                return;
-            }
-            
-            if (test.Name.Contains("suicideStorage"))
-            {
-                return;
-            }
-            
             await RunTest(test);
         }
         
-        public static IEnumerable<LegacyBlockchainTest> LoadTests() { return new DirectoryTestsSource("bcStateTests").LoadLegacyTests(); }
+        public static IEnumerable<BlockchainTest> LoadTests()
+        {
+            var loader = new DirectoryTestsSourceLoader(new LoadBlockchainTestsStrategy(), "bcStateTests");
+        return (IEnumerable<BlockchainTest>)loader.LoadTests();
+        }
     }
 }

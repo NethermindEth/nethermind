@@ -75,11 +75,7 @@ namespace Nethermind.Blockchain.Validators
         {
             return _result;
         }
-
-        public void HintValidationRange(Guid guid, long start, long end)
-        {
-        }
-
+        
         public bool ValidateParams(BlockHeader parent, BlockHeader header)
         {
             return _result;

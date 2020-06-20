@@ -41,6 +41,11 @@ namespace Nethermind.Runner.Ethereum.Context
                 _item?.Dispose();
                 return default;
             }
+
+            public override string? ToString()
+            {
+                return _item?.ToString() ?? base.ToString();
+            }
         }
     }
 }

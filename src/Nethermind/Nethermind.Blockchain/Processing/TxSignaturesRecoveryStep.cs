@@ -16,6 +16,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.TxPool;
@@ -28,6 +29,12 @@ namespace Nethermind.Blockchain.Processing
         private readonly ITxPool _txPool;
         private readonly ILogger _logger;
 
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="ecdsa">Needed to recover an address from a signature.</param>
+        /// <param name="txPool">Finding transactions in mempool can speed up address recovery.</param>
+        /// <param name="logManager">Logging</param>
         public TxSignaturesRecoveryStep(IEthereumEcdsa ecdsa, ITxPool txPool, ILogManager logManager)
         {
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
@@ -44,10 +51,14 @@ namespace Nethermind.Blockchain.Processing
             
             for (int i = 0; i < block.Transactions.Length; i++)
             {
-                _txPool.TryGetPendingTransaction(block.Transactions[i].Hash, out var transaction);
+                Transaction blockTransaction = block.Transactions[i];
+                
+                _txPool.TryGetPendingTransaction(blockTransaction.Hash, out var transaction);
                 Address sender = transaction?.SenderAddress;
-                block.Transactions[i].SenderAddress = sender ?? _ecdsa.RecoverAddress(block.Transactions[i], block.Number);
-                if(_logger.IsTrace) _logger.Trace($"Recovered {block.Transactions[i].SenderAddress} sender for {block.Transactions[i].Hash} (tx pool cached value: {sender})");
+
+                Address blockTransactionAddress = blockTransaction.SenderAddress;
+                blockTransaction.SenderAddress = sender ?? _ecdsa.RecoverAddress(blockTransaction);
+                if(_logger.IsTrace) _logger.Trace($"Recovered {blockTransaction.SenderAddress} sender for {blockTransaction.Hash} (tx pool cached value: {sender}, block transaction address: {blockTransactionAddress})");
             }
         }
     }

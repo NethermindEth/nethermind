@@ -13,9 +13,10 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.CommandLineUtils" Version="1.1.1" />
-    <PackageReference Include="NLog.Targets.Seq" Version="1.1.0" />
-    <PackageReference Include="NLog" Version="4.7.0" />
+    <PackageReference Include="NLog.Targets.Seq" Version="1.2.0" />
+    <PackageReference Include="NLog" Version="4.7.2" />
     <PackageReference Include="Seq.Api" Version="5.1.2" />
+    <PackageReference Include="System.IO.Abstractions" Version="11.0.7" />
     <PackageReference Include="YamlDotNet" Version="8.1.0" />
   </ItemGroup>
   <ItemGroup>
@@ -36,9 +37,9 @@
       <Project>{0B52D472-A7B0-4AB6-AFE3-A644B90F53FC}</Project>
       <Name>Nethermind.Db</Name>
     </ProjectReference>
+    <ProjectReference Include="..\Nethermind.DepositContract\Nethermind.DepositContract.csproj" />
     <ProjectReference Include="..\Nethermind.EthStats\Nethermind.EthStats.csproj" />
     <ProjectReference Include="..\Nethermind.Grpc\Nethermind.Grpc.csproj" />
-    <ProjectReference Include="..\Nethermind.JsonRpc.WebSockets\Nethermind.JsonRpc.WebSockets.csproj" />
     <ProjectReference Include="..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj">
       <Project>{53D62515-72D1-4DEA-BC60-71BCC9C928E3}</Project>
       <Name>Nethermind.JsonRpc</Name>
@@ -52,6 +53,7 @@
     <ProjectReference Include="..\Nethermind.Db.Rpc\Nethermind.Db.Rpc.csproj" />
     <ProjectReference Include="..\Nethermind.Synchronization\Nethermind.Synchronization.csproj" />
     <ProjectReference Include="..\Nethermind.WebSockets\Nethermind.WebSockets.csproj" />
+    <ProjectReference Include="..\Nethermind.Baseline\Nethermind.Baseline.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="..\..\..\Nethermind Data Marketplace - Terms and Conditions 20190831.pdf">
@@ -72,10 +74,26 @@
     <Content Include="configs\*.cfg">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <Content Include="baseline\contracts\*.bin">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <Content Remove="out\**" />
     <Content Remove="keystore\**" />
     <None Remove="plugins\readme.txt" />
     <Content Include="plugins\**">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Update="configs\spaceneth_persistent.cfg">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Update="configs\ndm_provider_mainnet_proxy.cfg">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Update="configs\energyweb.cfg">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Update="..\Chains\energyweb.json">
+      <Link>chainspec\energyweb.json</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>

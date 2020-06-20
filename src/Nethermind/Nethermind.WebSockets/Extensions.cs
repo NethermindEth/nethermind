@@ -152,7 +152,8 @@ namespace Nethermind.WebSockets
                 await receiveInTheLoop.ContinueWith(t =>
                 {
                     if (t.IsFaulted)
-                    { 
+                    {
+                        result = null;
                         // TODO: how to log it from here
                     }
 

@@ -58,6 +58,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private Keccak _pivotHash;
 
         public FastBodiesSyncFeed(IBlockTree blockTree, ISyncPeerPool syncPeerPool, ISyncConfig syncConfig, ISyncReport syncReport, ILogManager logManager)
+            : base(logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -82,26 +83,28 @@ namespace Nethermind.Synchronization.FastBlocks
             Keccak startBodyHash = lowestInsertedBody?.Hash ?? _pivotHash;
 
             _lowestRequestedBodyHash = startBodyHash;
-            
+
             Activate();
         }
 
         private bool ShouldFinish => !_syncConfig.DownloadBodiesInFastSync || (_blockTree.LowestInsertedBody?.Number ?? 0) == 1;
+        
+        private long BodiesInQueue => _dependencies.Sum(d => d.Value.Count);
 
         public override bool IsMultiFeed => true;
 
-        private bool AnyBatchesLeftToPrepare()
+        public override AllocationContexts Contexts => AllocationContexts.Bodies;
+
+        private bool ShouldBuildANewBatch()
         {
             bool shouldDownloadBodies = _syncConfig.DownloadBodiesInFastSync;
-            bool isBeamSync = _syncConfig.BeamSync;
-            bool anyHeaderSynced = _blockTree.LowestInsertedHeader != null;
             bool allBodiesDownloaded = (_blockTree.LowestInsertedBody?.Number ?? 0) == 1;
             bool requestedGenesis = _lowestRequestedBodyHash == _blockTree.Genesis.Hash;
 
             bool noBatchesLeft = !shouldDownloadBodies
                                  || allBodiesDownloaded
-                                 || isBeamSync && anyHeaderSynced
-                                 || requestedGenesis;
+                                 || requestedGenesis 
+                                 || BodiesInQueue >= FastBlocksQueueLimits.ForBodies;
 
             if (noBatchesLeft)
             {
@@ -172,7 +175,7 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 batch.MarkRetry();
             }
-            else if (AnyBatchesLeftToPrepare())
+            else if (ShouldBuildANewBatch())
             {
                 long? lowestInsertedHeader = _blockTree.LowestInsertedHeader?.Number;
                 long? lowestInsertedBody = _blockTree.LowestInsertedBody?.Number;
@@ -250,7 +253,7 @@ namespace Nethermind.Synchronization.FastBlocks
             if (batch != null)
             {
                 _sent.TryAdd(batch, _dummyObject);
-                if ((_blockTree.LowestInsertedBody?.Number ?? 0) - batch.Headers[0].Number < 1024)
+                if ((_blockTree.LowestInsertedBody?.Number ?? 0) - batch.Headers[0].Number < FastBlocksPriorities.ForBodies)
                 {
                     batch.Prioritized = true;
                 }
@@ -285,7 +288,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 if (_logger.IsTrace) _logger.Trace($"{batch} - came back EMPTY");
                 _pending.Enqueue(batch);
                 batch.MarkHandlingEnd();
-                return SyncResponseHandlingResult.NoData; //(BlocksDataHandlerResult.OK, 0);
+                return batch.ResponseSourcePeer == null ? SyncResponseHandlingResult.NotAssigned : SyncResponseHandlingResult.NoProgress; //(BlocksDataHandlerResult.OK, 0);
             }
 
             try
@@ -321,7 +324,7 @@ namespace Nethermind.Synchronization.FastBlocks
                     OmmersHash.Calculate(block) != block.OmmersHash)
                 {
                     if (_logger.IsWarn) _logger.Warn($"{batch} - reporting INVALID - tx or ommers");
-                    _syncPeerPool.ReportInvalid(batch.ResponseSourcePeer, $"invalid tx or ommers root");
+                    _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, $"invalid tx or ommers root");
                     break;
                 }
 
@@ -363,14 +366,13 @@ namespace Nethermind.Synchronization.FastBlocks
 
                 if (_blockTree.LowestInsertedBody != null)
                 {
-                    _syncReport.FastBlocksPivotNumber = _pivotNumber;
                     _syncReport.FastBlocksBodies.Update(_pivotNumber - _blockTree.LowestInsertedBody.Number + 1);
                 }
             }
 
             if (_logger.IsDebug) _logger.Debug($"LOWEST_INSERTED {_blockTree.LowestInsertedBody?.Number} | HANDLED {batch}");
 
-            _syncReport.BodiesInQueue.Update(_dependencies.Sum(d => d.Value.Count));
+            _syncReport.BodiesInQueue.Update(BodiesInQueue);
             return validResponsesCount;
         }
     }

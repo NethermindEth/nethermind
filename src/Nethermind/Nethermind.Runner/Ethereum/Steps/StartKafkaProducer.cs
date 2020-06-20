@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Logging;
@@ -43,7 +44,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             SubsystemStateChanged?.Invoke(this, new SubsystemStateEventArgs(newState));
         }
 
-        public async Task Execute()
+        public async Task Execute(CancellationToken _)
         {
             if (_context.BlockTree == null)
             {

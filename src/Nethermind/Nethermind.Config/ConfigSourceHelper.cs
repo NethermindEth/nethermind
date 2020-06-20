@@ -51,7 +51,13 @@ namespace Nethermind.Config
                     var i = 0;
                     foreach (var valueItem in valueItems)
                     {
-                        var itemValue = GetValue(itemType, valueItem);
+                        string item = valueItem;
+                        if (valueItem.StartsWith('"') && valueItem.EndsWith('"'))
+                        {
+                            item = valueItem.Substring(1, valueItem.Length - 2);
+                        }
+                        
+                        var itemValue = GetValue(itemType, item);
                         if (valueType.IsGenericType)
                         {
                             collection.Add(itemValue);

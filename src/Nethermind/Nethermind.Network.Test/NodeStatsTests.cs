@@ -21,6 +21,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Test
 {
+    [Parallelizable(ParallelScope.Self)]
     [TestFixture]
     public class NodeStatsTests
     {
@@ -36,26 +37,30 @@ namespace Nethermind.Network.Test
             _config.CaptureNodeLatencyStatsEventHistory = true;
         }
 
-        [Test]
-        public void TransferSpeedCaptureTest()
+        [TestCase(TransferSpeedType.Bodies)]
+        [TestCase(TransferSpeedType.Headers)]
+        [TestCase(TransferSpeedType.Receipts)]
+        [TestCase(TransferSpeedType.Latency)]
+        [TestCase(TransferSpeedType.NodeData)]
+        public void TransferSpeedCaptureTest(TransferSpeedType speedType)
         {
             _nodeStats = new NodeStatsLight(_node, _config);
             
-            _nodeStats.AddTransferSpeedCaptureEvent(30);
-            _nodeStats.AddTransferSpeedCaptureEvent(51);
-            _nodeStats.AddTransferSpeedCaptureEvent(140);
-            _nodeStats.AddTransferSpeedCaptureEvent(110);
-            _nodeStats.AddTransferSpeedCaptureEvent(133);
-            _nodeStats.AddTransferSpeedCaptureEvent(51);
-            _nodeStats.AddTransferSpeedCaptureEvent(140);
-            _nodeStats.AddTransferSpeedCaptureEvent(110);
-            _nodeStats.AddTransferSpeedCaptureEvent(133);
-            _nodeStats.AddTransferSpeedCaptureEvent(51);
-            _nodeStats.AddTransferSpeedCaptureEvent(140);
-            _nodeStats.AddTransferSpeedCaptureEvent(110);
-            _nodeStats.AddTransferSpeedCaptureEvent(133);
+            _nodeStats.AddTransferSpeedCaptureEvent(speedType, 30);
+            _nodeStats.AddTransferSpeedCaptureEvent(speedType, 51);
+            _nodeStats.AddTransferSpeedCaptureEvent(speedType, 140);
+            _nodeStats.AddTransferSpeedCaptureEvent(speedType, 110);
+            _nodeStats.AddTransferSpeedCaptureEvent(speedType, 133);
+            _nodeStats.AddTransferSpeedCaptureEvent(speedType, 51);
+            _nodeStats.AddTransferSpeedCaptureEvent(speedType, 140);
+            _nodeStats.AddTransferSpeedCaptureEvent(speedType, 110);
+            _nodeStats.AddTransferSpeedCaptureEvent(speedType, 133);
+            _nodeStats.AddTransferSpeedCaptureEvent(speedType, 51);
+            _nodeStats.AddTransferSpeedCaptureEvent(speedType, 140);
+            _nodeStats.AddTransferSpeedCaptureEvent(speedType, 110);
+            _nodeStats.AddTransferSpeedCaptureEvent(speedType, 133);
 
-            var av = _nodeStats.GetAverageTransferSpeed();
+            var av = _nodeStats.GetAverageTransferSpeed(speedType);
             Assert.AreEqual(102, av);
         }
 

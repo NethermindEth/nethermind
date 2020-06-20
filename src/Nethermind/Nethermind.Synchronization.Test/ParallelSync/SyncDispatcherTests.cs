@@ -47,12 +47,12 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 throw new NotImplementedException();
             }
 
-            public Task<SyncPeerAllocation> Allocate(IPeerAllocationStrategy peerAllocationStrategy, string description = "", int timeoutMilliseconds = 0)
+            public Task<SyncPeerAllocation> Allocate(IPeerAllocationStrategy peerAllocationStrategy, AllocationContexts contexts, int timeoutMilliseconds = 0)
             {
                 ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
                 syncPeer.ClientId.Returns("Nethermind");
-                syncPeer.TotalDifficultyOnSessionStart.Returns(UInt256.One);
-                SyncPeerAllocation allocation = new SyncPeerAllocation(new PeerInfo(syncPeer));
+                syncPeer.TotalDifficulty.Returns(UInt256.One);
+                SyncPeerAllocation allocation = new SyncPeerAllocation(new PeerInfo(syncPeer), contexts);
                 allocation.AllocateBestPeer(null, null, null);
                 return Task.FromResult(allocation);
             }
@@ -61,19 +61,15 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             {
             }
 
-            public void ReportNoSyncProgress(PeerInfo peerInfo, bool isSevere = true)
+            public void ReportNoSyncProgress(PeerInfo peerInfo, AllocationContexts contexts)
             {
             }
 
-            public void ReportInvalid(PeerInfo peerInfo, string details)
+            public void ReportBreachOfProtocol(PeerInfo peerInfo, string details)
             {
             }
 
-            public void ReportWeakPeer(PeerInfo peerInfo)
-            {
-            }
-
-            public void ReportWeakPeer(SyncPeerAllocation allocation)
+            public void ReportWeakPeer(PeerInfo peerInfo, AllocationContexts contexts)
             {
             }
 
@@ -83,10 +79,10 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             }
 
             public IEnumerable<PeerInfo> AllPeers { get; }
-            public IEnumerable<PeerInfo> UsefulPeers { get; }
+            public IEnumerable<PeerInfo> InitializedPeers { get; }
             public IEnumerable<PeerInfo> UsefulPeersWhateverDiff { get; }
             public int PeerCount { get; }
-            public int UsefulPeerCount { get; }
+            public int InitializedPeersCount { get; }
             public int PeerMaxCount { get; }
 
             public void AddPeer(ISyncPeer syncPeer)
@@ -97,7 +93,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             {
             }
 
-            public void RefreshTotalDifficulty(PeerInfo peerInfo, Keccak hash)
+            public void RefreshTotalDifficulty(ISyncPeer syncPeer, Keccak hash)
             {
             }
 
@@ -108,18 +104,6 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             public Task StopAsync()
             {
                 return Task.CompletedTask;
-            }
-
-            public event EventHandler PeerAdded
-            {
-                add { }
-                remove { }
-            }
-
-            public event EventHandler PeerRemoved
-            {
-                add { }
-                remove { }
             }
         }
 
@@ -168,10 +152,11 @@ namespace Nethermind.Synchronization.Test.ParallelSync
         private class TestSyncFeed : SyncFeed<TestBatch>
         {
             public TestSyncFeed(bool isMultiFeed = true)
+                : base(LimboLogs.Instance)
             {
                 IsMultiFeed = isMultiFeed;
             }
-            
+
             public const int Max = 64;
 
             private int _highestRequested;
@@ -204,6 +189,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             }
 
             public override bool IsMultiFeed { get; }
+            public override AllocationContexts Contexts => AllocationContexts.All;
 
             private int _pendingRequests;
 

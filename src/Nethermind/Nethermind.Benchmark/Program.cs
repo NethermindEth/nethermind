@@ -18,6 +18,7 @@ using System.Diagnostics;
 using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.Running;
 using Nethermind.Benchmarks.Core;
+using Nethermind.Core.Caching;
 
 namespace Nethermind.Benchmarks
 {
@@ -26,8 +27,9 @@ namespace Nethermind.Benchmarks
         public static void Main(string[] args)
         {
             IConfig config = Debugger.IsAttached ? new DebugInProcessConfig() : null;
-            BenchmarkRunner.Run<LruCacheBenchmarks>(config);
-            BenchmarkRunner.Run<LruCacheKeccakBytesBenchmarks>(config);
+            BenchmarkRunner.Run<LruCacheAddAtCapacityBenchmarks>(config);
+            // BenchmarkRunner.Run<LruCacheBenchmarks>(config);
+            // BenchmarkRunner.Run<LruCacheKeccakBytesBenchmarks>(config);
             // BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args, config);
         }
     }

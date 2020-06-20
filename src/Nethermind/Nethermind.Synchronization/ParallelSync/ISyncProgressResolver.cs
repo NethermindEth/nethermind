@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Runtime.CompilerServices;
+using Nethermind.Dirichlet.Numerics;
 
 [assembly: InternalsVisibleTo("DynamicProxyGenAssembly2")]
 namespace Nethermind.Synchronization.ParallelSync
@@ -22,7 +23,7 @@ namespace Nethermind.Synchronization.ParallelSync
     public interface ISyncProgressResolver
     {
         long FindBestFullState();
-        
+
         long FindBestHeader();
         
         long FindBestFullBlock();
@@ -32,5 +33,7 @@ namespace Nethermind.Synchronization.ParallelSync
         bool IsLoadingBlocksFromDb();
         
         long FindBestProcessedBlock();
+        
+        UInt256 ChainDifficulty { get; }
     }
 }

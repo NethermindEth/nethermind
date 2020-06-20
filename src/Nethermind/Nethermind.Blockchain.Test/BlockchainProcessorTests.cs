@@ -29,7 +29,7 @@ using Nethermind.Db;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State.Repositories;
-using Nethermind.Store.Bloom;
+using Nethermind.Db.Blooms;
 using Nethermind.TxPool;
 using NUnit.Framework;
 
@@ -69,7 +69,7 @@ namespace Nethermind.Blockchain.Test
                     _allowedToFail.Add(hash);
                 }
 
-                public Block[] Process(Keccak branchStateRoot, List<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer)
+                public Block[] Process(Keccak newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer)
                 {
                     _logger.Info($"Processing {suggestedBlocks.Last().ToString(Block.Format.Short)}");
                     while (true)
@@ -184,7 +184,7 @@ namespace Nethermind.Blockchain.Test
                 _blockTree = new BlockTree(blockDb, headersDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), MainnetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
                 _blockProcessor = new BlockProcessorMock(_logManager);
                 _recoveryStep = new RecoveryStepMock(_logManager);
-                _processor = new BlockchainProcessor(_blockTree, _blockProcessor, _recoveryStep, LimboLogs.Instance, true);
+                _processor = new BlockchainProcessor(_blockTree, _blockProcessor, _recoveryStep, LimboLogs.Instance, BlockchainProcessor.Options.Default);
                 _resetEvent = new AutoResetEvent(false);
 
                 _blockTree.NewHeadBlock += (sender, args) =>

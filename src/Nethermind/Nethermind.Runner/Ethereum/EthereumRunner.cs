@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
@@ -74,15 +73,13 @@ namespace Nethermind.Runner.Ethereum
             networkConfig.LocalIp = _context.IpResolver.LocalIp.ToString();
         }
 
-        public async Task Start()
+        public async Task Start(CancellationToken cancellationToken)
         {
             if (_logger.IsDebug) _logger.Debug("Initializing Ethereum");
-            _context.RunnerCancellation = new CancellationTokenSource();
-            _context.DisposeStack.Push(_context.RunnerCancellation);
 
             EthereumStepsManager stepsManager = new EthereumStepsManager(_context);
-            stepsManager.DiscoverAll();
-            await stepsManager.InitializeAll();
+            await stepsManager.DiscoverAll(cancellationToken);
+            await stepsManager.InitializeAll(cancellationToken);
             
             string infoScreen = ThisNodeInfo.BuildNodeInfoScreen();
             if (_logger.IsInfo) _logger.Info(infoScreen);
@@ -90,9 +87,6 @@ namespace Nethermind.Runner.Ethereum
 
         public async Task StopAsync()
         {
-            if (_logger.IsInfo) _logger.Info("Shutting down...");
-            _context.RunnerCancellation?.Cancel();
-
             if (_logger.IsInfo) _logger.Info("Stopping session monitor...");
             _context.SessionMonitor?.Stop();
 
@@ -109,8 +103,7 @@ namespace Nethermind.Runner.Ethereum
             Task peerManagerTask = _context.PeerManager?.StopAsync() ?? Task.CompletedTask;
 
             if (_logger.IsInfo) _logger.Info("Stopping synchronizer...");
-            Task synchronizerTask = (_context.Synchronizer?.StopAsync() ?? Task.CompletedTask)
-                .ContinueWith(t => _context.Synchronizer?.Dispose());
+            Task synchronizerTask = _context.Synchronizer?.StopAsync() ?? Task.CompletedTask;
 
             if (_logger.IsInfo) _logger.Info("Stopping blockchain processor...");
             Task blockchainProcessorTask = (_context.BlockchainProcessor?.StopAsync() ?? Task.CompletedTask);
@@ -123,7 +116,7 @@ namespace Nethermind.Runner.Ethereum
             while (_context.DisposeStack.Count != 0)
             {
                 IAsyncDisposable disposable = _context.DisposeStack.Pop();
-                if (_logger.IsDebug) _logger.Debug($"Disposing {disposable.GetType().Name}");
+                if (_logger.IsDebug) _logger.Debug($"Disposing {disposable}");
                 await disposable.DisposeAsync();
             }
             

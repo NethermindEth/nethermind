@@ -22,17 +22,17 @@ namespace Nethermind.BeaconNode.Peering
         /// Newly created session object
         /// </summary>
         New = 0,
-        
+
         /// <summary>
         /// Status handshake received
         /// </summary>
         Open,
-        
+
         /// <summary>
         /// Disconnecting P2P protocols.
         /// </summary>
         Disconnecting,
-        
+
         /// <summary>
         /// Disconnected.
         /// </summary>

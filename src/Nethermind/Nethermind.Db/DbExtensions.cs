@@ -50,6 +50,13 @@ namespace Nethermind.Db
             return db[k];
         }
         
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="db"></param>
+        /// <param name="key"></param>
+        /// <returns>Can return null or empty Span on missing key</returns>
+        /// <exception cref="InvalidOperationException"></exception>
         public static Span<byte> GetSpan(this IDbWithSpan db, Keccak key)
         {
 #if DEBUG
@@ -86,6 +93,12 @@ namespace Nethermind.Db
         
         public static byte[] Get(this IDb db, long key) => db[key.ToBigEndianByteArrayWithoutLeadingZeros()];
         
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="db"></param>
+        /// <param name="key"></param>
+        /// <returns>Can return null or empty Span on missing key</returns>
         public static Span<byte> GetSpan(this IDbWithSpan db, long key) => db.GetSpan(key.ToBigEndianByteArrayWithoutLeadingZeros());
 
 
@@ -102,7 +115,7 @@ namespace Nethermind.Db
                 if (db is IDbWithSpan spanDb && decoder is IRlpValueDecoder<TItem> valueDecoder)
                 {
                     Span<byte> data = spanDb.GetSpan(key);
-                    if (data == null)
+                    if (data.IsNullOrEmpty())
                     {
                         return null;
                     }
@@ -145,7 +158,7 @@ namespace Nethermind.Db
                 if (db is IDbWithSpan spanDb && decoder is IRlpValueDecoder<TItem> valueDecoder)
                 {
                     Span<byte> data = spanDb.GetSpan(key);
-                    if (data == null)
+                    if (data.IsNullOrEmpty())
                     {
                         return null;
                     }

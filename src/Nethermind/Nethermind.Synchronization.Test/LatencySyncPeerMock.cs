@@ -25,6 +25,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Stats.Model;
+using NUnit.Framework.Constraints;
 
 namespace Nethermind.Synchronization.Test
 {
@@ -47,6 +48,10 @@ namespace Nethermind.Synchronization.Test
             string remoteHost = $"{RemoteIndex}.{RemoteIndex}.{RemoteIndex}.{RemoteIndex}";
 
             Tree = tree;
+            HeadNumber = Tree.Head.Number;
+            HeadHash = Tree.Head.Hash;
+            TotalDifficulty = Tree.Head.TotalDifficulty ?? 0;
+            
             Node = new Node(TestItem.PrivateKeys[RemoteIndex].PublicKey, remoteHost, 30303);
             LocalNode = new Node(TestItem.PrivateKeys[0].PublicKey, localHost, 30303);
             Node.ClientId = $"remote {RemoteIndex}";
@@ -57,8 +62,10 @@ namespace Nethermind.Synchronization.Test
         public Node Node { get; }
         public Node LocalNode { get; }
         public string ClientId => Node.ClientId;
-        public string EthDetails => Node.EthDetails;
-        public UInt256 TotalDifficultyOnSessionStart => Tree.Head.TotalDifficulty ?? 0;
+        public long HeadNumber { get; set; }
+        public Keccak HeadHash { get; set; }
+        public UInt256 TotalDifficulty { get; set; }
+        public bool IsInitialized { get; set; } = true;
 
         public void Disconnect(DisconnectReason reason, string details)
         {

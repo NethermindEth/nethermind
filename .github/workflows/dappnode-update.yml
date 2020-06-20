@@ -1,18 +1,23 @@
 name: Update DAppNode package
 
 on:
-  push:
-    tags:
-    - '*'
-
+  repository_dispatch:
+    types: dappnode
+    
 jobs:
-  dappnode-update:
-    name: Updating DAppNode package
+  dappnode-update-nethermind:
+    name: Trigger the DAppNode Package update
     runs-on: ubuntu-latest
     steps:
-    - name: Send dispatch event to DAppNodePackage-nethermind repo
+    - name: Get the tag
+      id: get_tag
+      run: echo ::set-output name=TAG::${{ github.event.client_payload.tag }}
+    - name: Send dispatch event to nethermind DAppNode Package repository
+      env: 
+        DISPATCH_REPO: dappnode/DAppNodePackage-nethermind
       run: |
-        curl -v -X POST -u "${{ secrets.PAT_USERNAME }}:${{ secrets.PAT_TOKEN }}" -H "Accept: application/vnd.github.everest-preview+json" -H "Content-Type: application/json" --data '{"event_type":"dappnode_update"}' https://api.github.com/repos/nethermindeth/nethermind/dispatches
-    
-
-
+        curl -v -X POST -u "${{ secrets.PAT_GITHUB }}" \
+        -H "Accept: application/vnd.github.everest-preview+json" \
+        -H "Content-Type: application/json" \
+        --data '{"event_type":"new_release", "client_payload": { "tag":"${{ steps.get_tag.outputs.TAG }}"}}' \
+        https://api.github.com/repos/$DISPATCH_REPO/dispatches

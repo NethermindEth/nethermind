@@ -37,8 +37,5 @@ namespace Nethermind.Blockchain
         
         [Description("Number of blocks awaiting for processing.")]
         public static long ProcessingQueueSize { get; set; }
-        
-        [Description("Number of sync peers.")]
-        public static long SyncPeers { get; set; }
     }
 }

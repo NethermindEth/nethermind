@@ -106,7 +106,7 @@ namespace Nethermind.BeaconNode.Test.Helpers
             return BuildEmptyBlock(testServiceProvider, state, state.Slot + new Slot(1), randaoReveal);
         }
 
-        public static SignedBeaconBlock SignBlock(IServiceProvider testServiceProvider, BeaconState state, BeaconBlock block, ValidatorIndex proposerIndex)
+        public static SignedBeaconBlock SignBlock(IServiceProvider testServiceProvider, BeaconState state, BeaconBlock block, ValidatorIndex? optionalProposerIndex)
         {
             TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
             SignatureDomains signatureDomains = testServiceProvider.GetService<IOptions<SignatureDomains>>().Value;
@@ -122,7 +122,12 @@ namespace Nethermind.BeaconNode.Test.Helpers
             }
 
             Epoch blockEpoch = beaconChainUtility.ComputeEpochAtSlot(block.Slot);
-            if (proposerIndex == ValidatorIndex.None)
+            ValidatorIndex proposerIndex;
+            if (optionalProposerIndex.HasValue)
+            {
+                proposerIndex = optionalProposerIndex.Value;
+            }
+            else
             {
                 if (block.Slot == state.Slot)
                 {

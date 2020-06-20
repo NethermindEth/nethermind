@@ -35,7 +35,7 @@ namespace Nethermind.TxPool.Storages
 
         public Transaction[] GetAll() => _transactions.Values.ToArray();
 
-        public void Add(Transaction transaction, long blockNumber)
+        public void Add(Transaction transaction)
             => _transactions.TryAdd(transaction.Hash, transaction);
 
         public void Delete(Keccak hash) => _transactions.TryRemove(hash, out _);

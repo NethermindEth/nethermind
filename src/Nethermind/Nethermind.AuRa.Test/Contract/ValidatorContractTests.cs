@@ -15,20 +15,18 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
 using FluentAssertions;
 using Nethermind.Abi;
+using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Dirichlet.Numerics;
-using Nethermind.Store;
+using Nethermind.Crypto;
+using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
+using Nethermind.State;
 using NSubstitute;
-using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.AuRa.Test.Contract
@@ -38,47 +36,69 @@ namespace Nethermind.AuRa.Test.Contract
     {
         private Block _block;
         private readonly Address _contractAddress = Address.FromNumber(long.MaxValue);
+        private IReadOnlyTransactionProcessor _transactionProcessor;
+        private IReadOnlyTransactionProcessorSource _readOnlyTransactionProcessorSource;
+        private IStateProvider _stateProvider;
 
         [SetUp]
         public void SetUp()
         {
             _block = new Block(Build.A.BlockHeader.TestObject, new BlockBody());
+            _transactionProcessor = Substitute.For<IReadOnlyTransactionProcessor>();
+            _readOnlyTransactionProcessorSource = Substitute.For<IReadOnlyTransactionProcessorSource>();
+            _readOnlyTransactionProcessorSource.Get(TestItem.KeccakA).Returns(_transactionProcessor);
+            _stateProvider = Substitute.For<IStateProvider>();
+            _stateProvider.StateRoot.Returns(TestItem.KeccakA);
         }
 
         [Test]
         public void constructor_throws_ArgumentNullException_on_null_encoder()
         {
-            Action action = () => new ValidatorContract(null, _contractAddress);
+            Action action = () => new ValidatorContract(_transactionProcessor, null, _contractAddress, _stateProvider, _readOnlyTransactionProcessorSource, new Signer(0, TestItem.PrivateKeyD));
             action.Should().Throw<ArgumentNullException>();
         }
         
         [Test]
         public void constructor_throws_ArgumentNullException_on_null_contractAddress()
         {
-            Action action = () => new ValidatorContract(new AbiEncoder(), null);
+            Action action = () => new ValidatorContract(_transactionProcessor, new AbiEncoder(), null, _stateProvider, _readOnlyTransactionProcessorSource, new Signer(0, TestItem.PrivateKeyD));
             action.Should().Throw<ArgumentNullException>();
         }
         
         [Test]
-        public void finalize_change_should_return_valid_transaction_when_validator_available()
+        public void finalize_change_should_call_correct_transaction()
         {
-            var expectation = new Transaction()
+            var expectation = new SystemTransaction()
             {
                 Value = 0, 
                 Data = new byte[] {0x75, 0x28, 0x62, 0x11},
-                Hash = new Keccak("0xa43db3bf833748d98eb99453bc933f313f9f6a7471fed0018190f0d5b0f863a1"), 
+                Hash = new Keccak("0x0652461cead47b6e1436fc631debe06bde8bcdd2dad3b9d21df5cf092078c6d3"), 
                 To = _contractAddress,
                 SenderAddress = Address.SystemUser,
-                GasLimit = long.MaxValue,
+                GasLimit = Blockchain.Contracts.Contract.DefaultContractGasLimit,
                 GasPrice = 0,
                 Nonce = 0
             };
+            expectation.Hash = expectation.CalculateHash();
             
-            var contract = new ValidatorContract(new AbiEncoder(), _contractAddress);
+            var contract = new ValidatorContract(_transactionProcessor, new AbiEncoder(), _contractAddress, _stateProvider, _readOnlyTransactionProcessorSource, new Signer(0, TestItem.PrivateKeyD));
             
-            var transaction = contract.FinalizeChange();
+            contract.FinalizeChange(_block.Header);
             
-            transaction.Should().BeEquivalentTo(expectation);
+            _transactionProcessor.Received().Execute(Arg.Is<Transaction>(t => IsEquivalentTo(expectation, t)), _block.Header, Arg.Any<ITxTracer>());
+        }
+        
+        private static bool IsEquivalentTo(object expected, object item)
+        {
+            try
+            {
+                item.Should().BeEquivalentTo(expected);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
         }
     }
 }

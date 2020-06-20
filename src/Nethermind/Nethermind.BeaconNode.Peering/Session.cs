@@ -20,14 +20,6 @@ namespace Nethermind.BeaconNode.Peering
 {
     public class Session
     {
-        public ConnectionDirection Direction { get; }
-        
-        public PeerInfo Peer { get; }
-
-        public SessionState State { get; private set; }
-
-        public Guid Id { get; }
-
         public Session(ConnectionDirection direction, PeerInfo peer)
         {
             Direction = direction;
@@ -36,14 +28,22 @@ namespace Nethermind.BeaconNode.Peering
             Id = Guid.NewGuid();
         }
 
-        public void Open()
-        {
-            State = SessionState.Open;
-        }
+        public ConnectionDirection Direction { get; }
+
+        public Guid Id { get; }
+
+        public PeerInfo Peer { get; }
+
+        public SessionState State { get; private set; }
 
         public void Disconnect()
         {
             State = SessionState.Disconnecting;
+        }
+
+        public void Open()
+        {
+            State = SessionState.Open;
         }
     }
 }

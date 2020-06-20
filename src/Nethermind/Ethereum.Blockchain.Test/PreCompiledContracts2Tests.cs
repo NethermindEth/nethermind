@@ -24,14 +24,15 @@ using NUnit.Framework;
 namespace Ethereum.Blockchain.Test
 {
     [TestFixture][Parallelizable(ParallelScope.All)]
-    public class PreCompiledContracts2Tests : BlockchainTestBase
+    public class PreCompiledContracts2Tests : GeneralStateTestBase
     {
         [TestCaseSource(nameof(LoadTests))]
-        public void Test(BlockchainTest test)
+        public void Test(GeneralStateTest test)
         {
             Assert.True(RunTest(test).Pass);
         }
         
-        public static IEnumerable<BlockchainTest> LoadTests() { return new DirectoryTestsSource("stPreCompiledContracts2").LoadTests(); }
+        public static IEnumerable<GeneralStateTest> LoadTests() { var loader = new DirectoryTestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stPreCompiledContracts2");
+            return (IEnumerable<GeneralStateTest>)loader.LoadTests(); }
     }
 }

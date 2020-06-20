@@ -20,15 +20,15 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Nethermind.Core2.Json;
 
 namespace Nethermind.BeaconNode.OApi
 {
     public static class BeaconNodeServiceCollectionExtensions
     {
-        public static void AddBeaconNodeOApi(this IServiceCollection services)
+        public static void AddBeaconNodeOApi(this IServiceCollection services, IWebHostEnvironment env)
         {
-            // Register adapter
-            services.AddScoped<IBeaconNodeOApiController, BeaconNodeOApiAdapter>();
             // Register controllers
             var apiAssembly = typeof(BeaconNodeServiceCollectionExtensions).GetTypeInfo().Assembly;
             services.AddControllers()
@@ -36,10 +36,14 @@ namespace Nethermind.BeaconNode.OApi
                 {
                     mvcOptions.ModelBinderProviders.Insert(0, new PrefixedHexByteArrayModelBinderProvider());
                 })
-                .AddNewtonsoftJson(newtonsoftOptions =>
+                .AddJsonOptions(jsonOptions =>
                 {
-                    newtonsoftOptions.SerializerSettings.Converters.Add(
-                        new PrefixedHexByteArrayNewtonsoftJsonConverter());
+                    if (env.IsDevelopment())
+                    {
+                        jsonOptions.JsonSerializerOptions.WriteIndented = true;
+                    }
+                    
+                    jsonOptions.JsonSerializerOptions.ConfigureNethermindCore2();
                 })
                 .AddApplicationPart(apiAssembly);
         }

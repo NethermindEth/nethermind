@@ -40,15 +40,21 @@ namespace Nethermind.Core2
     /// </remarks>
     public interface IBeaconNodeApi
     {
-        Task<ApiResponse<string>> GetNodeVersionAsync(CancellationToken cancellationToken);
         Task<ApiResponse<ulong>> GetGenesisTimeAsync(CancellationToken cancellationToken);
-        Task<ApiResponse<Syncing>> GetSyncingAsync(CancellationToken cancellationToken);
         Task<ApiResponse<Fork>> GetNodeForkAsync(CancellationToken cancellationToken);
-        Task<ApiResponse<IList<ValidatorDuty>>> ValidatorDutiesAsync(IList<BlsPublicKey> validatorPublicKeys, Epoch? epoch, CancellationToken cancellationToken);
-        Task<ApiResponse<BeaconBlock>> NewBlockAsync(Slot slot, BlsSignature randaoReveal, CancellationToken cancellationToken);
+        Task<ApiResponse<string>> GetNodeVersionAsync(CancellationToken cancellationToken);
+        Task<ApiResponse<Syncing>> GetSyncingAsync(CancellationToken cancellationToken);
+
+        Task<ApiResponse<Attestation>> NewAttestationAsync(BlsPublicKey validatorPublicKey, bool proofOfCustodyBit,
+            Slot slot, CommitteeIndex index, CancellationToken cancellationToken);
+
+        Task<ApiResponse<BeaconBlock>> NewBlockAsync(Slot slot, BlsSignature randaoReveal,
+            CancellationToken cancellationToken);
+
+        Task<ApiResponse> PublishAttestationAsync(Attestation signedAttestation, CancellationToken cancellationToken);
         Task<ApiResponse> PublishBlockAsync(SignedBeaconBlock signedBlock, CancellationToken cancellationToken);
 
-        //        BeaconBlock CreateAttestation(BlsPublicKey validatorPublicKey, bool proofOfCustodyBit, Slot slot, Shard shard);
-//        bool PublishAttestation(BeaconBlock block);
+        Task<ApiResponse<IList<ValidatorDuty>>> ValidatorDutiesAsync(IList<BlsPublicKey> validatorPublicKeys,
+            Epoch? epoch, CancellationToken cancellationToken);
     }
 }

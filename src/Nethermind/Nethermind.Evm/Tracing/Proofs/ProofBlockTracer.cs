@@ -44,10 +44,6 @@ namespace Nethermind.Evm.Tracing.Proofs
         {
             return txTracer;
         }
-        
-        void IBlockTracer.BeforeRestore(IStateProvider state)
-        {
-        }
 
         public override void StartNewBlockTrace(Block block)
         {

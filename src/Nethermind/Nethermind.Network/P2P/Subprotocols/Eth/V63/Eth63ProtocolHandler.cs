@@ -166,12 +166,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                 long elapsed = request.FinishMeasuringTime();
                 long bytesPerMillisecond = (long) ((decimal) request.ResponseSize / Math.Max(1, elapsed));
                 if (Logger.IsTrace) Logger.Trace($"{this} speed is {request.ResponseSize}/{elapsed} = {bytesPerMillisecond}");
-                StatsManager.ReportTransferSpeedEvent(Session.Node, bytesPerMillisecond);
+                StatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.NodeData, bytesPerMillisecond);
 
                 return task.Result;
             }
 
-            StatsManager.ReportTransferSpeedEvent(Session.Node, 0L);
+            StatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.NodeData, 0L);
             throw new TimeoutException($"{Session} Request timeout in {nameof(GetNodeDataMessage)}");
         }
 
@@ -205,12 +205,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                 long elapsed = request.FinishMeasuringTime();
                 long bytesPerMillisecond = (long) ((decimal) request.ResponseSize / Math.Max(1, elapsed));
                 if (Logger.IsTrace) Logger.Trace($"{this} speed is {request.ResponseSize}/{elapsed} = {bytesPerMillisecond}");
-                StatsManager.ReportTransferSpeedEvent(Session.Node, bytesPerMillisecond);
+                StatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.Receipts, bytesPerMillisecond);
 
                 return task.Result;
             }
 
-            StatsManager.ReportTransferSpeedEvent(Session.Node, 0L);
+            StatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.Receipts,0L);
 
             throw new TimeoutException($"{Session} Request timeout in {nameof(GetReceiptsMessage)}");
         }

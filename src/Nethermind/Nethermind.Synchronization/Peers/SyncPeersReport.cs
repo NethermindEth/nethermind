@@ -17,7 +17,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using System.Text;
 using Nethermind.Logging;
 using Nethermind.Stats;
@@ -48,7 +47,7 @@ namespace Nethermind.Synchronization.Peers
 
         private object _writeLock = new object();
 
-        private IEnumerable<PeerInfo> OrderedPeers => _peerPool.AllPeers.OrderBy(p => p.SyncPeer?.Node?.Host);
+        private IEnumerable<PeerInfo> OrderedPeers => _peerPool.InitializedPeers.OrderByDescending(p => p.SyncPeer?.HeadNumber).ThenByDescending(p => p.SyncPeer?.Node?.ClientId).ThenBy(p => p.SyncPeer?.Node?.Host);
 
         public void WriteFullReport()
         {
@@ -88,7 +87,7 @@ namespace Nethermind.Synchronization.Peers
                 }
                 
                 _stringBuilder.Append($"Sync peers {_currentInitializedPeerCount}({_peerPool.PeerCount})/{_peerPool.PeerMaxCount}");
-                foreach (PeerInfo peerInfo in OrderedPeers)
+                foreach (PeerInfo peerInfo in OrderedPeers.Where(p => !p.CanBeAllocated(AllocationContexts.All)))
                 {
                     _stringBuilder.AppendLine();
                     AddPeerInfo(peerInfo);
@@ -101,13 +100,12 @@ namespace Nethermind.Synchronization.Peers
 
         private void AddPeerInfo(PeerInfo peerInfo)
         {
-            string prefix = peerInfo.IsAllocated ? " * " : peerInfo.IsAsleep ? " _ " : peerInfo.IsInitialized ? "   " : " ? ";
-            _stringBuilder.Append($"{prefix}{peerInfo}[{_stats.GetOrAdd(peerInfo.SyncPeer.Node).GetAverageTransferSpeed() ?? 0}]");
+            _stringBuilder.Append($"   {peerInfo}[{_stats.GetOrAdd(peerInfo.SyncPeer.Node).GetAverageTransferSpeed(TransferSpeedType.Latency) ?? 0}|{_stats.GetOrAdd(peerInfo.SyncPeer.Node).GetAverageTransferSpeed(TransferSpeedType.Headers) ?? 0}|{_stats.GetOrAdd(peerInfo.SyncPeer.Node).GetAverageTransferSpeed(TransferSpeedType.Bodies) ?? 0}|{_stats.GetOrAdd(peerInfo.SyncPeer.Node).GetAverageTransferSpeed(TransferSpeedType.Receipts) ?? 0}|{_stats.GetOrAdd(peerInfo.SyncPeer.Node).GetAverageTransferSpeed(TransferSpeedType.NodeData) ?? 0}]");
         }
 
         private void RememberState(out bool initializedCountChanged)
         {
-            int initializedPeerCount = _peerPool.AllPeers.Count(p => p.IsInitialized);
+            int initializedPeerCount = _peerPool.InitializedPeersCount;
             initializedCountChanged = initializedPeerCount != _currentInitializedPeerCount;
             _currentInitializedPeerCount = initializedPeerCount;
         }

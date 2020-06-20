@@ -49,6 +49,7 @@ namespace Nethermind.Abi
             }
 
             Length = length;
+            CSharpType = GetCSharpType();
         }
 
         public int Length { get; }
@@ -59,13 +60,31 @@ namespace Nethermind.Abi
 
         public override (object, int) Decode(byte[] data, int position, bool packed)
         {
-            BigInteger lengthData = data.Slice(position, (packed ? LengthInBytes : UInt256.LengthInBytes)).ToUnsignedBigInteger();
-            return (lengthData, position + (packed ? LengthInBytes : UInt256.LengthInBytes));
+            var (value, length) = DecodeUInt(data, position, packed);
+            
+            switch (Length)
+            {
+                case { } n when n <= 8:
+                    return ((byte) value, length);
+                case { } n when n <= 16:
+                    return ((ushort) value, length);
+                case { } n when n <= 32:
+                    return ((uint) value, length);
+                case { } n when n <= 64:
+                    return ((ulong) value, length);
+                case { } n when n <= 128:
+                    return ((UInt128) value, length);
+                case { } n when n <= 256:
+                    return ((UInt256) value, length);
+                default:
+                    return (value, length);
+            }
         }
 
         public (BigInteger, int) DecodeUInt(byte[] data, int position, bool packed)
         {
-            return ((BigInteger, int)) Decode(data, position, packed);
+            BigInteger lengthData = data.Slice(position, (packed ? LengthInBytes : UInt256.LengthInBytes)).ToUnsignedBigInteger();
+            return (lengthData, position + (packed ? LengthInBytes : UInt256.LengthInBytes));
         }
 
         public override byte[] Encode(object? arg, bool packed)
@@ -117,6 +136,27 @@ namespace Nethermind.Abi
             return bytes.PadLeft(packed ? LengthInBytes : UInt256.LengthInBytes);
         }
 
-        public override Type CSharpType { get; } = typeof(BigInteger);
+        public override Type CSharpType { get; }
+        
+        private Type GetCSharpType()
+        {
+            switch (Length)
+            {
+                case { } n when n <= 8:
+                    return typeof(byte);
+                case { } n when n <= 16:
+                    return typeof(ushort);
+                case { } n when n <= 32:
+                    return typeof(uint);
+                case { } n when n <= 64:
+                    return typeof(ulong);
+                case { } n when n <= 128:
+                    return typeof(UInt128);
+                case { } n when n <= 256:
+                    return typeof(UInt256);
+                default:
+                    return typeof(BigInteger);
+            }
+        }
     }
 }

@@ -1,0 +1,39 @@
+name: Publish Debian arm64 image to docker registry
+
+on:
+  repository_dispatch:
+    types: docker_arm64_debian_custom
+
+jobs:
+  arm64-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+      - name: Unshallow fetching
+        run: git fetch --unshallow
+      - name: Settings
+        id: settings
+        run: |
+          echo "Event '${{ github.event.action }}' with tag: '${{ github.event.client_payload.tag }}'"
+          echo ::set-output name=TAG::${{ github.event.client_payload.tag }}
+          echo ::set-output name=docker_username::${{ secrets.DOCKER_USERNAME }}
+          echo ::set-output name=docker_image::nethermind/nethermind
+      - name: Set up docker buildx
+        id: buildx
+        uses: crazy-max/ghaction-docker-buildx@v1
+        with:
+          version: latest
+      - name: Docker Login
+        if: success()
+        env:
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+        run: |
+          echo "${DOCKER_PASSWORD}" | docker login --username "${{ steps.settings.outputs.docker_username }}" --password-stdin
+      - name: Build & Push image to docker registry
+        run: |
+          docker buildx build --platform=linux/arm64 -t "${{ steps.settings.outputs.docker_image }}:${{ steps.settings.outputs.TAG }}-arm64" -f Dockerfile_arm64 --build-arg GIT_COMMIT=$(git log -1 --format=%h) . --push
+      - name: Clear
+        if: always()
+        run: |
+          rm -f ${HOME}/.docker/config.json

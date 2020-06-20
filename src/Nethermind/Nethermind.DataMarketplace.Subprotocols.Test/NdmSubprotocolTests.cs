@@ -54,7 +54,7 @@ namespace Nethermind.DataMarketplace.Subprotocols.Test
             serializationService.Register(typeof(HiMessage).Assembly);
             IConsumerService consumerService = Substitute.For<IConsumerService>();
             INdmConsumerChannelManager consumerChannelManager = Substitute.For<INdmConsumerChannelManager>();
-            EthereumEcdsa ecdsa = new EthereumEcdsa(MainnetSpecProvider.Instance, LimboLogs.Instance);
+            EthereumEcdsa ecdsa = new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance);
             _subprotocol = new NdmSubprotocol(session, nodeStatsManager, serializationService, LimboLogs.Instance, consumerService, consumerChannelManager, ecdsa, new DevWallet(new WalletConfig(), LimboLogs.Instance), Substitute.For<INdmFaucet>(), TestItem.PublicKeyB, TestItem.AddressB, TestItem.AddressA, false);
         }
 
@@ -265,7 +265,7 @@ namespace Nethermind.DataMarketplace.Subprotocols.Test
             }
 
             BuildSubprotocol();
-            EthereumEcdsa ecdsa = new EthereumEcdsa(MainnetSpecProvider.Instance, LimboLogs.Instance);
+            EthereumEcdsa ecdsa = new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance);
             Signature signature = ecdsa.Sign(TestItem.PrivateKeyA, Keccak.Zero);
             HiMessage hiMessage = new HiMessage(1, TestItem.AddressA, TestItem.AddressB, TestItem.PublicKeyA, signature);
             byte[] hiBytes = _service.Serialize(hiMessage);

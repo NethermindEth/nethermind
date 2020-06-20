@@ -33,16 +33,6 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
 
         public void CheckAsyncState(PeerInfo info)
         {
-            if (info.HasBeenDisconnected)
-            {
-                throw new InvalidAsynchronousStateException($"{GetType().Name} found a disconnected peer - {info}");
-            }
-
-            if (info.IsAllocated)
-            {
-                throw new InvalidAsynchronousStateException($"{GetType().Name} found an allocated peer - {info}");
-            }
-
             if (!info.IsInitialized)
             {
                 throw new InvalidAsynchronousStateException($"{GetType().Name} found an initilized peer - {info}");

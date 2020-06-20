@@ -26,15 +26,12 @@ namespace Nethermind.Cli.Modules
         }
         
         [CliFunction("parity", "pendingTransactions", Description = "Returns the pending transactions using Parity format")]
-        public JsValue PendingTransactions()
-        {
-            return NodeManager.PostJint("parity_pendingTransactions").Result;
-        }
-        
+        public JsValue PendingTransactions() => NodeManager.PostJint("parity_pendingTransactions").Result;
+
         [CliFunction("parity", "getBlockReceipts", Description = "Returns receipts from all transactions from particular block")]
-        public JsValue GetBlockReceipts(string blockParameter)
-        {
-            return NodeManager.PostJint("parity_getBlockReceipts", blockParameter).Result;
-        }
+        public JsValue GetBlockReceipts(string blockParameter) => NodeManager.PostJint("parity_getBlockReceipts", blockParameter).Result;
+        
+        [CliProperty("parity", "enode", Description = "Returns the node enode URI.")]
+        public string Enode() => NodeManager.Post<string>("parity_enode").Result;
     }
 }

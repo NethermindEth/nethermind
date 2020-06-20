@@ -191,6 +191,11 @@ namespace Nethermind.Core.Specs
         bool IsEip2200Enabled { get; }
         
         /// <summary>
+        /// Berlin subroutines -> https://github.com/ethereum/EIPs/issues/2315
+        /// </summary>
+        bool IsEip2315Enabled { get; }
+        
+        /// <summary>
         /// Should EIP158 be ignored for this account.
         /// </summary>
         /// <remarks>THis is needed for SystemUser account compatibility with Parity.</remarks>

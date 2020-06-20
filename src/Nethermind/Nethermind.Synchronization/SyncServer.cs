@@ -52,11 +52,10 @@ namespace Nethermind.Synchronization
         private readonly ISealValidator _sealValidator;
         private readonly ISnapshotableDb _stateDb;
         private readonly ISnapshotableDb _codeDb;
-        private readonly ISynchronizer _synchronizer;
         private readonly ISyncConfig _syncConfig;
         private readonly CanonicalHashTrie _cht;
         private object _dummyValue = new object();
-        private LruCache<Keccak, object> _recentlySuggested = new LruCache<Keccak, object>(128, 128, "recently suggested blocks");
+        private ICache<Keccak, object> _recentlySuggested = new LruCacheWithRecycling<Keccak, object>(128, 128, "recently suggested blocks");
         private long _pivotNumber;
 
         public SyncServer(
@@ -68,12 +67,10 @@ namespace Nethermind.Synchronization
             ISealValidator sealValidator,
             ISyncPeerPool pool,
             ISyncModeSelector syncModeSelector,
-            ISynchronizer synchronizer,
             ISyncConfig syncConfig,
             ILogManager logManager,
             CanonicalHashTrie cht = null)
         {
-            _synchronizer = synchronizer ?? throw new ArgumentNullException(nameof(synchronizer));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _pool = pool ?? throw new ArgumentNullException(nameof(pool));
             _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
@@ -110,10 +107,7 @@ namespace Nethermind.Synchronization
                 bool headIsGenesis = _blockTree.Head.Hash == _blockTree.Genesis.Hash;
                 if (headIsGenesis)
                 {
-                    if (_pivotHeader == null)
-                    {
-                        _pivotHeader = _blockTree.FindHeader(_pivotHash, BlockTreeLookupOptions.None);
-                    }
+                    _pivotHeader ??= _blockTree.FindHeader(_pivotHash, BlockTreeLookupOptions.None);
                 }
 
                 return headIsGenesis ? _pivotHeader ?? _blockTree.Genesis : _blockTree.Head?.Header;
@@ -127,19 +121,11 @@ namespace Nethermind.Synchronization
 
         private Guid _sealValidatorUserGuid = Guid.NewGuid();
 
-        public void AddNewBlock(Block block, Node nodeWhoSentTheBlock)
+        public void AddNewBlock(Block block, ISyncPeer nodeWhoSentTheBlock)
         {
             if (block.TotalDifficulty == null)
             {
                 throw new InvalidDataException("Cannot add a block with unknown total difficulty");
-            }
-
-            _pool.TryFind(nodeWhoSentTheBlock.Id, out PeerInfo peerInfo);
-            if (peerInfo == null)
-            {
-                string errorMessage = $"Received a new block from an unknown peer {nodeWhoSentTheBlock:c} {nodeWhoSentTheBlock.Id} {_pool.PeerCount}";
-                if (_logger.IsDebug) _logger.Debug(errorMessage);
-                return;
             }
 
             // Now, there are some complexities here.
@@ -157,7 +143,7 @@ namespace Nethermind.Synchronization
             // The other risky scenario (as happened in the past) is when we nor validate the TotalDifficulty
             // neither nullify it and then BlockTree may end up saving a header or block with incorrect value set.
             // This may lead to corrupted block tree history.
-            UpdatePeerInfoBasedOnBlockData(block, peerInfo);
+            UpdatePeerInfoBasedOnBlockData(block, nodeWhoSentTheBlock);
 
             // Now it is important that all the following checks happen after the peer information was updated
             // even if the block is not something that we want to include in the block tree
@@ -174,17 +160,18 @@ namespace Nethermind.Synchronization
                 _recentlySuggested.Set(block.Hash, _dummyValue);
             }
 
-            ValidateSeal(block, peerInfo);
-            if (_syncModeSelector.Current == SyncMode.Full)
+            ValidateSeal(block, nodeWhoSentTheBlock);
+            if ((_syncModeSelector.Current & (SyncMode.FastSync | SyncMode.StateNodes)) == SyncMode.None 
+                || (_syncModeSelector.Current & (SyncMode.Full | SyncMode.Beam)) != SyncMode.None)
             {
                 LogBlockAuthorNicely(block, nodeWhoSentTheBlock);
-                SyncBlock(block, peerInfo);
+                SyncBlock(block, nodeWhoSentTheBlock);
             }
         }
 
-        private void ValidateSeal(Block block, PeerInfo peerInfo)
+        private void ValidateSeal(Block block, ISyncPeer syncPeer)
         {
-            if (_logger.IsTrace) _logger.Trace($"Validating seal of {block.ToString(Block.Format.Short)}) from {peerInfo:c}");
+            if (_logger.IsTrace) _logger.Trace($"Validating seal of {block.ToString(Block.Format.Short)}) from {syncPeer:c}");
 
             // We hint validation range mostly to help ethash to cache epochs.
             // It is important that we only do that here, after we ensured that the block is
@@ -193,24 +180,24 @@ namespace Nethermind.Synchronization
             _sealValidator.HintValidationRange(_sealValidatorUserGuid, block.Number - 128, block.Number + 1024);
             if (!_sealValidator.ValidateSeal(block.Header, true))
             {
-                string message = $"Peer {peerInfo.SyncPeer?.Node:c} sent a block with an invalid seal";
-                if (_logger.IsDebug) _logger.Debug($"Peer {peerInfo.SyncPeer?.Node:c} sent a block with an invalid seal");
+                string message = $"Peer {syncPeer?.Node:c} sent a block with an invalid seal";
+                if (_logger.IsDebug) _logger.Debug($"Peer {syncPeer?.Node:c} sent a block with an invalid seal");
                 throw new EthSyncException(message);
             }
         }
 
-        private void UpdatePeerInfoBasedOnBlockData(Block block, PeerInfo peerInfo)
+        private void UpdatePeerInfoBasedOnBlockData(Block block, ISyncPeer syncPeer)
         {
-            if ((block.TotalDifficulty ?? 0) > peerInfo.TotalDifficulty)
+            if ((block.TotalDifficulty ?? 0) > syncPeer.TotalDifficulty)
             {
-                if (_logger.IsTrace) _logger.Trace($"ADD NEW BLOCK Updating header of {peerInfo} from {peerInfo.HeadNumber} {peerInfo.TotalDifficulty} to {block.Number} {block.TotalDifficulty}");
-                peerInfo.HeadNumber = block.Number;
-                peerInfo.HeadHash = block.Hash;
-                peerInfo.TotalDifficulty = block.TotalDifficulty ?? peerInfo.TotalDifficulty;
+                if (_logger.IsTrace) _logger.Trace($"ADD NEW BLOCK Updating header of {syncPeer} from {syncPeer.HeadNumber} {syncPeer.TotalDifficulty} to {block.Number} {block.TotalDifficulty}");
+                syncPeer.HeadNumber = block.Number;
+                syncPeer.HeadHash = block.Hash;
+                syncPeer.TotalDifficulty = block.TotalDifficulty ?? syncPeer.TotalDifficulty;
             }
         }
 
-        private void SyncBlock(Block block, PeerInfo peerInfo)
+        private void SyncBlock(Block block, ISyncPeer syncPeer)
         {
             if (_logger.IsTrace) _logger.Trace($"{block}");
 
@@ -218,13 +205,12 @@ namespace Nethermind.Synchronization
             // Parity sends invalid data here and it is equally expensive to validate and to set from null
             block.Header.TotalDifficulty = null;
 
-            AddBlockResult result = AddBlockResult.UnknownParent;
             bool isKnownParent = _blockTree.IsKnownBlock(block.Number - 1, block.ParentHash);
             if (isKnownParent)
             {
                 if (!_blockValidator.ValidateSuggestedBlock(block))
                 {
-                    string message = $"Peer {peerInfo.SyncPeer?.Node:c} sent an invalid block";
+                    string message = $"Peer {syncPeer?.Node:c} sent an invalid block";
                     if (_logger.IsDebug) _logger.Debug(message);
                     lock (_recentlySuggested)
                     {
@@ -234,7 +220,7 @@ namespace Nethermind.Synchronization
                     throw new EthSyncException(message);
                 }
 
-                result = _blockTree.SuggestBlock(block, true);
+                AddBlockResult result = _blockTree.SuggestBlock(block, true);
                 if (_logger.IsTrace) _logger.Trace($"{block.Hash} ({block.Number}) adding result is {result}");
             }
 
@@ -248,32 +234,23 @@ namespace Nethermind.Synchronization
             // }
         }
 
-        private void LogBlockAuthorNicely(Block block, Node nodeWhoSentTheBlock)
+        private void LogBlockAuthorNicely(Block block, ISyncPeer syncPeer)
         {
             // This line is not particularly important (just for logging)
             // and somehow it got refactored by ReSharper into some nightmare line.
             // It would be worth to split it back into something readable.
             // Generally it tries to find the sealer / miner name.
             string authorString = (block.Author == null ? null : "sealed by " + (KnownAddresses.GoerliValidators.ContainsKey(block.Author) ? KnownAddresses.GoerliValidators[block.Author] : block.Author?.ToString())) ?? (block.Beneficiary == null ? string.Empty : "mined by " + (KnownAddresses.KnownMiners.ContainsKey(block.Beneficiary) ? KnownAddresses.KnownMiners[block.Beneficiary] : block.Beneficiary?.ToString()));
-            if (_logger.IsInfo)
-            {
-                if (_logger.IsInfo) _logger.Info($"Discovered a new block {string.Empty.PadLeft(9 - block.Number.ToString().Length, ' ')}{block.ToString(Block.Format.HashNumberAndTx)} {authorString}, sent by {nodeWhoSentTheBlock:s}");
-            }
+            if (_logger.IsInfo) _logger.Info($"Discovered a new block {string.Empty.PadLeft(9 - block.Number.ToString().Length, ' ')}{block.ToString(Block.Format.HashNumberAndTx)} {authorString}, sent by {syncPeer:s}");
         }
 
-        public void HintBlock(Keccak hash, long number, Node node)
+        public void HintBlock(Keccak hash, long number, ISyncPeer syncPeer)
         {
-            if (!_pool.TryFind(node.Id, out PeerInfo peerInfo))
+            if (number > syncPeer.HeadNumber)
             {
-                if (_logger.IsDebug) _logger.Debug($"Received a block hint from an unknown {node:c}, ignoring");
-                return;
-            }
-
-            if (number > peerInfo.HeadNumber)
-            {
-                if (_logger.IsTrace) _logger.Trace($"HINT Updating header of {peerInfo} from {peerInfo.HeadNumber} {peerInfo.TotalDifficulty} to {number}");
-                peerInfo.HeadNumber = number;
-                peerInfo.HeadHash = hash;
+                if (_logger.IsTrace) _logger.Trace($"HINT Updating header of {syncPeer} from {syncPeer.HeadNumber} {syncPeer.TotalDifficulty} to {number}");
+                syncPeer.HeadNumber = number;
+                syncPeer.HeadHash = hash;
 
                 lock (_recentlySuggested)
                 {
@@ -284,7 +261,7 @@ namespace Nethermind.Synchronization
 
                 if (!_blockTree.IsKnownBlock(number, hash))
                 {
-                    _pool.RefreshTotalDifficulty(peerInfo, hash);
+                    _pool.RefreshTotalDifficulty(syncPeer, hash);
                     // TODO: now it should be done by sync peer pool?
                     // _synchronizer.RequestSynchronization(SyncTriggerType.NewBlock);
                 }
@@ -418,6 +395,11 @@ namespace Nethermind.Synchronization
             {
                 _ = BuildCHT();
             }
+        }
+
+        public void Dispose()
+        {
+            _blockTree.NewHeadBlock -= OnNewHeadBlock;
         }
     }
 }

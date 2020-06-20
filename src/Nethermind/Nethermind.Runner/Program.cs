@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Threading.Tasks;
 using Nethermind.Logging;
 using Nethermind.Logging.NLog;
 
@@ -24,7 +25,7 @@ namespace Nethermind.Runner
     {
         private const string FailureString = "Failure";
 
-        public static void Main(string[] args)
+        public static async Task Main(string[] args)
         {
             AppDomain.CurrentDomain.UnhandledException += (sender, eventArgs) =>
             {
@@ -38,8 +39,7 @@ namespace Nethermind.Runner
             try
             {
                 IRunnerApp runner = new RunnerApp();
-                runner.Run(args);
-                return;
+                await runner.Run(args);
             }
             catch (AggregateException e)
             {
@@ -50,6 +50,10 @@ namespace Nethermind.Runner
             {
                 ILogger logger = new NLogLogger("logs.txt");
                 logger.Error(FailureString, e);
+            }
+            finally
+            {
+                NLogLogger.Shutdown();
             }
 
             Console.WriteLine("Press RETURN to exit.");

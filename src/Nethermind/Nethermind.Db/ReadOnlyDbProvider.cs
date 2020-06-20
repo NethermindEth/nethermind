@@ -62,6 +62,7 @@ namespace Nethermind.Db
         public IDb EthRequestsDb => NestedEthRequestsDb;
         public IDb BloomDb => NestedBloomDb;
         public IDb ChtDb => NestedChtDb;
+        public IDb BeamStateDb { get; } = new MemDb(); 
         public ReadOnlyColumnsDb<ReceiptsColumns> NestedReceiptsDb { get; }
         public ReadOnlyDb NestedBlocksDb { get; }
         public ReadOnlyDb NestedHeadersDb { get; }
@@ -85,6 +86,7 @@ namespace Nethermind.Db
             NestedReceiptsDb.Restore(-1);
             NestedBloomDb.Restore(-1);
             NestedChtDb.Restore(-1);
+            BeamStateDb.Clear();
         }
     }
 }

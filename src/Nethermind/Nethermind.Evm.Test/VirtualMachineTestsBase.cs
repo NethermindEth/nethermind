@@ -29,6 +29,7 @@ using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Synchronization.BeamSync;
+using Nethermind.Synchronization.ParallelSync;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
@@ -66,13 +67,14 @@ namespace Nethermind.Evm.Test
         {
             ILogManager logger = LimboLogs.Instance;
 
-            ISnapshotableDb beamSyncDb = new StateDb(new BeamSyncDb(new MemDb(), LimboLogs.Instance));
-            IDb beamSyncCodeDb = new BeamSyncDb(new MemDb(), LimboLogs.Instance);
+            MemDb beamStateDb = new MemDb();
+            ISnapshotableDb beamSyncDb = new StateDb(new BeamSyncDb(new MemDb(), beamStateDb, StaticSelector.Full, LimboLogs.Instance));
+            IDb beamSyncCodeDb = new BeamSyncDb(new MemDb(), beamStateDb, StaticSelector.Full, LimboLogs.Instance);
             IDb codeDb = UseBeamSync ? beamSyncCodeDb : new StateDb();
             _stateDb = UseBeamSync ? beamSyncDb : new StateDb();
             TestState = new StateProvider(_stateDb, codeDb, logger);
             Storage = new StorageProvider(_stateDb, TestState, logger);
-            _ethereumEcdsa = new EthereumEcdsa(SpecProvider, logger);
+            _ethereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId, logger);
             IBlockhashProvider blockhashProvider = TestBlockhashProvider.Instance;
             Machine = new VirtualMachine(TestState, Storage, blockhashProvider, SpecProvider, logger);
             _processor = new TransactionProcessor(SpecProvider, TestState, Storage, Machine, logger);
@@ -125,7 +127,7 @@ namespace Nethermind.Evm.Test
                 .WithGasLimit(gasLimit)
                 .WithGasPrice(1)
                 .To(senderRecipientAndMiner.Recipient)
-                .SignedAndResolved(_ethereumEcdsa, senderRecipientAndMiner.SenderKey, blockNumber)
+                .SignedAndResolved(_ethereumEcdsa, senderRecipientAndMiner.SenderKey)
                 .TestObject;
 
             Block block = BuildBlock(blockNumber, senderRecipientAndMiner, transaction);
@@ -148,7 +150,7 @@ namespace Nethermind.Evm.Test
                 .WithData(input)
                 .WithValue(value)
                 .To(senderRecipientAndMiner.Recipient)
-                .SignedAndResolved(_ethereumEcdsa, senderRecipientAndMiner.SenderKey, blockNumber)
+                .SignedAndResolved(_ethereumEcdsa, senderRecipientAndMiner.SenderKey)
                 .TestObject;
 
             Block block = BuildBlock(blockNumber, senderRecipientAndMiner);
@@ -167,7 +169,7 @@ namespace Nethermind.Evm.Test
                 .WithGasLimit(gasLimit)
                 .WithGasPrice(1)
                 .WithInit(code)
-                .SignedAndResolved(_ethereumEcdsa, senderRecipientAndMiner.SenderKey, blockNumber)
+                .SignedAndResolved(_ethereumEcdsa, senderRecipientAndMiner.SenderKey)
                 .TestObject;
 
             Block block = BuildBlock(blockNumber, senderRecipientAndMiner);
@@ -211,10 +213,20 @@ namespace Nethermind.Evm.Test
             Assert.AreEqual(expectedValue.ToBigEndianByteArray(), actualValue, "storage");
         }
 
+        private static int _callIndex = -1;
+        
         protected void AssertStorage(StorageCell storageCell, BigInteger expectedValue)
         {
-            byte[] actualValue = Storage.Get(storageCell);
-            Assert.AreEqual(expectedValue.ToBigEndianByteArray(), actualValue, $"storage {storageCell}");
+            _callIndex++;
+            if (!TestState.AccountExists(storageCell.Address))
+            {
+                Assert.AreEqual(expectedValue.ToBigEndianByteArray(), new byte[1] {0}, $"storage {storageCell}, call {_callIndex}");
+            }
+            else
+            {
+                byte[] actualValue = Storage.Get(storageCell);
+                Assert.AreEqual(expectedValue.ToBigEndianByteArray(), actualValue, $"storage {storageCell}, call {_callIndex}");    
+            }
         }
 
         protected void AssertCodeHash(Address address, Keccak codeHash)

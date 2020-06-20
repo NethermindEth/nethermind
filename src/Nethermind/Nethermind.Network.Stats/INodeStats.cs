@@ -30,8 +30,8 @@ namespace Nethermind.Stats
 
         bool DidEventHappen(NodeStatsEventType nodeStatsEventType);
 
-        void AddTransferSpeedCaptureEvent(long bytesPerMillisecond);
-        long? GetAverageTransferSpeed();
+        void AddTransferSpeedCaptureEvent(TransferSpeedType speedType, long bytesPerMillisecond);
+        long? GetAverageTransferSpeed(TransferSpeedType speedType);
 
         (bool Result, NodeStatsEventType? DelayReason) IsConnectionDelayed();
         

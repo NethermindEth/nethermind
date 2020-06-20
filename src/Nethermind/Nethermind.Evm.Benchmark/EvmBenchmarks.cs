@@ -70,7 +70,7 @@ namespace Nethermind.Evm.Benchmark
             _environment.TransferValue = 0;
             _environment.CurrentBlock = _header;
             
-            _evmState = new EvmState(long.MaxValue, _environment, ExecutionType.Transaction, false, true, false);
+            _evmState = new EvmState(long.MaxValue, _environment, ExecutionType.Transaction, true, false);
         }
 
         [Benchmark]

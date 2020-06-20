@@ -32,26 +32,30 @@ namespace Nethermind.Blockchain.Rewards
         {
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         }
-
-        [Todo(Improve.MissingFunctionality, "Use ChainSpec for block rewards")]
+        
         private UInt256 GetBlockReward(Block block)
         {
             IReleaseSpec spec = _specProvider.GetSpec(block.Number);
-            return spec.IsEip649Enabled ? spec.IsEip1234Enabled ? 2.Ether() : 3.Ether() : 5.Ether();
+            return spec.BlockReward;
         }
         
         public BlockReward[] CalculateRewards(Block block)
         {
+            if (block.IsGenesis)
+            {
+                return Array.Empty<BlockReward>();
+            }
+            
             UInt256 blockReward = GetBlockReward(block);
             BlockReward[] rewards = new BlockReward[1 + block.Ommers.Length];
 
             BlockHeader blockHeader = block.Header;
-            BigInteger mainReward = blockReward + (uint) block.Ommers.Length * (blockReward >> 5);
+            UInt256 mainReward = blockReward + (uint) block.Ommers.Length * (blockReward >> 5);
             rewards[0] = new BlockReward(blockHeader.Beneficiary, mainReward);
 
             for (int i = 0; i < block.Ommers.Length; i++)
             {
-                BigInteger ommerReward = GetOmmerReward(blockReward, blockHeader, block.Ommers[i]);
+                UInt256 ommerReward = GetOmmerReward(blockReward, blockHeader, block.Ommers[i]);
                 rewards[i + 1] = new BlockReward(block.Ommers[i].Beneficiary, ommerReward, BlockRewardType.Uncle);
             }
 

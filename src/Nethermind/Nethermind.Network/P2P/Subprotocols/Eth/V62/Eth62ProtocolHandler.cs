@@ -16,8 +16,6 @@
 
 using System;
 using System.Timers;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
@@ -226,7 +224,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 InitiateDisconnect(DisconnectReason.UselessPeer, "One of the Rinkeby nodes stuck at Constantinople transition");
             }
 
-            TotalDifficultyOnSessionStart = status.TotalDifficulty;
+            HeadHash = status.BestHash;
+            TotalDifficulty = status.TotalDifficulty;
             ProtocolInitialized?.Invoke(this, eventArgs);
         }
 
@@ -247,7 +246,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 Transaction transaction = msg.Transactions[i];
                 transaction.DeliveredBy = Node.Id;
                 transaction.Timestamp = _timestamper.EpochSeconds;
-                AddTxResult result = _txPool.AddTransaction(transaction, SyncServer.Head.Number, TxHandlingOptions.None);
+                AddTxResult result = _txPool.AddTransaction(transaction, TxHandlingOptions.None);
                 if (result != AddTxResult.Added)
                 {
                     _notAcceptedTxsSinceLastCheck++;
@@ -262,7 +261,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             Metrics.Eth62NewBlockHashesReceived++;
             foreach ((Keccak hash, long number) in newBlockHashes.BlockHashes)
             {
-                SyncServer.HintBlock(hash, number, Node);
+                SyncServer.HintBlock(hash, number, this);
             }
         }
 
@@ -274,7 +273,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
             try
             {
-                SyncServer.AddNewBlock(newBlockMessage.Block, Session.Node);
+                SyncServer.AddNewBlock(newBlockMessage.Block, this);
             }
             catch (Exception e)
             {

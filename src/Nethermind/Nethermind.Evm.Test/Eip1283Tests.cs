@@ -19,7 +19,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Specs;
 using Nethermind.State;
-using Nethermind.Store;
+using Nethermind.Db.Blooms;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test

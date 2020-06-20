@@ -16,25 +16,33 @@
 
 using System;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Validators;
+using Nethermind.Consensus.AuRa.Transactions;
+using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.Store;
+using Nethermind.Db.Blooms;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa
 {
     public class AuRaBlockProcessor : BlockProcessor
     {
-        private readonly IAuRaBlockProcessorExtension _auRaBlockProcessorExtension;
+        private readonly IBlockTree _blockTree;
+        private readonly IGasLimitOverride _gasLimitOverride;
+        private readonly ITxPermissionFilter _txFilter;
+        private readonly ILogger _logger;
+        private IAuRaValidator _auRaValidator;
 
         public AuRaBlockProcessor(
             ISpecProvider specProvider,
@@ -48,18 +56,72 @@ namespace Nethermind.Consensus.AuRa
             ITxPool txPool,
             IReceiptStorage receiptStorage,
             ILogManager logManager,
-            IAuRaBlockProcessorExtension auRaBlockProcessorExtension)
+            IBlockTree blockTree,
+            ITxPermissionFilter txFilter = null,
+            IGasLimitOverride gasLimitOverride = null)
             : base(specProvider, blockValidator, rewardCalculator, transactionProcessor, stateDb, codeDb, stateProvider, storageProvider, txPool, receiptStorage, logManager)
         {
-            _auRaBlockProcessorExtension = auRaBlockProcessorExtension ?? throw new ArgumentNullException(nameof(auRaBlockProcessorExtension));
+            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _logger = logManager?.GetClassLogger<AuRaBlockProcessor>() ?? throw new ArgumentNullException(nameof(logManager));
+            _txFilter = txFilter ?? NullTxPermissionFilter.Instance;
+            _gasLimitOverride = gasLimitOverride;
+        }
+
+        public IAuRaValidator AuRaValidator
+        {
+            get => _auRaValidator ?? new NullAuRaValidator();
+            set => _auRaValidator = value;
         }
 
         protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options)
         {
-            _auRaBlockProcessorExtension.PreProcess(block, options);
+            ValidateAuRa(block);
+            AuRaValidator.OnBlockProcessingStart(block, options);
             var receipts = base.ProcessBlock(block, blockTracer, options);
-            _auRaBlockProcessorExtension.PostProcess(block, receipts, options);
+            AuRaValidator.OnBlockProcessingEnd(block, receipts, options);
             return receipts;
+        }
+
+        // This validations cannot be run in AuraSealValidator because they are dependent on state.
+        private void ValidateAuRa(Block block)
+        {
+            if (!block.IsGenesis)
+            {
+                var parentHeader = _blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None);
+                
+                ValidateGasLimit(block.Header, parentHeader);
+                ValidateTxs(block, parentHeader);
+            }
+        }
+
+        private void ValidateGasLimit(BlockHeader header, BlockHeader parentHeader)
+        {
+            var gasLimit = _gasLimitOverride?.GetGasLimit(parentHeader);
+            if (gasLimit.HasValue && header.GasLimit != gasLimit)
+            {
+                if (_logger.IsError) _logger.Error($"Invalid gas limit for block {header.Number}, hash {header.Hash}, expected value from contract {gasLimit.Value}, but found {header.GasLimit}.");
+                throw new InvalidBlockException(header.Hash);
+            }
+        }
+
+        private void ValidateTxs(Block block, BlockHeader parentHeader)
+        {
+            for (int i = 0; i < block.Transactions.Length; i++)
+            {
+                var tx = block.Transactions[i];
+                if (!_txFilter.IsAllowed(tx, parentHeader))
+                {
+                    if (_logger.IsError) _logger.Error($"Proposed block is not valid {block.ToString(Block.Format.FullHashAndNumber)}. {tx.ToShortString()} doesn't have required permissions.");
+                    throw new InvalidBlockException(block.Hash);
+                }
+            }
+        }
+        
+        private class NullAuRaValidator : IAuRaValidator
+        {
+            public Address[] Validators => Array.Empty<Address>();
+            public void OnBlockProcessingStart(Block block, ProcessingOptions options = ProcessingOptions.None) { }
+            public void OnBlockProcessingEnd(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None) { }
         }
     }
 }

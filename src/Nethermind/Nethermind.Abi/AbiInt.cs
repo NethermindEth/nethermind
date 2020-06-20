@@ -17,6 +17,7 @@
 using System;
 using System.Numerics;
 using Nethermind.Core.Extensions;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Abi
 {
@@ -47,6 +48,7 @@ namespace Nethermind.Abi
             }
 
             Length = length;
+            CSharpType = GetCSharpType();
         }
 
         public int Length { get; }
@@ -54,16 +56,32 @@ namespace Nethermind.Abi
         public int LengthInBytes => Length / 8;
 
         public override string Name => $"int{Length}";
-
+        
         public override (object, int) Decode(byte[] data, int position, bool packed)
         {
-            byte[] input = data.Slice(position, LengthInBytes);
-            return (input.ToSignedBigInteger(LengthInBytes), position + LengthInBytes);
+            var (value, length) = DecodeInt(data, position, packed);
+            
+            switch (Length)
+            {
+                case { } n when n <= 8:
+                    return ((sbyte) value, length);
+                case { } n when n <= 16:
+                    return ((short) value, length);
+                case { } n when n <= 32:
+                    return ((int) value, length);
+                case { } n when n <= 64:
+                    return ((long) value, length);
+                case { } n when n <= 128:
+                    return ((Int128) value, length);
+                default:
+                    return (value, length);
+            }
         }
 
         public (BigInteger, int) DecodeInt(byte[] data, int position, bool packed)
         {
-            return ((BigInteger, int))Decode(data, position, packed);
+            byte[] input = data.Slice(position, LengthInBytes);
+            return (input.ToSignedBigInteger(LengthInBytes), position + LengthInBytes);
         }
 
         public override byte[] Encode(object? arg, bool packed)
@@ -77,5 +95,24 @@ namespace Nethermind.Abi
         }
 
         public override Type CSharpType { get; } = typeof(BigInteger);
+        
+        private Type GetCSharpType()
+        {
+            switch (Length)
+            {
+                case { } n when n <= 8:
+                    return typeof(sbyte);
+                case { } n when n <= 16:
+                    return typeof(short);
+                case { } n when n <= 32:
+                    return typeof(int);
+                case { } n when n <= 64:
+                    return typeof(long);
+                case { } n when n <= 128:
+                    return typeof(Int128);
+                default:
+                    return typeof(BigInteger);
+            }
+        }
     }
 }

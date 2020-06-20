@@ -28,51 +28,85 @@ namespace Nethermind.Evm
     {
         private class StackPool
         {
-            private readonly int _capacity;
+            private readonly int _maxCallStackDepth;
 
             // TODO: we have wrong call depth calculation somewhere
-            public StackPool(int capacity = VirtualMachine.MaxCallDepth * 2)
+            public StackPool(int maxCallStackDepth = VirtualMachine.MaxCallDepth * 2)
             {
-                _capacity = capacity;
+                _maxCallStackDepth = maxCallStackDepth;
             }
 
-            private readonly ConcurrentStack<byte[]> _bytesOnStackPool = new ConcurrentStack<byte[]>();
+            private readonly ConcurrentStack<byte[]> _dataStackPool = new ConcurrentStack<byte[]>();
+            private readonly ConcurrentStack<int[]> _returnStackPool = new ConcurrentStack<int[]>();
 
-            private int _bytesOnStackCreated;
+            private int _dataStackPoolDepth;
+            private int _returnStackPoolDepth;
 
-            public void ReturnBytesOnStack(byte[] bytesOnStack)
+            /// <summary>
+            /// The word 'return' acts here once as a verb 'to return stack to the pool' and once as a part of the
+            /// compound noun 'return stack' which is a stack of subroutine return values.  
+            /// </summary>
+            /// <param name="dataStack"></param>
+            /// <param name="returnStack"></param>
+            public void ReturnStacks(byte[] dataStack, int[] returnStack)
             {
-                _bytesOnStackPool.Push(bytesOnStack);
+                _dataStackPool.Push(dataStack);
+                _returnStackPool.Push(returnStack);
             }
 
-            public byte[] RentBytesOnStack()
+            private byte[] RentDataStack()
             {
-                if (_bytesOnStackPool.Count == 0)
+                if (_dataStackPool.Count == 0)
                 {
-                    Interlocked.Increment(ref _bytesOnStackCreated);
-                    if (_bytesOnStackCreated > _capacity)
+                    Interlocked.Increment(ref _dataStackPoolDepth);
+                    if (_dataStackPoolDepth > _maxCallStackDepth)
                     {
                         throw new Exception();
                     }
 
-                    _bytesOnStackPool.Push(new byte[(EvmStack.MaxStackSize + EvmStack.RegisterLength) * 32]);
+                    _dataStackPool.Push(new byte[(EvmStack.MaxStackSize + EvmStack.RegisterLength) * 32]);
                 }
 
-                _bytesOnStackPool.TryPop(out byte[] result);
+                _dataStackPool.TryPop(out byte[] result);
                 return result;
+            }
+            
+            private int[] RentReturnStack()
+            {
+                if (_returnStackPool.Count == 0)
+                {
+                    Interlocked.Increment(ref _returnStackPoolDepth);
+                    if (_returnStackPoolDepth > _maxCallStackDepth)
+                    {
+                        throw new Exception();
+                    }
+
+                    _returnStackPool.Push(new int[EvmStack.ReturnStackSize]);
+                }
+
+                _returnStackPool.TryPop(out int[] result);
+                return result;
+            }
+            
+            public (byte[], int[]) RentStacks()
+            {
+                return (RentDataStack(), RentReturnStack());
             }
         }
 
         private static readonly ThreadLocal<StackPool> _stackPool = new ThreadLocal<StackPool>(() => new StackPool());
 
-        public byte[] BytesOnStack;
+        public byte[] DataStack;
+        public int[] ReturnStack;
 
         private HashSet<Address> _destroyList;
         private List<LogEntry> _logs;
-        public int StackHead = 0;
+        
+        public int DataStackHead = 0;
+        public int ReturnStackHead = 0;
 
-        public EvmState(long gasAvailable, ExecutionEnvironment env, ExecutionType executionType, bool isPrecompile, bool isTopLevel, bool isContinuation)
-            : this(gasAvailable, env, executionType, isPrecompile, isTopLevel, -1, -1, 0L, 0L, false, isContinuation, false)
+        public EvmState(long gasAvailable, ExecutionEnvironment env, ExecutionType executionType, bool isTopLevel, bool isContinuation)
+            : this(gasAvailable, env, executionType, isTopLevel, -1, -1, 0L, 0L, false, isContinuation, false)
         {
             GasAvailable = gasAvailable;
             Env = env;
@@ -82,7 +116,6 @@ namespace Nethermind.Evm
             long gasAvailable,
             ExecutionEnvironment env,
             ExecutionType executionType,
-            bool isPrecompile,
             bool isTopLevel,
             int stateSnapshot,
             int storageSnapshot,
@@ -94,7 +127,6 @@ namespace Nethermind.Evm
         {
             GasAvailable = gasAvailable;
             ExecutionType = executionType;
-            IsPrecompile = isPrecompile;
             IsTopLevel = isTopLevel;
             StateSnapshot = stateSnapshot;
             StorageSnapshot = storageSnapshot;
@@ -136,7 +168,7 @@ namespace Nethermind.Evm
         public long GasAvailable { get; set; }
         public int ProgramCounter { get; set; }
         internal ExecutionType ExecutionType { get; }
-        internal bool IsPrecompile { get; }
+        internal bool IsPrecompile => Env.CodeInfo.IsPrecompile;
         public bool IsTopLevel { get; }
         internal long OutputDestination { get; }
         internal long OutputLength { get; }
@@ -160,16 +192,16 @@ namespace Nethermind.Evm
 
         public void Dispose()
         {
-            if (BytesOnStack != null) _stackPool.Value.ReturnBytesOnStack(BytesOnStack);
+            if (DataStack != null) _stackPool.Value.ReturnStacks(DataStack, ReturnStack);
             Memory?.Dispose();
         }
 
         public void InitStacks()
         {
-            if (BytesOnStack == null)
+            if (DataStack == null)
             {
                 Memory = new EvmPooledMemory();
-                BytesOnStack = _stackPool.Value.RentBytesOnStack();
+                (DataStack, ReturnStack) = _stackPool.Value.RentStacks();
             }
         }
     }

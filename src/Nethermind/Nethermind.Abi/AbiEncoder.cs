@@ -22,7 +22,7 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Abi
 {
- [Flags]
+    [Flags]
     public enum AbiEncodingStyle
     {
         None = 0,

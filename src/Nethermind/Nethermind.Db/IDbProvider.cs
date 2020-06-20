@@ -36,6 +36,7 @@ namespace Nethermind.Db
         IDb EthRequestsDb { get; }
         IDb BloomDb { get; }
         IDb ChtDb { get; }
+        IDb BeamStateDb { get; }
         // add C#8 Dispose (default implementation)
     }
 }

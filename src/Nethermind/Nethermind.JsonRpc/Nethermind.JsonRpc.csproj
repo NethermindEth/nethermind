@@ -5,9 +5,12 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Newtonsoft.Json" Version="12.0.3" />
-    <PackageReference Include="System.IO.Abstractions" Version="10.0.1" />
+    <PackageReference Include="System.IO.Abstractions" Version="11.0.7" />
+    <PackageReference Include="Jint" Version="2.11.58" />
+
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Abi\Nethermind.Abi.csproj" />
     <ProjectReference Include="..\Nethermind.Blockchain\Nethermind.Blockchain.csproj">
       <Project>{B1C9CF07-F89B-4F92-B8A5-F6949B9D3DA5}</Project>
       <Name>Nethermind.Blockchain</Name>
@@ -26,5 +29,6 @@
     <ProjectReference Include="..\Nethermind.Network\Nethermind.Network.csproj" />
     <ProjectReference Include="..\Nethermind.PubSub\Nethermind.PubSub.csproj" />
     <ProjectReference Include="..\Nethermind.Wallet\Nethermind.Wallet.csproj" />
+    <ProjectReference Include="..\Nethermind.WebSockets\Nethermind.WebSockets.csproj" />
   </ItemGroup>
 </Project>

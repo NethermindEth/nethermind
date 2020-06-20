@@ -18,18 +18,13 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using System.Numerics;
 using FluentAssertions;
 using Nethermind.Abi;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Consensus.AuRa.Rewards;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using NSubstitute;
@@ -104,23 +99,32 @@ namespace Nethermind.AuRa.Test.Reward
             action.Should().Throw<ArgumentException>();
         }
         
-        [TestCase(0, 200)]
-        [TestCase(5, 200)]
-        [TestCase(9, 200)]
-        public void calculates_rewards_correctly_before_contract_transition(long blockNumber, long expectedReward)
+        [TestCase(1, 200ul)]
+        [TestCase(5, 200ul)]
+        [TestCase(9, 200ul)]
+        public void calculates_rewards_correctly_before_contract_transition(long blockNumber, ulong expectedReward)
         {
             _block.Header.Number = blockNumber;
             var calculator = new AuRaRewardCalculator(_auraParameters, _abiEncoder, _transactionProcessor);
             var result =  calculator.CalculateRewards(_block);
-            result.Should().BeEquivalentTo(new BlockReward(_block.Beneficiary, expectedReward, BlockRewardType.Block));
+            result.Should().BeEquivalentTo(new BlockReward(_block.Beneficiary, expectedReward));
         }
         
-        [TestCase(10, 100)]
-        [TestCase(15, 150)]
-        public void calculates_rewards_correctly_after_contract_transition(long blockNumber, long expectedReward)
+        [Test]
+        public void calculates_rewards_correctly_for_genesis()
+        {
+            _block.Header.Number = 0;
+            var calculator = new AuRaRewardCalculator(_auraParameters, _abiEncoder, _transactionProcessor);
+            var result =  calculator.CalculateRewards(_block);
+            result.Should().BeEmpty();
+        }
+        
+        [TestCase(10, 100ul)]
+        [TestCase(15, 150ul)]
+        public void calculates_rewards_correctly_after_contract_transition(long blockNumber, ulong expectedReward)
         {
             _block.Header.Number = blockNumber;
-            var expected = new BlockReward(_block.Beneficiary, expectedReward, BlockRewardType.Block);
+            var expected = new BlockReward(_block.Beneficiary, expectedReward, BlockRewardType.External);
             SetupBlockRewards(new Dictionary<Address, BlockReward[]>() {{_address10, new[] {expected}}});
             var calculator = new AuRaRewardCalculator(_auraParameters, _abiEncoder, _transactionProcessor);
             var result =  calculator.CalculateRewards(_block);            
@@ -131,14 +135,14 @@ namespace Nethermind.AuRa.Test.Reward
         {
             get
             {
-                yield return new TestCaseData(10, 100, TestItem.AddressA);
-                yield return new TestCaseData(50, 150, TestItem.AddressB);
-                yield return new TestCaseData(150, 200, TestItem.AddressC);
+                yield return new TestCaseData(10, 100ul, TestItem.AddressA);
+                yield return new TestCaseData(50, 150ul, TestItem.AddressB);
+                yield return new TestCaseData(150, 200ul, TestItem.AddressC);
             }
         }
 
         [TestCaseSource(nameof(SubsequentTransitionsTestCases))]
-        public void calculates_rewards_correctly_after_subsequent_contract_transitions(long blockNumber, long expectedReward, Address address)
+        public void calculates_rewards_correctly_after_subsequent_contract_transitions(long blockNumber, ulong expectedReward, Address address)
         {
             _auraParameters.BlockRewardContractTransitions = new Dictionary<long, Address>()
             {
@@ -146,16 +150,16 @@ namespace Nethermind.AuRa.Test.Reward
                 {150, _address150}
             };
             _block.Header.Number = blockNumber;
-            var expected = new BlockReward(_block.Beneficiary, expectedReward, BlockRewardType.Block);
+            var expected = new BlockReward(_block.Beneficiary, expectedReward, BlockRewardType.External);
             SetupBlockRewards(new Dictionary<Address, BlockReward[]>() {{address, new[] {expected}}});
             var calculator = new AuRaRewardCalculator(_auraParameters, _abiEncoder, _transactionProcessor);
             var result =  calculator.CalculateRewards(_block);            
             result.Should().BeEquivalentTo(expected);
         }
         
-        [TestCase(10, 100)]
-        [TestCase(15, 150)]
-        public void calculates_rewards_correctly_for_ommers(long blockNumber, long expectedReward)
+        [TestCase(10, 100ul)]
+        [TestCase(15, 150ul)]
+        public void calculates_rewards_correctly_for_ommers(long blockNumber, ulong expectedReward)
         {
             _block.Header.Number = blockNumber;
             _block.Body = new BlockBody(_block.Body.Transactions, new[]
@@ -166,9 +170,9 @@ namespace Nethermind.AuRa.Test.Reward
             
             var expected = new BlockReward[]
             {
-                new BlockReward(_block.Beneficiary, expectedReward, BlockRewardType.Block),
-                new BlockReward(_block.Body.Ommers[0].Beneficiary, expectedReward, BlockRewardType.Uncle),
-                new BlockReward(_block.Body.Ommers[1].Beneficiary, expectedReward, BlockRewardType.Uncle),
+                new BlockReward(_block.Beneficiary, expectedReward, BlockRewardType.External),
+                new BlockReward(_block.Body.Ommers[0].Beneficiary, expectedReward, BlockRewardType.External),
+                new BlockReward(_block.Body.Ommers[1].Beneficiary, expectedReward, BlockRewardType.External),
             };
             
             SetupBlockRewards(new Dictionary<Address, BlockReward[]>() {{_address10, expected}});
@@ -229,7 +233,10 @@ namespace Nethermind.AuRa.Test.Reward
 
             _abiEncoder.Decode(
                 AbiEncodingStyle.None,
-                Arg.Is<AbiSignature>(s => s.Types.Length == 2 && s.Types[0].CSharpType == typeof(Address[]) && s.Types[1].CSharpType == typeof(BigInteger[])),
+                Arg.Is<AbiSignature>(s =>
+                    s.Types.Length == 2
+                    && s.Types[0] is AbiArray && ((AbiArray) s.Types[0]).ElementType is AbiAddress
+                    && s.Types[1] is AbiArray && ((AbiArray) s.Types[1]).ElementType is AbiUInt),
                 data).Returns(new object[] {rewards.Select(r => r.Address).ToArray(), rewards.Select(r => r.Value).ToArray()});
 
             return data;

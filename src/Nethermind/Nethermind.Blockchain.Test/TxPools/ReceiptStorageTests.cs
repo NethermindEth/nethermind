@@ -32,32 +32,62 @@ namespace Nethermind.Blockchain.Test.TxPools
     {
         private ISpecProvider _specProvider;
         private IEthereumEcdsa _ethereumEcdsa;
+        private IReceiptStorage _persistentStorage;
+        private IReceiptStorage _inMemoryStorage;
 
         [SetUp]
         public void Setup()
         {
             _specProvider = RopstenSpecProvider.Instance;
-            _ethereumEcdsa = new EthereumEcdsa(_specProvider, LimboLogs.Instance);
+            _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId, LimboLogs.Instance);
+
+            _persistentStorage = new PersistentReceiptStorage(new MemColumnsDb<ReceiptsColumns>(), _specProvider, new ReceiptsRecovery());
+            _inMemoryStorage = new InMemoryReceiptStorage();
         }
 
         [Test]
+        public void should_update_lowest_when_needed_in_memory()
+            => TestAddAndCheckLowest(_inMemoryStorage, true);
+        
+        [Test]
+        public void should_update_lowest_when_needed_persistent()
+            => TestAddAndCheckLowest(_persistentStorage, true);
+        
+        [Test]
+        public void should_not_update_lowest_when_not_needed_persistent()
+            => TestAddAndCheckLowest(_persistentStorage, false);
+        
+        [Test]
+        public void should_not_update_lowest_when_not_needed_in_memory()
+            => TestAddAndCheckLowest(_inMemoryStorage, false);
+        
+        [Test]
         public void should_add_and_fetch_receipt_from_in_memory_storage()
-            => TestAddAndGetReceipt(new InMemoryReceiptStorage());
+            => TestAddAndGetReceipt(_inMemoryStorage);
 
         [Test]
         public void should_add_and_fetch_receipt_from_persistent_storage()
-            => TestAddAndGetReceipt(new PersistentReceiptStorage(new MemColumnsDb<ReceiptsColumns>(), _specProvider, new ReceiptsRecovery()));
+            => TestAddAndGetReceipt(_persistentStorage);
         
         [Test]
         public void should_add_and_fetch_receipt_from_persistent_storage_with_eip_658()
-            => TestAddAndGetReceiptEip658(new PersistentReceiptStorage(new MemColumnsDb<ReceiptsColumns>(), _specProvider, new ReceiptsRecovery()));
+            => TestAddAndGetReceiptEip658(_persistentStorage);
 
+        private void TestAddAndCheckLowest(IReceiptStorage storage, bool updateLowest)
+        {
+            var transaction = GetSignedTransaction();
+            var block = GetBlock(transaction);
+            var receipt = GetReceipt(transaction, block);
+            storage.Insert(block, updateLowest, receipt);
+            storage.LowestInsertedReceiptBlock.Should().Be(updateLowest ? (long?)0 : null);
+        }
+        
         private void TestAddAndGetReceipt(IReceiptStorage storage)
         {
             var transaction = GetSignedTransaction();
             var block = GetBlock(transaction);
             var receipt = GetReceipt(transaction, block);
-            storage.Insert(block, receipt);
+            storage.Insert(block, false, receipt);
             var blockHash = storage.FindBlockHash(transaction.Hash);
             blockHash.Should().Be(block.Hash);
             var fetchedReceipt = storage.Get(block).ForTransaction(transaction.Hash);
@@ -71,7 +101,7 @@ namespace Nethermind.Blockchain.Test.TxPools
             var transaction = GetSignedTransaction();
             var block = GetBlock(transaction);
             var receipt = GetReceipt(transaction, block);
-            storage.Insert(block, receipt);
+            storage.Insert(block, false, receipt);
             var blockHash = storage.FindBlockHash(transaction.Hash);
             blockHash.Should().Be(block.Hash);
             var fetchedReceipt = storage.Get(block).ForTransaction(transaction.Hash);
@@ -81,13 +111,13 @@ namespace Nethermind.Blockchain.Test.TxPools
         }
 
         private Transaction GetSignedTransaction(Address to = null)
-            => Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, 1).TestObject;
+            => Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
         private static TxReceipt GetReceipt(Transaction transaction, Block block)
             => Build.A.Receipt.WithState(TestItem.KeccakB)
                 .WithTransactionHash(transaction.Hash)
                 .WithBlockHash(block.Hash).TestObject;
         
-        private Block GetBlock(Transaction transaction) => Build.A.Block.WithTransactions(transaction).WithReceiptsRoot(TestItem.KeccakA).TestObject;
+        private Block GetBlock(Transaction transaction) => Build.A.Block.WithNumber(0).WithTransactions(transaction).WithReceiptsRoot(TestItem.KeccakA).TestObject;
     }
 }

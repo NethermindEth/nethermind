@@ -37,7 +37,7 @@ namespace Nethermind.Cli.Modules
             tx.Gas = Transaction.BaseTxGasCost;
             tx.GasPrice = (UInt256) Engine.JintEngine.GetValue("gasPrice").AsNumber();
             tx.To = address;
-            tx.Nonce = (ulong) NodeManager.Post<long>("eth_getTransactionCount", address, blockNumber).Result;
+            tx.Nonce = (ulong) NodeManager.Post<long>("eth_getTransactionCount", from, blockNumber).Result;
             tx.From = from;
 
             Keccak keccak = NodeManager.Post<Keccak>("eth_sendTransaction", tx).Result;
@@ -186,6 +186,18 @@ namespace Nethermind.Cli.Modules
         public JsValue GetLogs(object filter)
         {
             return NodeManager.PostJint("eth_getLogs", filter).Result;
+        }
+        
+        [CliFunction("eth", "getFilterChanges")]
+        public JsValue GetFilterChanges(long filterId)
+        {
+            return NodeManager.PostJint("eth_getFilterChanges", filterId).Result;
+        }
+        
+        [CliFunction("eth", "newPendingTransactionFilter")]
+        public long NewPendingTransactionFilter()
+        {
+            return NodeManager.Post<long>("eth_newPendingTransactionFilter").Result;
         }
 
         public EthCliModule(ICliEngine cliEngine, INodeManager nodeManager) : base(cliEngine, nodeManager)

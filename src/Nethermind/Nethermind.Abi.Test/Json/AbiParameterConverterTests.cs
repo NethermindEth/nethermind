@@ -19,7 +19,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using FluentAssertions;
-using Nethermind.Serialization.Json.Abi;
+using Nethermind.Blockchain.Contracts.Json;
 using Newtonsoft.Json;
 using NUnit.Framework;
 

@@ -1,0 +1,86 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) 2018, Demerzel Solutions Limited
+# This file is distributed under the same license as the nethermind package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, 2020.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: nethermind \n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2020-05-14 17:16+0100\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Generated-By: Babel 2.8.0\n"
+
+#: ../../source/runtime.rst:2
+msgid "Runtime"
+msgstr ""
+
+#: ../../source/runtime.rst:5
+msgid "Directories"
+msgstr ""
+
+#: ../../source/runtime.rst:7
+msgid ""
+"If you built the application locally then the entry point will be located"
+" in::"
+msgstr ""
+
+#: ../../source/runtime.rst:11
+msgid "Log files by default are located in::"
+msgstr ""
+
+#: ../../source/runtime.rst:15
+msgid "Database by default is located in::"
+msgstr ""
+
+#: ../../source/runtime.rst:20
+msgid "NLog config"
+msgstr ""
+
+#: ../../source/runtime.rst:21
+msgid ""
+"You can change the level of logging in file and in the console by "
+"choosing one of the levels (Error, Warn, Info, Debug, Trace)::"
+msgstr ""
+
+#: ../../source/runtime.rst:26
+msgid ""
+"More detailed NLog configuration can be found `here "
+"<https://github.com/NLog/NLog/wiki/Configuration-file>`_."
+msgstr ""
+
+#: ../../source/runtime.rst:29
+msgid "Building from repository"
+msgstr ""
+
+#: ../../source/runtime.rst:31
+msgid "Logging level can be controlled in NLog.config file located in::"
+msgstr ""
+
+#: ../../source/runtime.rst:36
+msgid "Downloading package from Github/Downloads package"
+msgstr ""
+
+#: ../../source/runtime.rst:38
+msgid ""
+"NLog.config file is supplied with the package and can be found in "
+"extraction directory."
+msgstr ""
+
+#: ../../source/runtime.rst:43
+msgid "Running Nethermind with docker image"
+msgstr ""
+
+#: ../../source/runtime.rst:45
+msgid ""
+"NLog.config file is located at ``/nethermind/NLog.config`` path inside "
+"the docker container. The volume can be then mapped with a simple "
+"command::"
+msgstr ""
+

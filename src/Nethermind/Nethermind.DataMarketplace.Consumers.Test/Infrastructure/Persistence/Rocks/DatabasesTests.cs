@@ -14,7 +14,6 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
 using System.IO;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
@@ -35,7 +34,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence.R
         [Test]
         public void SmokeTest()
         {
-            string tempPath = Path.GetTempPath();
+            string tempPath = Path.Combine(Path.GetTempPath(), nameof(DatabasesTests), nameof(SmokeTest));
             DbConfig config = DbConfig.Default;
             TestDb(new ConsumerDepositApprovalsRocksDb(tempPath, config, LimboLogs.Instance));
             TestDb(new ConsumerSessionsRocksDb(tempPath, config, LimboLogs.Instance));
@@ -53,8 +52,8 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence.R
             }
             finally
             {
-                db.Clear();
                 db.Dispose();
+                db.Clear();
             }
         }
     }

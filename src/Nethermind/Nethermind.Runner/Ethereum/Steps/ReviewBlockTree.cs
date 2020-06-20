@@ -16,7 +16,10 @@
 
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.FSharp.Linq;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Blockchain.Visitors;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
 
@@ -34,22 +37,19 @@ namespace Nethermind.Runner.Ethereum.Steps
             _logger = _context.LogManager.GetClassLogger();
         }
 
-        public async Task Execute()
+        public Task Execute(CancellationToken cancellationToken)
         {
             if (_context.Config<IInitConfig>().ProcessingEnabled)
             {
-#pragma warning disable 4014
-                RunBlockTreeInitTasks();
-#pragma warning restore 4014
+                return RunBlockTreeInitTasks(cancellationToken);
             }
             else
             {
-                if (_logger.IsWarn) _logger.Warn($"Shutting down the blockchain processor due to {nameof(InitConfig)}.{nameof(InitConfig.ProcessingEnabled)} set to false");
-                await (_context.BlockchainProcessor?.StopAsync() ?? Task.CompletedTask);
+                return Task.CompletedTask;
             }
         }
 
-        private async Task RunBlockTreeInitTasks()
+        private async Task RunBlockTreeInitTasks(CancellationToken cancellationToken)
         {
             ISyncConfig syncConfig = _context.Config<ISyncConfig>();
             if (!syncConfig.SynchronizationEnabled)
@@ -62,7 +62,8 @@ namespace Nethermind.Runner.Ethereum.Steps
             
             if (!syncConfig.FastSync && !syncConfig.BeamSync)
             {
-                await _context.BlockTree.LoadBlocksFromDb(_context.RunnerCancellation?.Token ?? CancellationToken.None, null).ContinueWith(t =>
+                DbBlocksLoader loader = new DbBlocksLoader(_context.BlockTree, _logger);
+                await _context.BlockTree.Accept(loader, cancellationToken).ContinueWith(t =>
                 {
                     if (t.IsFaulted)
                     {
@@ -74,9 +75,10 @@ namespace Nethermind.Runner.Ethereum.Steps
                     }
                 });
             }
-            else if (!syncConfig.BeamSync)
+            else
             {
-                await _context.BlockTree.FixFastSyncGaps(_context.RunnerCancellation?.Token ?? CancellationToken.None).ContinueWith(t =>
+                StartupBlockTreeFixer fixer = new StartupBlockTreeFixer(_context.Config<ISyncConfig>(), _context.BlockTree, _logger);
+                await _context.BlockTree.Accept(fixer, cancellationToken).ContinueWith(t =>
                 {
                     if (t.IsFaulted)
                     {

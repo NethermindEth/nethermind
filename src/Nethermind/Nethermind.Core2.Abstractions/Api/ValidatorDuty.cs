@@ -21,18 +21,18 @@ namespace Nethermind.Core2.Api
 {
     public class ValidatorDuty
     {
-        public ValidatorDuty(BlsPublicKey validatorPublicKey, Slot attestationSlot, Shard attestationShard,
-            Slot blockProposalSlot)
+        public ValidatorDuty(BlsPublicKey validatorPublicKey, Slot? attestationSlot, CommitteeIndex? attestationIndex,
+            Slot? blockProposalSlot)
         {
             ValidatorPublicKey = validatorPublicKey;
             AttestationSlot = attestationSlot;
-            AttestationShard = attestationShard;
+            AttestationIndex = attestationIndex;
             BlockProposalSlot = blockProposalSlot;
         }
 
-        public Shard AttestationShard { get; }
-        public Slot AttestationSlot { get; }
-        public Slot BlockProposalSlot { get; }
+        public CommitteeIndex? AttestationIndex { get; }
+        public Slot? AttestationSlot { get; }
+        public Slot? BlockProposalSlot { get; }
         public BlsPublicKey ValidatorPublicKey { get; }
     }
 }

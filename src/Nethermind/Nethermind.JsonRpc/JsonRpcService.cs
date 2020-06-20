@@ -55,7 +55,7 @@ namespace Nethermind.JsonRpc
                 converterList.Add(converter);
             }
 
-            foreach (JsonConverter converter in EthereumJsonSerializer.BasicConverters)
+            foreach (JsonConverter converter in EthereumJsonSerializer.CommonConverters)
             {
                 if (_logger.IsDebug) _logger.Debug($"Registering {converter.GetType().Name} (default)");
                 _serializer.Converters.Add(converter);
@@ -120,25 +120,25 @@ namespace Nethermind.JsonRpc
             var providedParameters = request.Params;
             if (_logger.IsInfo) _logger.Info($"Executing JSON RPC call {methodName}{(providedParameters == null ? string.Empty : $" with params {string.Join(',', providedParameters)}")}");
 
-            int missingParamsCount = expectedParameters.Length - (providedParameters?.Length ?? 0) + providedParameters?.Count(string.IsNullOrWhiteSpace) ?? 0;
+            int missingParamsCount = expectedParameters.Length - (providedParameters?.Length ?? 0) + (providedParameters?.Count(string.IsNullOrWhiteSpace) ?? 0);
 
             if (missingParamsCount != 0)
             {
-                bool incorrectParametersCount = missingParamsCount != 0;
+                bool hasIncorrectParameters = true;
                 if (missingParamsCount > 0)
                 {
-                    incorrectParametersCount = false;
+                    hasIncorrectParameters = false;
                     for (int i = 0; i < missingParamsCount; i++)
                     {
                         if (!expectedParameters[expectedParameters.Length - missingParamsCount + i].IsOptional)
                         {
-                            incorrectParametersCount = true;
+                            hasIncorrectParameters = true;
                             break;
                         }
                     }
                 }
 
-                if (incorrectParametersCount)
+                if (hasIncorrectParameters)
                 {
                     return GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", $"Incorrect parameters count, expected: {expectedParameters.Length}, actual: {expectedParameters.Length - missingParamsCount}", request.Id);
                 }

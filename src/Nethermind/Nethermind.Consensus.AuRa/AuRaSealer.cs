@@ -33,8 +33,7 @@ namespace Nethermind.Consensus.AuRa
         private readonly IBlockTree _blockTree;
         private readonly IValidatorStore _validatorStore;
         private readonly IAuRaStepCalculator _auRaStepCalculator;
-        private readonly Address _nodeAddress;
-        private readonly IBasicWallet _wallet;
+        private readonly ISigner _signer;
         private readonly IValidSealerStrategy _validSealerStrategy;
         private readonly ILogger _logger;
         
@@ -42,16 +41,14 @@ namespace Nethermind.Consensus.AuRa
             IBlockTree blockTree,
             IValidatorStore validatorStore,
             IAuRaStepCalculator auRaStepCalculator,
-            Address nodeAddress,
-            IBasicWallet wallet,
+            ISigner signer,
             IValidSealerStrategy validSealerStrategy,
             ILogManager logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _validatorStore = validatorStore ?? throw new ArgumentNullException(nameof(validatorStore));
             _auRaStepCalculator = auRaStepCalculator ?? throw new ArgumentNullException(nameof(auRaStepCalculator));
-            _nodeAddress = nodeAddress ?? throw new ArgumentNullException(nameof(nodeAddress));
-            _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
+            _signer = signer ?? throw new ArgumentNullException(nameof(signer));
             _validSealerStrategy = validSealerStrategy ?? throw new ArgumentNullException(nameof(validSealerStrategy));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
@@ -77,7 +74,7 @@ namespace Nethermind.Consensus.AuRa
             }
 
             Keccak headerHash = block.Header.CalculateHash(RlpBehaviors.ForSealing);
-            Signature signature = _wallet.Sign(headerHash, _nodeAddress);
+            Signature signature = _signer.Sign(headerHash);
             block.Header.AuRaSignature = signature.BytesWithRecovery;
             
             return block;
@@ -92,7 +89,7 @@ namespace Nethermind.Consensus.AuRa
             bool IsThisNodeTurn(long step)
             {
                 var validators = _validatorStore.GetValidators();
-                return _validSealerStrategy.IsValidSealer(validators, _nodeAddress, step);
+                return _validSealerStrategy.IsValidSealer(validators, _signer.Address, step);
             }
 
             long currentStep = _auRaStepCalculator.CurrentStep;
@@ -101,11 +98,13 @@ namespace Nethermind.Consensus.AuRa
             if (isThisNodeTurn)
             {
                 if (_logger.IsWarn && !stepNotYetProduced) _logger.Warn($"Cannot seal block {blockNumber}: AuRa step {currentStep} already produced.");
-                else if (_logger.IsDebug && stepNotYetProduced) _logger.Debug($"Can seal block {blockNumber}: {_nodeAddress} is correct proposer of AuRa step {currentStep}.");
+                else if (_logger.IsDebug && stepNotYetProduced) _logger.Debug($"Can seal block {blockNumber}: {_signer.Address} is correct proposer of AuRa step {currentStep}.");
             }
-            else if (_logger.IsDebug) _logger.Debug($"Skip seal block {blockNumber}: {_nodeAddress} is not proposer of AuRa step {currentStep}.");
+            else if (_logger.IsDebug) _logger.Debug($"Skip seal block {blockNumber}: {_signer.Address} is not proposer of AuRa step {currentStep}.");
 
-            return stepNotYetProduced && isThisNodeTurn;
+            return _signer.CanSign && stepNotYetProduced && isThisNodeTurn;
         }
+
+        public Address Address => _signer.Address;
     }
 }

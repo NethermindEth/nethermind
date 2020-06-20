@@ -226,7 +226,7 @@ namespace Nethermind.HashLib
             return result;
         }
 
-        public virtual HashResult ComputeBytes(Span<byte> a_data)
+        public virtual HashResult ComputeBytes(ReadOnlySpan<byte> a_data)
         {
             Initialize();
             TransformBytes(a_data);
@@ -530,7 +530,7 @@ namespace Nethermind.HashLib
             TransformBytes(a_data, 0, a_data.Length);
         }
 
-        public void TransformBytes(Span<byte> a_data)
+        public void TransformBytes(ReadOnlySpan<byte> a_data)
         {
             TransformBytes(a_data, 0, a_data.Length);
         }
@@ -558,7 +558,7 @@ namespace Nethermind.HashLib
         public abstract void Initialize();
         public abstract void TransformBytes(byte[] a_data, int a_index, int a_length);
         //public abstract void TransformBytes(Span<byte> a_data, int a_index, int a_length);
-        public virtual void TransformBytes(Span<byte> a_data, int a_index, int a_length)
+        public virtual void TransformBytes(ReadOnlySpan<byte> a_data, int a_index, int a_length)
         {
             throw new NotImplementedException();
         }

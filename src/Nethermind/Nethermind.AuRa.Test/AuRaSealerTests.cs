@@ -22,6 +22,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
@@ -57,21 +58,20 @@ namespace Nethermind.AuRa.Test
             _auRaStepCalculator = Substitute.For<IAuRaStepCalculator>();
             _validatorStore = Substitute.For<IValidatorStore>();
             _validSealerStrategy = Substitute.For<IValidSealerStrategy>();
-            var wallet = new DevWallet(new WalletConfig(), LimboLogs.Instance);
-            _address = wallet.NewAccount(new NetworkCredential(string.Empty, "AAA").SecurePassword);
+            var signer = new Signer(ChainId.Mainnet, Build.A.PrivateKey.TestObject);
+            _address = signer.Address;
             
             _auRaSealer = new AuRaSealer(
                 _blockTree,
                 _validatorStore,
                 _auRaStepCalculator,
-                _address,
-                wallet,
+                signer,
                 _validSealerStrategy,
                 LimboLogs.Instance);
         }
 
-        [TestCase(9, true, ExpectedResult = false, TestName = "Step too low.")]
-        [TestCase(10, true, ExpectedResult = false, TestName = "Step too low.")]
+        [TestCase(9, true, ExpectedResult = false, TestName = "Step too low-1.")]
+        [TestCase(10, true, ExpectedResult = false, TestName = "Step too low-2.")]
         [TestCase(11, false, ExpectedResult = false, TestName = "Invalid sealer.")]
         [TestCase(11, true, ExpectedResult = true, TestName = "Can seal.")]
         public bool can_seal(long auRaStep, bool validSealer)
@@ -90,7 +90,7 @@ namespace Nethermind.AuRa.Test
             
             block = await _auRaSealer.SealBlock(block, CancellationToken.None);
             
-            var ecdsa = new EthereumEcdsa(new MordenSpecProvider(), LimboLogs.Instance);
+            var ecdsa = new EthereumEcdsa(ChainId.Morden, LimboLogs.Instance);
             var signature = new Signature(block.Header.AuRaSignature);
             signature.V += Signature.VOffset;
             var recoveredAddress = ecdsa.RecoverAddress(signature, block.Header.CalculateHash(RlpBehaviors.ForSealing));

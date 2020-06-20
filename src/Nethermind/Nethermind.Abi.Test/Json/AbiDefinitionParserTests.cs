@@ -17,8 +17,8 @@
 using System;
 using FluentAssertions;
 using FluentAssertions.Json;
+using Nethermind.Blockchain.Contracts.Json;
 using Nethermind.Consensus.AuRa.Contracts;
-using Nethermind.Serialization.Json.Abi;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 
@@ -26,10 +26,11 @@ namespace Nethermind.Abi.Test.Json
 {
     public class AbiDefinitionParserTests
     {
+        [TestCase(typeof(BlockGasLimitContract))]
         [TestCase(typeof(RandomContract))]
-        [TestCase(typeof(ValidatorContract))]
-        [TestCase(typeof(ReportingValidatorContract))]
         [TestCase(typeof(RewardContract))]
+        [TestCase(typeof(ReportingValidatorContract))]
+        [TestCase(typeof(ValidatorContract))]
         public void Can_load_contract(Type contractType)
         {
             var parser = new AbiDefinitionParser();

@@ -16,7 +16,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Security;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
@@ -31,7 +30,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.Store.Bloom;
+using Nethermind.Db.Blooms;
 using Nethermind.Trie;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
@@ -48,16 +47,15 @@ namespace Nethermind.Facade
         private readonly IFilterStore _filterStore;
         private readonly IStateReader _stateReader;
         private readonly IEthereumEcdsa _ecdsa;
+        private readonly ITimestamper _timestamper;
         private readonly IFilterManager _filterManager;
         private readonly IStateProvider _stateProvider;
         private readonly IReceiptFinder _receiptFinder;
         private readonly IStorageProvider _storageProvider;
         private readonly ITransactionProcessor _transactionProcessor;
         private readonly ILogFinder _logFinder;
-        private readonly Timestamper _timestamper = new Timestamper();
 
-        public BlockchainBridge(
-            IStateReader stateReader,
+        public BlockchainBridge(IStateReader stateReader,
             IStateProvider stateProvider,
             IStorageProvider storageProvider,
             IBlockTree blockTree,
@@ -69,6 +67,7 @@ namespace Nethermind.Facade
             ITransactionProcessor transactionProcessor,
             IEthereumEcdsa ecdsa,
             IBloomStorage bloomStorage,
+            ITimestamper timestamper,
             ILogManager logManager,
             bool isMining,
             int findLogBlockDepthLimit = 1000)
@@ -84,6 +83,7 @@ namespace Nethermind.Facade
             _wallet = wallet ?? throw new ArgumentException(nameof(wallet));
             _transactionProcessor = transactionProcessor ?? throw new ArgumentException(nameof(transactionProcessor));
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
+            _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
             IsMining = isMining;
 
             _logFinder = new LogFinder(_blockTree, _receiptFinder, bloomStorage, logManager, new ReceiptsRecovery(), findLogBlockDepthLimit);
@@ -104,11 +104,25 @@ namespace Nethermind.Facade
             _wallet.Sign(tx, _blockTree.ChainId);
         }
 
-        public Block Head => _blockTree.Head;
+        public Block Head
+        {
+            get
+            {
+                bool headIsGenesis = _blockTree.Head?.IsGenesis ?? false;
+
+                /*
+                 * when we are in the process of synchronising state
+                 * head remains Genesis block
+                 * and we want to allow users to use the API
+                 */
+                return headIsGenesis ? _blockTree.BestSuggestedBody : _blockTree.Head;
+            }
+        }
 
         public long BestKnown => _blockTree.BestKnownNumber;
 
         public bool IsSyncing => _blockTree.BestSuggestedHeader.Hash != _blockTree.Head.Hash;
+        
         public bool IsMining { get; }
 
         public (TxReceipt Receipt, Transaction Transaction) GetTransaction(Keccak txHash)
@@ -127,47 +141,6 @@ namespace Nethermind.Facade
             }
 
             return (null, null);
-        }
-
-        public Transaction[] GetPendingTransactions() => _txPool.GetPendingTransactions();
-
-        public Keccak SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
-        {
-            _stateProvider.StateRoot = _blockTree.Head.StateRoot;
-            try
-            {
-                if (tx.Signature == null)
-                {
-                    if (_wallet.IsUnlocked(tx.SenderAddress))
-                    {
-                        Sign(tx);
-                    }
-                    else
-                    {
-                        throw new SecurityException("Your account is locked. Unlock the account via CLI, personal_unlockAccount or use Trusted Signer.");
-                    }
-                }
-
-                tx.Hash = tx.CalculateHash();
-                tx.Timestamp = _timestamper.EpochSeconds;
-
-                AddTxResult result = _txPool.AddTransaction(tx, _blockTree.Head.Number, txHandlingOptions);
-
-                if (result == AddTxResult.OwnNonceAlreadyUsed && (txHandlingOptions & TxHandlingOptions.ManagedNonce) == TxHandlingOptions.ManagedNonce)
-                {
-                    // below the temporary NDM support - needs some review
-                    tx.Nonce = _txPool.ReserveOwnTransactionNonce(tx.SenderAddress);
-                    Sign(tx);
-                    tx.Hash = tx.CalculateHash();
-                    _txPool.AddTransaction(tx, _blockTree.Head.Number, txHandlingOptions);
-                }
-
-                return tx.Hash;
-            }
-            finally
-            {
-                _stateProvider.Reset();
-            }
         }
 
         public TxReceipt GetReceipt(Keccak txHash)
@@ -199,19 +172,19 @@ namespace Nethermind.Facade
         public CallOutput Call(BlockHeader blockHeader, Transaction transaction)
         {
             CallOutputTracer callOutputTracer = new CallOutputTracer();
-            CallAndRestore(blockHeader, transaction, callOutputTracer);
+            CallAndRestore(blockHeader, transaction, blockHeader.Timestamp, callOutputTracer);
             return new CallOutput {Error = callOutputTracer.Error, GasSpent = callOutputTracer.GasSpent, OutputData = callOutputTracer.ReturnValue};
         }
 
         public CallOutput EstimateGas(BlockHeader header, Transaction tx)
         {
             EstimateGasTracer estimateGasTracer = new EstimateGasTracer();
-            CallAndRestore(header, tx, estimateGasTracer);
+            CallAndRestore(header, tx, UInt256.Max(header.Timestamp + 1, _timestamper.EpochSeconds), estimateGasTracer);
             long estimate = estimateGasTracer.CalculateEstimate(tx);
             return new CallOutput {Error = estimateGasTracer.Error, GasSpent = estimate};
         }
 
-        private void CallAndRestore(BlockHeader blockHeader, Transaction transaction, ITxTracer tracer)
+        private void CallAndRestore(BlockHeader blockHeader, Transaction transaction, UInt256 timestamp, ITxTracer tracer)
         {
             if (transaction.SenderAddress == null)
             {
@@ -233,7 +206,7 @@ namespace Nethermind.Facade
                     0,
                     blockHeader.Number + 1,
                     blockHeader.GasLimit,
-                    blockHeader.Timestamp,
+                    timestamp,
                     Bytes.Empty);
 
                 transaction.Hash = transaction.CalculateHash();
@@ -273,8 +246,8 @@ namespace Nethermind.Facade
 
         public byte[] GetStorage(Address address, UInt256 index, Keccak stateRoot)
         {
-            _stateProvider.StateRoot = stateRoot;
-            return _storageProvider.Get(new StorageCell(address, index));
+            Keccak storageRoot = _stateReader.GetStorageRoot(stateRoot, address);
+            return _stateReader.GetStorage(storageRoot, index);
         }
 
         public Account GetAccount(Address address, Keccak stateRoot)
@@ -308,7 +281,7 @@ namespace Nethermind.Facade
             _filterStore.SaveFilter(filter);
             return filter.Id;
         }
-
+        
         public int NewPendingTransactionFilter()
         {
             PendingTransactionFilter filter = _filterStore.CreatePendingTransactionFilter();
@@ -327,7 +300,7 @@ namespace Nethermind.Facade
                 var transaction = block.Transactions[i];
                 if (transaction.SenderAddress == null)
                 {
-                    RecoverTxSender(transaction, block.Number);
+                    RecoverTxSender(transaction);
                 }
             }
         }
@@ -335,9 +308,9 @@ namespace Nethermind.Facade
         public Keccak[] GetPendingTransactionFilterChanges(int filterId) =>
             _filterManager.PollPendingTransactionHashes(filterId);
 
-        public void RecoverTxSender(Transaction tx, long? blockNumber)
+        public void RecoverTxSender(Transaction tx)
         {
-            tx.SenderAddress = _ecdsa.RecoverAddress(tx, blockNumber ?? _blockTree.BestKnownNumber);
+            tx.SenderAddress = _ecdsa.RecoverAddress(tx);
         }
 
         public void RunTreeVisitor(ITreeVisitor treeVisitor, Keccak stateRoot)

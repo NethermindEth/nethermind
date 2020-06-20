@@ -20,6 +20,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
@@ -39,11 +40,11 @@ namespace Nethermind.Blockchain.Producers
         private readonly ISealer _sealer;
         private readonly IStateProvider _stateProvider;
         private readonly ITimestamper _timestamper;
-        private readonly IPendingTxSelector _pendingTxSelector;
+        private readonly ITxSource _txSource;
         protected ILogger Logger { get; }
 
         protected BaseBlockProducer(
-            IPendingTxSelector pendingTxSelector,
+            ITxSource txSource,
             IBlockchainProcessor processor,
             ISealer sealer,
             IBlockTree blockTree,
@@ -52,7 +53,7 @@ namespace Nethermind.Blockchain.Producers
             ITimestamper timestamper,
             ILogManager logManager)
         {
-            _pendingTxSelector = pendingTxSelector ?? throw new ArgumentNullException(nameof(pendingTxSelector));
+            _txSource = txSource ?? throw new ArgumentNullException(nameof(txSource));
             Processor = processor ?? throw new ArgumentNullException(nameof(processor));
             _sealer = sealer ?? throw new ArgumentNullException(nameof(sealer));
             BlockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -92,14 +93,14 @@ namespace Nethermind.Blockchain.Producers
             Block block = PrepareBlock(parent);
             if (PreparedBlockCanBeMined(block))
             {
-                Block processedBlock = Processor.Process(block, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance);
+                var processedBlock = ProcessPreparedBlock(block);
                 if (processedBlock == null)
                 {
                     if (Logger.IsError) Logger.Error("Block prepared by block producer was rejected by processor.");
                 }
                 else
                 {
-                    return _sealer.SealBlock(processedBlock, token).ContinueWith((Func<Task<Block>, bool>) (t =>
+                    return SealBlock(processedBlock, parent, token).ContinueWith((Func<Task<Block>, bool>) (t =>
                     {
                         if (t.IsCompletedSuccessfully)
                         {
@@ -131,6 +132,10 @@ namespace Nethermind.Blockchain.Producers
             return Task.FromResult(false);
         }
 
+        protected virtual Task<Block> SealBlock(Block block, BlockHeader parent, CancellationToken token) => _sealer.SealBlock(block, token);
+
+        protected virtual Block ProcessPreparedBlock(Block block) => Processor.Process(block, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance);
+
         protected virtual bool PreparedBlockCanBeMined(Block block)
         {
             if (block == null)
@@ -149,23 +154,26 @@ namespace Nethermind.Blockchain.Producers
             BlockHeader header = new BlockHeader(
                 parent.Hash,
                 Keccak.OfAnEmptySequenceRlp,
-                Address.Zero,
+                _sealer.Address,
                 difficulty,
                 parent.Number + 1,
-                parent.GasLimit,
+                GetGasLimit(parent),
                 UInt256.Max(parent.Timestamp + 1, _timestamper.EpochSeconds),
                 Encoding.UTF8.GetBytes("Nethermind"))
             {
-                TotalDifficulty = parent.TotalDifficulty + difficulty
+                TotalDifficulty = parent.TotalDifficulty + difficulty,
+                Author = _sealer.Address
             };
-
+            
             if (Logger.IsDebug) Logger.Debug($"Setting total difficulty to {parent.TotalDifficulty} + {difficulty}.");
 
-            var transactions = _pendingTxSelector.SelectTransactions(parent.StateRoot, header.GasLimit);
+            var transactions = _txSource.GetTransactions(parent, header.GasLimit);
             Block block = new Block(header, transactions, new BlockHeader[0]);
             header.TxRoot = new TxTrie(block.Transactions).RootHash;
             return block;
         }
+
+        protected virtual long GetGasLimit(BlockHeader parent) => parent.GasLimit;
 
         protected abstract UInt256 CalculateDifficulty(BlockHeader parent, UInt256 timestamp);
     }

@@ -14,7 +14,6 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Clique;
 using Nethermind.Core;
@@ -24,15 +23,16 @@ using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Store;
 using Nethermind.Trie;
 using NUnit.Framework;
+using BlockTree = Nethermind.Blockchain.BlockTree;
 
 namespace Nethermind.Clique.Test
 {
+    [Parallelizable(ParallelScope.Self)]
+    [TestFixture]
     public class SnapshotManagerTests
     {
         private IDb _snapshotDb = new MemDb();
@@ -109,7 +109,7 @@ namespace Nethermind.Clique.Test
             SnapshotManager snapshotManager = new SnapshotManager(CliqueConfig.Default, _snapshotDb, _blockTree, NullEthereumEcdsa.Instance, LimboLogs.Instance);
             Block genesis = CliqueTests.GetRinkebyGenesis();
             Snapshot snapshot = snapshotManager.GetOrCreateSnapshot(0, genesis.Hash);
-            SnapshotManager manager = new SnapshotManager(CliqueConfig.Default, _snapshotDb, _blockTree, new EthereumEcdsa(GoerliSpecProvider.Instance, LimboLogs.Instance), LimboLogs.Instance);
+            SnapshotManager manager = new SnapshotManager(CliqueConfig.Default, _snapshotDb, _blockTree, new EthereumEcdsa(ChainId.Goerli, LimboLogs.Instance), LimboLogs.Instance);
             // Block 1
             Assert.IsTrue(manager.IsInTurn(snapshot, 1, _signer1));
             Assert.IsFalse(manager.IsInTurn(snapshot, 1, _signer2));

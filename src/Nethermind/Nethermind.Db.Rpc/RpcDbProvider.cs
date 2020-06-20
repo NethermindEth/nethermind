@@ -17,7 +17,7 @@
 using Nethermind.JsonRpc.Client;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
-using Nethermind.Store;
+using Nethermind.Db.Blooms;
 
 namespace Nethermind.Db.Rpc
 {
@@ -51,6 +51,7 @@ namespace Nethermind.Db.Rpc
         public IDb EthRequestsDb { get; }
         public IDb BloomDb { get; }
         public IDb ChtDb { get; }
+        public IDb BeamStateDb { get; } = new MemDb();
 
         public void Dispose()
         {

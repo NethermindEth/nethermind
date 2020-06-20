@@ -67,9 +67,13 @@ namespace Nethermind.Synchronization.FastBlocks
         /// </summary>
         private ConcurrentDictionary<long, HeadersSyncBatch> _dependencies = new ConcurrentDictionary<long, HeadersSyncBatch>();
 
-        public bool AllHeadersDownloaded => (_blockTree.LowestInsertedHeader?.Number ?? long.MaxValue) == 1;
+        private bool AllHeadersDownloaded => (_blockTree.LowestInsertedHeader?.Number ?? long.MaxValue) == 1;
+        private bool AnyHeaderDownloaded => _blockTree.LowestInsertedHeader != null;
+
+        private long HeadersInQueue => _dependencies.Sum(hd => hd.Value.Response.Length);
 
         public FastHeadersSyncFeed(IBlockTree blockTree, ISyncPeerPool syncPeerPool, ISyncConfig syncConfig, ISyncReport syncReport, ILogManager logManager)
+            : base(logManager)
         {
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
@@ -98,22 +102,27 @@ namespace Nethermind.Synchronization.FastBlocks
             _nextHeaderDiff = startTotalDifficulty;
 
             _lowestRequestedHeaderNumber = startNumber + 1;
-            
+
             Activate();
         }
 
         public override bool IsMultiFeed => true;
+        public override AllocationContexts Contexts => AllocationContexts.Headers;
 
-        private bool AnyBatchesLeftToBeBuilt()
+        private bool ShouldBuildANewBatch()
         {
-            bool anyHandlerDownloaded = _blockTree.LowestInsertedHeader != null;
-            bool beamSyncFinished = _syncConfig.BeamSync && anyHandlerDownloaded;
             bool genesisHeaderRequested = _lowestRequestedHeaderNumber == 0;
+            
+            bool isImmediateSync = !_syncConfig.DownloadHeadersInFastSync;
 
-            bool noBatchesLeft = AllHeadersDownloaded || beamSyncFinished || genesisHeaderRequested;
+            bool noBatchesLeft = AllHeadersDownloaded
+                                 || genesisHeaderRequested
+                                 || HeadersInQueue >= FastBlocksQueueLimits.ForHeaders
+                                 || isImmediateSync && AnyHeaderDownloaded;
+
             if (noBatchesLeft)
             {
-                if (AllHeadersDownloaded)
+                if (AllHeadersDownloaded || isImmediateSync && AnyHeaderDownloaded)
                 {
                     Finish();
                     PostFinishCleanUp();
@@ -149,12 +158,12 @@ namespace Nethermind.Synchronization.FastBlocks
         public override Task<HeadersSyncBatch> PrepareRequest()
         {
             HandleDependentBatches();
-            
+
             if (_pending.TryDequeue(out HeadersSyncBatch batch))
             {
                 batch.MarkRetry();
             }
-            else if (AnyBatchesLeftToBeBuilt())
+            else if (ShouldBuildANewBatch())
             {
                 batch = BuildNewBatch();
             }
@@ -162,7 +171,7 @@ namespace Nethermind.Synchronization.FastBlocks
             if (batch != null)
             {
                 _sent.TryAdd(batch, _dummyObject);
-                if (batch.StartNumber >= (_blockTree.LowestInsertedHeader?.Number ?? 0) - 2048)
+                if (batch.StartNumber >= (_blockTree.LowestInsertedHeader?.Number ?? 0) - FastBlocksPriorities.ForHeaders)
                 {
                     batch.Prioritized = true;
                 }
@@ -227,7 +236,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 if (_logger.IsTrace) _logger.Trace($"{batch} - came back EMPTY");
                 _pending.Enqueue(batch);
                 batch.MarkHandlingEnd();
-                return SyncResponseHandlingResult.NoData;
+                return batch.ResponseSourcePeer == null ? SyncResponseHandlingResult.NotAssigned : SyncResponseHandlingResult.NoProgress;
             }
 
             try
@@ -287,7 +296,7 @@ namespace Nethermind.Synchronization.FastBlocks
             if (batch.Response.Length > batch.RequestSize)
             {
                 if (_logger.IsDebug) _logger.Debug($"Peer sent too long response ({batch.Response.Length}) to {batch}");
-                _syncPeerPool.ReportInvalid(batch.ResponseSourcePeer, $"response too long ({batch.Response.Length})");
+                _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, $"response too long ({batch.Response.Length})");
                 _pending.Enqueue(batch);
                 return 0;
             }
@@ -306,7 +315,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
                 if (header.Number != batch.StartNumber + i)
                 {
-                    _syncPeerPool.ReportInvalid(batch.ResponseSourcePeer, "inconsistent headers batch");
+                    _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, "inconsistent headers batch");
                     break;
                 }
 
@@ -320,7 +329,7 @@ namespace Nethermind.Synchronization.FastBlocks
                         if (batch.ResponseSourcePeer != null)
                         {
                             if (_logger.IsDebug) _logger.Debug($"{batch} - reporting INVALID hash");
-                            _syncPeerPool.ReportInvalid(batch.ResponseSourcePeer, "first hash inconsistent with request");
+                            _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, "first hash inconsistent with request");
                         }
 
                         break;
@@ -332,14 +341,14 @@ namespace Nethermind.Synchronization.FastBlocks
                         if (header.Number == (_blockTree.LowestInsertedHeader?.Number ?? _pivotNumber + 1) - 1)
                         {
                             if (_logger.IsDebug) _logger.Debug($"{batch} - ended up IGNORED - different branch - number {header.Number} was {header.Hash} while expected {_nextHeaderHash}");
-                            _syncPeerPool.ReportInvalid(batch.ResponseSourcePeer, "headers - different branch");
+                            _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, "headers - different branch");
                             break;
                         }
 
                         if (header.Number == _blockTree.LowestInsertedHeader?.Number)
                         {
                             if (_logger.IsDebug) _logger.Debug($"{batch} - ended up IGNORED - different branch");
-                            _syncPeerPool.ReportInvalid(batch.ResponseSourcePeer, "headers - different branch");
+                            _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, "headers - different branch");
                             break;
                         }
 
@@ -378,7 +387,7 @@ namespace Nethermind.Synchronization.FastBlocks
                         if (batch.ResponseSourcePeer != null)
                         {
                             if (_logger.IsDebug) _logger.Debug($"{batch} - reporting INVALID inconsistent");
-                            _syncPeerPool.ReportInvalid(batch.ResponseSourcePeer, "headers - response not matching request");
+                            _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, "headers - response not matching request");
                         }
 
                         break;
@@ -392,7 +401,7 @@ namespace Nethermind.Synchronization.FastBlocks
                     if (batch.ResponseSourcePeer != null)
                     {
                         if (_logger.IsDebug) _logger.Debug($"{batch} - reporting INVALID bad block");
-                        _syncPeerPool.ReportInvalid(batch.ResponseSourcePeer, $"invalid header {header.ToString(BlockHeader.Format.Short)}");
+                        _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, $"invalid header {header.ToString(BlockHeader.Format.Short)}");
                     }
 
                     break;
@@ -442,19 +451,18 @@ namespace Nethermind.Synchronization.FastBlocks
                 if (batch.ResponseSourcePeer != null)
                 {
                     if (_logger.IsDebug) _logger.Debug($"{batch} - reporting no progress");
-                    _syncPeerPool.ReportNoSyncProgress(batch.ResponseSourcePeer);
+                    _syncPeerPool.ReportNoSyncProgress(batch.ResponseSourcePeer, AllocationContexts.Headers);
                 }
             }
 
             if (_blockTree.LowestInsertedHeader != null)
             {
-                _syncReport.FastBlocksPivotNumber = _pivotNumber;
                 _syncReport.FastBlocksHeaders.Update(_pivotNumber - _blockTree.LowestInsertedHeader.Number + 1);
             }
 
             if (_logger.IsDebug) _logger.Debug($"LOWEST_INSERTED {_blockTree.LowestInsertedHeader?.Number} | HANDLED {batch}");
 
-            _syncReport.HeadersInQueue.Update(_dependencies.Sum(hd => hd.Value.Response.Length));
+            _syncReport.HeadersInQueue.Update(HeadersInQueue);
             return added;
         }
 
@@ -470,12 +478,6 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 _nextHeaderHash = header.ParentHash;
                 _nextHeaderDiff = (header.TotalDifficulty ?? 0) - header.Difficulty;
-
-                long parentNumber = header.Number - 1;
-                if (_dependencies.TryRemove(parentNumber, out HeadersSyncBatch batch))
-                {
-                    InsertHeaders(batch);
-                }
             }
 
             return insertOutcome;

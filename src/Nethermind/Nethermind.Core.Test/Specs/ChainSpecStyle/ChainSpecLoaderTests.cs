@@ -16,11 +16,14 @@
 
 using System.IO;
 using System.Linq;
+using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Serialization.Json;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Specs.ChainSpecStyle
@@ -91,7 +94,7 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
             Assert.AreEqual((long?)0, chainSpec.SpuriousDragonBlockNumber, "spurious dragon transition");
             Assert.AreEqual((long?)0, chainSpec.ByzantiumBlockNumber, "byzantium transition");
             Assert.AreEqual((long?)1920000, chainSpec.DaoForkBlockNumber, "dao transition");
-            Assert.AreEqual((long?)7080000, chainSpec.ConstantinopleBlockNumber, "constantinople transition");
+            Assert.AreEqual((long?)7080000, chainSpec.ConstantinopleFixBlockNumber, "constantinople transition");
             
             Assert.AreEqual((long?)24576L, chainSpec.Parameters.MaxCodeSize, "max code size");
             Assert.AreEqual((long?)0L, chainSpec.Parameters.MaxCodeSizeTransition, "max code size transition");
@@ -176,6 +179,17 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
             Assert.AreEqual((long?)4230000, chainSpec.ConstantinopleBlockNumber, "constantinople no");
             Assert.AreEqual((long?)0x4b5e82, chainSpec.ConstantinopleFixBlockNumber, "constantinople fix no");
             Assert.AreEqual((long?)0x62F756, chainSpec.IstanbulBlockNumber, "istanbul no");
+            
+            chainSpec.HomesteadBlockNumber.Should().Be(0L);
+            chainSpec.DaoForkBlockNumber.Should().Be(null);
+            chainSpec.TangerineWhistleBlockNumber.Should().Be(0L);
+            chainSpec.SpuriousDragonBlockNumber.Should().Be(RopstenSpecProvider.SpuriousDragonBlockNumber);
+            chainSpec.ByzantiumBlockNumber.Should().Be(RopstenSpecProvider.ByzantiumBlockNumber);
+            chainSpec.ConstantinopleBlockNumber.Should().Be(RopstenSpecProvider.ConstantinopleBlockNumber);
+            chainSpec.ConstantinopleFixBlockNumber.Should().Be(RopstenSpecProvider.ConstantinopleFixBlockNumber);
+            chainSpec.IstanbulBlockNumber.Should().Be(RopstenSpecProvider.IstanbulBlockNumber);
+            chainSpec.MuirGlacierNumber.Should().Be(RopstenSpecProvider.MuirGlacierBlockNumber);
+            chainSpec.BerlinBlockNumber.Should().Be(RopstenSpecProvider.BerlinBlockNumber);
         }
         
         [Test]
@@ -193,14 +207,16 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
             Assert.AreEqual(30000UL, chainSpec.Clique.Epoch);
             Assert.AreEqual(UInt256.Zero, chainSpec.Clique.Reward);
             
-            Assert.AreEqual(null, chainSpec.HomesteadBlockNumber, "homestead no");
-            Assert.AreEqual(null, chainSpec.DaoForkBlockNumber, "dao no");
-            Assert.AreEqual((long?)0, chainSpec.TangerineWhistleBlockNumber, "tw no");
-            Assert.AreEqual((long?)0, chainSpec.SpuriousDragonBlockNumber, "sd no");
-            Assert.AreEqual((long?)0, chainSpec.ByzantiumBlockNumber, "byzantium no");
-            Assert.AreEqual((long?)0, chainSpec.ConstantinopleBlockNumber, "constantinople no");
-            Assert.AreEqual((long?)0, chainSpec.ConstantinopleFixBlockNumber, "constantinople fix no");
-            Assert.AreEqual((long?)0x17D433, chainSpec.IstanbulBlockNumber, "istanbul no");
+            chainSpec.HomesteadBlockNumber.Should().Be(0);
+            chainSpec.DaoForkBlockNumber.Should().Be(null);
+            chainSpec.TangerineWhistleBlockNumber.Should().Be(0);
+            chainSpec.SpuriousDragonBlockNumber.Should().Be(0);
+            chainSpec.ByzantiumBlockNumber.Should().Be(0);
+            chainSpec.ConstantinopleBlockNumber.Should().Be(0);
+            chainSpec.ConstantinopleFixBlockNumber.Should().Be(0);
+            chainSpec.IstanbulBlockNumber.Should().Be(GoerliSpecProvider.IstanbulBlockNumber);
+            chainSpec.MuirGlacierNumber.Should().Be(null);
+            chainSpec.BerlinBlockNumber.Should().Be(GoerliSpecProvider.BerlinBlockNumber);
         }
         
         [Test]
@@ -213,6 +229,16 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
             Assert.AreEqual("Rinkeby", chainSpec.Name, $"{nameof(chainSpec.Name)}");
             Assert.AreEqual(SealEngineType.Clique, chainSpec.SealEngineType, "engine");
             Assert.AreEqual((long?)5435345, chainSpec.IstanbulBlockNumber, "istanbul no");
+            
+            // chainSpec.HomesteadBlockNumber.Should().Be(RinkebySpecProvider.HomesteadBlockNumber);
+            chainSpec.DaoForkBlockNumber.Should().Be(null);
+            chainSpec.TangerineWhistleBlockNumber.Should().Be(RinkebySpecProvider.TangerineWhistleBlockNumber);
+            chainSpec.SpuriousDragonBlockNumber.Should().Be(RinkebySpecProvider.SpuriousDragonBlockNumber);
+            chainSpec.ByzantiumBlockNumber.Should().Be(RinkebySpecProvider.ByzantiumBlockNumber);
+            chainSpec.ConstantinopleBlockNumber.Should().Be(RinkebySpecProvider.ConstantinopleBlockNumber);
+            chainSpec.ConstantinopleFixBlockNumber.Should().Be(RinkebySpecProvider.ConstantinopleFixBlockNumber);
+            chainSpec.IstanbulBlockNumber.Should().Be(RinkebySpecProvider.IstanbulBlockNumber);
+            chainSpec.BerlinBlockNumber.Should().Be(RinkebySpecProvider.BerlinBlockNumber);
         }
         
         [Test]
@@ -225,15 +251,17 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
             Assert.AreEqual("Ethereum", chainSpec.Name, $"{nameof(chainSpec.Name)}");
             Assert.AreEqual("ethereum", chainSpec.DataDir, $"{nameof(chainSpec.Name)}");
             Assert.AreEqual(SealEngineType.Ethash, chainSpec.SealEngineType, "engine");
-            
-            Assert.AreEqual((long?)1150000, chainSpec.HomesteadBlockNumber, "homestead no");
-            Assert.AreEqual((long?)1920000, chainSpec.DaoForkBlockNumber, "dao no");
-            Assert.AreEqual((long?)2463000, chainSpec.TangerineWhistleBlockNumber, "tw no");
-            Assert.AreEqual((long?)2675000, chainSpec.SpuriousDragonBlockNumber, "sd no");
-            Assert.AreEqual((long?)4370000, chainSpec.ByzantiumBlockNumber, "byzantium no");
-            Assert.AreEqual((long?)7280000, chainSpec.ConstantinopleBlockNumber, "constantinople no");
-            Assert.AreEqual((long?)null, chainSpec.ConstantinopleFixBlockNumber, "constantinople fix no");
-            Assert.AreEqual((long?)9069000, chainSpec.IstanbulBlockNumber, "istanbul no");
+
+            chainSpec.HomesteadBlockNumber.Should().Be(MainnetSpecProvider.HomesteadBlockNumber);
+            chainSpec.DaoForkBlockNumber.Should().Be(1920000);
+            chainSpec.TangerineWhistleBlockNumber.Should().Be(MainnetSpecProvider.TangerineWhistleBlockNumber);
+            chainSpec.SpuriousDragonBlockNumber.Should().Be(MainnetSpecProvider.SpuriousDragonBlockNumber);
+            chainSpec.ByzantiumBlockNumber.Should().Be(MainnetSpecProvider.ByzantiumBlockNumber);
+            chainSpec.ConstantinopleBlockNumber.Should().Be(null);
+            chainSpec.ConstantinopleFixBlockNumber.Should().Be(MainnetSpecProvider.ConstantinopleFixBlockNumber);
+            chainSpec.IstanbulBlockNumber.Should().Be(MainnetSpecProvider.IstanbulBlockNumber);
+            chainSpec.MuirGlacierNumber.Should().Be(MainnetSpecProvider.MuirGlacierBlockNumber);
+            chainSpec.BerlinBlockNumber.Should().Be(MainnetSpecProvider.BerlinBlockNumber);
         }
         
         [Test]
@@ -248,7 +276,7 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
             Assert.NotNull(chainSpec.AuRa, "AuRa");
             Assert.AreEqual(0, chainSpec.AuRa.MaximumUncleCount, "maximum uncle count");
             Assert.AreEqual(0L, chainSpec.AuRa.MaximumUncleCountTransition, "maximum uncle count tr");
-            Assert.AreEqual(5L, chainSpec.AuRa.StepDuration, "step dur");
+            Assert.AreEqual(5L, chainSpec.AuRa.StepDuration[0], "step duration");
             Assert.AreEqual(UInt256.Parse("1000000000000000000"), chainSpec.AuRa.BlockReward, "rew");
             Assert.AreEqual(4639000, chainSpec.AuRa.BlockRewardContractTransition, "rew tr");
             Assert.AreEqual(new Address("0x3145197AD50D7083D0222DE4fCCf67d9BD05C30D"), chainSpec.AuRa.BlockRewardContractAddress, "rew add");
@@ -258,7 +286,7 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
             Assert.AreEqual(new Address("0x03048F666359CFD3C74a1A5b9a97848BF71d5038"), chainSpec.AuRa.Validators.Validators[509355].Addresses.First(), "val 509355");
             Assert.AreEqual(new Address("0x4c6a159659CCcb033F4b2e2Be0C16ACC62b89DDB"), chainSpec.AuRa.Validators.Validators[4622420].Addresses.First(), "val 4622420");
             
-            Assert.AreEqual(null, chainSpec.HomesteadBlockNumber, "homestead no");
+            Assert.AreEqual(0, chainSpec.HomesteadBlockNumber, "homestead no");
             Assert.AreEqual(null, chainSpec.DaoForkBlockNumber, "dao no");
             
             Assert.AreEqual((long?)0, chainSpec.Parameters.Eip140Transition, "eip140");
@@ -290,6 +318,17 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
             Assert.AreEqual("Spaceneth", chainSpec.Name, $"{nameof(chainSpec.Name)}");
             Assert.AreEqual("spaceneth", chainSpec.DataDir, $"{nameof(chainSpec.Name)}");
             Assert.AreEqual(SealEngineType.NethDev, chainSpec.SealEngineType, "engine");
+            
+            chainSpec.HomesteadBlockNumber.Should().Be(0L);
+            chainSpec.DaoForkBlockNumber.Should().Be(null);
+            chainSpec.TangerineWhistleBlockNumber.Should().Be(0L);
+            chainSpec.SpuriousDragonBlockNumber.Should().Be(0L);
+            chainSpec.ByzantiumBlockNumber.Should().Be(0L);
+            chainSpec.ConstantinopleBlockNumber.Should().Be(0L);
+            chainSpec.ConstantinopleFixBlockNumber.Should().Be(0L);
+            chainSpec.IstanbulBlockNumber.Should().Be(0L);
+            chainSpec.MuirGlacierNumber.Should().Be(null);
+            chainSpec.BerlinBlockNumber.Should().Be(long.MaxValue - 1);
         }
     }
 }

@@ -16,6 +16,7 @@
 
 using System;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Network;
 using Nethermind.Synchronization;
@@ -27,7 +28,7 @@ namespace Nethermind.JsonRpc.Modules.Net
         private readonly IEnode _localNode;
         private readonly ISyncServer _syncServer;
 
-        public NetBridge(IEnode localNode, ISyncServer syncServer, IPeerManager peerManager)
+        public NetBridge(IEnode localNode, ISyncServer syncServer)
         {
             _localNode = localNode ?? throw new ArgumentNullException(nameof(localNode));
             _syncServer = syncServer ?? throw new ArgumentNullException(nameof(syncServer));

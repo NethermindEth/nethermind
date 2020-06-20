@@ -20,8 +20,8 @@ using System.Collections.Generic;
 using System.Linq;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Nethermind.Core2.Configuration;
 using Nethermind.Core2;
+using Nethermind.Core2.Configuration;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
@@ -31,12 +31,12 @@ namespace Nethermind.BeaconNode
 {
     public class BeaconChainUtility
     {
+        private readonly ChainConstants _chainConstants;
         private readonly ICryptographyService _cryptographyService;
         private readonly IOptionsMonitor<GweiValues> _gweiValueOptions;
-        private readonly ILogger _logger;
-        private readonly ChainConstants _chainConstants;
-        private readonly IOptionsMonitor<MiscellaneousParameters> _miscellaneousParameterOptions;
         private readonly IOptionsMonitor<InitialValues> _initialValueOptions;
+        private readonly ILogger _logger;
+        private readonly IOptionsMonitor<MiscellaneousParameters> _miscellaneousParameterOptions;
         private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
 
         public BeaconChainUtility(ILogger<BeaconChainUtility> logger,
@@ -61,20 +61,22 @@ namespace Nethermind.BeaconNode
         /// </summary>
         public Epoch ComputeActivationExitEpoch(Epoch epoch)
         {
-            return (Epoch)(epoch + 1UL + _timeParameterOptions.CurrentValue.MaximumSeedLookahead);
+            return (Epoch) (epoch + 1UL + _timeParameterOptions.CurrentValue.MaximumSeedLookahead);
         }
 
         /// <summary>
         /// Return the committee corresponding to ``indices``, ``seed``, ``index``, and committee ``count``.
         /// </summary>
-        public IReadOnlyList<ValidatorIndex> ComputeCommittee(IList<ValidatorIndex> indices, Bytes32 seed, ulong index, ulong count)
+        public IReadOnlyList<ValidatorIndex> ComputeCommittee(IList<ValidatorIndex> indices, Bytes32 seed, ulong index,
+            ulong count)
         {
             ulong start = (ulong) indices.Count * index / count;
             ulong end = (ulong) indices.Count * (index + 1) / count;
             List<ValidatorIndex> shuffled = new List<ValidatorIndex>();
             for (ulong i = start; i < end; i++)
             {
-                ValidatorIndex shuffledLookup = ComputeShuffledIndex(new ValidatorIndex(i), (ulong) indices.Count, seed);
+                ValidatorIndex shuffledLookup =
+                    ComputeShuffledIndex(new ValidatorIndex(i), (ulong) indices.Count, seed);
                 ValidatorIndex shuffledIndex = indices[(int) (ulong) shuffledLookup];
                 shuffled.Add(shuffledIndex);
             }
@@ -91,6 +93,7 @@ namespace Nethermind.BeaconNode
             {
                 forkVersion = _initialValueOptions.CurrentValue.GenesisForkVersion;
             }
+
             Span<byte> combined = stackalloc byte[Domain.Length];
             domainType.AsSpan().CopyTo(combined);
             forkVersion.Value.AsSpan().CopyTo(combined.Slice(DomainType.Length));
@@ -121,7 +124,7 @@ namespace Nethermind.BeaconNode
             seed.AsSpan().CopyTo(randomInputBytes);
             while (true)
             {
-                ValidatorIndex initialValidatorIndex = (ValidatorIndex)(index % indexCount);
+                ValidatorIndex initialValidatorIndex = (ValidatorIndex) (index % indexCount);
                 ValidatorIndex shuffledIndex = ComputeShuffledIndex(initialValidatorIndex, indexCount, seed);
                 ValidatorIndex candidateIndex = indices[(int) shuffledIndex];
 
@@ -147,7 +150,8 @@ namespace Nethermind.BeaconNode
         {
             if (index >= indexCount)
             {
-                throw new ArgumentOutOfRangeException(nameof(index), index, $"Index should be less than indexCount {indexCount}");
+                throw new ArgumentOutOfRangeException(nameof(index), index,
+                    $"Index should be less than indexCount {indexCount}");
             }
 
             // Swap or not (https://link.springer.com/content/pdf/10.1007%2F978-3-642-32009-5_1.pdf)
@@ -157,7 +161,9 @@ namespace Nethermind.BeaconNode
             seed.AsSpan().CopyTo(pivotHashInput);
             Span<byte> sourceHashInput = stackalloc byte[37];
             seed.AsSpan().CopyTo(sourceHashInput);
-            for (int currentRound = 0; currentRound < _miscellaneousParameterOptions.CurrentValue.ShuffleRoundCount; currentRound++)
+            for (int currentRound = 0;
+                currentRound < _miscellaneousParameterOptions.CurrentValue.ShuffleRoundCount;
+                currentRound++)
             {
                 byte roundByte = (byte) (currentRound & 0xFF);
                 pivotHashInput[32] = roundByte;
@@ -170,10 +176,10 @@ namespace Nethermind.BeaconNode
                 ValidatorIndex position = ValidatorIndex.Max(index, flip);
 
                 sourceHashInput[32] = roundByte;
-                BinaryPrimitives.WriteUInt32LittleEndian(sourceHashInput.Slice(33), (uint)position / 256);
+                BinaryPrimitives.WriteUInt32LittleEndian(sourceHashInput.Slice(33), (uint) position / 256);
                 Bytes32 source = _cryptographyService.Hash(sourceHashInput.ToArray());
 
-                byte flipByte = source.AsSpan()[(int)((position % 256) / 8)];
+                byte flipByte = source.AsSpan()[(int) ((position % 256) / 8)];
 
                 int flipBit = (flipByte >> (int) (position % 8)) % 2;
 
@@ -200,7 +206,7 @@ namespace Nethermind.BeaconNode
         /// </summary>
         public Slot ComputeStartSlotOfEpoch(Epoch epoch)
         {
-            return (Slot)(_timeParameterOptions.CurrentValue.SlotsPerEpoch * epoch.Number);
+            return (Slot) (_timeParameterOptions.CurrentValue.SlotsPerEpoch * epoch.Number);
         }
 
         /// <summary>
@@ -264,7 +270,10 @@ namespace Nethermind.BeaconNode
             // Verify max number of indices
             if ((ulong) attestingIndices.Count > miscellaneousParameters.MaximumValidatorsPerCommittee)
             {
-                if (_logger.IsWarn()) Log.InvalidIndexedAttestationTooMany(_logger, indexedAttestation.Data.Index, indexedAttestation.Data.Slot, attestingIndices.Count, miscellaneousParameters.MaximumValidatorsPerCommittee, null);
+                if (_logger.IsWarn())
+                    Log.InvalidIndexedAttestationTooMany(_logger, indexedAttestation.Data.Index,
+                        indexedAttestation.Data.Slot, attestingIndices.Count,
+                        miscellaneousParameters.MaximumValidatorsPerCommittee, null);
                 return false;
             }
 
@@ -287,30 +296,33 @@ namespace Nethermind.BeaconNode
                                 Log.InvalidIndexedAttestationNotSorted(_logger, indexedAttestation.Data.Index,
                                     indexedAttestation.Data.Slot, 0, index, null);
                         }
+
                         return false;
                     }
                 }
             }
 
             // TODO: BLS FastAggregateVerify (see spec)
-            
+
             // Verify aggregate signature
             IList<BlsPublicKey> publicKeys = attestingIndices.Select(x => state.Validators[(int) (ulong) x].PublicKey)
                 .ToList();
-            
+
             Root attestationDataRoot = _cryptographyService.HashTreeRoot(indexedAttestation.Data);
             Root signingRoot = ComputeSigningRoot(attestationDataRoot, domain);
-            
+
             BlsSignature signature = indexedAttestation.Signature;
-            
+
             //BlsPublicKey aggregatePublicKey = _cryptographyService.BlsAggregatePublicKeys(publicKeys);
             //bool isValid = _cryptographyService.BlsVerify(aggregatePublicKey, signingRoot, signature);
 
             bool isValid = _cryptographyService.BlsFastAggregateVerify(publicKeys, signingRoot, signature);
-            
+
             if (!isValid)
             {
-                if (_logger.IsWarn()) Log.InvalidIndexedAttestationSignature(_logger, indexedAttestation.Data.Index, indexedAttestation.Data.Slot, null);
+                if (_logger.IsWarn())
+                    Log.InvalidIndexedAttestationSignature(_logger, indexedAttestation.Data.Index,
+                        indexedAttestation.Data.Slot, null);
                 return false;
             }
 

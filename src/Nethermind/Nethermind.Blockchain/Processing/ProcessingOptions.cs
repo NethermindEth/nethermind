@@ -28,9 +28,13 @@ namespace Nethermind.Blockchain.Processing
         NoValidation = 8,
         IgnoreParentNotOnMainChain = 16,
         DoNotVerifyNonce = 32,
-        All = 63,
+        DoNotUpdateHead = 64,
+        DumpParityTraces = 128,
+        DumpGetTraces = 256,
+        All = 511,
         ProducingBlock = NoValidation | ReadOnlyChain,
         Trace = ForceProcessing | ReadOnlyChain | DoNotVerifyNonce | NoValidation,
+        Beam = IgnoreParentNotOnMainChain | DoNotUpdateHead
     }
 
     public static class ProcessingOptionsExtensions

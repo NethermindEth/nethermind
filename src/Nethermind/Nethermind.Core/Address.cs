@@ -22,7 +22,7 @@ using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core
 {
-    public class Address : IEquatable<Address>
+    public class Address : IEquatable<Address>, IComparable<Address>
     {
         public const int ByteLength = 20;
         private const int HexCharsCount = 2 * ByteLength; // 5a4eab120fb44eb6684e5e32785702ff45ea344d
@@ -151,6 +151,10 @@ namespace Nethermind.Core
         }
 
         public static bool operator !=(Address a, Address b) => !(a == b);
+
+        public AddressStructRef ToStructRef() => new AddressStructRef(Bytes);
+        
+        public int CompareTo(Address other) => Bytes.AsSpan().SequenceCompareTo(other?.Bytes);
     }
     
     public ref struct AddressStructRef

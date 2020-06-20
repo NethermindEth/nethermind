@@ -49,5 +49,8 @@ namespace Nethermind.JsonRpc
         
         [ConfigItem(Description = "Interval between the JSON RPC stats report log", DefaultValue = "300")]
         public int ReportIntervalSeconds { get; set; }
+        
+        [ConfigItem(Description = "Buffer responses before sending them to client. This allows to set Content-Length in response instead of using Transfer-Encoding: chunked. This may degrade performance on big responses.", DefaultValue = "false")]
+        public bool BufferResponses { get; set; }
     }
 }

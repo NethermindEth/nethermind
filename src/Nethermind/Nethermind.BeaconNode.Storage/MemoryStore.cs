@@ -37,30 +37,40 @@ namespace Nethermind.BeaconNode.Storage
     // Data Class
     public class MemoryStore : IStore
     {
-        private readonly Dictionary<Root, BeaconBlock> _blocks = new Dictionary<Root, BeaconBlock>();
         private readonly Dictionary<Root, BeaconState> _blockStates = new Dictionary<Root, BeaconState>();
+
         private readonly Dictionary<Checkpoint, BeaconState> _checkpointStates =
             new Dictionary<Checkpoint, BeaconState>();
+
         private readonly DataDirectory _dataDirectory;
         private readonly IFileSystem _fileSystem;
+        private readonly IHeadSelectionStrategy _headSelectionStrategy;
         private readonly IOptionsMonitor<InMemoryConfiguration> _inMemoryConfigurationOptions;
         private readonly JsonSerializerOptions _jsonSerializerOptions;
+
         private readonly Dictionary<ValidatorIndex, LatestMessage> _latestMessages =
             new Dictionary<ValidatorIndex, LatestMessage>();
+
         private string? _logDirectoryPath;
         private readonly object _logDirectoryPathLock = new object();
         private readonly ILogger _logger;
+        private readonly Dictionary<Root, SignedBeaconBlock> _signedBlocks = new Dictionary<Root, SignedBeaconBlock>();
+        private readonly StoreAccessor _storeAccessor;
         private const string InMemoryDirectory = "memorystore";
 
         public MemoryStore(ILogger<MemoryStore> logger,
             IOptionsMonitor<InMemoryConfiguration> inMemoryConfigurationOptions,
             DataDirectory dataDirectory,
-            IFileSystem fileSystem)
+            IFileSystem fileSystem,
+            IHeadSelectionStrategy headSelectionStrategy,
+            StoreAccessor storeAccessor)
         {
             _logger = logger;
             _inMemoryConfigurationOptions = inMemoryConfigurationOptions;
             _dataDirectory = dataDirectory;
             _fileSystem = fileSystem;
+            _headSelectionStrategy = headSelectionStrategy;
+            _storeAccessor = storeAccessor;
             _jsonSerializerOptions = new JsonSerializerOptions {WriteIndented = true};
             _jsonSerializerOptions.ConfigureNethermindCore2();
             if (_inMemoryConfigurationOptions.CurrentValue.LogBlockJson ||
@@ -77,14 +87,9 @@ namespace Nethermind.BeaconNode.Storage
         public Checkpoint JustifiedCheckpoint { get; private set; } = Checkpoint.Zero;
         public ulong Time { get; private set; }
 
-        public ValueTask<BeaconBlock> GetBlockAsync(Root blockRoot)
+        public async Task<Root> GetAncestorAsync(Root root, Slot slot)
         {
-            if (!_blocks.TryGetValue(blockRoot, out BeaconBlock? beaconBlock))
-            {
-                throw new ArgumentOutOfRangeException(nameof(blockRoot), blockRoot, "Block not found in store.");
-            }
-
-            return new ValueTask<BeaconBlock>(beaconBlock!);
+            return await _storeAccessor.GetAncestorAsync(this, root, slot).ConfigureAwait(false);
         }
 
         public ValueTask<BeaconState> GetBlockStateAsync(Root blockRoot)
@@ -111,13 +116,12 @@ namespace Nethermind.BeaconNode.Storage
             return new ValueTask<BeaconState?>(state);
         }
 
-        public async IAsyncEnumerable<Root> GetChildKeysAfterSlotAsync(Root parent, Slot slot)
+        public async IAsyncEnumerable<Root> GetChildKeysAsync(Root parent)
         {
             await Task.CompletedTask;
-            IEnumerable<Root> childKeys = _blocks
+            IEnumerable<Root> childKeys = _signedBlocks
                 .Where(kvp =>
-                    kvp.Value.ParentRoot.Equals(parent)
-                    && kvp.Value.Slot > slot)
+                    kvp.Value.Message.ParentRoot.Equals(parent))
                 .Select(kvp => kvp.Key);
             foreach (Root childKey in childKeys)
             {
@@ -125,17 +129,9 @@ namespace Nethermind.BeaconNode.Storage
             }
         }
 
-        public async IAsyncEnumerable<Root> GetChildKeysAsync(Root parent)
+        public async Task<Root> GetHeadAsync()
         {
-            await Task.CompletedTask;
-            IEnumerable<Root> childKeys = _blocks
-                .Where(kvp =>
-                    kvp.Value.ParentRoot.Equals(parent))
-                .Select(kvp => kvp.Key);
-            foreach (Root childKey in childKeys)
-            {
-                yield return childKey;
-            }
+            return await _headSelectionStrategy.GetHeadAsync(this).ConfigureAwait(false);
         }
 
         public ValueTask<LatestMessage?> GetLatestMessageAsync(ValidatorIndex validatorIndex, bool throwIfMissing)
@@ -152,8 +148,19 @@ namespace Nethermind.BeaconNode.Storage
             return new ValueTask<LatestMessage?>(latestMessage);
         }
 
+        public ValueTask<SignedBeaconBlock> GetSignedBlockAsync(Root blockRoot)
+        {
+            if (!_signedBlocks.TryGetValue(blockRoot, out SignedBeaconBlock? signedBeaconBlock))
+            {
+                throw new ArgumentOutOfRangeException(nameof(blockRoot), blockRoot, "Block not found in store.");
+            }
+
+            return new ValueTask<SignedBeaconBlock>(signedBeaconBlock!);
+        }
+
         public async Task InitializeForkChoiceStoreAsync(ulong time, ulong genesisTime, Checkpoint justifiedCheckpoint,
-            Checkpoint finalizedCheckpoint, Checkpoint bestJustifiedCheckpoint, IDictionary<Root, BeaconBlock> blocks,
+            Checkpoint finalizedCheckpoint, Checkpoint bestJustifiedCheckpoint,
+            IDictionary<Root, SignedBeaconBlock> signedBlocks,
             IDictionary<Root, BeaconState> states,
             IDictionary<Checkpoint, BeaconState> checkpointStates)
         {
@@ -169,9 +176,9 @@ namespace Nethermind.BeaconNode.Storage
             JustifiedCheckpoint = justifiedCheckpoint;
             FinalizedCheckpoint = finalizedCheckpoint;
             BestJustifiedCheckpoint = bestJustifiedCheckpoint;
-            foreach (KeyValuePair<Root, BeaconBlock> kvp in blocks)
+            foreach (KeyValuePair<Root, SignedBeaconBlock> kvp in signedBlocks)
             {
-                await SetBlockAsync(kvp.Key, kvp.Value);
+                await SetSignedBlockAsync(kvp.Key, kvp.Value);
             }
 
             foreach (KeyValuePair<Root, BeaconState> kvp in states)
@@ -193,21 +200,6 @@ namespace Nethermind.BeaconNode.Storage
             return Task.CompletedTask;
         }
 
-        public async Task SetBlockAsync(Root blockHashTreeRoot, BeaconBlock beaconBlock)
-        {
-            _blocks[blockHashTreeRoot] = beaconBlock;
-            if (_inMemoryConfigurationOptions.CurrentValue.LogBlockJson)
-            {
-                string logDirectoryPath = GetLogDirectory();
-                string fileName = string.Format("block{0:0000}_{1}.json", (int) beaconBlock.Slot, blockHashTreeRoot);
-                string path = _fileSystem.Path.Combine(logDirectoryPath, fileName);
-                using (Stream fileStream = _fileSystem.File.OpenWrite(path))
-                {
-                    await JsonSerializer.SerializeAsync(fileStream, beaconBlock, _jsonSerializerOptions).ConfigureAwait(false);
-                }
-            }
-        }
-
         public async Task SetBlockStateAsync(Root blockHashTreeRoot, BeaconState beaconState)
         {
             _blockStates[blockHashTreeRoot] = beaconState;
@@ -216,10 +208,9 @@ namespace Nethermind.BeaconNode.Storage
                 string logDirectoryPath = GetLogDirectory();
                 string fileName = string.Format("state{0:0000}_{1}.json", (int) beaconState.Slot, blockHashTreeRoot);
                 string path = _fileSystem.Path.Combine(logDirectoryPath, fileName);
-                using (Stream fileStream = _fileSystem.File.OpenWrite(path))
-                {
-                    await JsonSerializer.SerializeAsync(fileStream, beaconState, _jsonSerializerOptions).ConfigureAwait(false);
-                }
+                await using Stream fileStream = _fileSystem.File.OpenWrite(path);
+                await JsonSerializer.SerializeAsync(fileStream, beaconState, _jsonSerializerOptions)
+                    .ConfigureAwait(false);
             }
         }
 
@@ -245,6 +236,24 @@ namespace Nethermind.BeaconNode.Storage
         {
             _latestMessages[validatorIndex] = latestMessage;
             return Task.CompletedTask;
+        }
+
+        public async Task SetSignedBlockAsync(Root blockHashTreeRoot, SignedBeaconBlock signedBeaconBlock)
+        {
+            // NOTE: This stores signed block, rather than just the block (or block header) from the spec,
+            // because we need to store signed blocks anyway, e.g. to respond to syncing clients.
+
+            _signedBlocks[blockHashTreeRoot] = signedBeaconBlock;
+            if (_inMemoryConfigurationOptions.CurrentValue.LogBlockJson)
+            {
+                string logDirectoryPath = GetLogDirectory();
+                string fileName = string.Format("block{0:0000}_{1}.json", (int) signedBeaconBlock.Message.Slot,
+                    blockHashTreeRoot);
+                string path = _fileSystem.Path.Combine(logDirectoryPath, fileName);
+                await using Stream fileStream = _fileSystem.File.OpenWrite(path);
+                await JsonSerializer.SerializeAsync(fileStream, signedBeaconBlock, _jsonSerializerOptions)
+                    .ConfigureAwait(false);
+            }
         }
 
         public Task SetTimeAsync(ulong time)
@@ -283,7 +292,9 @@ namespace Nethermind.BeaconNode.Storage
                         int newSuffix = existingSuffix + 1;
                         string logDirectoryName = $"log{newSuffix:0000}";
 
-                        if (_logger.IsDebug()) LogDebug.CreatingMemoryStoreLogDirectory(_logger, logDirectoryName, baseDirectoryInfo.FullName, null);
+                        if (_logger.IsDebug())
+                            LogDebug.CreatingMemoryStoreLogDirectory(_logger, logDirectoryName,
+                                baseDirectoryInfo.FullName, null);
                         IDirectoryInfo logDirectory = baseDirectoryInfo.CreateSubdirectory(logDirectoryName);
                         _logDirectoryPath = logDirectory.FullName;
                     }

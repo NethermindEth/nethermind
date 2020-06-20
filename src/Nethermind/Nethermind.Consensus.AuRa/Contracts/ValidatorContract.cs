@@ -16,25 +16,17 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using Nethermind.Abi;
+using Nethermind.Blockchain.Contracts;
+using Nethermind.Blockchain.Contracts.Json;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Serialization.Json.Abi;
+using Nethermind.Evm;
+using Nethermind.State;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public class ValidatorContract : SystemContract
+    public partial interface IValidatorContract
     {
-        private readonly IAbiEncoder _abiEncoder;
-        private readonly byte[] _finalizeChangeTransactionData;
-        private readonly byte[] _getValidatorsTransactionData;
-        
-        private static readonly IEqualityComparer<LogEntry> LogEntryEqualityComparer = new LogEntryAddressAndTopicEqualityComparer();
-        
-        public static readonly AbiDefinition Definition = new AbiDefinitionParser().Parse<ValidatorContract>();
-        
         /// <summary>
         /// Called when an initiated change reaches finality and is activated.
         /// Only valid when msg.sender == SUPER_USER (EIP96, 2**160 - 2)
@@ -43,7 +35,76 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// the "change" finalized is the activation of the initial set.
         /// function finalizeChange();
         /// </summary>
-        public const string FinalizeChangeFunction = "finalizeChange";
+        void FinalizeChange(BlockHeader blockHeader);
+
+        /// <summary>
+        /// Get current validator set (last enacted or initial if no changes ever made)
+        /// function getValidators() constant returns (address[] _validators);
+        /// </summary>
+        Address[] GetValidators(BlockHeader parentHeader);
+
+        /// <summary>
+        /// Issue this log event to signal a desired change in validator set.
+        /// This will not lead to a change in active validator set until
+        /// finalizeChange is called.
+        ///
+        /// Only the last log event of any block can take effect.
+        /// If a signal is issued while another is being finalized it may never
+        /// take effect.
+        ///
+        /// _parent_hash here should be the parent block hash, or the
+        /// signal will not be recognized.
+        /// event InitiateChange(bytes32 indexed _parent_hash, address[] _new_set);
+        /// </summary>
+        bool CheckInitiateChangeEvent(BlockHeader blockHeader, TxReceipt[] receipts, out Address[] addresses);
+
+        void EnsureSystemAccount();
+    }
+    
+    public sealed partial class ValidatorContract : CallableContract, IValidatorContract
+    {
+        private readonly IAbiEncoder _abiEncoder;
+        private readonly IStateProvider _stateProvider;
+        private readonly ISigner _signer;
+
+        private static readonly IEqualityComparer<LogEntry> LogEntryEqualityComparer = new LogEntryAddressAndTopicEqualityComparer();
+
+        private ConstantContract Constant { get; }
+
+        public ValidatorContract(
+            ITransactionProcessor transactionProcessor, 
+            IAbiEncoder abiEncoder, 
+            Address contractAddress, 
+            IStateProvider stateProvider,
+            IReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource,
+            ISigner signer) 
+            : base(transactionProcessor, abiEncoder, contractAddress)
+        {
+            _abiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
+            _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
+            _signer = signer ?? throw new ArgumentNullException(nameof(signer));
+            Constant = GetConstant(readOnlyTransactionProcessorSource);
+        }
+
+        /// <summary>
+        /// Called when an initiated change reaches finality and is activated.
+        /// Only valid when msg.sender == SUPER_USER (EIP96, 2**160 - 2)
+        ///
+        /// Also called when the contract is first enabled for consensus. In this case,
+        /// the "change" finalized is the activation of the initial set.
+        /// function finalizeChange();
+        /// </summary>
+        public void FinalizeChange(BlockHeader blockHeader) => TryCall(blockHeader, nameof(FinalizeChange), Address.SystemUser, out _);
+
+        internal static readonly string GetValidatorsFunction = AbiDefinition.GetFunctionName(nameof(GetValidators));
+
+        /// <summary>
+        /// Get current validator set (last enacted or initial if no changes ever made)
+        /// function getValidators() constant returns (address[] _validators);
+        /// </summary>
+        public Address[] GetValidators(BlockHeader parentHeader) => Constant.Call<Address[]>(parentHeader, nameof(GetValidators), Address.Zero);
+
+        internal const string InitiateChange = nameof(InitiateChange);
         
         /// <summary>
         /// Issue this log event to signal a desired change in validator set.
@@ -58,30 +119,11 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// signal will not be recognized.
         /// event InitiateChange(bytes32 indexed _parent_hash, address[] _new_set);
         /// </summary>
-        public  const string InitiateChangeEvent = "InitiateChange";
-        
-        /// <summary>
-        /// Get current validator set (last enacted or initial if no changes ever made)
-        /// function getValidators() constant returns (address[] _validators);
-        /// </summary>
-        public  const string GetValidatorsFunction = "getValidators";
-
-        public ValidatorContract(IAbiEncoder abiEncoder, Address contractAddress) : base(contractAddress)
+        public bool CheckInitiateChangeEvent(BlockHeader blockHeader, TxReceipt[] receipts, out Address[] addresses)
         {
-            _abiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
-            _finalizeChangeTransactionData = _abiEncoder.Encode(Definition.Functions[FinalizeChangeFunction].GetCallInfo());
-            _getValidatorsTransactionData = _abiEncoder.Encode(Definition.Functions[GetValidatorsFunction].GetCallInfo());
-        }
-
-        public Transaction FinalizeChange() => GenerateSystemTransaction(_finalizeChangeTransactionData);
-
-        public Transaction GetValidators() => GenerateTransaction(_getValidatorsTransactionData, ContractAddress);
-
-        public bool CheckInitiateChangeEvent(Address contractAddress, BlockHeader blockHeader, TxReceipt[] receipts, out Address[] addresses)
-        {
-            var logEntry = new LogEntry(contractAddress, 
+            var logEntry = new LogEntry(ContractAddress, 
                 Array.Empty<byte>(),
-                new[] {Definition.Events[InitiateChangeEvent].GetHash(), blockHeader.ParentHash});
+                new[] {GetEventHash(InitiateChange), blockHeader.ParentHash});
 
             if (blockHeader.TryFindLog(receipts, logEntry, LogEntryEqualityComparer, out var foundEntry))
             {
@@ -93,23 +135,20 @@ namespace Nethermind.Consensus.AuRa.Contracts
             return false;
         }
 
-        public Address[] DecodeAddresses(byte[] data)
+        private Address[] DecodeAddresses(byte[] data)
         {
-            var objects = _abiEncoder.Decode(Definition.Functions[GetValidatorsFunction].GetReturnInfo(), data);
+            var objects = DecodeReturnData(nameof(GetValidators), data);
+            return GetAddresses(objects);
+        }
+
+        private static Address[] GetAddresses(object[] objects)
+        {
             return (Address[]) objects[0];
         }
-    }
 
-    public class LogEntryAddressAndTopicEqualityComparer : IEqualityComparer<LogEntry>
-    {
-        public bool Equals(LogEntry x, LogEntry y)
+        public void EnsureSystemAccount()
         {
-            return ReferenceEquals(x, y) || (x != null && x.LoggersAddress == y?.LoggersAddress && x.Topics.SequenceEqual(y.Topics));
-        }
-
-        public int GetHashCode(LogEntry obj)
-        {
-            return obj.Topics.Aggregate(obj.LoggersAddress.GetHashCode(), (i, keccak) => i ^ keccak.GetHashCode());
+            EnsureSystemAccount(_stateProvider);
         }
     }
 }

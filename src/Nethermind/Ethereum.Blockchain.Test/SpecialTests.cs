@@ -26,20 +26,15 @@ using NUnit.Framework;
 namespace Ethereum.Blockchain.Test
 {
     [TestFixture][Parallelizable(ParallelScope.All)]
-    public class SpecialTests : BlockchainTestBase
+    public class SpecialTests : GeneralStateTestBase
     {
-        [Todo(Improve.TestCoverage, "Investigate 540980 if only affected by retesteth - it worked before the test format changes")]
         [TestCaseSource(nameof(LoadTests))]
-        public void Test(BlockchainTest test)
+        public void Test(GeneralStateTest test)
         {
-            if (test.Name.Contains("block504980"))
-            {
-                return;
-            }
-            
             Assert.True(RunTest(test).Pass);
         }
         
-        public static IEnumerable<BlockchainTest> LoadTests() { return new DirectoryTestsSource("stSpecialTest").LoadTests(); }
+        public static IEnumerable<GeneralStateTest> LoadTests() { var loader = new DirectoryTestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stSpecialTest");
+            return (IEnumerable<GeneralStateTest>)loader.LoadTests(); }
     }
 }

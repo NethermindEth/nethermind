@@ -1,8 +1,9 @@
 name: Update Bootnodes
 
 on:
-  schedule:
-    - cron: '0 0 * * *'
+  repository_dispatch:
+    types: update_bootnodes
+
 
 jobs:
   neth-bootnodes:

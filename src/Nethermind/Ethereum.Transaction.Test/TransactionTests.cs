@@ -209,13 +209,11 @@ namespace Ethereum.Transaction.Test
 
                 Signature expectedSignature = new Signature(validTest.R, validTest.S, validTest.V);
                 Assert.AreEqual(expectedSignature, transaction.Signature, "signature");
-//                if(useChainId && spec.IsEip155Enabled)
-//                
-                IEthereumEcdsa ecdsa = new EthereumEcdsa(new SingleReleaseSpecProvider(spec, useChainId ? (int)ChainId.Mainnet : 0), LimboLogs.Instance);
+
+                IEthereumEcdsa ecdsa = new EthereumEcdsa(useChainId ? ChainId.Mainnet : 0, LimboLogs.Instance);
                 bool verified = ecdsa.Verify(
                     validTest.Sender,
-                    transaction,
-                    0);
+                    transaction);
                 Assert.True(verified);
             }
             else

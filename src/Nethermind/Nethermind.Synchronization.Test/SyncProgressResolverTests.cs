@@ -28,6 +28,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test
 {
+    [Parallelizable(ParallelScope.Self)]
     [TestFixture]
     public class SyncProgressResolverTests
     {
@@ -40,7 +41,7 @@ namespace Nethermind.Synchronization.Test
             SyncConfig syncConfig = new SyncConfig();
             syncConfig.PivotNumber = "1";
 
-            SyncProgressResolver syncProgressResolver = new SyncProgressResolver(blockTree, receiptStorage, stateDb, syncConfig, LimboLogs.Instance);
+            SyncProgressResolver syncProgressResolver = new SyncProgressResolver(blockTree, receiptStorage, stateDb, new MemDb(), syncConfig, LimboLogs.Instance);
             blockTree.BestSuggestedHeader.Returns((BlockHeader) null);
             Assert.AreEqual(0, syncProgressResolver.FindBestHeader());
         }
@@ -54,7 +55,7 @@ namespace Nethermind.Synchronization.Test
             SyncConfig syncConfig = new SyncConfig();
             syncConfig.PivotNumber = "1";
 
-            SyncProgressResolver syncProgressResolver = new SyncProgressResolver(blockTree, receiptStorage, stateDb, syncConfig, LimboLogs.Instance);
+            SyncProgressResolver syncProgressResolver = new SyncProgressResolver(blockTree, receiptStorage, stateDb, new MemDb(), syncConfig, LimboLogs.Instance);
             blockTree.BestSuggestedBody.Returns((Block) null);
             Assert.AreEqual(0, syncProgressResolver.FindBestFullBlock());
         }
@@ -68,10 +69,12 @@ namespace Nethermind.Synchronization.Test
             SyncConfig syncConfig = new SyncConfig();
             syncConfig.PivotNumber = "1";
 
-            SyncProgressResolver syncProgressResolver = new SyncProgressResolver(blockTree, receiptStorage, stateDb, syncConfig, LimboLogs.Instance);
+            SyncProgressResolver syncProgressResolver = new SyncProgressResolver(blockTree, receiptStorage, stateDb, new MemDb(), syncConfig, LimboLogs.Instance);
             var head = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(5).WithStateRoot(TestItem.KeccakA).TestObject).TestObject;
             blockTree.Head.Returns(head);
+            blockTree.BestSuggestedHeader.Returns(head.Header);
             stateDb.Get(head.StateRoot).Returns(new byte[] {1});
+            stateDb.Innermost.Returns(stateDb);
             Assert.AreEqual(head.Number, syncProgressResolver.FindBestFullState());
         }
 
@@ -84,7 +87,7 @@ namespace Nethermind.Synchronization.Test
             SyncConfig syncConfig = new SyncConfig();
             syncConfig.PivotNumber = "1";
 
-            SyncProgressResolver syncProgressResolver = new SyncProgressResolver(blockTree, receiptStorage, stateDb, syncConfig, LimboLogs.Instance);
+            SyncProgressResolver syncProgressResolver = new SyncProgressResolver(blockTree, receiptStorage, stateDb, new MemDb(), syncConfig, LimboLogs.Instance);
             var head = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(5).WithStateRoot(TestItem.KeccakA).TestObject).TestObject;
             var suggested = Build.A.BlockHeader.WithNumber(6).WithStateRoot(TestItem.KeccakB).TestObject;
             blockTree.Head.Returns(head);
@@ -104,13 +107,14 @@ namespace Nethermind.Synchronization.Test
             SyncConfig syncConfig = new SyncConfig();
             syncConfig.PivotNumber = "1";
 
-            SyncProgressResolver syncProgressResolver = new SyncProgressResolver(blockTree, receiptStorage, stateDb, syncConfig, LimboLogs.Instance);
+            SyncProgressResolver syncProgressResolver = new SyncProgressResolver(blockTree, receiptStorage, stateDb, new MemDb(), syncConfig, LimboLogs.Instance);
             var head =  Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(5).WithStateRoot(TestItem.KeccakA).TestObject).TestObject;
             var suggested = Build.A.BlockHeader.WithNumber(6).WithStateRoot(TestItem.KeccakB).TestObject;
             blockTree.Head.Returns(head);
             blockTree.BestSuggestedHeader.Returns(suggested);
             blockTree.FindHeader(Arg.Any<Keccak>(), BlockTreeLookupOptions.TotalDifficultyNotNeeded).Returns(head?.Header);
             stateDb.Get(head.StateRoot).Returns(new byte[] {1});
+            stateDb.Innermost.Returns(stateDb);
             stateDb.Get(suggested.StateRoot).Returns((byte[]) null);
             Assert.AreEqual(head.Number, syncProgressResolver.FindBestFullState());
         }
@@ -125,7 +129,7 @@ namespace Nethermind.Synchronization.Test
             syncConfig.FastBlocks = false;
             syncConfig.PivotNumber = "1";
 
-            SyncProgressResolver syncProgressResolver = new SyncProgressResolver(blockTree, receiptStorage, stateDb, syncConfig, LimboLogs.Instance);
+            SyncProgressResolver syncProgressResolver = new SyncProgressResolver(blockTree, receiptStorage, stateDb, new MemDb(), syncConfig, LimboLogs.Instance);
             Assert.True(syncProgressResolver.IsFastBlocksFinished());
         }
 
@@ -143,7 +147,7 @@ namespace Nethermind.Synchronization.Test
 
             blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(2).WithStateRoot(TestItem.KeccakA).TestObject);
 
-            SyncProgressResolver syncProgressResolver = new SyncProgressResolver(blockTree, receiptStorage, stateDb, syncConfig, LimboLogs.Instance);
+            SyncProgressResolver syncProgressResolver = new SyncProgressResolver(blockTree, receiptStorage, stateDb, new MemDb(), syncConfig, LimboLogs.Instance);
             Assert.False(syncProgressResolver.IsFastBlocksFinished());
         }
 
@@ -162,7 +166,7 @@ namespace Nethermind.Synchronization.Test
             blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject);
             blockTree.LowestInsertedBody.Returns(Build.A.Block.WithNumber(2).WithStateRoot(TestItem.KeccakB).TestObject);
 
-            SyncProgressResolver syncProgressResolver = new SyncProgressResolver(blockTree, receiptStorage, stateDb, syncConfig, LimboLogs.Instance);
+            SyncProgressResolver syncProgressResolver = new SyncProgressResolver(blockTree, receiptStorage, stateDb, new MemDb(), syncConfig, LimboLogs.Instance);
             Assert.False(syncProgressResolver.IsFastBlocksFinished());
         }
 
@@ -182,7 +186,7 @@ namespace Nethermind.Synchronization.Test
             blockTree.LowestInsertedBody.Returns(Build.A.Block.WithNumber(1).WithStateRoot(TestItem.KeccakB).TestObject);
             receiptStorage.LowestInsertedReceiptBlock.Returns(2);
 
-            SyncProgressResolver syncProgressResolver = new SyncProgressResolver(blockTree, receiptStorage, stateDb, syncConfig, LimboLogs.Instance);
+            SyncProgressResolver syncProgressResolver = new SyncProgressResolver(blockTree, receiptStorage, stateDb, new MemDb(), syncConfig, LimboLogs.Instance);
             Assert.False(syncProgressResolver.IsFastBlocksFinished());
         }
 
@@ -202,7 +206,7 @@ namespace Nethermind.Synchronization.Test
             blockTree.LowestInsertedBody.Returns(Build.A.Block.WithNumber(2).WithStateRoot(TestItem.KeccakB).TestObject);
             receiptStorage.LowestInsertedReceiptBlock.Returns(1);
 
-            SyncProgressResolver syncProgressResolver = new SyncProgressResolver(blockTree, receiptStorage, stateDb, syncConfig, LimboLogs.Instance);
+            SyncProgressResolver syncProgressResolver = new SyncProgressResolver(blockTree, receiptStorage, stateDb, new MemDb(), syncConfig, LimboLogs.Instance);
             Assert.True(syncProgressResolver.IsFastBlocksFinished());
         }
 
@@ -222,7 +226,7 @@ namespace Nethermind.Synchronization.Test
             blockTree.LowestInsertedBody.Returns(Build.A.Block.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject);
             receiptStorage.LowestInsertedReceiptBlock.Returns(2);
 
-            SyncProgressResolver syncProgressResolver = new SyncProgressResolver(blockTree, receiptStorage, stateDb, syncConfig, LimboLogs.Instance);
+            SyncProgressResolver syncProgressResolver = new SyncProgressResolver(blockTree, receiptStorage, stateDb, new MemDb(), syncConfig, LimboLogs.Instance);
             Assert.True(syncProgressResolver.IsFastBlocksFinished());
         }
     }

@@ -104,17 +104,14 @@ namespace Nethermind.Network
             session.Initialized -= SessionInitialized;
             session.Disconnected -= SessionDisconnected;
 
-            if (_syncPeers.ContainsKey(session.SessionId))
+            if (_syncPeers.TryRemove(session.SessionId, out Eth62ProtocolHandler removed))
             {
-                ISyncPeer syncPeer = _syncPeers[session.SessionId];
-                _syncPool.RemovePeer(syncPeer);
-                _txPool.RemovePeer(syncPeer.Node.Id);
+                _syncPool.RemovePeer(removed);
+                _txPool.RemovePeer(removed.Node.Id);
                 if (session.BestStateReached == SessionState.Initialized)
                 {
                     if (_logger.IsDebug) _logger.Debug($"{session.Direction} {session.Node:s} disconnected {e.DisconnectType} {e.DisconnectReason} {e.Details}");
                 }
-
-                _syncPeers.TryRemove(session.SessionId, out _);
             }
 
             _sessions.TryRemove(session.SessionId, out session);

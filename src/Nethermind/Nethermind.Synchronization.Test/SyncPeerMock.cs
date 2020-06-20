@@ -50,6 +50,10 @@ namespace Nethermind.Synchronization.Test
             }
             
             _remoteTree = remoteTree;
+            HeadNumber = _remoteTree.Head.Number;
+            HeadHash = _remoteTree.Head.Hash;
+            TotalDifficulty = _remoteTree.Head.TotalDifficulty ?? 0;
+            
             _localPublicKey = localPublicKey;
             _remoteSyncServer = remoteSyncServer;
             Node = new Node(remotePublicKey ?? TestItem.PublicKeyA, remoteHost, 1234);
@@ -72,8 +76,10 @@ namespace Nethermind.Synchronization.Test
         
         public Node LocalNode { get; }
         public string ClientId => Node.ClientId;
-        public string EthDetails => Node.EthDetails;
-        public UInt256 TotalDifficultyOnSessionStart => _remoteTree.Head.TotalDifficulty ?? 0;
+        public Keccak HeadHash { get; set; }
+        public long HeadNumber { get; set; }
+        public UInt256 TotalDifficulty { get; set; }
+        public bool IsInitialized { get; set; }
 
         public void Disconnect(DisconnectReason reason, string details)
         {
@@ -150,12 +156,12 @@ namespace Nethermind.Synchronization.Test
 
         public void SendNewBlock(Block block)
         {
-            _sendQueue.Add(() => _remoteSyncServer?.AddNewBlock(block, LocalNode));
+            _sendQueue.Add(() => _remoteSyncServer?.AddNewBlock(block, this));
         }
 
         public void HintNewBlock(Keccak blockHash, long number)
         {
-            _sendQueue.Add(() => _remoteSyncServer?.HintBlock(blockHash, number, Node));
+            _sendQueue.Add(() => _remoteSyncServer?.HintBlock(blockHash, number, this));
         }
 
         public PublicKey Id => Node.Id;

@@ -16,11 +16,13 @@
 
 using System;
 using System.Threading.Tasks;
+using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.ParallelSync
 {
     public interface ISyncFeed<T>
     {
+        int FeedId { get; }
         SyncFeedState CurrentState { get; }
         event EventHandler<SyncFeedStateEventArgs> StateChanged;
         Task<T> PrepareRequest();
@@ -30,6 +32,8 @@ namespace Nethermind.Synchronization.ParallelSync
         /// Multifeed can prepare and handle multiple requests concurrently.
         /// </summary>
         bool IsMultiFeed { get; }
+
+        AllocationContexts Contexts { get; }
         void Activate();
     }
 }

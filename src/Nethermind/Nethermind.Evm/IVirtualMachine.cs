@@ -15,7 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Core;
-using Nethermind.Core.Attributes;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Evm
@@ -24,8 +24,7 @@ namespace Nethermind.Evm
     {
         TransactionSubstate Run(EvmState state, ITxTracer tracer);
         
-        [Todo(Improve.Refactor, "Remove this responsibility from VM")]
-        CodeInfo GetCachedCodeInfo(Address codeSource);
+        CodeInfo GetCachedCodeInfo(Address codeSource, IReleaseSpec releaseSpec);
 
         void DisableSimdInstructions();
     }

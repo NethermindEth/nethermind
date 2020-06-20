@@ -21,6 +21,8 @@ using Nethermind.Blockchain.Processing;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Config;
+using Nethermind.Consensus.AuRa.Validators;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -30,11 +32,21 @@ namespace Nethermind.JsonRpc.Test.Modules
 {
     public class TestAuraProducer : AuRaBlockProducer
     {
-        public TestAuraProducer(IPendingTxSelector pendingTxSelector, IBlockchainProcessor processor, IStateProvider stateProvider, ISealer sealer, IBlockTree blockTree, IBlockProcessingQueue blockProcessingQueue, ITimestamper timestamper, ILogManager logManager, IAuRaStepCalculator auRaStepCalculator, IAuraConfig config, Address nodeAddress) : base(pendingTxSelector, processor, stateProvider, sealer, blockTree, blockProcessingQueue, timestamper, logManager, auRaStepCalculator, config, nodeAddress)
+        public TestAuraProducer(ITxSource transactionSource,
+            IBlockchainProcessor processor,
+            IStateProvider stateProvider,
+            ISealer sealer,
+            IBlockTree blockTree,
+            IBlockProcessingQueue blockProcessingQueue,
+            ITimestamper timestamper,
+            ILogManager logManager,
+            IAuRaStepCalculator auRaStepCalculator,
+            IReportingValidator reportingValidator,
+            IAuraConfig config) : base(transactionSource, processor, stateProvider, sealer, blockTree, blockProcessingQueue, timestamper, logManager, auRaStepCalculator, reportingValidator, config)
         {
         }
 
-        private AutoResetEvent _newBlockArrived = new AutoResetEvent(false);
+        private readonly AutoResetEvent _newBlockArrived = new AutoResetEvent(false);
 
         protected override async ValueTask ProducerLoop()
         {

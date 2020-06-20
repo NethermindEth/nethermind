@@ -21,26 +21,32 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 
 namespace Nethermind.Synchronization.ParallelSync
 {
     public class SyncProgressResolver : ISyncProgressResolver
     {
-        private const int _maxLookup = 64;
+        // TODO: we can search 1024 back and confirm 128 deep header and start using it as Max(0, confirmed)
+        // then we will never have to look 128 back again
+        // note that we will be doing that every second or so
+        private const int _maxLookupBack = 128;
 
         private readonly IBlockTree _blockTree;
         private readonly IReceiptStorage _receiptStorage;
         private readonly IDb _stateDb;
+        private readonly IDb _beamStateDb;
         private readonly ISyncConfig _syncConfig;
         private ILogger _logger;
 
-        public SyncProgressResolver(IBlockTree blockTree, IReceiptStorage receiptStorage, IDb stateDb, ISyncConfig syncConfig, ILogManager logManager)
+        public SyncProgressResolver(IBlockTree blockTree, IReceiptStorage receiptStorage, IDb stateDb, IDb beamStateDb, ISyncConfig syncConfig, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
+            _beamStateDb = beamStateDb ?? throw new ArgumentNullException(nameof(beamStateDb));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
         }
 
@@ -51,43 +57,69 @@ namespace Nethermind.Synchronization.ParallelSync
                 return true;
             }
 
-            return _stateDb.Get(stateRoot) != null;
+            return _stateDb.Innermost.Get(stateRoot) != null;
+        }
+
+        private bool IsBeamSynced(Keccak stateRoot)
+        {
+            if (stateRoot == Keccak.EmptyTreeHash)
+            {
+                return true;
+            }
+
+            return _beamStateDb.Innermost.Get(stateRoot) != null;
         }
 
         public long FindBestFullState()
         {
-            /* There is an interesting scenario (unlikely) here where we download more than 'full sync threshold'
-             blocks in full sync but they are not processed immediately so we switch to node sync
-             and the blocks that we downloaded are processed from their respective roots
-             and the next full sync will be after a leap.
-             This scenario is still correct. It may be worth to analyze what happens
-             when it causes a full sync vs node sync race at every block.*/
+            // so the full state can be in a few places but there are some best guesses
+            // if we are state syncing then the full state may be one of the recent blocks (maybe one of the last 128 blocks)
+            // if we full syncing then the state should be at head
+            // if we are beam syncing then the state should be in a different DB and should not cause much trouble here
+            // it also may seem tricky if best suggested is part of a reorg while we are already full syncing so
+            // ideally we would like to check it siblings too (but this may be a bit expensive and less likely
+            // to be important
+            // we want to avoid a scenario where state is not found even as it is just near head or best suggested
 
-            BlockHeader bestSuggested = _blockTree.BestSuggestedHeader;
             Block head = _blockTree.Head;
-            long bestFullState = head?.Number ?? 0;
-            long maxLookup = Math.Min(_maxLookup * 2, (bestSuggested?.Number ?? 0L) - bestFullState);
+            BlockHeader initialBestSuggested = _blockTree.BestSuggestedHeader; // just storing here for debugging sake
+            BlockHeader bestSuggested = initialBestSuggested;
 
-            for (int i = 0; i < maxLookup; i++)
+            long bestFullState = 0;
+            if (head != null)
             {
-                if (bestSuggested == null)
+                // head search should be very inexpensive as we generally expect the state to be there
+                bestFullState = SearchForFullState(head.Header);
+            }
+
+            if (bestSuggested != null)
+            {
+                if (bestFullState < bestSuggested?.Number)
+                {
+                    bestFullState = Math.Max(bestFullState, SearchForFullState(bestSuggested));
+                }
+            }
+
+            return bestFullState;
+        }
+
+        private long SearchForFullState(BlockHeader startHeader)
+        {
+            long bestFullState = 0;
+            for (int i = 0; i < _maxLookupBack; i++)
+            {
+                if (startHeader == null)
                 {
                     break;
                 }
 
-                if (_syncConfig.BeamSync)
+                if (IsFullySynced(startHeader.StateRoot))
                 {
-                    bestFullState = bestSuggested.Number;
+                    bestFullState = startHeader.Number;
                     break;
                 }
 
-                if (IsFullySynced(bestSuggested.StateRoot))
-                {
-                    bestFullState = bestSuggested.Number;
-                    break;
-                }
-
-                bestSuggested = _blockTree.FindHeader(bestSuggested.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                startHeader = _blockTree.FindHeader(startHeader.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             }
 
             return bestFullState;
@@ -103,25 +135,33 @@ namespace Nethermind.Synchronization.ParallelSync
         }
 
         public long FindBestProcessedBlock() => _blockTree.Head?.Number ?? -1;
-        
+
+        public UInt256 ChainDifficulty => _blockTree.BestSuggestedBody?.TotalDifficulty ?? UInt256.Zero;
+
         public bool IsFastBlocksFinished()
         {
             bool isFastBlocks = _syncConfig.FastBlocks;
-            bool isBeamSync = _syncConfig.BeamSync;
 
             // if pivot number is 0 then it is equivalent to fast blocks disabled
             if (!isFastBlocks || _syncConfig.PivotNumberParsed == 0L)
             {
                 return true;
             }
+            
+            bool immediateBeamSync = !_syncConfig.DownloadHeadersInFastSync;
+            bool anyHeaderDownloaded = _blockTree.LowestInsertedHeader != null;
+            if (immediateBeamSync && anyHeaderDownloaded)
+            {
+                return true;
+            }
 
-            bool anyHeaderDownloaded = (_blockTree.LowestInsertedHeader?.Number ?? long.MaxValue) <= _syncConfig.PivotNumberParsed;
             bool allHeadersDownloaded = (_blockTree.LowestInsertedHeader?.Number ?? long.MaxValue) <= 1;
-            bool allReceiptsDownloaded = !_syncConfig.DownloadReceiptsInFastSync || (_receiptStorage.LowestInsertedReceiptBlock ?? long.MaxValue) <= 1;
-            bool allBodiesDownloaded = !_syncConfig.DownloadBodiesInFastSync || (_blockTree.LowestInsertedBody?.Number ?? long.MaxValue) <= 1;
+            bool allReceiptsDownloaded = !_syncConfig.DownloadReceiptsInFastSync
+                                         || (_receiptStorage.LowestInsertedReceiptBlock ?? long.MaxValue) <= 1;
+            bool allBodiesDownloaded = !_syncConfig.DownloadBodiesInFastSync
+                                       || (_blockTree.LowestInsertedBody?.Number ?? long.MaxValue) <= 1;
 
-            return allBodiesDownloaded && allHeadersDownloaded && allReceiptsDownloaded
-                   || isBeamSync && anyHeaderDownloaded;
+            return allBodiesDownloaded && allHeadersDownloaded && allReceiptsDownloaded;
         }
     }
 }

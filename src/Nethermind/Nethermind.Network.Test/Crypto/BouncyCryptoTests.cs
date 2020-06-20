@@ -14,15 +14,14 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Network.Crypto;
 using Nethermind.Secp256k1;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.Crypto
 {
+    [Parallelizable(ParallelScope.Self)]
     [TestFixture]
     public class BouncyCryptoTests
     {

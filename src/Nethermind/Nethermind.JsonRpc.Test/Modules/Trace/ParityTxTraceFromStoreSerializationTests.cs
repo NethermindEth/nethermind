@@ -14,19 +14,15 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Collections.Generic;
 using System.Linq;
-using Nethermind.Core;
-using Nethermind.Core.Extensions;
-using Nethermind.Core.Test.Builders;
-using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.JsonRpc.Modules.Trace;
-using Nethermind.JsonRpc.Test.Data;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.Trace
 {
+    [TestFixture]
+    [Parallelizable(ParallelScope.Self)]
     public class ParityTxTraceFromStoreSerializationTests : ParityLikeTxTraceSerializationTestBase
     {
         [Test]

@@ -14,44 +14,42 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Synchronization.FastSync;
+using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Synchronization.BeamSync
 {
     public class BeamSyncDbProvider : IDbProvider
     {
-        public INodeDataConsumer NodeDataConsumer { get; }
+        private readonly IDbProvider _otherProvider;
+        public ISyncFeed<StateSyncBatch> BeamSyncFeed { get; }
         
-        public BeamSyncDbProvider(IDbProvider otherProvider, string description, ILogManager logManager)
+        public BeamSyncDbProvider(ISyncModeSelector syncModeSelector, IDbProvider otherProvider, ISyncConfig syncConfig, ILogManager logManager)
         {
-            BeamSyncDb codeDb = new BeamSyncDb(otherProvider.CodeDb.Innermost, logManager);
-            BeamSyncDb stateDb = new BeamSyncDb(otherProvider.StateDb.Innermost, logManager);
-            NodeDataConsumer = new CompositeDataConsumer(logManager,codeDb, stateDb);
-            BlocksDb = otherProvider.BlocksDb;
-            HeadersDb = otherProvider.HeadersDb;
-            BlockInfosDb = otherProvider.BlockInfosDb;
+            _otherProvider = otherProvider ?? throw new ArgumentNullException(nameof(otherProvider));
+            BeamSyncDb codeDb = new BeamSyncDb(otherProvider.CodeDb.Innermost, otherProvider.BeamStateDb, syncModeSelector, logManager, syncConfig.BeamSyncContextTimeout, syncConfig.BeamSyncPreProcessorTimeout);
+            BeamSyncDb stateDb = new BeamSyncDb(otherProvider.StateDb.Innermost, otherProvider.BeamStateDb, syncModeSelector, logManager, syncConfig.BeamSyncContextTimeout, syncConfig.BeamSyncPreProcessorTimeout);
+            BeamSyncFeed = new CompositeStateSyncFeed<StateSyncBatch>(logManager,codeDb, stateDb);
             StateDb = new StateDb(stateDb);
             CodeDb = new StateDb(codeDb);
-            PendingTxsDb = otherProvider.PendingTxsDb;
-            ConfigsDb = otherProvider.ConfigsDb;
-            EthRequestsDb = otherProvider.EthRequestsDb;
-            ReceiptsDb = otherProvider.ReceiptsDb;
-            BloomDb = otherProvider.BloomDb;
-            ChtDb = otherProvider.ChtDb;
         }
         
         public ISnapshotableDb StateDb { get; }
         public ISnapshotableDb CodeDb { get; }
-        public IColumnsDb<ReceiptsColumns> ReceiptsDb { get; }
-        public IDb BlocksDb { get; }
-        public IDb HeadersDb { get; }
-        public IDb BlockInfosDb { get; }
-        public IDb PendingTxsDb { get; }
-        public IDb ConfigsDb { get; }
-        public IDb EthRequestsDb { get; }
-        public IDb BloomDb { get; }
-        public IDb ChtDb { get; }
+        public IColumnsDb<ReceiptsColumns> ReceiptsDb => _otherProvider.ReceiptsDb;
+        public IDb BlocksDb => _otherProvider.BlocksDb;
+        public IDb HeadersDb => _otherProvider.HeadersDb;
+        public IDb BlockInfosDb => _otherProvider.BlockInfosDb;
+        public IDb PendingTxsDb => _otherProvider.PendingTxsDb;
+        public IDb ConfigsDb => _otherProvider.ConfigsDb;
+        public IDb EthRequestsDb => _otherProvider.EthRequestsDb;
+        public IDb BloomDb => _otherProvider.BloomDb;
+        public IDb BeamStateDb => _otherProvider.BeamStateDb;
+        public IDb ChtDb => _otherProvider.ChtDb;
 
         public void Dispose()
         {

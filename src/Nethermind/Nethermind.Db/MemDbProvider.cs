@@ -29,6 +29,7 @@ namespace Nethermind.Db
         public IDb EthRequestsDb { get; } = new MemDb();
         public IDb BloomDb { get; } = new MemDb();
         public IDb ChtDb { get; } = new MemDb();
+        public IDb BeamStateDb { get; } = new MemDb();
 
         public void Dispose()
         {

@@ -25,15 +25,21 @@ using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.Tracing.GethStyle;
+using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Blockchain.Processing
 {
     public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
     {
+        public int SoftMaxRecoveryQueueSizeInTx = 10000; // adjust based on tx or gas
+        public const int MaxProcessingQueueSize = 2000; // adjust based on tx or gas
+
         private readonly IBlockProcessor _blockProcessor;
         private readonly IBlockDataRecoveryStep _recoveryStep;
-        private readonly bool _storeReceiptsByDefault;
+        private readonly Options _options;
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
 
@@ -46,8 +52,6 @@ namespace Nethermind.Blockchain.Processing
         private Task _processorTask;
 
         private int _currentRecoveryQueueSize;
-        public int SoftMaxRecoveryQueueSizeInTx = 10000; // adjust based on tx or gas
-        private const int MaxProcessingQueueSize = 2000; // adjust based on tx or gas
 
         /// <summary>
         /// 
@@ -56,23 +60,21 @@ namespace Nethermind.Blockchain.Processing
         /// <param name="blockProcessor"></param>
         /// <param name="recoveryStep"></param>
         /// <param name="logManager"></param>
-        /// <param name="storeReceiptsByDefault"></param>
-        /// <param name="autoProcess">Registers for OnNewHeadBlock events at block tree.</param>
+        /// <param name="options"></param>
         public BlockchainProcessor(
             IBlockTree blockTree,
             IBlockProcessor blockProcessor,
             IBlockDataRecoveryStep recoveryStep,
             ILogManager logManager,
-            bool storeReceiptsByDefault,
-            bool autoProcess = true)
+            Options options)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
             _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
-            _storeReceiptsByDefault = storeReceiptsByDefault;
+            _options = options;
 
-            if (autoProcess)
+            if (_options.AutoProcess)
             {
                 _blockTree.NewBestSuggestedBlock += OnNewBestBlock;
             }
@@ -83,7 +85,7 @@ namespace Nethermind.Blockchain.Processing
         private void OnNewBestBlock(object sender, BlockEventArgs blockEventArgs)
         {
             ProcessingOptions options = ProcessingOptions.None;
-            if (_storeReceiptsByDefault)
+            if (_options.StoreReceiptsByDefault)
             {
                 options |= ProcessingOptions.StoreReceipts;
             }
@@ -204,6 +206,42 @@ namespace Nethermind.Blockchain.Processing
             }
         }
 
+        private IBlockTracer GetDefaultTracer()
+        {
+            if (_options.RunGethTracer)
+            {
+                return new GethLikeBlockTracer(GethTraceOptions.Default);
+            }
+
+            if (_options.RunParityTracer)
+            {
+                return new ParityLikeBlockTracer(ParityTraceTypes.StateDiff | ParityTraceTypes.Trace);
+            }
+
+            return NullBlockTracer.Instance;
+        }
+
+        private void LogDiagnosticTrace(IBlockTracer blockTracer)
+        {
+            GethLikeBlockTracer gethTracer = blockTracer as GethLikeBlockTracer;
+            ParityLikeBlockTracer parityTracer = blockTracer as ParityLikeBlockTracer;
+            if (gethTracer != null)
+            {
+                var serializer = new EthereumJsonSerializer();
+                var trace = gethTracer.BuildResult();
+                var serialized = serializer.Serialize(trace, true);
+                if(_logger.IsInfo) _logger.Info(serialized);
+            }
+
+            if (parityTracer != null)
+            {
+                var serializer = new EthereumJsonSerializer();
+                var trace = parityTracer.BuildResult();
+                var serialized = serializer.Serialize(trace, true);
+                if(_logger.IsInfo) _logger.Info(serialized);
+            }
+        }
+
         private void RunProcessingLoop()
         {
             _stats.Start();
@@ -225,23 +263,29 @@ namespace Nethermind.Blockchain.Processing
 
                 if (_logger.IsTrace) _logger.Trace($"Processing block {block.ToString(Block.Format.Short)}).");
 
-                IBlockTracer tracer = NullBlockTracer.Instance;
+                IBlockTracer tracer = GetDefaultTracer();
+                try
+                {
+                    Block processedBlock = Process(block, blockRef.ProcessingOptions, tracer);
+                    if (processedBlock == null)
+                    {
+                        if (_logger.IsTrace) _logger.Trace($"Failed / skipped processing {block.ToString(Block.Format.Full)}");
+                    }
+                    else
+                    {
+                        if (_logger.IsTrace) _logger.Trace($"Processed block {block.ToString(Block.Format.Full)}");
+                        _stats.UpdateStats(block, _recoveryQueue.Count, _blockQueue.Count);
+                    }
 
-                Block processedBlock = Process(block, blockRef.ProcessingOptions, tracer);
-                if (processedBlock == null)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Failed / skipped processing {block.ToString(Block.Format.Full)}");
+                    if (_logger.IsTrace) _logger.Trace($"Now {_blockQueue.Count} blocks waiting in the queue.");
+                    if (IsEmpty)
+                    {
+                        ProcessingQueueEmpty?.Invoke(this, EventArgs.Empty);
+                    }
                 }
-                else
+                finally
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Processed block {block.ToString(Block.Format.Full)}");
-                    _stats.UpdateStats(block, _recoveryQueue.Count, _blockQueue.Count);
-                }
-
-                if (_logger.IsTrace) _logger.Trace($"Now {_blockQueue.Count} blocks waiting in the queue.");
-                if (IsEmpty)
-                {
-                    ProcessingQueueEmpty?.Invoke(this, EventArgs.Empty);
+                    LogDiagnosticTrace(tracer);
                 }
             }
 
@@ -272,7 +316,7 @@ namespace Nethermind.Blockchain.Processing
                                  // and below is less correct but potentially reporting well
                                  // || totalDifficulty >= (_blockTree.Head?.TotalDifficulty ?? 0)
                                  || (options & ProcessingOptions.ForceProcessing) == ProcessingOptions.ForceProcessing;
-            
+
             if (!shouldProcess)
             {
                 if (_logger.IsDebug) _logger.Debug($"Skipped processing of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}, Head = {_blockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}, total diff = {totalDifficulty}, head total diff = {_blockTree.Head?.TotalDifficulty}");
@@ -299,7 +343,7 @@ namespace Nethermind.Blockchain.Processing
                 }
             }
 
-            if ((options & ProcessingOptions.ReadOnlyChain) == 0)
+            if ((options & (ProcessingOptions.ReadOnlyChain | ProcessingOptions.DoNotUpdateHead)) == 0)
             {
                 _blockTree.UpdateMainChain(processingBranch.Blocks.ToArray(), true);
             }
@@ -314,6 +358,11 @@ namespace Nethermind.Blockchain.Processing
             else
             {
                 if (_logger.IsDebug) _logger.Debug($"Skipped processing of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}, last processed is null: {lastProcessed == null}, processedBlocks.Length: {processedBlocks?.Length}");
+            }
+
+            if ((options & ProcessingOptions.ReadOnlyChain) == ProcessingOptions.None)
+            {
+                _stats.UpdateStats(lastProcessed, _recoveryQueue.Count, _blockQueue.Count);
             }
 
             return lastProcessed;
@@ -359,7 +408,6 @@ namespace Nethermind.Blockchain.Processing
 
             Block toBeProcessed = suggestedBlock;
             do
-
             {
                 blocksToBeAddedToMain.Add(toBeProcessed);
                 if (_logger.IsTrace) _logger.Trace($"To be processed (of {suggestedBlock.ToString(Block.Format.Short)}) is {toBeProcessed?.ToString(Block.Format.Short)}");
@@ -371,7 +419,8 @@ namespace Nethermind.Blockchain.Processing
                 branchingPoint = _blockTree.FindParentHeader(toBeProcessed.Header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                 if (branchingPoint == null)
                 {
-                    break; //failure here
+                    // genesis block
+                    break;
                 }
 
                 // for beam sync we do not expect previous blocks to necessarily be there and we
@@ -381,7 +430,9 @@ namespace Nethermind.Blockchain.Processing
                     break;
                 }
 
-                bool isFastSyncTransition = _blockTree.Head?.Header == _blockTree.Genesis && toBeProcessed.Number > 1;
+                bool headIsGenesis = _blockTree.Head?.IsGenesis ?? false;
+                bool toBeProcessedIsNotBlockOne = toBeProcessed.Number > 1;
+                bool isFastSyncTransition = headIsGenesis && toBeProcessedIsNotBlockOne;
                 if (!isFastSyncTransition)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Finding parent of {toBeProcessed.ToString(Block.Format.Short)}");
@@ -390,7 +441,7 @@ namespace Nethermind.Blockchain.Processing
 
                     if (toBeProcessed == null)
                     {
-                        if (_logger.IsTrace) _logger.Trace($"Treating this as fast sync transition for {suggestedBlock.ToString(Block.Format.Short)}");
+                        if (_logger.IsDebug) _logger.Debug($"Treating this as fast sync transition for {suggestedBlock.ToString(Block.Format.Short)}");
                         break;
                     }
                 }
@@ -431,15 +482,13 @@ namespace Nethermind.Blockchain.Processing
                 throw new InvalidOperationException("Block without total difficulty calculated was suggested for processing");
             }
 
-            if ((options & ProcessingOptions.ReadOnlyChain) == 0 && suggestedBlock.Hash == null)
+            if ((options & ProcessingOptions.NoValidation) == 0 && suggestedBlock.Hash == null)
             {
                 if (_logger.IsDebug) _logger.Debug($"Skipping processing block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} without calculated hash");
-                throw new InvalidOperationException("Block hash should be known at this stage if the block is not read only");
+                throw new InvalidOperationException("Block hash should be known at this stage if running in a validating mode");
             }
 
-            for (int i = 0;
-                i < suggestedBlock.Ommers.Length;
-                i++)
+            for (int i = 0; i < suggestedBlock.Ommers.Length; i++)
             {
                 if (suggestedBlock.Ommers[i].Hash == null)
                 {
@@ -461,20 +510,35 @@ namespace Nethermind.Blockchain.Processing
             _blockTree.NewBestSuggestedBlock -= OnNewBestBlock;
         }
 
-        private struct ProcessingBranch
+        private readonly struct ProcessingBranch
         {
             public ProcessingBranch(Keccak root, List<Block> blocks)
             {
                 Root = root;
                 Blocks = blocks;
                 BlocksToProcess = new List<Block>();
-                ProcessedBlocks = new List<Block>();
             }
 
             public Keccak Root { get; }
             public List<Block> Blocks { get; }
             public List<Block> BlocksToProcess { get; }
-            public List<Block> ProcessedBlocks { get; }
+        }
+
+        public class Options
+        {
+            public static Options NoReceipts = new Options {StoreReceiptsByDefault = true};
+            public static Options Default = new Options();
+
+            public bool StoreReceiptsByDefault { get; set; } = true;
+
+            /// <summary>
+            /// Registers for OnNewHeadBlock events at block tree. 
+            /// </summary>
+            public bool AutoProcess { get; set; } = true;
+
+            public bool RunGethTracer { get; set; }
+
+            public bool RunParityTracer { get; set; }
         }
     }
 }

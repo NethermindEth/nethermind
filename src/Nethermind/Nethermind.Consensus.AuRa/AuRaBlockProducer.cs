@@ -21,6 +21,8 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus.AuRa.Config;
+using Nethermind.Consensus.AuRa.Validators;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
@@ -31,10 +33,12 @@ namespace Nethermind.Consensus.AuRa
     public class AuRaBlockProducer : BaseLoopBlockProducer
     {
         private readonly IAuRaStepCalculator _auRaStepCalculator;
+        private readonly IReportingValidator _reportingValidator;
         private readonly IAuraConfig _config;
-        private readonly Address _nodeAddress;
+        private readonly IGasLimitOverride _gasLimitOverride;
 
-        public AuRaBlockProducer(IPendingTxSelector pendingTxSelector,
+        public AuRaBlockProducer(
+            ITxSource txSource,
             IBlockchainProcessor processor,
             IStateProvider stateProvider,
             ISealer sealer,
@@ -43,14 +47,16 @@ namespace Nethermind.Consensus.AuRa
             ITimestamper timestamper,
             ILogManager logManager,
             IAuRaStepCalculator auRaStepCalculator,
+            IReportingValidator reportingValidator,
             IAuraConfig config,
-            Address nodeAddress) 
-            : base(pendingTxSelector, processor, sealer, blockTree, blockProcessingQueue, stateProvider, timestamper, logManager, "AuRa")
+            IGasLimitOverride gasLimitOverride = null) 
+            : base(txSource, processor, sealer, blockTree, blockProcessingQueue, stateProvider, timestamper, logManager, "AuRa")
         {
             _auRaStepCalculator = auRaStepCalculator ?? throw new ArgumentNullException(nameof(auRaStepCalculator));
+            _reportingValidator = reportingValidator ?? throw new ArgumentNullException(nameof(reportingValidator));
             _config = config ?? throw new ArgumentNullException(nameof(config));
             CanProduce = _config.AllowAuRaPrivateChains;
-            _nodeAddress = nodeAddress ?? throw new ArgumentNullException(nameof(nodeAddress));
+            _gasLimitOverride = gasLimitOverride;
         }
 
         protected override async ValueTask ProducerLoopStep(CancellationToken cancellationToken)
@@ -65,9 +71,10 @@ namespace Nethermind.Consensus.AuRa
         {
             var block = base.PrepareBlock(parent);
             block.Header.AuRaStep = _auRaStepCalculator.CurrentStep;
-            block.Header.Beneficiary = _nodeAddress;
             return block;
         }
+
+        protected override long GetGasLimit(BlockHeader parent) => _gasLimitOverride?.GetGasLimit(parent) ?? base.GetGasLimit(parent);
 
         protected override UInt256 CalculateDifficulty(BlockHeader parent, UInt256 timestamp) 
             => AuraDifficultyCalculator.CalculateDifficulty(parent.AuRaStep.Value, _auRaStepCalculator.CurrentStep);
@@ -94,6 +101,29 @@ namespace Nethermind.Consensus.AuRa
             }
             
             return false;
+        }
+
+        protected override Block ProcessPreparedBlock(Block block)
+        {
+            var processedBlock = base.ProcessPreparedBlock(block);
+            
+            // We need to check if we are within gas limit. We cannot calculate this in advance because:
+            // a) GasLimit can come from contract
+            // b) Some transactions that call contracts can be added to block and we don't know how much gas they will use.
+            if (processedBlock.GasUsed > processedBlock.GasLimit)
+            {
+                if (Logger.IsError) Logger.Error($"Block produced used {processedBlock.GasUsed} gas and exceeded gas limit {processedBlock.GasLimit}.");
+                return null;
+            }
+            
+            return processedBlock;
+        }
+
+        protected override Task<Block> SealBlock(Block block, BlockHeader parent, CancellationToken token)
+        {
+            // if (block.Number < EmptyStepsTransition)
+            _reportingValidator.TryReportSkipped(block.Header, parent);
+            return base.SealBlock(block, parent, token);
         }
     }
 }

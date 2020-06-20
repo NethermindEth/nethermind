@@ -41,13 +41,13 @@ namespace Nethermind.Consensus.Clique
         private readonly ICache<Keccak, Address> _signatures;
         private readonly IEthereumEcdsa _ecdsa;
         private IDb _blocksDb;
-        private ICache<Keccak, Snapshot> _snapshotCache = new LruCache<Keccak, Snapshot>(Clique.InMemorySnapshots, "clique snapshots");
+        private ICache<Keccak, Snapshot> _snapshotCache = new LruCacheWithRecycling<Keccak, Snapshot>(Clique.InMemorySnapshots, "clique snapshots");
 
         public SnapshotManager(ICliqueConfig cliqueConfig, IDb blocksDb, IBlockTree blockTree, IEthereumEcdsa ecdsa, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _cliqueConfig = cliqueConfig ?? throw new ArgumentNullException(nameof(cliqueConfig));
-            _signatures = new LruCache<Keccak, Address>(Clique.InMemorySignatures, Clique.InMemorySignatures, "signatures");
+            _signatures = new LruCacheWithRecycling<Keccak, Address>(Clique.InMemorySignatures, Clique.InMemorySignatures, "signatures");
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _blocksDb = blocksDb ?? throw new ArgumentNullException(nameof(blocksDb));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -106,6 +106,7 @@ namespace Nethermind.Consensus.Clique
             var headers = new List<BlockHeader>();
             lock (_snapshotCreationLock)
             {
+                BlockHeader? header = null;
                 // Search for a snapshot in memory or on disk for checkpoints
                 while (true)
                 {
@@ -113,10 +114,11 @@ namespace Nethermind.Consensus.Clique
                     if (snapshot != null) break;
 
                     // If we're at an checkpoint block, make a snapshot if it's known
-                    BlockHeader header = _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                    BlockHeader? previousHeader = header;
+                    header = _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                     if (header == null)
                     {
-                        throw new InvalidOperationException("Unknown ancestor");
+                        throw new InvalidOperationException($"Unknown ancestor ({hash}) of {previousHeader?.ToString(BlockHeader.Format.Short)}");
                     }
 
                     if (header.Hash == null) throw new InvalidOperationException("Block tree block without hash set");
@@ -207,6 +209,7 @@ namespace Nethermind.Consensus.Clique
 
         private Snapshot? GetSnapshot(long number, Keccak hash)
         {
+            if(_logger.IsTrace) _logger.Trace($"Getting snapshot for {number}");
             // If an in-memory snapshot was found, use that
             Snapshot cachedSnapshot = _snapshotCache.Get(hash);
             if (cachedSnapshot != null) return cachedSnapshot;

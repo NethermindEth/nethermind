@@ -15,14 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Trie;
-using Nethermind.TxPool;
 using Block = Nethermind.Core.Block;
 
 namespace Nethermind.Facade
@@ -37,11 +35,9 @@ namespace Nethermind.Facade
         bool IsSyncing { get; }
         bool IsMining { get; }
         void RecoverTxSenders(Block block);
-        void RecoverTxSender(Transaction tx, long? blockNumber);
-        (TxReceipt Receipt, Transaction Transaction) GetTransaction(Keccak txHash);
-        Transaction[] GetPendingTransactions();
-        Keccak SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions);
+        void RecoverTxSender(Transaction tx);
         TxReceipt GetReceipt(Keccak txHash);
+        (TxReceipt Receipt, Transaction Transaction) GetTransaction(Keccak txHash);
         BlockchainBridge.CallOutput Call(BlockHeader blockHeader, Transaction transaction);
         BlockchainBridge.CallOutput EstimateGas(BlockHeader header, Transaction tx);
         long GetChainId();
@@ -50,17 +46,21 @@ namespace Nethermind.Facade
         UInt256 GetNonce(Address address);
         byte[] GetStorage(Address address, UInt256 index, Keccak storageRoot);
         Account GetAccount(Address address, Keccak stateRoot);
+        
         int NewBlockFilter();
         int NewPendingTransactionFilter();
         int NewFilter(BlockParameter fromBlock, BlockParameter toBlock, object address = null, IEnumerable<object> topics = null);
         void UninstallFilter(int filterId);
         bool FilterExists(int filterId);
-        FilterLog[] GetLogFilterChanges(int filterId);
         Keccak[] GetBlockFilterChanges(int filterId);
         Keccak[] GetPendingTransactionFilterChanges(int filterId);
+        FilterLog[] GetLogFilterChanges(int filterId);
+        
         FilterType GetFilterType(int filterId);
         FilterLog[] GetFilterLogs(int filterId);
+        
         IEnumerable<FilterLog> GetLogs(BlockParameter fromBlock, BlockParameter toBlock, object address = null, IEnumerable<object> topics = null);
         void RunTreeVisitor(ITreeVisitor treeVisitor, Keccak stateRoot);
+        
     }
 }

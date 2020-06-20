@@ -43,7 +43,7 @@ namespace Nethermind.TxPool
 
         private readonly ConcurrentDictionary<Address, AddressNonces> _nonces = new ConcurrentDictionary<Address, AddressNonces>();
 
-        private LruCache<Keccak, object> _hashCache = new LruCache<Keccak, object>(MemoryAllowance.TxHashCacheSize, MemoryAllowance.TxHashCacheSize, "tx hashes");
+        private LruKeyCache<Keccak> _hashCache = new LruKeyCache<Keccak>(MemoryAllowance.TxHashCacheSize, MemoryAllowance.TxHashCacheSize, "tx hashes");
 
         /// <summary>
         /// Number of blocks after which own transaction will not be resurrected any more
@@ -195,12 +195,14 @@ namespace Nethermind.TxPool
             if (_logger.IsTrace) _logger.Trace($"Removed a peer from TX pool: {nodeId}");
         }
 
-        private object _hashCacheMarker = new object();
-
-        public AddTxResult AddTransaction(Transaction tx, long blockNumber, TxHandlingOptions handlingOptions)
+        public AddTxResult AddTransaction(Transaction tx, TxHandlingOptions handlingOptions)
         {
             bool managedNonce = (handlingOptions & TxHandlingOptions.ManagedNonce) == TxHandlingOptions.ManagedNonce;
             bool isPersistentBroadcast = (handlingOptions & TxHandlingOptions.PersistentBroadcast) == TxHandlingOptions.PersistentBroadcast;
+            if (isPersistentBroadcast)
+            {
+                if (_logger.IsTrace) _logger.Trace($"Adding transaction {tx.ToString("  ")} - managed nonce: {managedNonce} | persistent brodcast {isPersistentBroadcast}");
+            }
 
             if (_fadingOwnTransactions.ContainsKey(tx.Hash))
             {
@@ -237,7 +239,7 @@ namespace Nethermind.TxPool
             }
 
             // !!! do not change it to |=
-            bool isKnown = _hashCache.Get(tx.Hash) != null;
+            bool isKnown = _hashCache.Get(tx.Hash);
 
             /* We have encountered multiple transactions that do not resolve sender address properly.
              * We need to investigate what these txs are and why the sender address is resolved to null.
@@ -245,7 +247,7 @@ namespace Nethermind.TxPool
              */
             if (tx.SenderAddress == null)
             {
-                tx.SenderAddress = _ecdsa.RecoverAddress(tx, blockNumber);
+                tx.SenderAddress = _ecdsa.RecoverAddress(tx);
                 if (tx.SenderAddress == null)
                 {
                     return AddTxResult.PotentiallyUseless;
@@ -273,23 +275,24 @@ namespace Nethermind.TxPool
                 return AddTxResult.AlreadyKnown;
             }
 
-            _hashCache.Set(tx.Hash, _hashCacheMarker);
+            _hashCache.Set(tx.Hash);
 
             HandleOwnTransaction(tx, isPersistentBroadcast);
 
             NotifySelectedPeers(tx);
-            FilterAndStoreTx(tx, blockNumber);
+            FilterAndStoreTx(tx);
             NewPending?.Invoke(this, new TxEventArgs(tx));
             return AddTxResult.Added;
         }
 
-        private void HandleOwnTransaction(Transaction transaction, bool isOwn)
+        private void HandleOwnTransaction(Transaction tx, bool isOwn)
         {
             if (isOwn)
             {
-                _ownTransactions.TryAdd(transaction.Hash, transaction);
+                _ownTransactions.TryAdd(tx.Hash, tx);
                 _ownTimer.Enabled = true;
-                if (_logger.IsDebug) _logger.Debug($"Broadcasting own transaction {transaction.Hash} to {_peers.Count} peers");
+                if (_logger.IsDebug) _logger.Debug($"Broadcasting own transaction {tx.Hash} to {_peers.Count} peers");
+                if(_logger.IsTrace) _logger.Trace($"Broadcasting transaction {tx.ToString("  ")}");
             }
         }
 
@@ -313,7 +316,7 @@ namespace Nethermind.TxPool
 
                 if (!(nonce.TransactionHash is null && nonce.TransactionHash != transaction.Hash))
                 {
-                    // Nonce conflict
+                    // Nonce conflicteth
                     if (_logger.IsWarn) _logger.Warn($"Nonce: {nonce.Value} was already used in transaction: '{nonce.TransactionHash}' and cannot be reused by transaction: '{transaction.Hash}'.");
 
                     return true;
@@ -394,12 +397,7 @@ namespace Nethermind.TxPool
 
             return transaction != null;
         }
-
-        public bool HasBeenKnown(Keccak hash)
-        {
-            return _hashCache.Get(hash) != null;
-        }
-
+        
         // TODO: Ensure that nonce is always valid in case of sending own transactions from different nodes.
         public UInt256 ReserveOwnTransactionNonce(Address address)
         {
@@ -475,7 +473,7 @@ namespace Nethermind.TxPool
             }
         }
 
-        private void FilterAndStoreTx(Transaction tx, long blockNumber)
+        private void FilterAndStoreTx(Transaction tx)
         {
             var filters = _filters.Values;
             if (filters.Any(filter => !filter.IsValid(tx)))
@@ -483,7 +481,7 @@ namespace Nethermind.TxPool
                 return;
             }
 
-            _txStorage.Add(tx, blockNumber);
+            _txStorage.Add(tx);
             if (_logger.IsTrace) _logger.Trace($"Added a transaction: {tx.Hash}");
         }
 

@@ -14,8 +14,10 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.RoutingTable
@@ -27,7 +29,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
 
         public NodeBucket(int distance, int bucketSize)
         {
-            _items = new SortedSet<NodeBucketItem>(new LastContactTimeComparer());
+            _items = new SortedSet<NodeBucketItem>(LastContactTimeComparer.Instance);
             Distance = distance;
             BucketSize = bucketSize;
         }
@@ -45,6 +47,17 @@ namespace Nethermind.Network.Discovery.RoutingTable
                 lock (_nodeBucketLock)
                 {
                     return _items.ToArray();
+                }
+            }
+        }
+        
+        public IReadOnlyCollection<NodeBucketItem> BondedItems
+        {
+            get
+            {
+                lock (_nodeBucketLock)
+                {
+                    return _items.Where(i => (DateTime.UtcNow - i.LastContactTime) < TimeSpan.FromDays(2)).ToArray();
                 }
             }
         }
@@ -114,6 +127,25 @@ namespace Nethermind.Network.Discovery.RoutingTable
 
         private class LastContactTimeComparer : IComparer<NodeBucketItem>
         {
+            private LastContactTimeComparer()
+            {
+            }
+            
+            private static LastContactTimeComparer _lastContactTimeComparer;
+
+            public static LastContactTimeComparer Instance
+            {
+                get
+                {
+                    if (_lastContactTimeComparer == null)
+                    {
+                        LazyInitializer.EnsureInitialized(ref _lastContactTimeComparer, () => new LastContactTimeComparer());
+                    }
+
+                    return _lastContactTimeComparer;
+                }
+            }
+            
             public int Compare(NodeBucketItem x, NodeBucketItem y)
             {
                 if (ReferenceEquals(x, y))

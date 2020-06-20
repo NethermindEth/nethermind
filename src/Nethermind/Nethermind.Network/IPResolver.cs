@@ -15,11 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
 using System.Net;
-using System.Net.Sockets;
 using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
@@ -68,9 +65,9 @@ namespace Nethermind.Network
             {
                 yield return new EnvironmentVariableIPSource();
                 yield return new NetworkConfigExternalIPSource(_networkConfig, _logManager);
+                yield return new WebIPSource("http://ipv4.icanhazip.com", _logManager);
+                yield return new WebIPSource("http://ipv4bot.whatismyipaddress.com", _logManager);
                 yield return new WebIPSource("http://checkip.amazonaws.com", _logManager);
-                yield return new WebIPSource("http://icanhazip.com", _logManager);
-                yield return new WebIPSource("http://bot.whatismyipaddress.com", _logManager);
                 yield return new WebIPSource("http://ipinfo.io/ip", _logManager);
                 yield return new WebIPSource("http://api.ipify.org", _logManager);
             }
@@ -79,7 +76,7 @@ namespace Nethermind.Network
             {
                 foreach (var s in GetIPSources())
                 {
-                    if (s.TryGetIP(out var ip))
+                    if (s.TryGetIP(out var ip) && !ip.IsInternal())
                     {
                         ThisNodeInfo.AddInfo("External IP  :", $"{ip}");
                         return ip;

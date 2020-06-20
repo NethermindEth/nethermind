@@ -15,23 +15,21 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Diagnostics;
-using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Synchronization.FastSync
 {
     [DebuggerDisplay("Requested Nodes: {RequestedNodes?.Length ?? 0}, Responses: {Responses?.Length ?? 0}, Assigned: {AssignedPeer?.Current}")]
     public class StateSyncBatch
     {
-        public int Type { get; set; }
-        
         public StateSyncItem[] RequestedNodes { get; set; }
         
         public byte[][] Responses { get; set; }
 
-        public bool IsAdditionalDataConsumer { get; set; }
-        
-        public UInt256 RequiredPeerDifficulty { get; set; }
-
         public int ConsumerId { get; set; }
+
+        public override string ToString()
+        {
+            return $"{RequestedNodes?.Length ?? 0} state sync requests with {Responses?.Length ?? 0} responses";
+        }
     }
 }

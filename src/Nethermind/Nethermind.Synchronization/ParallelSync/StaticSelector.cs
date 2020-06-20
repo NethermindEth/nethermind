@@ -25,6 +25,8 @@ namespace Nethermind.Synchronization.ParallelSync
             Current = syncMode;
         }
 
+        public static StaticSelector Beam { get; } = new StaticSelector(SyncMode.Beam);
+        
         public static StaticSelector Full { get; } = new StaticSelector(SyncMode.Full);
 
         public static StaticSelector FastSync { get; } = new StaticSelector(SyncMode.FastSync);
@@ -38,8 +40,20 @@ namespace Nethermind.Synchronization.ParallelSync
         public static StaticSelector FullWithFastBlocks { get; } = new StaticSelector(SyncMode.Full | SyncMode.FastBlocks);
 
         public SyncMode Current { get; }
+        
+        public event EventHandler<SyncModeChangedEventArgs> Preparing
+        {
+            add { }
+            remove { }
+        }
 
         public event EventHandler<SyncModeChangedEventArgs> Changed
+        {
+            add { }
+            remove { }
+        }
+        
+        public event EventHandler<SyncModeChangedEventArgs> Changing
         {
             add { }
             remove { }

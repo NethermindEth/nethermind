@@ -8,4 +8,8 @@
     <ProjectReference Include="..\Nethermind.KeyStore\Nethermind.KeyStore.csproj" />
     <ProjectReference Include="..\Nethermind.Serialization.Rlp\Nethermind.Serialization.Rlp.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="System.IO.Abstractions" Version="11.0.7" />
+    <PackageReference Include="System.Runtime.Caching" Version="4.7.0" />
+  </ItemGroup>
 </Project>

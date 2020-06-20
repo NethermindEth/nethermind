@@ -20,6 +20,7 @@ namespace Nethermind.Wallet
 {
     public interface INodeKeyManager
     {
-        PrivateKey LoadNodeKey();
+        ProtectedPrivateKey LoadNodeKey();
+        ProtectedPrivateKey LoadSignerKey();
     }
 }

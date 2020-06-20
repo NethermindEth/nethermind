@@ -29,7 +29,7 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.State;
 using Nethermind.State.Repositories;
-using Nethermind.Store.Bloom;
+using Nethermind.Db.Blooms;
 using Nethermind.TxPool;
 using NUnit.Framework;
 
@@ -64,7 +64,7 @@ namespace Nethermind.Blockchain.Test.Tracing
             TransactionProcessor transactionProcessor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, LimboLogs.Instance);
             BlockProcessor blockProcessor = new BlockProcessor(specProvider, TestBlockValidator.AlwaysValid, NoBlockRewards.Instance, transactionProcessor, stateDb, codeDb, stateProvider, storageProvider, NullTxPool.Instance, NullReceiptStorage.Instance, LimboLogs.Instance);
             
-            _processor = new BlockchainProcessor(_blockTree, blockProcessor, new CompositeDataRecoveryStep(), LimboLogs.Instance, false);
+            _processor = new BlockchainProcessor(_blockTree, blockProcessor, new CompositeDataRecoveryStep(), LimboLogs.Instance, BlockchainProcessor.Options.NoReceipts);
             Block genesis = Build.A.Block.Genesis.TestObject;
             _blockTree.SuggestBlock(genesis);
             _processor.Process(genesis, ProcessingOptions.None, NullBlockTracer.Instance);

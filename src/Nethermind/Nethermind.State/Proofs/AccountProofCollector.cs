@@ -91,7 +91,7 @@ namespace Nethermind.State.Proofs
 
                 _accountProof.StorageProofs[i] = new StorageProof();
                 _accountProof.StorageProofs[i].Key = storageKeys[i];
-                _accountProof.StorageProofs[i].Value = null;
+                _accountProof.StorageProofs[i].Value = new byte[] {0};
             }
         }
 

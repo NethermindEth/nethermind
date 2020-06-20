@@ -31,10 +31,15 @@ using Nethermind.Dirichlet.Numerics;
 using Nethermind.Facade;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
+using Nethermind.PubSub.Models;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using Nethermind.Trie;
 using Nethermind.TxPool;
+using Block = Nethermind.Core.Block;
+using BlockHeader = Nethermind.Core.BlockHeader;
+using Signature = Nethermind.Core.Crypto.Signature;
+using Transaction = Nethermind.Core.Transaction;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
@@ -44,6 +49,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         private readonly IJsonRpcConfig _rpcConfig;
         private readonly IBlockchainBridge _blockchainBridge;
+        private readonly ITxPoolBridge _txPoolBridge;
 
         private readonly ILogger _logger;
 
@@ -54,11 +60,12 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return rootCheckVisitor.HasRoot;
         }
         
-        public EthModule(IJsonRpcConfig rpcConfig, IBlockchainBridge blockchainBridge, ILogManager logManager)
+        public EthModule(IJsonRpcConfig rpcConfig, IBlockchainBridge blockchainBridge, ITxPoolBridge txPoolBridge, ILogManager logManager)
         {
             _logger = logManager.GetClassLogger();
             _rpcConfig = rpcConfig ?? throw new ArgumentNullException(nameof(rpcConfig));
             _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
+            _txPoolBridge = txPoolBridge ?? throw new ArgumentNullException(nameof(txPoolBridge));
         }
 
         public ResultWrapper<string> eth_protocolVersion()
@@ -166,7 +173,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return ResultWrapper<byte[]>.Success(Bytes.Empty);
             }
 
-            return ResultWrapper<byte[]>.Success(_blockchainBridge.GetStorage(address, positionIndex, header.StateRoot));
+            var storage = _blockchainBridge.GetStorage(address, positionIndex, header.StateRoot);
+            return ResultWrapper<byte[]>.Success(storage.PadLeft(32));
         }
 
         public Task<ResultWrapper<UInt256?>> eth_getTransactionCount(Address address, BlockParameter blockParameter)
@@ -303,7 +311,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             try
             {
-                Keccak txHash = _blockchainBridge.SendTransaction(tx, TxHandlingOptions.PersistentBroadcast);
+                Keccak txHash = _txPoolBridge.SendTransaction(tx, TxHandlingOptions.PersistentBroadcast);
                 return Task.FromResult(ResultWrapper<Keccak>.Success(txHash));
             }
             catch (SecurityException e)
@@ -400,13 +408,18 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public ResultWrapper<TransactionForRpc> eth_getTransactionByHash(Keccak transactionHash)
         {
-            (TxReceipt receipt, Transaction transaction) = _blockchainBridge.GetTransaction(transactionHash);
+            Transaction transaction = _txPoolBridge.GetPendingTransaction(transactionHash);
+            TxReceipt receipt = null; // note that if transaction is pending then for sure no receipt is known
             if (transaction == null)
             {
-                return ResultWrapper<TransactionForRpc>.Success(null);
+                (receipt, transaction) = _blockchainBridge.GetTransaction(transactionHash);
+                if (transaction == null)
+                {
+                    return ResultWrapper<TransactionForRpc>.Success(null);
+                }
             }
 
-            RecoverTxSenderIfNeeded(transaction, receipt?.BlockNumber);
+            RecoverTxSenderIfNeeded(transaction);
             TransactionForRpc transactionModel = new TransactionForRpc(receipt?.BlockHash, receipt?.BlockNumber, receipt?.Index, transaction);
             if (_logger.IsTrace) _logger.Trace($"eth_getTransactionByHash request {transactionHash}, result: {transactionModel.Hash}");
             return ResultWrapper<TransactionForRpc>.Success(transactionModel);
@@ -414,12 +427,12 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public ResultWrapper<TransactionForRpc[]> eth_pendingTransactions()
         {
-            var transactions = _blockchainBridge.GetPendingTransactions();
+            var transactions = _txPoolBridge.GetPendingTransactions();
             var transactionsModels = new TransactionForRpc[transactions.Length];
             for (int i = 0; i < transactions.Length; i++)
             {
                 var transaction = transactions[i];
-                RecoverTxSenderIfNeeded(transaction, null);
+                RecoverTxSenderIfNeeded(transaction);
                 transactionsModels[i] = new TransactionForRpc(transaction);
                 transactionsModels[i].BlockHash = Keccak.Zero;
             }
@@ -443,7 +456,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
 
             Transaction transaction = block.Transactions[(int) positionIndex];
-            RecoverTxSenderIfNeeded(transaction, block.Number);
+            RecoverTxSenderIfNeeded(transaction);
 
             TransactionForRpc transactionModel = new TransactionForRpc(block.Hash, block.Number, (int) positionIndex, transaction);
 
@@ -465,7 +478,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
 
             Transaction transaction = block.Transactions[(int) positionIndex];
-            RecoverTxSenderIfNeeded(transaction, block.Number);
+            RecoverTxSenderIfNeeded(transaction);
 
             TransactionForRpc transactionModel = new TransactionForRpc(block.Hash, block.Number, (int) positionIndex, transaction);
 
@@ -660,11 +673,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
         }
 
-        private void RecoverTxSenderIfNeeded(Transaction transaction, long? blockNumber)
+        private void RecoverTxSenderIfNeeded(Transaction transaction)
         {
             if (transaction.SenderAddress == null)
             {
-                _blockchainBridge.RecoverTxSender(transaction, blockNumber);
+                _blockchainBridge.RecoverTxSender(transaction);
             }
         }
     }

@@ -23,10 +23,10 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Db.Blooms;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.State.Repositories;
-using Nethermind.Store.Bloom;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -34,9 +34,12 @@ using Nethermind.Synchronization.Reporting;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
+using BlockTree = Nethermind.Blockchain.BlockTree;
 
 namespace Nethermind.Synchronization.Test.FastBlocks
 {
+    [Parallelizable(ParallelScope.Self)]
+    [TestFixture]
     public class FastHeadersSyncTests
     {
         [Test]
@@ -72,17 +75,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             var result = await feed.PrepareRequest();
             result.Should().BeNull();
         }
-        
-        [Test]
-        public async Task Does_not_prepare_more_batches_in_beam_sync()
-        {
-            IBlockTree blockTree = Substitute.For<IBlockTree>();
-            blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1000).TestObject);
-            FastHeadersSyncFeed feed = new FastHeadersSyncFeed(blockTree, Substitute.For<ISyncPeerPool>(), new SyncConfig{BeamSync = true, FastSync = true, FastBlocks = true, PivotNumber = "1000", PivotHash = Keccak.Zero.ToString(), PivotTotalDifficulty = "1000"}, Substitute.For<ISyncReport>(), LimboLogs.Instance);
-            var result = await feed.PrepareRequest();
-            result.Should().BeNull();
-        }
-        
+
         [Test]
         public async Task Finishes_when_all_downloaded()
         {

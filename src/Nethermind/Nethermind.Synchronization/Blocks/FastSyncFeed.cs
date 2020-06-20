@@ -17,22 +17,25 @@
 using System;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Logging;
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.Blocks
 {
-    public class FastSyncFeed : SyncFeed<BlocksRequest>
+    public class FastSyncFeed : SyncFeed<BlocksRequest>, IDisposable
     {
         private readonly ISyncModeSelector _syncModeSelector;
         private readonly ISyncConfig _syncConfig;
 
-        public FastSyncFeed(ISyncModeSelector syncModeSelector, ISyncConfig syncConfig)
+        public FastSyncFeed(ISyncModeSelector syncModeSelector, ISyncConfig syncConfig, ILogManager logManager)
+            : base(logManager)
         {
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
 
             DownloaderOptions options = BuildOptions();
-            _blocksRequest = new BlocksRequest(options, 32);
+            _blocksRequest = new BlocksRequest(options, MultiSyncModeSelector.FastSyncLag);
             
             _syncModeSelector.Changed += SyncModeSelectorOnChanged;
         }
@@ -80,5 +83,12 @@ namespace Nethermind.Synchronization.Blocks
         }
 
         public override bool IsMultiFeed => false;
+        
+        public override AllocationContexts Contexts => AllocationContexts.Blocks;
+
+        public void Dispose()
+        {
+            _syncModeSelector.Changed -= SyncModeSelectorOnChanged;
+        }
     }
 }

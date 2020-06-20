@@ -129,12 +129,6 @@ namespace Nethermind.State
                     throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {_currentPosition} - {i}");
                 }
 
-//                if (change.ChangeType == ChangeType.Destroy)
-//                {
-//                    _storages[change.StorageAddress.Address] = _destructedStorages[change.StorageAddress.Address].Storage;
-//                    _destructedStorages.Remove(change.StorageAddress.Address);
-//                }
-
                 _changes[_currentPosition - i] = null;
 
                 if (_intraBlockCache[change.StorageCell].Count == 0)
@@ -229,15 +223,6 @@ namespace Nethermind.State
                     tracer.ReportStorageRead(change.StorageCell);
                 }
 
-
-//                if (_destructedStorages.ContainsKey(change.StorageAddress.Address))
-//                {
-//                    if (_destructedStorages[change.StorageAddress.Address].ChangeIndex > _currentPosition - i)
-//                    {
-//                        continue;
-//                    }
-//                }
-
                 _committedThisRound.Add(change.StorageCell);
 
                 if (change.ChangeType == ChangeType.Destroy)
@@ -292,7 +277,6 @@ namespace Nethermind.State
             _committedThisRound.Reset();
             _intraBlockCache.Reset();
             _originalValues.Reset();
-//            _destructedStorages.Clear();
 
             if (isTracing)
             {
@@ -324,20 +308,6 @@ namespace Nethermind.State
             _committedThisRound.Clear();
             Array.Clear(_changes, 0, _changes.Length);
             _storages.Reset();
-//            _destructedStorages.Clear();
-        }
-
-        /// <summary>
-        /// The code handling destroy is commented out. There are plenty of ethereum tests which handle collision of addresses.
-        /// I would like to clarify why we even consider it a possibility?
-        /// </summary>
-        /// <param name="address"></param>
-        public void Destroy(Address address)
-        {
-//            IncrementPosition();
-//            _destructedStorages.Add(address, (_currentPosition, GetOrCreateStorage(address)));
-//            _changes[_currentPosition] = new Change(ChangeType.Destroy, new StorageAddress(address, 0), null);
-//            _storages[address] = new StorageTree(_stateDb, Keccak.EmptyTreeHash);
         }
 
         public void CommitTrees()
@@ -362,21 +332,11 @@ namespace Nethermind.State
             return _storages[address];
         }
 
-//        private Dictionary<Address, (int ChangeIndex, StorageTree Storage)> _destructedStorages = new Dictionary<Address, (int, StorageTree)>();
-
         private byte[] GetCurrentValue(StorageCell storageCell)
         {
             if (_intraBlockCache.ContainsKey(storageCell))
             {
                 int lastChangeIndex = _intraBlockCache[storageCell].Peek();
-//                if (_destructedStorages.ContainsKey(storageAddress.Address))
-//                {
-//                    if (lastChangeIndex < _destructedStorages[storageAddress.Address].ChangeIndex)
-//                    {
-//                        return new byte[] {0};
-//                    }
-//                }
-
                 return _changes[lastChangeIndex].Value;
             }
 
@@ -435,6 +395,24 @@ namespace Nethermind.State
             public ChangeType ChangeType { get; }
             public StorageCell StorageCell { get; }
             public byte[] Value { get; }
+        }
+
+        public void ClearStorage(Address address)
+        {
+            /* we are setting cached values to zero so we do not use previously set values
+               when the contract is revived with CREATE2 inside the same block */
+            foreach (var cellByAddress in _intraBlockCache)
+            {
+                if (cellByAddress.Key.Address == address)
+                {
+                    Set(cellByAddress.Key, _zeroValue);
+                }
+            }
+
+            /* here it is important to make sure that we will not reuse the same tree when the contract is revived
+               by means of CREATE 2 - notice that the cached trie may carry information about items that were not
+               touched in this block, hence were not zeroed above */
+            _storages[address] = new StorageTree(_stateDb, Keccak.EmptyTreeHash);
         }
 
         private enum ChangeType

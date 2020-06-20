@@ -18,10 +18,11 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
-using Nethermind.Store.Bloom;
+using Nethermind.Db.Blooms;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -82,7 +83,7 @@ namespace Nethermind.Blockchain.Test.Bloom
             
             return storage.ContainsRange(from, to);
         }
-        
+
         public static IEnumerable GetBloomsTestCases
         {
             get
@@ -196,31 +197,34 @@ namespace Nethermind.Blockchain.Test.Bloom
                 return Core.Bloom.ByteLength;
             }
 
-            public IFileReader GetFileReader()
+            public IFileReader CreateFileReader()
             {
                 return new InMemoryDictionaryFileReader(this);
             }
 
-            public void Flush()
-            {
-                Flushes++;
-            }
-
             public int Flushes { get; private set; }
         }
-
+        
         [Test]
-        public void Flushes_on_get_after_store()
+        public void Can_safely_insert_concurrently()
         {
-            var fileStoreFactory = Substitute.For<IFileStoreFactory>();
-            var fileStore = new MockFileStore();
-            fileStoreFactory.Create(Arg.Any<string>()).Returns(fileStore);
-            var storage = new BloomStorage(_config, _bloomDb, fileStoreFactory);
-            storage.Store(1, Core.Bloom.Empty);
-            foreach (var _ in storage.GetBlooms(0, 1)) { }
-            fileStoreFactory.Received().Create(Arg.Any<string>());
-            fileStore.Flushes.Should().BeGreaterThan(0);
-        }
+            _config.IndexLevelBucketSizes = new[]{byte.MaxValue + 1};
+            var storage = new BloomStorage(_config, _bloomDb, _fileStoreFactory);
+            Core.Bloom expectedBloom = new Core.Bloom();
+            for (int i = 0; i <= byte.MaxValue; i++)
+            {
+                expectedBloom.Set(i);
+            }
 
+            Parallel.For(0, byte.MaxValue * byte.MaxValue * 2, i =>
+            {
+                var bloom = new Core.Bloom();
+                bloom.Set(i % Core.Bloom.BitLength);
+                storage.Store(i, bloom);
+            });
+
+            var first = storage.GetBlooms(0, byte.MaxValue * 3).First();
+            first.Should().Be(expectedBloom);
+        }
     }
 }

@@ -18,6 +18,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
@@ -33,13 +34,13 @@ namespace Nethermind.Blockchain.Producers
         private const int DelayBetweenBlocks = 5_000;
 
         public DevBackgroundBlockProducer(
-            IPendingTxSelector pendingTxSelector,
+            ITxSource txSource,
             IBlockchainProcessor processor,
             IBlockTree blockTree,
             IBlockProcessingQueue blockProcessingQueue,
             IStateProvider stateProvider,
             ITimestamper timestamper,
-            ILogManager logManager) : base(pendingTxSelector, processor, NullSealEngine.Instance, blockTree, blockProcessingQueue, stateProvider, timestamper, logManager, "Dev")
+            ILogManager logManager) : base(txSource, processor, NullSealEngine.Instance, blockTree, blockProcessingQueue, stateProvider, timestamper, logManager, "Dev")
         {
         }
 
