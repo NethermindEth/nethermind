@@ -216,6 +216,12 @@ namespace Nethermind.Crypto.Bls
         public static extern void mclBnG1_mul(ref G1 z, ref G1 x, ref Fr y);
 
         [DllImport(MclBls12Lib)]
+        public static extern void mclBnG1_normalize(ref G1 y, ref G1 x);
+
+        [DllImport(MclBls12Lib)]
+        public static extern void mclBnG2_normalize(ref G2 y, ref G2 x);
+
+        [DllImport(MclBls12Lib)]
         public static extern void mclBnG2_clear(ref G2 x);
 
         [DllImport(MclBls12Lib)]
@@ -301,6 +307,9 @@ namespace Nethermind.Crypto.Bls
 
         [DllImport(MclBls12Lib)]
         public static extern int mclBnFp_mapToG1(ref G1 y, ref Fp x);
+
+        [DllImport(MclBls12Lib)]
+        public static extern int mclBnFp2_mapToG2(ref G2 y, ref Fp2 x);
 
         [DllImport(MclBls12Lib)]
         public static extern int mclBn_setMapToMode(int mode);

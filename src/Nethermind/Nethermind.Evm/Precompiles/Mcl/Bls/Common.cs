@@ -1,9 +1,7 @@
 using System;
 using System.Numerics;
 using Nethermind.Core.Extensions;
-using Nethermind.Crypto;
 using Nethermind.Crypto.Bls;
-using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Evm.Precompiles.Mcl.Bls
 {
@@ -89,6 +87,22 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bls
                 success = fp.IsValid();
             }
 
+            return success;
+        }
+        
+        public static bool TryReadFp2(in Span<byte> inputDataSpan, in int offset, out Fp2 fp)
+        {
+            bool success = TryReadFp(inputDataSpan, offset, out Fp fp0);
+            success &= TryReadFp(inputDataSpan, offset + LenFp, out Fp fp1);
+            if (success)
+            {
+                fp = new Fp2(fp0, fp1);
+            }
+            else
+            {
+                fp = new Fp2();
+            }
+            
             return success;
         }
         

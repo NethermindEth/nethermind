@@ -16,7 +16,9 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto.Bls;
 
 namespace Nethermind.Evm.Precompiles.Mcl.Bls
 {
@@ -44,8 +46,22 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bls
         }
 
         public (byte[], bool) Run(byte[] inputData)
-        {  
-            throw new NotImplementedException();
+        {
+            Span<byte> inputDataSpan = stackalloc byte[4 * Common.LenFp];
+            Mcl.PrepareInputData(inputData, inputDataSpan);
+            
+            (byte[], bool) result;
+            if (Common.TryReadFp2(inputDataSpan, 0, out Fp2 fp2))
+            {
+                G2 g2 = fp2.MapToG2();
+                result = (Common.SerializeEthG2(g2), true);
+            }
+            else
+            {
+                result = (Bytes.Empty, false);
+            }
+            
+            return result;
         }
     }
 }

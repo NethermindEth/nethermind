@@ -75,15 +75,6 @@ namespace Nethermind.Crypto.Bls
             return sb.ToString();
         }
 
-        public static G2 CreateFpomBigEndian(Span<byte> a, Span<byte> b, Span<byte> c, Span<byte> d)
-        {
-            var aInt = new BigInteger(a, true, true);
-            var bInt = new BigInteger(b, true, true);
-            var cInt = new BigInteger(c, true, true);
-            var dInt = new BigInteger(d, true, true);
-            return Create(aInt, bInt, cInt, dInt);
-        }
-
         public static G2 Create(BigInteger a, BigInteger b, BigInteger c, BigInteger d)
         {
             G2 g2 = new G2();

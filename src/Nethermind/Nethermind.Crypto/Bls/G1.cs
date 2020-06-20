@@ -158,5 +158,10 @@ namespace Nethermind.Crypto.Bls
                 MclBls12.mclBnG1_mulVec(ref z, xPtr, yPtr, x.Length);
             }
         }
+
+        public void Normalize(G1 g1)
+        {
+            MclBls12.mclBnG1_normalize(ref this, ref g1);
+        }
     }
 }
