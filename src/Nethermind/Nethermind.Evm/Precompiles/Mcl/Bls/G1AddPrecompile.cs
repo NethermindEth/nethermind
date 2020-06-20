@@ -18,7 +18,6 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
 using Nethermind.Crypto.Bls;
 
 namespace Nethermind.Evm.Precompiles.Mcl.Bls
@@ -51,12 +50,6 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bls
             Span<byte> inputDataSpan = stackalloc byte[4 * Common.LenFp];
             Mcl.PrepareInputData(inputData, inputDataSpan);
 
-            // for diagnostic - can be removed
-            // Common.TryReadFp(inputDataSpan, 0 * Common.LenFp, out MclBls12.Fp fp1);
-            // Common.TryReadFp(inputDataSpan, 1 * Common.LenFp, out MclBls12.Fp fp2);
-            // Common.TryReadFp(inputDataSpan, 2 * Common.LenFp, out MclBls12.Fp fp3);
-            // Common.TryReadFp(inputDataSpan, 3 * Common.LenFp, out MclBls12.Fp fp4);
-            
             (byte[], bool) result;
             if (Common.TryReadEthG1(inputDataSpan, 0 * Common.LenFp, out G1 a) &&
                 Common.TryReadEthG1(inputDataSpan, 2 * Common.LenFp, out G1 b))

@@ -123,5 +123,14 @@ namespace Nethermind.Crypto.Bls
         {
             MclBls12.mclBnG2_mul(ref this, ref x, ref y);
         }
+        
+        public static unsafe void MultiMul(ref G2 z, Span<G2> x, Span<Fr> y)
+        {
+            fixed (G2* xPtr = x)
+            fixed (Fr* yPtr = y)
+            {
+                MclBls12.mclBnG2_mulVec(ref z, xPtr, yPtr, x.Length);
+            }
+        }
     }
 }

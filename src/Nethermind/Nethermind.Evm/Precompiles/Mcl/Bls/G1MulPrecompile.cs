@@ -15,13 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
 using Nethermind.Crypto.Bls;
-using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Evm.Precompiles.Mcl.Bls
 {
@@ -66,35 +63,6 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bls
             }
 
             return result;
-        }
-
-        private static G1 MulAlternative(G1 g1, UInt256 s)
-        {
-            G1 res;
-            if (s.IsZero)
-            {
-                g1.Clear();
-            }
-
-            if (g1.IsZero())
-            {
-                res = g1;
-            }
-            else
-            {
-                res = new G1();
-                int bitLength = ((BigInteger)s).BitLength();
-                for (int i = bitLength - 1; i >= 0; i--)
-                {
-                    res.Dbl(res);
-                    if (s.TestBit(i))
-                    {
-                        res.Add(res, g1);
-                    }
-                }   
-            }
-
-            return res;
         }
     }
 }

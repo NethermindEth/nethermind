@@ -16,7 +16,9 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto.Bls;
 
 namespace Nethermind.Evm.Precompiles.Mcl.Bls
 {
@@ -40,13 +42,38 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bls
 
         public long DataGasCost(byte[] inputData, IReleaseSpec releaseSpec)
         {
-            int k = inputData.Length / 290;
+            int k = inputData.Length / 288;
             return 55000L * k * Discount.For[k] / 1000;;
         }
+        
+        private const int ItemSize = 288;
 
         public (byte[], bool) Run(byte[] inputData)
-        {  
-            throw new NotImplementedException();
+        {
+            inputData ??= Bytes.Empty;
+            if (inputData.Length % ItemSize > 0)
+            {
+                // note that it will not happen in case of null / 0 length
+                return (Bytes.Empty, false);
+            }
+
+            int count = inputData.Length / ItemSize;
+            G2 calculated = new G2();
+            Span<G2> inputG2 = new G2[count];
+            Span<Fr> inputFr = new Fr[count];
+
+            for (int i = 0; i < count; i++)
+            {
+                Span<byte> currentBytes = inputData.AsSpan().Slice(i * ItemSize, ItemSize);
+                if (!Common.TryReadEthG2(currentBytes, 0, out inputG2[i]) ||
+                    !Common.TryReadEthFr(currentBytes, 4 * Common.LenFp, out inputFr[i]))
+                {
+                    return (Bytes.Empty, false);
+                }
+            }
+            
+            G2.MultiMul(ref calculated, inputG2, inputFr);
+            return (Common.SerializeEthG2(calculated), true);
         }
     }
 }

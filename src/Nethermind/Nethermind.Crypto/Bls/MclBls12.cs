@@ -309,7 +309,7 @@ namespace Nethermind.Crypto.Bls
         public static extern unsafe void mclBnG1_mulVec(ref G1 z, void* x, void* y, int size);
 
         [DllImport(MclBls12Lib)]
-        public static extern void mclBnG2_mulVec(ref G2 z, ref G2 x, ref Fp y, int size);
+        public static extern unsafe void mclBnG2_mulVec(ref G2 z, void* x, void* y, int size);
 
         // int mclBnFp2_mapToG2(ref G1 y, ref Fp x);
 
