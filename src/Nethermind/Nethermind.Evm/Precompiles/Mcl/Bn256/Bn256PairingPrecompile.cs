@@ -63,22 +63,21 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bn256
             UInt256 result = UInt256.One;
             if (inputData.Length > 0)
             {
-                 List<(Crypto.Bn256.G1 P, Crypto.Bn256.G2 Q)> pairs = new List<(Crypto.Bn256.G1 P, Crypto.Bn256.G2 Q)>();
-                 
-                 // iterating over all pairs
-                 for (int offset = 0; offset < inputData.Length; offset += PairSize)
-                 {
-                     Span<byte> pairData = inputData.Slice(offset, PairSize);
-                     (Crypto.Bn256.G1 P, Crypto.Bn256.G2 Q)? pair = DecodePair(pairData);
-                     if (pair == null || !pair.Value.P.IsValid() || !pair.Value.Q.IsValid())
-                     {
-                         return (Bytes.Empty, false);
-                     }
+                List<(Crypto.Bn256.G1 P, Crypto.Bn256.G2 Q)> pairs = new List<(Crypto.Bn256.G1 P, Crypto.Bn256.G2 Q)>();
+                // iterating over all pairs
+                for (int offset = 0; offset < inputData.Length; offset += PairSize)
+                {
+                    Span<byte> pairData = inputData.Slice(offset, PairSize);
+                    (Crypto.Bn256.G1 P, Crypto.Bn256.G2 Q)? pair = DecodePair(pairData);
+                    if (pair == null)
+                    {
+                        return (Bytes.Empty, false);
+                    }
 
-                     pairs.Add(pair.Value);
-                 }
-                 
-                 result = RunPairingCheck(pairs);
+                    pairs.Add(pair.Value);
+                }
+
+                result = RunPairingCheck(pairs);
             }
 
             byte[] resultBytes = new byte[32];
@@ -113,33 +112,21 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bn256
             return result;
         }
 
-        private (Crypto.Bn256.G1, Crypto.Bn256.G2)? DecodePair(Span<byte> input)
+        private static (Crypto.Bn256.G1, Crypto.Bn256.G2)? DecodePair(Span<byte> input)
         {
-            (Crypto.Bn256.G1, Crypto.Bn256.G2)? res;
-            Span<byte> x = input.Slice(0, 32);
-            Span<byte> y = input.Slice(32, 32);
-
-            Crypto.Bn256.G1? p = Crypto.Bn256.G1.CreateFromBigEndian(x, y);
-            if (p is null)
+            (Crypto.Bn256.G1, Crypto.Bn256.G2)? result;
+            
+            if (Common.TryReadEthG1(input, 0, out Crypto.Bn256.G1 p) &&
+                Common.TryReadEthG2(input, 2 * Common.LenFp, out Crypto.Bn256.G2 q))
             {
-                res = null;
+                result = (p, q);
             }
             else
             {
-                // (b, a)
-                Span<byte> b = input.Slice(64, 32);
-                Span<byte> a = input.Slice(96, 32);
-
-                // (d, c)
-                Span<byte> d = input.Slice(128, 32);
-                Span<byte> c = input.Slice(160, 32);
-
-                Crypto.Bn256.G2 q = Crypto.Bn256.G2.CreateFromBigEndian(a, b, c, d);
-
-                res =  (p.Value, q);    
+                result = null;
             }
-
-            return res;
+            
+            return result;
         }
     }
 }

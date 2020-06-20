@@ -25,7 +25,7 @@ using NUnit.Framework;
 namespace Nethermind.Evm.Test
 {
     [TestFixture]
-    public class BlsG1MultiMulPrecompileTests
+    public class BlsMultiMulG1PrecompileTests
     {
         [Test]
         public void Test()

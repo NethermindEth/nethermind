@@ -40,6 +40,27 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bn256
 
             return success;
         }
+        
+        public static bool TryReadEthG2(in Span<byte> inputDataSpan, in int offset, out Crypto.Bn256.G2 g2)
+        {
+            bool success;
+            if (inputDataSpan.Length < offset + 4 * LenFp)
+            {
+                g2 = new Nethermind.Crypto.Bn256.G2();
+                success = false;
+            }
+            else
+            {
+                UInt256.CreateFromBigEndian(out UInt256 bInt, inputDataSpan.Slice(offset + 0 * LenFp, LenFp));
+                UInt256.CreateFromBigEndian(out UInt256 aInt, inputDataSpan.Slice(offset + 1 * LenFp, LenFp));
+                UInt256.CreateFromBigEndian(out UInt256 dInt, inputDataSpan.Slice(offset + 2 * LenFp, LenFp));
+                UInt256.CreateFromBigEndian(out UInt256 cInt, inputDataSpan.Slice(offset + 3 * LenFp, LenFp));
+                g2 = Crypto.Bn256.G2.Create(aInt, bInt, cInt, dInt);
+                success = g2.IsValid();
+            }
+
+            return success;
+        }
 
         public static byte[] SerializeEthG1(Crypto.Bn256.G1 g1)
         {
