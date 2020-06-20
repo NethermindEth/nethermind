@@ -77,11 +77,14 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bls
             else
             {
                 Span<byte> fpBytes = inputDataSpan.Slice(offset + 0 * LenFp, LenFp);
-                BigInteger fpInt = new BigInteger(fpBytes.Slice(16), true, true);
+                // BigInteger fpInt = new BigInteger(fpBytes.Slice(16), true, true);
                 fp = new MclBls12.Fp();
 
-                fpInt = fpInt % MclBls12.P;
-                fp.SetStr(fpInt.ToString(), 10);
+                // fpInt = fpInt % MclBls12.P;
+                
+                Bytes.ChangeEndianness8(fpBytes);
+                fp.FpSetLittleEndianMod(fpBytes, 48);
+                // fp.SetStr(fpInt.ToString(), 10);
                 success = fp.IsValid();
             }
 

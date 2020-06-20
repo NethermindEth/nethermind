@@ -1,4 +1,5 @@
 using System;
+using System.Buffers.Binary;
 using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 
@@ -12,6 +13,15 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bn256
         private static readonly byte[] Zero16 = new byte[16];
         private static readonly byte[] ZeroResult64 = new byte[64];
 
+        public static bool ReadFr(in Span<byte> inputDataSpan, in int offset, out Crypto.Bn256.Fr fr)
+        {
+            fr = new Crypto.Bn256.Fr();
+            Span<byte> changed = inputDataSpan.Slice(offset, 32); 
+            Bytes.ChangeEndianness8(changed);
+            fr.FrSetLittleEndianMod(changed, 32);
+            return true;
+        }
+        
         public static bool TryReadEthG1(in Span<byte> inputDataSpan, in int offset, out Crypto.Bn256.G1 g1)
         {
             bool success;

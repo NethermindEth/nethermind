@@ -290,19 +290,19 @@ namespace Nethermind.Crypto
                 }
             }
 
-            public unsafe void FrSetLittleEndian(byte[] data, int len)
+            public unsafe void FrSetLittleEndian(Span<byte> data, int len)
             {
-                fixed (byte* serializedPtr = &MemoryMarshal.GetReference(data.AsSpan()))
+                fixed (byte* serializedPtr = &MemoryMarshal.GetReference(data))
                 {
                     mclBnFr_setLittleEndian(ref this, serializedPtr, len);
                 }
             }
 
-            public unsafe void FrSetLittleEndianMod(byte[] data, int len)
+            public unsafe void FrSetLittleEndianMod(Span<byte> data, int len)
             {
-                fixed (byte* serializedPtr = &MemoryMarshal.GetReference(data.AsSpan()))
+                fixed (byte* serializedPtr = &MemoryMarshal.GetReference(data))
                 {
-                    mclBnFr_setLittleEndian(ref this, serializedPtr, len);
+                    mclBnFr_setLittleEndianMod(ref this, serializedPtr, len);
                 }
             }
 
