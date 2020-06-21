@@ -58,6 +58,7 @@ namespace Nethermind.Runner.Hive
             _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
             var hiveConfig = _configurationProvider.GetConfig<IHiveConfig>();
             ListEnvironmentVariables();
+            InitializeGenesis(hiveConfig.GenesisFile);
             Console.WriteLine("Initializatiing keys..");
             InitializeKeys(hiveConfig.KeysDir);
             Console.WriteLine("Done \n Initializating chain...");
@@ -135,6 +136,19 @@ namespace Nethermind.Runner.Hive
                 if (_logger.IsInfo) _logger.Info($"HIVE Processing a chain.rlp block {block.ToString(Block.Format.Short)}");
                 ProcessBlock(block);
             }
+        }
+
+        private void InitializeGenesis(string genesisFile)
+        {
+            var files = Directory.GetFiles(genesisFile).OrderBy(x => x).ToArray();
+            var blocks = files.Select(x => new {File = x, Block = DecodeBlock(x)}).OrderBy(x => x.Block.Header.Number).ToArray();
+
+            foreach (var block in blocks)
+            {
+                Console.WriteLine($"HIVE Processing genesis file: {block.File} - {block.Block.ToString(Block.Format.Short)}");
+                if (_logger.IsInfo) _logger.Info($"HIVE Processing genesis file: {block.File} - {block.Block.ToString(Block.Format.Short)}");
+                ProcessBlock(block.Block);
+            } 
         }
 
         private void InitializeBlocks(string blocksDir, CancellationToken cancellationToken)

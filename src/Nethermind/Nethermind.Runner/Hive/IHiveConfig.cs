@@ -21,6 +21,9 @@ namespace Nethermind.Runner.Hive
     [ConfigCategory(Description = "These items need only be set when testing with Hive (Ethereum Foundation tool)")]
     public interface IHiveConfig : IConfig
     {
+        [ConfigItem(DefaultValue="\"/genesis.json\"")]
+        string GenesisFile { get; set; }  
+
         [ConfigItem(Description = "Path to a file with a test chain definition.", DefaultValue = "\"/chain.rlp\"")]
         string ChainFile { get; set; }
         
