@@ -58,9 +58,13 @@ namespace Nethermind.Runner.Hive
             _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
             var hiveConfig = _configurationProvider.GetConfig<IHiveConfig>();
             ListEnvironmentVariables();
+            Console.WriteLine("Initializatiing keys..");
             InitializeKeys(hiveConfig.KeysDir);
+            Console.WriteLine("Done \n Initializating chain...");
             InitializeChain(hiveConfig.ChainFile);
+            Console.WriteLine("Done \n Initializating blocks...");
             InitializeBlocks(hiveConfig.BlocksDir, cancellationToken);
+            Console.WriteLine("Done");
             _blockTree.NewHeadBlock -= BlockTreeOnNewHeadBlock;
             _logger.Info("HIVE initialization completed");
             return Task.CompletedTask;
@@ -107,6 +111,7 @@ namespace Nethermind.Runner.Hive
         {
             if (!File.Exists(chainFile))
             {
+                Console.WriteLine($"HIVE Chain file does not exist: {chainFile}, skipping");
                 if (_logger.IsInfo) _logger.Info($"HIVE Chain file does not exist: {chainFile}, skipping");
                 return;
             }
@@ -140,6 +145,7 @@ namespace Nethermind.Runner.Hive
                 return;
             }
 
+            Console.WriteLine($"HIVE Loading blocks from {blocksDir}");
             if (_logger.IsInfo) _logger.Info($"HIVE Loading blocks from {blocksDir}");
             var files = Directory.GetFiles(blocksDir).OrderBy(x => x).ToArray();
             var blocks = files.Select(x => new {File = x, Block = DecodeBlock(x)}).OrderBy(x => x.Block.Header.Number).ToArray();
@@ -150,6 +156,7 @@ namespace Nethermind.Runner.Hive
                     break;
                 }
                 
+                Console.WriteLine($"HIVE Processing block file: {block.File} - {block.Block.ToString(Block.Format.Short)}");
                 if (_logger.IsInfo) _logger.Info($"HIVE Processing block file: {block.File} - {block.Block.ToString(Block.Format.Short)}");
                 ProcessBlock(block.Block);
             }
