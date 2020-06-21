@@ -149,6 +149,11 @@ namespace Nethermind.Runner.Hive
             if (_logger.IsInfo) _logger.Info($"HIVE Loading blocks from {blocksDir}");
             var files = Directory.GetFiles(blocksDir).OrderBy(x => x).ToArray();
             var blocks = files.Select(x => new {File = x, Block = DecodeBlock(x)}).OrderBy(x => x.Block.Header.Number).ToArray();
+            Console.WriteLine("Loaded blocks: ");
+            foreach(var block in blocks)
+            {
+                Console.WriteLine(block.Block);
+            }
             foreach (var block in blocks)
             {
                 if (cancellationToken.IsCancellationRequested)
@@ -174,6 +179,7 @@ namespace Nethermind.Runner.Hive
         {
             try
             {
+                
                 _blockTree.SuggestBlock(block);
                 if (_logger.IsInfo) _logger.Info($"HIVE suggested {block.ToString(Block.Format.Short)}, now best suggested header {_blockTree.BestSuggestedHeader}, head {_blockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}");
             }
