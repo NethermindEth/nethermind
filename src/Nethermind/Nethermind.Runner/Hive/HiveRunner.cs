@@ -58,12 +58,13 @@ namespace Nethermind.Runner.Hive
             _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
             var hiveConfig = _configurationProvider.GetConfig<IHiveConfig>();
             ListEnvironmentVariables();
-            InitializeGenesis(hiveConfig.GenesisFile);
             Console.WriteLine("Initializatiing keys..");
             InitializeKeys(hiveConfig.KeysDir);
-            Console.WriteLine("Done \n Initializating chain...");
+            Console.WriteLine("Initializating chain...");
             InitializeChain(hiveConfig.ChainFile);
-            Console.WriteLine("Done \n Initializating blocks...");
+            Console.WriteLine("Initializing genesis...");
+            InitializeGenesis(hiveConfig.GenesisFile);
+            Console.WriteLine("Initializating blocks...");
             InitializeBlocks(hiveConfig.BlocksDir, cancellationToken);
             Console.WriteLine("Done");
             _blockTree.NewHeadBlock -= BlockTreeOnNewHeadBlock;
