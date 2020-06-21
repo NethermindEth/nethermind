@@ -82,10 +82,6 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_context.DbProvider == null) throw new StepDependencyException(nameof(_context.DbProvider));
             if (_context.TransactionProcessor == null) throw new StepDependencyException(nameof(_context.TransactionProcessor));
 
-            Console.WriteLine($"ChainSpec: {_context.ChainSpec}\n");
-            Console.WriteLine($"Blocktree: {_context.BlockTree}\n");
-            Console.WriteLine($"StateProvider: {_context.StateProvider}\n");
-
             var genesis = new GenesisLoader(
                 _context.ChainSpec,
                 _context.SpecProvider,
