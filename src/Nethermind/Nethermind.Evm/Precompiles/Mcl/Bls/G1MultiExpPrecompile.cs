@@ -43,7 +43,7 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bls
         public long DataGasCost(byte[] inputData, IReleaseSpec releaseSpec)
         {
             int k = inputData.Length / 192;
-            return 12000L * k * Discount.For[k] / 1000;
+            return 12000L * k * Discount.For(k) / 1000;
         }
 
         private const int ItemSize = 160;

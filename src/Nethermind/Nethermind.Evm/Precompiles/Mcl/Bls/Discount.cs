@@ -24,7 +24,27 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bls
     /// </summary>
     internal static class Discount
     {
-        public static Dictionary<int, int> For = new Dictionary<int, int>
+        public static int For(int k)
+        {
+            int discount;
+            
+            if (k == 0)
+            {
+                discount = 0;
+            }
+            else if (k > 128)
+            {
+                discount = 174; // max
+            }
+            else
+            {
+                discount = _discountTable[k];
+            }
+
+            return discount;
+        }
+        
+        private static Dictionary<int, int> _discountTable = new Dictionary<int, int>
         {
             {1, 1200}, {2, 888}, {3, 764}, {4, 641}, {5, 594}, {6, 547}, {7, 500}, {8, 453},
             {9, 438}, {10, 423}, {11, 408}, {12, 394}, {13, 379}, {14, 364}, {15, 349}, {16, 334},
