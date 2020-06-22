@@ -18,7 +18,7 @@ Database by default is located in::
 
 NLog config
 ^^^^^^^^^^^
-You can change the level of logging in file and in the console by choosing one of the levels (Error, Warn, Info, Debug, Trace)::
+You can change the level of logging in file and in the console by choosing one of the levels (Info, Error, Warn, Debug, Trace)::
 
     <logger name="*" minlevel="Info" writeTo="file-async"/>
     <logger name="*" minlevel="Info" writeTo="auto-colored-console-async"/>
