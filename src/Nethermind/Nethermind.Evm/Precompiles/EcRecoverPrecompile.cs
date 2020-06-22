@@ -22,6 +22,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Specs;
 using Nethermind.Logging;
+using Org.BouncyCastle.Asn1.Cms;
 
 namespace Nethermind.Evm.Precompiles
 {
@@ -47,27 +48,28 @@ namespace Nethermind.Evm.Precompiles
 
         private readonly EthereumEcdsa _ecdsa = new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance);
         
+        private readonly byte[] _zero32 = new byte[32];
+        
         public (byte[], bool) Run(byte[] inputData)
         {
             Metrics.EcRecoverPrecompile++;
-            
-            inputData = (inputData ?? Bytes.Empty).PadRight(128);
 
-            Keccak hash = new Keccak(inputData.Slice(0, 32));
-            byte[] vBytes = inputData.Slice(32, 32);
-            byte[] r = inputData.Slice(64, 32);
-            byte[] s = inputData.Slice(96, 32);
+            Span<byte> inputDataSpan = stackalloc byte[128];
+            (inputData ?? Bytes.Empty).AsSpan(0, Math.Min(128, inputData.Length))
+                .CopyTo(inputDataSpan.Slice(0, Math.Min(128, inputData.Length)));
+
+            Keccak hash = new Keccak(inputDataSpan.Slice(0, 32).ToArray());
+            Span<byte> vBytes = inputData.Slice(32, 32);
+            Span<byte> r = inputData.Slice(64, 32);
+            Span<byte> s = inputData.Slice(96, 32);
 
             // TEST: CALLCODEEcrecoverV_prefixedf0_d0g0v0
             // TEST: CALLCODEEcrecoverV_prefixedf0_d1g0v0
-            for (int i = 0; i < 31; i++)
+            if (!Bytes.AreEqual(_zero32, vBytes))
             {
-                if (vBytes[i] != 0)
-                {
-                    return (Bytes.Empty, true);
-                }
+                return (Bytes.Empty, true);
             }
-
+            
             byte v = vBytes[31];
             if (v != 27 && v != 28)
             {
@@ -80,31 +82,15 @@ namespace Nethermind.Evm.Precompiles
             {
                 return (Bytes.Empty, true);
             }
+
+            byte[] result = recovered.Bytes;
+            if (result.Length != 32)
+            {
+                result = result.PadLeft(32);
+            }
             
-            return (recovered.Bytes.PadLeft(32), true); // TODO: change recovery code to return bytes?
-        }
-        
-        private class NullLogManager : ILogManager
-        {
-            public ILogger GetClassLogger(Type type)
-            {
-                return NullLogger.Instance;
-            }
-
-            public ILogger GetClassLogger<T>()
-            {
-                return NullLogger.Instance;
-            }
-
-            public ILogger GetClassLogger()
-            {
-                return NullLogger.Instance;
-            }
-
-            public ILogger GetLogger(string loggerName)
-            {
-                return NullLogger.Instance;
-            }
+            // TODO: change recovery code to return bytes
+            return (result, true);
         }
     }
 }
