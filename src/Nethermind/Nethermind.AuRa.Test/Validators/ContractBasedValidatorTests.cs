@@ -44,7 +44,7 @@ using BlockTree = Nethermind.Blockchain.BlockTree;
 
 namespace Nethermind.AuRa.Test.Validators
 {
-    public class ContractValidatorTests
+    public class ContractBasedValidatorTests
     {
         private IStateProvider _stateProvider;
         private IAbiEncoder _abiEncoder;
@@ -195,8 +195,10 @@ namespace Nethermind.AuRa.Test.Validators
                     block.Header,
                     Arg.Is<ITxTracer>(t => t is CallOutputTracer));
 
-                // initial validator should be true
-            validator.Validators.Should().BeEquivalentTo(new Address[] { initialValidator }, o => o.WithStrictOrdering());
+            // initial validator should be true
+            Address[] expectedValidators = { initialValidator };
+            validator.Validators.Should().BeEquivalentTo(expectedValidators, o => o.WithStrictOrdering());
+            _validatorStore.GetValidators().Should().BeEquivalentTo(expectedValidators.AsEnumerable());
         }
 
         public static IEnumerable<TestCaseData> ConsecutiveInitiateChangeData

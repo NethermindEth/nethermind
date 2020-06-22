@@ -129,6 +129,15 @@ namespace Nethermind.Consensus.AuRa.Validators
             }
             else
             {
+                if (mainChainProcessing && skippingBlocks)
+                {
+                    bool loadedValidatorsAreSameInStore = (ValidatorStore.GetValidators()?.SequenceEqual(Validators) == true);
+                    if (!loadedValidatorsAreSameInStore)
+                    {
+                        ValidatorStore.SetValidators(block.Number - 1, Validators);
+                    }
+                }
+                
                 if (isProcessingBlock)
                 {
                     bool reorganisationHappened = block.Number <= _lastProcessedBlockNumber;
