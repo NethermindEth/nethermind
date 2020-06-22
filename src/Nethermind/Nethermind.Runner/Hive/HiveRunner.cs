@@ -141,6 +141,7 @@ namespace Nethermind.Runner.Hive
 
         private void InitializeGenesis(string genesisFile)
         {
+            Console.WriteLine("IMPORTING GENESIS BLOCK");
             var files = Directory.GetFiles(genesisFile).OrderBy(x => x).ToArray();
             var blocks = files.Select(x => new {File = x, Block = DecodeBlock(x)}).OrderBy(x => x.Block.Header.Number).ToArray();
 
