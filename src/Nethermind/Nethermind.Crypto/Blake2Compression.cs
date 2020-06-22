@@ -40,7 +40,7 @@ namespace Nethermind.Crypto
             new byte[] {10, 8, 7, 1, 2, 4, 6, 5, 15, 9, 3, 13, 11, 14, 12, 0}
         };
 
-        private static readonly  ulong[] IV =
+        private static readonly ulong[] IV =
         {
             0x6a09e667f3bcc908ul, 0xbb67ae8584caa73bul, 0x3c6ef372fe94f82bul,
             0xa54ff53a5f1d36f1ul, 0x510e527fade682d1ul, 0x9b05688c2b3e6c1ful,

@@ -25,6 +25,9 @@ namespace Nethermind.Evm.Precompiles
     public class Blake2FPrecompile : IPrecompile
     {
         private const int RequiredInputLength = 213;
+        
+        private Blake2Compression _blake = new Blake2Compression();
+        
         public static readonly IPrecompile Instance = new Blake2FPrecompile();
 
         public Address Address { get; } = Address.FromNumber(9);
@@ -38,13 +41,13 @@ namespace Nethermind.Evm.Precompiles
                 return 0;
             }
             
-            var finalByte = inputData[212];
+            byte finalByte = inputData[212];
             if (finalByte != 0 && finalByte != 1)
             {
                 return 0;
             }
             
-            var rounds = inputData.AsSpan().Slice(0, 4).ReadEthUInt32();
+            uint rounds = inputData.AsSpan().Slice(0, 4).ReadEthUInt32();
 
             return rounds;
         }
@@ -56,15 +59,14 @@ namespace Nethermind.Evm.Precompiles
                 return (Bytes.Empty, false);
             }
 
-            var finalByte = inputData[212];
+            byte finalByte = inputData[212];
             if (finalByte != 0 && finalByte != 1)
             {
                 return (Bytes.Empty, false);
             }
-            
-            var blake = new Blake2Compression();
-            var result = new byte[64];
-            blake.Compress(inputData, result);
+
+            byte[] result = new byte[64];
+            _blake.Compress(inputData, result);
 
             return (result, true);
         }
