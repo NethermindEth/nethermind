@@ -148,10 +148,10 @@ namespace Nethermind.Runner.Hive
                  return;
             }
 
-            var genesisFileContent = File.ReadAllBytes(genesisFile);
-            var rlpStream = new RlpStream(genesisFileContent);
+            var genesisFileContent = File.ReadAllText(genesisFile);
+            Console.WriteLine($"Gensis file content : {genesisFileContent}");
+            var genesisBlock = _jsonSerializer.Deserialize<Block>(genesisFileContent);
 
-            var genesisBlock = Rlp.Decode<Block>(rlpStream);
             Console.WriteLine($"Decoded genesis block: {genesisBlock}");
             Console.WriteLine($"Is genesis file: {genesisBlock.IsGenesis}");
             _blockTree.SuggestBlock(genesisBlock);
