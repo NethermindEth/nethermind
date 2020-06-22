@@ -142,15 +142,19 @@ namespace Nethermind.Runner.Hive
         private void InitializeGenesis(string genesisFile)
         {
             Console.WriteLine("IMPORTING GENESIS BLOCK");
-            var files = Directory.GetFiles(genesisFile).OrderBy(x => x).ToArray();
-            var blocks = files.Select(x => new {File = x, Block = DecodeBlock(x)}).OrderBy(x => x.Block.Header.Number).ToArray();
-
-            foreach (var block in blocks)
+            if(!File.Exists(genesisFile))
             {
-                Console.WriteLine($"HIVE Processing genesis file: {block.File} - {block.Block.ToString(Block.Format.Short)}");
-                if (_logger.IsInfo) _logger.Info($"HIVE Processing genesis file: {block.File} - {block.Block.ToString(Block.Format.Short)}");
-                ProcessBlock(block.Block);
-            } 
+                 Console.WriteLine("Genesis file does not exists!!!");
+                 return;
+            }
+
+            var genesisFileContent = File.ReadAllBytes(genesisFile);
+            var rlpStream = new RlpStream(genesisFileContent);
+
+            var genesisBlock = Rlp.Decode<Block>(rlpStream);
+            Console.WriteLine($"Decoded genesis block: {genesisBlock}");
+            Console.WriteLine($"Is genesis file: {genesisBlock.IsGenesis}");
+            _blockTree.SuggestBlock(genesisBlock);
         }
 
         private void InitializeBlocks(string blocksDir, CancellationToken cancellationToken)
