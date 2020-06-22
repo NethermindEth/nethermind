@@ -26,22 +26,12 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bls
     {
         public static int For(int k)
         {
-            int discount;
-            
-            if (k == 0)
+            return k switch
             {
-                discount = 0;
-            }
-            else if (k > 128)
-            {
-                discount = 174; // max
-            }
-            else
-            {
-                discount = _discountTable[k];
-            }
-
-            return discount;
+                0 => 0,
+                var x when x >= 128 => 174,
+                _ => _discountTable[k]
+            };
         }
         
         private static Dictionary<int, int> _discountTable = new Dictionary<int, int>
