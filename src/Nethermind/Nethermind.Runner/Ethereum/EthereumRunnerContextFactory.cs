@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.IO;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Logging;
@@ -38,10 +39,15 @@ namespace Nethermind.Runner.Ethereum
             
             IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
             ILogger logger = _logManager.GetClassLogger();
-            if (logger.IsDebug) logger.Debug($"Loading chain spec from {initConfig.ChainSpecPath}");
-            ThisNodeInfo.AddInfo("Chainspec    :", $"{initConfig.ChainSpecPath}");
+            if (logger.IsDebug) logger.Debug($"Loading chain spec from chainspec/test.json"); 
+            ThisNodeInfo.AddInfo("Chainspec    :", "chainspec/test.json");
             IChainSpecLoader loader = new ChainSpecLoader(ethereumJsonSerializer);
-            ChainSpec chainSpec = loader.LoadFromFile(initConfig.ChainSpecPath);
+            if(!File.Exists("chainspec/test.json"))
+            {
+                Console.WriteLine($"File chainspec/test.json does not exists !!!!");
+                throw new Exception("File chainspec/test.json does not exists !!!!");
+            }
+            ChainSpec chainSpec = loader.LoadFromFile("chainspec/test.json");
             
             logManager.SetGlobalVariable("chain", chainSpec.Name);
             logManager.SetGlobalVariable("chainId", chainSpec.ChainId);

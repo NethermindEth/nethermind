@@ -80,6 +80,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 Type? type = GetStepType(typeGroup);
                 if (type != null)
                 {
+                    Console.WriteLine($"Discovered Ethereum step : {type.Name}");
                     if (_logger.IsDebug) _logger.Debug($"Discovered Ethereum step: {type.Name}");
                     _discoveredSteps[type] = false;
 
