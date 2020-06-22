@@ -19,6 +19,7 @@ using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Evm.Precompiles.Mcl.Bn256;
 
 namespace Nethermind.Benchmarks.Evm
 {
