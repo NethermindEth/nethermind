@@ -20,6 +20,8 @@ using Nethermind.Synchronization.LesSync;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using System.Threading.Tasks;
+using Nethermind.Synchronization.FastSync;
 
 namespace Nethermind.Synchronization
 {

@@ -1,4 +1,4 @@
-﻿///  Copyright (c) 2018 Demerzel Solutions Limited
+///  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -35,7 +35,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Les
         {
             BlockHeader header = Build.A.BlockHeader.TestObject;
             Address to = Build.An.Address.FromNumber(1).TestObject;
-            Transaction tx = Build.A.Transaction.WithTo(to).SignedAndResolved(new EthereumEcdsa(RopstenSpecProvider.Instance, LimboLogs.Instance), TestItem.PrivateKeyA, 1).TestObject;
+            Transaction tx = Build.A.Transaction.WithTo(to).SignedAndResolved(new EthereumEcdsa(RopstenSpecProvider.Instance.ChainId, LimboLogs.Instance), TestItem.PrivateKeyA).TestObject;
             tx.SenderAddress = null;
             var ethMessage = new Network.P2P.Subprotocols.Eth.V62.BlockBodiesMessage();
             ethMessage.Bodies = new[] {new BlockBody(new[] {tx}, new[] {header})};

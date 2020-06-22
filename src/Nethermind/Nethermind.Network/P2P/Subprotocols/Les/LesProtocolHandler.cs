@@ -207,7 +207,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
                 TotalDifficulty = status.TotalDifficulty
             };
 
-            TotalDifficultyOnSessionStart = status.TotalDifficulty;
+            TotalDifficulty = status.TotalDifficulty;
             RequestedAnnounceType = (LesAnnounceType)status.AnnounceType.Value;
             if (RequestedAnnounceType == LesAnnounceType.Signed) throw new NotImplementedException("Signed announcements are not yet supported.");
 

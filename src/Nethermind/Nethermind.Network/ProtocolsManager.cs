@@ -104,7 +104,7 @@ namespace Nethermind.Network
             session.Initialized -= SessionInitialized;
             session.Disconnected -= SessionDisconnected;
 
-            if (_syncPeers.TryRemove(session.SessionId, out Eth62ProtocolHandler removed))
+            if (_syncPeers.TryRemove(session.SessionId, out var removed))
             {
                 _syncPool.RemovePeer(removed);
                 _txPool.RemovePeer(removed.Node.Id);
