@@ -57,7 +57,6 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
             
             // if we already have a database with blocks then we do not need to load genesis from spec
-            Console.WriteLine($"_context.BlockTree.Genesis == null : {_context.BlockTree.Genesis == null}");
             if (_context.BlockTree.Genesis == null)
             {
                 Load();    

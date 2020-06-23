@@ -56,6 +56,7 @@ namespace Nethermind.Blockchain
         public Block Load()
         {
             Block genesis = _chainSpec.Genesis;
+            Console.WriteLine($"Genesis block loaded from chainSpec in GenesisLoader.cs hash: {genesis.Hash}");
             foreach ((Address address, ChainSpecAllocation allocation) in _chainSpec.Allocations)
             {
                 _stateProvider.CreateAccount(address, allocation.Balance);
