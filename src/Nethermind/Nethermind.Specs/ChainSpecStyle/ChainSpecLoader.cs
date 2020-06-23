@@ -48,6 +48,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             try
             {
                 var chainSpecJson = _serializer.Deserialize<ChainSpecJson>(jsonData);
+                Console.WriteLine($"ChainSpecJson: {chainSpecJson.ToString()} ");
                 var chainSpec = new ChainSpec();
 
                 chainSpec.ChainId = (int) chainSpecJson.Params.NetworkId;
