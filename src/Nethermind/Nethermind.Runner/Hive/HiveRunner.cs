@@ -108,8 +108,9 @@ namespace Nethermind.Runner.Hive
                 return;
             }
 
-            Console.WriteLine($"HIVE Loading blocks from {blocksDir}");
+
             if (_logger.IsInfo) _logger.Info($"HIVE Loading blocks from {blocksDir}");
+            Console.WriteLine($"BlockTree genesis hash : {_blockTree.GenesisHash} \n BlockTree head hash : {_blockTree.HeadHash}");
             var files = Directory.GetFiles(blocksDir).OrderBy(x => x).ToArray();
             var blocks = files.Select(x => new {File = x, Block = DecodeBlock(x)}).OrderBy(x => x.Block.Header.Number).ToArray();
             Console.WriteLine("Loaded blocks: ");
