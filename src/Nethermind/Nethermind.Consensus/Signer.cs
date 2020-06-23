@@ -19,6 +19,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
+using Nethermind.Logging;
 using Nethermind.Secp256k1;
 using Nethermind.Serialization.Rlp;
 
@@ -28,30 +29,33 @@ namespace Nethermind.Consensus
     {
         private readonly int _chainId;
         private ProtectedPrivateKey _key;
-        private bool _canSign = true;
+        private ILogger _logger;
 
-        public Address Address => _key.Address;
+        public Address Address => _key?.Address ?? Address.Zero;
 
         public bool CanSign
         {
-            get => _canSign && _key != null;
+            get => _key != null;
         }
 
-        public Signer(int chainId, PrivateKey key)
+        public Signer(int chainId, PrivateKey key, ILogManager logManager)
         {
             _chainId = chainId;
+            _logger = logManager?.GetClassLogger<Signer>() ?? throw new ArgumentNullException(nameof(logManager));
             SetSigner(key);
         }
         
-        public Signer(int chainId, ProtectedPrivateKey key)
+        public Signer(int chainId, ProtectedPrivateKey key, ILogManager logManager)
         {
             _chainId = chainId;
+            _logger = logManager?.GetClassLogger<Signer>() ?? throw new ArgumentNullException(nameof(logManager));
             SetSigner(key);
         }
 
         public Signature Sign(Keccak message)
         {
-            if (_key == null) throw new NotSupportedException("Cannot sign without provided key.");
+            if (!CanSign) throw new NotSupportedException("Cannot sign without provided key.");
+            
             using var key = _key.Unprotect();
             var rs = Proxy.SignCompact(message.Bytes, key.KeyBytes, out int v);
             return new Signature(rs, v);
@@ -72,16 +76,7 @@ namespace Nethermind.Consensus
         public void SetSigner(ProtectedPrivateKey key)
         {
             _key = key;
-        }
-
-        public void LockSign()
-        {
-            _canSign = false;
-        }
-
-        public void UnlockSign()
-        {
-            _canSign = true;
+            if (_logger.IsInfo) _logger.Info(_key != null ? $"Address {Address} is configured for signing blocks." : "No address is configured for signing blocks.");
         }
     }
 }
