@@ -24,7 +24,7 @@ using Nethermind.Runner.Hive;
 namespace Nethermind.Runner.Ethereum.Steps
 {
     [RunnerStepDependencies(typeof(SetupKeyStore))]
-    public class SetupHive : IStep
+    public class SetupHive 
     {
         private readonly EthereumRunnerContext _context;
 
