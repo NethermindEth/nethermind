@@ -2649,18 +2649,18 @@ namespace Nethermind.Evm
             return CallResult.Empty;
         }
 
-        internal readonly struct CallResult
+        internal readonly ref struct CallResult
         {
-            public static CallResult InvalidSubroutineEntry = new CallResult(EvmExceptionType.InvalidSubroutineEntry);
-            public static CallResult InvalidSubroutineReturn = new CallResult(EvmExceptionType.InvalidSubroutineReturn);
-            public static CallResult OutOfGasException = new CallResult(EvmExceptionType.OutOfGas);
-            public static CallResult AccessViolationException = new CallResult(EvmExceptionType.AccessViolation);
-            public static CallResult InvalidJumpDestination = new CallResult(EvmExceptionType.InvalidJumpDestination);
-            public static CallResult InvalidInstructionException = new CallResult(EvmExceptionType.BadInstruction);
-            public static CallResult StaticCallViolationException = new CallResult(EvmExceptionType.StaticCallViolation);
-            public static CallResult StackOverflowException = new CallResult(EvmExceptionType.StackOverflow); // TODO: use these to avoid CALL POP attacks
-            public static CallResult StackUnderflowException = new CallResult(EvmExceptionType.StackUnderflow); // TODO: use these to avoid CALL POP attacks
-            public static readonly CallResult Empty = new CallResult(Bytes.Empty, null);
+            public static CallResult InvalidSubroutineEntry => new CallResult(EvmExceptionType.InvalidSubroutineEntry);
+            public static CallResult InvalidSubroutineReturn => new CallResult(EvmExceptionType.InvalidSubroutineReturn);
+            public static CallResult OutOfGasException => new CallResult(EvmExceptionType.OutOfGas);
+            public static CallResult AccessViolationException => new CallResult(EvmExceptionType.AccessViolation);
+            public static CallResult InvalidJumpDestination => new CallResult(EvmExceptionType.InvalidJumpDestination);
+            public static CallResult InvalidInstructionException => new CallResult(EvmExceptionType.BadInstruction);
+            public static CallResult StaticCallViolationException => new CallResult(EvmExceptionType.StaticCallViolation);
+            public static CallResult StackOverflowException => new CallResult(EvmExceptionType.StackOverflow); // TODO: use these to avoid CALL POP attacks
+            public static CallResult StackUnderflowException => new CallResult(EvmExceptionType.StackUnderflow); // TODO: use these to avoid CALL POP attacks
+            public static CallResult Empty => new CallResult(Bytes.Empty, null);
 
             public CallResult(EvmState stateToExecute)
             {
