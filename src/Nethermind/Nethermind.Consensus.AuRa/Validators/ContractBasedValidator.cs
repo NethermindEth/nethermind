@@ -134,7 +134,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                     bool loadedValidatorsAreSameInStore = (ValidatorStore.GetValidators()?.SequenceEqual(Validators) == true);
                     if (!loadedValidatorsAreSameInStore)
                     {
-                        ValidatorStore.SetValidators(block.Number - 1, Validators);
+                        ValidatorStore.SetValidators(_blockFinalizationManager.GetLastLevelFinalizedBy(block.ParentHash), Validators);
                     }
                 }
                 
