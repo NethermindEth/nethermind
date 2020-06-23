@@ -120,7 +120,7 @@ namespace Nethermind.Clique.Test
                 
                 SnapshotManager snapshotManager = new SnapshotManager(_cliqueConfig, blocksDb, blockTree, _ethereumEcdsa, nodeLogManager);
                 _snapshotManager[privateKey] = snapshotManager;
-                CliqueSealer cliqueSealer = new CliqueSealer(new Signer(ChainId.Goerli, privateKey), _cliqueConfig, snapshotManager, nodeLogManager);
+                CliqueSealer cliqueSealer = new CliqueSealer(new Signer(ChainId.Goerli, privateKey, LimboLogs.Instance), _cliqueConfig, snapshotManager, nodeLogManager);
 
 
 

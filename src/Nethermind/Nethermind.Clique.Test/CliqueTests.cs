@@ -75,7 +75,7 @@ namespace Nethermind.Clique.Test
             
             _ecdsa = new EthereumEcdsa(ChainId.Rinkeby, LimboLogs.Instance); 
             _snapshotManager = new SnapshotManager(config, db, _blockTree, _ecdsa, LimboLogs.Instance);
-            _clique = new CliqueSealer(new Signer(ChainId.Rinkeby, key), config, _snapshotManager, LimboLogs.Instance);
+            _clique = new CliqueSealer(new Signer(ChainId.Rinkeby, key, LimboLogs.Instance), config, _snapshotManager, LimboLogs.Instance);
             _sealValidator = new CliqueSealValidator(config, _snapshotManager, LimboLogs.Instance);
         }
         
