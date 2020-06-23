@@ -48,6 +48,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                 }
             }
 
+            Console.WriteLine($"File content : {File.ReadAllText(filePath)}");
             return chainSpecLoader.Load(File.ReadAllText(filePath));
         }
     }
