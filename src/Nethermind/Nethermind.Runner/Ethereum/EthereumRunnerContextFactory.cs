@@ -47,14 +47,9 @@ namespace Nethermind.Runner.Ethereum
             //     Console.WriteLine($"File chainspec/test.json does not exists !!!!");
             //     throw new Exception("File chainspec/test.json does not exists !!!!");
             // }
-            var files = Directory.GetFiles("/chainspec");
 
-            Console.WriteLine("FILES IN CHAINSPEC DIR:");
-            foreach(var file in files)
-            {
-                Console.WriteLine(file);
-            }
             ChainSpec chainSpec = loader.LoadFromFile("/chainspec/test.json");
+            Console.WriteLine($"Loaded chainSpec, genesis hash is : {chainSpec.Genesis.Hash}");
             
             logManager.SetGlobalVariable("chain", chainSpec.Name);
             logManager.SetGlobalVariable("chainId", chainSpec.ChainId);
