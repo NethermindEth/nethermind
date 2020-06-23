@@ -1,0 +1,242 @@
+name: Standard Build - Windows Only
+
+on: push
+
+jobs:
+  neth-tests:
+    name: Nethermind Tests
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [windows-latest]
+    steps:
+    - uses: actions/checkout@v2
+    - name: Updating submodules
+      run: git submodule update --init src/Dirichlet src/rocksdb-sharp
+    - name: Installing Linux packages
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install libsnappy-dev libc6-dev libc6
+    - name: Installing macOS packages
+      if: matrix.os == 'macOS-latest'
+      run: brew install gmp && brew install snappy && brew install lz4 && brew install zstd
+    - name: Nethermind.Abi.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.Abi.Test;
+    - name: Nethermind.AuRa.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.AuRa.Test
+    - name: Nethermind.Baseline.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.Baseline.Test
+    - name: Nethermind.BeaconNode.Eth1Bridge.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.BeaconNode.Eth1Bridge.Test
+    - name: Nethermind.BeaconNode.Peering.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.BeaconNode.Peering.Test
+    - name: Nethermind.BeaconNode.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.BeaconNode.Test
+    - name: Nethermind.Blockchain.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.Blockchain.Test
+    - name: Nethermind.Cli.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.Cli.Test
+  neth-tests2:
+    name: Nethermind Tests 2
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [windows-latest]
+    steps:
+    - uses: actions/checkout@v2
+    - name: Updating submodules
+      run: git submodule update --init src/Dirichlet src/rocksdb-sharp
+    - name: Installing Linux packages
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install libsnappy-dev libc6-dev libc6
+    - name: Installing macOS packages
+      if: matrix.os == 'macOS-latest'
+      run: brew install gmp && brew install snappy && brew install lz4 && brew install zstd
+    - name: Nethermind.Clique.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.Clique.Test
+    - name: Nethermind.Config.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.Config.Test
+    - name: Nethermind.Core.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.Core.Test
+    - name: Nethermind.Core2.Configuration.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.Core2.Configuration.Test
+    - name: Nethermind.Core2.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.Core2.Test
+    - name: Nethermind.Cryptography.Bls.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.Cryptography.Bls.Test
+    - name: Nethermind.Network.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.Network.Test
+    - name: Nethermind.Facade.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.Facade.Test
+    - name: Nethermind.Logging.NLog.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.Logging.NLog.Test
+  neth-tests3:
+    name: Nethermind Tests 3
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [windows-latest]
+    steps:
+    - uses: actions/checkout@v2
+    - name: Updating submodules
+      run: git submodule update --init src/Dirichlet src/rocksdb-sharp
+    - name: Installing Linux packages
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install libsnappy-dev libc6-dev libc6
+    - name: Installing macOS packages
+      if: matrix.os == 'macOS-latest'
+      run: brew install gmp && brew install snappy && brew install lz4 && brew install zstd
+    - name: Nethermind.HonestValidator.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.HonestValidator.Test
+    - name: Nethermind.Evm.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.Evm.Test
+    - name: Nethermind.JsonRpc.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.JsonRpc.Test
+    - name: Nethermind.Mining.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.Mining.Test
+  neth-tests4:
+    name: Nethermind Tests 4
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [windows-latest]
+    steps:
+    - uses: actions/checkout@v2
+    - name: Updating submodules
+      run: git submodule update --init src/Dirichlet src/rocksdb-sharp
+    - name: Installing Linux packages
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install libsnappy-dev libc6-dev libc6
+    - name: Installing macOS packages
+      if: matrix.os == 'macOS-latest'
+      run: brew install gmp && brew install snappy && brew install lz4 && brew install zstd
+    - name: Nethermind.Secp256k1.Test.Linux
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.Secp256k1.Test
+        #    - name: Nethermind.Runner.Test
+        #      run: |
+        #        dotnet test -c Release src/Nethermind/Nethermind.Runner.Test
+    - name: Nethermind.State.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.State.Test
+    - name: Nethermind.Synchronization.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.Synchronization.Test
+  neth-tests5:
+    name: Nethermind Tests 5
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [windows-latest]
+    steps:
+    - uses: actions/checkout@v2
+    - name: Updating submodules
+      run: git submodule update --init src/Dirichlet src/rocksdb-sharp
+    - name: Installing Linux packages
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install libsnappy-dev libc6-dev libc6
+    - name: Installing macOS packages
+      if: matrix.os == 'macOS-latest'
+      run: brew install gmp && brew install snappy && brew install lz4 && brew install zstd
+    - name: Nethermind.Ssz.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.Ssz.Test
+    - name: Nethermind.Wallet.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.Wallet.Test
+    - name: Nethermind.WebSockets.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.WebSockets.Test
+    - name: Nethermind.DataMarketplace.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.DataMarketplace.Test
+    - name: Nethermind.DataMarketplace.Channels.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.DataMarketplace.Channels.Test
+    - name: Nethermind.DataMarketplace.Consumers.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.DataMarketplace.Consumers.Test
+    - name: Nethermind.DataMarketplace.Infrastructure.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.DataMarketplace.Infrastructure.Test
+    - name: Nethermind.DataMarketplace.Subprotocols.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.DataMarketplace.Subprotocols.Test
+    - name: Nethermind.DataMarketplace.WebSockets.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.DataMarketplace.WebSockets.Test
+  eth-tests:
+    name: Ethereum Tests
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [windows-latest]
+    steps:
+    - uses: actions/checkout@v2
+    - name: Unshallow fetching
+      run: git fetch --unshallow
+    - name: Updating submodules
+      run: git -c submodule."src/eth2.0-spec-tests".update=none submodule update --init
+    - name: Ethereum.Basic.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Ethereum.Basic.Test
+    - name: Ethereum.Blockchain.Block.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Ethereum.Blockchain.Block.Test
+    - name: Ethereum.Blockchain.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Ethereum.Blockchain.Test
+    - name: Ethereum.Difficulty.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Ethereum.Difficulty.Test
+    - name: Ethereum.HexPrefix.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Ethereum.HexPrefix.Test
+    - name: Ethereum.KeyAddress.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Ethereum.KeyAddress.Test
+    - name: Ethereum.PoW.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Ethereum.Rlp.Test
+    - name: Ethereum.Rlp.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Ethereum.Basic.Test
+    - name: Ethereum.Transaction.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Ethereum.Transaction.Test
+    - name: Ethereum.Transition.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Ethereum.Transition.Test
+    - name: Ethereum.Trie.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Ethereum.Trie.Test
