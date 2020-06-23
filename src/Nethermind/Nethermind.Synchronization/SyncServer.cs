@@ -214,6 +214,7 @@ namespace Nethermind.Synchronization
                     throw new EthSyncException(message);
                 }
 
+                Console.WriteLine($"SyncServer.cs suggesting block {block}");
                 AddBlockResult result = _blockTree.SuggestBlock(block, true);
                 if (_logger.IsTrace) _logger.Trace($"{block.Hash} ({block.Number}) adding result is {result}");
             }
