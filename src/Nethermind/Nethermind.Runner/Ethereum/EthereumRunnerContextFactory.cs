@@ -42,11 +42,11 @@ namespace Nethermind.Runner.Ethereum
             if (logger.IsDebug) logger.Debug($"Loading chain spec from chainspec/test.json"); 
             ThisNodeInfo.AddInfo("Chainspec    :", "chainspec/test.json");
             IChainSpecLoader loader = new ChainSpecLoader(ethereumJsonSerializer);
-            if(!File.Exists("/chainspec/test.json"))
-            {
-                Console.WriteLine($"File chainspec/test.json does not exists !!!!");
-                throw new Exception("File chainspec/test.json does not exists !!!!");
-            }
+            // if(!File.Exists("/chainspec/test.json"))
+            // {
+            //     Console.WriteLine($"File chainspec/test.json does not exists !!!!");
+            //     throw new Exception("File chainspec/test.json does not exists !!!!");
+            // }
             var files = Directory.GetFiles("/chainspec");
 
             Console.WriteLine("FILES IN CHAINSPEC DIR:");
