@@ -39,13 +39,11 @@ namespace Nethermind.Runner.Hive
         private readonly IConfigProvider _configurationProvider;
 
         public HiveRunner(IBlockTree blockTree,
-            IWallet wallet,
             IJsonSerializer jsonSerializer,
             IConfigProvider configurationProvider,
             ILogger logger)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _jsonSerializer = jsonSerializer ?? throw new ArgumentNullException(nameof(jsonSerializer));
             _configurationProvider = configurationProvider ?? throw new ArgumentNullException(nameof(configurationProvider));
@@ -199,7 +197,6 @@ namespace Nethermind.Runner.Hive
         {
             try
             {
-                
                 _blockTree.SuggestBlock(block);
                 if (_logger.IsInfo) _logger.Info($"HIVE suggested {block.ToString(Block.Format.Short)}, now best suggested header {_blockTree.BestSuggestedHeader}, head {_blockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}");
             }
