@@ -75,5 +75,8 @@ namespace Nethermind.Blockchain.Synchronization
         
         [ConfigItem(Description = "Should use beam sync to fix corrupted state DB (dev use).", DefaultValue = "false")]
         public bool BeamSyncFixMode { get; set; }
+        
+        [ConfigItem(Description = "If FullSync can be run in parallel with FastBlocks. It is false for AuRa chains.", DefaultValue = "true")]
+        public bool AllowFullSyncParallelToFastBlocks { get; set; }
     }
 }
