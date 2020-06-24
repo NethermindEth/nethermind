@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,22 +13,25 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.Find;
-using Nethermind.Core;
-using Nethermind.JsonRpc.Data;
+using System.Security.Cryptography;
 
-namespace Nethermind.JsonRpc.Modules.Parity
+namespace Nethermind.Crypto
 {
-    [RpcModule(ModuleType.Parity)]
-    public interface IParityModule : IModule
+    public abstract partial class ProtectedData
     {
-        ResultWrapper<ParityTransaction[]> parity_pendingTransactions();
-        ResultWrapper<ReceiptForRpc[]> parity_getBlockReceipts(BlockParameter blockParameter);
-        ResultWrapper<string> parity_enode();
-        ResultWrapper<bool> parity_setEngineSigner(Address address, string password);
-        ResultWrapper<bool> parity_setEngineSignerSecret(string privateKey);
-        ResultWrapper<bool> parity_clearEngineSigner();
+        private sealed class DpapiWrapper : IProtector
+        {
+            public byte[] Protect(byte[] userData, byte[] optionalEntropy, DataProtectionScope scope)
+            {
+                return  System.Security.Cryptography.ProtectedData.Protect(userData, optionalEntropy, scope);
+            }
+
+            public byte[] Unprotect(byte[] encryptedData, byte[] optionalEntropy, DataProtectionScope scope)
+            {
+                return  System.Security.Cryptography.ProtectedData.Unprotect(encryptedData, optionalEntropy, scope);
+            }
+        }
     }
 }

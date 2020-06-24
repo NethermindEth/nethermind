@@ -100,12 +100,9 @@ namespace Nethermind.Runner.Ethereum.Steps
             TraceModuleFactory traceModuleFactory = new TraceModuleFactory(_context.DbProvider, _context.BlockTree, _context.RecoveryStep, _context.RewardCalculatorSource, _context.ReceiptStorage, _context.SpecProvider, _context.LogManager);
             _context.RpcModuleProvider.Register(new BoundedModulePool<ITraceModule>(8, traceModuleFactory));
 
-            if (initConfig.EnableUnsecuredDevWallet)
-            {
-                PersonalBridge personalBridge = new PersonalBridge(_context.EthereumEcdsa, _context.Wallet);
-                PersonalModule personalModule = new PersonalModule(personalBridge, _context.LogManager);
-                _context.RpcModuleProvider.Register(new SingletonModulePool<IPersonalModule>(personalModule, true));
-            }
+            PersonalBridge personalBridge = new PersonalBridge(_context.EthereumEcdsa, _context.Wallet);
+            PersonalModule personalModule = new PersonalModule(personalBridge, _context.LogManager);
+            _context.RpcModuleProvider.Register(new SingletonModulePool<IPersonalModule>(personalModule, true));
 
             AdminModule adminModule = new AdminModule(_context.BlockTree, networkConfig, _context.PeerManager, _context.StaticNodesManager, _context.Enode, initConfig.BaseDbPath);
             _context.RpcModuleProvider.Register(new SingletonModulePool<IAdminModule>(adminModule, true));
@@ -148,7 +145,16 @@ namespace Nethermind.Runner.Ethereum.Steps
             NetModule netModule = new NetModule(_context.LogManager, new NetBridge(_context.Enode, _context.SyncServer));
             _context.RpcModuleProvider.Register(new SingletonModulePool<INetModule>(netModule, true));
 
-            ParityModule parityModule = new ParityModule(_context.EthereumEcdsa, _context.TxPool, _context.BlockTree, _context.ReceiptFinder, _context.LogManager);
+            ParityModule parityModule = new ParityModule(
+                _context.EthereumEcdsa, 
+                _context.TxPool, 
+                _context.BlockTree, 
+                _context.ReceiptFinder, 
+                _context.Enode, 
+                _context.Signer, 
+                _context.KeyStore, 
+                _context.LogManager);
+            
             _context.RpcModuleProvider.Register(new SingletonModulePool<IParityModule>(parityModule, true));
 
             SubsystemStateChanged?.Invoke(this, new SubsystemStateEventArgs(EthereumSubsystemState.Running));

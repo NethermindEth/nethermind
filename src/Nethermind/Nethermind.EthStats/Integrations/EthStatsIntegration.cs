@@ -156,7 +156,7 @@ namespace Nethermind.EthStats.Integrations
         private Task SendBlockAsync(Core.Block block)
             => _sender.SendAsync(_websocketClient, new BlockMessage(new Block(block.Number, block.Hash?.ToString(),
                 block.ParentHash?.ToString(),
-                (long) block.Timestamp, block.Author?.ToString(), block.GasUsed, block.GasLimit,
+                (long) block.Timestamp, (block.Author ?? block.Beneficiary)?.ToString(), block.GasUsed, block.GasLimit,
                 block.Difficulty.ToString(), block.TotalDifficulty?.ToString(),
                 block.Transactions?.Select(t => new Transaction(t.Hash?.ToString())) ?? Enumerable.Empty<Transaction>(),
                 block.TxRoot.ToString(), block.StateRoot.ToString(),

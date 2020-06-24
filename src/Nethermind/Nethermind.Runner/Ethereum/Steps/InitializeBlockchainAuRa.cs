@@ -108,7 +108,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _context.ReceiptStorage, 
                     _context.ValidatorStore,
                     _context.FinalizationManager,
-                    new TxPoolSender(_context.TxPool, _context.Signer, _context.Timestamper), 
+                    new TxPoolSender(_context.TxPool, new TxNonceTxPoolReserveSealer(_context.Signer, _context.Timestamper, _context.TxPool)), 
                     _context.TxPool,
                     _context.LogManager,
                     _context.Signer,

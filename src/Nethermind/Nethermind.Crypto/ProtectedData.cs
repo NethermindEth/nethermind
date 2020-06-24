@@ -16,53 +16,30 @@
 // 
 
 using System;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
-using Integrative.Encryption;
 using Nethermind.Core;
 
 namespace Nethermind.Crypto
 {
-    public abstract class ProtectedData<T> where T : IDisposable
+    // based on https://github.com/integrativesoft/CrossProtectedData
+    public abstract partial class ProtectedData
     {
-        private const int EntropyMaxLength = 10;
-        private const int EntropyMinLength = 5;
-        private static readonly TimeSpan MaxSecureTimeSpan = TimeSpan.FromMinutes(10);
+        private interface IProtector
+        {
+            byte[] Protect(byte[] userData, byte[] optionalEntropy, DataProtectionScope scope);
+            byte[] Unprotect(byte[] encryptedData, byte[] optionalEntropy, DataProtectionScope scope);
+        }
         
-        private readonly ICryptoRandom _random;
-        private readonly ITimestamper _timestamper;
-        private byte[] _entropy;
-        private DateTime _timestamp;
-        private byte[] _encryptedData;
+        private static readonly IProtector _protector = CreateProtector();
 
-        public ProtectedData(byte[] data, ICryptoRandom random = null, ITimestamper timestamper = null)
+        private static IProtector CreateProtector()
         {
-            _random = random ?? new CryptoRandom();
-            _timestamper = timestamper ?? Timestamper.Default;
-            Protect(data);
+            return RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? new DpapiWrapper() : (IProtector)new AspNetWrapper();
         }
 
-        private void Protect(byte[] data)
-        {
-            _entropy = _random.GenerateRandomBytes(_random.NextInt(EntropyMaxLength - EntropyMinLength) + EntropyMinLength);
-            _encryptedData = CrossProtect.Protect(data, _entropy, DataProtectionScope.CurrentUser);
-            _timestamp = _timestamper.UtcNow;
-        }
+        protected static byte[] Protect(byte[] userData, byte[] optionalEntropy, DataProtectionScope scope) => _protector.Protect(userData, optionalEntropy, scope);
 
-        public T Unprotect()
-        {
-            var data = CrossProtect.Unprotect(_encryptedData, _entropy, DataProtectionScope.CurrentUser);
-            CheckReProtect(data);
-            return CreateUnprotected(data);
-        }
-
-        protected abstract T CreateUnprotected(byte[] data);
-
-        private void CheckReProtect(byte[] data)
-        {
-            if (_timestamper.UtcNow - _timestamp > MaxSecureTimeSpan)
-            {
-                Protect(data);
-            }
-        }
+        protected static byte[] Unprotect(byte[] encryptedData, byte[] optionalEntropy, DataProtectionScope scope) => _protector.Unprotect(encryptedData, optionalEntropy, scope);
     }
 }

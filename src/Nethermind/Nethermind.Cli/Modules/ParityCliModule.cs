@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Jint.Native;
+using Nethermind.Core;
 
 namespace Nethermind.Cli.Modules
 {
@@ -26,15 +27,22 @@ namespace Nethermind.Cli.Modules
         }
         
         [CliFunction("parity", "pendingTransactions", Description = "Returns the pending transactions using Parity format")]
-        public JsValue PendingTransactions()
-        {
-            return NodeManager.PostJint("parity_pendingTransactions").Result;
-        }
-        
+        public JsValue PendingTransactions() => NodeManager.PostJint("parity_pendingTransactions").Result;
+
         [CliFunction("parity", "getBlockReceipts", Description = "Returns receipts from all transactions from particular block")]
-        public JsValue GetBlockReceipts(string blockParameter)
-        {
-            return NodeManager.PostJint("parity_getBlockReceipts", blockParameter).Result;
-        }
+        public JsValue GetBlockReceipts(string blockParameter) => NodeManager.PostJint("parity_getBlockReceipts", blockParameter).Result;
+        
+        [CliProperty("parity", "enode", Description = "Returns the node enode URI.")]
+        public string Enode() => NodeManager.Post<string>("parity_enode").Result;
+        
+        [CliFunction("parity", "clearEngineSigner", Description = "Clears an authority account for signing consensus messages. Blocks will not be sealed.")]
+        public bool ClearSigner() => NodeManager.Post<bool>("parity_clearEngineSigner").Result;
+        
+        [CliFunction("parity", "setEngineSigner", Description = "Sets an authority account for signing consensus messages.")]
+        public bool SetSigner(Address address, string password) => NodeManager.Post<bool>("parity_setEngineSigner", address, password).Result;
+        
+        [CliFunction("parity", "setEngineSignerSecret", Description = "Sets an authority account for signing consensus messages.")]
+        public bool SetEngineSignerSecret(string privateKey) => NodeManager.Post<bool>("parity_setEngineSignerSecret", privateKey).Result;
+
     }
 }
