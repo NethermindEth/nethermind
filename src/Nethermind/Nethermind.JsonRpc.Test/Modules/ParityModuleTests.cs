@@ -15,9 +15,11 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Net;
+using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Specs;
@@ -30,6 +32,7 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
+using Nethermind.KeyStore;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
 using NUnit.Framework;
@@ -42,6 +45,7 @@ namespace Nethermind.JsonRpc.Test.Modules
     public class ParityModuleTests
     {
         private IParityModule _parityModule;
+        private Signer _signerStore;
 
         [SetUp]
         public void Initialize()
@@ -59,7 +63,11 @@ namespace Nethermind.JsonRpc.Test.Modules
             IBlockTree blockTree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), specProvider, txPool, NullBloomStorage.Instance, LimboLogs.Instance);
             
             IReceiptStorage receiptStorage = new InMemoryReceiptStorage();
-            _parityModule = new ParityModule(ethereumEcdsa, txPool, blockTree, receiptStorage, new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 8545), logger);
+
+            _signerStore = new Signer(specProvider.ChainId, TestItem.PrivateKeyB, logger);
+            _parityModule = new ParityModule(ethereumEcdsa, txPool, blockTree, receiptStorage, new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 8545), 
+                _signerStore, new MemKeyStore(new[] {TestItem.PrivateKeyA}),  logger);
+            
             var blockNumber = 2;
             var pendingTransaction = Build.A.Transaction.Signed(ethereumEcdsa, TestItem.PrivateKeyD, false)
                 .WithSenderAddress(Address.FromNumber((UInt256)blockNumber)).TestObject;
@@ -130,6 +138,36 @@ namespace Nethermind.JsonRpc.Test.Modules
             string serialized = RpcTest.TestSerializedRequest(_parityModule, "parity_enode");
             var expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":\"enode://a49ac7010c2e0a444dfeeabadbafa4856ba4a2d732acb86d20c577b3b365fdaeb0a70ce47f890cf2f9fca562a7ed784f76eb870a2c75c0f2ab476a70ccb67e92@127.0.0.1:8545\",\"id\":67}";
             Assert.AreEqual(expectedResult, serialized);
+        }
+        
+        [Test]
+        public void parity_setEngineSigner()
+        {
+            string serialized = RpcTest.TestSerializedRequest(_parityModule, "parity_setEngineSigner", TestItem.AddressA.ToString(), "password");
+            var expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}";
+            Assert.AreEqual(expectedResult, serialized);
+            _signerStore.Address.Should().Be(TestItem.AddressA);
+            _signerStore.CanSign.Should().BeTrue();
+        }
+        
+        [Test]
+        public void parity_setEngineSignerSecret()
+        {
+            string serialized = RpcTest.TestSerializedRequest(_parityModule, "parity_setEngineSignerSecret", TestItem.PrivateKeyA.ToString());
+            var expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}";
+            Assert.AreEqual(expectedResult, serialized);
+            _signerStore.Address.Should().Be(TestItem.AddressA);
+            _signerStore.CanSign.Should().BeTrue();
+        }
+        
+        [Test]
+        public void parity_clearEngineSigner()
+        {
+            RpcTest.TestSerializedRequest(_parityModule, "parity_setEngineSigner", TestItem.AddressA.ToString(), "password");
+            string serialized = RpcTest.TestSerializedRequest(_parityModule, "parity_clearEngineSigner");
+            var expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}";
+            _signerStore.Address.Should().Be(Address.Zero);
+            _signerStore.CanSign.Should().BeFalse();
         }
     }
 }

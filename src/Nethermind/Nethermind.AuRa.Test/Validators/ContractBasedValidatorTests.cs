@@ -97,7 +97,7 @@ namespace Nethermind.AuRa.Test.Validators
                 .Encode(AbiEncodingStyle.IncludeSignature, Arg.Is<AbiSignature>(s => s.Name == "finalizeChange"), Arg.Any<object[]>())
                 .Returns(_finalizeChangeData.TransactionData);
             
-            _validatorContract = new ValidatorContract(_transactionProcessor, _abiEncoder, _contractAddress, _stateProvider, _readOnlyTransactionProcessorSource, new Signer(0, TestItem.PrivateKeyD));
+            _validatorContract = new ValidatorContract(_transactionProcessor, _abiEncoder, _contractAddress, _stateProvider, _readOnlyTransactionProcessorSource, new Signer(0, TestItem.PrivateKeyD, LimboLogs.Instance));
         }
         
         [Test]

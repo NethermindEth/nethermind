@@ -1,44 +1,48 @@
 # SOME DESCRIPTIVE TITLE.
 # Copyright (C) 2018, Demerzel Solutions Limited
 # This file is distributed under the same license as the nethermind package.
-# FIRST AUTHOR <EMAIL@ADDRESS>, 2020.
-#
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+# 
+# Translators:
+# Anna Szeszula <annaszeszula@icloud.com>, 2020
+# 
 #, fuzzy
 msgid ""
 msgstr ""
-"Project-Id-Version: nethermind \n"
+"Project-Id-Version: nethermind\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2020-05-14 17:16+0100\n"
-"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
-"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
-"Language-Team: LANGUAGE <LL@li.org>\n"
+"PO-Revision-Date: 2020-05-15 17:47+0000\n"
+"Last-Translator: Anna Szeszula <annaszeszula@icloud.com>, 2020\n"
+"Language-Team: Chinese (China) (https://www.transifex.com/nethermind/teams/110027/zh_CN/)\n"
 "MIME-Version: 1.0\n"
-"Content-Type: text/plain; charset=utf-8\n"
+"Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"Generated-By: Babel 2.8.0\n"
+"Language: zh_CN\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
 
 #: ../../source/jsonrpc.rst:2
 msgid "JSON RPC"
-msgstr ""
+msgstr "JSON RPC"
 
 #: ../../source/jsonrpc.rst:4
 msgid ""
-"JSON RPC is available via HTTP and WS (needs to be explicitly switched on"
-" in the InitConfig). Some of the methods listed below are not implemented"
-" by Nethermind (they are marked)."
-msgstr ""
+"JSON RPC is available via HTTP and WS (needs to be explicitly switched on in"
+" the InitConfig). Some of the methods listed below are not implemented by "
+"Nethermind (they are marked)."
+msgstr "JSON RPC可通过HTTP和WS使用（需要在InitConfig中显式打开）。下面列出的某些方法（已标记）Nethermind未实现。"
 
 #: ../../source/jsonrpc.rst:8
 msgid "admin"
-msgstr ""
+msgstr "管理员命令"
 
 #: ../../source/jsonrpc.rst:10
 msgid "admin_addPeer(enode, addToStaticNodes)"
-msgstr ""
+msgstr "admin_addPeer(enode, addToStaticNodes)"
 
 #: ../../source/jsonrpc.rst:14
 msgid "admin_dataDir()"
-msgstr ""
+msgstr "admin_dataDir()"
 
 #: ../../source/jsonrpc.rst:14 ../../source/jsonrpc.rst:17
 #: ../../source/jsonrpc.rst:26 ../../source/jsonrpc.rst:65
@@ -51,31 +55,31 @@ msgstr ""
 #: ../../source/jsonrpc.rst:330 ../../source/jsonrpc.rst:333
 #: ../../source/jsonrpc.rst:336
 msgid "[NOT IMPLEMENTED]"
-msgstr ""
+msgstr "[未实现]"
 
 #: ../../source/jsonrpc.rst:17
 msgid "admin_nodeInfo()"
-msgstr ""
+msgstr "admin_nodeInfo()"
 
 #: ../../source/jsonrpc.rst:19
 msgid "admin_peers()"
-msgstr ""
+msgstr "admin_peers()"
 
 #: ../../source/jsonrpc.rst:22
 msgid "admin_removePeer(enode, removeFromStaticNodes)"
-msgstr ""
+msgstr "admin_removePeer(enode, removeFromStaticNodes)"
 
 #: ../../source/jsonrpc.rst:26
 msgid "admin_setSolc()"
-msgstr ""
+msgstr "admin_setSolc()"
 
 #: ../../source/jsonrpc.rst:29
 msgid "clique"
-msgstr ""
+msgstr "clique命令"
 
 #: ../../source/jsonrpc.rst:32
 msgid "clique_discard(signer)"
-msgstr ""
+msgstr "clique_discard(signer)"
 
 #: ../../source/jsonrpc.rst:32 ../../source/jsonrpc.rst:35
 #: ../../source/jsonrpc.rst:38 ../../source/jsonrpc.rst:41
@@ -91,661 +95,667 @@ msgstr ""
 #: ../../source/jsonrpc.rst:360 ../../source/jsonrpc.rst:366
 #: ../../source/jsonrpc.rst:369
 msgid "<description missing>"
-msgstr ""
+msgstr "<description missing>"
 
 #: ../../source/jsonrpc.rst:35
 msgid "clique_getSigners()"
-msgstr ""
+msgstr "clique_getSigners()"
 
 #: ../../source/jsonrpc.rst:38
 msgid "clique_getSignersAnnotated()"
-msgstr ""
+msgstr "clique_getSignersAnnotated()"
 
 #: ../../source/jsonrpc.rst:41
 msgid "clique_getSignersAtHash(hash)"
-msgstr ""
+msgstr "clique_getSignersAtHash(hash)"
 
 #: ../../source/jsonrpc.rst:44
 msgid "clique_getSignersAtHashAnnotated(hash)"
-msgstr ""
+msgstr "clique_getSignersAtHashAnnotated(hash)"
 
 #: ../../source/jsonrpc.rst:47
 msgid "clique_getSignersAtNumber(number)"
-msgstr ""
+msgstr "clique_getSignersAtNumber(number)"
 
 #: ../../source/jsonrpc.rst:50
 msgid "clique_getSnapshot()"
-msgstr ""
+msgstr "clique_getSnapshot()"
 
 #: ../../source/jsonrpc.rst:53
 msgid "clique_getSnapshotAtHash(hash)"
-msgstr ""
+msgstr "clique_getSnapshotAtHash(hash)"
 
 #: ../../source/jsonrpc.rst:56
 msgid "clique_propose(signer, vote)"
-msgstr ""
+msgstr "clique_propose(signer, vote)"
 
 #: ../../source/jsonrpc.rst:59
 msgid "debug"
-msgstr ""
+msgstr "调试命令"
 
 #: ../../source/jsonrpc.rst:62
 msgid "debug_deleteChainSlice(startNumber, endNumber)"
-msgstr ""
+msgstr "debug_deleteChainSlice(startNumber, endNumber)"
 
 #: ../../source/jsonrpc.rst:62
 msgid ""
 "Deletes a slice of a chain from the tree on all branches (Nethermind "
 "specific)."
-msgstr ""
+msgstr "从所有分支上的链树中删除一条链的一部分（特定于Nethermind）。"
 
 #: ../../source/jsonrpc.rst:65
 msgid "debug_dumpBlock(blockParameter)"
-msgstr ""
+msgstr "debug_dumpBlock(blockParameter)"
 
 #: ../../source/jsonrpc.rst:68
 msgid "debug_gcStats()"
-msgstr ""
+msgstr "debug_gcStats()"
 
 #: ../../source/jsonrpc.rst:71
 msgid "debug_getBlockRlp(number)"
-msgstr ""
+msgstr "debug_getBlockRlp(number)"
 
 #: ../../source/jsonrpc.rst:71 ../../source/jsonrpc.rst:74
 msgid "Retrieves a block in the RLP-serialized form."
-msgstr ""
+msgstr "检索以RLP序列化形式的块。"
 
 #: ../../source/jsonrpc.rst:74
 msgid "debug_getBlockRlpByHash(hash)"
-msgstr ""
+msgstr "debug_getBlockRlpByHash(hash)"
 
 #: ../../source/jsonrpc.rst:77
 msgid "debug_getChainLevel(number)"
-msgstr ""
+msgstr "debug_getChainLevel(number)"
 
 #: ../../source/jsonrpc.rst:77
 msgid ""
 "Retrieves a representation of tree branches on a given chain level "
 "(Nethermind specific)."
-msgstr ""
+msgstr "检索给定链级别上的树枝的表示形式（Nethermind特定）。"
 
 #: ../../source/jsonrpc.rst:80
 msgid "debug_getConfigValue(category, name)"
-msgstr ""
+msgstr "debug_getConfigValue(category, name)"
 
 #: ../../source/jsonrpc.rst:80
 msgid "Retrieves the Nethermind configuration value, e.g. JsonRpc.Enabled"
-msgstr ""
+msgstr "检索Nethermind配置值，例如 JsonRpc.Enabled"
 
 #: ../../source/jsonrpc.rst:83
 msgid "debug_getFromDb(dbName, key)"
-msgstr ""
+msgstr "debug_getFromDb(dbName, key)"
 
 #: ../../source/jsonrpc.rst:86
 msgid "debug_memStats(blockParameter)"
-msgstr ""
+msgstr "debug_memStats(blockParameter)"
 
 #: ../../source/jsonrpc.rst:89
 msgid "debug_seedHash(blockParameter)"
-msgstr ""
+msgstr "debug_seedHash(blockParameter)"
 
 #: ../../source/jsonrpc.rst:92
 msgid "debug_setHead(blockParameter)"
-msgstr ""
+msgstr "debug_setHead(blockParameter)"
 
 #: ../../source/jsonrpc.rst:94
 msgid "debug_traceBlock(blockRlp, options)"
-msgstr ""
+msgstr "debug_traceBlock(blockRlp, options)"
 
 #: ../../source/jsonrpc.rst:97
 msgid "debug_traceBlockByHash(blockHash, options)"
-msgstr ""
+msgstr "debug_traceBlockByHash(blockHash, options)"
 
 #: ../../source/jsonrpc.rst:100
 msgid "debug_traceBlockByNumber(number, options)"
-msgstr ""
+msgstr "debug_traceBlockByNumber(number, options)"
 
 #: ../../source/jsonrpc.rst:104
 msgid "debug_traceBlockFromFile(fileName, options)"
-msgstr ""
+msgstr "debug_traceBlockFromFile(fileName, options)"
 
 #: ../../source/jsonrpc.rst:106
 msgid "debug_traceTransaction(transactionHash, options)"
-msgstr ""
+msgstr "debug_traceTransaction(transactionHash, options)"
 
 #: ../../source/jsonrpc.rst:109
-msgid "debug_traceTransactionByBlockAndIndex(blockParameter, txIndex, options)"
+msgid ""
+"debug_traceTransactionByBlockAndIndex(blockParameter, txIndex, options)"
 msgstr ""
+"debug_traceTransactionByBlockAndIndex(blockParameter, txIndex, options)"
 
 #: ../../source/jsonrpc.rst:112
 msgid "debug_traceTransactionByBlockhashAndIndex(blockHash, txIndex, options)"
 msgstr ""
+"debug_traceTransactionByBlockhashAndIndex(blockHash, txIndex, options)"
 
 #: ../../source/jsonrpc.rst:115
-msgid "debug_traceTransactionInBlockByHash(blockRlp, transactionHash, options)"
+msgid ""
+"debug_traceTransactionInBlockByHash(blockRlp, transactionHash, options)"
 msgstr ""
+"debug_traceTransactionInBlockByHash(blockRlp, transactionHash, options)"
 
 #: ../../source/jsonrpc.rst:118
 msgid "debug_traceTransactionInBlockByIndex(blockRlp, txIndex, options)"
-msgstr ""
+msgstr "debug_traceTransactionInBlockByIndex(blockRlp, txIndex, options)"
 
 #: ../../source/jsonrpc.rst:122
 msgid "eth"
-msgstr ""
+msgstr "eth命令"
 
 #: ../../source/jsonrpc.rst:125
 msgid "eth_accounts()"
-msgstr ""
+msgstr "eth_accounts()"
 
 #: ../../source/jsonrpc.rst:125
 msgid "[NOT IMPLEMENTED] Returns accounts"
-msgstr ""
+msgstr "[未实现]返回帐户"
 
 #: ../../source/jsonrpc.rst:128
 msgid "eth_blockNumber()"
-msgstr ""
+msgstr "eth_blockNumber()"
 
 #: ../../source/jsonrpc.rst:128
 msgid "Returns current block number"
-msgstr ""
+msgstr "返回当前块号"
 
 #: ../../source/jsonrpc.rst:131
 msgid "eth_call(transactionCall, blockParameter)"
-msgstr ""
+msgstr "eth_call(transactionCall, blockParameter)"
 
 #: ../../source/jsonrpc.rst:131
 msgid "Executes a tx call (does not create a transaction)"
-msgstr ""
+msgstr "执行 Tx 调用（不创建交易）"
 
 #: ../../source/jsonrpc.rst:134
 msgid "eth_chainId()"
-msgstr ""
+msgstr "eth_chainId()"
 
 #: ../../source/jsonrpc.rst:134
 msgid "Returns ChainID"
-msgstr ""
+msgstr "返回ChainID"
 
 #: ../../source/jsonrpc.rst:137
 msgid "eth_coinbase()"
-msgstr ""
+msgstr "eth_coinbase()"
 
 #: ../../source/jsonrpc.rst:137
 msgid "[NOT IMPLEMENTED] Returns miner's coinbase'"
-msgstr ""
+msgstr "[未实现]返回挖矿者的币库'"
 
 #: ../../source/jsonrpc.rst:140
 msgid "eth_estimateGas(transactionCall)"
-msgstr ""
+msgstr "eth_estimateGas(transactionCall)"
 
 #: ../../source/jsonrpc.rst:140
-msgid "Executes a tx call and returns gas used (does not create a transaction)"
-msgstr ""
+msgid ""
+"Executes a tx call and returns gas used (does not create a transaction)"
+msgstr "执行一次tx调用并返回使用的气体（不创建事务）"
 
 #: ../../source/jsonrpc.rst:143
 msgid "eth_gasPrice()"
-msgstr ""
+msgstr "eth_gasPrice()"
 
 #: ../../source/jsonrpc.rst:143
 msgid "[NOT IMPLEMENTED] Returns miner's gas price"
-msgstr ""
+msgstr "[未实现]返回挖矿者工的气体价格"
 
 #: ../../source/jsonrpc.rst:146
 msgid "eth_getBalance(address, blockParameter)"
-msgstr ""
+msgstr "eth_getBalance(address, blockParameter)"
 
 #: ../../source/jsonrpc.rst:146
 msgid "Returns account balance"
-msgstr ""
+msgstr "返回账户余额"
 
 #: ../../source/jsonrpc.rst:149
 msgid "eth_getBlockByHash(blockHash, returnFullTransactionObjects)"
-msgstr ""
+msgstr "eth_getBlockByHash(blockHash, returnFullTransactionObjects)"
 
 #: ../../source/jsonrpc.rst:149
 msgid "Retrieves a block by hash"
-msgstr ""
+msgstr "使用哈希检索块"
 
 #: ../../source/jsonrpc.rst:152
 msgid "eth_getBlockByNumber(blockParameter, returnFullTransactionObjects)"
-msgstr ""
+msgstr "eth_getBlockByNumber(blockParameter, returnFullTransactionObjects)"
 
 #: ../../source/jsonrpc.rst:152
 msgid "Retrieves a block by number"
-msgstr ""
+msgstr "按照数字检索区块"
 
 #: ../../source/jsonrpc.rst:155
 msgid "eth_getBlockTransactionCountByHash(blockHash)"
-msgstr ""
+msgstr "eth_getBlockTransactionCountByHash(blockHash)"
 
 #: ../../source/jsonrpc.rst:155
 msgid "Returns number of transactions in the block block hash"
-msgstr ""
+msgstr "返回区块哈希中的事务数"
 
 #: ../../source/jsonrpc.rst:158
 msgid "eth_getBlockTransactionCountByNumber(blockParameter)"
-msgstr ""
+msgstr "eth_getBlockTransactionCountByNumber(blockParameter)"
 
 #: ../../source/jsonrpc.rst:158
 msgid "Returns number of transactions in the block by block number"
-msgstr ""
+msgstr "按区块编号返回区块中的事务数"
 
 #: ../../source/jsonrpc.rst:161
 msgid "eth_getCode(address, blockParameter)"
-msgstr ""
+msgstr "eth_getCode(address, blockParameter)"
 
 #: ../../source/jsonrpc.rst:161
 msgid "Returns account code at given address and block"
-msgstr ""
+msgstr "返回给定地址和区块的帐户代码"
 
 #: ../../source/jsonrpc.rst:164
 msgid "eth_getFilterChanges(filterId)"
-msgstr ""
+msgstr "eth_getFilterChanges(filterId)"
 
 #: ../../source/jsonrpc.rst:164 ../../source/jsonrpc.rst:167
 msgid "Reads filter changes"
-msgstr ""
+msgstr "读取过滤器更改"
 
 #: ../../source/jsonrpc.rst:167
 msgid "eth_getFilterLogs(filterId)"
-msgstr ""
+msgstr "eth_getFilterLogs(filterId)"
 
 #: ../../source/jsonrpc.rst:170
 msgid "eth_getLogs(filter)"
-msgstr ""
+msgstr "eth_getLogs(filter)"
 
 #: ../../source/jsonrpc.rst:170
 msgid "Reads logs"
-msgstr ""
+msgstr "读取日志"
 
 #: ../../source/jsonrpc.rst:173
 msgid "eth_getProof(accountAddress, hashRate, blockParameter)"
-msgstr ""
+msgstr "eth_getProof(accountAddress, hashRate, blockParameter)"
 
 #: ../../source/jsonrpc.rst:173
 msgid "https://github.com/ethereum/EIPs/issues/1186"
-msgstr ""
+msgstr "https://github.com/ethereum/EIPs/issues/1186"
 
 #: ../../source/jsonrpc.rst:176
 msgid "eth_getStorageAt(address, positionIndex, blockParameter)"
-msgstr ""
+msgstr "eth_getStorageAt(address, positionIndex, blockParameter)"
 
 #: ../../source/jsonrpc.rst:176
 msgid "Returns storage data at address. storage_index"
-msgstr ""
+msgstr "返回地址处的存储数据。 storage_index"
 
 #: ../../source/jsonrpc.rst:179
 msgid "eth_getTransactionByBlockHashAndIndex(blockHash, positionIndex)"
-msgstr ""
+msgstr "eth_getTransactionByBlockHashAndIndex(blockHash, positionIndex)"
 
 #: ../../source/jsonrpc.rst:179
 msgid "Retrieves a transaction by block hash and index"
-msgstr ""
+msgstr "以区块，哈希和索引检索事务"
 
 #: ../../source/jsonrpc.rst:182
 msgid "eth_getTransactionByBlockNumberAndIndex(blockParameter, positionIndex)"
 msgstr ""
+"eth_getTransactionByBlockNumberAndIndex(blockParameter, positionIndex)"
 
 #: ../../source/jsonrpc.rst:182
 msgid "Retrieves a transaction by block number and index"
-msgstr ""
+msgstr "使用块号和索引检索事务"
 
 #: ../../source/jsonrpc.rst:185
 msgid "eth_getTransactionByHash(transactionHash)"
-msgstr ""
+msgstr "eth_getTransactionByHash(transactionHash)"
 
 #: ../../source/jsonrpc.rst:185
 msgid "Retrieves a transaction by hash"
-msgstr ""
+msgstr "使用哈希检索事务"
 
 #: ../../source/jsonrpc.rst:188
 msgid "eth_getTransactionCount(address, blockParameter)"
-msgstr ""
+msgstr "eth_getTransactionCount(address, blockParameter)"
 
 #: ../../source/jsonrpc.rst:188
 msgid ""
-"Returns account nonce (number of trnsactions from the account since "
-"genesis) at the given block number"
-msgstr ""
+"Returns account nonce (number of trnsactions from the account since genesis)"
+" at the given block number"
+msgstr "以给定的块号返回帐户现时数（从生成帐户的事务数）"
 
 #: ../../source/jsonrpc.rst:191
 msgid "eth_getTransactionReceipt(txHashData)"
-msgstr ""
+msgstr "eth_getTransactionReceipt(txHashData)"
 
 #: ../../source/jsonrpc.rst:191
 msgid "Retrieves a transaction receipt by tx hash"
-msgstr ""
+msgstr "使用Tx哈希检索交易收据"
 
 #: ../../source/jsonrpc.rst:194
 msgid "eth_getUncleByBlockHashAndIndex(blockHashData, positionIndex)"
-msgstr ""
+msgstr "eth_getUncleByBlockHashAndIndex(blockHashData, positionIndex)"
 
 #: ../../source/jsonrpc.rst:194
 msgid "Retrieves an uncle block header by block hash and uncle index"
-msgstr ""
+msgstr "按块哈希值和叔块索引检索叔块header"
 
 #: ../../source/jsonrpc.rst:197
 msgid "eth_getUncleByBlockNumberAndIndex(blockParameter, positionIndex)"
-msgstr ""
+msgstr "eth_getUncleByBlockNumberAndIndex(blockParameter, positionIndex)"
 
 #: ../../source/jsonrpc.rst:197
 msgid "Retrieves an uncle block header by block number and uncle index"
-msgstr ""
+msgstr "按块号和叔块索引检索叔块header"
 
 #: ../../source/jsonrpc.rst:200
 msgid "eth_getUncleCountByBlockHash(blockHash)"
-msgstr ""
+msgstr "eth_getUncleCountByBlockHash(blockHash)"
 
 #: ../../source/jsonrpc.rst:200
 msgid "Returns number of uncles in the block by block hash"
-msgstr ""
+msgstr "逐块返回哈希的叔快数"
 
 #: ../../source/jsonrpc.rst:203
 msgid "eth_getUncleCountByBlockNumber(blockParameter)"
-msgstr ""
+msgstr "eth_getUncleCountByBlockNumber(blockParameter)"
 
 #: ../../source/jsonrpc.rst:203
 msgid "Returns number of uncles in the block by block number"
-msgstr ""
+msgstr "按块号返回叔快数"
 
 #: ../../source/jsonrpc.rst:206
 msgid "eth_getWork()"
-msgstr ""
+msgstr "eth_getWork()"
 
 #: ../../source/jsonrpc.rst:209
 msgid "eth_hashrate()"
-msgstr ""
+msgstr "eth_hashrate()"
 
 #: ../../source/jsonrpc.rst:209
 msgid "[NOT IMPLEMENTED] Returns mining hashrate"
-msgstr ""
+msgstr "[未实现]返回挖矿的哈希率"
 
 #: ../../source/jsonrpc.rst:212
 msgid "eth_mining()"
-msgstr ""
+msgstr "eth_mining()"
 
 #: ../../source/jsonrpc.rst:212
 msgid "[NOT IMPLEMENTED] Returns mining status"
-msgstr ""
+msgstr "[未实现]返回挖矿的状态"
 
 #: ../../source/jsonrpc.rst:215
 msgid "eth_newBlockFilter()"
-msgstr ""
+msgstr "eth_newBlockFilter()"
 
 #: ../../source/jsonrpc.rst:215 ../../source/jsonrpc.rst:218
 #: ../../source/jsonrpc.rst:221 ../../source/jsonrpc.rst:251
 msgid "Creates an update filter"
-msgstr ""
+msgstr "创建一个更新过滤器"
 
 #: ../../source/jsonrpc.rst:218
 msgid "eth_newFilter(filter)"
-msgstr ""
+msgstr "eth_newFilter(filter)"
 
 #: ../../source/jsonrpc.rst:221
 msgid "eth_newPendingTransactionFilter()"
-msgstr ""
+msgstr "eth_newPendingTransactionFilter()"
 
 #: ../../source/jsonrpc.rst:224
 msgid "eth_pendingTransactions()"
-msgstr ""
+msgstr "eth_pendingTransactions()"
 
 #: ../../source/jsonrpc.rst:224
 msgid "Returns the pending transactions list"
-msgstr ""
+msgstr "返回待处理的交易清单"
 
 #: ../../source/jsonrpc.rst:227
 msgid "eth_protocolVersion()"
-msgstr ""
+msgstr "eth_protocolVersion()"
 
 #: ../../source/jsonrpc.rst:227
 msgid "Returns ETH protocol version"
-msgstr ""
+msgstr "返回ETH协议版本"
 
 #: ../../source/jsonrpc.rst:230
 msgid "eth_sendRawTransaction(transaction)"
-msgstr ""
+msgstr "eth_sendRawTransaction(transaction)"
 
 #: ../../source/jsonrpc.rst:230
 msgid "Send a raw transaction to the tx pool and broadcasting"
-msgstr ""
+msgstr "将原始交易发送到TX池并进行广播"
 
 #: ../../source/jsonrpc.rst:233
 msgid "eth_sendTransaction(transactionForRpc)"
-msgstr ""
+msgstr "eth_sendTransaction(transactionForRpc)"
 
 #: ../../source/jsonrpc.rst:233
 msgid "Send a transaction to the tx pool and broadcasting"
-msgstr ""
+msgstr "向TX池发送交易并进行广播"
 
 #: ../../source/jsonrpc.rst:236
 msgid "eth_sign(addressData, message)"
-msgstr ""
+msgstr "eth_sign(addressData, message)"
 
 #: ../../source/jsonrpc.rst:236
 msgid "[NOT IMPLEMENTED] Signs a transaction"
-msgstr ""
+msgstr "[未实现]签署交易"
 
 #: ../../source/jsonrpc.rst:239
 msgid "eth_snapshot()"
-msgstr ""
+msgstr "eth_snapshot()"
 
 #: ../../source/jsonrpc.rst:239
 msgid "[NOT IMPLEMENTED] Returns full state snapshot"
-msgstr ""
+msgstr "[未实现]返回完整状态快照"
 
 #: ../../source/jsonrpc.rst:242
 msgid "eth_submitHashrate(hashRate, id)"
-msgstr ""
+msgstr "eth_submitHashrate(hashRate, id)"
 
 #: ../../source/jsonrpc.rst:245
 msgid "eth_submitWork(nonce, headerPowHash, mixDigest)"
-msgstr ""
+msgstr "eth_submitWork(nonce, headerPowHash, mixDigest)"
 
 #: ../../source/jsonrpc.rst:248
 msgid "eth_syncing()"
-msgstr ""
+msgstr "eth_syncing()"
 
 #: ../../source/jsonrpc.rst:248
 msgid "Returns syncing status"
-msgstr ""
+msgstr "返回同步状态"
 
 #: ../../source/jsonrpc.rst:251
 msgid "eth_uninstallFilter(filterId)"
-msgstr ""
+msgstr "eth_uninstallFilter(filterId)"
 
 #: ../../source/jsonrpc.rst:254
 msgid "net"
-msgstr ""
+msgstr "网"
 
 #: ../../source/jsonrpc.rst:257
 msgid "net_listening()"
-msgstr ""
+msgstr "net_listening()"
 
 #: ../../source/jsonrpc.rst:260
 msgid "net_localAddress()"
-msgstr ""
+msgstr "net_localAddress()"
 
 #: ../../source/jsonrpc.rst:263
 msgid "net_localEnode()"
-msgstr ""
+msgstr "net_localEnode()"
 
 #: ../../source/jsonrpc.rst:266
 msgid "net_peerCount()"
-msgstr ""
+msgstr "net_peerCount()"
 
 #: ../../source/jsonrpc.rst:269
 msgid "net_version()"
-msgstr ""
+msgstr "net_version()"
 
 #: ../../source/jsonrpc.rst:272
 msgid "parity"
-msgstr ""
+msgstr "奇偶校验"
 
 #: ../../source/jsonrpc.rst:275
 msgid "parity_getBlockReceipts(blockParameter)"
-msgstr ""
+msgstr "parity_getBlockReceipts(blockParameter)"
 
 #: ../../source/jsonrpc.rst:278
 msgid "parity_pendingTransactions()"
-msgstr ""
+msgstr "parity_pendingTransactions()"
 
 #: ../../source/jsonrpc.rst:281
 msgid "personal"
-msgstr ""
+msgstr "personal"
 
 #: ../../source/jsonrpc.rst:284
 msgid "personal_ecRecover(message, signature)"
-msgstr ""
+msgstr "personal_ecRecover(message, signature)"
 
 #: ../../source/jsonrpc.rst:284
 msgid ""
-"[NOT IMPLEMENTED] ecRecover returns the address associated with the "
-"private key that was used to calculate the signature in personal_sign"
-msgstr ""
+"[NOT IMPLEMENTED] ecRecover returns the address associated with the private "
+"key that was used to calculate the signature in personal_sign"
+msgstr "[未实现] ecRecover返回与用于计算personal_sign中的签名的私钥关联的地址"
 
 #: ../../source/jsonrpc.rst:287
 msgid "personal_importRawKey(keyData, passphrase)"
-msgstr ""
+msgstr "personal_importRawKey(keyData, passphrase)"
 
 #: ../../source/jsonrpc.rst:290
 msgid "personal_listAccounts()"
-msgstr ""
+msgstr "personal_listAccounts()"
 
 #: ../../source/jsonrpc.rst:293
 msgid "personal_lockAccount(address)"
-msgstr ""
+msgstr "personal_lockAccount(address)"
 
 #: ../../source/jsonrpc.rst:296
 msgid "personal_newAccount(passphrase)"
-msgstr ""
+msgstr "personal_newAccount(passphrase)"
 
 #: ../../source/jsonrpc.rst:299
 msgid "personal_sendTransaction(transaction, passphrase)"
-msgstr ""
+msgstr "personal_sendTransaction(transaction, passphrase)"
 
 #: ../../source/jsonrpc.rst:301
 msgid "personal_sign(message, address, passphrase)"
-msgstr ""
+msgstr "personal_sign(message, address, passphrase)"
 
 #: ../../source/jsonrpc.rst:302
 msgid ""
-"[NOT IMPLEMENTED] The sign method calculates an Ethereum specific "
-"signature with: sign(keccack256(\"ƞthereum Signed Message:"
-msgstr ""
+"[NOT IMPLEMENTED] The sign method calculates an Ethereum specific signature "
+"with: sign(keccack256(\"ƞthereum Signed Message:"
+msgstr "[未实现] 签字方法使用以下方法计算以太坊特定的签字：sign(keccack256(\"ƞthereum Signed Message:"
 
 #: ../../source/jsonrpc.rst:303
 msgid "\" + len(message) + message)))."
-msgstr ""
+msgstr "\" + len(message) + message)))."
 
 #: ../../source/jsonrpc.rst:306
 msgid "personal_unlockAccount(address, passphrase)"
-msgstr ""
+msgstr "personal_unlockAccount(address, passphrase)"
 
 #: ../../source/jsonrpc.rst:309
 msgid "proof"
-msgstr ""
+msgstr "证明"
 
 #: ../../source/jsonrpc.rst:312
 msgid "proof_call(tx, blockParameter)"
-msgstr ""
+msgstr "proof_call(tx, blockParameter)"
 
 #: ../../source/jsonrpc.rst:312
 msgid ""
 "[NOT IMPLEMENTED] This function returns the same result as "
 "`eth_getTransactionByHash` and also a tx proof and a serialized block "
 "header."
-msgstr ""
+msgstr "[未实现]此函数返回的结果与eth_getTransactionByHash相同，并且返回tx证明和序列化的区块头。"
 
 #: ../../source/jsonrpc.rst:315
 msgid "proof_getTransactionByHash(txHash, includeHeader)"
-msgstr ""
+msgstr "proof_getTransactionByHash(txHash, includeHeader)"
 
 #: ../../source/jsonrpc.rst:315
 msgid ""
 "This function returns the same result as `eth_getTransactionReceipt` and "
 "also a tx proof, receipt proof and serialized block headers."
-msgstr ""
+msgstr "该函数返回与eth_getTransactionReceipt相同的结果，以及tx证明，收据证明和序列化的区块头。"
 
 #: ../../source/jsonrpc.rst:318
 msgid "proof_getTransactionReceipt(txHash, includeHeader)"
-msgstr ""
+msgstr "proof_getTransactionReceipt(txHash, includeHeader)"
 
 #: ../../source/jsonrpc.rst:318
 msgid ""
-"This function should return the same result as `eth_call` and also proofs"
-" of all USED accunts and their storages and serialized block headers"
-msgstr ""
+"This function should return the same result as `eth_call` and also proofs of"
+" all USED accunts and their storages and serialized block headers"
+msgstr "此函数应返回与eth_call相同的结果，并返回所有使用过的单位及其存储和序列化区块头的证明"
 
 #: ../../source/jsonrpc.rst:321
 msgid "trace"
-msgstr ""
+msgstr "跟踪"
 
 #: ../../source/jsonrpc.rst:323
 msgid "trace_block(numberOrTag)"
-msgstr ""
+msgstr "trace_block(numberOrTag)"
 
 #: ../../source/jsonrpc.rst:327
 msgid "trace_call(message, traceTypes, numberOrTag)"
-msgstr ""
+msgstr "trace_call(message, traceTypes, numberOrTag)"
 
 #: ../../source/jsonrpc.rst:330
 msgid "trace_callMany(calls)"
-msgstr ""
+msgstr "trace_callMany(calls)"
 
 #: ../../source/jsonrpc.rst:333
 msgid "trace_filter(fromBlock, toBlock, toAddress, after, count)"
-msgstr ""
+msgstr "trace_filter(fromBlock, toBlock, toAddress, after, count)"
 
 #: ../../source/jsonrpc.rst:336
 msgid "trace_get(txHash, positions)"
-msgstr ""
+msgstr "trace_get(txHash, positions)"
 
 #: ../../source/jsonrpc.rst:339
 msgid "trace_rawTransaction(data, traceTypes)"
-msgstr ""
+msgstr "trace_rawTransaction(data, traceTypes)"
 
 #: ../../source/jsonrpc.rst:339
 msgid ""
-"Traces a call to eth_sendRawTransaction without making the call, "
-"returning the traces"
-msgstr ""
+"Traces a call to eth_sendRawTransaction without making the call, returning "
+"the traces"
+msgstr "跟踪对eth_sendRawTransaction的调用而不进行调用，返回跟踪"
 
 #: ../../source/jsonrpc.rst:341
 msgid "trace_replayBlockTransactions(numberOrTag, traceTypes)"
-msgstr ""
+msgstr "trace_replayBlockTransactions(numberOrTag, traceTypes)"
 
 #: ../../source/jsonrpc.rst:344
 msgid "trace_replayTransaction(txHash, traceTypes)"
-msgstr ""
+msgstr "trace_replayTransaction(txHash, traceTypes)"
 
 #: ../../source/jsonrpc.rst:347
 msgid "trace_transaction(txHash)"
-msgstr ""
+msgstr "trace_transaction(txHash)"
 
 #: ../../source/jsonrpc.rst:351
 msgid "txpool"
-msgstr ""
+msgstr "txpool"
 
 #: ../../source/jsonrpc.rst:354
 msgid "txpool_content()"
-msgstr ""
+msgstr "txpool_content()"
 
 #: ../../source/jsonrpc.rst:357
 msgid "txpool_inspect()"
-msgstr ""
+msgstr "txpool_inspect()"
 
 #: ../../source/jsonrpc.rst:360
 msgid "txpool_status()"
-msgstr ""
+msgstr "txpool_status()"
 
 #: ../../source/jsonrpc.rst:363
 msgid "web3"
-msgstr ""
+msgstr "web3"
 
 #: ../../source/jsonrpc.rst:366
 msgid "web3_clientVersion()"
-msgstr ""
+msgstr "web3_clientVersion()"
 
 #: ../../source/jsonrpc.rst:369
 msgid "web3_sha3(data)"
-msgstr ""
-
+msgstr "web3_sha3(data)"
