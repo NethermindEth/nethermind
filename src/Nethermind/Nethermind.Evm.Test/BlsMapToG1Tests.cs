@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
 using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Core.Extensions;
@@ -36,7 +35,6 @@ namespace Nethermind.Evm.Test
                 IPrecompile precompile = MapToG1Precompile.Instance;
                 (byte[] output, bool success) = precompile.Run(input);
                 
-                Console.WriteLine(Bytes.AreEqual(output, expectedResult));
                 output.Should().BeEquivalentTo(expectedResult);
                 success.Should().BeTrue();
             }

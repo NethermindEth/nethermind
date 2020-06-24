@@ -51,17 +51,18 @@ namespace Nethermind.Evm.Precompiles.Bls.Shamatar
             inputData.PrepareEthInput(inputDataSpan);
 
             (byte[], bool) result;
-            if (inputDataSpan.TryReadEthG1(0 * BlsExtensions.LenFp, out G1 a) &&
-                inputDataSpan.TryReadEthG1(2 * BlsExtensions.LenFp, out G1 b))
+            
+            Span<byte> output = stackalloc byte[2 * BlsExtensions.LenFp];
+            bool success = ShamatarLib.BlsG1Add(inputDataSpan, output);
+            if (success)
             {
-                a.Add(a, b);
-                result = (a.SerializeEthG1(), true);
+                result = (output.ToArray(), true);
             }
             else
             {
                 result = (Bytes.Empty, false);
             }
-            
+
             return result;
         }
     }

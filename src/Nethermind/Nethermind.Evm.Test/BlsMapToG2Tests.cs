@@ -15,13 +15,11 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
 using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Precompiles;
-using Nethermind.Evm.Precompiles.Bls;
-using Nethermind.Evm.Precompiles.Bls.Mcl;
+using Nethermind.Evm.Precompiles.Bls.Shamatar;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
@@ -37,7 +35,6 @@ namespace Nethermind.Evm.Test
                 IPrecompile precompile = MapToG2Precompile.Instance;
                 (byte[] output, bool success) = precompile.Run(input);
 
-                Console.WriteLine(Bytes.AreEqual(output, expectedResult));
                 output.Should().BeEquivalentTo(expectedResult);
                 success.Should().BeTrue();
             }
