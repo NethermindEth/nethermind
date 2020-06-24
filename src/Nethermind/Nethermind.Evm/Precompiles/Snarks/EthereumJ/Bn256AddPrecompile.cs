@@ -20,17 +20,17 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto.ZkSnarks.Obsolete;
 
-namespace Nethermind.Evm.Precompiles.Snarks
+namespace Nethermind.Evm.Precompiles.Snarks.EthereumJ
 {
     /// <summary>
     ///     Code adapted from ethereumJ (https://github.com/ethereum/ethereumj)
     /// </summary>
     [Obsolete("Use Bn256AddPrecompile instead")]
-    public class EthereumJBn256AddPrecompile : IPrecompile
+    public class Bn256AddPrecompile : IPrecompile
     {
-        public static IPrecompile Instance = new EthereumJBn256AddPrecompile();
+        public static IPrecompile Instance = new Bn256AddPrecompile();
 
-        private EthereumJBn256AddPrecompile()
+        private Bn256AddPrecompile()
         {
         }
 
@@ -46,7 +46,7 @@ namespace Nethermind.Evm.Precompiles.Snarks
             return 0L;
         }
 
-        public unsafe (byte[], bool) Run(byte[] inputData)
+        public (byte[], bool) Run(byte[] inputData)
         {  
             Metrics.Bn256AddPrecompile++;
             

@@ -18,22 +18,22 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto.ZkSnarks;
+using Nethermind.Crypto.Bls;
 
-namespace Nethermind.Evm.Precompiles.Snarks
+namespace Nethermind.Evm.Precompiles.Snarks.Shamatar
 {
     /// <summary>
     /// https://github.com/herumi/mcl/blob/master/api.md
     /// </summary>
-    public class MclBn256AddPrecompile : IPrecompile
+    public class Bn256MulPrecompile : IPrecompile
     {
-        public static IPrecompile Instance = new MclBn256AddPrecompile();
+        public static IPrecompile Instance = new Bn256MulPrecompile();
 
-        public Address Address { get; } = Address.FromNumber(6);
+        public Address Address { get; } = Address.FromNumber(7);
 
         public long BaseGasCost(IReleaseSpec releaseSpec)
         {
-            return releaseSpec.IsEip1108Enabled ? 150L : 500L;
+            return releaseSpec.IsEip1108Enabled ? 6000L : 40000L;
         }
 
         public long DataGasCost(byte[] inputData, IReleaseSpec releaseSpec)
@@ -43,16 +43,17 @@ namespace Nethermind.Evm.Precompiles.Snarks
 
         public (byte[], bool) Run(byte[] inputData)
         {
-            Metrics.Bn256AddPrecompile++;
-            Span<byte> inputDataSpan = stackalloc byte[128];
+            Metrics.Bn256MulPrecompile++;
+            Span<byte> inputDataSpan = stackalloc byte[96];
             inputData.PrepareEthInput(inputDataSpan);
 
+            Span<byte> output = stackalloc byte[64];
+            bool success = ShamatarLib.Bn256Mul(inputDataSpan, output);
+            
             (byte[], bool) result;
-            if (inputDataSpan.TryReadEthG1(0 * Bn256.LenFp, out G1 a) &&
-                inputDataSpan.TryReadEthG1(2 * Bn256.LenFp, out G1 b))
+            if (success)
             {
-                a.Add(a, b);
-                result = (a.SerializeEthG1(), true);
+                result = (output.ToArray(), true);
             }
             else
             {

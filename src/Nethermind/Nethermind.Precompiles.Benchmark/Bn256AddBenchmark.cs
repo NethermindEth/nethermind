@@ -2,7 +2,6 @@
 using BenchmarkDotNet.Diagnostics.Windows.Configs;
 using BenchmarkDotNet.Jobs;
 using Nethermind.Evm.Precompiles;
-using Nethermind.Evm.Precompiles.Snarks;
 
 namespace Nethermind.Precompiles.Benchmark
 {
@@ -16,12 +15,12 @@ namespace Nethermind.Precompiles.Benchmark
         protected override IPrecompile[] Precompiles => new[]
         {
 #pragma warning disable 618
-            EthereumJBn256AddPrecompile.Instance,
+            Evm.Precompiles.Snarks.EthereumJ.Bn256AddPrecompile.Instance,
 #pragma warning restore 618
-            MclBn256AddPrecompile.Instance, 
-            ShamatarBn256AddPrecompile.Instance
+            Evm.Precompiles.Snarks.Mcl.Bn256AddPrecompile.Instance,
+            Evm.Precompiles.Snarks.Shamatar.Bn256AddPrecompile.Instance
         };
-        
+
         protected override string InputsDirectory => "bnadd";
     }
 }

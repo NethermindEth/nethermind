@@ -23,14 +23,14 @@ using Nethermind.Crypto;
 using Nethermind.Crypto.ZkSnarks;
 using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Evm.Precompiles.Snarks
+namespace Nethermind.Evm.Precompiles.Snarks.Mcl
 {
     /// <summary>
     /// https://github.com/herumi/mcl/blob/master/api.md
     /// </summary>
-    public class MclBn256MulPrecompile : IPrecompile
+    public class Bn256MulPrecompile : IPrecompile
     {
-        public static IPrecompile Instance = new MclBn256MulPrecompile();
+        public static IPrecompile Instance = new Bn256MulPrecompile();
 
         public Address Address { get; } = Address.FromNumber(7);
 

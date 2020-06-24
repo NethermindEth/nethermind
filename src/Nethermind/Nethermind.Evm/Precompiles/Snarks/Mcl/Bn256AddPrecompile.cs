@@ -18,16 +18,16 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto.Bls;
+using Nethermind.Crypto.ZkSnarks;
 
-namespace Nethermind.Evm.Precompiles.Snarks
+namespace Nethermind.Evm.Precompiles.Snarks.Mcl
 {
     /// <summary>
-    /// https://github.com/matter-labs/eip1962/blob/master/eip196_header.h
+    /// https://github.com/herumi/mcl/blob/master/api.md
     /// </summary>
-    public class ShamatarBn256AddPrecompile : IPrecompile
+    public class Bn256AddPrecompile : IPrecompile
     {
-        public static IPrecompile Instance = new ShamatarBn256AddPrecompile();
+        public static IPrecompile Instance = new Bn256AddPrecompile();
 
         public Address Address { get; } = Address.FromNumber(6);
 
@@ -41,19 +41,18 @@ namespace Nethermind.Evm.Precompiles.Snarks
             return 0L;
         }
 
-        public unsafe (byte[], bool) Run(byte[] inputData)
+        public (byte[], bool) Run(byte[] inputData)
         {
             Metrics.Bn256AddPrecompile++;
             Span<byte> inputDataSpan = stackalloc byte[128];
             inputData.PrepareEthInput(inputDataSpan);
-            
-            Span<byte> output = stackalloc byte[64];
-            bool success = ShamatarLib.Bn256Add(inputDataSpan, output);
 
             (byte[], bool) result;
-            if (success)
+            if (inputDataSpan.TryReadEthG1(0 * Bn256.LenFp, out G1 a) &&
+                inputDataSpan.TryReadEthG1(2 * Bn256.LenFp, out G1 b))
             {
-                result = (output.ToArray(), true);   
+                a.Add(a, b);
+                result = (a.SerializeEthG1(), true);
             }
             else
             {

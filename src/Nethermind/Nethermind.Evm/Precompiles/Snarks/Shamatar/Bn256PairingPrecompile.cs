@@ -20,16 +20,16 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto.Bls;
 
-namespace Nethermind.Evm.Precompiles.Snarks
+namespace Nethermind.Evm.Precompiles.Snarks.Shamatar
 {
     /// <summary>
     /// https://github.com/herumi/mcl/blob/master/api.md
     /// </summary>
-    public class ShamatarBn256PairingPrecompile : IPrecompile
+    public class Bn256PairingPrecompile : IPrecompile
     {
         private const int PairSize = 192;
 
-        public static IPrecompile Instance = new ShamatarBn256PairingPrecompile();
+        public static IPrecompile Instance = new Bn256PairingPrecompile();
 
         public Address Address { get; } = Address.FromNumber(8);
 

@@ -22,16 +22,16 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto.ZkSnarks;
 using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Evm.Precompiles.Snarks
+namespace Nethermind.Evm.Precompiles.Snarks.Mcl
 {
     /// <summary>
     /// https://github.com/herumi/mcl/blob/master/api.md
     /// </summary>
-    public class MclBn256PairingPrecompile : IPrecompile
+    public class Bn256PairingPrecompile : IPrecompile
     {
         private const int PairSize = 192;
 
-        public static IPrecompile Instance = new MclBn256PairingPrecompile();
+        public static IPrecompile Instance = new Bn256PairingPrecompile();
 
         public Address Address { get; } = Address.FromNumber(8);
 
