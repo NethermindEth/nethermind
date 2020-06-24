@@ -49,7 +49,7 @@ namespace Nethermind.Precompiles.Benchmark
 
             public override string ToString()
             {
-                return $"bytes[{Bytes.Length.ToString().PadLeft(4, '0')}] {Precompile.GetType().Name}";
+                return $"b[{Bytes.Length.ToString().PadLeft(4, '0')}] {Precompile.GetType().Name.Substring(0, 3)}";
             }
         }
         

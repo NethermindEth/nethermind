@@ -7,10 +7,10 @@ using Nethermind.Evm.Precompiles.Snarks;
 namespace Nethermind.Precompiles.Benchmark
 {
     [HtmlExporter]
-    // [ShortRunJob(RuntimeMoniker.NetCoreApp31)]
-    [NativeMemoryProfiler]
-    [DryJob(RuntimeMoniker.NetCoreApp31)]
+    [ShortRunJob(RuntimeMoniker.NetCoreApp31)]
+    // [DryJob(RuntimeMoniker.NetCoreApp31)]
     [MemoryDiagnoser]
+    // [NativeMemoryProfiler]
     public class Bn256MulBenchmark : PrecompileBenchmarkBase
     {
         protected override IPrecompile[] Precompiles => new[]

@@ -27,7 +27,7 @@ namespace Nethermind.Evm.Precompiles.Snarks
     /// </summary>
     public class ShamatarBn256MulPrecompile : IPrecompile
     {
-        public static IPrecompile Instance = new MclBn256MulPrecompile();
+        public static IPrecompile Instance = new ShamatarBn256MulPrecompile();
 
         public Address Address { get; } = Address.FromNumber(7);
 
