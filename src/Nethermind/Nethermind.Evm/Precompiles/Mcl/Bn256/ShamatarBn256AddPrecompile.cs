@@ -46,7 +46,7 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bn256
         public unsafe (byte[], bool) Run(byte[] inputData)
         {
             Metrics.Bn128AddPrecompile++;
-            Span<byte> inputDataSpan = inputData;
+            Span<byte> inputDataSpan = stackalloc byte[128];
             Mcl.PrepareInputData(inputData, inputDataSpan);
             
             Span<byte> output = stackalloc byte[64];
@@ -54,23 +54,24 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bn256
             
             int outputLength = 64;
             int errorLength = 256;
+            uint externalCallResult;
             
             fixed (byte* inputPtr = &MemoryMarshal.GetReference(inputDataSpan))
             fixed (byte* outputPtr = &MemoryMarshal.GetReference(output))
             fixed (byte* errorPtr = &MemoryMarshal.GetReference(error))
             {
-                RustBls.eip196_perform_operation(
+                externalCallResult = RustBls.eip196_perform_operation(
                     1, inputPtr, 128, outputPtr, ref outputLength, errorPtr, ref errorLength);
             }
 
             (byte[], bool) result;
-            if (errorLength != 0)
+            if (externalCallResult != 0)
             {
-                result = (output.ToArray(), true);
+                result = (Bytes.Empty, false);
             }
             else
             {
-                result = (Bytes.Empty, false);
+                result = (output.ToArray(), true);
             }
 
             return result;

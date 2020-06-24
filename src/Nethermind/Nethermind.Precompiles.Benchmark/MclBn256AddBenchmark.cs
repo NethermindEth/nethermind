@@ -8,12 +8,12 @@ namespace Nethermind.Precompiles.Benchmark
 {
     [HtmlExporter]
     [MemoryDiagnoser]
-    [NativeMemoryProfiler]
-    // [ShortRunJob(RuntimeMoniker.NetCoreApp31)]
-    [DryJob(RuntimeMoniker.NetCoreApp31)]
-    public class Bn256AddBenchmark : PrecompileBenchmarkBase
+    // [NativeMemoryProfiler]
+    [ShortRunJob(RuntimeMoniker.NetCoreApp31)]
+    // [DryJob(RuntimeMoniker.NetCoreApp31)]
+    public class MclBn256AddBenchmark : PrecompileBenchmarkBase
     {
-        protected override IPrecompile Precompile => Bn256AddPrecompile.Instance;
+        protected override IPrecompile Precompile => MclBn256AddPrecompile.Instance;
         protected override string InputsDirectory => "bnadd";
     }
 }

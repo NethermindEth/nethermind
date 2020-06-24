@@ -40,8 +40,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Abi", "Nethermin
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Cryptography.Bls", "Nethermind.Cryptography.Bls\Nethermind.Cryptography.Bls.csproj", "{6234B75E-16E1-4972-A6C7-B6252A9A76A9}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Crypto.Bn256", "Nethermind.Crypto.Bn256\Nethermind.Crypto.Bn256.csproj", "{FDB97AF7-083E-436F-AA98-57A26B3C2AA8}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Dirichlet.Numerics", "..\Dirichlet\Nethermind.Dirichlet.Numerics\Nethermind.Dirichlet.Numerics.csproj", "{A00FEFD6-C90E-46EB-9A79-C3AB6BD58508}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Crypto", "Nethermind.Crypto\Nethermind.Crypto.csproj", "{C2CE6F47-CB73-4272-AF65-E5FD6294360C}"
@@ -130,10 +128,6 @@ Global
 		{6234B75E-16E1-4972-A6C7-B6252A9A76A9}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{6234B75E-16E1-4972-A6C7-B6252A9A76A9}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{6234B75E-16E1-4972-A6C7-B6252A9A76A9}.Release|Any CPU.Build.0 = Release|Any CPU
-		{FDB97AF7-083E-436F-AA98-57A26B3C2AA8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{FDB97AF7-083E-436F-AA98-57A26B3C2AA8}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{FDB97AF7-083E-436F-AA98-57A26B3C2AA8}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{FDB97AF7-083E-436F-AA98-57A26B3C2AA8}.Release|Any CPU.Build.0 = Release|Any CPU
 		{A00FEFD6-C90E-46EB-9A79-C3AB6BD58508}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{A00FEFD6-C90E-46EB-9A79-C3AB6BD58508}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{A00FEFD6-C90E-46EB-9A79-C3AB6BD58508}.Release|Any CPU.ActiveCfg = Release|Any CPU
