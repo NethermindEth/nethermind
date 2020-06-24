@@ -212,33 +212,6 @@ namespace Nethermind.AuRa.Test
             var result = finalizationManager.GetLastLevelFinalizedBy(blockTree.Head.Hash);
             return result;
         }
-        
-        public static IEnumerable GetFinalizedLevelTests
-        {
-            get
-            {
-                yield return new TestCaseData(2, 1, new[] {TestItem.AddressA, TestItem.AddressB}, 2) {ExpectedResult = null};
-                yield return new TestCaseData(10, 9, new[] {TestItem.AddressA, TestItem.AddressB}, 2) {ExpectedResult = null};
-                yield return new TestCaseData(10, 8, new[] {TestItem.AddressA, TestItem.AddressB}, 2) {ExpectedResult = 9};
-                yield return new TestCaseData(10, 3, new[] {TestItem.AddressA, TestItem.AddressB}, 2) {ExpectedResult = 4};
-                yield return new TestCaseData(10, 3, new[] {TestItem.AddressA, TestItem.AddressB, TestItem.AddressC}, 2) {ExpectedResult = 4};
-                yield return new TestCaseData(10, 3, new[] {TestItem.AddressA, TestItem.AddressB, TestItem.AddressC}, 3) {ExpectedResult = 5};
-                yield return new TestCaseData(10, 3, new[] {TestItem.AddressA, TestItem.AddressB, TestItem.AddressC}, 4) {ExpectedResult = null};
-            }
-        }
-        
-        [TestCaseSource(nameof(GetFinalizedLevelTests))]
-        public long? GetFinalizedLevel_test(int chainLength, int levelToCheck, Address[] beneficiaries, int minForFinalization)
-        {
-            SetupValidators(beneficiaries, minForFinalization);
-            _validSealerStrategy.IsValidSealer(Arg.Any<IList<Address>>(), Arg.Any<Address>(), Arg.Any<long>()).Returns(c => beneficiaries.GetItemRoundRobin(c.Arg<long>()) == c.Arg<Address>());
-            var blockTreeBuilder = Build.A.BlockTree().OfChainLength(chainLength, 0, 0, beneficiaries);
-            var blockTree = blockTreeBuilder.TestObject;
-            var finalizationManager = new AuRaBlockFinalizationManager(blockTree, blockTreeBuilder.ChainLevelInfoRepository, _blockProcessor, _validatorStore, _validSealerStrategy, _logManager);
-
-            var result = finalizationManager.GetFinalizedLevel(levelToCheck);
-            return result;
-        }
 
         private void SetupValidators(Address[] beneficiaries, int minForFinalization)
         {
