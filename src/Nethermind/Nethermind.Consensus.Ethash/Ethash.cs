@@ -1,16 +1,16 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -86,7 +86,7 @@ namespace Nethermind.Consensus.Ethash
 
         public static bool IsPrime(ulong number)
         {
-            if (number == 1U)
+            if (number <= 1U)
             {
                 return false;
             }
@@ -154,7 +154,7 @@ namespace Nethermind.Consensus.Ethash
                 if(_logger.IsWarn) _logger.Warn($"Ethash cache miss for block {header.ToString(BlockHeader.Format.Short)}");
                 dataSet = BuildCache(epoch);
             }
-            
+
             ulong fullSize = GetDataSize(epoch);
             ulong nonce = startNonce ?? GetRandomNonce();
             BigInteger target = BigInteger.Divide(_2To256, header.Difficulty);
@@ -206,7 +206,7 @@ namespace Nethermind.Consensus.Ethash
         }
 
         private Guid _hintBasedCacheUser = Guid.Empty;
-        
+
         public bool Validate(BlockHeader header)
         {
             uint epoch = GetEpoch(header.Number);
@@ -222,7 +222,7 @@ namespace Nethermind.Consensus.Ethash
                     return false;
                 }
             }
-            
+
             ulong fullSize = GetDataSize(epoch);
             Keccak headerHashed = GetTruncatedHash(header);
             (byte[] _, byte[] result, bool isValid) = Hashimoto(fullSize, dataSet, headerHashed, header.MixHash, header.Nonce);
@@ -230,7 +230,7 @@ namespace Nethermind.Consensus.Ethash
             {
                 return false;
             }
-            
+
             BigInteger threshold = BigInteger.Divide(BigInteger.Pow(2, 256), header.Difficulty);
             return IsLessThanTarget(result, threshold);
         }
