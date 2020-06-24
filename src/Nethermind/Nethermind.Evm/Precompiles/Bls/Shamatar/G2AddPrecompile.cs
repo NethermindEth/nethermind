@@ -20,24 +20,24 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto.Bls;
 
-namespace Nethermind.Evm.Precompiles.Bls
+namespace Nethermind.Evm.Precompiles.Bls.Shamatar
 {
     /// <summary>
     /// https://eips.ethereum.org/EIPS/eip-2537
     /// </summary>
-    public class G1MulPrecompile : IPrecompile
+    public class G2AddPrecompile : IPrecompile
     {
-        public static IPrecompile Instance = new G1MulPrecompile();
+        public static IPrecompile Instance = new G2AddPrecompile();
 
-        private G1MulPrecompile()
+        private G2AddPrecompile()
         {
         }
 
-        public Address Address { get; } = Address.FromNumber(11);
+        public Address Address { get; } = Address.FromNumber(13);
 
         public long BaseGasCost(IReleaseSpec releaseSpec)
         {
-            return 12000L;
+            return 4500L;
         }
 
         public long DataGasCost(byte[] inputData, IReleaseSpec releaseSpec)
@@ -47,21 +47,21 @@ namespace Nethermind.Evm.Precompiles.Bls
 
         public (byte[], bool) Run(byte[] inputData)
         {  
-            Span<byte> inputDataSpan = stackalloc byte[2 * BlsExtensions.LenFp + BlsExtensions.LenFr];
+            Span<byte> inputDataSpan = stackalloc byte[8 * BlsExtensions.LenFp];
             inputData.PrepareEthInput(inputDataSpan);
 
             (byte[], bool) result;
-            if (inputDataSpan.TryReadEthG1(0, out G1 a))
+            if (inputDataSpan.TryReadEthG2(0 * BlsExtensions.LenFp, out G2 a) &&
+                inputDataSpan.TryReadEthG2(4 * BlsExtensions.LenFp, out G2 b))
             {
-                inputDataSpan.TryReadEthFr(2 * BlsExtensions.LenFp, out Fr fr);
-                a.Mul(a, fr);
-                result = (a.SerializeEthG1(), true);
+                a.Add(a, b);
+                result = (BlsExtensions.SerializeEthG2(a), true);
             }
             else
             {
                 result = (Bytes.Empty, false);
             }
-
+            
             return result;
         }
     }

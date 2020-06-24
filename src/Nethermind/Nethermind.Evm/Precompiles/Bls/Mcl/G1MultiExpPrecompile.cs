@@ -20,49 +20,60 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto.Bls;
 
-namespace Nethermind.Evm.Precompiles.Bls
+namespace Nethermind.Evm.Precompiles.Bls.Mcl
 {
     /// <summary>
     /// https://eips.ethereum.org/EIPS/eip-2537
     /// </summary>
-    public class G2MulPrecompile : IPrecompile
+    public class G1MultiExpPrecompile : IPrecompile
     {
-        public static IPrecompile Instance = new G2MulPrecompile();
+        public static IPrecompile Instance = new G1MultiExpPrecompile();
 
-        private G2MulPrecompile()
+        private G1MultiExpPrecompile()
         {
         }
 
-        public Address Address { get; } = Address.FromNumber(14);
+        public Address Address { get; } = Address.FromNumber(12);
 
         public long BaseGasCost(IReleaseSpec releaseSpec)
-        {
-            return 55000L;
-        }
-
-        public long DataGasCost(byte[] inputData, IReleaseSpec releaseSpec)
         {
             return 0L;
         }
 
+        public long DataGasCost(byte[] inputData, IReleaseSpec releaseSpec)
+        {
+            int k = inputData.Length / 192;
+            return 12000L * k * Discount.For(k) / 1000;
+        }
+
+        private const int ItemSize = 160;
+        
         public (byte[], bool) Run(byte[] inputData)
         {
-            Span<byte> inputDataSpan = stackalloc byte[4 * BlsExtensions.LenFp + BlsExtensions.LenFr];
-            inputData.PrepareEthInput(inputDataSpan);
-
-            (byte[], bool) result;
-            if (inputDataSpan.TryReadEthG2(0, out G2 a))
+            inputData ??= Bytes.Empty;
+            if (inputData.Length % ItemSize > 0)
             {
-                inputDataSpan.TryReadEthFr(4 * BlsExtensions.LenFp, out Fr fr);
-                a.Mul(a, fr);
-                result = (BlsExtensions.SerializeEthG2(a), true);
-            }
-            else
-            {
-                result = (Bytes.Empty, false);
+                // note that it will not happen in case of null / 0 length
+                return (Bytes.Empty, false);
             }
 
-            return result;
+            int count = inputData.Length / ItemSize;
+            G1 calculated = new G1();
+            Span<G1> inputG1 = new G1[count];
+            Span<Fr> inputFr = new Fr[count];
+
+            for (int i = 0; i < count; i++)
+            {
+                Span<byte> currentBytes = inputData.AsSpan().Slice(i * ItemSize, ItemSize);
+                if (!currentBytes.TryReadEthG1(0, out inputG1[i]) ||
+                    !currentBytes.TryReadEthFr(2 * BlsExtensions.LenFp, out inputFr[i]))
+                {
+                    return (Bytes.Empty, false);
+                }
+            }
+            
+            G1.MultiMul(ref calculated, inputG1, inputFr);
+            return (calculated.SerializeEthG1(), true);
         }
     }
 }

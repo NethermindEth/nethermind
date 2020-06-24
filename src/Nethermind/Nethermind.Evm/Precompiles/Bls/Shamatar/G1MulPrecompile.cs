@@ -20,24 +20,24 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto.Bls;
 
-namespace Nethermind.Evm.Precompiles.Bls
+namespace Nethermind.Evm.Precompiles.Bls.Shamatar
 {
     /// <summary>
     /// https://eips.ethereum.org/EIPS/eip-2537
     /// </summary>
-    public class G1AddPrecompile : IPrecompile
+    public class G1MulPrecompile : IPrecompile
     {
-        public static IPrecompile Instance = new G1AddPrecompile();
+        public static IPrecompile Instance = new G1MulPrecompile();
 
-        private G1AddPrecompile()
+        private G1MulPrecompile()
         {
         }
 
-        public Address Address { get; } = Address.FromNumber(10);
+        public Address Address { get; } = Address.FromNumber(11);
 
         public long BaseGasCost(IReleaseSpec releaseSpec)
         {
-            return 600L;
+            return 12000L;
         }
 
         public long DataGasCost(byte[] inputData, IReleaseSpec releaseSpec)
@@ -46,22 +46,22 @@ namespace Nethermind.Evm.Precompiles.Bls
         }
 
         public (byte[], bool) Run(byte[] inputData)
-        {
-            Span<byte> inputDataSpan = stackalloc byte[4 * BlsExtensions.LenFp];
+        {  
+            Span<byte> inputDataSpan = stackalloc byte[2 * BlsExtensions.LenFp + BlsExtensions.LenFr];
             inputData.PrepareEthInput(inputDataSpan);
 
             (byte[], bool) result;
-            if (inputDataSpan.TryReadEthG1(0 * BlsExtensions.LenFp, out G1 a) &&
-                inputDataSpan.TryReadEthG1(2 * BlsExtensions.LenFp, out G1 b))
+            if (inputDataSpan.TryReadEthG1(0, out G1 a))
             {
-                a.Add(a, b);
+                inputDataSpan.TryReadEthFr(2 * BlsExtensions.LenFp, out Fr fr);
+                a.Mul(a, fr);
                 result = (a.SerializeEthG1(), true);
             }
             else
             {
                 result = (Bytes.Empty, false);
             }
-            
+
             return result;
         }
     }

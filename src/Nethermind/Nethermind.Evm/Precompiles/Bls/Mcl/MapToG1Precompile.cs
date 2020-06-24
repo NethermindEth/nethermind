@@ -20,7 +20,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto.Bls;
 
-namespace Nethermind.Evm.Precompiles.Bls
+namespace Nethermind.Evm.Precompiles.Bls.Mcl
 {
     /// <summary>
     /// https://eips.ethereum.org/EIPS/eip-2537

@@ -22,7 +22,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto.Bls;
 using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Evm.Precompiles.Bls
+namespace Nethermind.Evm.Precompiles.Bls.Shamatar
 {
     /// <summary>
     /// https://eips.ethereum.org/EIPS/eip-2537

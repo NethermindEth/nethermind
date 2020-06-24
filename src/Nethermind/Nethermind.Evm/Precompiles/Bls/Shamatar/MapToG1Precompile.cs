@@ -20,24 +20,24 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto.Bls;
 
-namespace Nethermind.Evm.Precompiles.Bls
+namespace Nethermind.Evm.Precompiles.Bls.Shamatar
 {
     /// <summary>
     /// https://eips.ethereum.org/EIPS/eip-2537
     /// </summary>
-    public class MapToG2Precompile : IPrecompile
+    public class MapToG1Precompile : IPrecompile
     {
-        public static IPrecompile Instance = new MapToG2Precompile();
+        public static IPrecompile Instance = new MapToG1Precompile();
 
-        private MapToG2Precompile()
+        private MapToG1Precompile()
         {
         }
 
-        public Address Address { get; } = Address.FromNumber(18);
+        public Address Address { get; } = Address.FromNumber(17);
 
         public long BaseGasCost(IReleaseSpec releaseSpec)
         {
-            return 110000;
+            return 5500L;
         }
 
         public long DataGasCost(byte[] inputData, IReleaseSpec releaseSpec)
@@ -47,20 +47,22 @@ namespace Nethermind.Evm.Precompiles.Bls
 
         public (byte[], bool) Run(byte[] inputData)
         {
-            Span<byte> inputDataSpan = stackalloc byte[4 * BlsExtensions.LenFp];
+            Span<byte> inputDataSpan = stackalloc byte[64];
             inputData.PrepareEthInput(inputDataSpan);
-            
+
             (byte[], bool) result;
-            if (inputDataSpan.TryReadFp2(0, out Fp2 fp2))
+            
+            Span<byte> output = stackalloc byte[128];
+            bool success = ShamatarLib.BlsMapToG1(inputDataSpan, output);
+            if (success)
             {
-                G2 g2 = fp2.MapToG2();
-                result = (BlsExtensions.SerializeEthG2(g2), true);
+                result = (output.ToArray(), true);
             }
             else
             {
                 result = (Bytes.Empty, false);
             }
-            
+
             return result;
         }
     }
