@@ -54,8 +54,9 @@ namespace Nethermind.Evm.Precompiles
         {
             Metrics.EcRecoverPrecompile++;
 
+            inputData ??= Bytes.Empty;
             Span<byte> inputDataSpan = stackalloc byte[128];
-            (inputData ?? Bytes.Empty).AsSpan(0, Math.Min(128, inputData.Length))
+            inputData.AsSpan(0, Math.Min(128, inputData.Length))
                 .CopyTo(inputDataSpan.Slice(0, Math.Min(128, inputData.Length)));
 
             Keccak hash = new Keccak(inputDataSpan.Slice(0, 32).ToArray());
