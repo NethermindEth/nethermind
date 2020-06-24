@@ -36,12 +36,12 @@ namespace Nethermind.Evm.Precompiles.Snarks.Shamatar
             return releaseSpec.IsEip1108Enabled ? 6000L : 40000L;
         }
 
-        public long DataGasCost(byte[] inputData, IReleaseSpec releaseSpec)
+        public long DataGasCost(Span<byte> inputData, IReleaseSpec releaseSpec)
         {
             return 0L;
         }
 
-        public (byte[], bool) Run(byte[] inputData)
+        public PrecompileResult Run(Span<byte> inputData)
         {
             Metrics.Bn256MulPrecompile++;
             Span<byte> inputDataSpan = stackalloc byte[96];
@@ -50,14 +50,14 @@ namespace Nethermind.Evm.Precompiles.Snarks.Shamatar
             Span<byte> output = stackalloc byte[64];
             bool success = ShamatarLib.Bn256Mul(inputDataSpan, output);
             
-            (byte[], bool) result;
+            PrecompileResult result;
             if (success)
             {
-                result = (output.ToArray(), true);
+                result = new PrecompileResult(output.ToArray(), true);
             }
             else
             {
-                result = (Bytes.Empty, false);
+                result = PrecompileResult.Failure;
             }
 
             return result;

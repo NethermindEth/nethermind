@@ -34,7 +34,7 @@ namespace Nethermind.Evm.Precompiles
 
         public long BaseGasCost(IReleaseSpec releaseSpec) => 0;
 
-        public long DataGasCost(byte[] inputData, IReleaseSpec releaseSpec)
+        public long DataGasCost(Span<byte> inputData, IReleaseSpec releaseSpec)
         {
             if (inputData.Length != RequiredInputLength)
             {
@@ -47,28 +47,28 @@ namespace Nethermind.Evm.Precompiles
                 return 0;
             }
             
-            uint rounds = inputData.AsSpan().Slice(0, 4).ReadEthUInt32();
+            uint rounds = inputData.Slice(0, 4).ReadEthUInt32();
 
             return rounds;
         }
 
-        public (byte[], bool) Run(byte[] inputData)
+        public PrecompileResult Run(Span<byte> inputData)
         {
             if (inputData.Length != RequiredInputLength)
             {
-                return (Bytes.Empty, false);
+                return PrecompileResult.Failure;
             }
 
             byte finalByte = inputData[212];
             if (finalByte != 0 && finalByte != 1)
             {
-                return (Bytes.Empty, false);
+                return PrecompileResult.Failure;
             }
 
-            byte[] result = new byte[64];
+            Span<byte> result = new byte[64];
             _blake.Compress(inputData, result);
 
-            return (result, true);
+            return new PrecompileResult(result, true);
         }
     }
 }

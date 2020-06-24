@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -42,18 +43,18 @@ namespace Nethermind.Evm.Precompiles
             return 600L;
         }
 
-        public long DataGasCost(byte[] inputData, IReleaseSpec releaseSpec)
+        public long DataGasCost(Span<byte> inputData, IReleaseSpec releaseSpec)
         {
             return 120L * EvmPooledMemory.Div32Ceiling((ulong)inputData.Length);
         }
 
-        public (byte[], bool) Run(byte[] inputData)
+        public PrecompileResult Run(Span<byte> inputData)
         {
             Metrics.Ripemd160Precompile++;
             
             // missing in .NET Core
 //            return _ripemd.ComputeHash(inputData).PadLeft(32);
-            return (Ripemd.Compute(inputData).PadLeft(32), true);
+            return new PrecompileResult(Ripemd.Compute(inputData).PadLeft(32), true);
         }
     }
 }

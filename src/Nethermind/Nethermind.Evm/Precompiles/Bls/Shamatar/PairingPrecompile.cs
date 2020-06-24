@@ -39,7 +39,7 @@ namespace Nethermind.Evm.Precompiles.Bls.Shamatar
 
         public long BaseGasCost(IReleaseSpec releaseSpec) => 115000L;
 
-        public long DataGasCost(byte[] inputData, IReleaseSpec releaseSpec)
+        public long DataGasCost(Span<byte> inputData, IReleaseSpec releaseSpec)
         {
             if (inputData == null)
             {
@@ -49,70 +49,25 @@ namespace Nethermind.Evm.Precompiles.Bls.Shamatar
             return 23000L * (inputData.Length / PairSize);
         }
 
-        public (byte[], bool) Run(byte[] inputData)
+        public PrecompileResult Run(Span<byte> inputData)
         {
-            inputData ??= Bytes.Empty;
             if (inputData.Length % PairSize > 0)
             {
                 // note that it will not happen in case of null / 0 length
-                return (Bytes.Empty, false);
+                return PrecompileResult.Failure;
             }
 
-            (byte[], bool) result;
+            PrecompileResult result;
             
             Span<byte> output = stackalloc byte[32];
             bool success = ShamatarLib.BlsPairing(inputData, output);
             if (success)
             {
-                result = (output.ToArray(), true);
+                result = new PrecompileResult(output.ToArray(), true);
             }
             else
             {
-                result = (Bytes.Empty, false);
-            }
-
-            return result;
-        }
-
-        private static UInt256 RunPairingCheck(List<(G1 P, G2 Q)> _pairs)
-        {
-            GT gt = new GT();
-            for (int i = 0; i < _pairs.Count; i++)
-            {
-                (G1 P, G2 Q) pair = _pairs[i];
-                if (i == 0)
-                {
-                    gt.MillerLoop(pair.P, pair.Q);
-                }
-                else
-                {
-                    GT millerLoopRes = new GT();
-                    if (!millerLoopRes.IsOne())
-                    {
-                        millerLoopRes.MillerLoop(pair.P, pair.Q);
-                    }
-
-                    gt.Mul(gt, millerLoopRes);
-                }
-            }
-
-            gt.FinalExp(gt);
-            UInt256 result = gt.IsOne() ? UInt256.One : UInt256.Zero;
-            return result;
-        }
-
-        private static (G1, G2)? DecodePair(Span<byte> input)
-        {
-            (G1, G2)? result;
-
-            if (input.TryReadEthG1(0, out G1 p) &&
-                input.TryReadEthG2(2 * BlsExtensions.LenFp, out G2 q))
-            {
-                result = (p, q);
-            }
-            else
-            {
-                result = null;
+                result = PrecompileResult.Failure;
             }
 
             return result;

@@ -92,11 +92,11 @@ namespace Nethermind.Evm.Tracing
 
         void ReportAction(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType, bool isPrecompileCall = false);
 
-        void ReportActionEnd(long gas, byte[] output);
+        void ReportActionEnd(long gas, Span<byte> output);
 
         void ReportActionError(EvmExceptionType evmExceptionType);
 
-        void ReportActionEnd(long gas, Address deploymentAddress, byte[] deployedCode);
+        void ReportActionEnd(long gas, Address deploymentAddress, Span<byte> deployedCode);
 
         void ReportBlockHash(Keccak blockHash);
 

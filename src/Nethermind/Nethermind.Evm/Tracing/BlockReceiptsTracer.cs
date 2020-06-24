@@ -183,7 +183,7 @@ namespace Nethermind.Evm.Tracing
             _currentTxTracer.ReportAction(gas, value, @from, to, input, callType, isPrecompileCall);
         }
 
-        public void ReportActionEnd(long gas, byte[] output)
+        public void ReportActionEnd(long gas, Span<byte> output)
         {
             _currentTxTracer.ReportActionEnd(gas, output);
         }
@@ -193,7 +193,7 @@ namespace Nethermind.Evm.Tracing
             _currentTxTracer.ReportActionError(exceptionType);
         }
 
-        public void ReportActionEnd(long gas, Address deploymentAddress, byte[] deployedCode)
+        public void ReportActionEnd(long gas, Address deploymentAddress, Span<byte> deployedCode)
         {
             _currentTxTracer.ReportActionEnd(gas, deploymentAddress, deployedCode);
         }

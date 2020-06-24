@@ -38,7 +38,7 @@ namespace Nethermind.Evm.Precompiles.Snarks.Shamatar
             return releaseSpec.IsEip1108Enabled ? 45000L : 100000L;
         }
 
-        public long DataGasCost(byte[] inputData, IReleaseSpec releaseSpec)
+        public long DataGasCost(Span<byte> inputData, IReleaseSpec releaseSpec)
         {
             if (inputData == null)
             {
@@ -48,43 +48,41 @@ namespace Nethermind.Evm.Precompiles.Snarks.Shamatar
             return (releaseSpec.IsEip1108Enabled ? 34000L : 80000L) * (inputData.Length / PairSize);
         }
 
-        public (byte[], bool) Run(byte[] inputData)
+        public PrecompileResult Run(Span<byte> inputData)
         {
             Metrics.Bn256PairingPrecompile++;
-            inputData ??= Bytes.Empty;
 
-            (byte[], bool) result;
+            PrecompileResult result;
             if (inputData.Length % PairSize > 0)
             {
                 // note that it will not happen in case of null / 0 length
-                result = (Bytes.Empty, false);
+                result = PrecompileResult.Failure;
             }
             else
             {
                 /* we modify input in place here and this is save for EVM but not
                    safe in benchmarks so we need to remember to clone */
                 Span<byte> output = stackalloc byte[64];
-                Span<byte> inputDataSpan = inputData.AsSpan();
                 Span<byte> inputReshuffled = stackalloc byte[PairSize];
                 for (int i = 0; i < inputData.Length / PairSize; i++)
                 {
-                    inputDataSpan.Slice(i * PairSize + 0, 64).CopyTo(inputReshuffled.Slice(0, 64));
-                    inputDataSpan.Slice(i * PairSize + 64, 32).CopyTo(inputReshuffled.Slice(96, 32));
-                    inputDataSpan.Slice(i * PairSize + 96, 32).CopyTo(inputReshuffled.Slice(64, 32));
-                    inputDataSpan.Slice(i * PairSize + 128, 32).CopyTo(inputReshuffled.Slice(160, 32));
-                    inputDataSpan.Slice(i * PairSize + 160, 32).CopyTo(inputReshuffled.Slice(128, 32));
-                    inputReshuffled.CopyTo(inputDataSpan.Slice(i * PairSize, PairSize));
+                    inputData.Slice(i * PairSize + 0, 64).CopyTo(inputReshuffled.Slice(0, 64));
+                    inputData.Slice(i * PairSize + 64, 32).CopyTo(inputReshuffled.Slice(96, 32));
+                    inputData.Slice(i * PairSize + 96, 32).CopyTo(inputReshuffled.Slice(64, 32));
+                    inputData.Slice(i * PairSize + 128, 32).CopyTo(inputReshuffled.Slice(160, 32));
+                    inputData.Slice(i * PairSize + 160, 32).CopyTo(inputReshuffled.Slice(128, 32));
+                    inputReshuffled.CopyTo(inputData.Slice(i * PairSize, PairSize));
                 }
                 
-                bool success = ShamatarLib.Bn256Pairing(inputData.AsSpan(), output);
+                bool success = ShamatarLib.Bn256Pairing(inputData, output);
 
                 if (success)
                 {
-                    result = (output.Slice(0, 32).ToArray(), true);
+                    result = new PrecompileResult(output.Slice(0, 32).ToArray(), true);
                 }
                 else
                 {
-                    result = (Bytes.Empty, false);
+                    result = PrecompileResult.Failure;
                 }
             }
 

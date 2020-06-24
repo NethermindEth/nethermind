@@ -39,18 +39,18 @@ namespace Nethermind.Evm.Precompiles.Snarks.Mcl
             return releaseSpec.IsEip1108Enabled ? 6000L : 40000L;
         }
 
-        public long DataGasCost(byte[] inputData, IReleaseSpec releaseSpec)
+        public long DataGasCost(Span<byte> inputData, IReleaseSpec releaseSpec)
         {
             return 0L;
         }
 
-        public (byte[], bool) Run(byte[] inputData)
+        public PrecompileResult Run(Span<byte> inputData)
         {
             Metrics.Bn256MulPrecompile++;
             Span<byte> inputDataSpan = stackalloc byte[96];
             inputData.PrepareEthInput(inputDataSpan);
 
-            (byte[], bool) result;
+            PrecompileResult result;
             if (inputDataSpan.TryReadEthG1(0 * Bn256.LenFp, out G1 a))
             {
                 inputDataSpan.ReadFr(2 * Bn256.LenFp, out Fr fr);
@@ -59,11 +59,11 @@ namespace Nethermind.Evm.Precompiles.Snarks.Mcl
                 // Crypto.Bn256.G1 result = MulAlternative(a, scalar);
                 // Crypto.Bn256.G1 mulRes = Mul(a, scalar % Crypto.Bn256.R);
                 G1 mulRes = Mul(a, fr);
-                result = (mulRes.SerializeEthG1(), true);
+                result = new PrecompileResult(mulRes.SerializeEthG1(), true);
             }
             else
             {
-                result = (Bytes.Empty, false);
+                result = PrecompileResult.Failure;
             }
 
             return result;

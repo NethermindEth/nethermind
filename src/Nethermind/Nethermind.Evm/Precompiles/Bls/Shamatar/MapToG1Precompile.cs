@@ -40,27 +40,27 @@ namespace Nethermind.Evm.Precompiles.Bls.Shamatar
             return 5500L;
         }
 
-        public long DataGasCost(byte[] inputData, IReleaseSpec releaseSpec)
+        public long DataGasCost(Span<byte> inputData, IReleaseSpec releaseSpec)
         {
             return 0L;
         }
 
-        public (byte[], bool) Run(byte[] inputData)
+        public PrecompileResult Run(Span<byte> inputData)
         {
             Span<byte> inputDataSpan = stackalloc byte[64];
             inputData.PrepareEthInput(inputDataSpan);
 
-            (byte[], bool) result;
+            PrecompileResult result;
             
             Span<byte> output = stackalloc byte[128];
             bool success = ShamatarLib.BlsMapToG1(inputDataSpan, output);
             if (success)
             {
-                result = (output.ToArray(), true);
+                result = new PrecompileResult(output.ToArray(), true);
             }
             else
             {
-                result = (Bytes.Empty, false);
+                result = PrecompileResult.Failure;
             }
 
             return result;

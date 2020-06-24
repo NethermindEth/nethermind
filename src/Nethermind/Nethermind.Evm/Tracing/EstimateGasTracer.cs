@@ -217,7 +217,7 @@ namespace Nethermind.Evm.Tracing
             }
         }
 
-        public void ReportActionEnd(long gas, byte[] output)
+        public void ReportActionEnd(long gas, Span<byte> output)
         {
             if (!_isInPrecompile)
             {
@@ -229,7 +229,7 @@ namespace Nethermind.Evm.Tracing
             }
         }
 
-        public void ReportActionEnd(long gas, Address deploymentAddress, byte[] deployedCode)
+        public void ReportActionEnd(long gas, Address deploymentAddress, Span<byte> deployedCode)
         {
             if (!_isInPrecompile)
             {

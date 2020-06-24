@@ -44,7 +44,7 @@ namespace Nethermind.Evm.Precompiles.Snarks.EthereumJ
             return releaseSpec.IsEip1108Enabled ? 45000L : 100000L;
         }
 
-        public long DataGasCost(byte[] inputData, IReleaseSpec releaseSpec)
+        public long DataGasCost(Span<byte> inputData, IReleaseSpec releaseSpec)
         {
             if (inputData == null)
             {
@@ -54,15 +54,14 @@ namespace Nethermind.Evm.Precompiles.Snarks.EthereumJ
             return (releaseSpec.IsEip1108Enabled ? 34000L : 80000L)* (inputData.Length / PairSize);
         }
 
-        public (byte[], bool) Run(byte[] inputData)
+        public PrecompileResult Run(Span<byte> inputData)
         {
             Metrics.Bn256PairingPrecompile++;
-            inputData ??= Bytes.Empty;
 
             // fail if input len is not a multiple of PAIR_SIZE
             if (inputData.Length % PairSize > 0)
             {
-                return (Bytes.Empty, false);
+                return PrecompileResult.Failure;
             }
 
             PairingCheck check = PairingCheck.Create();
@@ -75,7 +74,7 @@ namespace Nethermind.Evm.Precompiles.Snarks.EthereumJ
                 // fail if decoding has failed
                 if (pair.Item1 == null || pair.Item2 == null)
                 {
-                    return (Bytes.Empty, false);
+                    return PrecompileResult.Failure;
                 }
 
                 check.AddPair(pair.Item1, pair.Item2);
@@ -85,7 +84,7 @@ namespace Nethermind.Evm.Precompiles.Snarks.EthereumJ
             UInt256 result = check.Result();
             byte[] resultBytes = new byte[32];
             result.ToBigEndian(resultBytes);
-            return (resultBytes, true);
+            return new PrecompileResult(resultBytes, true);
         }
 
         private (Bn128Fp, Bn128Fp2) DecodePair(Span<byte> input, int offset)

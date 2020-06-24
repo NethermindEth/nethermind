@@ -42,37 +42,33 @@ namespace Nethermind.Evm.Precompiles.Snarks.EthereumJ
             return releaseSpec.IsEip1108Enabled ? 6000L : 40000L;
         }
 
-        public long DataGasCost(byte[] inputData, IReleaseSpec releaseSpec = null)
+        public long DataGasCost(Span<byte> inputData, IReleaseSpec releaseSpec = null)
         {
             return 0L;
         }
 
-        public (byte[], bool) Run(byte[] inputData)
+        public PrecompileResult Run(Span<byte> inputData)
         {
             Metrics.Bn256MulPrecompile++;
             
-            inputData ??= Bytes.Empty;
+            Span<byte> inputDataSpan = stackalloc byte[96];
             
-            if (inputData.Length < 96)
-            {
-                inputData = inputData.PadRight(96);
-            }
+            inputData.PrepareEthInput(inputDataSpan);
+            Span<byte> x = inputDataSpan.Slice(0, 32);
+            Span<byte> y = inputDataSpan.Slice(32, 32);
             
-            Span<byte> x = inputData.AsSpan().Slice(0, 32);
-            Span<byte> y = inputData.AsSpan().Slice(32, 32);
-            
-            Span<byte> s = inputData.AsSpan().Slice(64, 32);
+            Span<byte> s = inputDataSpan.Slice(64, 32);
 
             Bn128Fp p = Bn128Fp.Create(x, y);
             if (p == null)
             {
-                return (Bytes.Empty, false);
+                return PrecompileResult.Failure;
             }
 
             BigInteger sInt = s.ToUnsignedBigInteger();
             Bn128Fp res = p.Mul(sInt).ToEthNotation();
 
-            return (EncodeResult(res.X.GetBytes(), res.Y.GetBytes()), true);
+            return new PrecompileResult(EncodeResult(res.X.GetBytes(), res.Y.GetBytes()), true);
         }
         
         private static byte[] EncodeResult(byte[] w1, byte[] w2)

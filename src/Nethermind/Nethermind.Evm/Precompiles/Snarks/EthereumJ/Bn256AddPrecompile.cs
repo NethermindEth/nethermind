@@ -41,46 +41,39 @@ namespace Nethermind.Evm.Precompiles.Snarks.EthereumJ
             return releaseSpec.IsEip1108Enabled ? 150L : 500L;
         }
 
-        public long DataGasCost(byte[] inputData, IReleaseSpec releaseSpec)
+        public long DataGasCost(Span<byte> inputData, IReleaseSpec releaseSpec)
         {
             return 0L;
         }
 
-        public (byte[], bool) Run(byte[] inputData)
+        public PrecompileResult Run(Span<byte> inputData)
         {  
             Metrics.Bn256AddPrecompile++;
-            
-            if (inputData == null)
-            {
-                inputData = Bytes.Empty;
-            }
 
-            if (inputData.Length < 128)
-            {
-                inputData = inputData.PadRight(128);
-            }
+            Span<byte> inputDataSpan = stackalloc byte[128];
+            inputData.PrepareEthInput(inputDataSpan);
 
-            Span<byte> x1 = inputData.AsSpan().Slice(0, 32);
-            Span<byte> y1 = inputData.AsSpan().Slice(32, 32);
+            Span<byte> x1 = inputDataSpan.Slice(0, 32);
+            Span<byte> y1 = inputDataSpan.Slice(32, 32);
 
-            Span<byte> x2 = inputData.AsSpan().Slice(64, 32);
-            Span<byte> y2 = inputData.AsSpan().Slice(96, 32);
+            Span<byte> x2 = inputDataSpan.Slice(64, 32);
+            Span<byte> y2 = inputDataSpan.Slice(96, 32);
 
             Bn128Fp p1 = Bn128Fp.Create(x1, y1);
             if (p1 == null)
             {
-                return (Bytes.Empty, false);
+                return PrecompileResult.Failure;
             }
 
             Bn128Fp p2 = Bn128Fp.Create(x2, y2);
             if (p2 == null)
             {
-                return (Bytes.Empty, false);
+                return PrecompileResult.Failure;
             }
 
             Bn128Fp res = p1.Add(p2).ToEthNotation();
 
-            return (EncodeResult(res.X.GetBytes(), res.Y.GetBytes()), true);
+            return new PrecompileResult(EncodeResult(res.X.GetBytes(), res.Y.GetBytes()), true);
         }
         
         private static byte[] EncodeResult(byte[] w1, byte[] w2) {

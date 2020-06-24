@@ -443,9 +443,9 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             PopAction();
         }
 
-        public void ReportActionEnd(long gas, byte[] output)
+        public void ReportActionEnd(long gas, Span<byte> output)
         {
-            _currentAction.Result.Output = output ?? Bytes.Empty;
+            _currentAction.Result.Output = output.ToArray();
             _currentAction.Result.GasUsed = _currentAction.Gas - gas;
             PopAction();
         }
@@ -457,10 +457,10 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             PopAction();
         }
 
-        public void ReportActionEnd(long gas, Address deploymentAddress, byte[] deployedCode)
+        public void ReportActionEnd(long gas, Address deploymentAddress, Span<byte> deployedCode)
         {
             _currentAction.Result.Address = deploymentAddress;
-            _currentAction.Result.Code = deployedCode;
+            _currentAction.Result.Code = deployedCode.ToArray();
             _currentAction.Result.GasUsed = _currentAction.Gas - gas;
             PopAction();
         }

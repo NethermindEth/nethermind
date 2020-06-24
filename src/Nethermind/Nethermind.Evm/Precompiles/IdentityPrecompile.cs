@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 
@@ -34,14 +35,14 @@ namespace Nethermind.Evm.Precompiles
             return 15L;
         }
 
-        public long DataGasCost(byte[] inputData, IReleaseSpec releaseSpec)
+        public long DataGasCost(Span<byte> inputData, IReleaseSpec releaseSpec)
         {
             return 3L * EvmPooledMemory.Div32Ceiling((ulong)inputData.Length);
         }
 
-        public (byte[], bool) Run(byte[] inputData)
+        public PrecompileResult Run(Span<byte> inputData)
         {
-            return (inputData, true);
+            return new PrecompileResult(inputData, true);
         }
     }
 }

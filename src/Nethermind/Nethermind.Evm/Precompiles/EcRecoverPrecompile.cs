@@ -36,7 +36,7 @@ namespace Nethermind.Evm.Precompiles
 
         public Address Address { get; } = Address.FromNumber(1);
 
-        public long DataGasCost(byte[] inputData, IReleaseSpec releaseSpec)
+        public long DataGasCost(Span<byte> inputData, IReleaseSpec releaseSpec)
         {
             return 0L;
         }
@@ -50,14 +50,12 @@ namespace Nethermind.Evm.Precompiles
         
         private readonly byte[] _zero31 = new byte[31];
         
-        public (byte[], bool) Run(byte[] inputData)
+        public PrecompileResult Run(Span<byte> inputData)
         {
             Metrics.EcRecoverPrecompile++;
-
-            inputData ??= Bytes.Empty;
+            
             Span<byte> inputDataSpan = stackalloc byte[128];
-            inputData.AsSpan(0, Math.Min(128, inputData.Length))
-                .CopyTo(inputDataSpan.Slice(0, Math.Min(128, inputData.Length)));
+            inputData.PrepareEthInput(inputDataSpan);
 
             Keccak hash = new Keccak(inputDataSpan.Slice(0, 32).ToArray());
             Span<byte> vBytes = inputDataSpan.Slice(32, 32);
@@ -68,20 +66,20 @@ namespace Nethermind.Evm.Precompiles
             // TEST: CALLCODEEcrecoverV_prefixedf0_d1g0v0
             if (!Bytes.AreEqual(_zero31, vBytes.Slice(0, 31)))
             {
-                return (Bytes.Empty, true);
+                return PrecompileResult.SuccessEmpty;
             }
             
             byte v = vBytes[31];
             if (v != 27 && v != 28)
             {
-                return (Bytes.Empty, true);
+                return PrecompileResult.SuccessEmpty;
             }
 
             Signature signature = new Signature(r, s, v);
             Address recovered = _ecdsa.RecoverAddress(signature, hash);
             if (recovered == null)
             {
-                return (Bytes.Empty, true);
+                return PrecompileResult.SuccessEmpty;
             }
 
             byte[] result = recovered.Bytes;
@@ -91,7 +89,7 @@ namespace Nethermind.Evm.Precompiles
             }
             
             // TODO: change recovery code to return bytes
-            return (result, true);
+            return new PrecompileResult(result, true);
         }
     }
 }

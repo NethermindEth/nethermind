@@ -36,27 +36,27 @@ namespace Nethermind.Evm.Precompiles.Snarks.Mcl
             return releaseSpec.IsEip1108Enabled ? 150L : 500L;
         }
 
-        public long DataGasCost(byte[] inputData, IReleaseSpec releaseSpec)
+        public long DataGasCost(Span<byte> inputData, IReleaseSpec releaseSpec)
         {
             return 0L;
         }
 
-        public (byte[], bool) Run(byte[] inputData)
+        public PrecompileResult Run(Span<byte> inputData)
         {
             Metrics.Bn256AddPrecompile++;
             Span<byte> inputDataSpan = stackalloc byte[128];
             inputData.PrepareEthInput(inputDataSpan);
 
-            (byte[], bool) result;
+            PrecompileResult result;
             if (inputDataSpan.TryReadEthG1(0 * Bn256.LenFp, out G1 a) &&
                 inputDataSpan.TryReadEthG1(2 * Bn256.LenFp, out G1 b))
             {
                 a.Add(a, b);
-                result = (a.SerializeEthG1(), true);
+                result = new PrecompileResult(a.SerializeEthG1(), true);
             }
             else
             {
-                result = (Bytes.Empty, false);
+                result = PrecompileResult.Failure;
             }
 
             return result;

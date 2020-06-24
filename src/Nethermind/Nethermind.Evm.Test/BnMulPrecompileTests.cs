@@ -47,17 +47,18 @@ namespace Nethermind.Evm.Test
 #pragma warning disable 618
                 IPrecompile ethereumJ = Precompiles.Snarks.EthereumJ.Bn256MulPrecompile.Instance;
 #pragma warning restore 618
-                (byte[], bool) resultEthereumJ = ethereumJ.Run(inputs[i]);
+                var resultEthereumJ = ethereumJ.Run(inputs[i]);
 
                 IPrecompile shamatar = Precompiles.Snarks.Shamatar.Bn256MulPrecompile.Instance;
-                (byte[], bool) resultShamatar = shamatar.Run(inputs[i]);
+                var resultShamatar = shamatar.Run(inputs[i]);
                 
                 // does not build on linux / osx
                 // IPrecompile mcl = Precompiles.Snarks.Mcl.Bn256MulPrecompile.Instance;
                 // (byte[], bool) resultMcl = mcl.Run(inputs[i]);
                 //
                 // resultMcl.Should().BeEquivalentTo(resultEthereumJ, i.ToString());
-                resultShamatar.Should().BeEquivalentTo(resultEthereumJ, i.ToString());
+                resultShamatar.Output.ToArray().Should()
+                    .BeEquivalentTo(resultEthereumJ.Output.ToArray(), i.ToString());
             }
         }
     }

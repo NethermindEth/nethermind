@@ -87,10 +87,10 @@ namespace Nethermind.Evm.Tracing
 
         public void ReportAction(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType, bool isPrecompileCall = false) => throw new InvalidOperationException(ErrorMessage);
 
-        public void ReportActionEnd(long gas, byte[] output) => throw new InvalidOperationException(ErrorMessage);
+        public void ReportActionEnd(long gas, Span<byte> output) => throw new InvalidOperationException(ErrorMessage);
         public void ReportActionError(EvmExceptionType exceptionType) => throw new InvalidOperationException(ErrorMessage);
 
-        public void ReportActionEnd(long gas, Address deploymentAddress, byte[] deployedCode) => throw new InvalidOperationException(ErrorMessage);
+        public void ReportActionEnd(long gas, Address deploymentAddress, Span<byte> deployedCode) => throw new InvalidOperationException(ErrorMessage);
         public void ReportBlockHash(Keccak blockHash) => throw new InvalidOperationException(ErrorMessage);
 
         public void ReportByteCode(byte[] byteCode) => throw new InvalidOperationException(ErrorMessage);

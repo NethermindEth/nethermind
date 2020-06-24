@@ -40,7 +40,7 @@ namespace Nethermind.Evm.Precompiles
             return 0L;
         }
         
-        public long DataGasCost(byte[] inputData, IReleaseSpec releaseSpec)
+        public long DataGasCost(Span<byte> inputData, IReleaseSpec releaseSpec)
         {
             try
             {
@@ -50,7 +50,7 @@ namespace Nethermind.Evm.Precompiles
 
                 BigInteger complexity = MultComplexity(BigInteger.Max(baseLength, modulusLength));
 
-                byte[] expSignificantBytes = inputData.SliceWithZeroPaddingEmptyOnError(96 + (int)baseLength, (int)BigInteger.Min(expLength, 32));
+                Span<byte> expSignificantBytes = inputData.SliceWithZeroPaddingEmptyOnError(96 + (int)baseLength, (int)BigInteger.Min(expLength, 32));
 
                 BigInteger lengthOver32 = expLength <= 32 ? 0 : expLength - 32;
                 BigInteger adjusted = AdjustedExponentLength(lengthOver32, expSignificantBytes);
@@ -63,7 +63,7 @@ namespace Nethermind.Evm.Precompiles
             }
         }
 
-        public (byte[], bool) Run(byte[] inputData)
+        public PrecompileResult Run(Span<byte> inputData)
         {
             Metrics.ModExpPrecompile++;
             
@@ -78,10 +78,11 @@ namespace Nethermind.Evm.Precompiles
 
             if (modulusInt.IsZero)
             {
-                return (new byte[modulusLength], true);
+                return new PrecompileResult(new byte[modulusLength], true);
             }
 
-            return (BigInteger.ModPow(baseInt, expInt, modulusInt).ToBigEndianByteArray(modulusLength), true);
+            var res = BigInteger.ModPow(baseInt, expInt, modulusInt).ToBigEndianByteArray(modulusLength);
+            return new PrecompileResult(res, true);
         }
 
         private BigInteger MultComplexity(BigInteger adjustedExponentLength)
@@ -99,9 +100,9 @@ namespace Nethermind.Evm.Precompiles
             return adjustedExponentLength * adjustedExponentLength / 16 + 480 * adjustedExponentLength - 199680;
         }
 
-        private static BigInteger AdjustedExponentLength(BigInteger lengthOver32, byte[] exponent)
+        private static BigInteger AdjustedExponentLength(BigInteger lengthOver32, Span<byte> exponent)
         {
-            int leadingZeros = exponent.AsSpan().LeadingZerosCount();
+            int leadingZeros = exponent.LeadingZerosCount();
             if (leadingZeros == exponent.Length)
             {
                 return lengthOver32 * 8;

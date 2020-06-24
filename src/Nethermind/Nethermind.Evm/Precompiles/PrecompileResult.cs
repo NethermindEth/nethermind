@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,21 +13,27 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
 using System;
-using Nethermind.Core;
-using Nethermind.Core.Specs;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Evm.Precompiles
 {
-    public interface IPrecompile
+    public ref struct PrecompileResult
     {
-        Address Address { get; }
-
-        long BaseGasCost(IReleaseSpec releaseSpec);
-
-        long DataGasCost(Span<byte> inputData, IReleaseSpec releaseSpec);
-
-        PrecompileResult Run(Span<byte> inputData);
+        public PrecompileResult(Span<byte> output, bool status)
+        {
+            Output = output;
+            Status = status;
+        }
+        
+        public Span<byte> Output { get; set; }
+        
+        public bool Status { get; set; }
+        
+        public static PrecompileResult Failure => new PrecompileResult(Bytes.Empty, false);
+        
+        public static PrecompileResult SuccessEmpty => new PrecompileResult(Bytes.Empty, false);
     }
 }

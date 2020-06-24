@@ -40,7 +40,7 @@ namespace Nethermind.Evm.Precompiles.Snarks.Mcl
             return releaseSpec.IsEip1108Enabled ? 45000L : 100000L;
         }
 
-        public long DataGasCost(byte[] inputData, IReleaseSpec releaseSpec)
+        public long DataGasCost(Span<byte> inputData, IReleaseSpec releaseSpec)
         {
             if (inputData == null)
             {
@@ -50,15 +50,14 @@ namespace Nethermind.Evm.Precompiles.Snarks.Mcl
             return (releaseSpec.IsEip1108Enabled ? 34000L : 80000L) * (inputData.Length / PairSize);
         }
 
-        public (byte[], bool) Run(byte[] inputData)
+        public PrecompileResult Run(Span<byte> inputData)
         {
             Metrics.Bn256PairingPrecompile++;
-
-            inputData ??= Bytes.Empty;
+            
             if (inputData.Length % PairSize > 0)
             {
                 // note that it will not happen in case of null / 0 length
-                return (Bytes.Empty, false);
+                return PrecompileResult.Failure;
             }
 
             UInt256 result = UInt256.One;
@@ -72,7 +71,7 @@ namespace Nethermind.Evm.Precompiles.Snarks.Mcl
                     (G1 P, G2 Q)? pair = DecodePair(pairData);
                     if (pair == null)
                     {
-                        return (Bytes.Empty, false);
+                        return PrecompileResult.Failure;
                     }
 
                     pairs.Add(pair.Value);
@@ -83,7 +82,7 @@ namespace Nethermind.Evm.Precompiles.Snarks.Mcl
 
             byte[] resultBytes = new byte[32];
             result.ToBigEndian(resultBytes);
-            return (resultBytes, true);
+            return new PrecompileResult(resultBytes, true);
         }
 
         private static UInt256 RunPairingCheck(List<(G1 P, G2 Q)> _pairs)

@@ -40,21 +40,20 @@ namespace Nethermind.Evm.Precompiles.Bls.Mcl
             return 0L;
         }
 
-        public long DataGasCost(byte[] inputData, IReleaseSpec releaseSpec)
+        public long DataGasCost(Span<byte> inputData, IReleaseSpec releaseSpec)
         {
             int k = inputData.Length / 288;
-            return 55000L * k * Discount.For(k) / 1000;;
+            return 55000L * k * Discount.For(k) / 1000;
         }
         
         private const int ItemSize = 288;
 
-        public (byte[], bool) Run(byte[] inputData)
+        public PrecompileResult Run(Span<byte> inputData)
         {
-            inputData ??= Bytes.Empty;
             if (inputData.Length % ItemSize > 0)
             {
                 // note that it will not happen in case of null / 0 length
-                return (Bytes.Empty, false);
+                return PrecompileResult.Failure;
             }
 
             int count = inputData.Length / ItemSize;
@@ -64,16 +63,16 @@ namespace Nethermind.Evm.Precompiles.Bls.Mcl
 
             for (int i = 0; i < count; i++)
             {
-                Span<byte> currentBytes = inputData.AsSpan().Slice(i * ItemSize, ItemSize);
+                Span<byte> currentBytes = inputData.Slice(i * ItemSize, ItemSize);
                 if (!currentBytes.TryReadEthG2(0, out inputG2[i]) ||
                     !currentBytes.TryReadEthFr(4 * BlsExtensions.LenFp, out inputFr[i]))
                 {
-                    return (Bytes.Empty, false);
+                    return PrecompileResult.Failure;
                 }
             }
             
             G2.MultiMul(ref calculated, inputG2, inputFr);
-            return (BlsExtensions.SerializeEthG2(calculated), true);
+            return new PrecompileResult(BlsExtensions.SerializeEthG2(calculated), true);
         }
     }
 }

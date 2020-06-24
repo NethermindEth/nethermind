@@ -40,26 +40,26 @@ namespace Nethermind.Evm.Precompiles.Bls.Mcl
             return 600L;
         }
 
-        public long DataGasCost(byte[] inputData, IReleaseSpec releaseSpec)
+        public long DataGasCost(Span<byte> inputData, IReleaseSpec releaseSpec)
         {
             return 0L;
         }
 
-        public (byte[], bool) Run(byte[] inputData)
+        public PrecompileResult Run(Span<byte> inputData)
         {
             Span<byte> inputDataSpan = stackalloc byte[4 * BlsExtensions.LenFp];
             inputData.PrepareEthInput(inputDataSpan);
 
-            (byte[], bool) result;
+            PrecompileResult result;
             if (inputDataSpan.TryReadEthG1(0 * BlsExtensions.LenFp, out G1 a) &&
                 inputDataSpan.TryReadEthG1(2 * BlsExtensions.LenFp, out G1 b))
             {
                 a.Add(a, b);
-                result = (a.SerializeEthG1(), true);
+                result = new PrecompileResult(a.SerializeEthG1(), true);
             }
             else
             {
-                result = (Bytes.Empty, false);
+                result = PrecompileResult.Failure;
             }
             
             return result;

@@ -28,7 +28,6 @@ namespace Nethermind.Evm
         private static List<Address> _emptyDestroyList = new List<Address>(0);
         private static List<LogEntry> _emptyLogs = new List<LogEntry>(0);
 
-        
         public TransactionSubstate(EvmExceptionType exceptionType)
         {
             Error = exceptionType.ToString();

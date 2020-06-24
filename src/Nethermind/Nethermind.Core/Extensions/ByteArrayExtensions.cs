@@ -107,5 +107,27 @@ namespace Nethermind.Core.Extensions
             Buffer.BlockCopy(bytes, (int)startIndex, slice, 0, Math.Min(bytes.Length - (int)startIndex, length));
             return slice;
         }
+        
+        public static Span<byte> SliceWithZeroPaddingEmptyOnError(this Span<byte> bytes, int startIndex, int length)
+        {
+            if (startIndex >= bytes.Length || length == 0)
+            {
+                return Span<byte>.Empty;
+            }
+
+            if (length == 1)
+            {
+                return bytes.Length == 0 ? Span<byte>.Empty : bytes.Slice(startIndex, 1);
+            }
+
+            byte[] slice = new byte[length];
+            if (startIndex > bytes.Length - 1)
+            {
+                return slice;
+            }
+
+            bytes.Slice(startIndex).CopyTo(slice.Slice(0, Math.Min(bytes.Length - startIndex, length)));
+            return slice;
+        }
     }
 }

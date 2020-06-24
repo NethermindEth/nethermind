@@ -40,7 +40,7 @@ namespace Nethermind.Evm.Precompiles.Bls.Shamatar
             return 0L;
         }
 
-        public long DataGasCost(byte[] inputData, IReleaseSpec releaseSpec)
+        public long DataGasCost(Span<byte> inputData, IReleaseSpec releaseSpec)
         {
             int k = inputData.Length / 192;
             return 12000L * k * Discount.For(k) / 1000;
@@ -48,26 +48,25 @@ namespace Nethermind.Evm.Precompiles.Bls.Shamatar
 
         private const int ItemSize = 160;
         
-        public (byte[], bool) Run(byte[] inputData)
+        public PrecompileResult Run(Span<byte> inputData)
         {
-            inputData ??= Bytes.Empty;
             if (inputData.Length % ItemSize > 0)
             {
                 // note that it will not happen in case of null / 0 length
-                return (Bytes.Empty, false);
+                return PrecompileResult.Failure;
             }
 
-            (byte[], bool) result;
+            PrecompileResult result;
             
             Span<byte> output = stackalloc byte[2 * BlsExtensions.LenFp];
             bool success = ShamatarLib.BlsG1MultiExp(inputData, output);
             if (success)
             {
-                result = (output.ToArray(), true);
+                result = new PrecompileResult(output.ToArray(), true);
             }
             else
             {
-                result = (Bytes.Empty, false);
+                result = PrecompileResult.Failure;
             }
 
             return result;
