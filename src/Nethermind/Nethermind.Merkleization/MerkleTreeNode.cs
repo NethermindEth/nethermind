@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,33 +13,27 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System.Collections;
-using System.Linq;
 using Nethermind.Core2;
-using Nethermind.Core2.Containers;
-using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
-using Nethermind.Dirichlet.Numerics;
-using Chunk = Nethermind.Dirichlet.Numerics.UInt256;
 
-namespace Nethermind.Ssz
+namespace Nethermind.Merkleization
 {
-    public static partial class Merkle
+    public readonly struct MerkleTreeNode
     {
-        public static void IzeBitvector(out UInt256 root, BitArray value)
+        public MerkleTreeNode(Bytes32 hash, ulong index)
         {
-            Merkleizer merkleizer = new Merkleizer(0);
-            merkleizer.FeedBitvector(value);
-            merkleizer.CalculateRoot(out root);
+            Hash = hash;
+            Index = index;
         }
         
-        public static void IzeBitlist(out UInt256 root, BitArray value, ulong maximumBitlistLength)
-        {
-            Merkleizer merkleizer = new Merkleizer(0);
-            merkleizer.FeedBitlist(value, maximumBitlistLength);
-            merkleizer.CalculateRoot(out root);
-        }
+        public Bytes32 Hash { get; }
+        public ulong Index { get; } // 32bit index for 32 depth of a tree
 
+        public override string ToString()
+        {
+            return $"{Hash.Unwrap().ToHexString(true)}, {Index}";
+        }
     }
 }

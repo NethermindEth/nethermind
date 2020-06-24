@@ -13,19 +13,15 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
 
-namespace Nethermind.Baseline
+using Nethermind.Core2.Crypto;
+
+namespace Nethermind.Core2.Containers
 {
-    public readonly struct MerkleTreeNode
+    public struct ItemOrRootStruct<T> where T : struct 
     {
-        public MerkleTreeNode(Bytes32 hash, uint index)
-        {
-            Hash = hash;
-            Index = index;
-        }
+        public T? Item { get; set; }
         
-        public Bytes32 Hash { get; }
-        public uint Index { get; } // 32bit index for 32 depth of a tree
+        public Root? Root { get; set; }
     }
 }

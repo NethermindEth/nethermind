@@ -166,6 +166,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             RpcTest.TestSerializedRequest(_parityModule, "parity_setEngineSigner", TestItem.AddressA.ToString(), "password");
             string serialized = RpcTest.TestSerializedRequest(_parityModule, "parity_clearEngineSigner");
             var expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}";
+            serialized.Should().Be(expectedResult);
             _signerStore.Address.Should().Be(Address.Zero);
             _signerStore.CanSign.Should().BeFalse();
         }

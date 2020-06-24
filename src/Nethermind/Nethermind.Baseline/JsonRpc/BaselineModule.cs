@@ -167,7 +167,7 @@ namespace Nethermind.Baseline.JsonRpc
         public Task<ResultWrapper<BaselineTreeNode>> baseline_getLeaf(Address contractAddress, UInt256 leafIndex)
         {
             bool isTracked = _baselineTrees.TryGetValue(contractAddress, out BaselineTree? tree);
-            bool isLeafIndexValid = !(leafIndex > MerkleTree.MaxLeafIndex || leafIndex < 0L);
+            bool isLeafIndexValid = !(leafIndex > BaselineTree.MaxLeafIndex || leafIndex < 0L);
 
             ResultWrapper<BaselineTreeNode> result;
             if (!isLeafIndexValid)
@@ -200,7 +200,7 @@ namespace Nethermind.Baseline.JsonRpc
             bool leafIndexesAreValid = true;
             foreach (UInt256 leafIndex in leafIndexes)
             {
-                if (leafIndex > MerkleTree.MaxLeafIndex || leafIndex < 0L)
+                if (leafIndex > BaselineTree.MaxLeafIndex || leafIndex < 0L)
                 {
                     leafIndexesAreValid = false;
                     break;
@@ -390,7 +390,7 @@ namespace Nethermind.Baseline.JsonRpc
 
         public Task<ResultWrapper<BaselineTreeNode[]>> baseline_getSiblings(Address contractAddress, long leafIndex)
         {
-            if (leafIndex > MerkleTree.MaxLeafIndex || leafIndex < 0L)
+            if (leafIndex > BaselineTree.MaxLeafIndex || leafIndex < 0L)
             {
                 return Task.FromResult(ResultWrapper<BaselineTreeNode[]>.Fail(
                     $"{leafIndex} is not a valid leaf index",

@@ -16,6 +16,7 @@ namespace Nethermind.Baseline
         private const ulong FirstLeafIndexAsNodeIndex = MaxNodes / 2;
         private const ulong MaxNodes = (1ul << (TreeHeight + 1)) - 1ul;
         private const ulong MaxNodeIndex = MaxNodes - 1;
+        public const uint MaxLeafIndex = uint.MaxValue;
 
         private readonly IKeyValueStore _keyValueStore;
         private readonly byte[] _dbPrefix;
@@ -83,7 +84,7 @@ namespace Nethermind.Baseline
                 }
             }
 
-            return 31u;
+            return TreeHeight;
         }
 
         private Bytes32 LoadValue(ulong nodeIndex)

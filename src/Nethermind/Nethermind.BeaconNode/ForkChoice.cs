@@ -31,7 +31,7 @@ namespace Nethermind.BeaconNode
 {
     public class ForkChoice : IForkChoice
     {
-        private readonly BeaconChainUtility _beaconChainUtility;
+        private readonly IBeaconChainUtility _beaconChainUtility;
         private readonly BeaconStateAccessor _beaconStateAccessor;
         private readonly BeaconStateTransition _beaconStateTransition;
         private readonly ChainConstants _chainConstants;
@@ -52,7 +52,7 @@ namespace Nethermind.BeaconNode
             IOptionsMonitor<ForkChoiceConfiguration> forkChoiceConfigurationOptions,
             IOptionsMonitor<SignatureDomains> signatureDomainOptions,
             ICryptographyService cryptographyService,
-            BeaconChainUtility beaconChainUtility,
+            IBeaconChainUtility beaconChainUtility,
             BeaconStateAccessor beaconStateAccessor,
             BeaconStateTransition beaconStateTransition)
         {

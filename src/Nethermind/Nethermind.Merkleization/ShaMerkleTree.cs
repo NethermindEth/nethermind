@@ -18,50 +18,51 @@
 using System;
 using System.Collections.ObjectModel;
 using System.Security.Cryptography;
-using Nethermind.Trie;
+using Nethermind.Core2.Types;
+using Nethermind.Ssz;
 
-namespace Nethermind.Baseline
+namespace Nethermind.Merkleization
 {
     public class ShaMerkleTree : MerkleTree
     {
-        private static readonly byte[][] _zeroHashes = new byte[32][];
+        private static readonly Bytes32[] _zeroHashes = new Bytes32[32];
         private static readonly HashAlgorithm _hashAlgorithm = SHA256.Create();
         
         static ShaMerkleTree()
         {
-            _zeroHashes[0] = new byte[32];
+            _zeroHashes[0] = new Bytes32();
             for (int index = 1; index < 32; index++)
             {
-                _zeroHashes[index] = HashStatic(_zeroHashes[index - 1], _zeroHashes[index - 1]);
+                _zeroHashes[index] = new Bytes32();
+                HashStatic(_zeroHashes[index - 1].Unwrap(), _zeroHashes[index - 1].Unwrap(), _zeroHashes[index].Unwrap());
             }
         }
         
-        /// <summary>
-        /// Zero hashes are always 32 bytes long (not truncated)
-        /// </summary>
-        public static ReadOnlyCollection<byte[]> ZeroHashes => Array.AsReadOnly(_zeroHashes);
+        public static ReadOnlyCollection<Bytes32> ZeroHashes => Array.AsReadOnly(_zeroHashes);
 
-        public ShaMerkleTree(IKeyValueStore keyValueStore, int truncationLength = 0)
-            : base(keyValueStore, truncationLength)
+        public ShaMerkleTree(IKeyValueStore<ulong, byte[]> keyValueStore)
+            : base(keyValueStore)
         {
-            
+        }
+        
+        public ShaMerkleTree() : base(new MemMerkleTreeStore())
+        {
         }
 
-        private static byte[] HashStatic(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
+        private static void HashStatic(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b, Span<byte> target)
         {
-            Span<byte> combined = new Span<byte>(new byte[a.Length + b.Length]);
+            Span<byte> combined = stackalloc byte[a.Length + b.Length];
             a.CopyTo(combined);
             b.CopyTo(combined.Slice(a.Length));
             
-            // TryComputeHash here?
-            return _hashAlgorithm.ComputeHash(combined.ToArray());
+            _hashAlgorithm.TryComputeHash(combined, target, out int bytesWritten);
         }
 
-        protected override byte[][] ZeroHashesInternal => _zeroHashes;
+        protected override Bytes32[] ZeroHashesInternal => _zeroHashes;
 
-        protected override byte[] Hash(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
+        protected override void Hash(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b, Span<byte> target)
         {
-            return HashStatic(a.Slice(TruncationLength, 32 - TruncationLength), b.Slice(TruncationLength, 32 - TruncationLength));
+            HashStatic(a, b, target);
         }
     }
 }

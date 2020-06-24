@@ -103,7 +103,7 @@ namespace Nethermind.BeaconNode.Test.BlockProcessing
                 }
 
                 Gwei balance = TestState.GetBalance(state, validatorIndex);
-                Gwei expectedBalance = preBalance + deposit.Data.Amount;
+                Gwei expectedBalance = preBalance + deposit.Data.Item.Amount;
                 balance.ShouldBe(expectedBalance);
 
                 Gwei expectedEffectiveBalance = Gwei.Min(gweiValues.MaximumEffectiveBalance, expectedBalance);
