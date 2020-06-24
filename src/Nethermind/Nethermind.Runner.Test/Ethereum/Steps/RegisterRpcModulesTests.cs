@@ -17,11 +17,16 @@
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Config;
+using Nethermind.Consensus;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Proof;
+using Nethermind.KeyStore;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum;
 using Nethermind.Runner.Ethereum.Context;
@@ -51,6 +56,8 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             EthereumRunnerContext context = Build.ContextWithMocks();
             context.ConfigProvider = configProvider;
             context.RpcModuleProvider = rpcModuleProvider;
+            context.Signer = new Signer(ChainId.Mainnet, TestItem.PrivateKeyA, LimboLogs.Instance);
+            context.KeyStore = Substitute.For<IKeyStore>();
             
             RegisterRpcModules registerRpcModules = new RegisterRpcModules(context);
             registerRpcModules.Execute(CancellationToken.None);

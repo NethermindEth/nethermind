@@ -51,7 +51,7 @@ namespace Nethermind.AuRa.Test
             _logManager = LimboLogs.Instance;
             _validSealerStrategy = Substitute.For<IValidSealerStrategy>();
 
-            _validatorStore.GetValidators().Returns(new Address[] {TestItem.AddressA, TestItem.AddressB, TestItem.AddressC});
+            _validatorStore.GetValidators(Arg.Any<long?>()).Returns(new Address[] {TestItem.AddressA, TestItem.AddressB, TestItem.AddressC});
             
             Rlp.Decoders[typeof(BlockInfo)] = new BlockInfoDecoder(true);
         }
@@ -106,7 +106,7 @@ namespace Nethermind.AuRa.Test
         [TestCaseSource(nameof(FinalizingTests))]
         public void correctly_finalizes_blocks_in_chain(int chainLength, long twoThirdsMajorityTransition, Address[] blockCreators, int notFinalizedExpectedCount)
         {
-            _validatorStore.GetValidators().Returns(blockCreators);
+            _validatorStore.GetValidators(Arg.Any<long?>()).Returns(blockCreators);
             
             var blockTreeBuilder = Build.A.BlockTree();
             HashSet<BlockHeader> finalizedBlocks = new HashSet<BlockHeader>();
@@ -152,7 +152,7 @@ namespace Nethermind.AuRa.Test
         [TestCase(4, 5, ExpectedResult = new[] {1, 3, 1, 0, 0})]
         public int[] correctly_finalizes_blocks_on_reorganisations(int validators, int chainLength)
         {
-            _validatorStore.GetValidators().Returns(TestItem.Addresses.Take(validators).ToArray());
+            _validatorStore.GetValidators(Arg.Any<long?>()).Returns(TestItem.Addresses.Take(validators).ToArray());
             
             void ProcessBlock(BlockTreeBuilder blockTreeBuilder1, int level, int index)
             {
@@ -216,7 +216,7 @@ namespace Nethermind.AuRa.Test
         private void SetupValidators(Address[] beneficiaries, int minForFinalization)
         {
             var validators = beneficiaries.Union(TestItem.Addresses.TakeLast(Math.Max(0, minForFinalization - 1) * 2 - beneficiaries.Length)).ToArray();
-            _validatorStore.GetValidators().Returns(validators);
+            _validatorStore.GetValidators(Arg.Any<long?>()).Returns(validators);
         }
     }
 }
