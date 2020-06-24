@@ -5,7 +5,12 @@ namespace Nethermind.Crypto.Bls
 {
     public static class ShamatarLib
     {
-        [DllImport("runtimes\\win-x64\\native\\eth_196.dll")]
+        static ShamatarLib()
+        {
+            LibResolver.Setup();
+        }
+    
+        [DllImport("shamatar")]
         private static extern unsafe uint eip196_perform_operation(
             byte operation,
             byte* input,
@@ -15,7 +20,7 @@ namespace Nethermind.Crypto.Bls
             byte* error,
             ref int errorLength);
 
-        [DllImport("runtimes\\win-x64\\native\\eth_pairings2537.dll")]
+        [DllImport("shamatar")]
         private static extern unsafe uint eip2537_perform_operation(
             byte operation,
             byte* input,
