@@ -2,7 +2,7 @@
 using BenchmarkDotNet.Diagnostics.Windows.Configs;
 using BenchmarkDotNet.Jobs;
 using Nethermind.Evm.Precompiles;
-using Nethermind.Evm.Precompiles.Mcl.Bn256;
+using Nethermind.Evm.Precompiles.Snarks;
 
 namespace Nethermind.Precompiles.Benchmark
 {
@@ -11,9 +11,15 @@ namespace Nethermind.Precompiles.Benchmark
     [NativeMemoryProfiler]
     [ShortRunJob(RuntimeMoniker.NetCoreApp31)]
     // [DryJob(RuntimeMoniker.NetCoreApp31)]
-    public class BnAddBenchmark : PrecompileBenchmarkBase
+    public class Bn256AddBenchmark : PrecompileBenchmarkBase
     {
-        protected override IPrecompile Precompile => Bn128AddPrecompile.Instance;
+        protected override IPrecompile[] Precompiles => new[]
+        {
+            EthereumJBn256AddPrecompile.Instance,
+            MclBn256AddPrecompile.Instance, 
+            ShamatarBn256AddPrecompile.Instance
+        };
+        
         protected override string InputsDirectory => "bnadd";
     }
 }

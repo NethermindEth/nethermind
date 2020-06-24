@@ -11,7 +11,7 @@ namespace Nethermind.Precompiles.Benchmark
     [ShortRunJob(RuntimeMoniker.NetCoreApp31)]
     public class RipEmdBenchmark : PrecompileBenchmarkBase
     {
-        protected override IPrecompile Precompile => Ripemd160Precompile.Instance;
+        protected override IPrecompile[] Precompiles => new[] {Ripemd160Precompile.Instance};
         protected override string InputsDirectory => "ripemd";
     }
 }

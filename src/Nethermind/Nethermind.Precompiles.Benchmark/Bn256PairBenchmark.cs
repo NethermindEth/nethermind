@@ -2,7 +2,7 @@
 using BenchmarkDotNet.Diagnostics.Windows.Configs;
 using BenchmarkDotNet.Jobs;
 using Nethermind.Evm.Precompiles;
-using Nethermind.Evm.Precompiles.Mcl.Bn256;
+using Nethermind.Evm.Precompiles.Snarks;
 
 namespace Nethermind.Precompiles.Benchmark
 {
@@ -13,7 +13,13 @@ namespace Nethermind.Precompiles.Benchmark
     [MemoryDiagnoser]
     public class Bn256PairingBenchmark : PrecompileBenchmarkBase
     {
-        protected override IPrecompile Precompile => Bn256PairingPrecompile.Instance;
+        protected override IPrecompile[] Precompiles => new[]
+        {
+            EthereumJBn256PairingPrecompile.Instance,
+            MclBn256PairingPrecompile.Instance, 
+            ShamatarBn256PairingPrecompile.Instance
+        };
+        
         protected override string InputsDirectory => "bnpair";
     }
 }

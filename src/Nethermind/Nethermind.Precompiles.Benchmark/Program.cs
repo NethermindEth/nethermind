@@ -34,10 +34,9 @@ namespace Nethermind.Precompiles.Benchmark
             // BenchmarkRunner.Run<BnPairBenchmark>();
             // BenchmarkRunner.Run<Bn256PairingBenchmark>();
             // BenchmarkRunner.Run<BnAddBenchmark>();
-            BenchmarkRunner.Run<MclBn256AddBenchmark>();
-            BenchmarkRunner.Run<ShamatarBn256AddBenchmark>();
-            // BenchmarkRunner.Run<BnMulBenchmark>();
+            BenchmarkRunner.Run<Bn256AddBenchmark>();
             BenchmarkRunner.Run<Bn256MulBenchmark>();
+            BenchmarkRunner.Run<Bn256PairingBenchmark>();
             Console.ReadLine();
         }
 #endif
