@@ -39,7 +39,7 @@ namespace Nethermind.Evm.Test
         {
             _blockNumberAdjustment = -1;
             var code = Prepare.EvmCode
-                .CallWithInput(Bn256AddPrecompile.Instance.Address, 1000L, new byte[128])
+                .CallWithInput(MclBn256AddPrecompile.Instance.Address, 1000L, new byte[128])
                 .Done;
             var result = Execute(code);
             Assert.AreEqual(StatusCode.Success, result.StatusCode);
@@ -50,7 +50,7 @@ namespace Nethermind.Evm.Test
         public void Test_add_after_istanbul()
         {
             var code = Prepare.EvmCode
-                .CallWithInput(Bn256AddPrecompile.Instance.Address, 1000L, new byte[128])
+                .CallWithInput(MclBn256AddPrecompile.Instance.Address, 1000L, new byte[128])
                 .Done;
             var result = Execute(code);
             Assert.AreEqual(StatusCode.Success, result.StatusCode);

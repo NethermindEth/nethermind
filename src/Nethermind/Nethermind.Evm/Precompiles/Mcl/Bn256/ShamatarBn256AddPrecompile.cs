@@ -15,19 +15,21 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto.ZkSnarks;
+using Nethermind.Crypto.Bls;
+using G1 = Nethermind.Crypto.ZkSnarks.G1;
 
 namespace Nethermind.Evm.Precompiles.Mcl.Bn256
 {
     /// <summary>
-    /// https://github.com/herumi/mcl/blob/master/api.md
+    /// https://github.com/matter-labs/eip1962/blob/master/eip196_header.h
     /// </summary>
-    public class Bn256AddPrecompile : IPrecompile
+    public class ShamatarBn256AddPrecompile : IPrecompile
     {
-        public static IPrecompile Instance = new Bn256AddPrecompile();
+        public static IPrecompile Instance = new ShamatarBn256AddPrecompile();
 
         public Address Address { get; } = Address.FromNumber(6);
 
@@ -41,18 +43,30 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bn256
             return 0L;
         }
 
-        public (byte[], bool) Run(byte[] inputData)
+        public unsafe (byte[], bool) Run(byte[] inputData)
         {
             Metrics.Bn128AddPrecompile++;
-            Span<byte> inputDataSpan = stackalloc byte[128];
+            Span<byte> inputDataSpan = inputData;
             Mcl.PrepareInputData(inputData, inputDataSpan);
+            
+            Span<byte> output = stackalloc byte[64];
+            Span<byte> error = stackalloc byte[256];
+            
+            int outputLength = 64;
+            int errorLength = 256;
+            
+            fixed (byte* inputPtr = &MemoryMarshal.GetReference(inputDataSpan))
+            fixed (byte* outputPtr = &MemoryMarshal.GetReference(output))
+            fixed (byte* errorPtr = &MemoryMarshal.GetReference(error))
+            {
+                RustBls.eip196_perform_operation(
+                    1, inputPtr, 128, outputPtr, ref outputLength, errorPtr, ref errorLength);
+            }
 
             (byte[], bool) result;
-            if (Common.TryReadEthG1(inputDataSpan, 0 * Crypto.ZkSnarks.Bn256.LenFp, out G1 a) &&
-                Common.TryReadEthG1(inputDataSpan, 2 * Crypto.ZkSnarks.Bn256.LenFp, out G1 b))
+            if (errorLength != 0)
             {
-                a.Add(a, b);
-                result = (Common.SerializeEthG1(a), true);
+                result = (output.ToArray(), true);
             }
             else
             {

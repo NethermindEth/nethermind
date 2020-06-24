@@ -15,9 +15,11 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto.Bls;
 using Nethermind.Crypto.ZkSnarks;
 using Nethermind.Crypto.ZkSnarks.Obsolete;
 
@@ -47,7 +49,7 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bn256
             return 0L;
         }
 
-        public (byte[], bool) Run(byte[] inputData)
+        public unsafe (byte[], bool) Run(byte[] inputData)
         {  
             Metrics.Bn128AddPrecompile++;
             

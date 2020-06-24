@@ -50,7 +50,7 @@ namespace Nethermind.Evm.Test
 #pragma warning restore 618
                 (byte[], bool) result128 = precompile128.Run(inputs[i]);
 
-                IPrecompile precompile256 = Bn256AddPrecompile.Instance;
+                IPrecompile precompile256 = ShamatarBn256AddPrecompile.Instance;
                 (byte[], bool) result256 = precompile256.Run(inputs[i]);
 
                 result256.Should().BeEquivalentTo(result128, i.ToString());

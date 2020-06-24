@@ -48,7 +48,7 @@ namespace Nethermind.Evm.Precompiles
 
         private readonly EthereumEcdsa _ecdsa = new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance);
         
-        private readonly byte[] _zero32 = new byte[32];
+        private readonly byte[] _zero31 = new byte[31];
         
         public (byte[], bool) Run(byte[] inputData)
         {
@@ -66,7 +66,7 @@ namespace Nethermind.Evm.Precompiles
 
             // TEST: CALLCODEEcrecoverV_prefixedf0_d0g0v0
             // TEST: CALLCODEEcrecoverV_prefixedf0_d1g0v0
-            if (!Bytes.AreEqual(_zero32, vBytes))
+            if (!Bytes.AreEqual(_zero31, vBytes.Slice(0, 31)))
             {
                 return (Bytes.Empty, true);
             }
