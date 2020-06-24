@@ -666,16 +666,6 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                         }
                     }
                 }
-
-                public ScenarioBuilder WhenAuRa()
-                {
-                    _overwrites.Add(() =>
-                    {
-                        SyncConfig.AllowFullSyncParallelToFastBlocks = false;
-                    });
-
-                    return this;
-                }
             }
 
             public static ScenarioBuilder GoesLikeThis()
@@ -897,17 +887,6 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .AndGoodPeersAreKnown()
                 .WhenBeamSyncIsConfigured()
                 .TheSyncModeShouldBe(SyncMode.Full | SyncMode.FastBlocks);
-        }
-        
-        [Test]
-        public void Just_after_finishing_state_sync_but_not_fast_blocks_on_AuRa()
-        {
-            Scenario.GoesLikeThis()
-                .IfThisNodeFinishedStateSyncButNotFastBlocks()
-                .AndGoodPeersAreKnown()
-                .WhenBeamSyncIsConfigured()
-                .WhenAuRa()
-                .TheSyncModeShouldBe(SyncMode.FastBlocks);
         }
 
         [Test]
