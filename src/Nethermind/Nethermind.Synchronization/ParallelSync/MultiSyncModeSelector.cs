@@ -274,7 +274,6 @@ namespace Nethermind.Synchronization.ParallelSync
             bool notInBeamSync = !best.IsInBeamSync;
             bool notInFastSync = !best.IsInFastSync;
             bool notInStateSync = !best.IsInStateSync;
-            bool notInConflictWithFastBlocks = _syncConfig.AllowFullSyncParallelToFastBlocks || !best.IsInFastBlocks;
 
             if (_logger.IsTrace)
             {
@@ -285,7 +284,6 @@ namespace Nethermind.Synchronization.ParallelSync
                 _logger.Trace("notInBeamSync " + notInBeamSync);
                 _logger.Trace("notInFastSync " + notInFastSync);
                 _logger.Trace("notInStateSync " + notInStateSync);
-                _logger.Trace("notInConflictWithFastBlocks " + notInConflictWithFastBlocks);
             }
 
             return desiredPeerKnown &&
@@ -293,8 +291,7 @@ namespace Nethermind.Synchronization.ParallelSync
                    hasFastSyncBeenActive &&
                    notInBeamSync &&
                    notInFastSync &&
-                   notInStateSync &&
-                   notInConflictWithFastBlocks;
+                   notInStateSync;
         }
 
         private bool ShouldBeInFastBlocksMode(Snapshot best)
