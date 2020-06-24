@@ -29,20 +29,15 @@ namespace Nethermind.Evm.Precompiles.Bls.Shamatar
     /// </summary>
     public class PairingPrecompile : IPrecompile
     {
-        public static IPrecompile Instance = new PairingPrecompile();
-
         private const int PairSize = 384;
 
-        private PairingPrecompile()
-        {
-        }
-
+        private PairingPrecompile() { }
+        
         public Address Address { get; } = Address.FromNumber(16);
+        
+        public static IPrecompile Instance = new PairingPrecompile();
 
-        public long BaseGasCost(IReleaseSpec releaseSpec)
-        {
-            return 115000L;
-        }
+        public long BaseGasCost(IReleaseSpec releaseSpec) => 115000L;
 
         public long DataGasCost(byte[] inputData, IReleaseSpec releaseSpec)
         {
@@ -56,38 +51,27 @@ namespace Nethermind.Evm.Precompiles.Bls.Shamatar
 
         public (byte[], bool) Run(byte[] inputData)
         {
-            Metrics.Bn256PairingPrecompile++;
-
             inputData ??= Bytes.Empty;
             if (inputData.Length % PairSize > 0)
             {
-                // note that it will not happens in case of null / 0 length
+                // note that it will not happen in case of null / 0 length
                 return (Bytes.Empty, false);
             }
 
-            UInt256 result = UInt256.One;
-            if (inputData.Length > 0)
+            (byte[], bool) result;
+            
+            Span<byte> output = stackalloc byte[32];
+            bool success = ShamatarLib.BlsPairing(inputData, output);
+            if (success)
             {
-                List<(G1 P, G2 Q)> pairs = new List<(G1 P, G2 Q)>();
-                // iterating over all pairs
-                for (int offset = 0; offset < inputData.Length; offset += PairSize)
-                {
-                    Span<byte> pairData = inputData.Slice(offset, PairSize);
-                    (G1 P, G2 Q)? pair = DecodePair(pairData);
-                    if (pair == null)
-                    {
-                        return (Bytes.Empty, false);
-                    }
-
-                    pairs.Add(pair.Value);
-                }
-
-                result = RunPairingCheck(pairs);
+                result = (output.ToArray(), true);
+            }
+            else
+            {
+                result = (Bytes.Empty, false);
             }
 
-            byte[] resultBytes = new byte[32];
-            result.ToBigEndian(resultBytes);
-            return (resultBytes, true);
+            return result;
         }
 
         private static UInt256 RunPairingCheck(List<(G1 P, G2 Q)> _pairs)

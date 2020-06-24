@@ -57,23 +57,20 @@ namespace Nethermind.Evm.Precompiles.Bls.Shamatar
                 return (Bytes.Empty, false);
             }
 
-            int count = inputData.Length / ItemSize;
-            G2 calculated = new G2();
-            Span<G2> inputG2 = new G2[count];
-            Span<Fr> inputFr = new Fr[count];
-
-            for (int i = 0; i < count; i++)
-            {
-                Span<byte> currentBytes = inputData.AsSpan().Slice(i * ItemSize, ItemSize);
-                if (!currentBytes.TryReadEthG2(0, out inputG2[i]) ||
-                    !currentBytes.TryReadEthFr(4 * BlsExtensions.LenFp, out inputFr[i]))
-                {
-                    return (Bytes.Empty, false);
-                }
-            }
+            (byte[], bool) result;
             
-            G2.MultiMul(ref calculated, inputG2, inputFr);
-            return (BlsExtensions.SerializeEthG2(calculated), true);
+            Span<byte> output = stackalloc byte[4 * BlsExtensions.LenFp];
+            bool success = ShamatarLib.BlsG2MultiExp(inputData, output);
+            if (success)
+            {
+                result = (output.ToArray(), true);
+            }
+            else
+            {
+                result = (Bytes.Empty, false);
+            }
+
+            return result;
         }
     }
 }
