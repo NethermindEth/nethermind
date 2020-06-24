@@ -53,7 +53,7 @@ namespace Nethermind.Evm.Precompiles.Snarks
             (byte[], bool) result;
             if (inputDataSpan.TryReadEthG1(0 * Bn256.LenFp, out G1 a))
             {
-                inputDataSpan.ReadFr(2 * Crypto.ZkSnarks.Bn256.LenFp, out Fr fr);
+                inputDataSpan.ReadFr(2 * Bn256.LenFp, out Fr fr);
                 // UInt256 scalar = Mcl.ReadScalar(inputDataSpan, 2 * Crypto.Bn256.LenFp);
 
                 // Crypto.Bn256.G1 result = MulAlternative(a, scalar);

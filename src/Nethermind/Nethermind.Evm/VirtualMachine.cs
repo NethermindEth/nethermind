@@ -405,8 +405,8 @@ namespace Nethermind.Evm
                 [IdentityPrecompile.Instance.Address] = new CodeInfo(IdentityPrecompile.Instance),
                 
                 [ShamatarBn256AddPrecompile.Instance.Address] = new CodeInfo(ShamatarBn256AddPrecompile.Instance),
-                [MclBn256MulPrecompile.Instance.Address] = new CodeInfo(MclBn256MulPrecompile.Instance),
-                [MclBn256PairingPrecompile.Instance.Address] = new CodeInfo(MclBn256PairingPrecompile.Instance),
+                [ShamatarBn256MulPrecompile.Instance.Address] = new CodeInfo(ShamatarBn256MulPrecompile.Instance),
+                [ShamatarBn256PairingPrecompile.Instance.Address] = new CodeInfo(ShamatarBn256PairingPrecompile.Instance),
                 [ModExpPrecompile.Instance.Address] = new CodeInfo(ModExpPrecompile.Instance),
                 
                 [Blake2FPrecompile.Instance.Address] = new CodeInfo(Blake2FPrecompile.Instance),
