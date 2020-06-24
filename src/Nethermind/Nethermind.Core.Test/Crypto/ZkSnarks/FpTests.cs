@@ -15,7 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Numerics;
-using Nethermind.Crypto.ZkSnarks;
+using Nethermind.Crypto.ZkSnarks.Obsolete;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Crypto.ZkSnarks
