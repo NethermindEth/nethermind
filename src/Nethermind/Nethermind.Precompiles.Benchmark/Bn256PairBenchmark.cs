@@ -15,7 +15,9 @@ namespace Nethermind.Precompiles.Benchmark
     {
         protected override IPrecompile[] Precompiles => new[]
         {
+#pragma warning disable 618
             EthereumJBn256PairingPrecompile.Instance,
+#pragma warning restore 618
             MclBn256PairingPrecompile.Instance, 
             ShamatarBn256PairingPrecompile.Instance
         };
