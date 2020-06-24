@@ -62,58 +62,61 @@ namespace Nethermind.Consensus.Ethash
 
         public static ulong GetDataSize(uint epoch)
         {
-            ulong size = DataSetBytesInit + DataSetBytesGrowth * (ulong) epoch;
-            size -= MixBytes;
-            while (!IsPrime(size / MixBytes))
-            {
-                size -= 2 * MixBytes;
-            }
-
-            return size;
+            uint upperBound = (DataSetBytesInit / MixBytes) + (DataSetBytesGrowth / MixBytes) * epoch;
+            uint dataItems = FindLargestPrime(upperBound);
+            return dataItems * (ulong)MixBytes;
         }
 
         public static uint GetCacheSize(uint epoch)
         {
-            uint size = CacheBytesInit + CacheBytesGrowth * epoch;
-            size -= HashBytes;
-            while (!IsPrime(size / HashBytes))
-            {
-                size -= 2 * HashBytes;
-            }
-
-            return size;
+            uint upperBound = (CacheBytesInit / HashBytes) + (CacheBytesGrowth / HashBytes) * epoch;
+            uint cacheItems = FindLargestPrime(upperBound);
+            return cacheItems * HashBytes;
         }
 
-        public static bool IsPrime(ulong number)
+        /// <summary>
+        /// Finds the largest prime number given an upper limit
+        /// </summary>
+        /// <param name="upper">The upper boundary for prime search</param>
+        /// <returns>A prima rumber</returns>
+        /// <exception cref="ArgumentException">Thrown if boundary < 2</exception>
+        public static uint FindLargestPrime(uint upper)
         {
-            if (number <= 1U)
+
+            if (upper < 2U) throw new ArgumentException("There are no prime numbers below 2");
+
+            // Only case for an even number
+            if (upper == 2U) return upper;
+
+            // If is even skip it
+            uint number = (upper % 2 == 0 ? upper - 1 : upper);
+
+            // Search odd numbers descending
+            for (; number > 5; number -= 2)
             {
+                if (IsPrime(number)) return number;
+            }
+
+            // Should we get here we have only number 3 left
+            return number;
+        }
+
+        public static bool IsPrime(uint number)
+        {
+            if (number <= 1U) return false;
+            if (number == 2U) return true;
+            if (number % 2U == 0U) return false;
+
+            /* Check factors up to sqrt(number).
+               To avoid computing sqrt, compare d*d <= number with 64-bit
+               precision. Use only odd divisors as even ones are yet divisible
+               by 2 */
+            for (uint d = 3; d * (ulong) d <= number; d += 2) {
+              if (number % d == 0)
                 return false;
             }
 
-            if (number == 2U || number == 3U)
-            {
-                return true;
-            }
-
-            if (number % 2U == 0U || number % 3U == 0U)
-            {
-                return false;
-            }
-
-            uint w = 2U;
-            uint i = 5U;
-            while (i * i <= number)
-            {
-                if (number % i == 0U)
-                {
-                    return false;
-                }
-
-                i += w;
-                w = 6U - w;
-            }
-
+            // No other divisors
             return true;
         }
 
