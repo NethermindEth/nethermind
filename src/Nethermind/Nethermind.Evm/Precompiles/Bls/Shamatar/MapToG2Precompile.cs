@@ -47,20 +47,22 @@ namespace Nethermind.Evm.Precompiles.Bls.Shamatar
 
         public (byte[], bool) Run(byte[] inputData)
         {
-            Span<byte> inputDataSpan = stackalloc byte[4 * BlsExtensions.LenFp];
+            Span<byte> inputDataSpan = stackalloc byte[2 * BlsExtensions.LenFp];
             inputData.PrepareEthInput(inputDataSpan);
-            
+
             (byte[], bool) result;
-            if (inputDataSpan.TryReadFp2(0, out Fp2 fp2))
+            
+            Span<byte> output = stackalloc byte[4 * BlsExtensions.LenFp];
+            bool success = ShamatarLib.BlsMapToG2(inputDataSpan, output);
+            if (success)
             {
-                G2 g2 = fp2.MapToG2();
-                result = (BlsExtensions.SerializeEthG2(g2), true);
+                result = (output.ToArray(), true);
             }
             else
             {
                 result = (Bytes.Empty, false);
             }
-            
+
             return result;
         }
     }
