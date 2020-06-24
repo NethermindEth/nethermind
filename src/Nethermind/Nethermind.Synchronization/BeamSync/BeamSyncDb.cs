@@ -168,7 +168,7 @@ namespace Nethermind.Synchronization.BeamSync
                     byte[] fromMem = _tempDb[key] ?? _stateDb[key];
                     if (fromMem == null)
                     {
-                        if (_logger.IsWarn) _logger.Warn($"Beam sync miss - {key.ToHexString()} - retrieving");
+                        if (_logger.IsTrace) _logger.Trace($"Beam sync miss - {key.ToHexString()} - retrieving");
                         
                         if (BeamSyncContext.Cancelled.Value.IsCancellationRequested)
                         {
