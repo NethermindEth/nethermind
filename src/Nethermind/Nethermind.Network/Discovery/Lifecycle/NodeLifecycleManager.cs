@@ -39,9 +39,9 @@ namespace Nethermind.Network.Discovery.Lifecycle
         private PingMessage _lastSentPing;
         private bool _isNeighborsExpected;
 
-        private bool _receivedPing;
+        // private bool _receivedPing;
         private bool _sentPing;
-        private bool _sentPong;
+        // private bool _sentPong;
         private bool _receivedPong;
 
         public NodeLifecycleManager(Node node, IDiscoveryManager discoveryManager, INodeTable nodeTable, IDiscoveryMessageFactory discoveryMessageFactory, IEvictionManager evictionManager, INodeStats nodeStats, IDiscoveryConfig discoveryConfig, ILogger logger)
@@ -66,7 +66,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
 
         public void ProcessPingMessage(PingMessage discoveryMessage)
         {
-            _receivedPing = true;
+            // _receivedPing = true;
             SendPong(discoveryMessage);
 
             NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryPingIn);
@@ -180,7 +180,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
 
             _discoveryManager.SendMessage(msg);
             NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryPongOut);
-            _sentPong = true;
+            // _sentPong = true;
             if (IsBonded)
             {
                 UpdateState(NodeLifecycleState.Active);

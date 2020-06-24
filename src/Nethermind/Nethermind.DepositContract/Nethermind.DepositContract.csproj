@@ -14,9 +14,9 @@
     </ItemGroup>
 
     <ItemGroup>
-      <Content Include="contracts\validator_registration.json">
+      <EmbeddedResource Include="Contracts\DepositContract.json">
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </Content>
+      </EmbeddedResource>
     </ItemGroup>
 
 </Project>

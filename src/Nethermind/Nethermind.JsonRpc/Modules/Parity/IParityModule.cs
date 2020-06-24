@@ -16,6 +16,7 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
+using Nethermind.Core;
 using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.JsonRpc.Modules.Parity
@@ -25,5 +26,9 @@ namespace Nethermind.JsonRpc.Modules.Parity
     {
         ResultWrapper<ParityTransaction[]> parity_pendingTransactions();
         ResultWrapper<ReceiptForRpc[]> parity_getBlockReceipts(BlockParameter blockParameter);
+        ResultWrapper<string> parity_enode();
+        ResultWrapper<bool> parity_setEngineSigner(Address address, string password);
+        ResultWrapper<bool> parity_setEngineSignerSecret(string privateKey);
+        ResultWrapper<bool> parity_clearEngineSigner();
     }
 }

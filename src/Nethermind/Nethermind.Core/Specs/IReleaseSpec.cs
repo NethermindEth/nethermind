@@ -171,7 +171,7 @@ namespace Nethermind.Core.Specs
         bool IsEip2028Enabled { get; }
 
         /// <summary>
-        /// Istanbul Blake2b precompile
+        /// Istanbul Blake2F precompile
         /// </summary>
         bool IsEip152Enabled { get; }
         
@@ -189,6 +189,16 @@ namespace Nethermind.Core.Specs
         /// Istanbul net-metered SSTORE
         /// </summary>
         bool IsEip2200Enabled { get; }
+        
+        /// <summary>
+        /// Berlin subroutines -> https://github.com/ethereum/EIPs/issues/2315
+        /// </summary>
+        bool IsEip2315Enabled { get; }
+        
+        /// <summary>
+        /// Berlin BLS crypto precompiles
+        /// </summary>
+        bool IsEip2537Enabled { get; }
         
         /// <summary>
         /// Should EIP158 be ignored for this account.

@@ -18,6 +18,8 @@ using System;
 using System.Numerics;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.DataMarketplace.Core.Configs;
@@ -45,11 +47,11 @@ namespace Nethermind.DataMarketplace.Test.Services
         {
             _blockchainBridge = Substitute.For<INdmBlockchainBridge>();
             _wallet = Substitute.For<IWallet>();
+            _wallet.Sign(Arg.Any<Keccak>(), Arg.Any<Address>()).Returns(new Signature(new byte[65]));
             _configManager = Substitute.For<IConfigManager>();
             _config = new NdmConfig();
             _configManager.GetAsync(ConfigId).Returns(_config);
-            _transactionService = new TransactionService(_blockchainBridge, _wallet, _configManager, ConfigId,
-                LimboLogs.Instance);
+            _transactionService = new TransactionService(_blockchainBridge, _wallet, _configManager, ConfigId, LimboLogs.Instance);
         }
 
         [Test]

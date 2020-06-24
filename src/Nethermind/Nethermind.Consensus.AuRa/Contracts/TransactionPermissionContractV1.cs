@@ -24,29 +24,18 @@ using Nethermind.Evm;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public class TransactionPermissionContractV1 : TransactionPermissionContract
+    public sealed class TransactionPermissionContractV1 : TransactionPermissionContract
     {
-        public override bool SupportsContractVersion => false;
-
-        public override UInt256 ContractVersion(BlockHeader blockHeader)
-        {
-            throw new NotSupportedException();
-        }
-
-        protected override AbiDefinition AbiDefinition { get; }
-            = new AbiDefinitionParser().Parse<TransactionPermissionContractV1>();
-
         public TransactionPermissionContractV1(
-            ITransactionProcessor transactionProcessor,
             IAbiEncoder abiEncoder,
             Address contractAddress,
-            IReadOnlyTransactionProcessorSource readOnlyReadOnlyTransactionProcessorSource)
-            : base(transactionProcessor, abiEncoder, contractAddress, readOnlyReadOnlyTransactionProcessorSource)
+            IReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource)
+            : base(abiEncoder, contractAddress, readOnlyTransactionProcessorSource)
         {
         }
 
-        public override (TxPermissions Permissions, bool ShouldCache) AllowedTxTypes(BlockHeader parentHeader, Transaction tx) => 
-            (Constant.Call<TxPermissions>(parentHeader, nameof(AllowedTxTypes), Address.Zero, tx.SenderAddress), true);
+        public override (ITransactionPermissionContract.TxPermissions Permissions, bool ShouldCache) AllowedTxTypes(BlockHeader parentHeader, Transaction tx) => 
+            (Constant.Call<ITransactionPermissionContract.TxPermissions>(parentHeader, nameof(AllowedTxTypes), Address.Zero, tx.SenderAddress), true);
 
         public override UInt256 Version => UInt256.One;
     }

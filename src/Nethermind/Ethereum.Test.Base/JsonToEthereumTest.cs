@@ -63,6 +63,8 @@ namespace Ethereum.Test.Base
                     return Byzantium.Instance;
                 case "Istanbul":
                     return Istanbul.Instance;
+                case "Berlin":
+                    return Berlin.Instance;
                 default:
                     throw new NotSupportedException();
             }

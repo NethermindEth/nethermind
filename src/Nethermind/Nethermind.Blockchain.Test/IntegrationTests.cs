@@ -28,6 +28,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Specs;
@@ -61,7 +62,7 @@ namespace Nethermind.Blockchain.Test
             ILogger logger = logManager.GetClassLogger();
 
             /* spec */
-            FakeSealer sealer = new FakeSealer(miningDelay);
+            FakeSealer sealer = new FakeSealer(TestItem.AddressA, miningDelay);
 
             RopstenSpecProvider specProvider = RopstenSpecProvider.Instance;
 
@@ -84,7 +85,7 @@ namespace Nethermind.Blockchain.Test
             DifficultyCalculator difficultyCalculator = new DifficultyCalculator(specProvider);
             HeaderValidator headerValidator = new HeaderValidator(blockTree, sealer, specProvider, logManager);
             OmmersValidator ommersValidator = new OmmersValidator(blockTree, headerValidator, logManager);
-            TxValidator txValidator = new TxValidator(ChainId.Ropsten);
+            TxValidator txValidator = new TxValidator(specProvider.ChainId);
             BlockValidator blockValidator = new BlockValidator(txValidator, headerValidator, ommersValidator, specProvider, logManager);
 
             TestTransactionsGenerator generator = new TestTransactionsGenerator(txPool, ecdsa, TimeSpan.FromMilliseconds(50 * timeMultiplier), LimboLogs.Instance);
@@ -124,7 +125,8 @@ namespace Nethermind.Blockchain.Test
             blockchainProcessor.Start();
 
             var transactionSelector = new TxPoolTxSource(txPool, stateReader, logManager);
-            MinedBlockProducer minedBlockProducer = new MinedBlockProducer(transactionSelector, blockchainProcessor, sealer, blockTree, blockchainProcessor, stateProvider, timestamper, LimboLogs.Instance, difficultyCalculator);
+            MinedBlockProducer minedBlockProducer = new MinedBlockProducer(transactionSelector, blockchainProcessor, sealer, blockTree, blockchainProcessor, stateProvider, 
+                timestamper, LimboLogs.Instance, difficultyCalculator);
             minedBlockProducer.Start();
 
             ManualResetEventSlim manualResetEvent = new ManualResetEventSlim(false);

@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
@@ -30,14 +31,17 @@ namespace Nethermind.Precompiles.Benchmark
     [SuppressMessage("ReSharper", "UnusedAutoPropertyAccessor.Global")]
     public abstract class PrecompileBenchmarkBase
     {
-        protected abstract IPrecompiledContract Precompile { get; }
+        protected abstract IPrecompile[] Precompiles { get; }
 
         protected abstract string InputsDirectory { get; }
         
         public readonly struct Param
         {
-            public Param(byte[] bytes)
+            public IPrecompile Precompile { get; }
+
+            public Param(IPrecompile precompile, byte[] bytes)
             {
+                Precompile = precompile ?? throw new ArgumentNullException(nameof(precompile));
                 Bytes = bytes;
             }
             
@@ -45,7 +49,7 @@ namespace Nethermind.Precompiles.Benchmark
 
             public override string ToString()
             {
-                return $"bytes[{Bytes.Length.ToString().PadLeft(4, '0')}]";
+                return $"b[{Bytes.Length.ToString().PadLeft(4, '0')}] {Precompile.GetType().Name.Substring(0, 3)}";
             }
         }
         
@@ -53,17 +57,20 @@ namespace Nethermind.Precompiles.Benchmark
         {
             get
             {
-                List<byte[]> inputs = new List<byte[]>();
-                foreach (var file in Directory.GetFiles($"{InputsDirectory}/current", "*.csv", SearchOption.TopDirectoryOnly))
+                foreach (IPrecompile precompile in Precompiles)
                 {
-                    // take only first line from each file
-                    inputs.AddRange(File.ReadAllLines(file)
-                        .Select(LineToTestInput).Take(1).ToArray());
-                }
+                    List<byte[]> inputs = new List<byte[]>();
+                    foreach (var file in Directory.GetFiles($"{InputsDirectory}/current", "*.csv", SearchOption.TopDirectoryOnly))
+                    {
+                        // take only first line from each file
+                        inputs.AddRange(File.ReadAllLines(file)
+                            .Select(LineToTestInput).Take(1).ToArray());
+                    }
                 
-                foreach (var input in inputs.OrderBy(i => i.Length))
-                {
-                    yield return new Param(input);
+                    foreach (var input in inputs.OrderBy(i => i.Length))
+                    {
+                        yield return new Param(precompile, input);
+                    }
                 }
             }
         }
@@ -79,7 +86,7 @@ namespace Nethermind.Precompiles.Benchmark
         [Benchmark(Baseline = true)]
         public (byte[], bool) Baseline()
         {
-            return Precompile.Run(Input.Bytes);
+            return Input.Precompile.Run(Input.Bytes);
         }
     }
 }

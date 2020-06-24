@@ -35,6 +35,7 @@ using NUnit.Framework;
 namespace Nethermind.Synchronization.Test.BeamSync
 {
     [TestFixture]
+    [Parallelizable(ParallelScope.None)]
     public class BeamSyncDbTests
     {
         private BeamSyncDb _stateBeamLocal;

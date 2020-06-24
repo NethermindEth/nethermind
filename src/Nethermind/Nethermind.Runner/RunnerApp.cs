@@ -175,13 +175,16 @@ namespace Nethermind.Runner
                     configFilePath = configPathVariable;
                 }
 
-                if (configDir == DefaultConfigsDirectory)
+                if (!PathUtils.IsExplicitlyRelative(configFilePath))
                 {
-                    configFilePath = configFilePath.GetApplicationResourcePath();
-                }
-                else
-                {
-                    configFilePath = Path.Combine(configDir, string.Concat(configFilePath));
+                    if (configDir == DefaultConfigsDirectory)
+                    {
+                        configFilePath = configFilePath.GetApplicationResourcePath();
+                    }
+                    else
+                    {
+                        configFilePath = Path.Combine(configDir, string.Concat(configFilePath));
+                    }
                 }
 
                 if (!Path.HasExtension(configFilePath) && !configFilePath.Contains(Path.DirectorySeparatorChar))

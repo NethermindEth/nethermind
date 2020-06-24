@@ -25,26 +25,12 @@ using Nethermind.Evm;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public abstract class TransactionPermissionContract : Contract, IVersionedContract
+    public interface ITransactionPermissionContract : IVersionedContract
     {
-        public virtual bool SupportsContractVersion => true;
-
-        public virtual UInt256 ContractVersion(BlockHeader blockHeader)
-        {
-            try
-            {
-                return Constant.Call<UInt256>(blockHeader, nameof(ContractVersion), Address.Zero);
-            }
-            catch (Exception)
-            {
-                return UInt256.One;;
-            }
-        }
-
         /// <summary>
         /// Returns the contract version number needed for node's engine.
         /// </summary>
-        public abstract UInt256 Version { get; }
+        UInt256 Version { get; }
 
         /// <summary>
         /// Defines the allowed transaction types which may be initiated by the specified sender with
@@ -54,87 +40,8 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// <param name="parentHeader"></param>
         /// <param name="tx"></param>
         /// <returns><see cref="TxPermissions"/>Set of allowed transactions types and <see cref="bool"/> If `true` is returned, the same permissions will be applied from the same sender without calling this contract again.</returns>
-        public abstract (TxPermissions Permissions, bool ShouldCache) AllowedTxTypes(BlockHeader parentHeader, Transaction tx);
-
-        protected ConstantContract Constant { get; }
-
-        public TransactionPermissionContract(ITransactionProcessor transactionProcessor,
-            IAbiEncoder abiEncoder,
-            Address contractAddress,
-            IReadOnlyTransactionProcessorSource readOnlyReadOnlyTransactionProcessorSource)
-            : base(transactionProcessor, abiEncoder, contractAddress)
-        {
-            Constant = GetConstant(readOnlyReadOnlyTransactionProcessorSource);
-        }
-
-        public static TransactionPermissionContractV1 CreateV1(ITransactionProcessor transactionProcessor,
-            IAbiEncoder abiEncoder,
-            Address contractAddress,
-            IReadOnlyTransactionProcessorSource readOnlyReadOnlyTransactionProcessorSource)
-        {
-            return new TransactionPermissionContractV1(
-                transactionProcessor,
-                abiEncoder,
-                contractAddress,
-                readOnlyReadOnlyTransactionProcessorSource);
-        }
-
-        public static TransactionPermissionContractV2 CreateV2(ITransactionProcessor transactionProcessor,
-            IAbiEncoder abiEncoder,
-            Address contractAddress,
-            IReadOnlyTransactionProcessorSource readOnlyReadOnlyTransactionProcessorSource)
-        {
-            return new TransactionPermissionContractV2(
-                transactionProcessor,
-                abiEncoder,
-                contractAddress,
-                readOnlyReadOnlyTransactionProcessorSource);
-        }
-
-        public static TransactionPermissionContractV3 CreateV3(ITransactionProcessor transactionProcessor,
-            IAbiEncoder abiEncoder,
-            Address contractAddress,
-            IReadOnlyTransactionProcessorSource readOnlyReadOnlyTransactionProcessorSource)
-        {
-            return new TransactionPermissionContractV3(
-                transactionProcessor,
-                abiEncoder,
-                contractAddress,
-                readOnlyReadOnlyTransactionProcessorSource);
-        }
-
-        public static Dictionary<UInt256, TransactionPermissionContract> CreateAllVersions(
-            ITransactionProcessor transactionProcessor,
-            IAbiEncoder abiEncoder,
-            Address contractAddress,
-            IReadOnlyTransactionProcessorSource readOnlyReadOnlyTransactionProcessorSource)
-        {
-            return new Dictionary<UInt256, TransactionPermissionContract>
-            {
-                {
-                    UInt256.One, CreateV1(
-                        transactionProcessor,
-                        abiEncoder,
-                        contractAddress,
-                        readOnlyReadOnlyTransactionProcessorSource)
-                },
-                {
-                    2, CreateV2(
-                        transactionProcessor,
-                        abiEncoder,
-                        contractAddress,
-                        readOnlyReadOnlyTransactionProcessorSource)
-                },
-                {
-                    3, CreateV3(
-                        transactionProcessor,
-                        abiEncoder,
-                        contractAddress,
-                        readOnlyReadOnlyTransactionProcessorSource)
-                },
-            };
-        }
-
+        (TxPermissions Permissions, bool ShouldCache) AllowedTxTypes(BlockHeader parentHeader, Transaction tx);
+        
         [Flags]
         public enum TxPermissions : uint
         {
@@ -164,6 +71,47 @@ namespace Nethermind.Consensus.AuRa.Contracts
             Private = 0b00001000,
 
             All = 0xffffffff,
+        }
+    }
+
+    public abstract class TransactionPermissionContract : Contract, ITransactionPermissionContract
+    {
+        public virtual UInt256 ContractVersion(BlockHeader blockHeader)
+        {
+            try
+            {
+                return Constant.Call<UInt256>(blockHeader, nameof(ContractVersion), Address.Zero);
+            }
+            catch (Exception)
+            {
+                return UInt256.One;;
+            }
+        }
+
+        /// <summary>
+        /// Returns the contract version number needed for node's engine.
+        /// </summary>
+        public abstract UInt256 Version { get; }
+
+        /// <summary>
+        /// Defines the allowed transaction types which may be initiated by the specified sender with
+        /// the specified gas price and data. Used by node's engine each time a transaction is about to be
+        /// included into a block.
+        /// </summary>
+        /// <param name="parentHeader"></param>
+        /// <param name="tx"></param>
+        /// <returns><see cref="ITransactionPermissionContract.TxPermissions"/>Set of allowed transactions types and <see cref="bool"/> If `true` is returned, the same permissions will be applied from the same sender without calling this contract again.</returns>
+        public abstract (ITransactionPermissionContract.TxPermissions Permissions, bool ShouldCache) AllowedTxTypes(BlockHeader parentHeader, Transaction tx);
+
+        protected ConstantContract Constant { get; }
+
+        protected TransactionPermissionContract(
+            IAbiEncoder abiEncoder,
+            Address contractAddress,
+            IReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource)
+            : base(abiEncoder, contractAddress)
+        {
+            Constant = GetConstant(readOnlyTransactionProcessorSource);
         }
     }
 }

@@ -15,22 +15,24 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.IO;
 using System.Security;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 
 namespace Nethermind.Wallet
 {
-    public interface IWallet : IBasicWallet
+    public interface IWallet
     {
         void Import(byte[] keyData, SecureString passphrase);
         Address NewAccount(SecureString passphrase);
-        bool UnlockAccount(Address address, SecureString passphrase);
-        bool UnlockAccount(Address address, SecureString passphrase, TimeSpan timeSpan);
+        bool UnlockAccount(Address address, SecureString passphrase, TimeSpan? timeSpan = null);
         bool LockAccount(Address address);
-        Signature Sign(Keccak message, Address address, SecureString passphrase = null);
-        Address[] GetAccounts();
         bool IsUnlocked(Address address);
+        Signature Sign(Keccak message, Address address, SecureString passphrase = null);
+        Signature Sign(Keccak message, Address address);
+        Address[] GetAccounts();
         event EventHandler<AccountLockedEventArgs> AccountLocked;
         event EventHandler<AccountUnlockedEventArgs> AccountUnlocked;
     }

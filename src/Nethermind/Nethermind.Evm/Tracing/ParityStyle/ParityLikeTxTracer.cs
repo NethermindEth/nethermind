@@ -146,6 +146,10 @@ namespace Nethermind.Evm.Tracing.ParityStyle
                     return "Stack underflow";
                 case EvmExceptionType.OutOfGas:
                     return "Out of gas";
+                case EvmExceptionType.InvalidSubroutineEntry:
+                    return "Invalid subroutine entry";
+                case EvmExceptionType.InvalidSubroutineReturn:
+                    return "Invalid subroutine return";
                 case EvmExceptionType.InvalidJumpDestination:
                     return "Bad jump destination";
                 case EvmExceptionType.AccessViolation:

@@ -24,29 +24,25 @@ using Nethermind.Evm;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public class TransactionPermissionContractV3 : TransactionPermissionContract
+    public sealed class TransactionPermissionContractV3 : TransactionPermissionContract
     {
-        protected override AbiDefinition AbiDefinition { get; }
-            = new AbiDefinitionParser().Parse<TransactionPermissionContractV3>();
-
         private static readonly UInt256 Three = 3;
 
         public TransactionPermissionContractV3(
-            ITransactionProcessor transactionProcessor,
             IAbiEncoder abiEncoder,
             Address contractAddress,
-            IReadOnlyTransactionProcessorSource readOnlyReadOnlyTransactionProcessorSource)
-            : base(transactionProcessor, abiEncoder, contractAddress, readOnlyReadOnlyTransactionProcessorSource)
+            IReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource)
+            : base(abiEncoder, contractAddress, readOnlyTransactionProcessorSource)
         {
         }
 
-        public override (TxPermissions Permissions, bool ShouldCache) AllowedTxTypes(BlockHeader parentHeader, Transaction tx) =>
+        public override (ITransactionPermissionContract.TxPermissions Permissions, bool ShouldCache) AllowedTxTypes(BlockHeader parentHeader, Transaction tx) =>
             // _sender Transaction sender address.
             // _to Transaction recipient address. If creating a contract, the `_to` address is zero.
             // _value Transaction amount in wei.
             // _gasPrice Gas price in wei for the transaction.
             // _data Transaction data.
-            Constant.Call<TxPermissions, bool>(
+            Constant.Call<ITransactionPermissionContract.TxPermissions, bool>(
                 parentHeader,
                 nameof(AllowedTxTypes),
                 Address.Zero,

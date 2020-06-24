@@ -1,5 +1,5 @@
 {
-  "name": "xDai Chain",
+  "name": "DaiChain",
   "engine": {
     "authorityRound": {
       "params": {
@@ -16,11 +16,21 @@
             },
             "1300": {
               "safeContract": "0x22e1229a2c5b95a60983b5577f745a603284f535"
+            },
+            "9186425": {
+              "contract": "0xB87BE9f7196F2AE084Ca1DE6af5264292976e013"
             }
           }
         },
         "blockRewardContractAddress": "0x867305d19606aadba405ce534e303d0e225f9556",
-        "blockRewardContractTransition": 1310
+        "blockRewardContractTransition": 1310,
+        "blockRewardContractTransitions": {
+          "9186425": "0x481c034c6d9441db23Ea48De68BCAe812C5d39bA"
+        },
+        "randomnessContractAddress": {
+          "9186425": "0x5870b0527DeDB1cFBD9534343Feda1a41Ce47766"
+        },
+        "posdaoTransition": 9186425
       }
     }
   },
@@ -43,7 +53,9 @@
     "eip1706Transition": 7298030,
     "eip1884Transition": 7298030,
     "eip2028Transition": 7298030,
-    "registrar": "0x1ec97dc137f5168af053c24460a1200502e1a9d2"
+    "registrar": "0x6B53721D4f2Fb9514B85f5C49b197D857e36Cf03",
+    "transactionPermissionContract": "0x7Dd7032AA75A37ea0b150f57F899119C7379A78b",
+    "transactionPermissionContractTransition": 9186425
   },
   "genesis": {
     "seal": {
@@ -89,7 +101,7 @@
             }
           },
           "7298030": {
-            "info": "EIP 1108 transition",
+            "info": "Istanbul HF",
             "price": {
               "alt_bn128_const_operations": {
                 "price": 150
@@ -111,7 +123,7 @@
             }
           },
           "7298030": {
-            "info": "EIP 1108 transition",
+            "info": "Istanbul HF",
             "price": {
               "alt_bn128_const_operations": {
                 "price": 6000
@@ -134,7 +146,7 @@
             }
           },
           "7298030": {
-            "info": "EIP 1108 transition",
+            "info": "Istanbul HF",
             "price": {
               "alt_bn128_pairing": {
                 "base": 45000,
@@ -150,7 +162,7 @@
         "name": "blake2_f",
         "pricing": {
           "7298030": {
-            "info": "EIP 1108 transition",
+            "info": "Istanbul HF",
             "price": {
               "blake2_f": {
                 "gas_per_round": 1

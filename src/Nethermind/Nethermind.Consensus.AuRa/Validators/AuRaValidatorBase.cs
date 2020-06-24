@@ -31,14 +31,12 @@ namespace Nethermind.Consensus.AuRa.Validators
         private readonly ILogger _logger;
         
         protected AuRaValidatorBase(
-            AuRaParameters.Validator validator,
             IValidSealerStrategy validSealerStrategy,
             IValidatorStore validatorStore,
             ILogManager logManager,
             long startBlockNumber,
             bool forSealing)
         {
-            if (validator == null) throw new ArgumentNullException(nameof(validator));
             ValidatorStore = validatorStore ?? throw new ArgumentNullException(nameof(validatorStore));
             _validSealerStrategy = validSealerStrategy ?? throw new ArgumentNullException(nameof(validSealerStrategy));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -49,7 +47,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         public Address[] Validators { get; protected internal set; }
         
         protected long InitBlockNumber { get; }
-        protected bool ForSealing { get; }
+        protected internal bool ForSealing { get; }
         protected IValidatorStore ValidatorStore { get; }
 
         protected void InitValidatorStore()
@@ -68,6 +66,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                 if (!_validSealerStrategy.IsValidSealer(Validators, block.Beneficiary, auRaStep))
                 {
                     if (_logger.IsError) _logger.Error($"Block from incorrect proposer at block {block.ToString(Block.Format.FullHashAndNumber)}, step {auRaStep} from author {block.Beneficiary}.");
+                    this.GetReportingValidator().ReportBenign(block.Beneficiary, block.Number, IReportingValidator.BenignCause.IncorrectProposer);
                     throw new InvalidBlockException(block.Hash);
                 }
             }

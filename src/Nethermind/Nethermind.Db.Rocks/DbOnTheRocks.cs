@@ -118,7 +118,7 @@ namespace Nethermind.Db.Rocks
             ulong blockCacheSize = ReadConfig<ulong>(dbConfig, nameof(dbConfig.BlockCacheSize));
             _maxThisDbSize += (long) blockCacheSize;
 
-            IntPtr cache = Native.Instance.rocksdb_cache_create_lru(new UIntPtr(blockCacheSize));
+            IntPtr cache = RocksDbSharp.Native.Instance.rocksdb_cache_create_lru(new UIntPtr(blockCacheSize));
             tableOptions.SetBlockCache(cache);
 
             DbOptions options = new DbOptions();
@@ -345,7 +345,7 @@ namespace Nethermind.Db.Rocks
                 throw new ObjectDisposedException($"Attempted to flush a disposed database {Name}");
             }
             
-            Native.Instance.rocksdb_flush(Db.Handle, FlushOptions.DefaultFlushOptions.Handle);
+            RocksDbSharp.Native.Instance.rocksdb_flush(Db.Handle, FlushOptions.DefaultFlushOptions.Handle);
         }
 
         public void Clear()
@@ -366,7 +366,7 @@ namespace Nethermind.Db.Rocks
 
             public FlushOptions()
             {
-                Handle = Native.Instance.rocksdb_flushoptions_create();
+                Handle = RocksDbSharp.Native.Instance.rocksdb_flushoptions_create();
             }
 
             public IntPtr Handle { get; protected set; }
@@ -375,7 +375,7 @@ namespace Nethermind.Db.Rocks
             {
                 if (Handle != IntPtr.Zero)
                 {
-                    Native.Instance.rocksdb_flushoptions_destroy(Handle);
+                    RocksDbSharp.Native.Instance.rocksdb_flushoptions_destroy(Handle);
                     Handle = IntPtr.Zero;
                 }
             }

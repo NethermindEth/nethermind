@@ -191,7 +191,7 @@ namespace Ethereum.VM.Test
                 }
             }
 
-            EvmState state = new EvmState((long)test.Execution.Gas, environment, ExecutionType.Transaction, false, true, false);
+            EvmState state = new EvmState((long)test.Execution.Gas, environment, ExecutionType.Transaction, true, false);
 
             _storageProvider.Commit();
             _stateProvider.Commit(Olympic.Instance);
