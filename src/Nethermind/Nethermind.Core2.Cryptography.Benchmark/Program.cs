@@ -22,11 +22,7 @@ namespace Nethermind.Core2.Cryptography.Benchmark
     {
         public static void Main(string[] args)
         {
-<<<<<<< HEAD
-            BenchmarkRunner.Run<GenesisDepositsBenchmark>();
-=======
             BenchmarkRunner.Run<Sha256Benchmark>();
->>>>>>> master
         }
     }
 }
