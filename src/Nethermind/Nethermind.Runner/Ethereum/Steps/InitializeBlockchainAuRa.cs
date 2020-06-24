@@ -17,7 +17,6 @@
 using System;
 using System.Linq;
 using Nethermind.Blockchain.Processing;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Config;
@@ -41,7 +40,6 @@ namespace Nethermind.Runner.Ethereum.Steps
         public InitializeBlockchainAuRa(AuRaEthereumRunnerContext context) : base(context)
         {
             _context = context;
-            _context.Config<ISyncConfig>().AllowFullSyncParallelToFastBlocks = false;
         }
 
         protected override BlockProcessor CreateBlockProcessor()
