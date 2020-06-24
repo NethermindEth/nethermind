@@ -43,10 +43,10 @@ namespace Nethermind.Consensus.Ethash
         }
 
         public const int WordBytes = 4; // bytes in word
-        public static uint DataSetBytesInit = (uint) BigInteger.Pow(2, 30); // bytes in dataset at genesis
-        public static uint DataSetBytesGrowth = (uint) BigInteger.Pow(2, 23); // dataset growth per epoch
-        public static uint CacheBytesInit = (uint) BigInteger.Pow(2, 24); // bytes in cache at genesis
-        public static uint CacheBytesGrowth = (uint) BigInteger.Pow(2, 17); // cache growth per epoch
+        public static uint DataSetBytesInit = 1U << 30; // bytes in dataset at genesis
+        public static uint DataSetBytesGrowth = 1U << 23; // dataset growth per epoch
+        public static uint CacheBytesInit = 1U << 24; // bytes in cache at genesis
+        public static uint CacheBytesGrowth = 1U << 17; // cache growth per epoch
         public const int CacheMultiplier = 1024; // Size of the DAG relative to the cache
         public const long EpochLength = 30000; // blocks per epoch
         public const uint MixBytes = 128; // width of mix
