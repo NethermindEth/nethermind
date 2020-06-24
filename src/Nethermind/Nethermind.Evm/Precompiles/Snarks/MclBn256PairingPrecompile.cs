@@ -22,16 +22,16 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto.ZkSnarks;
 using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Evm.Precompiles.Mcl.Bn256
+namespace Nethermind.Evm.Precompiles.Snarks
 {
     /// <summary>
     /// https://github.com/herumi/mcl/blob/master/api.md
     /// </summary>
-    public class Bn256PairingPrecompile : IPrecompile
+    public class MclBn256PairingPrecompile : IPrecompile
     {
         private const int PairSize = 192;
 
-        public static IPrecompile Instance = new Bn256PairingPrecompile();
+        public static IPrecompile Instance = new MclBn256PairingPrecompile();
 
         public Address Address { get; } = Address.FromNumber(8);
 
@@ -52,12 +52,12 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bn256
 
         public (byte[], bool) Run(byte[] inputData)
         {
-            Metrics.Bn128PairingPrecompile++;
+            Metrics.Bn256PairingPrecompile++;
 
             inputData ??= Bytes.Empty;
             if (inputData.Length % PairSize > 0)
             {
-                // note that it will not happens in case of null / 0 length
+                // note that it will not happen in case of null / 0 length
                 return (Bytes.Empty, false);
             }
 
@@ -117,8 +117,8 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bn256
         {
             (G1, G2)? result;
             
-            if (Common.TryReadEthG1(input, 0, out G1 p) &&
-                Common.TryReadEthG2(input, 2 * Common.LenFp, out G2 q))
+            if (input.TryReadEthG1(0, out G1 p) &&
+                input.TryReadEthG2(2 * Bn256Extensions.LenFp, out G2 q))
             {
                 result = (p, q);
             }

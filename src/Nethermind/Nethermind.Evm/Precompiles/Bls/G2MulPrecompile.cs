@@ -18,22 +18,26 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto.ZkSnarks;
+using Nethermind.Crypto.Bls;
 
-namespace Nethermind.Evm.Precompiles.Mcl.Bn256
+namespace Nethermind.Evm.Precompiles.Bls
 {
     /// <summary>
-    /// https://github.com/herumi/mcl/blob/master/api.md
+    /// https://eips.ethereum.org/EIPS/eip-2537
     /// </summary>
-    public class MclBn256AddPrecompile : IPrecompile
+    public class G2MulPrecompile : IPrecompile
     {
-        public static IPrecompile Instance = new MclBn256AddPrecompile();
+        public static IPrecompile Instance = new G2MulPrecompile();
 
-        public Address Address { get; } = Address.FromNumber(6);
+        private G2MulPrecompile()
+        {
+        }
+
+        public Address Address { get; } = Address.FromNumber(14);
 
         public long BaseGasCost(IReleaseSpec releaseSpec)
         {
-            return releaseSpec.IsEip1108Enabled ? 150L : 500L;
+            return 55000L;
         }
 
         public long DataGasCost(byte[] inputData, IReleaseSpec releaseSpec)
@@ -43,16 +47,15 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bn256
 
         public (byte[], bool) Run(byte[] inputData)
         {
-            Metrics.Bn128AddPrecompile++;
-            Span<byte> inputDataSpan = stackalloc byte[128];
-            Mcl.PrepareInputData(inputData, inputDataSpan);
+            Span<byte> inputDataSpan = stackalloc byte[4 * BlsExtensions.LenFp + BlsExtensions.LenFr];
+            inputData.PrepareEthInput(inputDataSpan);
 
             (byte[], bool) result;
-            if (Common.TryReadEthG1(inputDataSpan, 0 * Crypto.ZkSnarks.Bn256.LenFp, out G1 a) &&
-                Common.TryReadEthG1(inputDataSpan, 2 * Crypto.ZkSnarks.Bn256.LenFp, out G1 b))
+            if (inputDataSpan.TryReadEthG2(0, out G2 a))
             {
-                a.Add(a, b);
-                result = (Common.SerializeEthG1(a), true);
+                inputDataSpan.TryReadEthFr(4 * BlsExtensions.LenFp, out Fr fr);
+                a.Mul(a, fr);
+                result = (BlsExtensions.SerializeEthG2(a), true);
             }
             else
             {

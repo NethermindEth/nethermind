@@ -20,24 +20,20 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto.Bls;
 
-namespace Nethermind.Evm.Precompiles.Mcl.Bls
+namespace Nethermind.Evm.Precompiles.Snarks
 {
     /// <summary>
-    /// https://eips.ethereum.org/EIPS/eip-2537
+    /// https://github.com/matter-labs/eip1962/blob/master/eip196_header.h
     /// </summary>
-    public class G1AddPrecompile : IPrecompile
+    public class ShamatarBn256AddPrecompile : IPrecompile
     {
-        public static IPrecompile Instance = new G1AddPrecompile();
+        public static IPrecompile Instance = new ShamatarBn256AddPrecompile();
 
-        private G1AddPrecompile()
-        {
-        }
-
-        public Address Address { get; } = Address.FromNumber(10);
+        public Address Address { get; } = Address.FromNumber(6);
 
         public long BaseGasCost(IReleaseSpec releaseSpec)
         {
-            return 600L;
+            return releaseSpec.IsEip1108Enabled ? 150L : 500L;
         }
 
         public long DataGasCost(byte[] inputData, IReleaseSpec releaseSpec)
@@ -45,23 +41,25 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bls
             return 0L;
         }
 
-        public (byte[], bool) Run(byte[] inputData)
+        public unsafe (byte[], bool) Run(byte[] inputData)
         {
-            Span<byte> inputDataSpan = stackalloc byte[4 * Common.LenFp];
-            Mcl.PrepareInputData(inputData, inputDataSpan);
+            Metrics.Bn256AddPrecompile++;
+            Span<byte> inputDataSpan = stackalloc byte[128];
+            inputData.PrepareEthInput(inputDataSpan);
+            
+            Span<byte> output = stackalloc byte[64];
+            bool success = ShamatarLib.Bn256Add(inputDataSpan, output);
 
             (byte[], bool) result;
-            if (Common.TryReadEthG1(inputDataSpan, 0 * Common.LenFp, out G1 a) &&
-                Common.TryReadEthG1(inputDataSpan, 2 * Common.LenFp, out G1 b))
+            if (success)
             {
-                a.Add(a, b);
-                result = (Common.SerializeEthG1(a), true);
+                result = (output.ToArray(), true);   
             }
             else
             {
                 result = (Bytes.Empty, false);
             }
-            
+
             return result;
         }
     }

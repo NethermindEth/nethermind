@@ -19,11 +19,10 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
 using Nethermind.Crypto.Bls;
 using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Evm.Precompiles.Mcl.Bls
+namespace Nethermind.Evm.Precompiles.Bls
 {
     /// <summary>
     /// https://eips.ethereum.org/EIPS/eip-2537
@@ -57,7 +56,7 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bls
 
         public (byte[], bool) Run(byte[] inputData)
         {
-            Metrics.Bn128PairingPrecompile++;
+            Metrics.Bn256PairingPrecompile++;
 
             inputData ??= Bytes.Empty;
             if (inputData.Length % PairSize > 0)
@@ -122,8 +121,8 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bls
         {
             (G1, G2)? result;
 
-            if (Common.TryReadEthG1(input, 0, out G1 p) &&
-                Common.TryReadEthG2(input, 2 * Common.LenFp, out G2 q))
+            if (input.TryReadEthG1(0, out G1 p) &&
+                input.TryReadEthG2(2 * BlsExtensions.LenFp, out G2 q))
             {
                 result = (p, q);
             }

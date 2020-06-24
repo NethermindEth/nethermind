@@ -23,14 +23,14 @@ using Nethermind.Crypto;
 using Nethermind.Crypto.ZkSnarks;
 using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Evm.Precompiles.Mcl.Bn256
+namespace Nethermind.Evm.Precompiles.Snarks
 {
     /// <summary>
     /// https://github.com/herumi/mcl/blob/master/api.md
     /// </summary>
-    public class Bn256MulPrecompile : IPrecompile
+    public class MclBn256MulPrecompile : IPrecompile
     {
-        public static IPrecompile Instance = new Bn256MulPrecompile();
+        public static IPrecompile Instance = new MclBn256MulPrecompile();
 
         public Address Address { get; } = Address.FromNumber(7);
 
@@ -46,20 +46,20 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bn256
 
         public (byte[], bool) Run(byte[] inputData)
         {
-            Metrics.Bn128MulPrecompile++;
+            Metrics.Bn256MulPrecompile++;
             Span<byte> inputDataSpan = stackalloc byte[96];
-            Mcl.PrepareInputData(inputData, inputDataSpan);
+            inputData.PrepareEthInput(inputDataSpan);
 
             (byte[], bool) result;
-            if (Common.TryReadEthG1(inputDataSpan, 0 * Crypto.ZkSnarks.Bn256.LenFp, out G1 a))
+            if (inputDataSpan.TryReadEthG1(0 * Bn256.LenFp, out G1 a))
             {
-                Common.ReadFr(inputDataSpan, 2 * Crypto.ZkSnarks.Bn256.LenFp, out Fr fr);
+                inputDataSpan.ReadFr(2 * Crypto.ZkSnarks.Bn256.LenFp, out Fr fr);
                 // UInt256 scalar = Mcl.ReadScalar(inputDataSpan, 2 * Crypto.Bn256.LenFp);
 
                 // Crypto.Bn256.G1 result = MulAlternative(a, scalar);
                 // Crypto.Bn256.G1 mulRes = Mul(a, scalar % Crypto.Bn256.R);
                 G1 mulRes = Mul(a, fr);
-                result = (Common.SerializeEthG1(mulRes), true);
+                result = (mulRes.SerializeEthG1(), true);
             }
             else
             {

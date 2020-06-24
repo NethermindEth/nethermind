@@ -18,23 +18,22 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto.ZkSnarks;
 using Nethermind.Crypto.ZkSnarks.Obsolete;
 using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Evm.Precompiles.Mcl.Bn256
+namespace Nethermind.Evm.Precompiles.Snarks
 {
     /// <summary>
     ///     Code adapted from ethereumJ (https://github.com/ethereum/ethereumj)
     /// </summary>
     [Obsolete("Use Bn256PairingPrecompile instead")]
-    public class Bn128PairingPrecompile : IPrecompile
+    public class EthereumJBn256PairingPrecompile : IPrecompile
     {
         private const int PairSize = 192;
 
-        public static IPrecompile Instance = new Bn128PairingPrecompile();
+        public static IPrecompile Instance = new EthereumJBn256PairingPrecompile();
 
-        private Bn128PairingPrecompile()
+        private EthereumJBn256PairingPrecompile()
         {
         }
 
@@ -57,7 +56,7 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bn256
 
         public (byte[], bool) Run(byte[] inputData)
         {
-            Metrics.Bn128PairingPrecompile++;
+            Metrics.Bn256PairingPrecompile++;
             inputData ??= Bytes.Empty;
 
             // fail if input len is not a multiple of PAIR_SIZE

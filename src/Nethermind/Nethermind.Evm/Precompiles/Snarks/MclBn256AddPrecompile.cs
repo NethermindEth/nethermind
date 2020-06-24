@@ -15,32 +15,25 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
-using Nethermind.Crypto.Bls;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Crypto.ZkSnarks;
 
-namespace Nethermind.Evm.Precompiles.Mcl.Bls
+namespace Nethermind.Evm.Precompiles.Snarks
 {
     /// <summary>
-    /// https://eips.ethereum.org/EIPS/eip-2537
+    /// https://github.com/herumi/mcl/blob/master/api.md
     /// </summary>
-    public class G2MulPrecompile : IPrecompile
+    public class MclBn256AddPrecompile : IPrecompile
     {
-        public static IPrecompile Instance = new G2MulPrecompile();
+        public static IPrecompile Instance = new MclBn256AddPrecompile();
 
-        private G2MulPrecompile()
-        {
-        }
-
-        public Address Address { get; } = Address.FromNumber(14);
+        public Address Address { get; } = Address.FromNumber(6);
 
         public long BaseGasCost(IReleaseSpec releaseSpec)
         {
-            return 55000L;
+            return releaseSpec.IsEip1108Enabled ? 150L : 500L;
         }
 
         public long DataGasCost(byte[] inputData, IReleaseSpec releaseSpec)
@@ -50,15 +43,16 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bls
 
         public (byte[], bool) Run(byte[] inputData)
         {
-            Span<byte> inputDataSpan = stackalloc byte[4 * Common.LenFp + Common.LenFr];
-            Mcl.PrepareInputData(inputData, inputDataSpan);
+            Metrics.Bn256AddPrecompile++;
+            Span<byte> inputDataSpan = stackalloc byte[128];
+            inputData.PrepareEthInput(inputDataSpan);
 
             (byte[], bool) result;
-            if (Common.TryReadEthG2(inputDataSpan, 0, out G2 a))
+            if (inputDataSpan.TryReadEthG1(0 * Bn256.LenFp, out G1 a) &&
+                inputDataSpan.TryReadEthG1(2 * Bn256.LenFp, out G1 b))
             {
-                Common.TryReadEthFr(inputDataSpan, 4 * Common.LenFp, out Fr fr);
-                a.Mul(a, fr);
-                result = (Common.SerializeEthG2(a), true);
+                a.Add(a, b);
+                result = (a.SerializeEthG1(), true);
             }
             else
             {

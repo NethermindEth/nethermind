@@ -20,7 +20,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto.Bls;
 
-namespace Nethermind.Evm.Precompiles.Mcl.Bls
+namespace Nethermind.Evm.Precompiles.Bls
 {
     /// <summary>
     /// https://eips.ethereum.org/EIPS/eip-2537
@@ -47,14 +47,14 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bls
 
         public (byte[], bool) Run(byte[] inputData)
         {
-            Span<byte> inputDataSpan = stackalloc byte[4 * Common.LenFp];
-            Mcl.PrepareInputData(inputData, inputDataSpan);
+            Span<byte> inputDataSpan = stackalloc byte[4 * BlsExtensions.LenFp];
+            inputData.PrepareEthInput(inputDataSpan);
             
             (byte[], bool) result;
-            if (Common.TryReadFp2(inputDataSpan, 0, out Fp2 fp2))
+            if (inputDataSpan.TryReadFp2(0, out Fp2 fp2))
             {
                 G2 g2 = fp2.MapToG2();
-                result = (Common.SerializeEthG2(g2), true);
+                result = (BlsExtensions.SerializeEthG2(g2), true);
             }
             else
             {

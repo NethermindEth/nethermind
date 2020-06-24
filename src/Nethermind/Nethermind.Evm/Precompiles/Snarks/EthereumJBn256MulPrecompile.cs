@@ -19,20 +19,19 @@ using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto.ZkSnarks;
 using Nethermind.Crypto.ZkSnarks.Obsolete;
 
-namespace Nethermind.Evm.Precompiles.Mcl.Bn256
+namespace Nethermind.Evm.Precompiles.Snarks
 {
     /// <summary>
     ///     Code adapted from ethereumJ (https://github.com/ethereum/ethereumj)
     /// </summary>
     [Obsolete("Use Bn256MulPrecompile instead")]
-    public class Bn128MulPrecompile : IPrecompile
+    public class EthereumJBn256MulPrecompile : IPrecompile
     {
-        public static IPrecompile Instance = new Bn128MulPrecompile();
+        public static IPrecompile Instance = new EthereumJBn256MulPrecompile();
 
-        private Bn128MulPrecompile()
+        private EthereumJBn256MulPrecompile()
         {
         }
 
@@ -50,7 +49,7 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bn256
 
         public (byte[], bool) Run(byte[] inputData)
         {
-            Metrics.Bn128MulPrecompile++;
+            Metrics.Bn256MulPrecompile++;
             
             if (inputData == null)
             {

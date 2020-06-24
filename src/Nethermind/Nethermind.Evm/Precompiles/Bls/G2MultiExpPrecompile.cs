@@ -20,7 +20,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto.Bls;
 
-namespace Nethermind.Evm.Precompiles.Mcl.Bls
+namespace Nethermind.Evm.Precompiles.Bls
 {
     /// <summary>
     /// https://eips.ethereum.org/EIPS/eip-2537
@@ -65,15 +65,15 @@ namespace Nethermind.Evm.Precompiles.Mcl.Bls
             for (int i = 0; i < count; i++)
             {
                 Span<byte> currentBytes = inputData.AsSpan().Slice(i * ItemSize, ItemSize);
-                if (!Common.TryReadEthG2(currentBytes, 0, out inputG2[i]) ||
-                    !Common.TryReadEthFr(currentBytes, 4 * Common.LenFp, out inputFr[i]))
+                if (!currentBytes.TryReadEthG2(0, out inputG2[i]) ||
+                    !currentBytes.TryReadEthFr(4 * BlsExtensions.LenFp, out inputFr[i]))
                 {
                     return (Bytes.Empty, false);
                 }
             }
             
             G2.MultiMul(ref calculated, inputG2, inputFr);
-            return (Common.SerializeEthG2(calculated), true);
+            return (BlsExtensions.SerializeEthG2(calculated), true);
         }
     }
 }

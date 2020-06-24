@@ -18,7 +18,7 @@
 using FluentAssertions;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Precompiles;
-using Nethermind.Evm.Precompiles.Mcl.Bn256;
+using Nethermind.Evm.Precompiles.Snarks;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
@@ -75,15 +75,20 @@ namespace Nethermind.Evm.Test
 
             for (int i = 0; i < inputs.Length; i++)
             {
-                IPrecompile precompile256 = Bn256PairingPrecompile.Instance;
-                (byte[], bool) result256 = precompile256.Run(inputs[i]);
-
 #pragma warning disable 618
-                IPrecompile precompile128 = Bn128PairingPrecompile.Instance;
+                IPrecompile ethereumJ = EthereumJBn256PairingPrecompile.Instance;
 #pragma warning restore 618
-                (byte[], bool) result128 = precompile128.Run(inputs[i]);
+                (byte[], bool) resultEthereumJ = ethereumJ.Run(inputs[i]);
 
-                result256.Should().BeEquivalentTo(result128, i.ToString());
+                byte[] cloned = inputs[i].Clone() as byte[];
+                IPrecompile shamatar = ShamatarBn256PairingPrecompile.Instance;
+                (byte[], bool) resultShamatar = shamatar.Run(cloned);
+                
+                IPrecompile mcl = MclBn256PairingPrecompile.Instance;
+                (byte[], bool) resultMcl = mcl.Run(inputs[i]);
+
+                resultMcl.Should().BeEquivalentTo(resultEthereumJ, i.ToString(), "mcl");
+                resultShamatar.Should().BeEquivalentTo(resultEthereumJ, i.ToString(), "shamatar");
             }
         }
     }
