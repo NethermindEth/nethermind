@@ -31,28 +31,22 @@ namespace Nethermind.Core.Extensions
         {
             if (Avx2.IsSupported)
             {
-                unsafe
+                fixed (byte* ptr_mask = ReverseMask)
                 {
-                    fixed (byte* ptr_mask = ReverseMask)
-                    {
-                        ReverseMaskVec = Avx2.LoadVector256(ptr_mask);
-                    }
+                    ReverseMaskVec = Avx2.LoadVector256(ptr_mask);
                 }
             }
         }
 
         public static void Avx2Reverse256InPlace(Span<byte> bytes)
         {
-            unsafe
+            fixed (byte* inputPointer = bytes)
             {
-                fixed (byte* inputPointer = bytes)
-                {
-                    Vector256<byte> inputVector = Avx2.LoadVector256(inputPointer);
-                    Vector256<byte> resultVector = Avx2.Shuffle(inputVector, ReverseMaskVec);
-                    resultVector = Avx2.Permute4x64(resultVector.As<byte, ulong>(), 0b01001110).As<ulong, byte>();
+                Vector256<byte> inputVector = Avx2.LoadVector256(inputPointer);
+                Vector256<byte> resultVector = Avx2.Shuffle(inputVector, ReverseMaskVec);
+                resultVector = Avx2.Permute4x64(resultVector.As<byte, ulong>(), 0b01001110).As<ulong, byte>();
 
-                    Avx2.Store(inputPointer, resultVector);
-                }
+                Avx2.Store(inputPointer, resultVector);
             }
         }
 
@@ -94,30 +88,6 @@ namespace Nethermind.Core.Extensions
             {
                 thisSpam[i] |= valueSpam[i];
             }
-        }
-
-        public static uint BitLength(this Span<byte> thisSpan)
-        {
-            uint result = 0;
-            if (Lzcnt.IsSupported)
-            {
-                Span<uint> uintSpam = MemoryMarshal.Cast<byte, uint>(thisSpan);
-                for (int i = 0; i < uintSpam.Length; i++)
-                {
-                    uint thisByteCount = Lzcnt.LeadingZeroCount(uintSpam[i]);
-                    result += thisByteCount;
-                    if (thisByteCount != 8)
-                    {
-                        break;
-                    }
-                }
-            }
-            else
-            {
-                throw new NotImplementedException();
-            }
-
-            return result;
         }
 
         public static uint CountBits(this Span<byte> thisSpan)
