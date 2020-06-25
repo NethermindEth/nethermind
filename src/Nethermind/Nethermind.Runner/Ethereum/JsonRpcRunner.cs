@@ -66,7 +66,6 @@ namespace Nethermind.Runner.Ethereum
 
         public Task Start(CancellationToken cancellationToken)
         {
-            // Console.WriteLine("Starting jsonRpc runner");
             IEnumerable<string> GetUrls()
             {
                 const string nethermindUrlVariable = "NETHERMIND_URL";

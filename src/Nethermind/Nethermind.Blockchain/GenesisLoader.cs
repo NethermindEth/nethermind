@@ -57,7 +57,7 @@ namespace Nethermind.Blockchain
         public Block Load()
         {
             Block genesis = _chainSpec.Genesis;
-            foreach ((Address address, ChainSpecAllocation allocation) in _chainSpec.Allocations)
+            foreach ((Address address, ChainSpecAllocation allocation) in _chainSpec.Allocations.OrderBy(a => a.Key))
             {
                 _stateProvider.CreateAccount(address, allocation.Balance);
                 if (allocation.Code != null)

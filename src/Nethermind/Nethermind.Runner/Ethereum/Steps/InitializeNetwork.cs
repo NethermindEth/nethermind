@@ -81,7 +81,6 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         public async Task Execute(CancellationToken cancellationToken)
         {
-            Console.WriteLine("Network init");
             await Initialize(cancellationToken);
         }
 
