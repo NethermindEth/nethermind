@@ -47,7 +47,6 @@ namespace Nethermind.Consensus.Ethash
         public static uint DataSetBytesGrowth = 1U << 23; // dataset growth per epoch
         public static uint CacheBytesInit = 1U << 24; // bytes in cache at genesis
         public static uint CacheBytesGrowth = 1U << 17; // cache growth per epoch
-        public const int CacheMultiplier = 1024; // Size of the DAG relative to the cache
         public const long EpochLength = 30000; // blocks per epoch
         public const uint MixBytes = 128; // width of mix
         public const int HashBytes = 64; // hash length in bytes
