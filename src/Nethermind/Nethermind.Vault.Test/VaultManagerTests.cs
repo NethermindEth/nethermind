@@ -7,6 +7,7 @@ using Nethermind.Vault.Styles;
 using NSubstitute;
 using NUnit.Framework;
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 
 namespace Nethermind.Vault.Test
@@ -25,7 +26,7 @@ namespace Nethermind.Vault.Test
             _config.Host = "localhost";
             _config.Scheme = "http";
             _config.Path = "api/v1";
-            _config.Token = "12345";
+            _config.Token = "test";
             _vaultManager = new VaultManager(
                 _config,
                 LimboLogs.Instance
@@ -35,10 +36,20 @@ namespace Nethermind.Vault.Test
         [Test]
         public async Task can_return_a_list_of_vaults()
         {
+            VaultArgs args = null;
+            Dictionary<string, object> parameters = new Dictionary<string,object> 
+            {
+                {
+                    "vaultArgs", args
+                }
+            };
+            var vault = await _vaultManager.NewVault(parameters);
+
             var result = await _vaultManager.GetVaults();
 
+            Console.WriteLine(result);
             result.Should().NotBeNull();
-            result.Should().AllBeOfType<string>();
+            result.Should().Contain(vault);
         }
 
 
@@ -48,30 +59,17 @@ namespace Nethermind.Vault.Test
             VaultArgs args = new VaultArgs();
             args.Name = "Wallet Vault Test";
             args.Description = "Test Vault used for test purposes";
-            var result = await _vaultManager.NewVault(args);
+
+            Dictionary<string, object> parameters = new Dictionary<string,object> 
+            {
+                {
+                    "vaultArgs", args
+                }
+            };
+
+            var result = await _vaultManager.NewVault(parameters);
 
             result.Should().NotBeNull();
-            result.Should().BeOfType<string>();
-        }
-
-        [Test]
-        public async Task can_set_vault_id_from_configuration()
-        {
-            _config.VaultId = "vaultId";
-            var result = await _vaultManager.SetWalletVault(_config.VaultId);
-
-            result.Should().NotBeNull();
-            result.Should().BeOfType<string>();
-            Assert.AreEqual(_config.VaultId, result);
-        }
-
-        [Test]
-        public async Task can_set_default_vault_id()
-        {
-            var result = await _vaultManager.SetWalletVault(null);
-
-            result.Should().NotBeNull();
-            result.Should().BeOfType<string>();
         }
     }
 }

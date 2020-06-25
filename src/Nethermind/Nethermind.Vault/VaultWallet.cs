@@ -34,6 +34,7 @@ namespace Nethermind.Vault
         private readonly ILogger _logger;
         private readonly provide.Vault _initVault;
         private ConcurrentDictionary<Address, string> accounts;
+        private string vault;
 
 
         public VaultWallet(IVaultManager vaultManager, IVaultConfig vaultConfig, ILogManager logManager)
@@ -51,7 +52,8 @@ namespace Nethermind.Vault
             accounts = new ConcurrentDictionary<Address, string>();
             var args = new Dictionary<string, object> {};
 
-            string vault = await _vaultManager.SetWalletVault(_vaultConfig.VaultId);
+            var vault = await SetWalletVault();
+
             var result = await _initVault.ListVaultKeys(_vaultConfig.Token, vault, args);
             dynamic keys  = JsonConvert.DeserializeObject(result.Item2);
             foreach(var key in keys)
@@ -68,37 +70,16 @@ namespace Nethermind.Vault
             }
             return accounts.Keys.ToArray();
         }
-
-        public async Task<Address> NewAccount(KeyArgs args)
-        {
-            // creates default KeyArgs in case of null input
-            if (args == null) 
-            {
-                args = new KeyArgs();
-                args.Name = "name";
-                args.Description = "description";
-                args.Type = "asymmetric";
-                args.Spec = "secp256k1";
-                args.Usage = "sign/verify";
-            }
-            string vault = await _vaultManager.SetWalletVault(_vaultConfig.VaultId);
-            var result = await _initVault.CreateVaultKey(_vaultConfig.Token, vault, args.ToDictionary());
-            dynamic key  = JsonConvert.DeserializeObject(result.Item2);
-            string address = Convert.ToString(key.address);
-            var account = new Address(address);
-            accounts.TryAdd(account, Convert.ToString(key.id));
-            return account;
-        }
         public async Task DeleteAccount(Address address)
         {
-            string vault = await _vaultManager.SetWalletVault(_vaultConfig.VaultId);
+            var vault = await SetWalletVault();
             string keyId = await GetKeyIdByAddress(address);
             var result = await _initVault.DeleteVaultKey(_vaultConfig.Token, vault, keyId);
         }
 
         public async Task<Signature> Sign(Address address, Keccak message)
         {
-            string vault = await _vaultManager.SetWalletVault(_vaultConfig.VaultId);
+            var vault = await SetWalletVault();
             string keyId = await GetKeyIdByAddress(address);
             var result = await _initVault.SignMessage(_vaultConfig.Token, vault, keyId, message.ToString());   
             dynamic sig  = JsonConvert.DeserializeObject(result.Item2);
@@ -107,15 +88,48 @@ namespace Nethermind.Vault
             return new Signature(signature);
         }
 
-        public Task<Address> NewAccount(Dictionary<string, object> parameters)
+        public async Task<Address> NewAccount(Dictionary<string, object> parameters)
         {
-            throw new NotImplementedException();
+            KeyArgs keyArgs = parameters["keyArgs"] as KeyArgs;
+
+            if (keyArgs == null) 
+            {
+                keyArgs = new KeyArgs();
+                keyArgs.Name = "name";
+                keyArgs.Description = "description";
+                keyArgs.Type = "asymmetric";
+                keyArgs.Spec = "secp256k1";
+                keyArgs.Usage = "sign/verify";
+            }
+            if (!parameters.ContainsKey("keyArgs")) throw new ArgumentNullException(nameof(parameters));
+
+            var vault = await SetWalletVault();
+            var result = await _initVault.CreateVaultKey(_vaultConfig.Token, vault, keyArgs.ToDictionary());
+            dynamic key  = JsonConvert.DeserializeObject(result.Item2);
+            string address = Convert.ToString(key.address);
+            var account = new Address(address);
+            accounts.TryAdd(account, Convert.ToString(key.id));
+            return account;
         }
 
         public async Task<string> GetKeyIdByAddress(Address address) 
         {
             await GetAccounts();
             return accounts.FirstOrDefault(acc => acc.Key.Equals(address)).Value;
+        }
+
+        public async Task<string> SetWalletVault()
+        {
+            if (_vaultConfig.VaultId != null) 
+            {
+                return _vaultConfig.VaultId;
+            }
+            else
+            {
+                // sets latest vault as default
+                string[] vaults = await _vaultManager.GetVaults();
+                return vaults[^1];
+            }
         }
     }
 }

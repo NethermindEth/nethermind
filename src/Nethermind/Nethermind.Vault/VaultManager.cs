@@ -24,7 +24,6 @@ namespace Nethermind.Vault
             _initVault = new provide.Vault(_vaultConfig.Host, _vaultConfig.Path, _vaultConfig.Scheme, _vaultConfig.Token);
 
         }
-
         public async Task<string[]> GetVaults()
         {
             List<string> vaultList = new List<string> {};
@@ -44,40 +43,24 @@ namespace Nethermind.Vault
             return vaultList.ToArray();
         }
 
-        public async Task<string> NewVault(VaultArgs args)
+        public async Task<string> NewVault(Dictionary<string, object> parameters)
         {
+            VaultArgs vaultArgs = parameters["vaultArgs"] as VaultArgs;
+
             // creates default VaultArgs in case of null input
-            if (args == null) 
+            if (vaultArgs == null) 
             {
-                args = new VaultArgs();
-                args.Name = "name";
-                args.Description = "description";
+                vaultArgs = new VaultArgs();
+                vaultArgs.Name = "name";
+                vaultArgs.Description = "description";
             }
+            if (!parameters.ContainsKey("vaultArgs")) throw new ArgumentNullException(nameof(parameters));
             
-            var result = await _initVault.CreateVault(_vaultConfig.Token, args.ToDictionary());
+            var result = await _initVault.CreateVault(_vaultConfig.Token, vaultArgs.ToDictionary());
             dynamic vault  = JsonConvert.DeserializeObject(result.Item2);
             string vaultId = Convert.ToString(vault.id);
 
             return vaultId;
-        }
-
-        public Task<string> NewVault(Dictionary<string, object> parameters)
-        {
-            throw new NotImplementedException();
-        }
-
-        public async Task<string> SetWalletVault(string vaultId)
-        {
-            if (_vaultConfig.VaultId != null) 
-            {
-                return _vaultConfig.VaultId;
-            }
-            else
-            {
-                // sets latest vault as default
-                string[] vaults = await GetVaults();
-                return vaults[^1];
-            }
         }
     }
 }

@@ -29,7 +29,9 @@ namespace Nethermind.Vault
         Task<Address> NewAccount(Dictionary<string, object> parameters);
         Task DeleteAccount(Address address);
         Task<Signature> Sign(Address address, Keccak message);
-        
+
+        Task<string> SetWalletVault();
+
         public Task<Address> NewAccount(KeyArgs args) 
         {
             return NewAccount(new Dictionary<string, object> 
