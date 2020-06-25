@@ -43,6 +43,9 @@ namespace Nethermind.Runner
 
         [ConfigItem(Description = "Path to the chain definition file (Parity chainspec or Geth genesis file).", DefaultValue = "chainspec/foundation.json")]
         string ChainSpecPath { get; set; }
+
+        [ConfigItem(Description = "Path to the chain definition file created by Hive for test purpouse", DefaultValue="chainspec/test.json")]
+        string HiveChainSpecPath { get; set; }
         
         [ConfigItem(Description = "Directory for Nethermind plugins like NDM.", DefaultValue = "plugins")] 
         string PluginsDirectory { get; set; }

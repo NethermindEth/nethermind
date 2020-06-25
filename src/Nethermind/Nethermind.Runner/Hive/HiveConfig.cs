@@ -21,5 +21,6 @@ namespace Nethermind.Runner.Hive
         public string ChainFile { get; set; } = "/chain.rlp";
         public string BlocksDir { get; set; } = "/blocks";
         public string KeysDir { get; set; } = "/keys";
+        public string GenesisFile { get; set; } = "/genesis.json";
     }
 }
