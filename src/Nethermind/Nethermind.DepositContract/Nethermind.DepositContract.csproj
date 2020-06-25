@@ -6,11 +6,11 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj"/>
+        <ProjectReference Include="..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj" />
     </ItemGroup>
 
     <ItemGroup>
-        <None Remove="validator_registration.json"/>
+        <None Remove="validator_registration.json" />
     </ItemGroup>
 
     <ItemGroup>
