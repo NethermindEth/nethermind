@@ -39,6 +39,7 @@ namespace Nethermind.Runner
         public bool ReceiptsMigration { get; set; } = false;
         public DiagnosticMode DiagnosticMode { get; set; } = DiagnosticMode.None;
         public string RpcDbUrl { get; set; } = String.Empty;
+        public long? MemoryHint { get; set; }
 
         [Obsolete("Use DiagnosticMode with MemDb instead")]
         public bool UseMemDb

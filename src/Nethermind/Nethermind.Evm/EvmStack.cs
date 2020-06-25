@@ -15,12 +15,14 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;
+using Org.BouncyCastle.Security;
 
 namespace Nethermind.Evm
 {
@@ -28,6 +30,7 @@ namespace Nethermind.Evm
     {
         public const int RegisterLength = 1;
         public const int MaxStackSize = 1025;
+        public const int ReturnStackSize = 1023;
 
         public EvmStack(in Span<byte> bytes, in int head, ITxTracer txTracer)
         {
@@ -134,6 +137,23 @@ namespace Nethermind.Evm
             }
         }
 
+        public void PushUInt32(in int value)
+        {
+            Span<byte> word = _bytes.Slice(Head * 32, 28);
+            word.Clear();
+            
+            Span<byte> intPlace = _bytes.Slice(Head * 32 + 28, 4);
+            BinaryPrimitives.WriteInt32BigEndian(intPlace, value);
+            
+            if (_tracer.IsTracingInstructions) _tracer.ReportStackPush(word);
+
+            if (++Head >= MaxStackSize)
+            {
+                Metrics.EvmExceptions++;
+                throw new EvmStackOverflowException();
+            }
+        }
+        
         public void PushUInt256(ref UInt256 value)
         {
             Span<byte> word = _bytes.Slice(Head * 32, 32);

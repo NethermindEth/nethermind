@@ -62,7 +62,7 @@ namespace Nethermind.Core.Test.Blockchain
         public TestBlockProducer BlockProducer { get; private set; }
         public MemDbProvider DbProvider { get; set; }
         public ISpecProvider SpecProvider { get; set; }
-
+        
         protected TestBlockchain(SealEngineType sealEngineType)
         {
             _sealEngineType = sealEngineType;
@@ -118,7 +118,7 @@ namespace Nethermind.Core.Test.Blockchain
 
             StateReader = new StateReader(StateDb, CodeDb, LimboLogs.Instance);
             TxPoolTxSource txPoolTxSource = new TxPoolTxSource(TxPool, StateReader, LimboLogs.Instance);
-            ISealer sealer = new FakeSealer(TimeSpan.Zero);
+            ISealer sealer = new FakeSealer(TestItem.AddressD, TimeSpan.Zero);
             BlockProducer = new TestBlockProducer(txPoolTxSource, chainProcessor, State, sealer, BlockTree, chainProcessor, Timestamper, LimboLogs.Instance);
             BlockProducer.Start();
 
@@ -181,6 +181,26 @@ namespace Nethermind.Core.Test.Blockchain
             BlockProducer?.StopAsync();
             CodeDb?.Dispose();
             StateDb?.Dispose();
+        }
+        
+        /// <summary>
+        /// Creates a simple transfer transaction with value defined by <paramref name="ether"/>
+        /// from a rich account to <paramref name="address"/>
+        /// </summary>
+        /// <param name="address">Address to add funds to</param>
+        /// <param name="ether">Value of ether to add to the account</param>
+        /// <returns></returns>
+        public async Task AddFunds(Address address, UInt256 ether)
+        {
+            var nonce = StateReader.GetNonce(BlockTree.Head.StateRoot, TestItem.AddressA);
+            Transaction tx = Builders.Build.A.Transaction
+                .SignedAndResolved(TestItem.PrivateKeyA)
+                .To(address)
+                .WithNonce(nonce)
+                .WithValue(ether)
+                .TestObject;
+            
+            await AddBlock(tx);
         }
     }
 }

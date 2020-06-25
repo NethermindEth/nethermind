@@ -30,12 +30,14 @@ namespace Nethermind.Consensus.Ethash
     public class EthashSealer : ISealer
     {
         private readonly IEthash _ethash;
+        private readonly ISigner _signer;
         private readonly ILogger _logger;
 
-        public EthashSealer(IEthash ethash, ILogManager logManager)
+        public EthashSealer(IEthash ethash, ISigner signer, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));            
             _ethash = ethash ?? throw new ArgumentNullException(nameof(ethash));
+            _signer = signer ?? throw new ArgumentNullException(nameof(signer));
         }
 
         public async Task<Block> SealBlock(Block processed, CancellationToken cancellationToken)
@@ -63,6 +65,8 @@ namespace Nethermind.Consensus.Ethash
         {
             return true;
         }
+
+        public Address Address => _signer.Address;
 
         internal async Task<Block> MineAsync(CancellationToken cancellationToken, Block processed, ulong? startNonce)
         {

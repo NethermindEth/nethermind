@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using FluentAssertions;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
@@ -32,9 +33,24 @@ namespace Nethermind.Evm.Test
             };
 
             CodeInfo codeInfo = new CodeInfo(code);
-
             
-            Assert.AreEqual(isValid, codeInfo.ValidateJump(destination));
+            codeInfo.ValidateJump(destination, false).Should().Be(isValid);
+        }
+        
+        [TestCase(-1, false)]
+        [TestCase(0, true)]
+        [TestCase(1, false)]
+        public void Validates_when_only_begin_sub_present(int destination, bool isValid)
+        {
+            byte[] code =
+            {
+                (byte)Instruction.BEGINSUB
+            };
+
+            CodeInfo codeInfo = new CodeInfo(code);
+
+
+            codeInfo.ValidateJump(destination, true).Should().Be(isValid);
         }
 
         [Test]
@@ -48,7 +64,23 @@ namespace Nethermind.Evm.Test
 
             CodeInfo codeInfo = new CodeInfo(code);
 
-            Assert.AreEqual(false, codeInfo.ValidateJump(1));
+            codeInfo.ValidateJump(1, true).Should().BeFalse();
+            codeInfo.ValidateJump(1, false).Should().BeFalse();
+        }
+        
+        [Test]
+        public void Validates_when_push_with_data_like_begin_sub()
+        {
+            byte[] code =
+            {
+                (byte)Instruction.PUSH1,
+                (byte)Instruction.BEGINSUB
+            };
+
+            CodeInfo codeInfo = new CodeInfo(code);
+
+            codeInfo.ValidateJump(1, true).Should().BeFalse();
+            codeInfo.ValidateJump(1, false).Should().BeFalse();
         }
     }
 }

@@ -14,7 +14,9 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.HashLib.Crypto;
 using System;
+using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Text;
 
@@ -26,47 +28,47 @@ namespace Nethermind.HashLib.Extensions
         public static byte[] ConvertToBytes(object a_in)
         {
             if (a_in is byte)
-                return new byte[] { (byte)a_in };
+                return new byte[] {(byte) a_in};
             else if (a_in is short)
-                return BitConverter.GetBytes((short)a_in);
+                return BitConverter.GetBytes((short) a_in);
             else if (a_in is ushort)
-                return BitConverter.GetBytes((ushort)a_in);
+                return BitConverter.GetBytes((ushort) a_in);
             else if (a_in is char)
-                return BitConverter.GetBytes((char)a_in);
+                return BitConverter.GetBytes((char) a_in);
             else if (a_in is int)
-                return BitConverter.GetBytes((int)a_in);
+                return BitConverter.GetBytes((int) a_in);
             else if (a_in is uint)
-                return BitConverter.GetBytes((uint)a_in);
+                return BitConverter.GetBytes((uint) a_in);
             else if (a_in is long)
-                return BitConverter.GetBytes((long)a_in);
+                return BitConverter.GetBytes((long) a_in);
             else if (a_in is ulong)
-                return BitConverter.GetBytes((ulong)a_in);
+                return BitConverter.GetBytes((ulong) a_in);
             else if (a_in is float)
-                return BitConverter.GetBytes((float)a_in);
+                return BitConverter.GetBytes((float) a_in);
             else if (a_in is double)
-                return BitConverter.GetBytes((double)a_in);
+                return BitConverter.GetBytes((double) a_in);
             else if (a_in is string)
-                return ConvertStringToBytes((string)a_in);
+                return ConvertStringToBytes((string) a_in);
             else if (a_in is byte[])
-                return (byte[])((byte[])a_in).Clone();
+                return (byte[]) ((byte[]) a_in).Clone();
             else if (a_in.GetType().IsArray && a_in.GetType().GetElementType() == typeof(short))
-                return ConvertShortsToBytes((short[])a_in);
+                return ConvertShortsToBytes((short[]) a_in);
             else if (a_in.GetType().IsArray && a_in.GetType().GetElementType() == typeof(ushort))
-                return ConvertUShortsToBytes((ushort[])a_in);
+                return ConvertUShortsToBytes((ushort[]) a_in);
             else if (a_in is char[])
-                return ConvertCharsToBytes((char[])a_in);
+                return ConvertCharsToBytes((char[]) a_in);
             else if (a_in.GetType().IsArray && a_in.GetType().GetElementType() == typeof(int))
-                return ConvertIntsToBytes((int[])a_in);
+                return ConvertIntsToBytes((int[]) a_in);
             else if (a_in.GetType().IsArray && a_in.GetType().GetElementType() == typeof(uint))
-                return ConvertUIntsToBytes((uint[])a_in);
+                return ConvertUIntsToBytes((uint[]) a_in);
             else if (a_in.GetType().IsArray && a_in.GetType().GetElementType() == typeof(long))
-                return ConvertLongsToBytes((long[])a_in);
+                return ConvertLongsToBytes((long[]) a_in);
             else if (a_in.GetType().IsArray && a_in.GetType().GetElementType() == typeof(ulong))
-                return ConvertULongsToBytes((ulong[])a_in);
+                return ConvertULongsToBytes((ulong[]) a_in);
             else if (a_in is float[])
-                return ConvertFloatsToBytes((float[])a_in);
+                return ConvertFloatsToBytes((float[]) a_in);
             else if (a_in is double[])
-                return ConvertDoublesToBytes((double[])a_in);
+                return ConvertDoublesToBytes((double[]) a_in);
             else
                 throw new ArgumentException();
         }
@@ -124,11 +126,13 @@ namespace Nethermind.HashLib.Extensions
 
             for (int i = a_index_out; a_length > 0; a_length -= 4)
             {
-                a_result[i++] =
-                    ((uint)a_in[a_index++] << 24) |
-                    ((uint)a_in[a_index++] << 16) |
-                    ((uint)a_in[a_index++] << 8) |
-                    a_in[a_index++];
+                a_result[i] = BinaryPrimitives.ReadUInt32BigEndian(a_in.AsSpan(a_index, 4));
+                i += 4;
+                // a_result[i++] =
+                //     ((uint) a_in[a_index++] << 24) |
+                //     ((uint) a_in[a_index++] << 16) |
+                //     ((uint) a_in[a_index++] << 8) |
+                //     a_in[a_index++];
             }
         }
 
@@ -138,11 +142,14 @@ namespace Nethermind.HashLib.Extensions
 
             for (int i = a_index_out; a_length > 0; a_length -= 4)
             {
-                a_result[i++] =
-                    ((uint)a_in[a_index++] << 24) |
-                    ((uint)a_in[a_index++] << 16) |
-                    ((uint)a_in[a_index++] << 8) |
-                    a_in[a_index++];
+                a_result[i] = BinaryPrimitives.ReadUInt32BigEndian(a_in.Slice(a_index, 4));
+                i ++;
+                a_index += 4;
+                // a_result[i++] =
+                //     ((uint)a_in[a_index++] << 24) |
+                //     ((uint)a_in[a_index++] << 16) |
+                //     ((uint)a_in[a_index++] << 8) |
+                //     a_in[a_index++];
             }
         }
 
@@ -151,13 +158,13 @@ namespace Nethermind.HashLib.Extensions
             Debug.Assert(a_index >= 0);
             Debug.Assert(a_index + 8 <= a_in.Length);
 
-            return ((ulong)a_in[a_index++] << 56) |
-                   ((ulong)a_in[a_index++] << 48) |
-                   ((ulong)a_in[a_index++] << 40) |
-                   ((ulong)a_in[a_index++] << 32) |
-                   ((ulong)a_in[a_index++] << 24) |
-                   ((ulong)a_in[a_index++] << 16) |
-                   ((ulong)a_in[a_index++] << 8) |
+            return ((ulong) a_in[a_index++] << 56) |
+                   ((ulong) a_in[a_index++] << 48) |
+                   ((ulong) a_in[a_index++] << 40) |
+                   ((ulong) a_in[a_index++] << 32) |
+                   ((ulong) a_in[a_index++] << 24) |
+                   ((ulong) a_in[a_index++] << 16) |
+                   ((ulong) a_in[a_index++] << 8) |
                    a_in[a_index];
         }
 
@@ -174,9 +181,9 @@ namespace Nethermind.HashLib.Extensions
             Debug.Assert(a_index >= 0);
             Debug.Assert(a_index + 4 <= a_in.Length);
 
-            return ((uint)a_in[a_index++] << 24) |
-                   ((uint)a_in[a_index++] << 16) |
-                   ((uint)a_in[a_index++] << 8) |
+            return ((uint) a_in[a_index++] << 24) |
+                   ((uint) a_in[a_index++] << 16) |
+                   ((uint) a_in[a_index++] << 8) |
                    a_in[a_index];
         }
 
@@ -185,10 +192,10 @@ namespace Nethermind.HashLib.Extensions
             Debug.Assert(a_index >= 0);
             Debug.Assert(a_index + 4 <= a_in.Length);
 
-            return (uint)a_in[a_index++] |
-                   ((uint)a_in[a_index++] << 8) |
-                   ((uint)a_in[a_index++] << 16) |
-                   ((uint)a_in[a_index] << 24);
+            return (uint) a_in[a_index++] |
+                   ((uint) a_in[a_index++] << 8) |
+                   ((uint) a_in[a_index++] << 16) |
+                   ((uint) a_in[a_index] << 24);
         }
 
         public static ulong[] ConvertBytesToULongsSwapOrder(byte[] a_in, int a_index, int a_length)
@@ -207,14 +214,14 @@ namespace Nethermind.HashLib.Extensions
             for (int i = 0; a_length > 0; a_length -= 8)
             {
                 a_out[i++] =
-                    (((ulong)a_in[a_index++] << 56) |
-                    ((ulong)a_in[a_index++] << 48) |
-                    ((ulong)a_in[a_index++] << 40) |
-                    ((ulong)a_in[a_index++] << 32) |
-                    ((ulong)a_in[a_index++] << 24) |
-                    ((ulong)a_in[a_index++] << 16) |
-                    ((ulong)a_in[a_index++] << 8) |
-                    ((ulong)a_in[a_index++]));
+                    (((ulong) a_in[a_index++] << 56) |
+                     ((ulong) a_in[a_index++] << 48) |
+                     ((ulong) a_in[a_index++] << 40) |
+                     ((ulong) a_in[a_index++] << 32) |
+                     ((ulong) a_in[a_index++] << 24) |
+                     ((ulong) a_in[a_index++] << 16) |
+                     ((ulong) a_in[a_index++] << 8) |
+                     ((ulong) a_in[a_index++]));
             }
         }
 
@@ -229,10 +236,12 @@ namespace Nethermind.HashLib.Extensions
 
             for (int j = 0; a_length > 0; a_length--, a_index++)
             {
-                result[j++] = (byte)(a_in[a_index] >> 24);
-                result[j++] = (byte)(a_in[a_index] >> 16);
-                result[j++] = (byte)(a_in[a_index] >> 8);
-                result[j++] = (byte)a_in[a_index];
+                BinaryPrimitives.WriteUInt32BigEndian(result.AsSpan(j, 4), a_in[a_index]);
+                j += 4;
+                //result[j++] = (byte)(a_in[a_index] >> 24);
+                //result[j++] = (byte)(a_in[a_index] >> 16);
+                //result[j++] = (byte)(a_in[a_index] >> 8);
+                //result[j++] = (byte)a_in[a_index];
             }
 
             return result;
@@ -274,14 +283,14 @@ namespace Nethermind.HashLib.Extensions
 
             for (int j = 0; a_length > 0; a_length--, a_index++)
             {
-                result[j++] = (byte)(a_in[a_index] >> 56);
-                result[j++] = (byte)(a_in[a_index] >> 48);
-                result[j++] = (byte)(a_in[a_index] >> 40);
-                result[j++] = (byte)(a_in[a_index] >> 32);
-                result[j++] = (byte)(a_in[a_index] >> 24);
-                result[j++] = (byte)(a_in[a_index] >> 16);
-                result[j++] = (byte)(a_in[a_index] >> 8);
-                result[j++] = (byte)a_in[a_index];
+                result[j++] = (byte) (a_in[a_index] >> 56);
+                result[j++] = (byte) (a_in[a_index] >> 48);
+                result[j++] = (byte) (a_in[a_index] >> 40);
+                result[j++] = (byte) (a_in[a_index] >> 32);
+                result[j++] = (byte) (a_in[a_index] >> 24);
+                result[j++] = (byte) (a_in[a_index] >> 16);
+                result[j++] = (byte) (a_in[a_index] >> 8);
+                result[j++] = (byte) a_in[a_index];
             }
 
             return result;
@@ -319,28 +328,29 @@ namespace Nethermind.HashLib.Extensions
         {
             Debug.Assert(a_index + 8 <= a_out.Length);
 
-            a_out[a_index++] = (byte)(a_in >> 56);
-            a_out[a_index++] = (byte)(a_in >> 48);
-            a_out[a_index++] = (byte)(a_in >> 40);
-            a_out[a_index++] = (byte)(a_in >> 32);
-            a_out[a_index++] = (byte)(a_in >> 24);
-            a_out[a_index++] = (byte)(a_in >> 16);
-            a_out[a_index++] = (byte)(a_in >> 8);
-            a_out[a_index++] = (byte)a_in;
+            a_out[a_index++] = (byte) (a_in >> 56);
+            a_out[a_index++] = (byte) (a_in >> 48);
+            a_out[a_index++] = (byte) (a_in >> 40);
+            a_out[a_index++] = (byte) (a_in >> 32);
+            a_out[a_index++] = (byte) (a_in >> 24);
+            a_out[a_index++] = (byte) (a_in >> 16);
+            a_out[a_index++] = (byte) (a_in >> 8);
+            a_out[a_index++] = (byte) a_in;
         }
-        
+
         public static void ConvertULongToBytesSwapOrder(ulong a_in, Span<byte> a_out, int a_index)
         {
             Debug.Assert(a_index + 8 <= a_out.Length);
+            BinaryPrimitives.WriteUInt64BigEndian(a_out.Slice(a_index, 8), a_in);
 
-            a_out[a_index++] = (byte)(a_in >> 56);
-            a_out[a_index++] = (byte)(a_in >> 48);
-            a_out[a_index++] = (byte)(a_in >> 40);
-            a_out[a_index++] = (byte)(a_in >> 32);
-            a_out[a_index++] = (byte)(a_in >> 24);
-            a_out[a_index++] = (byte)(a_in >> 16);
-            a_out[a_index++] = (byte)(a_in >> 8);
-            a_out[a_index++] = (byte)a_in;
+            //a_out[a_index++] = (byte)(a_in >> 56);
+            //a_out[a_index++] = (byte)(a_in >> 48);
+            //a_out[a_index++] = (byte)(a_in >> 40);
+            //a_out[a_index++] = (byte)(a_in >> 32);
+            //a_out[a_index++] = (byte)(a_in >> 24);
+            //a_out[a_index++] = (byte)(a_in >> 16);
+            //a_out[a_index++] = (byte)(a_in >> 8);
+            //a_out[a_index++] = (byte)a_in;
         }
 
         public static byte[] ConvertStringToBytes(string a_in)
@@ -468,7 +478,7 @@ namespace Nethermind.HashLib.Extensions
             {
                 Check(a_in, 1, 4);
 
-                string[] ar = BitConverter.ToString(a_in).ToUpper().Split(new char[] { '-' });
+                string[] ar = BitConverter.ToString(a_in).ToUpper().Split(new char[] {'-'});
 
                 hex = "";
 
@@ -512,7 +522,7 @@ namespace Nethermind.HashLib.Extensions
         }
 
         [Conditional("DEBUG")]
-        private static void Check<I, O>(I[] a_in, int a_in_size, O[] a_result, int a_out_size, int a_index_in, int a_length, 
+        private static void Check<I, O>(I[] a_in, int a_in_size, O[] a_result, int a_out_size, int a_index_in, int a_length,
             int a_index_out)
         {
             Debug.Assert((a_length * a_in_size % a_out_size) == 0);
@@ -531,8 +541,8 @@ namespace Nethermind.HashLib.Extensions
 
             Debug.Assert(a_index_out + a_result.Length >= (a_length / a_out_size));
         }
-        
-        private static void Check<I, O>(ReadOnlySpan<I> a_in, int a_in_size, Span<O> a_result, int a_out_size, int a_index_in, int a_length, 
+
+        private static void Check<I, O>(ReadOnlySpan<I> a_in, int a_in_size, Span<O> a_result, int a_out_size, int a_index_in, int a_length,
             int a_index_out)
         {
             Debug.Assert((a_length * a_in_size % a_out_size) == 0);

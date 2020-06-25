@@ -40,6 +40,8 @@ using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Web3;
 using Nethermind.JsonRpc.WebSockets;
+using Nethermind.Baseline.Config;
+using Nethermind.Baseline;
 using Nethermind.Monitoring;
 using Nethermind.Monitoring.Metrics;
 using Nethermind.Logging.NLog;

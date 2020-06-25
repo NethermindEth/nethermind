@@ -15,11 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Buffers.Binary;
-using System.Collections.Generic;
-using System.Linq;
 using System.Numerics;
-using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
@@ -32,14 +28,16 @@ using Nethermind.Core2.Eth1;
 using Nethermind.Core2.Types;
 using Nethermind.Cryptography;
 using Nethermind.Logging.Microsoft;
+using Nethermind.Merkleization;
 
 namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
 {
     public class QuickStartMockEth1GenesisProvider : IEth1GenesisProvider
     {
-        private readonly BeaconChainUtility _beaconChainUtility;
+        private readonly IBeaconChainUtility _beaconChainUtility;
+        private readonly IDepositStore _depositStore;
         private readonly ChainConstants _chainConstants;
-        private readonly ICryptographyService _cryptographyService;
+        private readonly ICryptographyService _crypto;
 
         private readonly IOptionsMonitor<GweiValues> _gweiValueOptions;
         private readonly IOptionsMonitor<InitialValues> _initialValueOptions;
@@ -51,10 +49,6 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
         private static readonly BigInteger s_curveOrder =
             BigInteger.Parse("52435875175126190479447740508185965837690552500527637822603658699938581184513");
 
-        private static readonly HashAlgorithm s_hashAlgorithm = SHA256.Create();
-
-        private static readonly byte[][] s_zeroHashes = new byte[32][];
-
         public QuickStartMockEth1GenesisProvider(ILogger<QuickStartMockEth1GenesisProvider> logger,
             ChainConstants chainConstants,
             IOptionsMonitor<GweiValues> gweiValueOptions,
@@ -62,8 +56,9 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
             IOptionsMonitor<TimeParameters> timeParameterOptions,
             IOptionsMonitor<SignatureDomains> signatureDomainOptions,
             IOptionsMonitor<QuickStartParameters> quickStartParameterOptions,
-            ICryptographyService cryptographyService,
-            BeaconChainUtility beaconChainUtility)
+            ICryptographyService crypto,
+            IBeaconChainUtility beaconChainUtility,
+            IDepositStore depositStore)
         {
             _logger = logger;
             _chainConstants = chainConstants;
@@ -72,17 +67,9 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
             _timeParameterOptions = timeParameterOptions;
             _signatureDomainOptions = signatureDomainOptions;
             _quickStartParameterOptions = quickStartParameterOptions;
-            _cryptographyService = cryptographyService;
+            _crypto = crypto;
             _beaconChainUtility = beaconChainUtility;
-        }
-
-        static QuickStartMockEth1GenesisProvider()
-        {
-            s_zeroHashes[0] = new byte[32];
-            for (int index = 1; index < 32; index++)
-            {
-                s_zeroHashes[index] = Hash(s_zeroHashes[index - 1], s_zeroHashes[index - 1]);
-            }
+            _depositStore = depositStore;
         }
 
         public byte[] GeneratePrivateKey(ulong index)
@@ -96,7 +83,7 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
                 throw new Exception("Error getting input for quick start private key generation.");
             }
 
-            Bytes32 hash32 = _cryptographyService.Hash(input);
+            Bytes32 hash32 = _crypto.Hash(input);
             ReadOnlySpan<byte> hash = hash32.AsSpan();
             // Mocked start interop specifies to convert the hash as little endian (which is the default for BigInteger)
             BigInteger value = new BigInteger(hash.ToArray(), isUnsigned: true);
@@ -118,8 +105,7 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
 
             return privateKeySpan.ToArray();
         }
-
-
+        
         public Task<Eth1GenesisData> GetEth1GenesisDataAsync(CancellationToken cancellationToken)
         {
             QuickStartParameters quickStartParameters = _quickStartParameterOptions.CurrentValue;
@@ -129,82 +115,20 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
                     null);
 
             GweiValues gweiValues = _gweiValueOptions.CurrentValue;
-            InitialValues initialValues = _initialValueOptions.CurrentValue;
             TimeParameters timeParameters = _timeParameterOptions.CurrentValue;
             SignatureDomains signatureDomains = _signatureDomainOptions.CurrentValue;
 
             // Fixed amount
             Gwei amount = gweiValues.MaximumEffectiveBalance;
-
-            // Build deposits
-            List<DepositData> depositDataList = new List<DepositData>();
-            List<Deposit> deposits = new List<Deposit>();
+            
             for (ulong validatorIndex = 0uL; validatorIndex < quickStartParameters.ValidatorCount; validatorIndex++)
             {
-                byte[] privateKey = GeneratePrivateKey(validatorIndex);
-
-                // Public Key
-                BLSParameters blsParameters = new BLSParameters()
-                {
-                    PrivateKey = privateKey
-                };
-                using BLS bls = BLS.Create(blsParameters);
-                byte[] publicKeyBytes = new byte[BlsPublicKey.Length];
-                bls.TryExportBlsPublicKey(publicKeyBytes, out int publicKeyBytesWritten);
-                BlsPublicKey publicKey = new BlsPublicKey(publicKeyBytes);
-
-                // Withdrawal Credentials
-                byte[] withdrawalCredentialBytes = _cryptographyService.Hash(publicKey.AsSpan()).AsSpan().ToArray();
-                withdrawalCredentialBytes[0] = initialValues.BlsWithdrawalPrefix;
-                Bytes32 withdrawalCredentials = new Bytes32(withdrawalCredentialBytes);
-
-                // Build deposit data
-                DepositData depositData = new DepositData(publicKey, withdrawalCredentials, amount, BlsSignature.Zero);
-
-                // Sign deposit data
-                Domain domain = _beaconChainUtility.ComputeDomain(signatureDomains.Deposit);
-                DepositMessage depositMessage = new DepositMessage(depositData.PublicKey,
-                    depositData.WithdrawalCredentials, depositData.Amount);
-                Root depositMessageRoot = _cryptographyService.HashTreeRoot(depositMessage);
-                Root depositDataSigningRoot = _beaconChainUtility.ComputeSigningRoot(depositMessageRoot, domain);
-                byte[] destination = new byte[96];
-                bls.TrySignData(depositDataSigningRoot.AsSpan(), destination, out int bytesWritten);
-                BlsSignature depositDataSignature = new BlsSignature(destination);
-                depositData.SetSignature(depositDataSignature);
-
-                // Deposit
-
-                // TODO: This seems a very inefficient way (copied from tests) as it recalculates the merkle tree each time
-                // (you only need to add one node)
-
-                // TODO: Add some tests around quick start, then improve
-
-                int index = depositDataList.Count;
-                depositDataList.Add(depositData);
-                //int depositDataLength = (ulong) 1 << _chainConstants.DepositContractTreeDepth;
-                Root root = _cryptographyService.HashTreeRoot(depositDataList);
-                IEnumerable<Bytes32> allLeaves = depositDataList.Select(x =>
-                    new Bytes32(_cryptographyService.HashTreeRoot((DepositData) x).AsSpan()));
-                IList<IList<Bytes32>> tree = CalculateMerkleTreeFromLeaves(allLeaves);
-
-
-                IList<Bytes32> merkleProof = GetMerkleProof(tree, index, 32);
-                List<Bytes32> proof = new List<Bytes32>(merkleProof);
-
-                byte[] indexBytes = new byte[32];
-                BinaryPrimitives.WriteInt32LittleEndian(indexBytes, index + 1);
-                Bytes32 indexHash = new Bytes32(indexBytes);
-                proof.Add(indexHash);
-                Bytes32 leaf = new Bytes32(_cryptographyService.HashTreeRoot(depositData).AsSpan());
-                _beaconChainUtility.IsValidMerkleBranch(leaf, proof, _chainConstants.DepositContractTreeDepth + 1,
-                    (ulong) index, root);
-                Deposit deposit = new Deposit(proof, depositData);
-
-                if (_logger.IsEnabled(LogLevel.Debug))
-                    LogDebug.QuickStartAddValidator(_logger, validatorIndex, publicKey.ToString().Substring(0, 12),
-                        null);
-
-                deposits.Add(deposit);
+                DepositData depositData = BuildAndSignDepositData(
+                    validatorIndex,
+                    amount,
+                    signatureDomains);
+                
+                _depositStore.Place(depositData);
             }
 
             ulong eth1Timestamp = quickStartParameters.Eth1Timestamp;
@@ -234,63 +158,58 @@ namespace Nethermind.BeaconNode.Eth1Bridge.MockedStart
                 }
             }
 
-            var eth1GenesisData = new Eth1GenesisData(quickStartParameters.Eth1BlockHash, eth1Timestamp,
-                deposits);
+            var eth1GenesisData = new Eth1GenesisData(quickStartParameters.Eth1BlockHash, eth1Timestamp);
 
             if (_logger.IsEnabled(LogLevel.Debug))
                 LogDebug.QuickStartGenesisDataCreated(_logger, eth1GenesisData.BlockHash, eth1GenesisData.Timestamp,
-                    eth1GenesisData.Deposits.Count, null);
+                    (uint)_depositStore.Deposits.Count, null);
 
             return Task.FromResult(eth1GenesisData);
         }
 
-        private static IList<IList<Bytes32>> CalculateMerkleTreeFromLeaves(IEnumerable<Bytes32> values,
-            int layerCount = 32)
+        private DepositData BuildAndSignDepositData(ulong validatorIndex, Gwei amount, SignatureDomains signatureDomains)
         {
-            List<Bytes32> workingValues = new List<Bytes32>(values);
-            List<IList<Bytes32>> tree = new List<IList<Bytes32>>(new[] {workingValues.ToArray()});
-            for (int height = 0; height < layerCount; height++)
+            InitialValues initialValues = _initialValueOptions.CurrentValue;
+            byte[] privateKey = GeneratePrivateKey(validatorIndex);
+
+            // Public Key
+            BLSParameters blsParameters = new BLSParameters
             {
-                if (workingValues.Count % 2 == 1)
-                {
-                    workingValues.Add(new Bytes32(s_zeroHashes[height]));
-                }
+                PrivateKey = privateKey
+            };
+                
+            using BLS bls = BLS.Create(blsParameters);
+            byte[] publicKeyBytes = new byte[BlsPublicKey.Length];
+            bls.TryExportBlsPublicKey(publicKeyBytes, out int publicKeyBytesWritten);
+            BlsPublicKey publicKey = new BlsPublicKey(publicKeyBytes);
 
-                List<Bytes32> hashes = new List<Bytes32>();
-                for (int index = 0; index < workingValues.Count; index += 2)
-                {
-                    byte[] hash = Hash(workingValues[index].AsSpan(), workingValues[index + 1].AsSpan());
-                    hashes.Add(new Bytes32(hash));
-                }
+            // Withdrawal Credentials
+            Bytes32 withdrawalCredentials = _crypto.Hash(publicKey.AsSpan());
+            withdrawalCredentials.Unwrap()[0] = initialValues.BlsWithdrawalPrefix;
+            
+            // Build deposit data
+            DepositData depositData = new DepositData(publicKey, withdrawalCredentials, amount, BlsSignature.Zero);
 
-                tree.Add(hashes.ToArray());
-                workingValues = hashes;
-            }
+            // Sign deposit data
+            Domain domain = _beaconChainUtility.ComputeDomain(signatureDomains.Deposit);
+            DepositMessage depositMessage = new DepositMessage(
+                depositData.PublicKey,
+                depositData.WithdrawalCredentials,
+                depositData.Amount);
 
-            return tree;
-        }
+            Root depositMessageRoot = _crypto.HashTreeRoot(depositMessage);
+            Root depositDataSigningRoot = _beaconChainUtility.ComputeSigningRoot(depositMessageRoot, domain);
+            byte[] signatureBytes = new byte[96];
+            bls.TrySignData(depositDataSigningRoot.AsSpan(), signatureBytes, out int bytesWritten);
 
-        private static IList<Bytes32> GetMerkleProof(IList<IList<Bytes32>> tree, int itemIndex, int? treeLength = null)
-        {
-            List<Bytes32> proof = new List<Bytes32>();
-            for (int height = 0; height < (treeLength ?? tree.Count); height++)
-            {
-                int subindex = (itemIndex / (1 << height)) ^ 1;
-                Bytes32 value = subindex < tree[height].Count
-                    ? tree[height][subindex]
-                    : new Bytes32(s_zeroHashes[height]);
-                proof.Add(value);
-            }
-
-            return proof;
-        }
-
-        private static byte[] Hash(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
-        {
-            Span<byte> combined = new Span<byte>(new byte[64]);
-            a.CopyTo(combined);
-            b.CopyTo(combined.Slice(32));
-            return s_hashAlgorithm.ComputeHash(combined.ToArray());
+            BlsSignature depositDataSignature = new BlsSignature(signatureBytes);
+            depositData.SetSignature(depositDataSignature);
+            
+            if (_logger.IsEnabled(LogLevel.Debug))
+                LogDebug.QuickStartAddValidator(_logger, validatorIndex, publicKey.ToString().Substring(0, 12),
+                    null);
+            
+            return depositData;
         }
     }
 }

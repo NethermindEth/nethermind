@@ -19,7 +19,6 @@ using System.Net.Http;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
@@ -43,14 +42,24 @@ using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Network.StaticNodes;
 using Nethermind.Runner.Ethereum.Context;
-using Nethermind.Db.Blooms;
 using Nethermind.Synchronization;
-using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
+    public static class NettyMemoryEstimator
+    {
+        // Environment.SetEnvironmentVariable("io.netty.allocator.pageSize", "8192");
+        private const uint PageSize = 8192;
+        
+        public static ulong Estimate(uint cpuCount, int arenaOrder)
+        {
+            // do not remember why there is 2 in front
+            return 2UL * cpuCount * (1UL << arenaOrder) * PageSize;
+        }
+    }
+
     [RunnerStepDependencies(typeof(LoadGenesisBlock), typeof(UpdateDiscoveryConfig), typeof(SetupKeyStore), typeof(InitializeNodeStats))]
     public class InitializeNetwork : IStep
     {
@@ -58,9 +67,9 @@ namespace Nethermind.Runner.Ethereum.Steps
         private const string PeersDbPath = "peers";
 
         private readonly EthereumRunnerContext _ctx;
-        private ILogger _logger;
-        private INetworkConfig _networkConfig;
-        private ISyncConfig _syncConfig;
+        private readonly ILogger _logger;
+        private readonly INetworkConfig _networkConfig;
+        private readonly ISyncConfig _syncConfig;
 
         public InitializeNetwork(EthereumRunnerContext context)
         {
@@ -90,16 +99,15 @@ namespace Nethermind.Runner.Ethereum.Steps
                 NetworkDiagTracer.IsEnabled = true;
                 NetworkDiagTracer.Start();
             }
-
-            // Environment.SetEnvironmentVariable("io.netty.allocator.pageSize", "8192");
-            ThisNodeInfo.AddInfo("Mem est netty:", $"{2 * Environment.ProcessorCount * (1 << _networkConfig.NettyArenaOrder) * 8192 / 1000 / 1000}MB".PadLeft(8));
+            
+            ThisNodeInfo.AddInfo("Mem est netty:", $"{NettyMemoryEstimator.Estimate((uint)Environment.ProcessorCount, _networkConfig.NettyArenaOrder) / 1000 / 1000}MB".PadLeft(8));
             ThisNodeInfo.AddInfo("Mem est peers:", $"{_networkConfig.ActivePeersMaxCount}MB".PadLeft(8));
             Environment.SetEnvironmentVariable("io.netty.allocator.maxOrder", _networkConfig.NettyArenaOrder.ToString());
 
             int maxPeersCount = _networkConfig.ActivePeersMaxCount;
             _ctx.SyncPeerPool = new SyncPeerPool(_ctx.BlockTree, _ctx.NodeStatsManager, maxPeersCount, _ctx.LogManager);
             _ctx.DisposeStack.Push(_ctx.SyncPeerPool);
-            
+
             SyncProgressResolver syncProgressResolver = new SyncProgressResolver(_ctx.BlockTree, _ctx.ReceiptStorage, _ctx.DbProvider.StateDb, _ctx.DbProvider.BeamStateDb, _syncConfig, _ctx.LogManager);
             MultiSyncModeSelector syncModeSelector = new MultiSyncModeSelector(syncProgressResolver, _ctx.SyncPeerPool, _syncConfig, _ctx.LogManager);
             if (_ctx.SyncModeSelector != null)
@@ -108,10 +116,10 @@ namespace Nethermind.Runner.Ethereum.Steps
                 PendingSyncModeSelector pendingOne = (PendingSyncModeSelector) _ctx.SyncModeSelector;
                 pendingOne.SetActual(syncModeSelector);
             }
-            
+
             _ctx.SyncModeSelector = syncModeSelector;
             _ctx.DisposeStack.Push(syncModeSelector);
-            
+
             _ctx.Synchronizer = new Synchronizer(
                 _ctx.DbProvider,
                 _ctx.SpecProvider,
@@ -144,7 +152,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             {
                 return;
             }
-            
+
             await InitPeer().ContinueWith(initPeerTask =>
             {
                 if (initPeerTask.IsFaulted)
@@ -152,7 +160,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _logger.Error("Unable to init the peer manager.", initPeerTask.Exception);
                 }
             });
-            
+
             if (cancellationToken.IsCancellationRequested)
             {
                 return;
@@ -165,7 +173,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _logger.Error("Unable to start the synchronizer.", initNetTask.Exception);
                 }
             });
-            
+
             if (cancellationToken.IsCancellationRequested)
             {
                 return;
@@ -185,7 +193,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 {
                     return;
                 }
-                
+
                 StartPeer();
             }
             catch (Exception e)
@@ -246,7 +254,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             IDiscoveryConfig discoveryConfig = _ctx.Config<IDiscoveryConfig>();
 
-            SameKeyGenerator privateKeyProvider = new SameKeyGenerator(_ctx.NodeKey);
+            SameKeyGenerator privateKeyProvider = new SameKeyGenerator(_ctx.NodeKey.Unprotect());
             DiscoveryMessageFactory discoveryMessageFactory = new DiscoveryMessageFactory(_ctx.Timestamper);
             NodeIdResolver nodeIdResolver = new NodeIdResolver(_ctx.EthereumEcdsa);
             IPResolver ipResolver = new IPResolver(_networkConfig, _ctx.LogManager);
@@ -284,8 +292,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                 discoveryStorage,
                 discoveryConfig,
                 _ctx.LogManager,
-                ipResolver 
-                );
+                ipResolver
+            );
 
             NodesLocator nodesLocator = new NodesLocator(
                 nodeTable,
@@ -356,7 +364,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             _ctx._messageSerializationService.Register(new ReceiptsMessageSerializer(_ctx.SpecProvider));
 
             HandshakeService encryptionHandshakeServiceA = new HandshakeService(_ctx._messageSerializationService, eciesCipher,
-                _ctx.CryptoRandom, new Ecdsa(), _ctx.NodeKey, _ctx.LogManager);
+                _ctx.CryptoRandom, new Ecdsa(), _ctx.NodeKey.Unprotect(), _ctx.LogManager);
 
             _ctx._messageSerializationService.Register(Assembly.GetAssembly(typeof(HiMessageSerializer)));
 

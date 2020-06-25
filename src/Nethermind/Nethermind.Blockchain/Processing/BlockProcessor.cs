@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Numerics;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Validators;
@@ -319,7 +320,7 @@ namespace Nethermind.Blockchain.Processing
 
         private void ApplyMinerReward(Block block, BlockReward reward)
         {
-            if (_logger.IsTrace) _logger.Trace($"  {(decimal) reward.Value / (decimal) Unit.Ether:N3}{Unit.EthSymbol} for account at {reward.Address}");
+            if (_logger.IsTrace) _logger.Trace($"  {(BigInteger) reward.Value / (BigInteger) Unit.Ether:N3}{Unit.EthSymbol} for account at {reward.Address}");
 
             if (!_stateProvider.AccountExists(reward.Address))
             {

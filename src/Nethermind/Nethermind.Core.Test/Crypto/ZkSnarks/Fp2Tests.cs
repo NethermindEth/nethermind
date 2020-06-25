@@ -14,7 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Crypto.ZkSnarks;
+using Nethermind.Crypto.ZkSnarks.Obsolete;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Crypto.ZkSnarks
@@ -23,7 +23,7 @@ namespace Nethermind.Core.Test.Crypto.ZkSnarks
     public class Fp2Tests
     {
         [Test]
-        public void NonResidue_intiializes()
+        public void NonResidue_initializes()
         {
             Fp2 _ = Fp2.NonResidue;
         }

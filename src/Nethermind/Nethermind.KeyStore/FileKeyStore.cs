@@ -70,8 +70,12 @@ namespace Nethermind.KeyStore
         private readonly ILogger _logger;
         private readonly Encoding _keyStoreEncoding;
 
-        public FileKeyStore(IKeyStoreConfig keyStoreConfig, IJsonSerializer jsonSerializer,
-            ISymmetricEncrypter symmetricEncrypter, ICryptoRandom cryptoRandom, ILogManager logManager)
+        public FileKeyStore(
+            IKeyStoreConfig keyStoreConfig,
+            IJsonSerializer jsonSerializer,
+            ISymmetricEncrypter symmetricEncrypter,
+            ICryptoRandom cryptoRandom,
+            ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _config = keyStoreConfig ?? throw new ArgumentNullException(nameof(keyStoreConfig));
@@ -178,6 +182,13 @@ namespace Nethermind.KeyStore
             return (new PrivateKey(key), Result.Success);
         }
 
+        public (ProtectedPrivateKey PrivateKey, Result Result) GetProtectedKey(Address address, SecureString password)
+        {
+            (PrivateKey privateKey, Result result) = GetKey(address, password);
+            using var key = privateKey;
+            return (result == Result.Success ? new ProtectedPrivateKey(key, _cryptoRandom) : null, result);
+        }
+
         public (KeyStoreItem KeyData, Result Result) GetKeyData(Address address)
         {
             string keyDataJson = ReadKey(address);
@@ -194,6 +205,13 @@ namespace Nethermind.KeyStore
             var privateKey = _privateKeyGenerator.Generate();
             var result = StoreKey(privateKey, password);
             return result.ResultType == ResultType.Success ? (privateKey, result) : (null, result);
+        }
+
+        public (ProtectedPrivateKey PrivateKey, Result Result) GenerateProtectedKey(SecureString password)
+        {
+            (PrivateKey privateKey, Result result) = GenerateKey(password);
+            using var key = privateKey;
+            return (result == Result.Success ? new ProtectedPrivateKey(key, _cryptoRandom) : null, result);
         }
 
         public Result StoreKey(Address address, KeyStoreItem keyStoreItem)
@@ -367,7 +385,7 @@ namespace Nethermind.KeyStore
                 var files = FindKeyFiles(address);
                 if (files.Length == 0)
                 {
-                    if(_logger.IsError) _logger.Error($"A private key for address: {address} does not exists.");
+                    if(_logger.IsError) _logger.Error($"A private key for address: {address} does not exists in directory {Path.GetFullPath(GetStoreDirectory())}.");
                     return null;
                 }
                 
@@ -383,7 +401,7 @@ namespace Nethermind.KeyStore
         internal string[] FindKeyFiles(Address address)
         {
             string addressString = address.ToString(false, false);
-            string[] files = Directory.GetFiles(GetStoreDirectory(), $"*{addressString}");
+            string[] files = Directory.GetFiles(GetStoreDirectory(), $"*{addressString}*");
             return files;
         }
     }

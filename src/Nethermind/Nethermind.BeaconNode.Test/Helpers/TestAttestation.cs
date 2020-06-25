@@ -48,7 +48,7 @@ namespace Nethermind.BeaconNode.Test.Helpers
         public static BlsSignature GetAttestationSignature(IServiceProvider testServiceProvider, BeaconState state, AttestationData attestationData, byte[] privateKey)
         {
             SignatureDomains signatureDomains = testServiceProvider.GetService<IOptions<SignatureDomains>>().Value;
-            BeaconChainUtility beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
+            IBeaconChainUtility beaconChainUtility = testServiceProvider.GetService<IBeaconChainUtility>();
             BeaconStateAccessor beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
 
             Root attestationDataRoot = attestationData.HashTreeRoot();
@@ -111,7 +111,7 @@ namespace Nethermind.BeaconNode.Test.Helpers
 
         private static AttestationData BuildAttestationData(IServiceProvider testServiceProvider, BeaconState state, Slot slot, CommitteeIndex index)
         {
-            BeaconChainUtility beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
+            IBeaconChainUtility beaconChainUtility = testServiceProvider.GetService<IBeaconChainUtility>();
             BeaconStateAccessor beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
 
             if (state.Slot > slot)

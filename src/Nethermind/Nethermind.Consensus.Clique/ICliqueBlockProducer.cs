@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Consensus.Clique
 {
@@ -22,5 +23,6 @@ namespace Nethermind.Consensus.Clique
     {
         void CastVote(Address signer, bool vote);
         void UncastVote(Address signer);
+        void ProduceOnTopOf(Keccak hash);
     }
 }

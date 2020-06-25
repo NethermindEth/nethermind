@@ -168,7 +168,7 @@ namespace Nethermind.Synchronization.BeamSync
                     byte[] fromMem = _tempDb[key] ?? _stateDb[key];
                     if (fromMem == null)
                     {
-                        if (_logger.IsWarn) _logger.Warn($"Beam sync miss - {key.ToHexString()} - retrieving");
+                        if (_logger.IsTrace) _logger.Trace($"Beam sync miss - {key.ToHexString()} - retrieving");
                         
                         if (BeamSyncContext.Cancelled.Value.IsCancellationRequested)
                         {
@@ -262,8 +262,7 @@ namespace Nethermind.Synchronization.BeamSync
 
         public bool KeyExists(byte[] key)
         {
-            throw new NotSupportedException("Key exists is not supported by beam sync in fix modes.");
-            return _tempDb.KeyExists(key);
+            throw new NotSupportedException("Key exists is not supported by beam sync.");
         }
 
         public IDb Innermost => _stateDb.Innermost;

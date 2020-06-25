@@ -22,6 +22,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
@@ -57,15 +58,14 @@ namespace Nethermind.AuRa.Test
             _auRaStepCalculator = Substitute.For<IAuRaStepCalculator>();
             _validatorStore = Substitute.For<IValidatorStore>();
             _validSealerStrategy = Substitute.For<IValidSealerStrategy>();
-            var wallet = new DevWallet(new WalletConfig(), LimboLogs.Instance);
-            _address = wallet.NewAccount(new NetworkCredential(string.Empty, "AAA").SecurePassword);
+            var signer = new Signer(ChainId.Mainnet, Build.A.PrivateKey.TestObject, LimboLogs.Instance);
+            _address = signer.Address;
             
             _auRaSealer = new AuRaSealer(
                 _blockTree,
                 _validatorStore,
                 _auRaStepCalculator,
-                _address,
-                wallet,
+                signer,
                 _validSealerStrategy,
                 LimboLogs.Instance);
         }

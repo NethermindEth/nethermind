@@ -16,16 +16,18 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Processing;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Consensus.AuRa.Validators
 {
-    public class MultiValidator : IAuRaValidator, IDisposable
+    public class MultiValidator : IAuRaValidator, IReportingValidator, ITxSource, IDisposable
     {
         private readonly IAuRaValidatorFactory _validatorFactory;
         private readonly IBlockTree _blockTree;
@@ -136,8 +138,8 @@ namespace Nethermind.Consensus.AuRa.Validators
                             if (!canSetValidatorAsCurrent)
                             {
                                 SetCurrentValidator(previousValidatorInfo, parentHeader);
-                                finalizedAtBlockNumber = _blockFinalizationManager.GetFinalizedLevel(validatorInfo.Key);
-                                canSetValidatorAsCurrent = finalizedAtBlockNumber != null;
+                                finalizedAtBlockNumber = _blockFinalizationManager.GetLastLevelFinalizedBy(block.ParentHash);
+                                canSetValidatorAsCurrent = finalizedAtBlockNumber >= validatorInfo.Key;
                             }
 
                             if (canSetValidatorAsCurrent)
@@ -217,5 +219,22 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         private IAuRaValidator CreateValidator(long finalizedAtBlockNumber, AuRaParameters.Validator validatorPrototype, BlockHeader parentHeader) => 
             _validatorFactory.CreateValidatorProcessor(validatorPrototype, parentHeader, finalizedAtBlockNumber + 1);
+
+        public void ReportMalicious(Address validator, long blockNumber, byte[] proof, IReportingValidator.MaliciousCause cause)
+        {
+            _currentValidator.GetReportingValidator().ReportMalicious(validator, blockNumber, proof, cause);
+        }
+
+        public void ReportBenign(Address validator, long blockNumber, IReportingValidator.BenignCause cause)
+        {
+            _currentValidator.GetReportingValidator().ReportBenign(validator, blockNumber, cause);
+        }
+
+        public void TryReportSkipped(BlockHeader header, BlockHeader parent)
+        {
+            _currentValidator.GetReportingValidator().TryReportSkipped(header, parent);
+        }
+
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit) => _currentValidator is ITxSource txSource ? txSource.GetTransactions(parent, gasLimit) : Enumerable.Empty<Transaction>();
     }
 }

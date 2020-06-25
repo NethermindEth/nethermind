@@ -1,14 +1,17 @@
 ﻿using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Diagnostics.Windows.Configs;
 using BenchmarkDotNet.Jobs;
 using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Precompiles.Benchmark
 {
     [HtmlExporter]
-    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
+    [NativeMemoryProfiler]
+    [MemoryDiagnoser]
+    [ShortRunJob(RuntimeMoniker.NetCoreApp31)]
     public class RipEmdBenchmark : PrecompileBenchmarkBase
     {
-        protected override IPrecompiledContract Precompile => Ripemd160PrecompiledContract.Instance;
+        protected override IPrecompile[] Precompiles => new[] {Ripemd160Precompile.Instance};
         protected override string InputsDirectory => "ripemd";
     }
 }

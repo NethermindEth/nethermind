@@ -44,11 +44,7 @@ namespace Nethermind.Blockchain.Test.Validators
             _suggestedValidationResults = suggestedValidationResults ?? throw new ArgumentNullException(nameof(suggestedValidationResults));
             _processedValidationResults = processedValidationResults ?? throw new ArgumentNullException(nameof(processedValidationResults));
         }
-
-        public void HintValidationRange(Guid guid, long start, long end)
-        {
-        }
-
+        
         public bool ValidateParams(BlockHeader parent, BlockHeader header)
         {
             return _alwaysSameResultForParams ?? _suggestedValidationResults.Dequeue();

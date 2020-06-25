@@ -36,6 +36,8 @@ namespace Nethermind.JsonRpc.Modules
         Trace,
         TxPool,
         Web3,
+        Baseline,
+        Deposit
     }
 
     public class RpcModuleAttribute : Attribute

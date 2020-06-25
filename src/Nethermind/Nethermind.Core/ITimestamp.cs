@@ -24,18 +24,18 @@ namespace Nethermind.Core
 
         public ulong EpochSeconds => (ulong) EpochSecondsLong;
         public ulong EpochMilliseconds => (ulong) EpochMillisecondsLong;
-        public long EpochSecondsLong => Offset.ToUnixTimeSeconds();
-        public long EpochMillisecondsLong => Offset.ToUnixTimeMilliseconds();
+        public long EpochSecondsLong => UtcNowOffset.ToUnixTimeSeconds();
+        public long EpochMillisecondsLong => UtcNowOffset.ToUnixTimeMilliseconds();
 
         public (long Seconds, long Milliseconds) Epoch
         {
             get
             {
-                var offset = Offset;
+                var offset = UtcNowOffset;
                 return (offset.ToUnixTimeSeconds(), offset.ToUnixTimeMilliseconds());
             }
         }
         
-        private DateTimeOffset Offset => new DateTimeOffset(UtcNow);
+        public DateTimeOffset UtcNowOffset => new DateTimeOffset(UtcNow);
     }
 }

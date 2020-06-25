@@ -35,6 +35,9 @@ jobs:
     - name: Nethermind.AuRa.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.AuRa.Test
+    - name: Nethermind.Baseline.Test
+      run: |
+        dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Baseline.Test
     - name: Nethermind.BeaconNode.Eth1Bridge.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.BeaconNode.Eth1Bridge.Test

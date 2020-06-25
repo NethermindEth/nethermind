@@ -34,7 +34,7 @@ namespace Nethermind.BeaconNode
 {
     public class ValidatorAssignments
     {
-        private readonly BeaconChainUtility _beaconChainUtility;
+        private readonly IBeaconChainUtility _beaconChainUtility;
         private readonly BeaconStateAccessor _beaconStateAccessor;
         private readonly BeaconStateTransition _beaconStateTransition;
         private readonly IForkChoice _forkChoice;
@@ -45,7 +45,7 @@ namespace Nethermind.BeaconNode
 
         public ValidatorAssignments(ILogger<ValidatorAssignments> logger,
             IOptionsMonitor<TimeParameters> timeParameterOptions,
-            BeaconChainUtility beaconChainUtility,
+            IBeaconChainUtility beaconChainUtility,
             BeaconStateAccessor beaconStateAccessor,
             BeaconStateTransition beaconStateTransition,
             IForkChoice forkChoice,

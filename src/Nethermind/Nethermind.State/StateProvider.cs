@@ -163,7 +163,10 @@ namespace Nethermind.State
             {
                 if (_logger.IsTrace) _logger.Trace($"  Touch {address} (code hash)");
                 Account touched = GetThroughCache(address);
-                PushTouch(address, touched, releaseSpec, touched.Balance.IsZero);
+                if (touched.IsEmpty)
+                {
+                    PushTouch(address, touched, releaseSpec, touched.Balance.IsZero);
+                }
             }
         }
 
@@ -190,7 +193,10 @@ namespace Nethermind.State
                 {
                     Account touched = GetThroughCacheCheckExists();
                     if (_logger.IsTrace) _logger.Trace($"  Touch {address} (balance)");
-                    PushTouch(address, touched, releaseSpec, isZero);
+                    if (touched.IsEmpty)
+                    {
+                        PushTouch(address, touched, releaseSpec, isZero);
+                    }
                 }
 
                 return;
@@ -671,6 +677,12 @@ namespace Nethermind.State
         private void Push(ChangeType changeType, Address address, Account touchedAccount)
         {
             SetupCache(address);
+            if (changeType == ChangeType.Touch
+                && _changes[_intraBlockCache[address].Peek()].ChangeType == ChangeType.Touch)
+            {
+                return;
+            }
+            
             IncrementChangePosition();
             _intraBlockCache[address].Push(_currentPosition);
             _changes[_currentPosition] = new Change(changeType, address, touchedAccount);

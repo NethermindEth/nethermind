@@ -67,5 +67,17 @@ namespace Nethermind.Crypto
                 }
             }
         }
+        
+        public static SecureString Secure(this string notSecureString)
+        {
+            var secureString = new SecureString();
+            foreach (char c in notSecureString)
+            {
+                secureString.AppendChar(c);
+            }
+            
+            secureString.MakeReadOnly();
+            return secureString;
+        }
     }
 }

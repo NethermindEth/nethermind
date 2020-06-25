@@ -17,6 +17,7 @@
 using System;
 using FluentAssertions;
 using Nethermind.Abi;
+using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -24,6 +25,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
+using Nethermind.Logging;
 using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
@@ -53,14 +55,14 @@ namespace Nethermind.AuRa.Test.Contract
         [Test]
         public void constructor_throws_ArgumentNullException_on_null_encoder()
         {
-            Action action = () => new ValidatorContract(_transactionProcessor, null, _contractAddress, _stateProvider, _readOnlyTransactionProcessorSource);
+            Action action = () => new ValidatorContract(_transactionProcessor, null, _contractAddress, _stateProvider, _readOnlyTransactionProcessorSource, new Signer(0, TestItem.PrivateKeyD, LimboLogs.Instance));
             action.Should().Throw<ArgumentNullException>();
         }
         
         [Test]
         public void constructor_throws_ArgumentNullException_on_null_contractAddress()
         {
-            Action action = () => new ValidatorContract(_transactionProcessor, new AbiEncoder(), null, _stateProvider, _readOnlyTransactionProcessorSource);
+            Action action = () => new ValidatorContract(_transactionProcessor, new AbiEncoder(), null, _stateProvider, _readOnlyTransactionProcessorSource, new Signer(0, TestItem.PrivateKeyD, LimboLogs.Instance));
             action.Should().Throw<ArgumentNullException>();
         }
         
@@ -74,13 +76,13 @@ namespace Nethermind.AuRa.Test.Contract
                 Hash = new Keccak("0x0652461cead47b6e1436fc631debe06bde8bcdd2dad3b9d21df5cf092078c6d3"), 
                 To = _contractAddress,
                 SenderAddress = Address.SystemUser,
-                GasLimit = Consensus.AuRa.Contracts.Contract.DefaultContractGasLimit,
+                GasLimit = Blockchain.Contracts.Contract.DefaultContractGasLimit,
                 GasPrice = 0,
                 Nonce = 0
             };
             expectation.Hash = expectation.CalculateHash();
             
-            var contract = new ValidatorContract(_transactionProcessor, new AbiEncoder(), _contractAddress, _stateProvider, _readOnlyTransactionProcessorSource);
+            var contract = new ValidatorContract(_transactionProcessor, new AbiEncoder(), _contractAddress, _stateProvider, _readOnlyTransactionProcessorSource, new Signer(0, TestItem.PrivateKeyD, LimboLogs.Instance));
             
             contract.FinalizeChange(_block.Header);
             
