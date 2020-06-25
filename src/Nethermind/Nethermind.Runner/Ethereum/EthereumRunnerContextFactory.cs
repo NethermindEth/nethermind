@@ -41,7 +41,7 @@ namespace Nethermind.Runner.Ethereum
             ILogger logger = _logManager.GetClassLogger();
 
             bool hiveEnabled = Environment.GetEnvironmentVariable("NETHERMIND_HIVE_ENABLED")?.ToLowerInvariant() == "true";
-            string chainSpecFile = hiveEnabled ?? initConfig.HiveChainSpecPath : initConfig.ChainSpecPath;
+            string chainSpecFile = hiveEnabled ? initConfig.HiveChainSpecPath : initConfig.ChainSpecPath;
 
             if (logger.IsDebug) logger.Debug($"Loading chain spec from {chainSpecFile}");
 
