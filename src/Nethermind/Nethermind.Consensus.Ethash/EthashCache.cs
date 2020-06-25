@@ -28,9 +28,9 @@ namespace Nethermind.Consensus.Ethash
 
         public EthashCache(uint cacheSize, byte[] seed)
         {
-            if (cacheSize % Ethash.MixBytes != 0)
+            if (cacheSize % Ethash.HashBytes != 0)
             {
-                throw new ArgumentException($"{nameof(cacheSize)} must be a multiple of {Ethash.MixBytes}");
+                throw new ArgumentException($"{nameof(cacheSize)} must be a multiple of {Ethash.HashBytes}");
             }
 
             Size = cacheSize;
