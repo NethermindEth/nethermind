@@ -38,17 +38,17 @@ namespace Nethermind.Synchronization.BeamSync
         /// The actual state DB that can be used for reading the fast synced state from. Also used for writes of any
         /// nodes without dependencies.
         /// </summary>
-        private IDb _stateDb;
+        private readonly IDb _stateDb;
 
         /// <summary>
         /// This DB stands in front of the state DB for reads and serves as beam sync DB write-to DB for any writes
         /// that are not final (do not have any unfilled child nodes).
         /// </summary>
-        private IDb _tempDb;
+        private readonly IDb _tempDb;
 
         private readonly ISyncModeSelector _syncModeSelector;
 
-        private ILogger _logger;
+        private readonly ILogger _logger;
 
         private IDb _targetDbForSaves;
 
@@ -68,7 +68,7 @@ namespace Nethermind.Synchronization.BeamSync
             _preProcessExpiryTimeSpan = TimeSpan.FromSeconds(preProcessTimeout);
         }
 
-        private object _finishLock = new object();
+        private readonly object _finishLock = new object();
 
         private void SyncModeSelectorOnChanged(object sender, SyncModeChangedEventArgs e)
         {
@@ -121,9 +121,9 @@ namespace Nethermind.Synchronization.BeamSync
 
         public string Name => _tempDb.Name;
 
-        private object _diffLock = new object();
+        private readonly object _diffLock = new object();
 
-        private HashSet<Keccak> _requestedNodes = new HashSet<Keccak>();
+        private readonly HashSet<Keccak> _requestedNodes = new HashSet<Keccak>();
 
         private readonly TimeSpan _contextExpiryTimeSpan;
         private readonly TimeSpan _preProcessExpiryTimeSpan;

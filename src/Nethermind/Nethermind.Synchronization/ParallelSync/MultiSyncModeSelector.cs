@@ -45,7 +45,11 @@ namespace Nethermind.Synchronization.ParallelSync
         private bool BeamSyncEnabled => _syncConfig.BeamSync;
         private bool FastSyncEnabled => _syncConfig.FastSync;
         private bool FastBlocksEnabled => _syncConfig.FastSync && _syncConfig.FastBlocks;
-        private bool FastBlocksFinished => !FastBlocksEnabled || _syncProgressResolver.IsFastBlocksFinished();
+        private bool FastBodiesEnabled => FastBlocksEnabled && _syncConfig.DownloadBodiesInFastSync;
+        private bool FastReceiptsEnabled => FastBlocksEnabled && _syncConfig.DownloadReceiptsInFastSync;
+        private bool FastBlocksHeadersFinished => !FastBlocksEnabled || _syncProgressResolver.IsFastBlocksHeadersFinished();
+        private bool FastBlocksBodiesFinished => !FastBodiesEnabled || _syncProgressResolver.IsFastBlocksBodiesFinished();
+        private bool FastBlocksReceiptsFinished => !FastReceiptsEnabled || _syncProgressResolver.IsFastBlocksReceiptsFinished();
         private long FastSyncCatchUpHeightDelta => _syncConfig.FastSyncCatchUpHeightDelta ?? FastSyncLag;
 
         private System.Timers.Timer _timer;
@@ -124,37 +128,23 @@ namespace Nethermind.Synchronization.ParallelSync
                 return;
             }
 
-            best.IsInFastBlocks = ShouldBeInFastBlocksMode(best);
             best.IsInFastSync = ShouldBeInFastSyncMode(best);
             best.IsInStateSync = ShouldBeInStateNodesMode(best);
             best.IsInBeamSync = ShouldBeInBeamSyncMode(best);
             best.IsInFullSync = ShouldBeInFullSyncMode(best);
+            best.IsInFastHeaders = ShouldBeInFastHeadersMode(best);
+            best.IsInFastBodies = ShouldBeInFastBodiesMode(best);
+            best.IsInFastReceipts = ShouldBeInFastReceiptsMode(best);
 
             SyncMode newModes = SyncMode.None;
-            if (best.IsInBeamSync)
-            {
-                newModes |= SyncMode.Beam;
-            }
-
-            if (best.IsInFastBlocks)
-            {
-                newModes |= SyncMode.FastBlocks;
-            }
-
-            if (best.IsInFastSync)
-            {
-                newModes |= SyncMode.FastSync;
-            }
-
-            if (best.IsInFullSync)
-            {
-                newModes |= SyncMode.Full;
-            }
-
-            if (best.IsInStateSync)
-            {
-                newModes |= SyncMode.StateNodes;
-            }
+            CheckAddFlag(best.IsInBeamSync, SyncMode.Beam, ref newModes);
+            CheckAddFlag(best.IsInFastHeaders, SyncMode.FastHeaders, ref newModes);
+            CheckAddFlag(best.IsInFastBodies, SyncMode.FastBodies, ref newModes);
+            CheckAddFlag(best.IsInFastReceipts, SyncMode.FastReceipts, ref newModes);
+            CheckAddFlag(best.IsInFastSync, SyncMode.FastSync, ref newModes);
+            CheckAddFlag(best.IsInFullSync, SyncMode.Full, ref newModes);
+            CheckAddFlag(best.IsInStateSync, SyncMode.StateNodes, ref newModes);
+            
 
             if (IsTheModeSwitchWorthMentioning(newModes))
             {
@@ -164,6 +154,14 @@ namespace Nethermind.Synchronization.ParallelSync
             }
 
             UpdateSyncModes(newModes);
+        }
+
+        private void CheckAddFlag(in bool flag, SyncMode mode, ref SyncMode resultMode)
+        {
+            if (flag)
+            {
+                resultMode |= mode;
+            }
         }
 
         private bool IsTheModeSwitchWorthMentioning(SyncMode newModes)
@@ -294,11 +292,25 @@ namespace Nethermind.Synchronization.ParallelSync
                    notInStateSync;
         }
 
-        private bool ShouldBeInFastBlocksMode(Snapshot best)
+        private bool ShouldBeInFastHeadersMode(Snapshot best)
         {
-            // this is really the only condition - fast blocks can always run if there are peers until it is done
-            // also fast blocks can run in parallel with all other sync modes
-            return FastBlocksEnabled && !FastBlocksFinished;
+            // this is really the only condition - fast blocks headers can always run if there are peers until it is done
+            // also fast blocks headers can run in parallel with all other sync modes
+            return !FastBlocksHeadersFinished;
+        }
+        
+        private bool ShouldBeInFastBodiesMode(Snapshot best)
+        {
+            // this is really the only condition - fast blocks headers can always run if there are peers until it is done
+            // also fast blocks headers can run in parallel with all other sync modes
+            return !FastBlocksBodiesFinished && FastBlocksHeadersFinished && best.IsInFullSync;
+        }
+        
+        private bool ShouldBeInFastReceiptsMode(Snapshot best)
+        {
+            // this is really the only condition - fast blocks headers can always run if there are peers until it is done
+            // also fast blocks headers can run in parallel with all other sync modes
+            return !FastBlocksReceiptsFinished && FastBlocksBodiesFinished && best.IsInFullSync;
         }
 
         private bool ShouldBeInStateNodesMode(Snapshot best)
@@ -451,10 +463,12 @@ namespace Nethermind.Synchronization.ParallelSync
                 PeerBlock = peerBlock;
                 PeerDifficulty = peerDifficulty;
 
-                IsInFastBlocks = IsInFastSync = IsInBeamSync = IsInFullSync = IsInStateSync = false;
+                IsInFastReceipts = IsInFastBodies = IsInFastHeaders = IsInFastSync = IsInBeamSync = IsInFullSync = IsInStateSync = false;
             }
 
-            public bool IsInFastBlocks { get; set; }
+            public bool IsInFastHeaders { get; set; }
+            public bool IsInFastBodies { get; set; }
+            public bool IsInFastReceipts { get; set; }
             public bool IsInFastSync { get; set; }
             public bool IsInStateSync { get; set; }
             public bool IsInBeamSync { get; set; }

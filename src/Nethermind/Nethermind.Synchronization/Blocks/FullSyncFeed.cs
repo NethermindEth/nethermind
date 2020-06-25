@@ -22,51 +22,21 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.Blocks
 {
-    public class FullSyncFeed : SyncFeed<BlocksRequest>, IDisposable
+    public class FullSyncFeed : ActivatedSyncFeed<BlocksRequest>
     {
-        private readonly ISyncModeSelector _syncModeSelector;
-
-        private BlocksRequest _blocksRequest;
+        private readonly BlocksRequest _blocksRequest;
 
         public FullSyncFeed(ISyncModeSelector syncModeSelector, ILogManager logManager)
-            : base(logManager)
+            : base(syncModeSelector, logManager)
         {
-            _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
-
-            DownloaderOptions options = BuildOptions();
-            _blocksRequest = new BlocksRequest(options);
-
-            _syncModeSelector.Changed += SyncModeSelectorOnChanged;
+            _blocksRequest = new BlocksRequest(BuildOptions());
         }
 
-        private static bool ShouldBeActive(SyncMode syncMode)
-        {
-            return (syncMode & (SyncMode.Full | SyncMode.Beam)) != SyncMode.None;
-        }
+        protected override SyncMode ActivationSyncModes { get; } = SyncMode.Full | SyncMode.Beam;
 
-        private void SyncModeSelectorOnChanged(object sender, SyncModeChangedEventArgs e)
-        {
-            // we will download blocks for processing both in beam sync and full sync mode
-            if (ShouldBeActive(e.Current))
-            {
-                Activate();
-            }
-        }
+        private static DownloaderOptions BuildOptions() => DownloaderOptions.WithBodies | DownloaderOptions.Process;
 
-        private static DownloaderOptions BuildOptions()
-        {
-            return DownloaderOptions.WithBodies | DownloaderOptions.Process;
-        }
-
-        public override Task<BlocksRequest> PrepareRequest()
-        {
-            if (ShouldBeActive(_syncModeSelector.Current))
-            {
-                return Task.FromResult(_blocksRequest);
-            }
-
-            return Task.FromResult((BlocksRequest) null);
-        }
+        public override Task<BlocksRequest> PrepareRequest() => Task.FromResult(ShouldBeActive() ? _blocksRequest : null);
 
         public override SyncResponseHandlingResult HandleResponse(BlocksRequest response)
         {
@@ -77,10 +47,5 @@ namespace Nethermind.Synchronization.Blocks
         public override bool IsMultiFeed => false;
         
         public override AllocationContexts Contexts => AllocationContexts.Blocks;
-
-        public void Dispose()
-        {
-            _syncModeSelector.Changed -= SyncModeSelectorOnChanged;
-        }
     }
 }
