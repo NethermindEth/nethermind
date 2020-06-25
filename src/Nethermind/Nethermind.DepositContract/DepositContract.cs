@@ -15,8 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.IO;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
+using Nethermind.Blockchain.Contracts.Json;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -26,7 +28,10 @@ namespace Nethermind.DepositContract
     public sealed class DepositContract : Contract
     {
         public DepositContract(IAbiEncoder abiEncoder, Address contractAddress)
-            : base(abiEncoder, contractAddress)
+            : base(
+                abiEncoder,
+                contractAddress,
+                new AbiDefinitionParser().Parse(File.ReadAllText("contracts//DepositContract.json")))
         {
         }
 
