@@ -39,17 +39,16 @@ namespace Nethermind.Runner.Ethereum
             
             IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
             ILogger logger = _logManager.GetClassLogger();
-            if (logger.IsDebug) logger.Debug($"Loading chain spec from chainspec/test.json"); 
-            ThisNodeInfo.AddInfo("Chainspec    :", "chainspec/test.json");
-            IChainSpecLoader loader = new ChainSpecLoader(ethereumJsonSerializer);
-            // if(!File.Exists("/chainspec/test.json"))
-            // {
-            //     Console.WriteLine($"File chainspec/test.json does not exists !!!!");
-            //     throw new Exception("File chainspec/test.json does not exists !!!!");
-            // }
 
-            ChainSpec chainSpec = loader.LoadFromFile("/chainspec/test.json");
-            Console.WriteLine($"Loaded chainSpec, genesis hash is : {chainSpec.Genesis.Hash}");
+            bool hiveEnabled = Environment.GetEnvironmentVariable("NETHERMIND_HIVE_ENABLED")?.ToLowerInvariant() == "true";
+            string chainSpecFile = hiveEnabled ?? initConfig.HiveChainSpecPath : initConfig.ChainSpecPath;
+
+            if (logger.IsDebug) logger.Debug($"Loading chain spec from {chainSpecFile}");
+
+            ThisNodeInfo.AddInfo("Chainspec    :", $"{chainSpecFile}");
+            IChainSpecLoader loader = new ChainSpecLoader(ethereumJsonSerializer);
+
+            ChainSpec chainSpec = loader.LoadFromFile(chainSpecFile);
             
             logManager.SetGlobalVariable("chain", chainSpec.Name);
             logManager.SetGlobalVariable("chainId", chainSpec.ChainId);

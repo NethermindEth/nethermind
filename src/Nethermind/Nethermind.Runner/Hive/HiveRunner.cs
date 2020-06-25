@@ -50,16 +50,16 @@ namespace Nethermind.Runner.Hive
 
         public Task Start(CancellationToken cancellationToken)
         {
-            Console.WriteLine("hive initialization starting");
-            _logger.Info("HIVE initialization starting");
+            if(_logger.IsInfo) _logger.Info("HIVE initialization starting");
             _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
             var hiveConfig = _configurationProvider.GetConfig<IHiveConfig>();
+
             ListEnvironmentVariables();
-            Console.WriteLine("Initializating blocks...");
             InitializeBlocks(hiveConfig.BlocksDir, cancellationToken);
-            Console.WriteLine("Done");
+
             _blockTree.NewHeadBlock -= BlockTreeOnNewHeadBlock;
-            _logger.Info("HIVE initialization completed");
+
+            if(_logger.IsInfo) _logger.Info("HIVE initialization completed");
             return Task.CompletedTask;
         }
 
@@ -108,16 +108,10 @@ namespace Nethermind.Runner.Hive
                 return;
             }
 
-
             if (_logger.IsInfo) _logger.Info($"HIVE Loading blocks from {blocksDir}");
-            Console.WriteLine($"BlockTree genesis hash : {_blockTree.GenesisHash} \n BlockTree head hash : {_blockTree.HeadHash}");
             var files = Directory.GetFiles(blocksDir).OrderBy(x => x).ToArray();
             var blocks = files.Select(x => new {File = x, Block = DecodeBlock(x)}).OrderBy(x => x.Block.Header.Number).ToArray();
-            Console.WriteLine("Loaded blocks: ");
-            foreach(var block in blocks)
-            {
-                Console.WriteLine(block.Block);
-            }
+
             foreach (var block in blocks)
             {
                 if (cancellationToken.IsCancellationRequested)
@@ -125,7 +119,6 @@ namespace Nethermind.Runner.Hive
                     break;
                 }
                 
-                Console.WriteLine($"HIVE Processing block file: {block.File} - {block.Block.ToString(Block.Format.Short)}");
                 if (_logger.IsInfo) _logger.Info($"HIVE Processing block file: {block.File} - {block.Block.ToString(Block.Format.Short)}");
                 ProcessBlock(block.Block);
             }
@@ -144,15 +137,7 @@ namespace Nethermind.Runner.Hive
             try
             {
                 var result = _blockTree.SuggestBlock(block);
-                if(result == AddBlockResult.Added)
-                {
-                    Console.WriteLine("Added suggesed block");
-                }
-                else
-                {
-                    Console.WriteLine("FAILED WHILE SUGGESTING BLOCK");
-                    return;
-                }
+
                 if (_logger.IsInfo) _logger.Info($"HIVE suggested {block.ToString(Block.Format.Short)}, now best suggested header {_blockTree.BestSuggestedHeader}, head {_blockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}");
             }
             catch (InvalidBlockException e)

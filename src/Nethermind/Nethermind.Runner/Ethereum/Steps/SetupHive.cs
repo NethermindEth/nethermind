@@ -35,13 +35,12 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         public async Task Execute(CancellationToken cancellationToken)
         {
-            Console.WriteLine("SetupHive.cs");
             bool hiveEnabled = Environment.GetEnvironmentVariable("NETHERMIND_HIVE_ENABLED")?.ToLowerInvariant() == "true";
             if (hiveEnabled)
             {
                 if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
                 if (_context.EthereumJsonSerializer == null) throw new StepDependencyException(nameof(_context.EthereumJsonSerializer));
-            HiveRunner hiveRunner = new HiveRunner(_context.BlockTree, _context.EthereumJsonSerializer, _context.ConfigProvider, _context.LogManager.GetClassLogger());
+                HiveRunner hiveRunner = new HiveRunner(_context.BlockTree, _context.EthereumJsonSerializer, _context.ConfigProvider, _context.LogManager.GetClassLogger());
                 await hiveRunner.Start(cancellationToken);
             }
         }
