@@ -74,7 +74,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// </param>
         public (Address[] Addresses, UInt256[] Rewards) Reward(BlockHeader blockHeader, Address[] benefactors, ushort[] kind)
         {
-            var result = Call(blockHeader, nameof(Reward), Address.SystemUser, benefactors, kind);
+            var result = Call(blockHeader, nameof(Reward), Address.SystemUser, UnlimitedGas, benefactors, kind);
             return ((Address[]) result[0], (UInt256[]) result[1]);
         }
     }

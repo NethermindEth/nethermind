@@ -101,14 +101,13 @@ namespace Nethermind.Consensus.AuRa.Validators
             var isProducingBlock = options.IsProducingBlock();
             var isProcessingBlock = !isProducingBlock;
             var isInitBlock = InitBlockNumber == block.Number;
-            var headNumber = BlockTree.Head?.Number ?? -2; // -2, so genesis.Number - 1 > -2.
-            var skippingBlocks = block.Number - 1 > headNumber;
-            var shouldLoadValidators = Validators == null || skippingBlocks || isProducingBlock;
+            var notConsecutiveBlock = block.Number - 1 != _lastProcessedBlockNumber || block.Number == 1;
+            var shouldLoadValidators = Validators == null || notConsecutiveBlock || isProducingBlock;
             var mainChainProcessing = !ForSealing && isProcessingBlock;
             
             if (shouldLoadValidators)
             {
-                Validators = isInitBlock || skippingBlocks
+                Validators = isInitBlock || notConsecutiveBlock
                     ? LoadValidatorsFromContract(BlockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None)) 
                     : ValidatorStore.GetValidators();
 
@@ -129,7 +128,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             }
             else
             {
-                if (mainChainProcessing && skippingBlocks)
+                if (mainChainProcessing && notConsecutiveBlock)
                 {
                     bool loadedValidatorsAreSameInStore = (ValidatorStore.GetValidators()?.SequenceEqual(Validators) == true);
                     if (!loadedValidatorsAreSameInStore)
