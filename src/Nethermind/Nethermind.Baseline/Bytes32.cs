@@ -31,6 +31,11 @@ namespace Nethermind.Baseline
             return new Bytes32(bytes);
         }
         
+        public byte[] Unwrap()
+        {
+            return _bytes;
+        }
+        
         private Bytes32(byte[] bytes)
         {
             if (bytes.Length != Length)

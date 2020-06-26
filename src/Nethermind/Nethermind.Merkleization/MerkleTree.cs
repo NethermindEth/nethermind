@@ -11,9 +11,6 @@ using Nethermind.Ssz;
 
 namespace Nethermind.Merkleization
 {
-    /// <summary>
-    /// This will be moved to Eth2
-    /// </summary>
     public abstract class MerkleTree : IMerkleList
     {
         private const int LeafRow = 32;
