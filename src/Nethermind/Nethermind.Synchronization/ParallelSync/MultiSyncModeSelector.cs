@@ -301,15 +301,15 @@ namespace Nethermind.Synchronization.ParallelSync
         
         private bool ShouldBeInFastBodiesMode(Snapshot best)
         {
-            // this is really the only condition - fast blocks headers can always run if there are peers until it is done
-            // also fast blocks headers can run in parallel with all other sync modes
+            // fast blocks bodies can run if there are peers until it is done
+            // fast blocks bodies can run in parallel with full sync when headers are finished
             return !FastBlocksBodiesFinished && FastBlocksHeadersFinished && best.IsInFullSync;
         }
         
         private bool ShouldBeInFastReceiptsMode(Snapshot best)
         {
-            // this is really the only condition - fast blocks headers can always run if there are peers until it is done
-            // also fast blocks headers can run in parallel with all other sync modes
+            // fast blocks receipts can run if there are peers until it is done
+            // fast blocks receipts can run in parallel with full sync when bodies are finished
             return !FastBlocksReceiptsFinished && FastBlocksBodiesFinished && best.IsInFullSync;
         }
 

@@ -556,18 +556,19 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 
                 public ScenarioBuilder WhateverTheSyncProgressIs()
                 {
+                    var fastBlocksStates = Enum.GetValues(typeof(FastBlocksState)).Cast<FastBlocksState>().ToList();
                     IfThisNodeJustCameBackFromBeingOfflineForLongTimeAndFinishedFastSyncCatchUp();
                     IfThisNodeHasNeverSyncedBefore();
                     IfThisNodeIsFullySynced();
                     IfThisNodeIsProcessingAlreadyDownloadedBlocksInFullSync();
                     IfThisNodeIsInTheMiddleOfFastSyncAndFastBlocks();
                     IfThisNodeFinishedFastBlocksButNotFastSync();
-                    IfThisNodeJustFinishedFastBlocksAndFastSync(FastBlocksState.FinishedHeaders);
+                    fastBlocksStates.ForEach(s => IfThisNodeJustFinishedFastBlocksAndFastSync(s));
                     IfThisNodeFinishedStateSyncButNotFastBlocks();
                     IfThisNodeJustFinishedStateSyncButNeedsToCatchUpToHeaders();
-                    IfThisNodeJustFinishedStateSyncAndFastBlocks(FastBlocksState.FinishedHeaders);
-                    IfThisNodeJustStartedFullSyncProcessing(FastBlocksState.FinishedHeaders);
-                    IfThisNodeRecentlyStartedFullSyncProcessing(FastBlocksState.FinishedHeaders);
+                    fastBlocksStates.ForEach(s => IfThisNodeJustFinishedStateSyncAndFastBlocks(s));
+                    fastBlocksStates.ForEach(s => IfThisNodeJustStartedFullSyncProcessing(s));
+                    fastBlocksStates.ForEach(s => IfThisNodeRecentlyStartedFullSyncProcessing(s));
                     IfTheSyncProgressIsCorrupted();
                     IfThisNodeNeedsAFastSyncCatchUp();
                     IfThisNodeJustFinishedStateSyncCatchUp();
