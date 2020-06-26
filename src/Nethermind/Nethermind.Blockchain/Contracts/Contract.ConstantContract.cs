@@ -98,8 +98,7 @@ namespace Nethermind.Blockchain.Contracts
             /// <returns></returns>
             public object[] CallRaw(BlockHeader parentHeader, string functionName, Address sender, params object[] arguments)
             {
-                var transaction = _contract.GenerateTransaction<SystemTransaction>(functionName, sender, arguments);
-                transaction.GasLimit = DefaultConstantContractGasLimit;
+                var transaction = _contract.GenerateTransaction<SystemTransaction>(functionName, sender, DefaultConstantContractGasLimit, arguments);
                 var result = Call(parentHeader, transaction);
                 var objects = _contract.DecodeReturnData(functionName, result);
                 return objects;
