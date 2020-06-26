@@ -60,7 +60,7 @@ namespace Nethermind.Consensus.Ethash
         [MethodImpl(MethodImplOptions.Synchronized)]
         public void Hint(Guid guid, long start, long end)
         {
-            if (start > end) throw new InvalidEnumArgumentException("start can't be greater than end");
+            if (start > end) throw new ArgumentException("start can't be greater than end");
             uint startEpoch = (uint) (start / Ethash.EpochLength);
             uint endEpoch = (uint) (end / Ethash.EpochLength);
 
