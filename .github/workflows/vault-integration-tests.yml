@@ -11,7 +11,6 @@ jobs:
     - name: Clone docker-compose 
       run: git submodule update --init src/Dirichlet src/rocksdb-sharp
     - name: Installing Linux packages
-      if: matrix.os == 'ubuntu-latest'
       run: |
         sudo apt-get update
         sudo apt-get install libsnappy-dev libc6-dev libc6
@@ -19,12 +18,12 @@ jobs:
       run: |
         cd src/Nethermind/Nethermind.Vault.Test
         docker-compose up -d
-    - name: Check running containers
-      run: docker ps -a
-    - name: Sleep for 30 seconds
+    - name: Sleep for 20 seconds
       uses: jakejarvis/wait-action@v0.1.0
       with:
         time: '20s'
+    - name: Check running containers
+      run: docker ps -a
     - name: Create User and Fetch Token
       run: |
         curl -XPOST -H 'content-type: application/json' http://localhost:8081/api/v1/users -d '{"email": "hello@localhost", "password": "hello12345", "first_name": "A", "last_name": "User"}' -v
@@ -34,5 +33,6 @@ jobs:
       run: |
         cd src/Nethermind/Nethermind.Vault.Test
         sed -i '5s/.*/    <Parameter name="token" value="'"$TOKEN"'" \/>/' vault.runsettings
+        cat vault.runsettings
         dotnet test -s vault.runsettings
         
