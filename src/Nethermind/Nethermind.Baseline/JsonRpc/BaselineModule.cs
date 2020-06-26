@@ -164,6 +164,27 @@ namespace Nethermind.Baseline.JsonRpc
             return Task.FromResult(ResultWrapper<Keccak>.Success(txHash));
         }
 
+        public Task<ResultWrapper<Keccak>> baseline_getRoot(Address contractAddress)
+        {
+            bool isTracked = _baselineTrees.TryGetValue(contractAddress, out BaselineTree? tree);
+
+            ResultWrapper<Keccak> result;
+            if (!isTracked)
+            {
+                result = ResultWrapper<Keccak>.Fail(
+                    $"{contractAddress} tree is not tracked",
+                    ErrorCodes.InvalidInput);
+            }
+            else
+            {
+                // everything in memory
+                tree = RebuildEntireTree(contractAddress);
+                result = ResultWrapper<Keccak>.Success(tree.Root);
+            }
+
+            return Task.FromResult(result);
+        }
+
         public Task<ResultWrapper<BaselineTreeNode>> baseline_getLeaf(Address contractAddress, UInt256 leafIndex)
         {
             bool isTracked = _baselineTrees.TryGetValue(contractAddress, out BaselineTree? tree);
@@ -374,18 +395,43 @@ namespace Nethermind.Baseline.JsonRpc
             {
                 for (int i = 0; i < (filterLog.Data.Length - 128) / 32; i++)
                 {
-                    Bytes32 leafHash = Bytes32.Wrap(filterLog.Data.Slice(128 + 32 * i, 32).ToArray());
+                    Keccak leafHash = new Keccak(filterLog.Data.Slice(128 + 32 * i, 32).ToArray());
                     baselineTree.Insert(leafHash);
                 }
             }
 
             foreach (FilterLog filterLog in insertLeafLogs)
             {
-                Bytes32 leafHash = Bytes32.Wrap(filterLog.Data.Slice(32, 32).ToArray());
+                Keccak leafHash = new Keccak(filterLog.Data.Slice(32, 32).ToArray());
                 baselineTree.Insert(leafHash);
             }
 
             return baselineTree;
+        }
+
+        public Task<ResultWrapper<bool>> baseline_verify(
+            Address contractAddress,
+            Keccak root,
+            Keccak leaf,
+            BaselineTreeNode[] path)
+        {
+            bool isTracked = _baselineTrees.TryGetValue(contractAddress, out BaselineTree? tree);
+            ResultWrapper<bool> result;
+            if (!isTracked)
+            {
+                result = ResultWrapper<bool>.Fail(
+                    $"{contractAddress} tree is not tracked",
+                    ErrorCodes.InvalidInput);
+            }
+            else
+            {
+                // everything in memory
+                tree = RebuildEntireTree(contractAddress);
+                bool verificationResult = tree!.Verify(root, leaf, path);
+                result = ResultWrapper<bool>.Success(verificationResult);
+            }
+
+            return Task.FromResult(result);
         }
 
         public Task<ResultWrapper<BaselineTreeNode[]>> baseline_getSiblings(Address contractAddress, long leafIndex)

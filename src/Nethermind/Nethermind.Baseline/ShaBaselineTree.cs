@@ -17,6 +17,7 @@
 
 using System;
 using System.Security.Cryptography;
+using Nethermind.Core.Crypto;
 using Nethermind.Trie;
 
 namespace Nethermind.Baseline
@@ -30,19 +31,21 @@ namespace Nethermind.Baseline
         {
         }
 
-        private static byte[] HashStatic(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
+        private static void HashStatic(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b, Span<byte> target)
         {
             Span<byte> combined = new Span<byte>(new byte[a.Length + b.Length]);
             a.CopyTo(combined);
             b.CopyTo(combined.Slice(a.Length));
             
-            // TryComputeHash here?
-            return _hashAlgorithm.ComputeHash(combined.ToArray());
+            _hashAlgorithm.TryComputeHash(combined, target, out _);
         }
 
-        protected override byte[] Hash(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
+        protected override void Hash(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b, Span<byte> target)
         {
-            return HashStatic(a.Slice(TruncationLength, 32 - TruncationLength), b.Slice(TruncationLength, 32 - TruncationLength));
+            HashStatic(
+                a.Slice(TruncationLength, 32 - TruncationLength),
+                b.Slice(TruncationLength, 32 - TruncationLength),
+                target);
         }
     }
 }

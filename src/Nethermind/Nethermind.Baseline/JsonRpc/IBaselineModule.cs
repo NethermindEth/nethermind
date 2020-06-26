@@ -46,6 +46,12 @@ namespace Nethermind.Baseline.JsonRpc
             IsReadOnly = true,
             IsImplemented = true)]
         Task<ResultWrapper<BaselineTreeNode>> baseline_getLeaf(Address contractAddress, UInt256 leafIndex);
+        
+        [JsonRpcMethod(
+            Description = "Gets root of a tree at the given 'address'",
+            IsReadOnly = true,
+            IsImplemented = true)]
+        Task<ResultWrapper<Keccak>> baseline_getRoot(Address contractAddress);
 
         [JsonRpcMethod(
             Description = "Gets multiple leaves from a tree at the given 'address'",
@@ -72,6 +78,16 @@ namespace Nethermind.Baseline.JsonRpc
             IsReadOnly = true,
             IsImplemented = true)]
         Task<ResultWrapper<BaselineTreeNode[]>> baseline_getSiblings(Address contractAddress, long leafIndex);
+        
+        [JsonRpcMethod(
+            Description = "Verifies a sibling path for a given root and leaf value.",
+            IsReadOnly = true,
+            IsImplemented = true)]
+        Task<ResultWrapper<bool>> baseline_verify(
+            Address contractAddress,
+            Keccak root,
+            Keccak leaf,
+            BaselineTreeNode[] siblingsPath);
 
         [JsonRpcMethod(
             Description = "Starts tracking a tree at the given address.",

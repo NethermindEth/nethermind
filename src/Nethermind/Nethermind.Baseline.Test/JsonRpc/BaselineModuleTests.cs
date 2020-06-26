@@ -267,13 +267,24 @@ namespace Nethermind.Baseline.Test.JsonRpc
             await testRpc.AddBlock();
 
             await baselineModule.baseline_track(receipt.ContractAddress);
-            var result = await baselineModule.baseline_getSiblings(receipt.ContractAddress, 1);
+            var result = await baselineModule.baseline_getSiblings(receipt.ContractAddress, 0);
             await testRpc.AddBlock();
             
             result.Result.ResultType.Should().Be(ResultType.Success);
             result.Result.Error.Should().Be(null);
             result.ErrorCode.Should().Be(0);
             result.Data.Should().HaveCount(32);
+            
+            Keccak root = (await baselineModule.baseline_getRoot(receipt.ContractAddress)).Data;
+            bool verificationResult =
+                (await baselineModule.baseline_verify(
+                    receipt.ContractAddress,
+                    root,
+                    TestItem.KeccakH,
+                    result.Data))
+                .Data;
+
+            verificationResult.Should().Be(true);
         }
         
         [Test]
