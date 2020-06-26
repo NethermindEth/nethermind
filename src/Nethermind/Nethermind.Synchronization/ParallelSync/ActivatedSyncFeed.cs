@@ -28,8 +28,17 @@ namespace Nethermind.Synchronization.ParallelSync
         {
             _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
             _syncModeSelector.Changed += SyncModeSelectorOnChanged;
+            StateChanged += OnStateChanged;
         }
-        
+
+        private void OnStateChanged(object sender, SyncFeedStateEventArgs e)
+        {
+            if (e.NewState == SyncFeedState.Finished)
+            {
+                Dispose();
+            }
+        }
+
         private void SyncModeSelectorOnChanged(object sender, SyncModeChangedEventArgs e)
         {
             if (ShouldBeActive(e.Current))
@@ -47,6 +56,7 @@ namespace Nethermind.Synchronization.ParallelSync
         public virtual void Dispose()
         {
             _syncModeSelector.Changed -= SyncModeSelectorOnChanged;
+            StateChanged -= OnStateChanged;
         }
     }
 }
