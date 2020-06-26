@@ -21,6 +21,10 @@ jobs:
         docker-compose up -d
     - name: Check running containers
       run: docker ps -a
+    - name: Sleep for 30 seconds
+      uses: jakejarvis/wait-action@v0.1.0
+      with:
+        time: '20s'
     - name: Create User and Fetch Token
       run: |
         curl -XPOST -H 'content-type: application/json' http://localhost:8081/api/v1/users -d '{"email": "hello@localhost", "password": "hello12345", "first_name": "A", "last_name": "User"}' -v
