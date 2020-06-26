@@ -30,6 +30,18 @@ namespace Nethermind.Cli.Modules
             CliParseAddress(contractAddress),
             hashes.Select(CliParseHash).ToArray()
             ).Result;
+
+        [CliFunction("baseline", "getLeaf")]
+        public object GetLeaf(string contactAddress, long leafIndex) => NodeManager.PostJint(
+            "baseline_getLeaf",
+            CliParseAddress(contactAddress),
+            leafIndex).Result;
+        
+        [CliFunction("baseline", "getLeaves")]
+        public object GetLeaves(string contactAddress, long[] leafIndexes) => NodeManager.PostJint(
+            "baseline_getLeaves",
+            CliParseAddress(contactAddress),
+            leafIndexes).Result;
         
         [CliFunction("baseline", "getSiblings")]
         public object GetSiblings(string contactAddress, long leafIndex) => NodeManager.PostJint(

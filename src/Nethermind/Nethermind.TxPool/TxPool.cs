@@ -316,8 +316,8 @@ namespace Nethermind.TxPool
 
                 if (!(nonce.TransactionHash is null && nonce.TransactionHash != transaction.Hash))
                 {
-                    // Nonce conflicteth
-                    if (_logger.IsWarn) _logger.Warn($"Nonce: {nonce.Value} was already used in transaction: '{nonce.TransactionHash}' and cannot be reused by transaction: '{transaction.Hash}'.");
+                    // Nonce conflict
+                    if (_logger.IsDebug) _logger.Debug($"Nonce: {nonce.Value} was already used in transaction: '{nonce.TransactionHash}' and cannot be reused by transaction: '{transaction.Hash}'.");
 
                     return true;
                 }

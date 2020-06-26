@@ -211,13 +211,13 @@ namespace Nethermind.Baseline.JsonRpc
             if (!isTracked)
             {
                 result = ResultWrapper<BaselineTreeNode[]>.Fail(
-                    $"one of the leaf indexes is not valid",
+                    $"{contractAddress} tree is not tracked",
                     ErrorCodes.InvalidInput);
             }
             else if (!leafIndexesAreValid)
             {
                 result = ResultWrapper<BaselineTreeNode[]>.Fail(
-                    $"{contractAddress} tree is not tracked",
+                    $"one of the leaf indexes is not valid",
                     ErrorCodes.InvalidInput);
             }
             else
