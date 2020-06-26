@@ -40,7 +40,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         protected bool ShouldBeActive() => ShouldBeActive(_syncModeSelector.Current);
 
-        private bool ShouldBeActive(SyncMode current) => (current & ActivationSyncModes) != SyncMode.None;
+        private bool ShouldBeActive(SyncMode current) => CurrentState != SyncFeedState.Finished && (current & ActivationSyncModes) != SyncMode.None;
 
         protected abstract SyncMode ActivationSyncModes { get; }
 
