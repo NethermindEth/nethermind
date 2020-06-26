@@ -89,7 +89,7 @@ namespace Nethermind.BeaconNode.Test
         private BlsSignature GetEpochSignature(IServiceProvider testServiceProvider, byte[] privateKey, ForkVersion forkVersion, Slot slot)
         {
             SignatureDomains signatureDomains = testServiceProvider.GetService<IOptions<SignatureDomains>>().Value;
-            BeaconChainUtility beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
+            IBeaconChainUtility beaconChainUtility = testServiceProvider.GetService<IBeaconChainUtility>();
             var domain = beaconChainUtility.ComputeDomain(signatureDomains.Randao, forkVersion);
 
             var epoch = beaconChainUtility.ComputeEpochAtSlot(slot);

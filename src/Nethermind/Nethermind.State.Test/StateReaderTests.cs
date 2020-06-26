@@ -141,7 +141,7 @@ namespace Nethermind.Store.Test
         }
 
         [Test]
-        public async Task Non_existing()
+        public void Non_existing()
         {
             StorageCell storageCell = new StorageCell(_address1, UInt256.One);
             IReleaseSpec spec = MuirGlacier.Instance;

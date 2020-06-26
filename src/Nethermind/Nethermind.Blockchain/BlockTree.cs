@@ -482,6 +482,7 @@ namespace Nethermind.Blockchain
                 }
             }
 
+        
             return AddBlockResult.Added;
         }
 

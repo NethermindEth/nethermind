@@ -2,139 +2,139 @@
 host = https://www.transifex.com
 
 [readthedocs-1.docs_build_gettext_build]
-file_filter = locale/<lang>/LC_MESSAGES/build.po
+file_filter = docs/source/locales/<lang>/LC_MESSAGES/build.po
 source_file = docs/build/gettext/build.pot
 source_lang = en
 type = PO
 
 [readthedocs-1.docs_build_gettext_cli]
-file_filter = locale/<lang>/LC_MESSAGES/cli.po
+file_filter = docs/source/locales/<lang>/LC_MESSAGES/cli.po
 source_file = docs/build/gettext/cli.pot
 source_lang = en
 type = PO
 
 [readthedocs-1.docs_build_gettext_cloud]
-file_filter = locale/<lang>/LC_MESSAGES/cloud.po
+file_filter = docs/source/locales/<lang>/LC_MESSAGES/cloud.po
 source_file = docs/build/gettext/cloud.pot
 source_lang = en
 type = PO
 
 [readthedocs-1.docs_build_gettext_configuration]
-file_filter = locale/<lang>/LC_MESSAGES/configuration.po
+file_filter = docs/source/locales/<lang>/LC_MESSAGES/configuration.po
 source_file = docs/build/gettext/configuration.pot
 source_lang = en
 type = PO
 
 [readthedocs-1.docs_build_gettext_contact]
-file_filter = locale/<lang>/LC_MESSAGES/contact.po
+file_filter = docs/source/locales/<lang>/LC_MESSAGES/contact.po
 source_file = docs/build/gettext/contact.pot
 source_lang = en
 type = PO
 
 [readthedocs-1.docs_build_gettext_docker]
-file_filter = locale/<lang>/LC_MESSAGES/docker.po
+file_filter = docs/source/locales/<lang>/LC_MESSAGES/docker.po
 source_file = docs/build/gettext/docker.pot
 source_lang = en
 type = PO
 
 [readthedocs-1.docs_build_gettext_download]
-file_filter = locale/<lang>/LC_MESSAGES/download.po
+file_filter = docs/source/locales/<lang>/LC_MESSAGES/download.po
 source_file = docs/build/gettext/download.pot
 source_lang = en
 type = PO
 
 [readthedocs-1.docs_build_gettext_enterprise]
-file_filter = locale/<lang>/LC_MESSAGES/enterprise.po
+file_filter = docs/source/locales/<lang>/LC_MESSAGES/enterprise.po
 source_file = docs/build/gettext/enterprise.pot
 source_lang = en
 type = PO
 
 [readthedocs-1.docs_build_gettext_firewall_configuration]
-file_filter = locale/<lang>/LC_MESSAGES/firewall_configuration.po
+file_filter = docs/source/locales/<lang>/LC_MESSAGES/firewall_configuration.po
 source_file = docs/build/gettext/firewall_configuration.pot
 source_lang = en
 type = PO
 
 [readthedocs-1.docs_build_gettext_hardware_requirements]
-file_filter = locale/<lang>/LC_MESSAGES/hardware_requirements.po
+file_filter = docs/source/locales/<lang>/LC_MESSAGES/hardware_requirements.po
 source_file = docs/build/gettext/hardware_requirements.pot
 source_lang = en
 type = PO
 
 [readthedocs-1.docs_build_gettext_index]
-file_filter = locale/<lang>/LC_MESSAGES/index.po
+file_filter = docs/source/locales/<lang>/LC_MESSAGES/index.po
 source_file = docs/build/gettext/index.pot
 source_lang = en
 type = PO
 
 [readthedocs-1.docs_build_gettext_jsonrpc]
-file_filter = locale/<lang>/LC_MESSAGES/jsonrpc.po
+file_filter = docs/source/locales/<lang>/LC_MESSAGES/jsonrpc.po
 source_file = docs/build/gettext/jsonrpc.pot
 source_lang = en
 type = PO
 
 [readthedocs-1.docs_build_gettext_known_issues]
-file_filter = locale/<lang>/LC_MESSAGES/known_issues.po
+file_filter = docs/source/locales/<lang>/LC_MESSAGES/known_issues.po
 source_file = docs/build/gettext/known_issues.pot
 source_lang = en
 type = PO
 
 [readthedocs-1.docs_build_gettext_metrics]
-file_filter = locale/<lang>/LC_MESSAGES/metrics.po
+file_filter = docs/source/locales/<lang>/LC_MESSAGES/metrics.po
 source_file = docs/build/gettext/metrics.pot
 source_lang = en
 type = PO
 
 [readthedocs-1.docs_build_gettext_networks]
-file_filter = locale/<lang>/LC_MESSAGES/networks.po
+file_filter = docs/source/locales/<lang>/LC_MESSAGES/networks.po
 source_file = docs/build/gettext/networks.pot
 source_lang = en
 type = PO
 
 [readthedocs-1.docs_build_gettext_platforms]
-file_filter = locale/<lang>/LC_MESSAGES/platforms.po
+file_filter = docs/source/locales/<lang>/LC_MESSAGES/platforms.po
 source_file = docs/build/gettext/platforms.pot
 source_lang = en
 type = PO
 
 [readthedocs-1.docs_build_gettext_private_networks]
-file_filter = locale/<lang>/LC_MESSAGES/private_networks.po
+file_filter = docs/source/locales/<lang>/LC_MESSAGES/private_networks.po
 source_file = docs/build/gettext/private_networks.pot
 source_lang = en
 type = PO
 
 [readthedocs-1.docs_build_gettext_releases]
-file_filter = locale/<lang>/LC_MESSAGES/releases.po
+file_filter = docs/source/locales/<lang>/LC_MESSAGES/releases.po
 source_file = docs/build/gettext/releases.pot
 source_lang = en
 type = PO
 
 [readthedocs-1.docs_build_gettext_runtime]
-file_filter = locale/<lang>/LC_MESSAGES/runtime.po
+file_filter = docs/source/locales/<lang>/LC_MESSAGES/runtime.po
 source_file = docs/build/gettext/runtime.pot
 source_lang = en
 type = PO
 
 [readthedocs-1.docs_build_gettext_security]
-file_filter = locale/<lang>/LC_MESSAGES/security.po
+file_filter = docs/source/locales/<lang>/LC_MESSAGES/security.po
 source_file = docs/build/gettext/security.pot
 source_lang = en
 type = PO
 
 [readthedocs-1.docs_build_gettext_source_code]
-file_filter = locale/<lang>/LC_MESSAGES/source_code.po
+file_filter = docs/source/locales/<lang>/LC_MESSAGES/source_code.po
 source_file = docs/build/gettext/source_code.pot
 source_lang = en
 type = PO
 
 [readthedocs-1.docs_build_gettext_start]
-file_filter = locale/<lang>/LC_MESSAGES/start.po
+file_filter = docs/source/locales/<lang>/LC_MESSAGES/start.po
 source_file = docs/build/gettext/start.pot
 source_lang = en
 type = PO
 
 [readthedocs-1.docs_build_gettext_web3]
-file_filter = locale/<lang>/LC_MESSAGES/web3.po
+file_filter = docs/source/locales/<lang>/LC_MESSAGES/web3.po
 source_file = docs/build/gettext/web3.pot
 source_lang = en
 type = PO

@@ -35,9 +35,11 @@ namespace Nethermind.Runner.Test
         [TestCase(4 * GB, 2u, 11)]
         [TestCase(4 * GB, 4u, 11)]
         [TestCase(8 * GB, 1u, 11)]
-        [TestCase(1 * GB, 4u, 9)]
-        [TestCase(512 * MB, 4u, 8)]
-        [TestCase(256 * MB, 6u, 7)]
+        [TestCase(1 * GB, 4u, 11)]
+        [TestCase(512 * MB, 4u, 10)]
+        [TestCase(256 * MB, 6u, 9)]
+        [TestCase(1000 * MB, 12u, 10)]
+        [TestCase(2000 * MB, 12u, 11)]
         public void Netty_arena_order_is_configured_correctly(ulong memoryHint, uint cpuCount, int expectedArenaOrder)
         {
             MemoryHintMan memoryHintMan = new MemoryHintMan(LimboLogs.Instance);
@@ -55,7 +57,7 @@ namespace Nethermind.Runner.Test
             [Values(true, false)] bool fastBlocks)
         {
             // OK to throw here
-            if (memoryHint == 256.MB() && cpuCount >= 8u)
+            if (memoryHint == 256.MB() && cpuCount >= 4u)
             {
                 return;
             }
@@ -95,8 +97,8 @@ namespace Nethermind.Runner.Test
                              + totalForPending;
 
             // some rounding differences are OK
-            totalMem.Should().BeGreaterThan((ulong) (memoryHint * 0.95m) - 2 * MB);
-            totalMem.Should().BeLessThan((ulong) (memoryHint * 0.95m) + 2 * MB);
+            totalMem.Should().BeGreaterThan((ulong) (memoryHint * 0.75m) - 2 * MB);
+            totalMem.Should().BeLessThan((ulong) (memoryHint * 0.75m) + 2 * MB);
         }
 
         [TestCase(100 * GB, 16u, -1)]

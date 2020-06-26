@@ -48,7 +48,7 @@ namespace Nethermind.BeaconNode.Test.ForkTests
             string debugState = System.Text.Json.JsonSerializer.Serialize(state, options);
             
             // Initialization
-            BeaconChainUtility beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
+            IBeaconChainUtility beaconChainUtility = testServiceProvider.GetService<IBeaconChainUtility>();
             ICryptographyService cryptographyService = testServiceProvider.GetService<ICryptographyService>();
             IForkChoice forkChoice = testServiceProvider.GetService<IForkChoice>();
            

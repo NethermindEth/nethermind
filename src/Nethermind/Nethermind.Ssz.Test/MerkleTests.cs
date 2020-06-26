@@ -17,6 +17,7 @@
 using System;
 using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Merkleization;
 using NUnit.Framework;
 
 namespace Nethermind.Ssz.Test

@@ -23,6 +23,7 @@ using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Merkleization;
 using NUnit.Framework;
 using Shouldly;
 using Bytes = Nethermind.Core2.Bytes;
@@ -236,7 +237,7 @@ namespace Nethermind.Ssz.Test
                 new Gwei(0xd),
                 new BlsSignature(Enumerable.Repeat((byte) 0xef, BlsSignature.Length).ToArray())
             );
-            IList<DepositData> depositDataList = new List<DepositData> {depositData1, depositData2};
+            List<DepositData> depositDataList = new List<DepositData> {depositData1, depositData2};
 
             // act
             Merkle.Ize(out UInt256 root, depositDataList);

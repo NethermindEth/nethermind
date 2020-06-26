@@ -45,13 +45,13 @@ namespace Nethermind.Benchmarks.Evm
         [Benchmark]
         public bool Improved()
         {
-            return _codeInfo.ValidateJump(0);
+            return _codeInfo.ValidateJump(0, false);
         }
 
         [Benchmark]
         public bool Current()
         {
-            return _codeInfo.ValidateJump(0);
+            return _codeInfo.ValidateJump(0, false);
         }
     }
 }

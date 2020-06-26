@@ -32,14 +32,14 @@ namespace Nethermind.DepositContract.Test.JsonRpc
         [Test]
         public void event_hash_is_valid()
         {
-            Contracts.DepositContract depositContract = new Contracts.DepositContract(new AbiEncoder(), Address.Zero);
+            DepositContract depositContract = new DepositContract(new AbiEncoder(), Address.Zero);
             depositContract.DepositEventHash.Should().Be(new Keccak("0x649bbc62d0e31342afea4e5cd82d4049e7e1ee912fc0889aa790803be39038c5"));
         }
         
         [Test]
         public void can_make_deposit()
         {
-            Contracts.DepositContract depositContract = new Contracts.DepositContract(new AbiEncoder(), Address.Zero);
+            DepositContract depositContract = new DepositContract(new AbiEncoder(), Address.Zero);
             Transaction transaction = depositContract.Deposit(TestItem.AddressA, new byte[42], new byte[32], new byte[96], new byte[32]);
             transaction.Data.Should().HaveCount(484);
         }

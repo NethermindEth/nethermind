@@ -43,8 +43,8 @@ namespace Nethermind.BeaconNode.Eth1Bridge
 
         // 7bxx - mock
 
-        public static readonly Action<ILogger, Bytes32, ulong, int, Exception?> QuickStartGenesisDataCreated =
-            LoggerMessage.Define<Bytes32, ulong, int>(LogLevel.Debug,
+        public static readonly Action<ILogger, Bytes32, ulong, uint, Exception?> QuickStartGenesisDataCreated =
+            LoggerMessage.Define<Bytes32, ulong, uint>(LogLevel.Debug,
                 new EventId(7300, nameof(QuickStartGenesisDataCreated)),
                 "Quick start genesis data created with block hash {BlockHash}, genesis time {GenesisTime:n0}, and {DepositCount} deposits.");
         public static readonly Action<ILogger, ValidatorIndex, string, Exception?> QuickStartAddValidator =

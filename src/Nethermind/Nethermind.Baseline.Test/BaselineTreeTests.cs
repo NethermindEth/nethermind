@@ -141,7 +141,7 @@ namespace Nethermind.Baseline.Test
         [TestCase(2u, 1u)]
         [TestCase(3u, 2u)]
         [TestCase(7u, 3u)]
-        [TestCase(_lastNodeIndex, 31u)]
+        [TestCase(_lastNodeIndex, 32u)]
         [TestCase(_lastNodeIndex + 1ul, null)]
         public void Can_calculate_node_row(ulong nodeIndex, uint? expectedRow)
         {

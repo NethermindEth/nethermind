@@ -37,7 +37,7 @@ namespace Nethermind.BeaconNode.Test.Storage
             ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
             BeaconState state = TestState.PrepareTestState(testServiceProvider);
             ICryptographyService cryptographyService = testServiceProvider.GetService<ICryptographyService>();
-            BeaconChainUtility beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
+            IBeaconChainUtility beaconChainUtility = testServiceProvider.GetService<IBeaconChainUtility>();
             IForkChoice forkChoice = testServiceProvider.GetService<IForkChoice>();
             // Get genesis store initialise MemoryStoreProvider with the state
             IStore store = testServiceProvider.GetService<IStore>();

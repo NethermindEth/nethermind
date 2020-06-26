@@ -16,10 +16,12 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Diagnostics;
 using System.Linq;
 
 namespace Nethermind.Core2.Types
 {
+    [DebuggerStepThrough]
     public class Bytes32 : IEquatable<Bytes32>
     {
         public const int Length = 32;
@@ -34,6 +36,11 @@ namespace Nethermind.Core2.Types
         public static Bytes32 Wrap(byte[] bytes)
         {
             return new Bytes32(bytes);
+        }
+        
+        public byte[] Unwrap()
+        {
+            return _bytes;
         }
         
         private Bytes32(byte[] bytes)

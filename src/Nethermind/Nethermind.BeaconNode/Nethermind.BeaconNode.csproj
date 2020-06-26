@@ -4,6 +4,7 @@
     <ProjectReference Include="..\Nethermind.Core2.Configuration\Nethermind.Core2.Configuration.csproj" />
     <ProjectReference Include="..\Nethermind.Cryptography.Bls\Nethermind.Cryptography.Bls.csproj" />
     <ProjectReference Include="..\Nethermind.Logging.Microsoft\Nethermind.Logging.Microsoft.csproj" />
+    <ProjectReference Include="..\Nethermind.Merkleization\Nethermind.Merkleization.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -18,7 +19,7 @@
   </ItemGroup>
 
   <PropertyGroup>
-    <TargetFramework>netstandard2.1</TargetFramework>
+    <TargetFramework>netcoreapp3.1</TargetFramework>
     <Product>Nethermind Eth2.0 blockchain</Product>
     <Authors>sgryphon</Authors>
     <Copyright>Copyright © 2019 Demerzel Solutions Limited</Copyright>

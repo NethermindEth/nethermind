@@ -36,7 +36,7 @@ namespace Nethermind.BeaconNode.Test.Helpers
         public static SignedVoluntaryExit SignVoluntaryExit(IServiceProvider testServiceProvider, BeaconState state, VoluntaryExit voluntaryExit, byte[] privateKey)
         {
             var signatureDomains = testServiceProvider.GetService<IOptions<SignatureDomains>>().Value;
-            BeaconChainUtility beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
+            IBeaconChainUtility beaconChainUtility = testServiceProvider.GetService<IBeaconChainUtility>();
             var beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
             ICryptographyService cryptographyService = testServiceProvider.GetService<ICryptographyService>();
 
