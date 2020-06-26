@@ -217,8 +217,8 @@ namespace Nethermind.Baseline.JsonRpc
             else if (!leafIndexesAreValid)
             {
                 result = ResultWrapper<BaselineTreeNode[]>.Fail(
-                    $"one of the leaf indexes is not valid"
-                ErrorCodes.InvalidInput);
+                    $"one of the leaf indexes is not valid",
+                    ErrorCodes.InvalidInput);
             }
             else
             {
