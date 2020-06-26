@@ -40,38 +40,38 @@ namespace Nethermind.Synchronization.FastSync
     {
         private const int AlreadySavedCapacity = 1024 * 64;
         private const int MaxRequestSize = 384;
-        private const StateSyncBatch _emptyBatch = null;
+        private const StateSyncBatch EmptyBatch = null;
 
-        private static AccountDecoder _accountDecoder = new AccountDecoder();
+        private static readonly AccountDecoder AccountDecoder = new AccountDecoder();
 
-        private DetailedProgress _data;
-        private IPendingSyncItems _pendingItems;
+        private readonly DetailedProgress _data;
+        private readonly IPendingSyncItems _pendingItems;
 
-        private Keccak _fastSyncProgressKey = Keccak.Zero;
+        private readonly Keccak _fastSyncProgressKey = Keccak.Zero;
 
         private DateTime _lastReview = DateTime.UtcNow;
         private DateTime _currentSyncStart;
         private long _currentSyncStartSecondsInSync;
 
-        private object _stateDbLock = new object();
-        private object _codeDbLock = new object();
+        private readonly object _stateDbLock = new object();
+        private readonly object _codeDbLock = new object();
 
-        private Stopwatch _networkWatch = new Stopwatch();
-        private Stopwatch _handleWatch = new Stopwatch();
+        private readonly Stopwatch _networkWatch = new Stopwatch();
+        private readonly Stopwatch _handleWatch = new Stopwatch();
 
         private Keccak _rootNode = Keccak.EmptyTreeHash;
 
-        private ILogger _logger;
-        private IDb _codeDb;
-        private IDb _stateDb;
+        private readonly ILogger _logger;
+        private readonly IDb _codeDb;
+        private readonly IDb _stateDb;
         private readonly IDb _tempDb;
         private readonly ISyncModeSelector _syncModeSelector;
         private readonly IBlockTree _blockTree;
 
-        private ConcurrentDictionary<StateSyncBatch, object> _pendingRequests = new ConcurrentDictionary<StateSyncBatch, object>();
+        private readonly ConcurrentDictionary<StateSyncBatch, object> _pendingRequests = new ConcurrentDictionary<StateSyncBatch, object>();
         private Dictionary<Keccak, HashSet<DependentItem>> _dependencies = new Dictionary<Keccak, HashSet<DependentItem>>();
         private LruKeyCache<Keccak> _alreadySaved = new LruKeyCache<Keccak>(AlreadySavedCapacity, "saved nodes");
-        private HashSet<Keccak> _codesSameAsNodes = new HashSet<Keccak>();
+        private readonly HashSet<Keccak> _codesSameAsNodes = new HashSet<Keccak>();
 
         private StateSyncProgress _syncProgress;
         private int _hintsToResetRoot;
@@ -303,7 +303,7 @@ namespace Nethermind.Synchronization.FastSync
 
         public override SyncResponseHandlingResult HandleResponse(StateSyncBatch batch)
         {
-            if (batch == _emptyBatch)
+            if (batch == EmptyBatch)
             {
                 _logger.Error("Received empty batch as a response");
             }
@@ -566,7 +566,7 @@ namespace Nethermind.Synchronization.FastSync
                     {
                         _pendingItems.MaxStateLevel = 64;
                         DependentItem dependentItem = new DependentItem(currentStateSyncItem, currentResponseItem, 0, true);
-                        (Keccak codeHash, Keccak storageRoot) = _accountDecoder.DecodeHashesOnly(new RlpStream(trieNode.Value));
+                        (Keccak codeHash, Keccak storageRoot) = AccountDecoder.DecodeHashesOnly(new RlpStream(trieNode.Value));
                         if (codeHash != Keccak.OfAnEmptyString)
                         {
                             // prepare a branch without the code DB
@@ -653,14 +653,14 @@ namespace Nethermind.Synchronization.FastSync
                 {
                     if (_logger.IsDebug) _logger.Debug("Falling asleep - root is empty tree");
                     FallAsleep();
-                    return _emptyBatch;
+                    return EmptyBatch;
                 }
 
                 if (_hintsToResetRoot >= 32)
                 {
                     if (_logger.IsDebug) _logger.Debug("Falling asleep - many missing responses");
                     FallAsleep();
-                    return _emptyBatch;
+                    return EmptyBatch;
                 }
 
                 lock (_stateDbLock)
@@ -670,7 +670,7 @@ namespace Nethermind.Synchronization.FastSync
                     {
                         VerifyPostSyncCleanUp();
                         FallAsleep();
-                        return _emptyBatch;
+                        return EmptyBatch;
                     }
                 }
 
@@ -707,12 +707,12 @@ namespace Nethermind.Synchronization.FastSync
                     Interlocked.Increment(ref _hintsToResetRoot);
                 }
 
-                return await Task.FromResult(_emptyBatch);
+                return await Task.FromResult(EmptyBatch);
             }
             catch (Exception e)
             {
                 _logger.Error("Error when preparing a batch", e);
-                return await Task.FromResult(_emptyBatch);
+                return await Task.FromResult(EmptyBatch);
             }
         }
 

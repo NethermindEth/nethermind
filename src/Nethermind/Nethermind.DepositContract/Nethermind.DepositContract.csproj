@@ -10,11 +10,7 @@
     </ItemGroup>
 
     <ItemGroup>
-        <None Remove="validator_registration.json" />
-    </ItemGroup>
-
-    <ItemGroup>
-        <Content Include="contracts\DepositContract.json">
+        <Content Include="contracts/DepositContract.json">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </Content>
     </ItemGroup>

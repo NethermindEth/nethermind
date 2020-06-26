@@ -12,7 +12,6 @@
     </ItemGroup>
 
     <ItemGroup>
-      <PackageReference Include="Microsoft.AspNetCore.DataProtection" Version="3.1.5" />
       <PackageReference Include="Microsoft.AspNetCore.DataProtection.Abstractions" Version="3.1.5" />
       <PackageReference Include="Microsoft.AspNetCore.DataProtection.Extensions" Version="3.1.5" />
       <PackageReference Include="Portable.BouncyCastle" Version="1.8.6.7" />
