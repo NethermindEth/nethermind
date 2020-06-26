@@ -103,7 +103,7 @@ namespace Nethermind.BeaconNode.Test.EpochProcessing
 
             GweiValues gweiValues = testServiceProvider.GetService<IOptions<GweiValues>>().Value;
 
-            BeaconChainUtility beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
+            IBeaconChainUtility beaconChainUtility = testServiceProvider.GetService<IBeaconChainUtility>();
             BeaconStateAccessor beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
             BeaconStateTransition beaconStateTransition = testServiceProvider.GetService<BeaconStateTransition>();
 

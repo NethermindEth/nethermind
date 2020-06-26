@@ -43,7 +43,7 @@ namespace Nethermind.DepositContract
         private readonly ILogFinder _logFinder;
         private readonly IDepositConfig _depositConfig;
         private readonly ILogger _logger;
-        private Contracts.DepositContract? _depositContract;
+        private DepositContract? _depositContract;
 
         public DepositModule(ITxPoolBridge txPoolBridge, ILogFinder logFinder, IDepositConfig depositConfig, ILogManager logManager)
         {
@@ -55,7 +55,7 @@ namespace Nethermind.DepositContract
             if (!string.IsNullOrEmpty(depositConfig.DepositContractAddress))
             {
                 var address = new Address(depositConfig.DepositContractAddress);
-                _depositContract = new Contracts.DepositContract(new AbiEncoder(), address);
+                _depositContract = new DepositContract(new AbiEncoder(), address);
             }
         }
 
@@ -81,7 +81,7 @@ namespace Nethermind.DepositContract
         public ValueTask<ResultWrapper<bool>> deposit_setContractAddress(Address contractAddress)
         {
             _depositConfig.DepositContractAddress = contractAddress.ToString();
-            _depositContract = new Contracts.DepositContract(new AbiEncoder(), contractAddress);
+            _depositContract = new DepositContract(new AbiEncoder(), contractAddress);
             return new ValueTask<ResultWrapper<bool>>(ResultWrapper<bool>.Success(true));
         }
 

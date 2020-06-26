@@ -41,8 +41,8 @@ namespace Nethermind.Runner
                       ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        private const decimal AvailableForDb = 0.95m;
-        private const decimal AvailableForNetty = 0.05m;
+        private const decimal AvailableForDb = 0.75m;
+        private const decimal AvailableForNetty = 0.25m;
 
         /// <param name="memoryHint"></param>
         /// <param name="cpuCount"></param>
@@ -286,7 +286,7 @@ namespace Nethermind.Runner
                     }
                 }
 
-                networkConfig.NettyArenaOrder = targetNettyArenaOrder;
+                networkConfig.NettyArenaOrder = Math.Min(11, targetNettyArenaOrder);
             }
         }
 

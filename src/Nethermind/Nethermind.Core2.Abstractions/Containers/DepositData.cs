@@ -22,6 +22,8 @@ namespace Nethermind.Core2.Containers
 {
     public class DepositData : IEquatable<DepositData>
     {
+        public Ref<DepositData> OrRoot => new Ref<DepositData>(this);
+
         public static readonly DepositData Zero = new DepositData(BlsPublicKey.Zero, Bytes32.Zero, Gwei.Zero,
             BlsSignature.Zero);
         

@@ -26,6 +26,8 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Evm.Precompiles.Bls.Shamatar;
+using Nethermind.Evm.Precompiles.Snarks.Shamatar;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -366,7 +368,7 @@ namespace Nethermind.Evm
 
         public CodeInfo GetCachedCodeInfo(Address codeSource, IReleaseSpec releaseSpec)
         {
-            if (codeSource.IsPrecompiled(releaseSpec))
+            if (codeSource.IsPrecompile(releaseSpec))
             {
                 return _precompiles[codeSource];
             }
@@ -397,15 +399,27 @@ namespace Nethermind.Evm
         {
             _precompiles = new Dictionary<Address, CodeInfo>
             {
-                [EcRecoverPrecompiledContract.Instance.Address] = new CodeInfo(EcRecoverPrecompiledContract.Instance),
-                [Sha256PrecompiledContract.Instance.Address] = new CodeInfo(Sha256PrecompiledContract.Instance),
-                [Ripemd160PrecompiledContract.Instance.Address] = new CodeInfo(Ripemd160PrecompiledContract.Instance),
-                [IdentityPrecompiledContract.Instance.Address] = new CodeInfo(IdentityPrecompiledContract.Instance),
-                [Bn128AddPrecompiledContract.Instance.Address] = new CodeInfo(Bn128AddPrecompiledContract.Instance),
-                [Bn128MulPrecompiledContract.Instance.Address] = new CodeInfo(Bn128MulPrecompiledContract.Instance),
-                [Bn128PairingPrecompiledContract.Instance.Address] = new CodeInfo(Bn128PairingPrecompiledContract.Instance),
-                [ModExpPrecompiledContract.Instance.Address] = new CodeInfo(ModExpPrecompiledContract.Instance),
-                [Blake2BPrecompiledContract.Instance.Address] = new CodeInfo(Blake2BPrecompiledContract.Instance),
+                [EcRecoverPrecompile.Instance.Address] = new CodeInfo(EcRecoverPrecompile.Instance),
+                [Sha256Precompile.Instance.Address] = new CodeInfo(Sha256Precompile.Instance),
+                [Ripemd160Precompile.Instance.Address] = new CodeInfo(Ripemd160Precompile.Instance),
+                [IdentityPrecompile.Instance.Address] = new CodeInfo(IdentityPrecompile.Instance),
+                
+                [Bn256AddPrecompile.Instance.Address] = new CodeInfo(Bn256AddPrecompile.Instance),
+                [Bn256MulPrecompile.Instance.Address] = new CodeInfo(Bn256MulPrecompile.Instance),
+                [Bn256PairingPrecompile.Instance.Address] = new CodeInfo(Bn256PairingPrecompile.Instance),
+                [ModExpPrecompile.Instance.Address] = new CodeInfo(ModExpPrecompile.Instance),
+                
+                [Blake2FPrecompile.Instance.Address] = new CodeInfo(Blake2FPrecompile.Instance),
+                
+                [G1AddPrecompile.Instance.Address] = new CodeInfo(G1AddPrecompile.Instance),
+                [G1MulPrecompile.Instance.Address] = new CodeInfo(G1MulPrecompile.Instance),
+                [G1MultiExpPrecompile.Instance.Address] = new CodeInfo(G1MultiExpPrecompile.Instance),
+                [G2AddPrecompile.Instance.Address] = new CodeInfo(G2AddPrecompile.Instance),
+                [G2MulPrecompile.Instance.Address] = new CodeInfo(G2MulPrecompile.Instance),
+                [G2MultiExpPrecompile.Instance.Address] = new CodeInfo(G2MultiExpPrecompile.Instance),
+                [PairingPrecompile.Instance.Address] = new CodeInfo(PairingPrecompile.Instance),
+                [MapToG1Precompile.Instance.Address] = new CodeInfo(MapToG1Precompile.Instance),
+                [MapToG2Precompile.Instance.Address] = new CodeInfo(MapToG2Precompile.Instance),
             };
         }
 
@@ -431,7 +445,7 @@ namespace Nethermind.Evm
             UInt256 transferValue = state.Env.TransferValue;
             long gasAvailable = state.GasAvailable;
 
-            IPrecompiledContract precompile = state.Env.CodeInfo.PrecompiledContract;
+            IPrecompile precompile = state.Env.CodeInfo.Precompile;
             long baseGasCost = precompile.BaseGasCost(spec);
             long dataGasCost = precompile.DataGasCost(callData, spec);
 
@@ -2635,18 +2649,18 @@ namespace Nethermind.Evm
             return CallResult.Empty;
         }
 
-        internal readonly struct CallResult
+        internal readonly ref struct CallResult
         {
-            public static CallResult InvalidSubroutineEntry = new CallResult(EvmExceptionType.InvalidSubroutineEntry);
-            public static CallResult InvalidSubroutineReturn = new CallResult(EvmExceptionType.InvalidSubroutineReturn);
-            public static CallResult OutOfGasException = new CallResult(EvmExceptionType.OutOfGas);
-            public static CallResult AccessViolationException = new CallResult(EvmExceptionType.AccessViolation);
-            public static CallResult InvalidJumpDestination = new CallResult(EvmExceptionType.InvalidJumpDestination);
-            public static CallResult InvalidInstructionException = new CallResult(EvmExceptionType.BadInstruction);
-            public static CallResult StaticCallViolationException = new CallResult(EvmExceptionType.StaticCallViolation);
-            public static CallResult StackOverflowException = new CallResult(EvmExceptionType.StackOverflow); // TODO: use these to avoid CALL POP attacks
-            public static CallResult StackUnderflowException = new CallResult(EvmExceptionType.StackUnderflow); // TODO: use these to avoid CALL POP attacks
-            public static readonly CallResult Empty = new CallResult(Bytes.Empty, null);
+            public static CallResult InvalidSubroutineEntry => new CallResult(EvmExceptionType.InvalidSubroutineEntry);
+            public static CallResult InvalidSubroutineReturn => new CallResult(EvmExceptionType.InvalidSubroutineReturn);
+            public static CallResult OutOfGasException => new CallResult(EvmExceptionType.OutOfGas);
+            public static CallResult AccessViolationException => new CallResult(EvmExceptionType.AccessViolation);
+            public static CallResult InvalidJumpDestination => new CallResult(EvmExceptionType.InvalidJumpDestination);
+            public static CallResult InvalidInstructionException => new CallResult(EvmExceptionType.BadInstruction);
+            public static CallResult StaticCallViolationException => new CallResult(EvmExceptionType.StaticCallViolation);
+            public static CallResult StackOverflowException => new CallResult(EvmExceptionType.StackOverflow); // TODO: use these to avoid CALL POP attacks
+            public static CallResult StackUnderflowException => new CallResult(EvmExceptionType.StackUnderflow); // TODO: use these to avoid CALL POP attacks
+            public static CallResult Empty => new CallResult(Bytes.Empty, null);
 
             public CallResult(EvmState stateToExecute)
             {

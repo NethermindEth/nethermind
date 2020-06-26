@@ -127,7 +127,7 @@ namespace Nethermind.Core.Test
             byte[] addressBytes = new byte[20];
             addressBytes[19] = 1;
             Address address = new Address(addressBytes);
-            Assert.True(address.IsPrecompiled(Frontier.Instance));
+            Assert.True(address.IsPrecompile(Frontier.Instance));
         }
         
         [Test]
@@ -136,7 +136,7 @@ namespace Nethermind.Core.Test
             byte[] addressBytes = new byte[20];
             addressBytes[19] = 4;
             Address address = new Address(addressBytes);
-            Assert.True(address.IsPrecompiled(Frontier.Instance));
+            Assert.True(address.IsPrecompile(Frontier.Instance));
         }
         
         [Test]
@@ -145,7 +145,7 @@ namespace Nethermind.Core.Test
             byte[] addressBytes = new byte[20];
             addressBytes[19] = 5;
             Address address = new Address(addressBytes);
-            Assert.False(address.IsPrecompiled(Frontier.Instance));
+            Assert.False(address.IsPrecompile(Frontier.Instance));
         }
         
         [Test]
@@ -154,7 +154,7 @@ namespace Nethermind.Core.Test
             byte[] addressBytes = new byte[20];
             addressBytes[19] = 5;
             Address address = new Address(addressBytes);
-            Assert.True(address.IsPrecompiled(Byzantium.Instance));
+            Assert.True(address.IsPrecompile(Byzantium.Instance));
         }
         
         [Test]
@@ -163,7 +163,7 @@ namespace Nethermind.Core.Test
             byte[] addressBytes = new byte[20];
             addressBytes[19] = 9;
             Address address = new Address(addressBytes);
-            Assert.False(address.IsPrecompiled(Byzantium.Instance));
+            Assert.False(address.IsPrecompile(Byzantium.Instance));
         }
         
         [TestCase(0, false)]
@@ -172,7 +172,7 @@ namespace Nethermind.Core.Test
         public void From_number_for_precompile(int number, bool isPrecompile)
         {
             Address address = Address.FromNumber((UInt256)number);
-            Assert.AreEqual(isPrecompile, address.IsPrecompiled(Byzantium.Instance));
+            Assert.AreEqual(isPrecompile, address.IsPrecompile(Byzantium.Instance));
         }
         
         [TestCase(0, "0x24cd2edba056b7c654a50e8201b619d4f624fdda")]

@@ -31,9 +31,10 @@ namespace Nethermind.BeaconNode
 {
     public class BeaconStateTransition
     {
-        private readonly BeaconChainUtility _beaconChainUtility;
+        private readonly IBeaconChainUtility _beaconChainUtility;
         private readonly BeaconStateAccessor _beaconStateAccessor;
         private readonly BeaconStateMutator _beaconStateMutator;
+        private readonly IDepositStore _depositStore;
         private readonly ChainConstants _chainConstants;
         private readonly ICryptographyService _cryptographyService;
         private readonly IOptionsMonitor<GweiValues> _gweiValueOptions;
@@ -53,9 +54,10 @@ namespace Nethermind.BeaconNode
             IOptionsMonitor<MaxOperationsPerBlock> maxOperationsPerBlockOptions,
             IOptionsMonitor<SignatureDomains> signatureDomainOptions,
             ICryptographyService cryptographyService,
-            BeaconChainUtility beaconChainUtility,
+            IBeaconChainUtility beaconChainUtility,
             BeaconStateAccessor beaconStateAccessor,
-            BeaconStateMutator beaconStateMutator)
+            BeaconStateMutator beaconStateMutator,
+            IDepositStore depositStore)
         {
             _logger = logger;
             _chainConstants = chainConstants;
@@ -69,6 +71,7 @@ namespace Nethermind.BeaconNode
             _beaconChainUtility = beaconChainUtility;
             _beaconStateAccessor = beaconStateAccessor;
             _beaconStateMutator = beaconStateMutator;
+            _depositStore = depositStore;
         }
 
         public (IList<Gwei> rewards, IList<Gwei> penalties) GetAttestationDeltas(BeaconState state)
@@ -407,40 +410,43 @@ namespace Nethermind.BeaconNode
 
             GweiValues gweiValues = _gweiValueOptions.CurrentValue;
 
-            // Verify the Merkle branch
-            Root depositDataRoot = _cryptographyService.HashTreeRoot(deposit.Data);
-            bool isValid = _beaconChainUtility.IsValidMerkleBranch(
-                new Bytes32(depositDataRoot.AsSpan()), 
-                deposit.Proof,
-                _chainConstants.DepositContractTreeDepth + 1, // Add 1 for the List length mix-in
-                state.Eth1DepositIndex,
-                state.Eth1Data.DepositRoot);
+            bool isValid = _depositStore.Verify(deposit);
             if (!isValid)
             {
-                throw new Exception($"Invalid Merkle branch for deposit for validator public key {deposit.Data.PublicKey}");
+                throw new Exception($"Invalid Merkle branch for deposit for validator public key {deposit.Data.Item.PublicKey}");
             }
 
             // Deposits must be processed in order
             state.IncreaseEth1DepositIndex();
 
-            BlsPublicKey publicKey = deposit.Data.PublicKey;
-            Gwei amount = deposit.Data.Amount;
-            List<BlsPublicKey> validatorPublicKeys = state.Validators.Select(x => x.PublicKey).ToList();
+            DepositData depositData = deposit.Data.Item;
+            BlsPublicKey publicKey = depositData.PublicKey;
+            Gwei amount = depositData.Amount;
 
-            if (!validatorPublicKeys.Contains(publicKey))
+            ValidatorIndex? validatorIndex = null;
+            for (int i = 0; i < state.Validators.Count; i++)
+            {
+                if (publicKey.Equals(state.Validators[i].PublicKey))
+                {
+                    validatorIndex = new ValidatorIndex((ulong)i);
+                    break;
+                }
+            }
+            
+            if (validatorIndex is null)
             {
                 // Verify the deposit signature (proof of possession) which is not checked by the deposit contract
                 DepositMessage depositMessage = new DepositMessage(
-                    deposit.Data.PublicKey,
-                    deposit.Data.WithdrawalCredentials,
-                    deposit.Data.Amount);
+                    depositData.PublicKey,
+                    depositData.WithdrawalCredentials,
+                    depositData.Amount);
                 // Fork-agnostic domain since deposits are valid across forks
                 Domain domain = _beaconChainUtility.ComputeDomain(_signatureDomainOptions.CurrentValue.Deposit);
 
                 Root depositMessageRoot = _cryptographyService.HashTreeRoot(depositMessage);
                 Root signingRoot = _beaconChainUtility.ComputeSigningRoot(depositMessageRoot, domain);
 
-                if (!_cryptographyService.BlsVerify(publicKey, signingRoot, deposit.Data.Signature))
+                if (!_cryptographyService.BlsVerify(publicKey, signingRoot, depositData.Signature))
                 {
                     return;
                 }
@@ -448,7 +454,7 @@ namespace Nethermind.BeaconNode
                 Gwei effectiveBalance = Gwei.Min(amount - (amount % gweiValues.EffectiveBalanceIncrement), gweiValues.MaximumEffectiveBalance);
                 Validator newValidator = new Validator(
                     publicKey,
-                    deposit.Data.WithdrawalCredentials,
+                    depositData.WithdrawalCredentials,
                     effectiveBalance,
                     false,
                     _chainConstants.FarFutureEpoch,
@@ -459,8 +465,7 @@ namespace Nethermind.BeaconNode
             }
             else
             {
-                ValidatorIndex index = (ulong)validatorPublicKeys.IndexOf(publicKey);
-                _beaconStateMutator.IncreaseBalance(state, index, amount);
+                _beaconStateMutator.IncreaseBalance(state, validatorIndex.Value, amount);
             }
         }
 

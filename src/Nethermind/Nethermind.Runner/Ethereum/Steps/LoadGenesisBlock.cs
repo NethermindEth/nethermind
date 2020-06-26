@@ -103,6 +103,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context.BlockTree.NewHeadBlock += GenesisProcessed;
             _context.BlockTree.SuggestBlock(genesis);
             genesisProcessedEvent.Wait(TimeSpan.FromSeconds(40));
+            
             if (!genesisLoaded)
             {
                 throw new BlockchainException("Genesis block processing failure");
