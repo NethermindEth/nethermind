@@ -20,6 +20,7 @@ using System.Linq;
 using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa.Contracts;
@@ -559,7 +560,7 @@ namespace Nethermind.AuRa.Test.Validators
                 .OfChainLength(9, 0, 0, validators);
             
             var blockTree = blockTreeBuilder.TestObject;
-            SetupInitialValidators(blockTree.Head?.Header, validators);
+            SetupInitialValidators(blockTree.Head?.Header, blockTree.FindHeader(blockTree.Head?.ParentHash, BlockTreeLookupOptions.None), validators);
             IAuRaValidator validator = new ContractBasedValidator(_validatorContract, blockTree, inMemoryReceiptStorage, _validatorStore, _validSealerStrategy, _blockFinalizationManager, _parentHeader, _logManager, 1);
             
             _abiEncoder.Decode(_validatorContract.AbiDefinition.Functions[ValidatorContract.GetValidatorsFunction].GetReturnInfo(), Arg.Any<byte[]>())
@@ -605,14 +606,22 @@ namespace Nethermind.AuRa.Test.Validators
 
         private void SetupInitialValidators(BlockHeader header, params Address[] initialValidators)
         {
+            SetupInitialValidators(header, null, initialValidators);
+        }
+
+        private void SetupInitialValidators(BlockHeader header, BlockHeader parentHeader, params Address[] initialValidators)
+        {
             _initialValidators = initialValidators;
-            
-            _parentHeader = Build.A.BlockHeader.WithNumber(header.Number - 1).TestObject;
-            _blockTree.FindHeader(header.ParentHash, BlockTreeLookupOptions.None).Returns(_parentHeader);
+
+            if (parentHeader == null)
+            {
+                parentHeader = _parentHeader = Build.A.BlockHeader.WithNumber(header.Number - 1).TestObject;
+                _blockTree.FindHeader(header.ParentHash, BlockTreeLookupOptions.None).Returns(_parentHeader);
+            }
 
             _transactionProcessor.When(x => x.CallAndRestore(
                     Arg.Is<Transaction>(t => CheckTransaction(t, _getValidatorsData)),
-                    Arg.Is<BlockHeader>(h => h == header || h == _parentHeader),
+                    Arg.Is<BlockHeader>(h => CheckHeader(header, parentHeader, h)),
                     Arg.Is<ITxTracer>(t => t is CallOutputTracer)))
                 .Do(args =>
                     args.Arg<ITxTracer>().MarkAsSuccess(
@@ -620,6 +629,11 @@ namespace Nethermind.AuRa.Test.Validators
                         0,
                         SetupAbiAddresses(_initialValidators),
                         Array.Empty<LogEntry>()));
+        }
+
+        private static bool CheckHeader(BlockHeader header, BlockHeader parentHeader, BlockHeader h)
+        {
+            return h == header || h == parentHeader;
         }
 
         private byte[] SetupAbiAddresses(Address[] addresses)
