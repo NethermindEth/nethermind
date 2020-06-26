@@ -621,7 +621,7 @@ namespace Nethermind.AuRa.Test.Validators
 
             _transactionProcessor.When(x => x.CallAndRestore(
                     Arg.Is<Transaction>(t => CheckTransaction(t, _getValidatorsData)),
-                    Arg.Is<BlockHeader>(h => CheckHeader(header, parentHeader, h)),
+                    Arg.Any<BlockHeader>(),
                     Arg.Is<ITxTracer>(t => t is CallOutputTracer)))
                 .Do(args =>
                     args.Arg<ITxTracer>().MarkAsSuccess(
@@ -629,11 +629,6 @@ namespace Nethermind.AuRa.Test.Validators
                         0,
                         SetupAbiAddresses(_initialValidators),
                         Array.Empty<LogEntry>()));
-        }
-
-        private static bool CheckHeader(BlockHeader header, BlockHeader parentHeader, BlockHeader h)
-        {
-            return h == header || h == parentHeader;
         }
 
         private byte[] SetupAbiAddresses(Address[] addresses)
