@@ -24,6 +24,9 @@ namespace Nethermind.Vault
             _initVault = new provide.Vault(_vaultConfig.Host, _vaultConfig.Path, _vaultConfig.Scheme, _vaultConfig.Token);
 
         }
+
+        public async Task DeleteVault(string vaultId) => await _initVault.DeleteVault(_vaultConfig.Token, vaultId);
+
         public async Task<string[]> GetVaults()
         {
             List<string> vaultList = new List<string> {};

@@ -1,10 +1,7 @@
 using FluentAssertions;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Vault.Config;
 using Nethermind.Vault.Styles;
-using NSubstitute;
 using NUnit.Framework;
 using System;
 using System.Collections.Generic;
@@ -18,24 +15,36 @@ namespace Nethermind.Vault.Test
         private IVaultConfig _config;
         private VaultManager _vaultManager;
 
+        public TestContext TestContext { get; set; }
 
-        [SetUp]
+        [OneTimeSetUp]
         public void SetUp()
         {
             _config = new VaultConfig();
-            _config.Host = "localhost";
+            _config.Host = "localhost:8082";
             _config.Scheme = "http";
             _config.Path = "api/v1";
-            _config.Token = "test";
+            _config.Token = $"bearer  {TestContext.Parameters["token"]}";
             _vaultManager = new VaultManager(
                 _config,
                 LimboLogs.Instance
             );
         }
 
+        [TearDown]
+        public async Task TearDown()
+        {
+            var vaults = await _vaultManager.GetVaults();
+            foreach (var vault in vaults)
+            {
+                await _vaultManager.DeleteVault(vault);
+            }      
+        }
+
         [Test]
         public async Task can_return_a_list_of_vaults()
         {
+            Console.WriteLine(_config.Token);
             VaultArgs args = null;
             Dictionary<string, object> parameters = new Dictionary<string,object> 
             {
@@ -47,7 +56,6 @@ namespace Nethermind.Vault.Test
 
             var result = await _vaultManager.GetVaults();
 
-            Console.WriteLine(result);
             result.Should().NotBeNull();
             result.Should().Contain(vault);
         }
@@ -70,6 +78,26 @@ namespace Nethermind.Vault.Test
             var result = await _vaultManager.NewVault(parameters);
 
             result.Should().NotBeNull();
+        }
+
+
+        [Test]
+        public async Task can_delete_vault()
+        {
+            VaultArgs args = null;
+            Dictionary<string, object> parameters = new Dictionary<string,object> 
+            {
+                {
+                    "vaultArgs", args
+                }
+            };
+            var vaultId = await _vaultManager.NewVault(parameters);
+
+            await _vaultManager.DeleteVault(vaultId);
+
+            var vaults = await _vaultManager.GetVaults();
+
+            vaults.Should().NotContain(vaultId);
         }
     }
 }

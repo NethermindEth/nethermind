@@ -24,6 +24,7 @@ namespace Nethermind.Vault
     {
         Task<string> NewVault(Dictionary<string, object> parameters);
         Task<string[]> GetVaults();
+        Task DeleteVault(string vaultId);
         public Task<string> NewVault(VaultArgs args)
         {
             return NewVault(new Dictionary<string, object> 
