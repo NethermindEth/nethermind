@@ -62,6 +62,7 @@ namespace Nethermind.Runner.Test
         [TestCase("xdai_validator.cfg", true, true)]
         [TestCase("spaceneth", false, false)]
         [TestCase("archive", false, false, false)]
+        [TestCase("baseline", false, false, false)]
         [TestCase("beam", true, true, true)]
         [TestCase("fast", true, true)]
         public void Sync_defaults_are_correct(string configWildcard, bool fastSyncEnabled, bool fastBlocksEnabled, bool beamSyncEnabled = false)
@@ -75,6 +76,7 @@ namespace Nethermind.Runner.Test
         [TestCase("fast", true)]
         [TestCase("beam", true)]
         [TestCase("spaceneth", false)]
+        [TestCase("baseline", true)]
         [TestCase("ndm_consumer_goerli.cfg", true)]
         [TestCase("ndm_consumer_local.cfg", true)]
         [TestCase("ndm_consumer_mainnet_proxy.cfg", false)]
@@ -94,6 +96,7 @@ namespace Nethermind.Runner.Test
         [TestCase("xdai", "ws://localhost:3000/api")]
         [TestCase("spaceneth", "ws://localhost:3000/api")]
         [TestCase("volta", "ws://localhost:3000/api")]
+        [TestCase("baseline", "ws://localhost:3000/api")]
         public void Ethstats_values_are_correct(string configWildcard, string host)
         {
             Test<IEthStatsConfig, bool>(configWildcard, c => c.Enabled, false);
@@ -124,6 +127,7 @@ namespace Nethermind.Runner.Test
         }
 
         [TestCase("spaceneth", true)]
+        [TestCase("baseline", true)]
         [TestCase("validators", true)]
         [TestCase("^validators ^spaceneth", false)]
         public void Mining_defaults_are_correct(string configWildcard, bool defaultValue = false)
@@ -150,8 +154,9 @@ namespace Nethermind.Runner.Test
             Test<IInitConfig, bool>(configWildcard, c => c.IsMining, true);
         }
         
+        [TestCase("baseline", true)]
         [TestCase("spaceneth", true)]
-        [TestCase("^spaceneth", false)]
+        [TestCase("^baseline ^spaceneth", false)]
         public void Baseline_is_disabled_by_default(string configWildcard, bool enabled)
         {
             Test<IBaselineConfig, bool>(configWildcard, c => c.Enabled, enabled);
@@ -242,7 +247,9 @@ namespace Nethermind.Runner.Test
             Test<ITxPoolConfig, int>(configWildcard, c => c.Size, poolSize);
         }
 
-        [TestCase("^spaceneth", false)]
+        [TestCase("baseline", true)]
+        [TestCase("spaceneth", true)]
+        [TestCase("^spaceneth ^baseline", false)]
         public void Json_defaults_are_correct(string configWildcard, bool jsonEnabled)
         {
             Test<IJsonRpcConfig, bool>(configWildcard, c => c.Enabled, jsonEnabled);
@@ -473,6 +480,10 @@ namespace Nethermind.Runner.Test
         [ConfigFileGroup("spaceneth")]
         private IEnumerable<string> SpacenethConfigs
             => Configs.Where(config => config.Contains("spaceneth"));
+        
+        [ConfigFileGroup("baseline")]
+        private IEnumerable<string> BaselineConfigs
+            => Configs.Where(config => config.Contains("baseline"));
 
         [ConfigFileGroup("mainnet")]
         private IEnumerable<string> MainnetConfigs
