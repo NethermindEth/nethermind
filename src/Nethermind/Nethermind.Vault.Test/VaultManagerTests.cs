@@ -3,7 +3,6 @@ using Nethermind.Logging;
 using Nethermind.Vault.Config;
 using Nethermind.Vault.Styles;
 using NUnit.Framework;
-using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
@@ -44,7 +43,6 @@ namespace Nethermind.Vault.Test
         [Test]
         public async Task can_return_a_list_of_vaults()
         {
-            Console.WriteLine(_config.Token);
             VaultArgs args = null;
             Dictionary<string, object> parameters = new Dictionary<string,object> 
             {

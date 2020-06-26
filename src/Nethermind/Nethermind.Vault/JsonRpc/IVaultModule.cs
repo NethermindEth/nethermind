@@ -32,6 +32,12 @@ namespace Nethermind.Vault.JsonRpc
         Task<ResultWrapper<object>> vault_createVault(VaultArgs args);
 
         [JsonRpcMethod(
+            Description = "Deletes a Vault",
+            IsReadOnly = false,
+            IsImplemented = true)]
+        Task<ResultWrapper<object>> vault_deleteVault(string vaultId);
+
+        [JsonRpcMethod(
             Description = "Displays a list of Vaults",
             IsReadOnly = false,
             IsImplemented = true)]

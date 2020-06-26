@@ -29,9 +29,7 @@ jobs:
         curl -XPOST -H 'content-type: application/json' http://localhost:8081/api/v1/users -d '{"email": "hello@localhost", "password": "hello12345", "first_name": "A", "last_name": "User"}' -v
         ACCESS_TOKEN=$(curl -XPOST -H 'content-type: application/json' http://localhost:8081/api/v1/authenticate -d '{"email": "hello@localhost", "password": "hello12345"}' -v | jq ".token.access_token" | tr -d '"') 
         export TOKEN="bearer ${ACCESS_TOKEN}"
-        echo $TOKEN
         cd src/Nethermind/Nethermind.Vault.Test
         sed -i '5s/.*/    <Parameter name="token" value="'"$TOKEN"'" \/>/' vault.runsettings
-        cat vault.runsettings
         dotnet test -s vault.runsettings
         

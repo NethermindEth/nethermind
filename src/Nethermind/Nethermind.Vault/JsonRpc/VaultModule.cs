@@ -82,6 +82,20 @@ namespace Nethermind.Vault.JsonRpc
             }
         }
 
+        public async Task<ResultWrapper<object>> vault_deleteVault(string vaultId)
+        {
+            try 
+            {
+                var result = await _initVault.DeleteVault(_vaultConfig.Token, vaultId); 
+
+                return ReturnResult(result);
+            } 
+            catch (Exception e) 
+            {
+                return ResultWrapper<object>.Fail(e.ToString());
+            }
+        }
+
         public async Task<ResultWrapper<object>> vault_deleteKey(string vaultId, string keyId)
         {
             try 
