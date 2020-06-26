@@ -19,6 +19,8 @@ jobs:
       run: |
         cd src/Nethermind/Nethermind.Vault.Test
         docker-compose up -d
+    - name: Check running containers
+      run: docker ps -a
     - name: Create User and Fetch Token
       run: |
         curl -XPOST -H 'content-type: application/json' http://localhost:8081/api/v1/users -d '{"email": "hello@localhost", "password": "hello12345", "first_name": "A", "last_name": "User"}' -v
