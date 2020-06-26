@@ -179,11 +179,11 @@ namespace Nethermind.Runner.Test
         }
         
         [TestCase("fast")]
-        public void External_caches_in_fast_blocks(string configWildcard)
+        public void Caches_in_fast_blocks(string configWildcard)
         {
-            Test<IDbConfig, bool>(configWildcard, c => c.HeadersDbCacheIndexAndFilterBlocks, false);
-            Test<IDbConfig, bool>(configWildcard, c => c.ReceiptsDbCacheIndexAndFilterBlocks, false);
-            Test<IDbConfig, bool>(configWildcard, c => c.BlocksDbCacheIndexAndFilterBlocks, false);
+            Test<IDbConfig, bool>(configWildcard, c => c.HeadersDbCacheIndexAndFilterBlocks, true);
+            Test<IDbConfig, bool>(configWildcard, c => c.ReceiptsDbCacheIndexAndFilterBlocks, true);
+            Test<IDbConfig, bool>(configWildcard, c => c.BlocksDbCacheIndexAndFilterBlocks, true);
             Test<IDbConfig, bool>(configWildcard, c => c.BlockInfosDbCacheIndexAndFilterBlocks, false);
         }
         
@@ -194,8 +194,8 @@ namespace Nethermind.Runner.Test
             Test<IDbConfig, bool>(configWildcard, c => c.CacheIndexAndFilterBlocks, expectedValue);
         }
         
-        [TestCase("mainnet archive", 12000000000)]
-        [TestCase("mainnet ^archive", 6000000000)]
+        [TestCase("mainnet archive", 8000000000)]
+        [TestCase("mainnet ^archive", 4000000000)]
         [TestCase("goerli archive", 3000000000)]
         [TestCase("goerli ^archive", 1500000000)]
         [TestCase("rinkeby archive", 6000000000)]
