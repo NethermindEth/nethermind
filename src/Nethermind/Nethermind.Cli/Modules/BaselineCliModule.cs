@@ -28,7 +28,7 @@ namespace Nethermind.Cli.Modules
             CliParseAddress(contractAddress),
             hashes.Select(CliParseHash).ToArray()
             ).Result;
-
+        
         [CliFunction("baseline", "getRoot")]
         public string GetRoot(string contactAddress) => NodeManager.Post<string>(
             "baseline_getRoot",

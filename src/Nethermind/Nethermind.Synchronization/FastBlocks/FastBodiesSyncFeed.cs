@@ -36,11 +36,11 @@ using Nethermind.Synchronization.SyncLimits;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
-    public class FastBodiesSyncFeed : SyncFeed<BodiesSyncBatch>
+    public class FastBodiesSyncFeed : ActivatedSyncFeed<BodiesSyncBatch>
     {
-        private int _bodiesRequestSize = GethSyncLimits.MaxBodyFetch;
-        private object _dummyObject = new object();
-        private object _reportLock = new object();
+        private readonly int _bodiesRequestSize = GethSyncLimits.MaxBodyFetch;
+        private readonly object _dummyObject = new object();
+        private readonly object _reportLock = new object();
 
         private readonly ILogger _logger;
         private readonly IBlockTree _blockTree;
@@ -48,17 +48,17 @@ namespace Nethermind.Synchronization.FastBlocks
         private readonly ISyncReport _syncReport;
         private readonly ISyncPeerPool _syncPeerPool;
 
-        private ConcurrentDictionary<long, List<Block>> _dependencies = new ConcurrentDictionary<long, List<Block>>();
-        private ConcurrentDictionary<BodiesSyncBatch, object> _sent = new ConcurrentDictionary<BodiesSyncBatch, object>();
-        private ConcurrentQueue<BodiesSyncBatch> _pending = new ConcurrentQueue<BodiesSyncBatch>();
+        private readonly ConcurrentDictionary<long, List<Block>> _dependencies = new ConcurrentDictionary<long, List<Block>>();
+        private readonly ConcurrentDictionary<BodiesSyncBatch, object> _sent = new ConcurrentDictionary<BodiesSyncBatch, object>();
+        private readonly ConcurrentQueue<BodiesSyncBatch> _pending = new ConcurrentQueue<BodiesSyncBatch>();
 
         private Keccak _lowestRequestedBodyHash;
 
-        private long _pivotNumber;
-        private Keccak _pivotHash;
+        private readonly long _pivotNumber;
+        private readonly Keccak _pivotHash;
 
-        public FastBodiesSyncFeed(IBlockTree blockTree, ISyncPeerPool syncPeerPool, ISyncConfig syncConfig, ISyncReport syncReport, ILogManager logManager)
-            : base(logManager)
+        public FastBodiesSyncFeed(ISyncModeSelector syncModeSelector, IBlockTree blockTree, ISyncPeerPool syncPeerPool, ISyncConfig syncConfig, ISyncReport syncReport, ILogManager logManager)
+            : base(syncModeSelector, logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -83,9 +83,9 @@ namespace Nethermind.Synchronization.FastBlocks
             Keccak startBodyHash = lowestInsertedBody?.Hash ?? _pivotHash;
 
             _lowestRequestedBodyHash = startBodyHash;
-
-            Activate();
         }
+
+        protected override SyncMode ActivationSyncModes { get; } = SyncMode.FastBodies & ~SyncMode.FastBlocks;
 
         private bool ShouldFinish => !_syncConfig.DownloadBodiesInFastSync || (_blockTree.LowestInsertedBody?.Number ?? 0) == 1;
         

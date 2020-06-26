@@ -36,9 +36,9 @@ using Nethermind.Synchronization.SyncLimits;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
-    public class FastReceiptsSyncFeed : SyncFeed<ReceiptsSyncBatch>
+    public class FastReceiptsSyncFeed : ActivatedSyncFeed<ReceiptsSyncBatch>
     {
-        private int _requestSize = GethSyncLimits.MaxReceiptFetch;
+        private readonly int _requestSize = GethSyncLimits.MaxReceiptFetch;
 
         private readonly ILogger _logger;
         private readonly IBlockTree _blockTree;
@@ -49,23 +49,23 @@ namespace Nethermind.Synchronization.FastBlocks
         private readonly ISyncPeerPool _syncPeerPool;
         private readonly object _handlerLock = new object();
 
-        private ConcurrentDictionary<long, List<(Block, TxReceipt[])>> _dependencies =
+        private readonly ConcurrentDictionary<long, List<(Block, TxReceipt[])>> _dependencies =
             new ConcurrentDictionary<long, List<(Block, TxReceipt[])>>();
 
-        private ConcurrentDictionary<ReceiptsSyncBatch, object> _sent =
+        private readonly ConcurrentDictionary<ReceiptsSyncBatch, object> _sent =
             new ConcurrentDictionary<ReceiptsSyncBatch, object>();
 
-        private ConcurrentQueue<ReceiptsSyncBatch> _pending =
+        private readonly ConcurrentQueue<ReceiptsSyncBatch> _pending =
             new ConcurrentQueue<ReceiptsSyncBatch>();
 
-        private object _dummyObject = new object();
+        private readonly object _dummyObject = new object();
 
         private bool _hasRequestedFinalBatch;
-        private Keccak _startHash;
+        private readonly Keccak _startHash;
         private Keccak _lowestRequestedHash;
 
-        private long _pivotNumber;
-        private Keccak _pivotHash;
+        private readonly long _pivotNumber;
+        private readonly Keccak _pivotHash;
 
         private bool ShouldFinish => !_syncConfig.DownloadReceiptsInFastSync || _receiptStorage.LowestInsertedReceiptBlock == 1;
 
@@ -74,8 +74,8 @@ namespace Nethermind.Synchronization.FastBlocks
         /// </summary>
         private long ReceiptsInQueue => _dependencies.Sum(d => d.Value.Count);
 
-        public FastReceiptsSyncFeed(ISpecProvider specProvider, IBlockTree blockTree, IReceiptStorage receiptStorage, ISyncPeerPool syncPeerPool, ISyncConfig syncConfig, ISyncReport syncReport, ILogManager logManager)
-            : base(logManager)
+        public FastReceiptsSyncFeed(ISyncModeSelector syncModeSelector, ISpecProvider specProvider, IBlockTree blockTree, IReceiptStorage receiptStorage, ISyncPeerPool syncPeerPool, ISyncConfig syncConfig, ISyncReport syncReport, ILogManager logManager)
+            : base(syncModeSelector, logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
@@ -106,9 +106,9 @@ namespace Nethermind.Synchronization.FastBlocks
 
             _startHash ??= _pivotHash;
             _lowestRequestedHash = _startHash;
-
-            Activate();
         }
+
+        protected override SyncMode ActivationSyncModes { get; } = SyncMode.FastReceipts & ~SyncMode.FastBlocks;
 
         public override bool IsMultiFeed => true;
 
