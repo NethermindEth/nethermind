@@ -23,7 +23,5 @@ namespace Nethermind.Consensus
     {
         void SetSigner(PrivateKey key);
         void SetSigner(ProtectedPrivateKey key);
-        void LockSign();
-        void UnlockSign();
     }
 }

@@ -27,7 +27,7 @@ namespace Nethermind.BeaconNode
 {
     public class SynchronizationManager : ISynchronizationManager
     {
-        private readonly BeaconChainUtility _beaconChainUtility;
+        private readonly IBeaconChainUtility _beaconChainUtility;
         private readonly BeaconStateAccessor _beaconStateAccessor;
         private readonly IForkChoice _forkChoice;
         private readonly ILogger _logger;
@@ -36,7 +36,7 @@ namespace Nethermind.BeaconNode
 
         public SynchronizationManager(
             ILogger<SynchronizationManager> logger,
-            BeaconChainUtility beaconChainUtility,
+            IBeaconChainUtility beaconChainUtility,
             BeaconStateAccessor beaconStateAccessor,
             IForkChoice forkChoice,
             IStore store,

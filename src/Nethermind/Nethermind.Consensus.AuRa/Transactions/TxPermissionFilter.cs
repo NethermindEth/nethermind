@@ -49,7 +49,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
             {
                 var txType = GetTxType(tx);
                 var txPermissions = GetPermissions(tx, parentHeader);
-                if (_logger.IsTrace) _logger.Trace($"Given transaction data: sender: {tx.SenderAddress} to: {tx.To} value: {tx.Value}, gas_price: {tx.GasPrice}. Permissions required: {txType}, got: {txPermissions}.");
+                if (_logger.IsTrace) _logger.Trace($"Given transaction: {tx.Hash} sender: {tx.SenderAddress} to: {tx.To} value: {tx.Value}, gas_price: {tx.GasPrice}. Permissions required: {txType}, got: {txPermissions}.");
                 return (txPermissions & txType) == txType;
             }
         }

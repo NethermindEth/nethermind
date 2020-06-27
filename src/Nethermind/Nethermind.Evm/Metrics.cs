@@ -41,14 +41,14 @@ namespace Nethermind.Evm
         [Description("Number of BLOCKHASH opcodes executed.")]
         public static long BlockhashOpcode { get; set; }
         
-        [Description("Number of BN128_MUL precompile calls.")]
-        public static long Bn128MulPrecompile { get; set; }
+        [Description("Number of BN256_MUL precompile calls.")]
+        public static long Bn256MulPrecompile { get; set; }
         
-        [Description("Number of BN128_ADD precompile calls.")]
-        public static long Bn128AddPrecompile { get; set; }
+        [Description("Number of BN256_ADD precompile calls.")]
+        public static long Bn256AddPrecompile { get; set; }
         
-        [Description("Number of BN128_PAIRING precompile calls.")]
-        public static long Bn128PairingPrecompile { get; set; }
+        [Description("Number of BN256_PAIRING precompile calls.")]
+        public static long Bn256PairingPrecompile { get; set; }
         
         [Description("Number of EC_RECOVERY precompile calls.")]
         public static long EcRecoverPrecompile { get; set; }

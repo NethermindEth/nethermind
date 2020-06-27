@@ -23,7 +23,7 @@ namespace Nethermind.Synchronization.ParallelSync
     {
         None = 0,
         /// <summary>
-        /// First stage of fast sync that downloads headers, bodies and receipts.
+        /// Stage of fast sync that downloads headers, bodies or receipts from pivot to beginning of chain in parallel.
         /// </summary>
         FastBlocks = 1,
         /// <summary>
@@ -46,6 +46,18 @@ namespace Nethermind.Synchronization.ParallelSync
         /// Loading previously downloaded blocks from the DB
         /// </summary>
         DbLoad = 32,
-        All = 63
+        /// <summary>
+        /// Stage of fast sync that downloads headers in parallel.
+        /// </summary>
+        FastHeaders = FastBlocks | 64,
+        /// <summary>
+        /// Stage of fast sync that downloads headers in parallel.
+        /// </summary>
+        FastBodies = FastBlocks | 128,
+        /// <summary>
+        /// Stage of fast sync that downloads headers in parallel.
+        /// </summary>
+        FastReceipts = FastBlocks | 256,
+        All = FastBlocks | FastSync | StateNodes | Full | Beam | DbLoad | FastHeaders | FastBodies | FastReceipts
     }
 }

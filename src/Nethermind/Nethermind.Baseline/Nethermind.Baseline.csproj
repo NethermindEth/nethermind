@@ -14,23 +14,18 @@
     <ProjectReference Include="..\Nethermind.Wallet\Nethermind.Wallet.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <None Remove="contracts\MerkleTreeControllerMiMC.bin" />
     <Content Include="contracts\MerkleTreeControllerMiMC.bin">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <None Remove="contracts\MerkleTreeControllerSHA.bin" />
     <Content Include="contracts\MerkleTreeControllerSHA.bin">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <None Remove="contracts\MerkleTreeMiMC.bin" />
     <Content Include="contracts\MerkleTreeMiMC.bin">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <None Remove="contracts\MerkleTreeSHA.bin" />
     <Content Include="contracts\MerkleTreeSHA.bin">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <None Remove="contracts\MiMC.bin" />
     <Content Include="contracts\MiMC.bin">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>

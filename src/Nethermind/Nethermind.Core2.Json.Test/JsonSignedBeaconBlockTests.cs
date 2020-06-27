@@ -97,12 +97,12 @@ namespace Nethermind.Core2.Json.Test
             int depositContractTreeDepth = 32;
             Deposit deposit = new Deposit(
                 Enumerable.Repeat(new Bytes32(Enumerable.Repeat((byte)0x11, 32).ToArray()), depositContractTreeDepth + 1), 
-                new DepositData(
+                new Ref<DepositData>(new DepositData(
                     new BlsPublicKey(Enumerable.Repeat((byte)0x22, 48).ToArray()), 
                     new Bytes32( Enumerable.Repeat((byte)0x33, 32).ToArray()),
                     new Gwei(32_000_000), 
                     new BlsSignature(Enumerable.Repeat((byte)0x44, 96).ToArray())
-                    ));
+                    )));
 
             BlsSignature randaoReveal = new BlsSignature(Enumerable.Repeat((byte) 0xfe, 96).ToArray());
 
@@ -141,7 +141,7 @@ namespace Nethermind.Core2.Json.Test
             SignedBeaconBlock roundTripSignedBeaconBlock = await JsonSerializer.DeserializeAsync<SignedBeaconBlock>(inputMemoryStream, options);
             
             roundTripSignedBeaconBlock.Message.Body.Eth1Data.BlockHash.AsSpan()[31].ShouldBe((byte)0x34);
-            roundTripSignedBeaconBlock.Message.Body.Deposits[0].Data.Signature.AsSpan()[95].ShouldBe((byte)0x44);
+            roundTripSignedBeaconBlock.Message.Body.Deposits[0].Data.Item.Signature.AsSpan()[95].ShouldBe((byte)0x44);
             roundTripSignedBeaconBlock.Message.Body.Deposits[0].Proof[32].AsSpan()[31].ShouldBe((byte)0x11);
         }
     }

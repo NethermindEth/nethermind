@@ -25,13 +25,13 @@ namespace Nethermind.Evm.Precompiles
     {
         private static byte[] _nineteenZeros = new byte[19];
 
-        public static bool IsPrecompiled(this Address address, IReleaseSpec releaseSpec)
+        public static bool IsPrecompile(this Address address, IReleaseSpec releaseSpec)
         {
             if (!Bytes.AreEqual(address.Bytes.AsSpan(0, 19), _nineteenZeros))
             {
                 return false;
             }
-
+           
             int precompileCode = address[19];
             return precompileCode switch
             {
@@ -44,6 +44,15 @@ namespace Nethermind.Evm.Precompiles
                 7 => releaseSpec.IsEip196Enabled,
                 8 => releaseSpec.IsEip197Enabled,
                 9 => releaseSpec.IsEip152Enabled,
+                10 => releaseSpec.IsEip2537Enabled,
+                11 => releaseSpec.IsEip2537Enabled,
+                12 => releaseSpec.IsEip2537Enabled,
+                13 => releaseSpec.IsEip2537Enabled,
+                14 => releaseSpec.IsEip2537Enabled,
+                15 => releaseSpec.IsEip2537Enabled,
+                16 => releaseSpec.IsEip2537Enabled,
+                17 => releaseSpec.IsEip2537Enabled,
+                18 => releaseSpec.IsEip2537Enabled,
                 _ => false
             };
         }

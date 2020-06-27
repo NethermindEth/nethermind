@@ -93,7 +93,7 @@ namespace Nethermind.Clique.Test
             _currentSigner = _signers[currentSignerIndex];
             _snapshotManager = new SnapshotManager(config, db, _blockTree, ecdsa, LimboLogs.Instance);
             _sealValidator = new CliqueSealValidator(config, _snapshotManager, LimboLogs.Instance);
-            _clique = new CliqueSealer(new Signer(ChainId.Rinkeby, _currentSigner), config, _snapshotManager, LimboLogs.Instance);
+            _clique = new CliqueSealer(new Signer(ChainId.Rinkeby, _currentSigner, LimboLogs.Instance), config, _snapshotManager, LimboLogs.Instance);
         }
 
         [Test]

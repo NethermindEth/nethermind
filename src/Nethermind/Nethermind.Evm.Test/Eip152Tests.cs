@@ -37,15 +37,15 @@ namespace Nethermind.Evm.Test
         public void before_istanbul()
         {
             _blockNumberAdjustment = -1;
-            var precompileAddress = Blake2BPrecompiledContract.Instance.Address;
-            Assert.False(precompileAddress.IsPrecompiled(Spec));
+            var precompileAddress = Blake2FPrecompile.Instance.Address;
+            Assert.False(precompileAddress.IsPrecompile(Spec));
         }
 
         [Test]
         public void after_istanbul()
         {
             var code = Prepare.EvmCode
-                .CallWithInput(Blake2BPrecompiledContract.Instance.Address, 1000L, new byte[InputLength])
+                .CallWithInput(Blake2FPrecompile.Instance.Address, 1000L, new byte[InputLength])
                 .Done;
             var result = Execute(code);
             Assert.AreEqual(StatusCode.Success, result.StatusCode);

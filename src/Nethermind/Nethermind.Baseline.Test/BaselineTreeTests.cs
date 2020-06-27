@@ -23,6 +23,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Trie;
 using NUnit.Framework;
+using Index = Nethermind.Baseline.BaselineTree.Index;
 
 namespace Nethermind.Baseline.Test
 {
@@ -31,7 +32,7 @@ namespace Nethermind.Baseline.Test
     public class BaselineTreeTests
     {
         private readonly int _truncationLength;
-        private Bytes32[] _testLeaves = new Bytes32[32];
+        private Keccak[] _testLeaves = new Keccak[32];
         private const ulong _nodeIndexOfTheFirstLeaf = (1ul << BaselineTree.TreeHeight) - 1ul;
         private const ulong _lastNodeIndex = (1ul << (BaselineTree.TreeHeight + 1)) - 2ul;
         private const uint _lastLeafIndex = (uint) ((1ul << BaselineTree.TreeHeight) - 1u);
@@ -41,7 +42,7 @@ namespace Nethermind.Baseline.Test
         {
             _truncationLength = truncationLength;
         }
-        
+
         [OneTimeSetUp]
         public void Setup()
         {
@@ -49,13 +50,13 @@ namespace Nethermind.Baseline.Test
             {
                 byte[] bytes = new byte[32];
                 bytes[i] = (byte) (i + 1);
-                _testLeaves[i] = Bytes32.Wrap(bytes);
+                _testLeaves[i] = new Keccak(bytes);
             }
         }
 
         private BaselineTree BuildATree(IKeyValueStore keyValueStore = null)
         {
-            return new ShaBaselineTree(keyValueStore ?? new MemDb(), new byte[] {}, _truncationLength);
+            return new ShaBaselineTree(keyValueStore ?? new MemDb(), new byte[] { }, _truncationLength);
         }
 
         [Test]
@@ -71,19 +72,19 @@ namespace Nethermind.Baseline.Test
         [TestCase(_nodeIndexOfTheFirstLeaf, uint.MinValue)]
         [TestCase(_nodeIndexOfTheFirstLeaf + 1, 1u)]
         [TestCase(_lastNodeIndex, _lastLeafIndex)]
-        [TestCase(_lastNodeIndex + 1, null)]
         public void Can_calculate_leaf_index_from_node_index(ulong nodeIndex, uint? leafIndex)
         {
             if (leafIndex == null)
             {
-                Assert.Throws<ArgumentOutOfRangeException>(() => BaselineTree.GetLeafIndex(nodeIndex));
+                new Index(nodeIndex).Row.Should().NotBe(BaselineTree.LeafRow);
             }
             else
             {
-                BaselineTree.GetLeafIndex(nodeIndex).Should().Be(leafIndex.Value);
+                new Index(nodeIndex).Row.Should().Be(BaselineTree.LeafRow);
+                new Index(nodeIndex).IndexAtRow.Should().Be(leafIndex.Value);
             }
         }
-        
+
         [TestCase(uint.MinValue, uint.MinValue, ulong.MinValue)]
         [TestCase(1u, uint.MinValue, 1ul)]
         [TestCase(1u, 1u, 2ul)]
@@ -102,14 +103,14 @@ namespace Nethermind.Baseline.Test
         {
             if (nodeIndex == null)
             {
-                Assert.Throws<ArgumentOutOfRangeException>(() => BaselineTree.GetNodeIndex(row, indexAtRow));
+                Assert.Throws<ArgumentOutOfRangeException>(() => new Index(row, indexAtRow));
             }
             else
             {
-                BaselineTree.GetNodeIndex(row, indexAtRow).Should().Be(nodeIndex.Value);
+                new Index(row, indexAtRow).NodeIndex.Should().Be(nodeIndex.Value);
             }
         }
-        
+
         [TestCase(uint.MinValue, ulong.MinValue, uint.MinValue)]
         [TestCase(1u, ulong.MinValue, null)]
         [TestCase(1u, 1ul, uint.MinValue)]
@@ -128,33 +129,33 @@ namespace Nethermind.Baseline.Test
         {
             if (indexAtRow == null)
             {
-                Assert.Throws<ArgumentOutOfRangeException>(() => BaselineTree.GetIndexAtRow(row, nodeIndex));
+                Assert.Throws<ArgumentOutOfRangeException>(() => new Index(row, nodeIndex));
             }
             else
             {
-                BaselineTree.GetIndexAtRow(row, nodeIndex).Should().Be(indexAtRow.Value);
+                new Index(row, nodeIndex).IndexAtRow.Should().Be(indexAtRow.Value);
             }
         }
-        
+
         [TestCase(uint.MinValue, uint.MinValue)]
         [TestCase(1u, 1u)]
         [TestCase(2u, 1u)]
         [TestCase(3u, 2u)]
         [TestCase(7u, 3u)]
-        [TestCase(_lastNodeIndex, 31u)]
+        [TestCase(_lastNodeIndex, 32u)]
         [TestCase(_lastNodeIndex + 1ul, null)]
         public void Can_calculate_node_row(ulong nodeIndex, uint? expectedRow)
         {
             if (expectedRow == null)
             {
-                Assert.Throws<ArgumentOutOfRangeException>(() => BaselineTree.GetRow(nodeIndex));
+                Assert.Throws<ArgumentOutOfRangeException>(() => new Index(nodeIndex));
             }
             else
             {
-                BaselineTree.GetRow(nodeIndex).Should().Be(expectedRow.Value);
+                new Index(nodeIndex).Row.Should().Be(expectedRow.Value);
             }
         }
-        
+
         [TestCase(uint.MinValue, uint.MinValue, null)]
         [TestCase(1u, uint.MinValue, 1u)]
         [TestCase(2u, uint.MinValue, 1u)]
@@ -168,15 +169,15 @@ namespace Nethermind.Baseline.Test
         {
             if (expectedSiblingIndex == null)
             {
-                Assert.Throws<ArgumentOutOfRangeException>(() => BaselineTree.GetSiblingIndexAtRow(row, indexAtRow));
+                Assert.Throws<ArgumentOutOfRangeException>(() => new Index(row, indexAtRow).Sibling());
             }
             else
             {
-                BaselineTree.GetSiblingIndexAtRow(row, indexAtRow).Should().Be(expectedSiblingIndex.Value);
-                BaselineTree.GetSiblingIndexAtRow(row, expectedSiblingIndex.Value).Should().Be(indexAtRow);
+                new Index(row, indexAtRow).Sibling().IndexAtRow.Should().Be(expectedSiblingIndex.Value);
+                new Index(row, expectedSiblingIndex.Value).Sibling().IndexAtRow.Should().Be(indexAtRow);
             }
         }
-        
+
         [TestCase(uint.MinValue, null)]
         [TestCase(1u, uint.MinValue)]
         [TestCase(2u, uint.MinValue)]
@@ -246,7 +247,7 @@ namespace Nethermind.Baseline.Test
 
             for (int i = 0; i < leafCount; i++)
             {
-                baselineTree.Insert(_testLeaves[0]);    
+                baselineTree.Insert(_testLeaves[0]);
             }
 
             BaselineTree baselineTreeRestored = BuildATree(memDb);
@@ -266,7 +267,6 @@ namespace Nethermind.Baseline.Test
             }
         }
 
-        [TestCase(uint.MinValue)]
         [TestCase(1u)]
         [TestCase(2u)]
         [TestCase(23u)]
@@ -275,9 +275,9 @@ namespace Nethermind.Baseline.Test
             BaselineTree baselineTree = BuildATree();
             for (int i = 0; i < nodesCount; i++)
             {
-                baselineTree.Insert(_testLeaves[0]);    
+                baselineTree.Insert(_testLeaves[0]);
             }
-            
+
             BaselineTreeNode[] proof = baselineTree.GetProof(0);
             proof.Should().HaveCount(BaselineTree.TreeHeight);
 
@@ -293,8 +293,7 @@ namespace Nethermind.Baseline.Test
                 }
             }
         }
-        
-        [TestCase(uint.MinValue)]
+
         [TestCase(1u)]
         [TestCase(2u)]
         [TestCase(23u)]
@@ -303,15 +302,15 @@ namespace Nethermind.Baseline.Test
             BaselineTree baselineTree = BuildATree();
             for (int i = 0; i < nodesCount; i++)
             {
-                baselineTree.Insert(_testLeaves[0]);    
+                baselineTree.Insert(_testLeaves[0]);
             }
 
             for (int i = 0; i < nodesCount; i++)
             {
-                baselineTree.GetLeaf((uint)i).Hash.Should().NotBe(Keccak.Zero);
+                baselineTree.GetLeaf((uint) i).Hash.Should().NotBe(Keccak.Zero);
             }
         }
-        
+
         [TestCase(uint.MinValue)]
         [TestCase(1u)]
         [TestCase(2u)]
@@ -321,7 +320,7 @@ namespace Nethermind.Baseline.Test
             BaselineTree baselineTree = BuildATree();
             for (int i = 0; i < nodesCount; i++)
             {
-                baselineTree.Insert(_testLeaves[0]);    
+                baselineTree.Insert(_testLeaves[0]);
             }
 
             var leafIndexes = Enumerable.Range(0, (int) nodesCount).Select(l => (uint) l).ToArray();

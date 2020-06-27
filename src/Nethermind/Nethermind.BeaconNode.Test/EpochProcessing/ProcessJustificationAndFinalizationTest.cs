@@ -45,7 +45,7 @@ namespace Nethermind.BeaconNode.Test.EpochProcessing
 
             var chainConstants = testServiceProvider.GetService<ChainConstants>();
             var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
-            var beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
+            var beaconChainUtility = testServiceProvider.GetService<IBeaconChainUtility>();
 
             // Skip ahead to just before epoch
             var slot = new Slot((ulong)timeParameters.SlotsPerEpoch * (ulong)epoch - 1);
@@ -107,7 +107,7 @@ namespace Nethermind.BeaconNode.Test.EpochProcessing
 
             var chainConstants = testServiceProvider.GetService<ChainConstants>();
             var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
-            var beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
+            var beaconChainUtility = testServiceProvider.GetService<IBeaconChainUtility>();
 
             // Skip ahead to just before epoch
             var slot = new Slot((ulong)timeParameters.SlotsPerEpoch * (ulong)epoch - 1);
@@ -169,7 +169,7 @@ namespace Nethermind.BeaconNode.Test.EpochProcessing
 
             var chainConstants = testServiceProvider.GetService<ChainConstants>();
             var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
-            var beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
+            var beaconChainUtility = testServiceProvider.GetService<IBeaconChainUtility>();
 
             // Skip ahead to just before epoch
             var slot = new Slot((ulong)timeParameters.SlotsPerEpoch * (ulong)epoch - 1);
@@ -241,7 +241,7 @@ namespace Nethermind.BeaconNode.Test.EpochProcessing
 
             var chainConstants = testServiceProvider.GetService<ChainConstants>();
             var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
-            var beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
+            var beaconChainUtility = testServiceProvider.GetService<IBeaconChainUtility>();
 
             // Skip ahead to just before epoch
             var slot = new Slot((ulong)timeParameters.SlotsPerEpoch * (ulong)epoch - 1);
@@ -299,7 +299,7 @@ namespace Nethermind.BeaconNode.Test.EpochProcessing
         {
             var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
 
-            var beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
+            var beaconChainUtility = testServiceProvider.GetService<IBeaconChainUtility>();
             var beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
 
             // we must be at the end of the epoch
@@ -403,7 +403,7 @@ namespace Nethermind.BeaconNode.Test.EpochProcessing
         //    return shards.ToArray();
         //}
 
-        private void PutCheckpointsInBlockRoots(BeaconChainUtility beaconChainUtility, TimeParameters timeParameters, BeaconState state, Checkpoint[] checkpoints)
+        private void PutCheckpointsInBlockRoots(IBeaconChainUtility beaconChainUtility, TimeParameters timeParameters, BeaconState state, Checkpoint[] checkpoints)
         {
             foreach (var checkpoint in checkpoints)
             {

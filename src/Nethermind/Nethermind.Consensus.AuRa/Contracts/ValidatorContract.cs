@@ -20,6 +20,7 @@ using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Blockchain.Contracts.Json;
 using Nethermind.Core;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.State;
 
@@ -94,7 +95,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// the "change" finalized is the activation of the initial set.
         /// function finalizeChange();
         /// </summary>
-        public void FinalizeChange(BlockHeader blockHeader) => TryCall(blockHeader, nameof(FinalizeChange), Address.SystemUser, out _);
+        public void FinalizeChange(BlockHeader blockHeader) => TryCall(blockHeader, nameof(FinalizeChange), Address.SystemUser, UnlimitedGas, out _);
 
         internal static readonly string GetValidatorsFunction = AbiDefinition.GetFunctionName(nameof(GetValidators));
 

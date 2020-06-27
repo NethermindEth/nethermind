@@ -23,7 +23,7 @@ using Nethermind.Runner.Hive;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
-    [RunnerStepDependencies(typeof(SetupKeyStore))]
+    [RunnerStepDependencies(typeof(SetupKeyStore), typeof(LoadGenesisBlock))]
     public class SetupHive : IStep
     {
         private readonly EthereumRunnerContext _context;
@@ -39,9 +39,8 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (hiveEnabled)
             {
                 if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
-                if (_context.Wallet == null) throw new StepDependencyException(nameof(_context.Wallet));
                 if (_context.EthereumJsonSerializer == null) throw new StepDependencyException(nameof(_context.EthereumJsonSerializer));
-                HiveRunner hiveRunner = new HiveRunner(_context.BlockTree, _context.Wallet, _context.EthereumJsonSerializer, _context.ConfigProvider, _context.LogManager.GetClassLogger());
+                HiveRunner hiveRunner = new HiveRunner(_context.BlockTree, _context.EthereumJsonSerializer, _context.ConfigProvider, _context.LogManager.GetClassLogger());
                 await hiveRunner.Start(cancellationToken);
             }
         }

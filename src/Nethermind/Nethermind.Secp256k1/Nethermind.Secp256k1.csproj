@@ -15,4 +15,7 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Native\Nethermind.Native.csproj" />
+  </ItemGroup>
 </Project>

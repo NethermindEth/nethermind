@@ -12,7 +12,6 @@
 
     <ItemGroup>
       <ProjectReference Include="..\Nethermind.BeaconNode.Eth1Bridge\Nethermind.BeaconNode.Eth1Bridge.csproj" />
-      <ProjectReference Include="..\Nethermind.Benchmark.Helpers\Nethermind.Benchmark.Helpers.csproj" />
       <ProjectReference Include="..\Nethermind.Core2.Cryptography\Nethermind.Core2.Cryptography.csproj" />
     </ItemGroup>
 

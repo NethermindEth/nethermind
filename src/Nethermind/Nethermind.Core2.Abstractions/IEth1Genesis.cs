@@ -14,9 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Collections.Generic;
 using System.Threading.Tasks;
-using Nethermind.Core2.Containers;
 using Nethermind.Core2.Types;
 
 namespace Nethermind.Core2
@@ -27,6 +25,6 @@ namespace Nethermind.Core2
         /// Eth1 bridge should call this with Eth1 data
         /// </summary>
         /// <returns>true if genesis succeeded; false if the bridge needs to continue gathering deposits</returns>
-        Task<bool> TryGenesisAsync(Bytes32 eth1BlockHash, ulong eth1Timestamp, IList<Deposit> deposits);
+        Task<bool> TryGenesisAsync(Bytes32 eth1BlockHash, ulong eth1Timestamp);
     }
 }

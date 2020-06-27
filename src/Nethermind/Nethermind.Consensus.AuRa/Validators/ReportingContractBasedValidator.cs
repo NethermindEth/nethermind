@@ -125,7 +125,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                         var posdao = IsPosdao(blockNumber);
                         var txSender = posdao ? _posdaoTxSender : _nonPosdaoTxSender;
                         SendTransaction(txSender, transaction);
-                        if (_logger.IsWarn) _logger.Warn($"Reported {type} validator {validator} at block {blockNumber}");
+                        if (_logger.IsWarn) _logger.Warn($"Reported {type} validator {validator} misbehaviour (cause: {cause}) at block {blockNumber}");
                     }
                 }
             }
@@ -148,7 +148,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             var firstBlock = header.Number == 1;
             if (areThereSkipped && !firstBlock)
             {
-                if (_logger.IsDebug) _logger.Debug($"Author {header.Beneficiary} built block with step gap. current step: {header.Author}, parent step: {parent.AuRaStep}");
+                if (_logger.IsDebug) _logger.Debug($"Author {header.Beneficiary} built block with step gap. current step: {header.AuRaStep}, parent step: {parent.AuRaStep}");
                 ISet<Address> reported = new HashSet<Address>();
                 for (long step = parent.AuRaStep.Value + 1; step < header.AuRaStep.Value; step++)
                 {
