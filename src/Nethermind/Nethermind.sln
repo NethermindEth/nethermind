@@ -222,6 +222,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.DepositContract.
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.BeamSyncWallet", "Nethermind.BeamSyncWallet\Nethermind.BeamSyncWallet.csproj", "{611DB8E4-6CAC-4853-ABA2-DD1535841FFD}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.BeamWallet", "Nethermind.BeamWallet\Nethermind.BeamWallet.csproj", "{ED66305A-00AC-467B-BC53-A591C9E54284}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.BeamWallet.Tests", "Nethermind.BeamWallet.Tests\Nethermind.BeamWallet.Tests.csproj", "{8C78E818-BF43-46DC-A519-D19688E7EF4B}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -600,6 +604,22 @@ Global
 		{611DB8E4-6CAC-4853-ABA2-DD1535841FFD}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{611DB8E4-6CAC-4853-ABA2-DD1535841FFD}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{611DB8E4-6CAC-4853-ABA2-DD1535841FFD}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1A581DDC-020D-4725-89E3-437D15FEF97F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1A581DDC-020D-4725-89E3-437D15FEF97F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1A581DDC-020D-4725-89E3-437D15FEF97F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1A581DDC-020D-4725-89E3-437D15FEF97F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{77C56006-3DE8-4B3B-A0BB-CFD2E28CF8A9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{77C56006-3DE8-4B3B-A0BB-CFD2E28CF8A9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{77C56006-3DE8-4B3B-A0BB-CFD2E28CF8A9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{77C56006-3DE8-4B3B-A0BB-CFD2E28CF8A9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{ED66305A-00AC-467B-BC53-A591C9E54284}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{ED66305A-00AC-467B-BC53-A591C9E54284}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{ED66305A-00AC-467B-BC53-A591C9E54284}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{ED66305A-00AC-467B-BC53-A591C9E54284}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8C78E818-BF43-46DC-A519-D19688E7EF4B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8C78E818-BF43-46DC-A519-D19688E7EF4B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8C78E818-BF43-46DC-A519-D19688E7EF4B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8C78E818-BF43-46DC-A519-D19688E7EF4B}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -664,6 +684,8 @@ Global
 		{20ACBDCF-F208-4752-A9FB-11AEAC977F96} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
 		{9FD2C89A-9194-4C15-8267-8FEC0135A315} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
 		{611DB8E4-6CAC-4853-ABA2-DD1535841FFD} = {E627BFEF-ABD3-4B8F-A9AC-204251AE440C}
+		{ED66305A-00AC-467B-BC53-A591C9E54284} = {E627BFEF-ABD3-4B8F-A9AC-204251AE440C}
+		{8C78E818-BF43-46DC-A519-D19688E7EF4B} = {E627BFEF-ABD3-4B8F-A9AC-204251AE440C}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {092CA5E3-6180-4ED7-A3CB-9B57FAC2AA85}

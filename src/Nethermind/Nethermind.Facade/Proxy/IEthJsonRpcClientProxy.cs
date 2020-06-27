@@ -34,10 +34,8 @@ namespace Nethermind.Facade.Proxy
         Task<RpcResult<TransactionModel>> eth_getTransactionByHash(Keccak transactionHash);
         Task<RpcResult<TransactionModel[]>> eth_pendingTransactions();
         Task<RpcResult<Keccak>> eth_sendRawTransaction(byte[] transaction);
- 
-        Task<RpcResult<BlockModel>> eth_getBlockByHash(Keccak blockHash,
-            bool returnFullTransactionObjects = false);
-
+        Task<RpcResult<Keccak>> eth_sendTransaction(TransactionModel transaction);
+        Task<RpcResult<BlockModel>> eth_getBlockByHash(Keccak blockHash, bool returnFullTransactionObjects = false);
         Task<RpcResult<BlockModel>> eth_getBlockByNumber(BlockParameterModel blockParameter,
             bool returnFullTransactionObjects = false);
     }
