@@ -75,13 +75,9 @@ namespace Nethermind.Wallet
             return key.Address;
         }
 
-        public bool UnlockAccount(Address address, SecureString passphrase)
+        public bool UnlockAccount(Address address, SecureString passphrase, TimeSpan? timeSpan)
         {
-            return UnlockAccount(address, passphrase, TimeSpan.FromSeconds(300));
-        }
-
-        public bool UnlockAccount(Address address, SecureString passphrase, TimeSpan timeSpan)
-        {
+            
             if (address is null || address == Address.Zero)
             {
                 return false;
@@ -125,12 +121,6 @@ namespace Nethermind.Wallet
             if (!_isUnlocked[address] && !CheckPassword(address, passphrase)) throw new SecurityException("Cannot sign without password or unlocked account.");
 
             return Sign(message, address);
-        }
-        
-        public void Sign(Transaction tx, int chainId)
-        {
-            if (_logger.IsDebug) _logger.Debug($"Signing transaction: {tx.Value} to {tx.To}");
-            IBasicWallet.Sign(this, tx, chainId);
         }
 
         public bool IsUnlocked(Address address) => _isUnlocked.TryGetValue(address, out var unlocked) && unlocked;

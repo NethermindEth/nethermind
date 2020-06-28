@@ -33,6 +33,8 @@ namespace Nethermind.Core2.Containers
         }
 
         public Bytes32 BlockHash { get; }
+        
+        // TODO: is it ulong? then the tree would not be enough with 32 levels?
         public ulong DepositCount { get; private set; }
         public Root DepositRoot { get; private set; }
 

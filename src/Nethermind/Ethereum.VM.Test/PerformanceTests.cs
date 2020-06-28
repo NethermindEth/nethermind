@@ -16,14 +16,12 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using NCrunch.Framework;
 using NUnit.Framework;
 
 namespace Ethereum.VM.Test
 {
     public class PerformanceTests : VMTestBase
     {
-        [Isolated]
         [TestCaseSource(nameof(LoadTests), new object[] {"Performance"})]
         public void Test(VirtualMachineTest test)
         {

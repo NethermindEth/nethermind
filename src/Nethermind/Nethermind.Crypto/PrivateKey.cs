@@ -26,7 +26,7 @@ using Nethermind.Secp256k1;
 namespace Nethermind.Crypto
 {
     [DoNotUseInSecuredContext("Any secure private key handling should be done on hardware or with memory protection")]
-    public class PrivateKey
+    public class PrivateKey : IDisposable
     {
         public byte[] KeyBytes { get; }
 
@@ -102,6 +102,14 @@ namespace Nethermind.Crypto
         public override string ToString()
         {
             return KeyBytes.ToHexString(true);
+        }
+
+        public void Dispose()
+        {
+            for (int i = 0; i < KeyBytes?.Length; i++)
+            {
+                KeyBytes[i] = 0;
+            }
         }
     }
 }

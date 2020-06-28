@@ -25,6 +25,7 @@ using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Infrastructure.Rlp;
 using Nethermind.Db;
 using Nethermind.Facade;
+using Nethermind.Facade.Transactions;
 using Nethermind.JsonRpc;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Modules
@@ -69,7 +70,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
                 logManager,
                 false,
                 jsonRpcConfig.FindLogBlockDepthLimit);
-            var txPoolBridge = new TxPoolBridge(services.TransactionPool, services.Wallet, services.Timestamper, services.SpecProvider.ChainId);
+            var txPoolBridge = new TxPoolBridge(services.TransactionPool, new WalletTxSigner(services.Wallet, services.SpecProvider.ChainId), services.Timestamper);
             var dataAssetRlpDecoder = new DataAssetDecoder();
             var encoder = new AbiEncoder();
 

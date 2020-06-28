@@ -17,8 +17,12 @@
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus.AuRa;
+using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
+using Nethermind.Core.Caching;
+using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.TxPool;
 
@@ -33,6 +37,11 @@ namespace Nethermind.Runner.Ethereum.Context
         
         public IBlockFinalizationManager? FinalizationManager { get; set; }
         public ITxPermissionFilter.Cache? TxFilterCache { get; set; }
+        
+        public ICache<Keccak, UInt256> TransactionPermissionContractVersions { get; } = new LruCacheWithRecycling<Keccak, UInt256>(ITxPermissionFilter.Cache.MaxCacheSize, nameof(TransactionPermissionContract));
         public IGasLimitOverride.Cache? GasLimitOverrideCache { get; set; }
+        public IReportingValidator? ReportingValidator { get; set; }
+        
+        public ReportingContractBasedValidator.Cache ReportingContractValidatorCache { get; } = new ReportingContractBasedValidator.Cache();
     }
 }

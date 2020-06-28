@@ -26,12 +26,12 @@ namespace Nethermind.Consensus.AuRa.Transactions
 {
     public class TxPermissionFilter : ITxPermissionFilter
     {
-        private readonly VersionedContract<TransactionPermissionContract> _contract;
+        private readonly VersionedContract<ITransactionPermissionContract> _contract;
         private readonly ITxPermissionFilter.Cache _cache;
         private readonly IStateProvider _stateProvider;
         private readonly ILogger _logger;
 
-        public TxPermissionFilter(VersionedContract<TransactionPermissionContract> contract, ITxPermissionFilter.Cache cache, IStateProvider stateProvider, ILogManager logManager)
+        public TxPermissionFilter(VersionedContract<ITransactionPermissionContract> contract, ITxPermissionFilter.Cache cache, IStateProvider stateProvider, ILogManager logManager)
         {
             _contract = contract ?? throw new ArgumentNullException(nameof(contract));
             _cache = cache ?? throw new ArgumentNullException(nameof(cache));
@@ -49,21 +49,21 @@ namespace Nethermind.Consensus.AuRa.Transactions
             {
                 var txType = GetTxType(tx);
                 var txPermissions = GetPermissions(tx, parentHeader);
-                if (_logger.IsTrace) _logger.Trace($"Given transaction data: sender: {tx.SenderAddress} to: {tx.To} value: {tx.Value}, gas_price: {tx.GasPrice}. Permissions required: {txType}, got: {txPermissions}.");
+                if (_logger.IsTrace) _logger.Trace($"Given transaction: {tx.Hash} sender: {tx.SenderAddress} to: {tx.To} value: {tx.Value}, gas_price: {tx.GasPrice}. Permissions required: {txType}, got: {txPermissions}.");
                 return (txPermissions & txType) == txType;
             }
         }
 
-        private TransactionPermissionContract.TxPermissions GetPermissions(Transaction tx, BlockHeader parentHeader)
+        private ITransactionPermissionContract.TxPermissions GetPermissions(Transaction tx, BlockHeader parentHeader)
         {
             var key = (parentHeader.Hash, tx.SenderAddress);
             var txCachedPermissions = _cache.Permissions.Get(key);
             return txCachedPermissions ?? GetPermissionsFromContract(tx, parentHeader, key);
         }
 
-        private TransactionPermissionContract.TxPermissions GetPermissionsFromContract(Transaction tx, BlockHeader parentHeader, in (Keccak Hash, Address SenderAddress) key)
+        private ITransactionPermissionContract.TxPermissions GetPermissionsFromContract(Transaction tx, BlockHeader parentHeader, in (Keccak Hash, Address SenderAddress) key)
         {
-            TransactionPermissionContract.TxPermissions txPermissions = TransactionPermissionContract.TxPermissions.None;
+            ITransactionPermissionContract.TxPermissions txPermissions = ITransactionPermissionContract.TxPermissions.None;
             bool shouldCache = true;
             
             var versionedContract = GetVersionedContract(parentHeader);
@@ -93,18 +93,13 @@ namespace Nethermind.Consensus.AuRa.Transactions
             return txPermissions;
         }
 
-        private TransactionPermissionContract GetVersionedContract(BlockHeader blockHeader)
-        {
-            return _contract.ResolveVersion(blockHeader);
-        }
+        private ITransactionPermissionContract GetVersionedContract(BlockHeader blockHeader) => _contract.ResolveVersion(blockHeader);
 
-        private TransactionPermissionContract.TxPermissions GetTxType(Transaction tx)
-        {
-            return tx.IsContractCreation
-                ? TransactionPermissionContract.TxPermissions.Create
+        private ITransactionPermissionContract.TxPermissions GetTxType(Transaction tx) =>
+            tx.IsContractCreation
+                ? ITransactionPermissionContract.TxPermissions.Create
                 : _stateProvider.GetCodeHash(tx.To) != Keccak.OfAnEmptyString
-                    ? TransactionPermissionContract.TxPermissions.Call
-                    : TransactionPermissionContract.TxPermissions.Basic;
-        }
+                    ? ITransactionPermissionContract.TxPermissions.Call
+                    : ITransactionPermissionContract.TxPermissions.Basic;
     }
 }

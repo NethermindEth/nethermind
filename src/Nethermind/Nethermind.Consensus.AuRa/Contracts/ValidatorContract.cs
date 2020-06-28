@@ -17,17 +17,56 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Abi;
+using Nethermind.Blockchain.Contracts;
 using Nethermind.Blockchain.Contracts.Json;
 using Nethermind.Core;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.State;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public class ValidatorContract : Blockchain.Contracts.Contract
+    public partial interface IValidatorContract
+    {
+        /// <summary>
+        /// Called when an initiated change reaches finality and is activated.
+        /// Only valid when msg.sender == SUPER_USER (EIP96, 2**160 - 2)
+        ///
+        /// Also called when the contract is first enabled for consensus. In this case,
+        /// the "change" finalized is the activation of the initial set.
+        /// function finalizeChange();
+        /// </summary>
+        void FinalizeChange(BlockHeader blockHeader);
+
+        /// <summary>
+        /// Get current validator set (last enacted or initial if no changes ever made)
+        /// function getValidators() constant returns (address[] _validators);
+        /// </summary>
+        Address[] GetValidators(BlockHeader parentHeader);
+
+        /// <summary>
+        /// Issue this log event to signal a desired change in validator set.
+        /// This will not lead to a change in active validator set until
+        /// finalizeChange is called.
+        ///
+        /// Only the last log event of any block can take effect.
+        /// If a signal is issued while another is being finalized it may never
+        /// take effect.
+        ///
+        /// _parent_hash here should be the parent block hash, or the
+        /// signal will not be recognized.
+        /// event InitiateChange(bytes32 indexed _parent_hash, address[] _new_set);
+        /// </summary>
+        bool CheckInitiateChangeEvent(BlockHeader blockHeader, TxReceipt[] receipts, out Address[] addresses);
+
+        void EnsureSystemAccount();
+    }
+    
+    public sealed partial class ValidatorContract : CallableContract, IValidatorContract
     {
         private readonly IAbiEncoder _abiEncoder;
         private readonly IStateProvider _stateProvider;
+        private readonly ISigner _signer;
 
         private static readonly IEqualityComparer<LogEntry> LogEntryEqualityComparer = new LogEntryAddressAndTopicEqualityComparer();
 
@@ -38,12 +77,14 @@ namespace Nethermind.Consensus.AuRa.Contracts
             IAbiEncoder abiEncoder, 
             Address contractAddress, 
             IStateProvider stateProvider,
-            IReadOnlyTransactionProcessorSource readOnlyReadOnlyTransactionProcessorSource) 
+            IReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource,
+            ISigner signer) 
             : base(transactionProcessor, abiEncoder, contractAddress)
         {
             _abiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
-            Constant = GetConstant(readOnlyReadOnlyTransactionProcessorSource);
+            _signer = signer ?? throw new ArgumentNullException(nameof(signer));
+            Constant = GetConstant(readOnlyTransactionProcessorSource);
         }
 
         /// <summary>
@@ -54,7 +95,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// the "change" finalized is the activation of the initial set.
         /// function finalizeChange();
         /// </summary>
-        public void FinalizeChange(BlockHeader blockHeader) => TryCall(blockHeader, nameof(FinalizeChange), Address.SystemUser, out _);
+        public void FinalizeChange(BlockHeader blockHeader) => TryCall(blockHeader, nameof(FinalizeChange), Address.SystemUser, UnlimitedGas, out _);
 
         internal static readonly string GetValidatorsFunction = AbiDefinition.GetFunctionName(nameof(GetValidators));
 
@@ -110,10 +151,5 @@ namespace Nethermind.Consensus.AuRa.Contracts
         {
             EnsureSystemAccount(_stateProvider);
         }
-
-        public static AbiDefinition Definition 
-            = new AbiDefinitionParser().Parse<ValidatorContract>();
-
-        protected override AbiDefinition AbiDefinition => Definition;
     }
 }

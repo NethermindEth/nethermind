@@ -6,17 +6,13 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj" />
+        <ProjectReference Include="..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj" />
     </ItemGroup>
 
     <ItemGroup>
-      <None Remove="validator_registration.json" />
+        <Content Include="contracts/DepositContract.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
     </ItemGroup>
-
-    <ItemGroup>
-      <Content Include="contracts\validator_registration.json">
-        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </Content>
-    </ItemGroup>
-
+    
 </Project>

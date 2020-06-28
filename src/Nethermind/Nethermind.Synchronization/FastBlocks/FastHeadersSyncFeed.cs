@@ -41,31 +41,31 @@ namespace Nethermind.Synchronization.FastBlocks
         private readonly IBlockTree _blockTree;
         private readonly ISyncConfig _syncConfig;
 
-        private object _dummyObject = new object();
-        private object _handlerLock = new object();
+        private readonly object _dummyObject = new object();
+        private readonly object _handlerLock = new object();
 
-        private int _headersRequestSize = GethSyncLimits.MaxHeaderFetch;
+        private readonly int _headersRequestSize = GethSyncLimits.MaxHeaderFetch;
         private long _lowestRequestedHeaderNumber;
 
         private Keccak _nextHeaderHash;
         private UInt256? _nextHeaderDiff;
 
-        private long _pivotNumber;
+        private readonly long _pivotNumber;
 
         /// <summary>
         /// Requests awaiting to be sent - these are results of partial or invalid responses being queued again 
         /// </summary>
-        private ConcurrentQueue<HeadersSyncBatch> _pending = new ConcurrentQueue<HeadersSyncBatch>();
+        private readonly ConcurrentQueue<HeadersSyncBatch> _pending = new ConcurrentQueue<HeadersSyncBatch>();
 
         /// <summary>
         /// Requests sent to peers for which responses have not been received yet  
         /// </summary>
-        private ConcurrentDictionary<HeadersSyncBatch, object> _sent = new ConcurrentDictionary<HeadersSyncBatch, object>();
+        private readonly ConcurrentDictionary<HeadersSyncBatch, object> _sent = new ConcurrentDictionary<HeadersSyncBatch, object>();
 
         /// <summary>
         /// Responses received from peers but waiting in a queue for some other requests to be handled first
         /// </summary>
-        private ConcurrentDictionary<long, HeadersSyncBatch> _dependencies = new ConcurrentDictionary<long, HeadersSyncBatch>();
+        private readonly ConcurrentDictionary<long, HeadersSyncBatch> _dependencies = new ConcurrentDictionary<long, HeadersSyncBatch>();
 
         private bool AllHeadersDownloaded => (_blockTree.LowestInsertedHeader?.Number ?? long.MaxValue) == 1;
         private bool AnyHeaderDownloaded => _blockTree.LowestInsertedHeader != null;

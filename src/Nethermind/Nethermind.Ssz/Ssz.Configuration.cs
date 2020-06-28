@@ -14,35 +14,30 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core2.Containers;
-using Nethermind.Core2.Crypto;
-using Nethermind.Core2.Types;
-using System;
-
 namespace Nethermind.Ssz
 {
     public partial class Ssz
     {
         public static int DepositContractTreeDepth { get; private set; }
         private static int JustificationBitsLength;
-        internal static ulong MaximumDepositContracts { get; private set; }
+        public static ulong MaximumDepositContracts { get; private set; }
         
-        internal static uint MaxValidatorsPerCommittee { get; private set; }
+        public static uint MaxValidatorsPerCommittee { get; private set; }
         
-        internal static uint SlotsPerEpoch { get; private set; }
-        internal static int SlotsPerEth1VotingPeriod { get; private set; }
+        public static uint SlotsPerEpoch { get; private set; }
+        public static int SlotsPerEth1VotingPeriod { get; private set; }
         public static int SlotsPerHistoricalRoot { get; private set; }
         
         public static int EpochsPerHistoricalVector { get; private set; }
         public static int EpochsPerSlashingsVector { get; private set; }
-        internal static ulong HistoricalRootsLimit { get; private set; }
-        internal static ulong ValidatorRegistryLimit { get; private set; }
+        public static ulong HistoricalRootsLimit { get; private set; }
+        public static ulong ValidatorRegistryLimit { get; private set; }
         
-        internal static uint MaxProposerSlashings { get; private set; }
-        internal static uint MaxAttesterSlashings { get; private set; }
-        internal static uint MaxAttestations { get; private set; }
-        internal static uint MaxDeposits { get; private set; }
-        internal static uint MaxVoluntaryExits { get; private set; }
+        public static uint MaxProposerSlashings { get; private set; }
+        public static uint MaxAttesterSlashings { get; private set; }
+        public static uint MaxAttestations { get; private set; }
+        public static uint MaxDeposits { get; private set; }
+        public static uint MaxVoluntaryExits { get; private set; }
 
         public static void Init(int depositContractTreeDepth,
             int justificationBitsLength,

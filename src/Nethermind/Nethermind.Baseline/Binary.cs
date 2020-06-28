@@ -21,7 +21,7 @@ namespace Nethermind.Baseline
 {
     public partial class BaselineTree
     {
-        public class Binary
+        public static class Binary
         {
             public enum BinarySearchDirection
             {

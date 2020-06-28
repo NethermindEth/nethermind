@@ -28,6 +28,7 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.Db.Blooms;
+using Nethermind.Facade.Transactions;
 using Nethermind.KeyStore;
 using Nethermind.Specs;
 using Nethermind.Wallet;
@@ -91,7 +92,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             
             LogFinder = new LogFinder(BlockTree, ReceiptStorage, bloomStorage, LimboLogs.Instance, new ReceiptsRecovery());
             Bridge ??= new BlockchainBridge(StateReader, State, Storage, BlockTree, TxPool, ReceiptStorage, filterStore, filterManager, TestWallet, TxProcessor, EthereumEcdsa, NullBloomStorage.Instance, Timestamper, LimboLogs.Instance, false);
-            TxPoolBridge ??= new TxPoolBridge(TxPool, TestWallet, Timestamper, specProvider?.ChainId ?? 0);
+            TxPoolBridge ??= new TxPoolBridge(TxPool, new WalletTxSigner(TestWallet, specProvider?.ChainId ?? 0), Timestamper);
 
             EthModule = new EthModule(new JsonRpcConfig(), Bridge, TxPoolBridge, LimboLogs.Instance);
             return this;

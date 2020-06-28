@@ -26,6 +26,7 @@ using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Json;
 using Nethermind.Core2.Types;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Merkleization;
 using NUnit.Framework;
 using Bytes = Nethermind.Core.Extensions.Bytes;
 using Shouldly;
@@ -338,7 +339,7 @@ namespace Nethermind.Ssz.Test
 
             Bytes32[] proof = Enumerable.Repeat(Bytes32.Zero, Ssz.DepositContractTreeDepth + 1).ToArray();
             proof[7] = Sha256.Bytes32OfAnEmptyString;
-            Deposit container = new Deposit(proof, data);
+            Deposit container = new Deposit(proof, new Ref<DepositData>(data));
 
             Span<byte> encoded = new byte[Ssz.DepositLength()];
             Ssz.Encode(encoded, container);
@@ -371,7 +372,7 @@ namespace Nethermind.Ssz.Test
                 1,
                 Sha256.Bytes32OfAnEmptyString);
 
-            Deposit zeroDeposit = new Deposit(Enumerable.Repeat(Bytes32.Zero, Ssz.DepositContractTreeDepth + 1), DepositData.Zero);
+            Deposit zeroDeposit = new Deposit(Enumerable.Repeat(Bytes32.Zero, Ssz.DepositContractTreeDepth + 1), new Ref<DepositData>(DepositData.Zero));
             BeaconBlockBody container = new BeaconBlockBody(
                 TestSig1,
                 eth1Data,
@@ -407,11 +408,11 @@ namespace Nethermind.Ssz.Test
                 data,
                 TestSig1);
             
-            DepositData depositData = new DepositData(
+            Ref<DepositData> depositData = new Ref<DepositData>(new DepositData(
                 TestKey1,
                 Sha256.Bytes32OfAnEmptyString,
                 new Gwei(7),
-                TestSig1);
+                TestSig1));
 
             Deposit deposit = new Deposit(Enumerable.Repeat(Bytes32.Zero, Ssz.DepositContractTreeDepth + 1), depositData);
 
@@ -435,7 +436,7 @@ namespace Nethermind.Ssz.Test
             Attestation[] attestations = Enumerable.Repeat(Attestation.Zero, 3).ToArray();
             attestations[1] = attestation;
 
-            Deposit zeroDeposit = new Deposit(Enumerable.Repeat(Bytes32.Zero, Ssz.DepositContractTreeDepth + 1), DepositData.Zero);
+            Deposit zeroDeposit = new Deposit(Enumerable.Repeat(Bytes32.Zero, Ssz.DepositContractTreeDepth + 1), new Ref<DepositData>(DepositData.Zero));
             Deposit[] deposits = Enumerable.Repeat(zeroDeposit, 3).ToArray();
             deposits[2] = deposit;
 
@@ -471,7 +472,7 @@ namespace Nethermind.Ssz.Test
                 1,
                 Sha256.Bytes32OfAnEmptyString);
 
-            Deposit zeroDeposit = new Deposit(Enumerable.Repeat(Bytes32.Zero, Ssz.DepositContractTreeDepth + 1), DepositData.Zero);
+            Deposit zeroDeposit = new Deposit(Enumerable.Repeat(Bytes32.Zero, Ssz.DepositContractTreeDepth + 1), new Ref<DepositData>(DepositData.Zero));
             BeaconBlockBody beaconBlockBody = new BeaconBlockBody(
                 TestSig1,
                 eth1Data,
@@ -517,7 +518,7 @@ namespace Nethermind.Ssz.Test
                 Sha256.RootOfAnEmptyString,
                 Sha256.RootOfAnEmptyString);
 
-            Deposit zeroDeposit = new Deposit(Enumerable.Repeat(Bytes32.Zero, Ssz.DepositContractTreeDepth + 1), DepositData.Zero);
+            Deposit zeroDeposit = new Deposit(Enumerable.Repeat(Bytes32.Zero, Ssz.DepositContractTreeDepth + 1), new Ref<DepositData>(DepositData.Zero));
             BeaconBlockBody beaconBlockBody = new BeaconBlockBody(
                 TestSig1,
                 eth1Data,

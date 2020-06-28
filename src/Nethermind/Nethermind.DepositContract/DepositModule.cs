@@ -43,10 +43,7 @@ namespace Nethermind.DepositContract
         private readonly ILogFinder _logFinder;
         private readonly IDepositConfig _depositConfig;
         private readonly ILogger _logger;
-        private readonly AbiDefinition _abiDefinition;
         private DepositContract? _depositContract;
-        
-        private AbiDefinitionParser _parser = new AbiDefinitionParser();
 
         public DepositModule(ITxPoolBridge txPoolBridge, ILogFinder logFinder, IDepositConfig depositConfig, ILogManager logManager)
         {
@@ -54,35 +51,37 @@ namespace Nethermind.DepositContract
             _txPoolBridge = txPoolBridge ?? throw new ArgumentNullException(nameof(txPoolBridge));
             _logFinder = logFinder ?? throw new ArgumentNullException(nameof(logFinder));
             _depositConfig = depositConfig ?? throw new ArgumentNullException(nameof(depositConfig));
-            _abiDefinition = _parser.Parse(File.ReadAllText("contracts/validator_registration.json"));
-
-            if (depositConfig.DepositContractAddress != null)
+            
+            if (!string.IsNullOrEmpty(depositConfig.DepositContractAddress))
             {
                 var address = new Address(depositConfig.DepositContractAddress);
-                _depositContract = new DepositContract(_abiDefinition, new AbiEncoder(), address);
+                _depositContract = new DepositContract(new AbiEncoder(), address);
             }
         }
 
         public ValueTask<ResultWrapper<Keccak>> deposit_deploy(Address senderAddress)
         {
-            Transaction tx = new Transaction();
-            tx.Value = 0;
-            tx.Init = _abiDefinition.Bytecode;
-            tx.GasLimit = 2000000;
-            tx.GasPrice = 20.GWei();
-            tx.SenderAddress = senderAddress;
+            ResultWrapper<Keccak> result;
+            
+            if (_depositContract == null)
+            {
+                result = ResultWrapper<Keccak>.Fail("Deposit contract address not specified.", ErrorCodes.InternalError);
+                return new ValueTask<ResultWrapper<Keccak>>(result);    
+            }
 
+            Transaction tx = _depositContract.Deploy(senderAddress);
             Keccak txHash = _txPoolBridge.SendTransaction(tx, TxHandlingOptions.ManagedNonce);
 
             if(_logger.IsInfo) _logger.Info($"Sent transaction at price {tx.GasPrice} to {tx.SenderAddress}");
 
-            return new ValueTask<ResultWrapper<Keccak>>(ResultWrapper<Keccak>.Success(txHash));
+            result = ResultWrapper<Keccak>.Success(txHash);
+            return new ValueTask<ResultWrapper<Keccak>>(result);
         }
 
         public ValueTask<ResultWrapper<bool>> deposit_setContractAddress(Address contractAddress)
         {
             _depositConfig.DepositContractAddress = contractAddress.ToString();
-            _depositContract = new DepositContract(_abiDefinition, new AbiEncoder(), contractAddress);
+            _depositContract = new DepositContract(new AbiEncoder(), contractAddress);
             return new ValueTask<ResultWrapper<bool>>(ResultWrapper<bool>.Success(true));
         }
 

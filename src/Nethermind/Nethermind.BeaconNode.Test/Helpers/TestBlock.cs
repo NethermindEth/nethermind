@@ -38,7 +38,7 @@ namespace Nethermind.BeaconNode.Test.Helpers
             SignatureDomains signatureDomains = testServiceProvider.GetService<IOptions<SignatureDomains>>().Value;
 
             ICryptographyService cryptographyService = testServiceProvider.GetService<ICryptographyService>();
-            BeaconChainUtility beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
+            IBeaconChainUtility beaconChainUtility = testServiceProvider.GetService<IBeaconChainUtility>();
             BeaconStateAccessor beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
             BeaconStateTransition beaconStateTransition = testServiceProvider.GetService<BeaconStateTransition>();
 
@@ -112,7 +112,7 @@ namespace Nethermind.BeaconNode.Test.Helpers
             SignatureDomains signatureDomains = testServiceProvider.GetService<IOptions<SignatureDomains>>().Value;
 
             ICryptographyService cryptographyService = testServiceProvider.GetService<ICryptographyService>();
-            BeaconChainUtility beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
+            IBeaconChainUtility beaconChainUtility = testServiceProvider.GetService<IBeaconChainUtility>();
             BeaconStateAccessor beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
             BeaconStateTransition beaconStateTransition = testServiceProvider.GetService<BeaconStateTransition>();
 

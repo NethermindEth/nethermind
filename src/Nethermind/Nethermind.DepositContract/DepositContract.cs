@@ -15,23 +15,25 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
+using System.IO;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
+using Nethermind.Blockchain.Contracts.Json;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.DepositContract
 {
-    public class DepositContract : Contract
+    public sealed class DepositContract : Contract
     {
-        public DepositContract(AbiDefinition definition, IAbiEncoder abiEncoder, Address contractAddress)
-            : base(null, abiEncoder, contractAddress)
+        public DepositContract(IAbiEncoder abiEncoder, Address contractAddress)
+            : base(
+                abiEncoder,
+                contractAddress,
+                new AbiDefinitionParser().Parse(File.ReadAllText("contracts//DepositContract.json")))
         {
-            AbiDefinition = definition ?? throw new ArgumentNullException(nameof(definition));
         }
-        
-        protected override AbiDefinition AbiDefinition { get; }
 
         public Transaction Deposit(
             Address sender,
@@ -48,5 +50,15 @@ namespace Nethermind.DepositContract
                 depositDataRoot);
 
         public Keccak DepositEventHash => GetEventHash("DepositEvent");
+
+        public Transaction Deploy(Address senderAddress) =>
+            new Transaction
+            {
+                Value = 0,
+                Init = AbiDefinition.Bytecode,
+                GasLimit = 2000000,
+                GasPrice = 20.GWei(),
+                SenderAddress = senderAddress
+            };
     }
 }

@@ -269,6 +269,17 @@ namespace Nethermind.Core.Test
             Assert.AreEqual(BigInteger.Parse(expectedResult), Bytes.FromHexString(hex).ToSignedBigInteger(length));
         }
         
+        [TestCase("0x0123456789abcdef0123456789abcdef", "0xefcdab8967452301efcdab8967452301")]
+        [TestCase(
+            "0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "0xefcdab8967452301efcdab8967452301efcdab8967452301efcdab8967452301")]
+        public void Can_change_endianness(string hex, string expectedResult)
+        {
+            byte[] bytes = Bytes.FromHexString(hex);
+            Bytes.ChangeEndianness8(bytes);
+            bytes.ToHexString(true).Should().Be(expectedResult);
+        }
+        
         [TestCase("0x0001020304050607080910111213141516171819202122232425262728293031")]
         public void Can_create_bit_array_from_bytes(string hex)
         {

@@ -38,18 +38,18 @@ namespace Nethermind.Consensus.AuRa.Transactions
     public class RandomContractTxSource : ITxSource
     {
         private readonly IEciesCipher _eciesCipher;
-        private readonly PrivateKey _privateKey;
-        private readonly IList<RandomContract> _contracts;
+        private readonly ProtectedPrivateKey _cryptoKey;
+        private readonly IList<IRandomContract> _contracts;
         private readonly ICryptoRandom _random;
 
-        public RandomContractTxSource(IList<RandomContract> contracts,
+        public RandomContractTxSource(IList<IRandomContract> contracts,
             IEciesCipher eciesCipher,
-            PrivateKey privateKey, 
+            ProtectedPrivateKey cryptoKey, 
             ICryptoRandom cryptoRandom)
         {
             _contracts = contracts ?? throw new ArgumentNullException(nameof(contracts));
             _eciesCipher = eciesCipher ?? throw new ArgumentNullException(nameof(eciesCipher));
-            _privateKey = privateKey ?? throw new ArgumentNullException(nameof(privateKey));
+            _cryptoKey = cryptoKey ?? throw new ArgumentNullException(nameof(cryptoKey));
             _random = cryptoRandom;
         }
         
@@ -58,30 +58,31 @@ namespace Nethermind.Consensus.AuRa.Transactions
             if (_contracts.TryGetForBlock(parent.Number + 1, out var contract))
             {
                 var tx = GetTransaction(contract, parent);
-                if (tx?.GasLimit <= gasLimit)
+                if (tx != null && tx.GasLimit <= gasLimit)
                 {
                     yield return tx;
                 }
             }
         }
 
-        private Transaction GetTransaction(in RandomContract contract, in BlockHeader parent)
+        private Transaction GetTransaction(in IRandomContract contract, in BlockHeader parent)
         {
             var (phase, round) = contract.GetPhase(parent);
             switch (phase)
             {
-                case RandomContract.Phase.BeforeCommit:
+                case IRandomContract.Phase.BeforeCommit:
                 {
                     byte[] bytes = new byte[32];
                     _random.GenerateRandomBytes(bytes);
                     var hash = Keccak.Compute(bytes);
-                    var cipher = _eciesCipher.Encrypt(_privateKey.PublicKey, bytes);
+                    var cipher = _eciesCipher.Encrypt(_cryptoKey.PublicKey, bytes);
                     return contract.CommitHash(hash, cipher);
                 }
-                case RandomContract.Phase.Reveal:
+                case IRandomContract.Phase.Reveal:
                 {
                     var (hash, cipher) = contract.GetCommitAndCipher(parent, round);
-                    byte[] bytes = _eciesCipher.Decrypt(_privateKey, cipher).Item2;
+                    using PrivateKey privateKey = _cryptoKey.Unprotect();
+                    byte[] bytes = _eciesCipher.Decrypt(privateKey, cipher).Item2;
                     if (bytes?.Length != 32)
                     {
                         // This can only happen if there is a bug in the smart contract, or if the entire network goes awry.
@@ -98,8 +99,8 @@ namespace Nethermind.Consensus.AuRa.Transactions
                     
                     return contract.RevealNumber(number);
                 }
-                case RandomContract.Phase.Waiting:
-                case RandomContract.Phase.Committed:
+                case IRandomContract.Phase.Waiting:
+                case IRandomContract.Phase.Committed:
                     return null;
             }
             

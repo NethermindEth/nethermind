@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.IO;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Logging;
@@ -38,10 +39,22 @@ namespace Nethermind.Runner.Ethereum
             
             IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
             ILogger logger = _logManager.GetClassLogger();
-            if (logger.IsDebug) logger.Debug($"Loading chain spec from {initConfig.ChainSpecPath}");
-            ThisNodeInfo.AddInfo("Chainspec    :", $"{initConfig.ChainSpecPath}");
+
+            bool hiveEnabled = Environment.GetEnvironmentVariable("NETHERMIND_HIVE_ENABLED")?.ToLowerInvariant() == "true";
+            bool hiveChainSpecExists = File.Exists(initConfig.HiveChainSpecPath);
+
+            string chainSpecFile;
+            if(hiveEnabled && hiveChainSpecExists)
+                chainSpecFile = initConfig.HiveChainSpecPath;
+            else
+                chainSpecFile = initConfig.ChainSpecPath;
+
+            if (logger.IsDebug) logger.Debug($"Loading chain spec from {chainSpecFile}");
+
+            ThisNodeInfo.AddInfo("Chainspec    :", $"{chainSpecFile}");
             IChainSpecLoader loader = new ChainSpecLoader(ethereumJsonSerializer);
-            ChainSpec chainSpec = loader.LoadFromFile(initConfig.ChainSpecPath);
+
+            ChainSpec chainSpec = loader.LoadFromFile(chainSpecFile);
             
             logManager.SetGlobalVariable("chain", chainSpec.Name);
             logManager.SetGlobalVariable("chainId", chainSpec.ChainId);

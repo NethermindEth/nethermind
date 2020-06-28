@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Abi
 {
@@ -26,11 +27,7 @@ namespace Nethermind.Abi
         private readonly Dictionary<string, AbiEventDescription> _events = new Dictionary<string, AbiEventDescription>();
         private readonly List<AbiBaseDescription> _items = new List<AbiBaseDescription>();
 
-        public AbiDefinition()
-        {
-        }
-        
-        public byte[] Bytecode { get; private set; }
+        public byte[]? Bytecode { get; private set; }
         public IReadOnlyList<AbiFunctionDescription> Constructors => _constructors;
         public IReadOnlyDictionary<string, AbiFunctionDescription> Functions => _functions;
         public IReadOnlyDictionary<string, AbiEventDescription> Events => _events;

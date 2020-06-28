@@ -58,6 +58,8 @@ namespace Nethermind.Specs
         public bool IsEip1108Enabled { get; set; }
         public bool IsEip1884Enabled { get; set; }
         public bool IsEip2200Enabled { get; set; }
+        public bool IsEip2315Enabled { get; set; }
+        public bool IsEip2537Enabled { get; set; }
         public bool IsEip158IgnoredAccount(Address address) => address == Address.SystemUser;		
     }
 }

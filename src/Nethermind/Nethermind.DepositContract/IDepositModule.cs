@@ -23,6 +23,7 @@ using Nethermind.JsonRpc.Modules;
 
 namespace Nethermind.DepositContract
 {
+    [RpcModule(ModuleType.Deposit)]
     public interface IDepositModule : IModule
     {
         [JsonRpcMethod(Description = "Deploys the deposit contract")]

@@ -20,6 +20,7 @@ using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
@@ -28,6 +29,7 @@ using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -52,7 +54,12 @@ namespace Nethermind.AuRa.Test
                 Substitute.For<IReceiptStorage>(),
                 Substitute.For<IValidatorStore>(),
                 Substitute.For<IBlockFinalizationManager>(),
-                LimboLogs.Instance);
+                Substitute.For<ITxSender>(),
+                Substitute.For<ITxPool>(),
+                LimboLogs.Instance,
+                Substitute.For<ISigner>(),
+                new ReportingContractBasedValidator.Cache(),
+                long.MaxValue);
 
             var validator = new AuRaParameters.Validator()
             {

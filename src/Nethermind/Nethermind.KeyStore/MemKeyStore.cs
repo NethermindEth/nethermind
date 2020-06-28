@@ -48,7 +48,12 @@ namespace Nethermind.KeyStore
 
         public (PrivateKey PrivateKey, Result Result) GetKey(Address address, SecureString password)
         {
-            return (_privateKeys[address], Result.Success);
+            return _privateKeys.ContainsKey(address) ? (_privateKeys[address], Result.Success) : (null, Result.Fail("Can't unlock key."));
+        }
+
+        public (ProtectedPrivateKey PrivateKey, Result Result) GetProtectedKey(Address address, SecureString password)
+        {
+            return _privateKeys.ContainsKey(address) ? (new ProtectedPrivateKey(_privateKeys[address]), Result.Success) : (null, Result.Fail("Can't unlock key."));
         }
 
         public (KeyStoreItem KeyData, Result Result) GetKeyData(Address address)
@@ -62,6 +67,11 @@ namespace Nethermind.KeyStore
         }
 
         public (PrivateKey PrivateKey, Result Result) GenerateKey(SecureString password)
+        {
+            throw new System.NotImplementedException();
+        }
+
+        public (ProtectedPrivateKey PrivateKey, Result Result) GenerateProtectedKey(SecureString password)
         {
             throw new System.NotImplementedException();
         }

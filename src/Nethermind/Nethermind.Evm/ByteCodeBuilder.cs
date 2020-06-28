@@ -29,6 +29,12 @@ namespace Nethermind.Evm
         public static Prepare EvmCode => new Prepare();
         public byte[] Done => _byteCode.ToArray();
 
+        public Prepare Op(byte instruction)
+        {
+            _byteCode.Add(instruction);
+            return this;
+        }
+        
         public Prepare Op(Instruction instruction)
         {
             _byteCode.Add((byte) instruction);
@@ -204,7 +210,13 @@ namespace Nethermind.Evm
             PushData(new[] {data});
             return this;
         }
-
+        
+        public Prepare FromCode(string data)
+        {
+            _byteCode.AddRange(Bytes.FromHexString(data));
+            return this;
+        }
+        
         public Prepare Data(string data)
         {
             _byteCode.AddRange(Bytes.FromHexString(data));
