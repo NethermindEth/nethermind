@@ -585,7 +585,6 @@ namespace Nethermind.Baseline.Test.JsonRpc
             await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
 
             stateReader.GetCode(Arg.Any<Keccak>(), TestItem.AddressC).Returns(new byte[] {255});
-            await baselineModule.baseline_track(TestItem.AddressC);
             var result = await baselineModule.baseline_track(TestItem.AddressC);
 
             result.Result.ResultType.Should().Be(ResultType.Success);
