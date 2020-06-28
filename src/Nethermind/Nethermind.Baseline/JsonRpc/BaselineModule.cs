@@ -33,6 +33,7 @@ using Nethermind.Facade;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State;
 using Nethermind.TxPool;
 
 namespace Nethermind.Baseline.JsonRpc
@@ -46,6 +47,7 @@ namespace Nethermind.Baseline.JsonRpc
         private readonly IDb _baselineDb;
         private readonly ILogger _logger;
         private readonly ITxPoolBridge _txPoolBridge;
+        private readonly IStateReader _stateReader;
         private readonly ILogFinder _logFinder;
         private readonly IBlockFinder _blockFinder;
 
@@ -56,6 +58,7 @@ namespace Nethermind.Baseline.JsonRpc
 
         public BaselineModule(
             ITxPoolBridge txPoolBridge,
+            IStateReader stateReader,
             ILogFinder logFinder,
             IBlockFinder blockFinder,
             IAbiEncoder abiEncoder,
@@ -68,6 +71,7 @@ namespace Nethermind.Baseline.JsonRpc
             _baselineDb = baselineDb ?? throw new ArgumentNullException(nameof(baselineDb));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _txPoolBridge = txPoolBridge ?? throw new ArgumentNullException(nameof(txPoolBridge));
+            _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
             _logFinder = logFinder ?? throw new ArgumentNullException(nameof(logFinder));
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
 
@@ -104,6 +108,11 @@ namespace Nethermind.Baseline.JsonRpc
 
         private bool TryAddTree(Address trackedTree)
         {
+            if (_stateReader.GetCode(_blockFinder.Head.StateRoot, trackedTree).Length == 0)
+            {
+                return false;
+            }
+            
             ShaBaselineTree tree = new ShaBaselineTree(_baselineDb, trackedTree.Bytes, TruncationLength);
             return _baselineTrees.TryAdd(trackedTree, tree);
         }
@@ -460,14 +469,21 @@ namespace Nethermind.Baseline.JsonRpc
 
         public Task<ResultWrapper<bool>> baseline_track(Address contractAddress)
         {
+            ResultWrapper<bool> result;
+
             // can potentially warn user if tree is not deployed at the address
             if (TryAddTree(contractAddress))
             {
                 UpdateMetadata(contractAddress);
-                return Task.FromResult(ResultWrapper<bool>.Success(true));
+                result = ResultWrapper<bool>.Success(true);
+            }
+            else
+            {
+                result = ResultWrapper<bool>.Fail(
+                    $"{contractAddress} is already tracked or no contract at given address",
+                    ErrorCodes.InvalidInput);    
             }
 
-            var result = ResultWrapper<bool>.Fail($"{contractAddress} is already tracked", ErrorCodes.InvalidInput);
             return Task.FromResult(result);
         }
 
