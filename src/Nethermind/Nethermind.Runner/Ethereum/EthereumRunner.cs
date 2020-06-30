@@ -77,7 +77,7 @@ namespace Nethermind.Runner.Ethereum
         {
             if (_logger.IsDebug) _logger.Debug("Initializing Ethereum");
 
-            EthereumStepsLoader stepsLoader = new EthereumStepsLoader();
+            EthereumStepsLoader stepsLoader = new EthereumStepsLoader(GetType().Assembly);
             EthereumStepsManager stepsManager = new EthereumStepsManager(stepsLoader, _context, _context.LogManager);
             await stepsManager.InitializeAll(cancellationToken);
             

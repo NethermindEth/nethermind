@@ -59,7 +59,13 @@ namespace Nethermind.Runner.Ethereum.Steps
             bool changedAnything;
             do
             {
+                foreach (StepInfo stepInfo in _allSteps)
+                {
+                    _logger.Debug($"{stepInfo} is {stepInfo.Stage}");
+                }
+                
                 await _autoResetEvent.WaitOneAsync(cancellationToken);
+                
                 if (_logger.IsDebug) _logger.Debug("Reviewing steps manager dependencies");
                 
                 changedAnything = false;
@@ -70,7 +76,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                         break;
                     }
 
-                    if (stepInfo.Stage < StepInitializationStage.WaitingForExecution)
+                    if (stepInfo.Stage == StepInitializationStage.WaitingForDependencies)
                     {
                         bool allDependenciesFinished = true;
                         foreach (Type dependency in stepInfo.Dependencies)

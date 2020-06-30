@@ -18,14 +18,21 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using Nethermind.Runner.Ethereum.Context;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
-    internal class EthereumStepsLoader : IEthereumStepsLoader
+    public class EthereumStepsLoader : IEthereumStepsLoader
     {
+        private readonly Assembly[] _stepsAssemblies;
         private readonly Type _baseContextType = typeof(EthereumRunnerContext);
 
+        public EthereumStepsLoader(params Assembly[] stepsAssemblies)
+        {
+            _stepsAssemblies = stepsAssemblies;
+        }
+        
         public IEnumerable<StepInfo> LoadSteps(Type contextType)
         {
             if (contextType != _baseContextType
@@ -34,8 +41,14 @@ namespace Nethermind.Runner.Ethereum.Steps
                 throw new NotSupportedException("Multilevel inheritance context are not supported");
             }
             
-            return GetType().Assembly.GetTypes()
-                .Where(t => !t.IsInterface && !t.IsAbstract && IsStepType(t))
+            List<Type> allStepTypes = new List<Type>();
+            foreach (Assembly stepsAssembly in _stepsAssemblies)
+            {
+                allStepTypes.AddRange(stepsAssembly.GetTypes()
+                    .Where(t => !t.IsInterface && !t.IsAbstract && IsStepType(t)));
+            }
+            
+            return allStepTypes
                 .Select(s => new StepInfo(s, GetStepBaseType(s)))
                 .GroupBy(s => s.StepBaseType)
                 .Select(g => SelectImplementation(g.ToArray(), contextType));
@@ -62,7 +75,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             
             if (stepsWithMatchingContextType.Length != 1)
             {
-                string stepsDescribed = string.Join(", ", stepsWithTheSameBase.Select(s => s.StepType));
+                string stepsDescribed = string.Join(", ", stepsWithTheSameBase.Select(s => s.StepType.Name));
                 throw new StepDependencyException(
                     $"Found {stepsWithMatchingContextType.Length} steps with matching context type among {stepsDescribed}");
             }
