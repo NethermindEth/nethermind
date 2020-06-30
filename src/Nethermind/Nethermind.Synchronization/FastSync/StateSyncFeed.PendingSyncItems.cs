@@ -41,8 +41,6 @@ namespace Nethermind.Synchronization.FastSync
         
         internal class PendingSyncItems : IPendingSyncItems
         {
-            private FastPriorityQueue<StateSyncItem> queue = new FastPriorityQueue<StateSyncItem>(1024 * 1024);
-            
             private ConcurrentStack<StateSyncItem>[] _allStacks = new ConcurrentStack<StateSyncItem>[7];
 
             private ConcurrentStack<StateSyncItem> CodeItems => _allStacks[0];
