@@ -16,12 +16,11 @@
 
 using System.Diagnostics;
 using Nethermind.Core.Crypto;
-using Priority_Queue;
 
 namespace Nethermind.Synchronization.FastSync
 {
     [DebuggerDisplay("{Level} {NodeDataType} {Hash}")]
-    public class StateSyncItem : FastPriorityQueueNode
+    public class StateSyncItem
     {
         public StateSyncItem(Keccak hash, NodeDataType nodeType, int level, uint rightness)
         {
