@@ -51,7 +51,9 @@ namespace Nethermind.Runner.Ethereum.Steps
             return allStepTypes
                 .Select(s => new StepInfo(s, GetStepBaseType(s)))
                 .GroupBy(s => s.StepBaseType)
-                .Select(g => SelectImplementation(g.ToArray(), contextType));
+                .Select(g => SelectImplementation(g.ToArray(), contextType))
+                .Where(s => s != null)
+                .Select(s => s!);
         }
 
         private static bool HasConstructorWithParameter(Type type, Type parameterType)
@@ -61,7 +63,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 c => c.GetParameters().Select(p => p.ParameterType).SequenceEqual(expectedParams));
         }
 
-        private StepInfo SelectImplementation(StepInfo[] stepsWithTheSameBase, Type contextType)
+        private StepInfo? SelectImplementation(StepInfo[] stepsWithTheSameBase, Type contextType)
         {
             var stepsWithMatchingContextType = stepsWithTheSameBase
                 .Where(t => HasConstructorWithParameter(t.StepType, contextType)).ToArray();
@@ -73,14 +75,14 @@ namespace Nethermind.Runner.Ethereum.Steps
                     .Where(t => HasConstructorWithParameter(t.StepType, _baseContextType)).ToArray();    
             }
             
-            if (stepsWithMatchingContextType.Length != 1)
+            if (stepsWithMatchingContextType.Length > 1)
             {
                 string stepsDescribed = string.Join(", ", stepsWithTheSameBase.Select(s => s.StepType.Name));
                 throw new StepDependencyException(
                     $"Found {stepsWithMatchingContextType.Length} steps with matching context type among {stepsDescribed}");
             }
 
-            return stepsWithMatchingContextType[0];
+            return stepsWithMatchingContextType.Length == 1 ? stepsWithMatchingContextType[0] : null;
         }
         
         private static bool IsStepType(Type t) => typeof(IStep).IsAssignableFrom(t);
