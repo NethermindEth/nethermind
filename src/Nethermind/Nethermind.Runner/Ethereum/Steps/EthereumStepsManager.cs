@@ -34,7 +34,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         private AutoResetEvent _autoResetEvent = new AutoResetEvent(true);
         private readonly EthereumRunnerContext _context;
         private readonly List<StepInfo> _allSteps;
-        private readonly Dictionary<Type, StepInfo> _allStepsByType;
+        private readonly Dictionary<Type, StepInfo> _allStepsByBaseType;
 
         public EthereumStepsManager(
             IEthereumStepsLoader loader,
@@ -51,7 +51,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                       ?? throw new ArgumentNullException(nameof(logManager));
 
             _allSteps = loader.LoadSteps(_context.GetType()).ToList();
-            _allStepsByType = _allSteps.ToDictionary(s => s.StepType, s => s);
+            _allStepsByBaseType = _allSteps.ToDictionary(s => s.StepBaseType, s => s);
         }
 
         private async Task ReviewDependencies(CancellationToken cancellationToken)
@@ -75,7 +75,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                         bool allDependenciesFinished = true;
                         foreach (Type dependency in stepInfo.Dependencies)
                         {
-                            StepInfo dependencyInfo = _allStepsByType[dependency];
+                            StepInfo dependencyInfo = _allStepsByBaseType[dependency];
                             if (dependencyInfo.Stage != StepInitializationStage.Complete)
                             {
                                 if (_logger.IsDebug) _logger.Debug($"{stepInfo} is waiting for {dependencyInfo}");

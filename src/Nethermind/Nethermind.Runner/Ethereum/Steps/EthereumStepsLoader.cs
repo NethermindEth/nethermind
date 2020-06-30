@@ -35,7 +35,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
             
             return GetType().Assembly.GetTypes()
-                .Where(t => !t.IsInterface && IsStepType(t))
+                .Where(t => !t.IsInterface && !t.IsAbstract && IsStepType(t))
                 .Select(s => new StepInfo(s, GetStepBaseType(s)))
                 .GroupBy(s => s.StepBaseType)
                 .Select(g => SelectImplementation(g.ToArray(), contextType));
