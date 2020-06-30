@@ -19,147 +19,98 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
-using Nethermind.Runner.Ethereum.Subsystems;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
     public class EthereumStepsManager
     {
-        private readonly EthereumRunnerContext _context;
         private ILogger _logger;
 
-        public EthereumStepsManager(EthereumRunnerContext context)
-        {
-            _context = context;
-            _logger = _context.LogManager.GetClassLogger<EthereumStepsManager>();
-        }
+        private AutoResetEvent _autoResetEvent = new AutoResetEvent(true);
+        private readonly EthereumRunnerContext _context;
+        private readonly List<StepInfo> _allSteps;
+        private readonly Dictionary<Type, StepInfo> _allStepsByBaseType;
 
-        public async Task DiscoverAll(CancellationToken cancellationToken)
+        public EthereumStepsManager(
+            IEthereumStepsLoader loader,
+            EthereumRunnerContext context,
+            ILogManager logManager)
         {
-            var types = GetType().Assembly.GetTypes()
-                .Where(t => !t.IsInterface && IsStepType(t))
-                .GroupBy(GetStepBaseType);
-
-            Type? GetStepType(IEnumerable<Type> sameStepSubtypes)
+            if (loader == null)
             {
-                Type? GetStepTypeRecursive(Type? contextType)
-                {
-                    bool HasConstructorWithParameter(Type? type, Type? parameterType) =>
-                        type?.GetConstructors()
-                            .Any(c => c.GetParameters().Select(p => p.ParameterType).SequenceEqual(new[] {parameterType}))
-                        ?? false;
-
-                    if (contextType == typeof(object))
-                    {
-                        return null;
-                    }
-
-                    Type stepTypeForContext = sameStepSubtypes.Where(t => !t.IsAbstract)
-                        .FirstOrDefault(t => HasConstructorWithParameter(t, contextType));
-
-                    return stepTypeForContext != null
-                        ? stepTypeForContext
-                        : GetStepTypeRecursive(contextType?.BaseType);
-                }
-
-                return sameStepSubtypes.Count() == 1 ? sameStepSubtypes.First() : GetStepTypeRecursive(_context.GetType());
+                throw new ArgumentNullException(nameof(loader));
             }
 
-            foreach (IGrouping<Type?, Type> typeGroup in types.Where(t => t != null))
-            {
-                if (cancellationToken.IsCancellationRequested)
-                {
-                    break;
-                }
-                
-                Type? type = GetStepType(typeGroup);
-                if (type != null)
-                {
-                    if (_logger.IsDebug) _logger.Debug($"Discovered Ethereum step: {type.Name}");
-                    _discoveredSteps[type] = false;
+            _context = context ?? throw new ArgumentNullException(nameof(context));
+            _logger = logManager?.GetClassLogger<EthereumStepsManager>()
+                      ?? throw new ArgumentNullException(nameof(logManager));
 
-                    Type? baseType = GetStepBaseType(type);
-                    if (baseType != null)
-                    {
-                        _hasFinishedExecution[baseType] = false;
-                    }
-                }
-            }
-
-            await ReviewDependencies(cancellationToken);
+            _allSteps = loader.LoadSteps(_context.GetType()).ToList();
+            _allStepsByBaseType = _allSteps.ToDictionary(s => s.StepBaseType, s => s);
         }
-
-        private readonly ConcurrentDictionary<Type, bool> _hasFinishedExecution = new ConcurrentDictionary<Type, bool>();
-
-        private readonly ConcurrentDictionary<Type, bool> _discoveredSteps = new ConcurrentDictionary<Type, bool>();
-
-        private static bool IsStepType(Type? t) => t != null && typeof(IStep).IsAssignableFrom(t);
-
-        private Type? GetStepBaseType(Type? type) => IsStepType(type?.BaseType) ? GetStepBaseType(type?.BaseType) : type;
 
         private async Task ReviewDependencies(CancellationToken cancellationToken)
         {
-            List<Type> typesReady = new List<Type>();
             bool changedAnything;
             do
             {
-                typesReady.Clear();
+                foreach (StepInfo stepInfo in _allSteps)
+                {
+                    _logger.Debug($"{stepInfo} is {stepInfo.Stage}");
+                }
+                
+                await _autoResetEvent.WaitOneAsync(cancellationToken);
+                
+                if (_logger.IsDebug) _logger.Debug("Reviewing steps manager dependencies");
+                
                 changedAnything = false;
-
-                foreach ((Type type, bool allDependenciesInitialized) in _discoveredSteps)
+                foreach (StepInfo stepInfo in _allSteps)
                 {
                     if (cancellationToken.IsCancellationRequested)
                     {
                         break;
                     }
-                    
-                    if (!allDependenciesInitialized)
+
+                    if (stepInfo.Stage == StepInitializationStage.WaitingForDependencies)
                     {
-                        RunnerStepDependenciesAttribute? dependenciesAttribute = type.GetCustomAttribute<RunnerStepDependenciesAttribute>();
                         bool allDependenciesFinished = true;
-                        if (dependenciesAttribute != null)
+                        foreach (Type dependency in stepInfo.Dependencies)
                         {
-                            foreach (Type dependency in dependenciesAttribute.Dependencies)
+                            StepInfo dependencyInfo = _allStepsByBaseType[dependency];
+                            if (dependencyInfo.Stage != StepInitializationStage.Complete)
                             {
-                                if (!_hasFinishedExecution.GetValueOrDefault(dependency))
-                                {
-                                    allDependenciesFinished = false;
-                                    break;
-                                }
+                                if (_logger.IsDebug) _logger.Debug($"{stepInfo} is waiting for {dependencyInfo}");
+                                allDependenciesFinished = false;
+                                break;
                             }
                         }
 
                         if (allDependenciesFinished)
                         {
-                            typesReady.Add(type);
+                            stepInfo.Stage = StepInitializationStage.WaitingForExecution;
                             changedAnything = true;
+                            if (_logger.IsDebug) _logger.Debug($"{stepInfo} stage changed to {stepInfo.Stage}");
+                            _autoResetEvent.Set();
                         }
                     }
                 }
-
-                foreach (Type type in typesReady)
-                {
-                    _discoveredSteps[type] = true;
-                }
-
-                await Task.Delay(10);
             } while (changedAnything);
         }
 
         public async Task InitializeAll(CancellationToken cancellationToken)
         {
-            while (_hasFinishedExecution.Values.Any(finished => !finished))
+            while (_allSteps.Any(s => s.Stage != StepInitializationStage.Complete))
             {
                 if (cancellationToken.IsCancellationRequested)
                 {
                     break;
                 }
-                
+
                 RunOneRoundOfInitialization(cancellationToken);
                 await ReviewDependencies(cancellationToken);
             }
@@ -168,84 +119,61 @@ namespace Nethermind.Runner.Ethereum.Steps
         }
 
         private ConcurrentBag<Task> _allPending = new ConcurrentBag<Task>();
-        private ConcurrentBag<Type> _allStarted = new ConcurrentBag<Type>();
 
         private void RunOneRoundOfInitialization(CancellationToken cancellationToken)
         {
             int startedThisRound = 0;
-            foreach ((Type discoveredStep, bool dependenciesInitialized) in _discoveredSteps)
+            foreach (StepInfo stepInfo in _allSteps)
             {
                 if (cancellationToken.IsCancellationRequested)
                 {
                     break;
                 }
-                
-                if (_allStarted.Contains(discoveredStep))
+
+                if (stepInfo.Stage != StepInitializationStage.WaitingForExecution)
                 {
                     continue;
                 }
 
-                Type? stepBaseType = GetStepBaseType(discoveredStep);
-                if (stepBaseType == null)
-                {
-                    throw new StepDependencyException($"Discovered step is not of step type {discoveredStep}");
-                }
-
-                if (_hasFinishedExecution[stepBaseType])
-                {
-                    continue;
-                }
-
-                if (!dependenciesInitialized)
-                {
-                    continue;
-                }
-
-                IStep? step;
-                try
-                {
-                    step = Activator.CreateInstance(discoveredStep, _context) as IStep;
-                }
-                catch (Exception e)
-                {
-                    if (_logger.IsError) _logger.Error($"Unable to create instance of Ethereum runner step of type {discoveredStep}", e);
-                    continue;
-                }
-
+                IStep? step = CreateStepInstance(stepInfo);
                 if (step == null)
                 {
-                    if (_logger.IsError) _logger.Error($"Unable to create instance of Ethereum runner step of type {discoveredStep}");
+                    if (_logger.IsError) _logger.Error($"Unable to create instance of Ethereum runner step {stepInfo}");
                     continue;
                 }
 
-                if (_logger.IsDebug) _logger.Debug($"Executing step: {step.GetType().Name}");
-
-                if (step is ISubsystemStateAware subsystemStateAware)
-                {
-                    subsystemStateAware.SubsystemStateChanged += SubsystemStateAwareOnSubsystemStateChanged;
-                }
+                if (_logger.IsDebug) _logger.Debug($"Executing step: {stepInfo}");
 
                 Stopwatch stopwatch = Stopwatch.StartNew();
+                stepInfo.Stage = StepInitializationStage.Executing;
                 Task task = step.Execute(cancellationToken);
                 startedThisRound++;
                 Task continuationTask = task.ContinueWith(t =>
                 {
                     stopwatch.Stop();
 
-                    if (t.IsFaulted)
+                    if (t.IsFaulted && step.MustInitialize)
                     {
-                        if (_logger.IsError) _logger.Error($"Step {step.GetType().Name.PadRight(24)} failed after {stopwatch.ElapsedMilliseconds}ms", t.Exception);
-                        _context.LogManager.GetClassLogger().Error($"FAILED TO INIT {stepBaseType.Name}", t.Exception);
-                        _hasFinishedExecution[stepBaseType] = true;
+                        if (_logger.IsError) _logger.Error(
+                            $"Step {step.GetType().Name.PadRight(24)} failed after {stopwatch.ElapsedMilliseconds}ms",
+                            t.Exception);
+                    }
+                    else if(t.IsFaulted)
+                    {
+                        if (_logger.IsWarn) _logger.Warn(
+                            $"Step {step.GetType().Name.PadRight(24)} failed after {stopwatch.ElapsedMilliseconds}ms");
                     }
                     else
                     {
-                        if (_logger.IsDebug) _logger.Debug($"Step {step.GetType().Name.PadRight(24)} executed in {stopwatch.ElapsedMilliseconds}ms");
-                        _hasFinishedExecution[stepBaseType] = true;
+                        if (_logger.IsDebug) _logger.Debug(
+                            $"Step {step.GetType().Name.PadRight(24)} executed in {stopwatch.ElapsedMilliseconds}ms");
                     }
-                });
+                    
+                    stepInfo.Stage = StepInitializationStage.Complete;
+                    _autoResetEvent.Set();
 
-                _allStarted.Add(discoveredStep);
+                    if (_logger.IsDebug) _logger.Debug($"{step.GetType().Name.PadRight(24)} complete");
+                });
 
                 if (step.MustInitialize)
                 {
@@ -253,7 +181,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 }
                 else
                 {
-                    _hasFinishedExecution[discoveredStep] = true;
+                    stepInfo.Stage = StepInitializationStage.Complete;
                 }
             }
 
@@ -267,17 +195,21 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
         }
 
-        private int _foreverLoop;
-
-        private void SubsystemStateAwareOnSubsystemStateChanged(object? sender, SubsystemStateEventArgs e)
+        private IStep? CreateStepInstance(StepInfo stepInfo)
         {
-            if (!(sender is ISubsystemStateAware subsystemStateAware))
+            IStep? step = null;
+            try
             {
-                if (_logger.IsError) _logger.Error($"Received a subsystem state event from an unexpected type of {sender?.GetType()}");
-                return;
+                step = Activator.CreateInstance(stepInfo.StepType, _context) as IStep;
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsError) _logger.Error($"Failed to create instance of Ethereum runner step {stepInfo}", e);
             }
 
-            if (_logger.IsDebug) _logger.Debug($"{subsystemStateAware.MonitoredSubsystem} state changed to {e.State}");
+            return step;
         }
+
+        private int _foreverLoop;
     }
 }

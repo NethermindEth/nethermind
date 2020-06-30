@@ -14,7 +14,6 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Cli.Modules;
@@ -34,7 +33,6 @@ using Nethermind.JsonRpc.Modules.TxPool;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Runner.Ethereum.Context;
-using Nethermind.Runner.Ethereum.Subsystems;
 using Nethermind.Baseline.Config;
 using Nethermind.Baseline.JsonRpc;
 using Nethermind.Blockchain.Find;
@@ -47,7 +45,7 @@ using Nethermind.Vault.Config;
 namespace Nethermind.Runner.Ethereum.Steps
 {
     [RunnerStepDependencies(typeof(InitializeNetwork), typeof(SetupKeyStore), typeof(InitializeBlockchain))]
-    public class RegisterRpcModules : IStep, ISubsystemStateAware
+    public class RegisterRpcModules : IStep
     {
         private readonly EthereumRunnerContext _context;
 
@@ -169,13 +167,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.LogManager);
 
             _context.RpcModuleProvider.Register(new SingletonModulePool<IParityModule>(parityModule, true));
-
-            SubsystemStateChanged?.Invoke(this, new SubsystemStateEventArgs(EthereumSubsystemState.Running));
+            
             return Task.CompletedTask;
         }
-
-        public event EventHandler<SubsystemStateEventArgs>? SubsystemStateChanged;
-
-        public EthereumSubsystem MonitoredSubsystem => EthereumSubsystem.Kafka;
     }
 }

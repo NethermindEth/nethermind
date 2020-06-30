@@ -271,7 +271,7 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
             ChainSpec chainSpec = LoadChainSpec(path);
             
             Assert.AreEqual(0x4d, chainSpec.ChainId, $"{nameof(chainSpec.ChainId)}");
-            Assert.AreEqual("POA Sokol", chainSpec.Name, $"{nameof(chainSpec.Name)}");
+            Assert.AreEqual("Sokol", chainSpec.Name, $"{nameof(chainSpec.Name)}");
             Assert.AreEqual(SealEngineType.AuRa, chainSpec.SealEngineType, "engine");
             Assert.NotNull(chainSpec.AuRa, "AuRa");
             Assert.AreEqual(0, chainSpec.AuRa.MaximumUncleCount, "maximum uncle count");
