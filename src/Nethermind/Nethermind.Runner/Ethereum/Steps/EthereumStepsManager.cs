@@ -113,7 +113,6 @@ namespace Nethermind.Runner.Ethereum.Steps
         }
 
         private ConcurrentBag<Task> _allPending = new ConcurrentBag<Task>();
-        private ConcurrentBag<Type> _allStarted = new ConcurrentBag<Type>();
 
         private void RunOneRoundOfInitialization(CancellationToken cancellationToken)
         {
@@ -140,6 +139,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 if (_logger.IsDebug) _logger.Debug($"Executing step: {stepInfo}");
 
                 Stopwatch stopwatch = Stopwatch.StartNew();
+                stepInfo.Stage = StepInitializationStage.Executing;
                 Task task = step.Execute(cancellationToken);
                 startedThisRound++;
                 Task continuationTask = task.ContinueWith(t =>
@@ -152,17 +152,17 @@ namespace Nethermind.Runner.Ethereum.Steps
                             $"Step {step.GetType().Name.PadRight(24)} failed after {stopwatch.ElapsedMilliseconds}ms",
                             t.Exception);
                         _context.LogManager.GetClassLogger().Error($"Failed to init {stepInfo}", t.Exception);
-                        stepInfo.Stage = StepInitializationStage.Complete;
                     }
                     else
                     {
                         if (_logger.IsDebug) _logger.Debug(
                             $"Step {step.GetType().Name.PadRight(24)} executed in {stopwatch.ElapsedMilliseconds}ms");
-                        stepInfo.Stage = StepInitializationStage.Complete;
                     }
-
-                    if (_logger.IsDebug) _logger.Debug($"{step.GetType().Name.PadRight(24)} finished -> Set");
+                    
+                    stepInfo.Stage = StepInitializationStage.Complete;
                     _autoResetEvent.Set();
+
+                    if (_logger.IsDebug) _logger.Debug($"{step.GetType().Name.PadRight(24)} complete");
                 });
 
                 if (step.MustInitialize)
