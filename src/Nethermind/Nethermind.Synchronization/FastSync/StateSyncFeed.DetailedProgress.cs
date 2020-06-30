@@ -16,6 +16,9 @@
 // 
 
 using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -70,7 +73,7 @@ namespace Nethermind.Synchronization.FastSync
                 LoadFromSerialized(serializedInitialState);
             }
 
-            internal void DisplayProgressReport(int pendingRequestsCount, ILogger logger)
+            internal void DisplayProgressReport(ICollection<StateSyncBatch> pendingRequests, ILogger logger)
             {
                 TimeSpan sinceLastReport = DateTime.UtcNow - LastReportTime.small;
                 if (sinceLastReport > TimeSpan.FromSeconds(1))
@@ -93,7 +96,7 @@ namespace Nethermind.Synchronization.FastSync
                         dataSizeInfo = string.Concat($"~{percentage:P2} | ", dataSizeInfo, $" / ~{(decimal) _chainSizeInfo.Value.Current / 1000 / 1000,6:F2}MB");
                     }
 
-                    if (logger.IsInfo) logger.Info($"State Sync {TimeSpan.FromSeconds(SecondsInSync):dd\\.hh\\:mm\\:ss} | {dataSizeInfo} | kB/s: {savedKBytesPerSecond,5:F0} | accounts {SavedAccounts} | nodes {SavedNodesCount} | diagnostics: {pendingRequestsCount}.{AverageTimeInHandler:f2}ms");
+                    if (logger.IsInfo) logger.Info($"State Sync {TimeSpan.FromSeconds(SecondsInSync):dd\\.hh\\:mm\\:ss} | {dataSizeInfo} | kB/s: {savedKBytesPerSecond,5:F0} | accounts {SavedAccounts} | nodes {SavedNodesCount} | diagnostics: {GetDiagnosticsOnPendingRequests(pendingRequests)}.{AverageTimeInHandler:f2}ms");
                     if (logger.IsDebug && DateTime.UtcNow - LastReportTime.full > TimeSpan.FromSeconds(10))
                     {
                         long allChecks = CheckWasInDependencies + CheckWasCached + StateWasThere + StateWasNotThere;
@@ -108,6 +111,12 @@ namespace Nethermind.Synchronization.FastSync
 
                     LastReportTime.small = DateTime.UtcNow;
                 }
+            }
+
+            private string GetDiagnosticsOnPendingRequests(ICollection<StateSyncBatch> pendingRequests)
+            {
+                var groups = pendingRequests.GroupBy(r => r.Peer?.SyncPeer.Node).ToArray();
+                return $"{pendingRequests.Count}:NoPeer_{groups.FirstOrDefault(g => g.Key == null)?.Count() ?? 0}:Peers_{groups.Count()}:Reused_{groups.Count(g => g.Count() > 2)}";
             }
 
             private void LoadFromSerialized(byte[] serializedData)

@@ -125,9 +125,15 @@ namespace Nethermind.Synchronization.ParallelSync
                             try
                             {
                                 // Logger.Warn($"Freeing allocation of {allocatedPeer}");
-                                Free(allocation);
-                                SyncResponseHandlingResult result = Feed.HandleResponse(request);
-                                ReactToHandlingResult(request, result, allocatedPeer);
+                                try
+                                {
+                                    Free(allocation);
+                                }
+                                finally
+                                {
+                                    SyncResponseHandlingResult result = Feed.HandleResponse(request);
+                                    ReactToHandlingResult(request, result, allocatedPeer);
+                                }
                             }
                             catch (ObjectDisposedException)
                             {

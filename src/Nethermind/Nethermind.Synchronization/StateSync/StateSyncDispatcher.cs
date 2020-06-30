@@ -35,6 +35,7 @@ namespace Nethermind.Synchronization.StateSync
         protected override async Task Dispatch(PeerInfo peerInfo, StateSyncBatch request, CancellationToken cancellationToken)
         {
             ISyncPeer peer = peerInfo.SyncPeer;
+            request.Peer = peerInfo;
             var getNodeDataTask = peer.GetNodeData(request.RequestedNodes.Select(n => n.Hash).ToArray(), cancellationToken);
             await getNodeDataTask.ContinueWith(
                 (t, state) =>
