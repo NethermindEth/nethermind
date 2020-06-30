@@ -22,6 +22,7 @@ using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Runner.Ethereum.Subsystems;
@@ -38,6 +39,8 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context = context;
             _logger = _context.LogManager.GetClassLogger<EthereumStepsManager>();
         }
+
+        private AutoResetEvent _autoResetEvent = new AutoResetEvent(true);
 
         public async Task DiscoverAll(CancellationToken cancellationToken)
         {
@@ -76,7 +79,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 {
                     break;
                 }
-                
+
                 Type? type = GetStepType(typeGroup);
                 if (type != null)
                 {
@@ -108,6 +111,9 @@ namespace Nethermind.Runner.Ethereum.Steps
             bool changedAnything;
             do
             {
+                await _autoResetEvent.WaitOneAsync(cancellationToken);
+                if (_logger.IsDebug) _logger.Debug("Reviewing steps manager dependencies");
+
                 typesReady.Clear();
                 changedAnything = false;
 
@@ -117,7 +123,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     {
                         break;
                     }
-                    
+
                     if (!allDependenciesInitialized)
                     {
                         RunnerStepDependenciesAttribute? dependenciesAttribute = type.GetCustomAttribute<RunnerStepDependenciesAttribute>();
@@ -128,6 +134,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                             {
                                 if (!_hasFinishedExecution.GetValueOrDefault(dependency))
                                 {
+                                    if (_logger.IsDebug) _logger.Debug($"{type} is waiting for {dependency}");
                                     allDependenciesFinished = false;
                                     break;
                                 }
@@ -138,6 +145,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                         {
                             typesReady.Add(type);
                             changedAnything = true;
+                            if (_logger.IsDebug) _logger.Debug($"{type} is ready -> Set");
+                            _autoResetEvent.Set();
                         }
                     }
                 }
@@ -146,8 +155,6 @@ namespace Nethermind.Runner.Ethereum.Steps
                 {
                     _discoveredSteps[type] = true;
                 }
-
-                await Task.Delay(10);
             } while (changedAnything);
         }
 
@@ -159,7 +166,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 {
                     break;
                 }
-                
+
                 RunOneRoundOfInitialization(cancellationToken);
                 await ReviewDependencies(cancellationToken);
             }
@@ -179,7 +186,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 {
                     break;
                 }
-                
+
                 if (_allStarted.Contains(discoveredStep))
                 {
                     continue;
@@ -243,6 +250,9 @@ namespace Nethermind.Runner.Ethereum.Steps
                         if (_logger.IsDebug) _logger.Debug($"Step {step.GetType().Name.PadRight(24)} executed in {stopwatch.ElapsedMilliseconds}ms");
                         _hasFinishedExecution[stepBaseType] = true;
                     }
+
+                    if (_logger.IsDebug) _logger.Debug($"{step.GetType().Name.PadRight(24)} finished -> Set");
+                    _autoResetEvent.Set();
                 });
 
                 _allStarted.Add(discoveredStep);
