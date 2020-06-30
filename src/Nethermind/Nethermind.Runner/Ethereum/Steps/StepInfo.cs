@@ -13,35 +13,41 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System.Threading;
-using System.Threading.Tasks;
-using Nethermind.Grpc;
-using Nethermind.Grpc.Producers;
-using Nethermind.Runner.Ethereum.Context;
+using System;
+using System.Reflection;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
-    [RunnerStepDependencies(typeof(StartBlockProcessor))]
-    public class StartGrpcProducer : IStep
+    public class StepInfo
     {
-        private readonly EthereumRunnerContext _context;
-
-        public StartGrpcProducer(EthereumRunnerContext context)
+        public StepInfo(Type type, Type baseType)
         {
-            _context = context;
+            if (type.IsAbstract)
+            {
+                throw new ArgumentException("Step type cannot be abstract", nameof(type));
+            }
+            
+            StepType = type;
+            StepBaseType = baseType;
+            
+            RunnerStepDependenciesAttribute? dependenciesAttribute =
+                StepType.GetCustomAttribute<RunnerStepDependenciesAttribute>();
+            Dependencies = dependenciesAttribute?.Dependencies ?? Array.Empty<Type>();
         }
 
-        public Task Execute(CancellationToken _)
-        {
-            IGrpcConfig grpcConfig = _context.Config<IGrpcConfig>();
-            if (grpcConfig.Enabled)
-            {
-                GrpcProducer grpcProducer = new GrpcProducer(_context.GrpcServer);
-                _context.Producers.Add(grpcProducer);
-            }
+        public Type StepBaseType { get; }
 
-            return Task.CompletedTask;
+        public Type StepType { get; }
+        
+        public Type[] Dependencies { get; }
+
+        public StepInitializationStage Stage { get; set; }
+
+        public override string ToString()
+        {
+            return $"{StepType.Name} : {StepBaseType.Name}";
         }
     }
 }
