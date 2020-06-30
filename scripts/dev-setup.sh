@@ -14,7 +14,7 @@ sudo apt-get install -y dotnet-sdk-3.1
 sudo apt-get install -y jq libsnappy-dev libc6-dev libc6 moreutils
 
 echo =======================================================
-echo Cloning repository & setting up scripts and folders
+echo Cloning repository / setting up scripts and folders
 echo =======================================================
 
 git clone https://github.com/NethermindEth/nethermind.git --recursive
@@ -29,6 +29,13 @@ echo =======================================================
 echo Running Nethermind
 echo =======================================================
 
-read -e -p "Which configuration you wish to run? " -i "mainnet" config
-cp nethermind/configs/$config.cfg ~
-./infra.sh $config
+echo -e "\033[32m";
+read -e -p "Which configuration/s (space separated) you wish to run? " -i "mainnet" config
+for cfg in $config; do cp nethermind/configs/$cfg.cfg ~; done
+echo -e "\033[00m";
+
+echo =======================================================
+echo To run the node type: 
+echo 1. screen -S node
+echo 2. ./infra.sh config-name.cfg
+echo =======================================================
