@@ -41,7 +41,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
                 runnerContext,
                 LimboLogs.Instance);
             
-            CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(1));
             await stepsManager.InitializeAll(source.Token);
         }
         
@@ -58,8 +58,8 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
                 runnerContext,
                 LimboLogs.Instance);
             
-            CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-            await stepsManager.InitializeAll(source.Token);
+            CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+            Assert.ThrowsAsync<TaskCanceledException>(() => stepsManager.InitializeAll(source.Token));
         }
         
         [Test]
@@ -75,8 +75,8 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
                 runnerContext,
                 LimboLogs.Instance);
             
-            CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-            await stepsManager.InitializeAll(source.Token);
+            CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+            Assert.ThrowsAsync<TaskCanceledException>(() => stepsManager.InitializeAll(source.Token));
         }
         
         [Test]
@@ -92,8 +92,32 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
                 runnerContext,
                 LimboLogs.Instance);
             
-            CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-            await stepsManager.InitializeAll(source.Token);
+            CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+            Assert.ThrowsAsync<TaskCanceledException>(() => stepsManager.InitializeAll(source.Token));
+        }
+    }
+    
+    public class StepLong : IStep
+    {
+        public async Task Execute(CancellationToken cancellationToken)
+        {
+            await Task.Delay(100000, cancellationToken);
+        }
+
+        public StepLong(EthereumRunnerContext runnerContext)
+        {
+        }
+    }
+    
+    public class StepForever : IStep
+    {
+        public async Task Execute(CancellationToken cancellationToken)
+        {
+            await Task.Delay(100000);
+        }
+
+        public StepForever(EthereumRunnerContext runnerContext)
+        {
         }
     }
     
