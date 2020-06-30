@@ -29,7 +29,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
     public class EthereumStepsManagerTests
     {
         [Test]
-        public void When_no_assemblies_defined()
+        public async Task When_no_assemblies_defined()
         {
             EthereumRunnerContext runnerContext = new EthereumRunnerContext(
                 new ConfigProvider(),
@@ -42,11 +42,11 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
                 LimboLogs.Instance);
             
             CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-            stepsManager.InitializeAll(source.Token);
+            await stepsManager.InitializeAll(source.Token);
         }
         
         [Test]
-        public void With_steps_from_here()
+        public async Task With_steps_from_here()
         {
             EthereumRunnerContext runnerContext = new EthereumRunnerContext(
                 new ConfigProvider(),
@@ -59,11 +59,11 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
                 LimboLogs.Instance);
             
             CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-            stepsManager.InitializeAll(source.Token);
+            await stepsManager.InitializeAll(source.Token);
         }
         
         [Test]
-        public void With_steps_from_here_Clique()
+        public async Task With_steps_from_here_Clique()
         {
             EthereumRunnerContext runnerContext = new CliqueEthereumRunnerContext(
                 new ConfigProvider(),
@@ -76,7 +76,24 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
                 LimboLogs.Instance);
             
             CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-            stepsManager.InitializeAll(source.Token);
+            await stepsManager.InitializeAll(source.Token);
+        }
+        
+        [Test]
+        public async Task With_failing_steps()
+        {
+            EthereumRunnerContext runnerContext = new AuRaEthereumRunnerContext(
+                new ConfigProvider(),
+                LimboLogs.Instance);
+
+            IEthereumStepsLoader stepsLoader = new EthereumStepsLoader(GetType().Assembly);
+            EthereumStepsManager stepsManager = new EthereumStepsManager(
+                stepsLoader,
+                runnerContext,
+                LimboLogs.Instance);
+            
+            CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            await stepsManager.InitializeAll(source.Token);
         }
     }
     
@@ -107,26 +124,41 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
     
     public abstract class StepC : IStep
     {
-        public Task Execute(CancellationToken cancellationToken)
+        public virtual Task Execute(CancellationToken cancellationToken)
         {
             return Task.CompletedTask;
         }
     }
     
+    /// <summary>
+    /// Designed to fail
+    /// </summary>
     public class StepCAuRa : StepC
     {
         public StepCAuRa(AuRaEthereumRunnerContext runnerContext)
         {
         }
+
+        public override async Task Execute(CancellationToken cancellationToken)
+        {
+            await Task.Run(() => throw new Exception());
+        }
     }
     
-    public class StepCClique : StepC
+    public class StepCClique : StepC, IStep
     {
         public StepCClique(CliqueEthereumRunnerContext runnerContext)
         {
         }
+
+        public override async Task Execute(CancellationToken cancellationToken)
+        {
+            await Task.Run(() => throw new Exception());
+        }
+
+        bool IStep.MustInitialize => false;
     }
-    
+
     public class StepCStandard : StepC
     {
         public StepCStandard(EthereumRunnerContext runnerContext)

@@ -152,11 +152,16 @@ namespace Nethermind.Runner.Ethereum.Steps
                 {
                     stopwatch.Stop();
 
-                    if (t.IsFaulted)
+                    if (t.IsFaulted && step.MustInitialize)
                     {
                         if (_logger.IsError) _logger.Error(
                             $"Step {step.GetType().Name.PadRight(24)} failed after {stopwatch.ElapsedMilliseconds}ms",
                             t.Exception);
+                    }
+                    else if(t.IsFaulted)
+                    {
+                        if (_logger.IsWarn) _logger.Warn(
+                            $"Step {step.GetType().Name.PadRight(24)} failed after {stopwatch.ElapsedMilliseconds}ms");
                     }
                     else
                     {
