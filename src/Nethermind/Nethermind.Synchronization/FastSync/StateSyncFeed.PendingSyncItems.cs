@@ -20,7 +20,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using Priority_Queue;
 
 namespace Nethermind.Synchronization.FastSync
 {

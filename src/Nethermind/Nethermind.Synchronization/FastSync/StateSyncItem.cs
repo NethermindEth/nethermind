@@ -16,7 +16,6 @@
 
 using System.Diagnostics;
 using Nethermind.Core.Crypto;
-using Priority_Queue;
 
 namespace Nethermind.Synchronization.FastSync
 {
