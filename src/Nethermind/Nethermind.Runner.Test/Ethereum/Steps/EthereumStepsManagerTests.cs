@@ -21,6 +21,7 @@ using Nethermind.Config;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Runner.Ethereum.Steps;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Runner.Test.Ethereum.Steps
@@ -34,10 +35,15 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             EthereumRunnerContext runnerContext = new EthereumRunnerContext(
                 new ConfigProvider(),
                 LimboLogs.Instance);
-            EthereumStepsManager stepsManager = new EthereumStepsManager(runnerContext);
+
+            IEthereumStepsLoader stepsLoader = Substitute.For<IEthereumStepsLoader>();
+            EthereumStepsManager stepsManager = new EthereumStepsManager(
+                stepsLoader,
+                runnerContext,
+                LimboLogs.Instance);
             
             CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-            stepsManager.DiscoverAll(source.Token);
+            stepsManager.InitializeAll(source.Token);
         }
     }
 }
