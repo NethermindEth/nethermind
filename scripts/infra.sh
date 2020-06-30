@@ -13,5 +13,5 @@ mkdir ~/nethermind_$CONFIG/keystore
 cp ~/$CONFIG.key ~/nethermind_$CONFIG/keystore/node.key.plain
 DB_PATH="/root/db/$CONFIG"
 echo "DB PATH: " $DB_PATH
-cat /root/$CONFIG.cfg | jq '.Init.BaseDbPath = "'$DB_PATH'"' | tee /root/$CONFIG.cfg > /dev/null
+cat ~/$CONFIG.cfg | jq '.Init.BaseDbPath = "'$DB_PATH'"' | sponge ~/$CONFIG.cfg
 dotnet Nethermind.Runner.dll --config ../$CONFIG.cfg
