@@ -157,7 +157,6 @@ namespace Nethermind.Runner.Ethereum.Steps
                         if (_logger.IsError) _logger.Error(
                             $"Step {step.GetType().Name.PadRight(24)} failed after {stopwatch.ElapsedMilliseconds}ms",
                             t.Exception);
-                        _context.LogManager.GetClassLogger().Error($"Failed to init {stepInfo}", t.Exception);
                     }
                     else
                     {
