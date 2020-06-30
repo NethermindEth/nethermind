@@ -154,6 +154,14 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         }
     }
     
+    public abstract class StepD : IStep
+    {
+        public virtual Task Execute(CancellationToken cancellationToken)
+        {
+            return Task.CompletedTask;
+        }
+    }
+    
     /// <summary>
     /// Designed to fail
     /// </summary>
