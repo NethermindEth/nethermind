@@ -1,22 +1,23 @@
 //  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -155,7 +156,7 @@ namespace Nethermind.Synchronization
             }
 
             ValidateSeal(block, nodeWhoSentTheBlock);
-            if ((_syncModeSelector.Current & (SyncMode.FastSync | SyncMode.StateNodes)) == SyncMode.None 
+            if ((_syncModeSelector.Current & (SyncMode.FastSync | SyncMode.StateNodes)) == SyncMode.None
                 || (_syncModeSelector.Current & (SyncMode.Full | SyncMode.Beam)) != SyncMode.None)
             {
                 LogBlockAuthorNicely(block, nodeWhoSentTheBlock);
@@ -230,12 +231,39 @@ namespace Nethermind.Synchronization
 
         private void LogBlockAuthorNicely(Block block, ISyncPeer syncPeer)
         {
-            // This line is not particularly important (just for logging)
-            // and somehow it got refactored by ReSharper into some nightmare line.
-            // It would be worth to split it back into something readable.
-            // Generally it tries to find the sealer / miner name.
-            string authorString = (block.Author == null ? null : "sealed by " + (KnownAddresses.GoerliValidators.ContainsKey(block.Author) ? KnownAddresses.GoerliValidators[block.Author] : block.Author?.ToString())) ?? (block.Beneficiary == null ? string.Empty : "mined by " + (KnownAddresses.KnownMiners.ContainsKey(block.Beneficiary) ? KnownAddresses.KnownMiners[block.Beneficiary] : block.Beneficiary?.ToString()));
-            if (_logger.IsInfo) _logger.Info($"Discovered a new block {string.Empty.PadLeft(9 - block.Number.ToString().Length, ' ')}{block.ToString(Block.Format.HashNumberAndTx)} {authorString}, sent by {syncPeer:s}");
+            if (_logger.IsInfo)
+            {
+                // Generally it tries to find the sealer / miner name.
+                StringBuilder sb = new StringBuilder();
+                if (block.Author != null)
+                {
+                    sb.Append("sealed by");
+                    if (KnownAddresses.GoerliValidators.ContainsKey(block.Author))
+                    {
+                        sb.Append(KnownAddresses.GoerliValidators[block.Author]);
+                    }
+                    else
+                    {
+                        sb.Append(block.Author.ToString());
+                    }
+                }
+                else if (block.Beneficiary != null)
+                {
+                    sb.Append("mined by");
+                    if (KnownAddresses.KnownMiners.ContainsKey(block.Beneficiary))
+                    {
+                        sb.Append(KnownAddresses.KnownMiners[block.Beneficiary]);
+                    }
+                    else
+                    {
+                        sb.Append(block.Beneficiary.ToString());
+                    }
+                }
+
+                _logger.Info($"Discovered a new block {string.Empty.PadLeft(9 - block.Number.ToString().Length, ' ')}{block.ToString(Block.Format.HashNumberAndTx)} {sb}, sent by {syncPeer:s}");
+            }
+
+
         }
 
         public void HintBlock(Keccak hash, long number, ISyncPeer syncPeer)
