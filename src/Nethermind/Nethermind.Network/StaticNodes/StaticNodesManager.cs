@@ -73,7 +73,7 @@ namespace Nethermind.Network.StaticNodes
             {
                 nodes = JsonConvert.DeserializeObject<string[]>(data) ?? Array.Empty<string>();
             }
-            catch (JsonException _)
+            catch (JsonException)
             {
                 nodes = data.Split(new[] {'\r', '\n'}, StringSplitOptions.RemoveEmptyEntries);
             }
