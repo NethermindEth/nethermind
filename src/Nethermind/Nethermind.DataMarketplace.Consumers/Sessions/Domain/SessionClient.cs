@@ -63,14 +63,6 @@ namespace Nethermind.DataMarketplace.Consumers.Sessions.Domain
             return !(other is null) && (ReferenceEquals(this, other) || Id == other.Id);
         }
 
-        public override bool Equals(object? obj)
-        {
-            if (ReferenceEquals(null, obj)) return false;
-            if (ReferenceEquals(this, obj)) return true;
-            if (obj.GetType() != GetType()) return false;
-            return Equals((SessionClient) obj);
-        }
-
         public override int GetHashCode()
         {
             return (Id != null ? Id.GetHashCode() : 0);
