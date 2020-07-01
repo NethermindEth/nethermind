@@ -334,6 +334,8 @@ namespace Nethermind.Blockchain
             }
 
             // validate hash here
+            // using previously received header RLPs would allows us to save 2GB allocations on a sample
+            // 3M Goerli blocks fast sync
             Rlp newRlp = _headerDecoder.Encode(header);
             _headerDb.Set(header.Hash, newRlp.Bytes);
 
@@ -372,6 +374,8 @@ namespace Nethermind.Blockchain
                 throw new InvalidOperationException("Genesis block should not be inserted.");
             }
 
+            // if we carry Rlp from the network message all the way here then we could solve 4GB of allocations and some processing
+            // by avoiding encoding back to RLP here (allocations measured on a sample 3M blocks Goerli fast sync
             Rlp newRlp = _blockDecoder.Encode(block);
             _blockDb.Set(block.Hash, newRlp.Bytes);
 

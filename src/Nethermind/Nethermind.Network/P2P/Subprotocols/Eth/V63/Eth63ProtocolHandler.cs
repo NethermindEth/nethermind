@@ -136,8 +136,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             }
 
             GetNodeDataMessage msg = new GetNodeDataMessage(keys);
-            byte[][] receipts = await SendRequest(msg, token);
-            return receipts;
+            
+            // if node data is a disposable pooled array wrapper here then we could save around 1.6% allocations
+            // on a sample 3M blocks Goerli fast sync
+            byte[][] nodeData = await SendRequest(msg, token);
+            return nodeData;
         }
 
         public override async Task<TxReceipt[][]> GetReceipts(IList<Keccak> blockHashes, CancellationToken token)
