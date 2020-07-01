@@ -1,16 +1,16 @@
 //  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -52,7 +52,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Domain
             get => _claimedRefundTransactions;
             private set => _claimedRefundTransactions = new HashSet<TransactionInfo>(value);
         }
-        
+
         public TransactionInfo? ClaimedRefundTransaction { get; private set; }
         public bool RefundCancelled { get; private set; }
         public bool RefundClaimed { get; private set; }
@@ -119,7 +119,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Domain
             {
                 throw new InvalidOperationException($"Confirmation timestamp for deposit with id: '{Id}' cannot be 0.");
             }
-            
+
             ConfirmationTimestamp = timestamp;
         }
 
@@ -128,7 +128,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Domain
             Transaction = transaction ?? throw new ArgumentNullException(nameof(transaction));
             _transactions.Add(transaction);
         }
-        
+
         public void SetIncludedTransaction(Keccak transactionHash)
         {
             Transaction = _transactions.Single(t => t.Hash == transactionHash);
@@ -139,7 +139,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Domain
                 {
                     continue;
                 }
-                
+
                 transaction.SetRejected();
             }
 
@@ -148,7 +148,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Domain
                 Cancelled = true;
             }
         }
-        
+
         public void Reject()
         {
             Rejected = true;
@@ -178,7 +178,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Domain
 
                 transaction.SetRejected();
             }
-            
+
             if (ClaimedRefundTransaction.Type == TransactionType.Cancellation)
             {
                 RefundCancelled = true;
@@ -189,7 +189,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Domain
         {
             RefundClaimed = true;
         }
-        
+
         public void SetConsumedUnits(uint units)
         {
             ConsumedUnits = units;
@@ -209,10 +209,9 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Domain
             Confirmations = confirmations;
         }
 
-        public bool Equals(DepositDetails other)
+        public bool Equals(DepositDetails? other)
         {
-            if (ReferenceEquals(null, other)) return false;
-            return ReferenceEquals(this, other) || Equals(Id, other.Id);
+            return !(other is null) && (ReferenceEquals(this, other) || Id == other.Id);
         }
 
         public override bool Equals(object? obj)
