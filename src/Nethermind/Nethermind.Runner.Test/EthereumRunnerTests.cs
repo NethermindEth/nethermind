@@ -164,7 +164,7 @@ namespace Nethermind.Runner.Test
             }
         }
         
-                [TestCaseSource(nameof(ChainSpecRunnerTests))]
+        [TestCaseSource(nameof(ChainSpecRunnerTests))]
         [Timeout(12000)] // just to make sure we are not on infinite loop on steps because of incorrect dependencies
         public async Task Smoke_cancel(string chainSpecPath)
         {
@@ -211,11 +211,8 @@ namespace Nethermind.Runner.Test
                     Substitute.For<IMonitoringService>());
 
                 CancellationTokenSource cts = new CancellationTokenSource();
-                Task task = runner.Start(cts.Token);
-
+                Assert.ThrowsAsync<TaskCanceledException>(() => runner.Start(cts.Token));
                 cts.Cancel();
-                
-                await task;
             }
             finally
             {
