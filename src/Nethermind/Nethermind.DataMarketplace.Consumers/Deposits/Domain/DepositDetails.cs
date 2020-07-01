@@ -216,7 +216,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Domain
 
         public override int GetHashCode()
         {
-            return (Id != null ? Id.GetHashCode() : 0);
+            return HashCode.Combine(Id);
         }
 
         public static bool operator ==(DepositDetails left, DepositDetails right)
