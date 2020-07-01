@@ -65,7 +65,7 @@ namespace Nethermind.DataMarketplace.Consumers.Sessions.Domain
 
         public override int GetHashCode()
         {
-            return (Id != null ? Id.GetHashCode() : 0);
+            return HashCode.Combine(Id);
         }
     }
 }
