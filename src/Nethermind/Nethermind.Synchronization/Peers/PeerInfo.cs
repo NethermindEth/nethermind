@@ -185,7 +185,10 @@ namespace Nethermind.Synchronization.Peers
             return $"{((contexts & AllocationContexts.Headers) == AllocationContexts.Headers ? "H" : " ")}{((contexts & AllocationContexts.Bodies) == AllocationContexts.Bodies ? "B" : " ")}{((contexts & AllocationContexts.Receipts) == AllocationContexts.Receipts ? "R" : " ")}{((contexts & AllocationContexts.State) == AllocationContexts.State ? "S" : " ")}";
         }
 
-        public override string ToString() => $"[{BuildContextString(AllocatedContexts)}][{BuildContextString(SleepingContexts)}]{SyncPeer}";
+        public override string ToString()
+        {
+            return $"[{BuildContextString(AllocatedContexts)}][{BuildContextString(SleepingContexts)}]{SyncPeer}";
+        }
 
         /// <summary>
         /// Determines the type of client on behalf of provided clientId (aka UserAgent)
@@ -196,7 +199,6 @@ namespace Nethermind.Synchronization.Peers
         /// <param name="syncPeer">The peer being recognized</param>
         private void RecognizeClientType(ISyncPeer syncPeer)
         {
-
             if (!string.IsNullOrEmpty(syncPeer.ClientId))
             {
                 // Assume Unknown is value 255
