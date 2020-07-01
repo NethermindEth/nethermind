@@ -61,6 +61,8 @@ namespace Nethermind.State
 
             Span<byte> span = stackalloc byte[32];
             index.ToBigEndian(span);
+            
+            // (1% allocations on archive sync) this ToArray can be pooled or just directly converted to nibbles
             return ValueKeccak.Compute(span).BytesAsSpan.ToArray();
         }
 
