@@ -60,9 +60,7 @@ namespace Nethermind.DataMarketplace.Consumers.Sessions.Domain
 
         public bool Equals(SessionClient? other)
         {
-            if (ReferenceEquals(null, other)) return false;
-            if (ReferenceEquals(this, other)) return true;
-            return Id == other.Id;
+            return !(other is null) && (ReferenceEquals(this, other) || Id == other.Id);
         }
 
         public override bool Equals(object? obj)
