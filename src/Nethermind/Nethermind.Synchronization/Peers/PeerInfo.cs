@@ -1,22 +1,23 @@
 //  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Blockchain.Synchronization;
@@ -183,31 +184,36 @@ namespace Nethermind.Synchronization.Peers
         {
             return $"{((contexts & AllocationContexts.Headers) == AllocationContexts.Headers ? "H" : " ")}{((contexts & AllocationContexts.Bodies) == AllocationContexts.Bodies ? "B" : " ")}{((contexts & AllocationContexts.Receipts) == AllocationContexts.Receipts ? "R" : " ")}{((contexts & AllocationContexts.State) == AllocationContexts.State ? "S" : " ")}";
         }
-        
+
         public override string ToString() => $"[{BuildContextString(AllocatedContexts)}][{BuildContextString(SleepingContexts)}]{SyncPeer}";
 
+        /// <summary>
+        /// Determines the type of client on behalf of provided clientId (aka UserAgent)
+        /// </summary>
+        /// <remarks>
+        ///  Mantain labels of <see cref="PeerClientType"/> enum object accordingly.
+        /// </remarks>
+        /// <param name="syncPeer">The peer being recognized</param>
         private void RecognizeClientType(ISyncPeer syncPeer)
         {
-            if (syncPeer.ClientId?.Contains("BeSu", StringComparison.InvariantCultureIgnoreCase) ?? false)
+
+            if (!string.IsNullOrEmpty(syncPeer.ClientId))
             {
-                PeerClientType = PeerClientType.BeSu;
+                // Assume Unknown is value 255
+                Dictionary<string, int> clientTypes = Enum.GetValues(typeof(PeerClientType)).Cast<PeerClientType>().Where(t => (int)t != 255).ToDictionary(k => k.ToString(), v => (int)v);
+                foreach (KeyValuePair<string, int> t in clientTypes)
+                {
+                    if (syncPeer.ClientId.StartsWith(t.Key, StringComparison.InvariantCultureIgnoreCase))
+                    {
+                        PeerClientType = (PeerClientType)t.Value;
+                        return;
+                    }
+
+                }
             }
-            else if (syncPeer.ClientId?.Contains("Geth", StringComparison.InvariantCultureIgnoreCase) ?? false)
-            {
-                PeerClientType = PeerClientType.Geth;
-            }
-            else if (syncPeer.ClientId?.Contains("Nethermind", StringComparison.InvariantCultureIgnoreCase) ?? false)
-            {
-                PeerClientType = PeerClientType.Nethermind;
-            }
-            else if (syncPeer.ClientId?.Contains("Parity", StringComparison.InvariantCultureIgnoreCase) ?? false)
-            {
-                PeerClientType = PeerClientType.Parity;
-            }
-            else
-            {
-                PeerClientType = PeerClientType.Unknown;
-            }
+
+            PeerClientType = PeerClientType.Unknown;
+
         }
     }
 }
