@@ -71,10 +71,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 changedAnything = false;
                 foreach (StepInfo stepInfo in _allSteps)
                 {
-                    if (cancellationToken.IsCancellationRequested)
-                    {
-                        break;
-                    }
+                    cancellationToken.ThrowIfCancellationRequested();
 
                     if (stepInfo.Stage == StepInitializationStage.WaitingForDependencies)
                     {
@@ -106,10 +103,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         {
             while (_allSteps.Any(s => s.Stage != StepInitializationStage.Complete))
             {
-                if (cancellationToken.IsCancellationRequested)
-                {
-                    break;
-                }
+                cancellationToken.ThrowIfCancellationRequested();
 
                 RunOneRoundOfInitialization(cancellationToken);
                 await ReviewDependencies(cancellationToken);
@@ -125,11 +119,8 @@ namespace Nethermind.Runner.Ethereum.Steps
             int startedThisRound = 0;
             foreach (StepInfo stepInfo in _allSteps)
             {
-                if (cancellationToken.IsCancellationRequested)
-                {
-                    break;
-                }
-
+                cancellationToken.ThrowIfCancellationRequested();
+                
                 if (stepInfo.Stage != StepInitializationStage.WaitingForExecution)
                 {
                     continue;
