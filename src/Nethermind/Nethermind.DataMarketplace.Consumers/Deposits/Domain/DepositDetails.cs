@@ -219,14 +219,5 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Domain
             return HashCode.Combine(Id);
         }
 
-        public static bool operator ==(DepositDetails left, DepositDetails right)
-        {
-            return Equals(left, right);
-        }
-
-        public static bool operator !=(DepositDetails left, DepositDetails right)
-        {
-            return !Equals(left, right);
-        }
     }
 }
