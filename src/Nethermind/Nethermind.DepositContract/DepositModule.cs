@@ -1,19 +1,19 @@
 //  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+//
 
 using System;
 using System.Buffers.Binary;
@@ -51,7 +51,7 @@ namespace Nethermind.DepositContract
             _txPoolBridge = txPoolBridge ?? throw new ArgumentNullException(nameof(txPoolBridge));
             _logFinder = logFinder ?? throw new ArgumentNullException(nameof(logFinder));
             _depositConfig = depositConfig ?? throw new ArgumentNullException(nameof(depositConfig));
-            
+
             if (!string.IsNullOrEmpty(depositConfig.DepositContractAddress))
             {
                 var address = new Address(depositConfig.DepositContractAddress);
@@ -62,11 +62,11 @@ namespace Nethermind.DepositContract
         public ValueTask<ResultWrapper<Keccak>> deposit_deploy(Address senderAddress)
         {
             ResultWrapper<Keccak> result;
-            
+
             if (_depositContract == null)
             {
                 result = ResultWrapper<Keccak>.Fail("Deposit contract address not specified.", ErrorCodes.InternalError);
-                return new ValueTask<ResultWrapper<Keccak>>(result);    
+                return new ValueTask<ResultWrapper<Keccak>>(result);
             }
 
             Transaction tx = _depositContract.Deploy(senderAddress);
@@ -90,20 +90,20 @@ namespace Nethermind.DepositContract
             public long BlockNumber { get; set; }
             public long TxIndex { get; set; }
             public long LogIndex { get; set; }
-            
+
             public byte[] PubKey { get; set; }
             public byte[] WithdrawalCredentials { get; set; }
             public byte[] Amount { get; set; }
             public byte[] BlsSignature { get; set; }
         }
-        
+
         public ValueTask<ResultWrapper<DepositData[]>> deposit_getAll()
         {
             ResultWrapper<DepositData[]> result;
             if (_depositContract == null)
             {
                 result = ResultWrapper<DepositData[]>.Fail("Deposit contract address not specified.", ErrorCodes.InternalError);
-                return new ValueTask<ResultWrapper<DepositData[]>>(result);    
+                return new ValueTask<ResultWrapper<DepositData[]>>(result);
             }
 
             var logFilter = new LogFilter(
@@ -112,7 +112,7 @@ namespace Nethermind.DepositContract
                 BlockParameter.Latest,
                 new AddressFilter(_depositContract.ContractAddress),
                 new TopicsFilter(new SpecificTopic(_depositContract.DepositEventHash)));
-            
+
             var logs = _logFinder.FindLogs(logFilter);
             List<DepositData> allData = new List<DepositData>();
             foreach (FilterLog filterLog in logs)
@@ -133,7 +133,7 @@ namespace Nethermind.DepositContract
             result = ResultWrapper<DepositData[]>.Success(allData.ToArray());
             return new ValueTask<ResultWrapper<DepositData[]>>(result);
         }
-        
+
         public ValueTask<ResultWrapper<Keccak>> deposit_make(
             Address senderAddress,
             byte[] blsPublicKey,
@@ -143,7 +143,7 @@ namespace Nethermind.DepositContract
             if (_depositContract == null)
             {
                 var result = ResultWrapper<Keccak>.Fail("Deposit contract address not specified.", ErrorCodes.InternalError);
-                return new ValueTask<ResultWrapper<Keccak>>(result);    
+                return new ValueTask<ResultWrapper<Keccak>>(result);
             }
 
             var depositDataRoot = CalculateDepositDataRoot(blsPublicKey, withdrawalCredentials, blsSignature);
@@ -154,7 +154,7 @@ namespace Nethermind.DepositContract
                 withdrawalCredentials,
                 blsSignature,
                 depositDataRoot);
-            
+
             tx.Value = 32.Ether();
             Keccak txHash = _txPoolBridge.SendTransaction(tx, TxHandlingOptions.ManagedNonce);
 
@@ -175,7 +175,7 @@ namespace Nethermind.DepositContract
         {
             byte[] amount = new byte[8];
             BinaryPrimitives.WriteUInt64LittleEndian(amount, (ulong) ((BigInteger)32.Ether() / (BigInteger)1.GWei()));
-            
+
             var sha256 = SHA256.Create();
             byte[] zeroBytes32 = new byte[32];
             byte[] pubKeyInput = new byte[64];
