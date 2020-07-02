@@ -166,7 +166,7 @@ namespace Nethermind.Synchronization
 
         private void StartStateSyncComponents()
         {
-            _stateSyncFeed = new StateSyncFeed(_dbProvider.CodeDb, _dbProvider.StateDb, _dbProvider.BeamStateDb, _syncMode, _blockTree, _logManager);
+            _stateSyncFeed = new StateSyncFeed(_dbProvider.CodeDb, _dbProvider.StateDb, _dbProvider.BeamStateDb, _syncMode, _blockTree, _logManager, _syncPeerPool.PeerMaxCount * 2);
             StateSyncDispatcher stateSyncDispatcher = new StateSyncDispatcher(_stateSyncFeed, _syncPeerPool, new StateSyncAllocationStrategyFactory(), _logManager);
             Task syncDispatcherTask = stateSyncDispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
             {

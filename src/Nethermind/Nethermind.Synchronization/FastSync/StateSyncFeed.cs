@@ -67,6 +67,7 @@ namespace Nethermind.Synchronization.FastSync
         private readonly IDb _tempDb;
         private readonly ISyncModeSelector _syncModeSelector;
         private readonly IBlockTree _blockTree;
+        private readonly int _requestLimit;
 
         private readonly ConcurrentDictionary<StateSyncBatch, object> _pendingRequests = new ConcurrentDictionary<StateSyncBatch, object>();
         private Dictionary<Keccak, HashSet<DependentItem>> _dependencies = new Dictionary<Keccak, HashSet<DependentItem>>();
@@ -76,13 +77,14 @@ namespace Nethermind.Synchronization.FastSync
         private StateSyncProgress _syncProgress;
         private int _hintsToResetRoot;
 
-        public StateSyncFeed(ISnapshotableDb codeDb, ISnapshotableDb stateDb, IDb tempDb, ISyncModeSelector syncModeSelector, IBlockTree blockTree, ILogManager logManager)
+        public StateSyncFeed(ISnapshotableDb codeDb, ISnapshotableDb stateDb, IDb tempDb, ISyncModeSelector syncModeSelector, IBlockTree blockTree, ILogManager logManager, int requestLimit = 200)
             : base(logManager)
         {
             _codeDb = codeDb?.Innermost ?? throw new ArgumentNullException(nameof(codeDb));
             _stateDb = stateDb?.Innermost ?? throw new ArgumentNullException(nameof(stateDb));
             _tempDb = tempDb ?? throw new ArgumentNullException(nameof(tempDb));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _requestLimit = requestLimit;
             _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
             _syncModeSelector.Changed += SyncModeSelectorOnChanged;
 
@@ -642,7 +644,9 @@ namespace Nethermind.Synchronization.FastSync
 
         public override async Task<StateSyncBatch> PrepareRequest()
         {
-            if ((_syncModeSelector.Current & SyncMode.StateNodes) != SyncMode.StateNodes)
+            bool stateSyncMode = (_syncModeSelector.Current & SyncMode.StateNodes) == SyncMode.StateNodes;
+            bool tooManyRequests = _pendingRequests.Count >= _requestLimit;
+            if (!stateSyncMode || tooManyRequests)
             {
                 return null;
             }
