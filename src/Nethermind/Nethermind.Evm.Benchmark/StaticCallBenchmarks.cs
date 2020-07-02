@@ -122,7 +122,7 @@ namespace Nethermind.Evm.Benchmark
             _environment.TransferValue = 0;
             _environment.CurrentBlock = _header;
 
-            _evmState = new EvmState(100_000_000l, _environment, ExecutionType.Transaction, true, false);
+            _evmState = new EvmState(100_000_000L, _environment, ExecutionType.Transaction, true, false);
             
             _virtualMachine.Run(_evmState, _txTracer);
             _stateProvider.Reset();

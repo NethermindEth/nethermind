@@ -77,6 +77,7 @@ namespace Nethermind.Network.StaticNodes
             {
                 nodes = data.Split(new[] {'\r', '\n'}, StringSplitOptions.RemoveEmptyEntries);
             }
+            
             return nodes.Distinct().ToArray();
         }
 

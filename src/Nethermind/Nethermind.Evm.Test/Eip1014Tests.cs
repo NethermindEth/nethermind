@@ -38,6 +38,16 @@ namespace Nethermind.Evm.Test
         }
 
         [Test]
+        public void TestHive()
+        {
+            byte[] code = Prepare.EvmCode
+                .FromCode("0x73095e7baea6a6c7c4c2dfeb977efac326af552d873173095e7baea6a6c7c4c2dfeb977efac326af552d873173095e7baea6a6c7c4c2dfeb977efac326af552d87313700")
+                .Done;
+            
+            Execute(code);
+        }
+        
+        [Test]
         public void Test()
         {
             byte[] salt = {4, 5, 6};

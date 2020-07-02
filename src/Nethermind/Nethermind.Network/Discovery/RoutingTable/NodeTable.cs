@@ -76,6 +76,10 @@ namespace Nethermind.Network.Discovery.RoutingTable
         {
             List<NodeBucketItem> nodes = new List<NodeBucketItem>();
             int bucketSize = _discoveryConfig.BucketSize;
+            
+            // there is a significant amount of allocations on a samples Goerli fast sync in this place
+            // ToArray calls und unnecessary nested allocations in BondedItems property getter
+            // altogether around 3% of the sample sync 
             for (int i = 0; i < Buckets.Length; i++)
             {
                 NodeBucket nodeBucket = Buckets[i];

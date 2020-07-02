@@ -52,18 +52,20 @@ namespace Nethermind.Synchronization
         private readonly ILogManager _logManager;
         private readonly ISyncReport _syncReport;
 
-        private CancellationTokenSource _syncCancellation = new CancellationTokenSource();
+        private readonly CancellationTokenSource _syncCancellation = new CancellationTokenSource();
 
         /* sync events are used mainly for managing sync peers reputation */
         public event EventHandler<SyncEventArgs> SyncEvent;
 
         private readonly IDbProvider _dbProvider;
-        private ISyncModeSelector _syncMode;
+        private readonly ISyncModeSelector _syncMode;
+        private FastSyncFeed _fastSyncFeed;
         private StateSyncFeed _stateSyncFeed;
+        private FullSyncFeed _fullSyncFeed;
         private FastHeadersSyncFeed _headersFeed;
         private FastBodiesSyncFeed _bodiesFeed;
-        private FastSyncFeed _fastSyncFeed;
-        private FullSyncFeed _fullSyncFeed;
+        private FastReceiptsSyncFeed _receiptsFeed;
+        
 
         public Synchronizer(
             IDbProvider dbProvider,
@@ -201,7 +203,7 @@ namespace Nethermind.Synchronization
             {
                 if (_syncConfig.DownloadBodiesInFastSync)
                 {
-                    _bodiesFeed = new FastBodiesSyncFeed(_blockTree, _syncPeerPool, _syncConfig, _syncReport, _logManager);
+                    _bodiesFeed = new FastBodiesSyncFeed(_syncMode, _blockTree, _syncPeerPool, _syncConfig, _syncReport, _logManager);
                     BodiesSyncDispatcher bodiesDispatcher = new BodiesSyncDispatcher(_bodiesFeed, _syncPeerPool, fastFactory, _logManager);
                     Task bodiesTask = bodiesDispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
                     {
@@ -218,8 +220,8 @@ namespace Nethermind.Synchronization
 
                 if (_syncConfig.DownloadReceiptsInFastSync)
                 {
-                    FastReceiptsSyncFeed receiptsFeed = new FastReceiptsSyncFeed(_specProvider, _blockTree, _receiptStorage, _syncPeerPool, _syncConfig, _syncReport, _logManager);
-                    ReceiptsSyncDispatcher receiptsDispatcher = new ReceiptsSyncDispatcher(receiptsFeed, _syncPeerPool, fastFactory, _logManager);
+                    _receiptsFeed = new FastReceiptsSyncFeed(_syncMode, _specProvider, _blockTree, _receiptStorage, _syncPeerPool, _syncConfig, _syncReport, _logManager);
+                    ReceiptsSyncDispatcher receiptsDispatcher = new ReceiptsSyncDispatcher(_receiptsFeed, _syncPeerPool, fastFactory, _logManager);
                     Task receiptsTask = receiptsDispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
                     {
                         if (t.IsFaulted)
@@ -278,9 +280,11 @@ namespace Nethermind.Synchronization
             _syncCancellation?.Dispose();
             _syncReport?.Dispose();
             
-            _stateSyncFeed?.Dispose();
             _fastSyncFeed?.Dispose();
+            _stateSyncFeed?.Dispose();
             _fullSyncFeed?.Dispose();
+            _bodiesFeed?.Dispose();
+            _receiptsFeed?.Dispose();
         }
     }
 }

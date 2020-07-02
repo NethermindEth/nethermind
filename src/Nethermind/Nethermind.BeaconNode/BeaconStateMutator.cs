@@ -25,7 +25,7 @@ namespace Nethermind.BeaconNode
 {
     public class BeaconStateMutator
     {
-        private readonly BeaconChainUtility _beaconChainUtility;
+        private readonly IBeaconChainUtility _beaconChainUtility;
         private readonly BeaconStateAccessor _beaconStateAccessor;
         private readonly ChainConstants _chainConstants;
         private readonly IOptionsMonitor<RewardsAndPenalties> _rewardsAndPenaltiesOptions;
@@ -37,7 +37,7 @@ namespace Nethermind.BeaconNode
             IOptionsMonitor<TimeParameters> timeParameterOptions,
             IOptionsMonitor<StateListLengths> stateListLengthOptions,
             IOptionsMonitor<RewardsAndPenalties> rewardsAndPenaltiesOptions,
-            BeaconChainUtility beaconChainUtility,
+            IBeaconChainUtility beaconChainUtility,
             BeaconStateAccessor beaconStateAccessor)
         {
             _beaconChainUtility = beaconChainUtility;

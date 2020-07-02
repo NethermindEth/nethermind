@@ -21,6 +21,8 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using FluentAssertions;
+using FluentAssertions.Execution;
 using log4net.Core;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -46,6 +48,8 @@ using Nethermind.TxPool;
 using Nethermind.WebSockets;
 using NSubstitute;
 using NUnit.Framework;
+using NUnit.Framework.Constraints;
+using YamlDotNet.Serialization.TypeInspectors;
 
 namespace Nethermind.Runner.Test
 {
@@ -60,7 +64,7 @@ namespace Nethermind.Runner.Test
             {
                 _chainspecPath = chainspecPath;
             }
-            
+
             public (bool IsSet, object Value) GetValue(Type type, string category, string name)
             {
                 if (name == "ChainSpecPath")
@@ -72,12 +76,12 @@ namespace Nethermind.Runner.Test
                 {
                     return (true, true);
                 }
-                
+
                 if (name.EndsWith("Enabled"))
                 {
                     return (true, true);
                 }
-                
+
                 return (false, null);
             }
 
@@ -100,14 +104,14 @@ namespace Nethermind.Runner.Test
                     "ndmtestnet0_local.json",
                 };
                 yield return new TestCaseData("testspec.json");
-                
+
                 foreach (var config in Directory.GetFiles("chainspec").Where(c => !ignoredSpecs.Contains(Path.GetFileName(c))))
                 {
                     yield return new TestCaseData(config);
                 }
             }
         }
-        
+
         [TestCaseSource(nameof(ChainSpecRunnerTests))]
         [Timeout(12000)] // just to make sure we are not on infinite loop on steps because of incorrect dependencies
         public async Task Smoke(string chainSpecPath)
@@ -124,7 +128,7 @@ namespace Nethermind.Runner.Test
 
             var configProvider = new ConfigProvider();
             configProvider.AddSource(new ConfigSource(chainSpecPath));
-            
+
             Console.WriteLine(type1.Name);
             Console.WriteLine(type2.Name);
             Console.WriteLine(type3.Name);
@@ -134,24 +138,24 @@ namespace Nethermind.Runner.Test
             Console.WriteLine(type7.Name);
             Console.WriteLine(type8.Name);
             Console.WriteLine(type9.Name);
-            
+
             var tempPath = Path.Combine(Path.GetTempPath(), "test_" + Guid.NewGuid());
             Directory.CreateDirectory(tempPath);
-            
+
             try
             {
                 configProvider.GetConfig<IInitConfig>().BaseDbPath = tempPath;
-            
+
                 EthereumRunner runner = new EthereumRunner(
                     new RpcModuleProvider(new JsonRpcConfig(), LimboLogs.Instance),
                     configProvider,
-                    NUnitLogManager.Instance, 
+                    NUnitLogManager.Instance,
                     Substitute.For<IGrpcServer>(),
                     Substitute.For<INdmConsumerChannelManager>(),
                     Substitute.For<INdmDataPublisher>(),
                     Substitute.For<INdmInitializer>(),
                     Substitute.For<IWebSocketsManager>(),
-                    new EthereumJsonSerializer(), 
+                    new EthereumJsonSerializer(),
                     Substitute.For<IMonitoringService>());
 
                 await runner.Start(CancellationToken.None);
@@ -163,8 +167,8 @@ namespace Nethermind.Runner.Test
                 Directory.Delete(tempPath, true);
             }
         }
-        
-                [TestCaseSource(nameof(ChainSpecRunnerTests))]
+
+        [TestCaseSource(nameof(ChainSpecRunnerTests))]
         [Timeout(12000)] // just to make sure we are not on infinite loop on steps because of incorrect dependencies
         public async Task Smoke_cancel(string chainSpecPath)
         {
@@ -180,7 +184,7 @@ namespace Nethermind.Runner.Test
 
             var configProvider = new ConfigProvider();
             configProvider.AddSource(new ConfigSource(chainSpecPath));
-            
+
             Console.WriteLine(type1.Name);
             Console.WriteLine(type2.Name);
             Console.WriteLine(type3.Name);
@@ -190,35 +194,47 @@ namespace Nethermind.Runner.Test
             Console.WriteLine(type7.Name);
             Console.WriteLine(type8.Name);
             Console.WriteLine(type9.Name);
-            
+
             var tempPath = Path.Combine(Path.GetTempPath(), "test_" + Guid.NewGuid());
             Directory.CreateDirectory(tempPath);
-            
+
+            EthereumRunner runner = null;
             try
             {
                 configProvider.GetConfig<IInitConfig>().BaseDbPath = tempPath;
-            
-                EthereumRunner runner = new EthereumRunner(
+
+                runner = new EthereumRunner(
                     new RpcModuleProvider(new JsonRpcConfig(), LimboLogs.Instance),
                     configProvider,
-                    NUnitLogManager.Instance, 
+                    NUnitLogManager.Instance,
                     Substitute.For<IGrpcServer>(),
                     Substitute.For<INdmConsumerChannelManager>(),
                     Substitute.For<INdmDataPublisher>(),
                     Substitute.For<INdmInitializer>(),
                     Substitute.For<IWebSocketsManager>(),
-                    new EthereumJsonSerializer(), 
+                    new EthereumJsonSerializer(),
                     Substitute.For<IMonitoringService>());
 
                 CancellationTokenSource cts = new CancellationTokenSource();
                 Task task = runner.Start(cts.Token);
-
                 cts.Cancel();
-                
-                await task;
+
+
+                try
+                {
+                    await task;
+                }
+                catch (Exception e)
+                {
+                    if (!(e is OperationCanceledException))
+                    {
+                        throw new AssertionFailedException($"Exception should be {nameof(OperationCanceledException)}");
+                    }
+                }
             }
             finally
             {
+                await (runner?.StopAsync() ?? Task.CompletedTask);
                 // rocks db still has a lock on a file called "LOCK".
                 Directory.Delete(tempPath, true);
             }

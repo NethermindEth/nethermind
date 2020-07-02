@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Cortex.SimpleSerialize;
@@ -37,7 +38,8 @@ namespace Nethermind.Core2.Cryptography.Ssz
         {
             // TODO: vector of byte arrays
             //yield return new SszVector(item.Proof.AsSpan());
-            yield return item.Data.ToSszContainer();
+            throw new InvalidOperationException();
+            // yield return item.Data.ToSszContainer();
         }
     }
 }

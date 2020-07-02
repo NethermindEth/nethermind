@@ -204,8 +204,6 @@ namespace Nethermind.Consensus.AuRa
             return finalizedBlocks;
         }
 
-        private Address[] Validators => _validatorStore.GetValidators();
-
         /* Simple, unoptimized method implementation for reference: 
         private IReadOnlyList<BlockHeader> GetFinalizedBlocks(BlockHeader block)
         {
@@ -270,40 +268,10 @@ namespace Nethermind.Consensus.AuRa
             return 0;
         }
 
-        public long? GetFinalizedLevel(long blockLevel)
-        {
-            BlockInfo GetBlockInfo(long level)
-            {
-                var chainLevelInfo = _chainLevelInfoRepository.LoadLevel(level);
-                return  chainLevelInfo?.MainChainBlock ?? chainLevelInfo?.BlockInfos[0];
-            }
-
-            var validators = new HashSet<Address>();
-            var minSealersForFinalization = GetMinSealersForFinalization(blockLevel);
-            var blockInfo = GetBlockInfo(blockLevel);
-            while (blockInfo != null)
-            {
-                var block = _blockTree.FindHeader(blockInfo.BlockHash, BlockTreeLookupOptions.None);
-                if (_validSealerStrategy.IsValidSealer(Validators, block.Beneficiary, block.AuRaStep.Value))
-                {
-                    validators.Add(block.Beneficiary);
-                    if (validators.Count >= minSealersForFinalization)
-                    {
-                        return block.Number;
-                    }
-                }
-
-                blockLevel++;
-                blockInfo = GetBlockInfo(blockLevel);
-            }
-
-            return null;
-        }
-
         private int GetMinSealersForFinalization(long blockNumber) =>
             blockNumber == 0
                 ? 1
-                : Validators.MinSealersForFinalization(blockNumber >= _twoThirdsMajorityTransition);
+                : _validatorStore.GetValidators(blockNumber).MinSealersForFinalization(blockNumber >= _twoThirdsMajorityTransition);
 
         public long LastFinalizedBlockLevel
         {

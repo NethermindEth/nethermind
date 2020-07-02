@@ -17,6 +17,7 @@
 using System;
 using System.Numerics;
 using System.Security.Cryptography;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Crypto
 {
@@ -60,6 +61,16 @@ namespace Nethermind.Crypto
             return bitLength + 1;
         }
 
+        public static bool TestBit(this BigInteger a, int i)
+        {
+            return (a & (BigInteger.One << i)) != 0;
+        }
+
+        public static bool TestBit(this UInt256 a, int i)
+        {
+            return (a & (UInt256.One << i)) != 0;
+        }
+
         public static BigInteger SquareRoot(this BigInteger n)
         {
             if (n < 0)
@@ -81,11 +92,6 @@ namespace Nethermind.Crypto
             }
 
             return a;
-        }
-
-        public static bool TestBit(this BigInteger a, int i)
-        {
-            return (a & (BigInteger.One << i)) != 0;
         }
 
         // TODO: review this implementation / avoid in PROD code

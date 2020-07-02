@@ -63,7 +63,7 @@ namespace Nethermind.BeaconNode.Test.ForkTests
 
             attestation.Data.Target.Epoch.ShouldBe(chainConstants.GenesisEpoch);
 
-            BeaconChainUtility beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
+            IBeaconChainUtility beaconChainUtility = testServiceProvider.GetService<IBeaconChainUtility>();
             Slot currentSlot = ((ForkChoice)forkChoice).GetCurrentSlot(store);
             Epoch currentEpoch = beaconChainUtility.ComputeEpochAtSlot(currentSlot);
             currentEpoch.ShouldBe(chainConstants.GenesisEpoch);
@@ -99,7 +99,7 @@ namespace Nethermind.BeaconNode.Test.ForkTests
 
             attestation.Data.Target.Epoch.ShouldBe(chainConstants.GenesisEpoch);
 
-            BeaconChainUtility beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
+            IBeaconChainUtility beaconChainUtility = testServiceProvider.GetService<IBeaconChainUtility>();
             Slot currentSlot = ((ForkChoice)forkChoice).GetCurrentSlot(store);
             Epoch currentEpoch = beaconChainUtility.ComputeEpochAtSlot(currentSlot);
             currentEpoch.ShouldBe(chainConstants.GenesisEpoch + Epoch.One);
@@ -137,7 +137,7 @@ namespace Nethermind.BeaconNode.Test.ForkTests
 
             attestation.Data.Target.Epoch.ShouldBe(chainConstants.GenesisEpoch);
 
-            BeaconChainUtility beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
+            IBeaconChainUtility beaconChainUtility = testServiceProvider.GetService<IBeaconChainUtility>();
             Slot currentSlot = ((ForkChoice)forkChoice).GetCurrentSlot(store);
             Epoch currentEpoch = beaconChainUtility.ComputeEpochAtSlot(currentSlot);
             currentEpoch.ShouldBe((Epoch)(chainConstants.GenesisEpoch + 2UL));

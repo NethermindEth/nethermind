@@ -19,7 +19,7 @@ using NUnit.Framework;
 namespace Nethermind.DepositContract.Test.JsonRpc
 {
     [TestFixture]
-    public class BaselineModuleTests
+    public class DepositModuleTests
     {
         [Test]
         public async Task deploy_deploys_the_contract()

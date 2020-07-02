@@ -35,18 +35,15 @@ using Nethermind.JsonRpc.Modules.TxPool;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Runner.Ethereum.Context;
-using Nethermind.Runner.Ethereum.Subsystems;
 using Nethermind.Baseline.Config;
 using Nethermind.Baseline.JsonRpc;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.DepositContract;
-using Nethermind.Facade.Transactions;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
     [RunnerStepDependencies(typeof(InitializeNetwork), typeof(SetupKeyStore), typeof(InitializeBlockchain))]
-    public class RegisterRpcModules : IStep, ISubsystemStateAware
+    public class RegisterRpcModules : IStep
     {
         private readonly EthereumRunnerContext _context;
 
@@ -130,14 +127,15 @@ namespace Nethermind.Runner.Ethereum.Steps
                 if (logger?.IsInfo ?? false) logger!.Info($"Baseline RPC Module has been enabled");
             }
             
-            IDepositConfig depositConfig = _context.Config<IDepositConfig>();
-            if (depositConfig.DepositContractAddress != null)
-            {
-                TxPoolBridge txPoolBridge = new TxPoolBridge(
-                    _context.TxPool, new WalletTxSigner(_context.Wallet, _context.SpecProvider.ChainId), _context.Timestamper);
-                DepositModule depositModule = new DepositModule(txPoolBridge, logFinder, depositConfig, _context.LogManager);
-                _context.RpcModuleProvider.Register(new SingletonModulePool<IDepositModule>(depositModule, true));
-            }
+            // commented out because of temporary strange build issues on the build server
+            // IDepositConfig depositConfig = _context.Config<IDepositConfig>();
+            // if (depositConfig.DepositContractAddress != null)
+            // {
+            //     TxPoolBridge txPoolBridge = new TxPoolBridge(
+            //         _context.TxPool, new WalletTxSigner(_context.Wallet, _context.SpecProvider.ChainId), _context.Timestamper);
+            //     DepositModule depositModule = new DepositModule(txPoolBridge, logFinder, depositConfig, _context.LogManager);
+            //     _context.RpcModuleProvider.Register(new SingletonModulePool<IDepositModule>(depositModule, true));
+            // }
 
             TxPoolModule txPoolModule = new TxPoolModule(_context.BlockTree, _context.TxPoolInfoProvider, _context.LogManager);
             _context.RpcModuleProvider.Register(new SingletonModulePool<ITxPoolModule>(txPoolModule, true));
@@ -145,15 +143,19 @@ namespace Nethermind.Runner.Ethereum.Steps
             NetModule netModule = new NetModule(_context.LogManager, new NetBridge(_context.Enode, _context.SyncServer));
             _context.RpcModuleProvider.Register(new SingletonModulePool<INetModule>(netModule, true));
 
-            ParityModule parityModule = new ParityModule(_context.EthereumEcdsa, _context.TxPool, _context.BlockTree, _context.ReceiptFinder, _context.Enode, _context.LogManager);
+            ParityModule parityModule = new ParityModule(
+                _context.EthereumEcdsa, 
+                _context.TxPool, 
+                _context.BlockTree, 
+                _context.ReceiptFinder, 
+                _context.Enode, 
+                _context.Signer, 
+                _context.KeyStore, 
+                _context.LogManager);
+            
             _context.RpcModuleProvider.Register(new SingletonModulePool<IParityModule>(parityModule, true));
-
-            SubsystemStateChanged?.Invoke(this, new SubsystemStateEventArgs(EthereumSubsystemState.Running));
+            
             return Task.CompletedTask;
         }
-
-        public event EventHandler<SubsystemStateEventArgs>? SubsystemStateChanged;
-
-        public EthereumSubsystem MonitoredSubsystem => EthereumSubsystem.Kafka;
     }
 }

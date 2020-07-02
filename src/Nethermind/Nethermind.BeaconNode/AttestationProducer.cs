@@ -13,7 +13,7 @@ namespace Nethermind.BeaconNode
 {
     public class AttestationProducer
     {
-        private readonly BeaconChainUtility _beaconChainUtility;
+        private readonly IBeaconChainUtility _beaconChainUtility;
         private readonly BeaconStateAccessor _beaconStateAccessor;
         private readonly BeaconStateTransition _beaconStateTransition;
         private readonly ICryptographyService _cryptographyService;
@@ -23,7 +23,7 @@ namespace Nethermind.BeaconNode
 
         public AttestationProducer(ILogger<AttestationProducer> logger,
             ICryptographyService cryptographyService,
-            BeaconChainUtility beaconChainUtility,
+            IBeaconChainUtility beaconChainUtility,
             BeaconStateAccessor beaconStateAccessor,
             BeaconStateTransition beaconStateTransition,
             IForkChoice forkChoice,
