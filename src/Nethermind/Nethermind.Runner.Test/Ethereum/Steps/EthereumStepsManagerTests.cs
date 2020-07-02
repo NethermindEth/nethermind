@@ -60,7 +60,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
                 LimboLogs.Instance);
 
             CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(1));
-            
+
             try
             {
                 await stepsManager.InitializeAll(source.Token);
@@ -88,6 +88,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
                 LimboLogs.Instance);
 
             CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+
             try
             {
                 await stepsManager.InitializeAll(source.Token);
@@ -115,6 +116,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
                 LimboLogs.Instance);
 
             CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+
             try
             {
                 await stepsManager.InitializeAll(source.Token);
