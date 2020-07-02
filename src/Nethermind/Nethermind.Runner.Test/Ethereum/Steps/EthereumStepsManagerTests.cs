@@ -17,6 +17,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using FluentAssertions.Execution;
 using Nethermind.Config;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
@@ -40,11 +41,11 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
                 stepsLoader,
                 runnerContext,
                 LimboLogs.Instance);
-            
+
             CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(1));
             await stepsManager.InitializeAll(source.Token);
         }
-        
+
         [Test]
         public async Task With_steps_from_here()
         {
@@ -57,11 +58,22 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
                 stepsLoader,
                 runnerContext,
                 LimboLogs.Instance);
-            
+
             CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(1));
-            Assert.ThrowsAsync<TaskCanceledException>(() => stepsManager.InitializeAll(source.Token));
+            
+            try
+            {
+                await stepsManager.InitializeAll(source.Token);
+            }
+            catch (Exception e)
+            {
+                if (!(e is OperationCanceledException))
+                {
+                    throw new AssertionFailedException($"Exception should be {nameof(OperationCanceledException)}");
+                }
+            }
         }
-        
+
         [Test]
         public async Task With_steps_from_here_Clique()
         {
@@ -74,11 +86,21 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
                 stepsLoader,
                 runnerContext,
                 LimboLogs.Instance);
-            
+
             CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(1));
-            Assert.ThrowsAsync<TaskCanceledException>(() => stepsManager.InitializeAll(source.Token));
+            try
+            {
+                await stepsManager.InitializeAll(source.Token);
+            }
+            catch (Exception e)
+            {
+                if (!(e is OperationCanceledException))
+                {
+                    throw new AssertionFailedException($"Exception should be {nameof(OperationCanceledException)}");
+                }
+            }
         }
-        
+
         [Test]
         public async Task With_failing_steps()
         {
@@ -91,12 +113,22 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
                 stepsLoader,
                 runnerContext,
                 LimboLogs.Instance);
-            
+
             CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(1));
-            Assert.ThrowsAsync<TaskCanceledException>(() => stepsManager.InitializeAll(source.Token));
+            try
+            {
+                await stepsManager.InitializeAll(source.Token);
+            }
+            catch (Exception e)
+            {
+                if (!(e is OperationCanceledException))
+                {
+                    throw new AssertionFailedException($"Exception should be {nameof(OperationCanceledException)}");
+                }
+            }
         }
     }
-    
+
     public class StepLong : IStep
     {
         public async Task Execute(CancellationToken cancellationToken)
@@ -108,7 +140,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         {
         }
     }
-    
+
     public class StepForever : IStep
     {
         public async Task Execute(CancellationToken cancellationToken)
@@ -120,7 +152,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         {
         }
     }
-    
+
     public class StepA : IStep
     {
         public Task Execute(CancellationToken cancellationToken)
@@ -132,7 +164,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         {
         }
     }
-    
+
     [RunnerStepDependencies(typeof(StepC))]
     public class StepB : IStep
     {
@@ -140,12 +172,12 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         {
             return Task.CompletedTask;
         }
-        
+
         public StepB(EthereumRunnerContext runnerContext)
         {
         }
     }
-    
+
     public abstract class StepC : IStep
     {
         public virtual Task Execute(CancellationToken cancellationToken)
@@ -153,7 +185,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             return Task.CompletedTask;
         }
     }
-    
+
     public abstract class StepD : IStep
     {
         public virtual Task Execute(CancellationToken cancellationToken)
@@ -161,7 +193,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             return Task.CompletedTask;
         }
     }
-    
+
     /// <summary>
     /// Designed to fail
     /// </summary>
@@ -176,7 +208,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             await Task.Run(() => throw new Exception());
         }
     }
-    
+
     public class StepCClique : StepC, IStep
     {
         public StepCClique(CliqueEthereumRunnerContext runnerContext)
