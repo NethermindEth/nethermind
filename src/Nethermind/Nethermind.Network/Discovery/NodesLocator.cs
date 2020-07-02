@@ -135,7 +135,7 @@ namespace Nethermind.Network.Discovery
                     }
                 }
             }
-            int nodesCountAfterDiscovery = _nodeTable.Buckets.Sum(x => x.BondedItems.Count);
+            int nodesCountAfterDiscovery = _nodeTable.Buckets.Sum(x => x.BondedItemsCount);
             if(_logger.IsDebug) _logger.Debug($"Finished discovery cycle, tried contacting {alreadyTriedNodes.Count} nodes. All nodes count before the process: {nodesCountBeforeDiscovery}, after the process: {nodesCountAfterDiscovery}");
 
             if (_logger.IsTrace)
@@ -161,7 +161,7 @@ namespace Nethermind.Network.Discovery
                 for (var index = 0; index < _nodeTable.Buckets.Length; index++)
                 {
                     NodeBucket x = _nodeTable.Buckets[index];
-                    nodesCountBeforeDiscovery += x.BondedItems.Count;
+                    nodesCountBeforeDiscovery += x.BondedItemsCount;
                 }
 
                 return nodesCountBeforeDiscovery;
@@ -179,7 +179,7 @@ namespace Nethermind.Network.Discovery
             foreach (NodeBucket nodeBucket in nonEmptyBuckets)
             {
                 length++;
-                int itemsCount = nodeBucket.BondedItems.Count;
+                int itemsCount = nodeBucket.BondedItemsCount;
                 bondedItemsCount += itemsCount;
                 sb.AppendLine($"Bucket: {nodeBucket.Distance}, count: {itemsCount}");
                 foreach (NodeBucketItem bucketItem in nodeBucket.BondedItems)
