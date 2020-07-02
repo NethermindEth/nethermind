@@ -50,7 +50,8 @@ namespace Nethermind.Db.Rocks
         {
             if (Interlocked.CompareExchange(ref _cacheInitialized, 1, 0) == 0)
             {
-                _cache = RocksDbSharp.Native.Instance.rocksdb_cache_create_lru(new UIntPtr(dbConfig.BlockCacheSize));    
+                _cache = RocksDbSharp.Native.Instance.rocksdb_cache_create_lru(new UIntPtr(dbConfig.BlockCacheSize));
+                Interlocked.Add(ref _maxRocksSize, (long)dbConfig.BlockCacheSize);
             }
         }
         
@@ -130,8 +131,7 @@ namespace Nethermind.Db.Rocks
             tableOptions.SetFormatVersion(2);
 
             ulong blockCacheSize = ReadConfig<ulong>(dbConfig, nameof(dbConfig.BlockCacheSize));
-            _maxThisDbSize += (long) blockCacheSize;
-            
+
             tableOptions.SetBlockCache(_cache);
             
             // IntPtr cache = RocksDbSharp.Native.Instance.rocksdb_cache_create_lru(new UIntPtr(blockCacheSize));
