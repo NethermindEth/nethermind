@@ -72,45 +72,36 @@ namespace Nethermind.Network.Discovery.RoutingTable
             bucket.RefreshNode(node);
         }
 
-        public Node[] GetClosestNodes()
+        public IEnumerable<Node> GetClosestNodes()
         {
-            List<NodeBucketItem> nodes = new List<NodeBucketItem>();
+            int count = 0;
             int bucketSize = _discoveryConfig.BucketSize;
             
-            // there is a significant amount of allocations on a samples Goerli fast sync in this place
-            // ToArray calls und unnecessary nested allocations in BondedItems property getter
-            // altogether around 3% of the sample sync 
-            for (int i = 0; i < Buckets.Length; i++)
+            foreach (var nodeBucket in Buckets)
             {
-                NodeBucket nodeBucket = Buckets[i];
-                IReadOnlyCollection<NodeBucketItem> bucketItems = nodeBucket.BondedItems;
-                if (!bucketItems.Any())
+                foreach (var node in nodeBucket.BondedItems)
                 {
-                    continue;
+                    if (count < bucketSize)
+                    {
+                        count++;
+                        yield return node.Node;
+                    }
+                    else
+                    {
+                        yield break;
+                    }
                 }
-
-                int availableCount = bucketSize - nodes.Count;
-                if (bucketItems.Count >= availableCount)
-                {
-                    nodes.AddRange(bucketItems.Take(availableCount).ToArray());
-                    break;
-                }
-
-                nodes.AddRange(bucketItems.ToArray());
             }
-
-            return nodes.Select(x => x.Node).ToArray();
         }
 
-        public Node[] GetClosestNodes(byte[] nodeId)
+        public IEnumerable<Node> GetClosestNodes(byte[] nodeId)
         {
             Keccak idHash = Keccak.Compute(nodeId);
-            Node[] allNodes = Buckets.SelectMany(x => x.BondedItems).Where(x => x.Node.IdHash != idHash)
+            return Buckets.SelectMany(x => x.BondedItems).Where(x => x.Node.IdHash != idHash)
                 .Select(x => new {x.Node, Distance = _nodeDistanceCalculator.CalculateDistance(x.Node.Id.Bytes, nodeId)})
                 .OrderBy(x => x.Distance)
                 .Take(_discoveryConfig.BucketSize)
-                .Select(x => x.Node).ToArray();
-            return allNodes;
+                .Select(x => x.Node);
         }
 
         public void Initialize(PublicKey masterNodeKey)

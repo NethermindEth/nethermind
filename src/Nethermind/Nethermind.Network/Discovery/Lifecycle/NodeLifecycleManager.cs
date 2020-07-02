@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Extensions;
@@ -139,7 +140,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
             NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryFindNodeIn);
             RefreshNodeContactTime();
 
-            Node[] nodes = _nodeTable.GetClosestNodes(discoveryMessage.SearchedNodeId);
+            Node[] nodes = _nodeTable.GetClosestNodes(discoveryMessage.SearchedNodeId).ToArray();
             SendNeighbors(nodes);
         }
         
