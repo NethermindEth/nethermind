@@ -21,6 +21,7 @@ using System.IO;
 using System.Reflection;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
 using RocksDbSharp;
@@ -41,6 +42,18 @@ namespace Nethermind.Db.Rocks
 
         private long _maxThisDbSize;
 
+        private static int _cacheInitialized;
+        
+        private static IntPtr _cache;
+        
+        private static void InitCache(IDbConfig dbConfig)
+        {
+            if (Interlocked.CompareExchange(ref _cacheInitialized, 1, 0) == 0)
+            {
+                _cache = RocksDbSharp.Native.Instance.rocksdb_cache_create_lru(new UIntPtr(dbConfig.BlockCacheSize));    
+            }
+        }
+        
         public DbOnTheRocks(string basePath, string dbPath, IDbConfig dbConfig, ILogManager logManager, ColumnFamilies columnFamilies = null, bool deleteOnStart = false)
         {
             static RocksDb Open(string path, (DbOptions Options, ColumnFamilies Families) db)
@@ -65,6 +78,7 @@ namespace Nethermind.Db.Rocks
                 // ReSharper disable once VirtualMemberCallInConstructor
                 if (_logger.IsDebug) _logger.Debug($"Building options for {Name} DB");
                 DbOptions options = BuildOptions(dbConfig);
+                InitCache(dbConfig);
 
                 // ReSharper disable once VirtualMemberCallInConstructor
                 if (_logger.IsDebug) _logger.Debug($"Loading DB {Name.PadRight(13)} from {_fullPath} with max memory footprint of {_maxThisDbSize / 1024 / 1024}MB");
@@ -117,9 +131,11 @@ namespace Nethermind.Db.Rocks
 
             ulong blockCacheSize = ReadConfig<ulong>(dbConfig, nameof(dbConfig.BlockCacheSize));
             _maxThisDbSize += (long) blockCacheSize;
-
-            IntPtr cache = RocksDbSharp.Native.Instance.rocksdb_cache_create_lru(new UIntPtr(blockCacheSize));
-            tableOptions.SetBlockCache(cache);
+            
+            tableOptions.SetBlockCache(_cache);
+            
+            // IntPtr cache = RocksDbSharp.Native.Instance.rocksdb_cache_create_lru(new UIntPtr(blockCacheSize));
+            // tableOptions.SetBlockCache(cache);
 
             DbOptions options = new DbOptions();
             options.SetCreateIfMissing(true);
