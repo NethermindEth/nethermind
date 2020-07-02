@@ -57,6 +57,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
             {
                 lock (_nodeBucketLock)
                 {
+                    // this ToArray call is responsible for around 1.5% (1GB) allocations on a sample Goerli fast sync
                     return _items.Where(i => (DateTime.UtcNow - i.LastContactTime) < TimeSpan.FromDays(2)).ToArray();
                 }
             }
