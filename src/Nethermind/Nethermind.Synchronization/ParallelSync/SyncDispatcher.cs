@@ -24,9 +24,8 @@ namespace Nethermind.Synchronization.ParallelSync
 {
     public abstract class SyncDispatcher<T> : ISyncDispatcher<T>
     {
-        private readonly object _feedStateManipulation = new object();
+        private object _feedStateManipulation = new object();
         private SyncFeedState _currentFeedState = SyncFeedState.Dormant;
-        private SemaphoreSlim _requestSemaphore;
 
         private IPeerAllocationStrategyFactory<T> PeerAllocationStrategy { get; }
 
@@ -40,7 +39,6 @@ namespace Nethermind.Synchronization.ParallelSync
             Feed = syncFeed ?? throw new ArgumentNullException(nameof(syncFeed));
             SyncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             PeerAllocationStrategy = peerAllocationStrategy ?? throw new ArgumentNullException(nameof(peerAllocationStrategy));
-            _requestSemaphore = new SemaphoreSlim(Math.Max(1, syncPeerPool.PeerMaxCount * 2));
 
             syncFeed.StateChanged += SyncFeedOnStateChanged;
         }
@@ -90,8 +88,6 @@ namespace Nethermind.Synchronization.ParallelSync
                 }
                 else if (currentStateLocal == SyncFeedState.Active)
                 {
-                    await _requestSemaphore.WaitAsync(cancellationToken);
-                    
                     T request = await (Feed.PrepareRequest() ?? Task.FromResult<T>(default)); // just to avoid null refs
                     if (request == null)
                     {
@@ -100,7 +96,7 @@ namespace Nethermind.Synchronization.ParallelSync
                             if(Logger.IsTrace) Logger.Trace($"{Feed.GetType().Name} enqueued a null request.");
                         }
 
-                        await Task.Delay(10, cancellationToken);
+                        await Task.Delay(10);
                         continue;
                     }
 
@@ -128,13 +124,15 @@ namespace Nethermind.Synchronization.ParallelSync
 
                             try
                             {
+                                // Logger.Warn($"Freeing allocation of {allocatedPeer}");
                                 try
                                 {
                                     Free(allocation);
                                 }
                                 finally
                                 {
-                                    HandleResponse(request, allocatedPeer);
+                                    SyncResponseHandlingResult result = Feed.HandleResponse(request);
+                                    ReactToHandlingResult(request, result, allocatedPeer);
                                 }
                             }
                             catch (ObjectDisposedException)
@@ -147,11 +145,12 @@ namespace Nethermind.Synchronization.ParallelSync
                                 // this practically corrupts sync
                                 if (Logger.IsError) Logger.Error("Error when handling response", e);
                             }
-                        }, cancellationToken);
+                        });
                     }
                     else
                     {
-                        HandleResponse(request, null); 
+                        SyncResponseHandlingResult result = Feed.HandleResponse(request);
+                        ReactToHandlingResult(request, result, null);
                     }
                 }
                 else if (currentStateLocal == SyncFeedState.Finished)
@@ -160,13 +159,6 @@ namespace Nethermind.Synchronization.ParallelSync
                     break;
                 }
             }
-        }
-
-        private void HandleResponse(T request, PeerInfo allocatedPeer)
-        {
-            SyncResponseHandlingResult result = Feed.HandleResponse(request);
-            _requestSemaphore.Release();
-            ReactToHandlingResult(request, result, allocatedPeer);
         }
 
         protected virtual void Free(SyncPeerAllocation allocation)
