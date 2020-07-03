@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Diagnostics;
-using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.FastSync
 {
@@ -27,7 +26,6 @@ namespace Nethermind.Synchronization.FastSync
         public byte[][] Responses { get; set; }
 
         public int ConsumerId { get; set; }
-        public PeerInfo Peer { get; set; }
 
         public override string ToString()
         {

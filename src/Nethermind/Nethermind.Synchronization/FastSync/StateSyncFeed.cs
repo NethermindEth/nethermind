@@ -437,7 +437,7 @@ namespace Nethermind.Synchronization.FastSync
                             ? SyncResponseHandlingResult.LesserQuality
                             : SyncResponseHandlingResult.OK;
 
-                    _data.DisplayProgressReport(_pendingRequests.Keys, _logger);
+                    _data.DisplayProgressReport(_pendingRequests.Count, _logger);
 
                     long total = _handleWatch.ElapsedMilliseconds + _networkWatch.ElapsedMilliseconds;
                     if (total != 0)
