@@ -16,12 +16,15 @@
 // 
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Specs.ChainSpecStyle;
@@ -64,6 +67,14 @@ namespace Nethermind.Blockchain
                 {
                     Keccak codeHash = _stateProvider.UpdateCode(allocation.Code);
                     _stateProvider.UpdateCodeHash(address, codeHash, _specProvider.GenesisSpec);
+                }
+
+                if (allocation.Storage != null)
+                {
+                    foreach (KeyValuePair<UInt256, byte[]> storage in allocation.Storage)
+                    {
+                        _storageProvider.Set(new StorageCell(address, storage.Key), storage.Value.WithoutLeadingZeros().ToArray());
+                    }
                 }
 
                 if (allocation.Constructor != null)

@@ -14,6 +14,11 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Specs.ChainSpecStyle.Json
@@ -27,5 +32,14 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
         public byte[] Code { get; set; }
         
         public byte[] Constructor { get; set; }
+        public Dictionary<string, string> Storage { get; set; }
+
+        public Dictionary<UInt256, byte[]> GetConvertedStorage()
+        {
+            if(Storage == null)
+                return null;
+            
+            return Storage.ToDictionary(s => Bytes.FromHexString(s.Key).ToUInt256(), s => Bytes.FromHexString(s.Value));
+        }
     }
 }
