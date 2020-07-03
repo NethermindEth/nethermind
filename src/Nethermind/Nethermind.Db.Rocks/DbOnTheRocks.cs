@@ -44,9 +44,9 @@ namespace Nethermind.Db.Rocks
 
         private static int _cacheInitialized;
         
-        private static IntPtr _cache;
+        protected static IntPtr _cache;
         
-        private static void InitCache(IDbConfig dbConfig)
+        protected static void InitCache(IDbConfig dbConfig)
         {
             if (Interlocked.CompareExchange(ref _cacheInitialized, 1, 0) == 0)
             {
