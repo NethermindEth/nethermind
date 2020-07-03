@@ -52,13 +52,18 @@ namespace Nethermind.Db.Rocks
 
         private static ColumnFamilies GetColumnFamilies(IDbConfig dbConfig, string name, T[] keys)
         {
+            InitCache(dbConfig);
+            
             var result = new ColumnFamilies();
             var blockCacheSize = ReadConfig<ulong>(dbConfig, nameof(dbConfig.BlockCacheSize), name);
             foreach (var key in keys)
             {
                 var columnFamilyOptions = new ColumnFamilyOptions();
                 columnFamilyOptions.OptimizeForPointLookup(blockCacheSize);
-                columnFamilyOptions.SetBlockBasedTableFactory(new BlockBasedTableOptions().SetFilterPolicy(BloomFilterPolicy.Create()));
+                columnFamilyOptions.SetBlockBasedTableFactory(
+                    new BlockBasedTableOptions()
+                        .SetFilterPolicy(BloomFilterPolicy.Create())
+                        .SetBlockCache(_cache));
                 result.Add(key.ToString(), columnFamilyOptions);
             }
             return result;
