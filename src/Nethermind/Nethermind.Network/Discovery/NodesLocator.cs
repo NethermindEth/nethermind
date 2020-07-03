@@ -64,16 +64,30 @@ namespace Nethermind.Network.Discovery
             if(_logger.IsDebug) _logger.Debug($"Starting discovery process for node: {(searchedNodeId != null ? $"randomNode: {new PublicKey(searchedNodeId).ToShortString()}" : $"masterNode: {_masterNode.Id}")}");
             int nodesCountBeforeDiscovery = NodesCountBeforeDiscovery;
 
+            Node[] tryCandidates = new Node[_discoveryConfig.BucketSize]; // max bucket size here
             for (int i = 0; i < _discoveryConfig.MaxDiscoveryRounds; i++)
             {
-                Node[] tryCandidates;
-                int candidatesTryCount = 0;
+                Array.Clear(tryCandidates, 0, tryCandidates.Length);
+                int candidatesCount;
+                
+                int attemptsCount = 0;
                 while (true)
                 {
                     //if searched node is not specified master node is used
                     IEnumerable<Node> closestNodes = searchedNodeId != null ? _nodeTable.GetClosestNodes(searchedNodeId) : _nodeTable.GetClosestNodes();
-                    tryCandidates = closestNodes.Where(node => !alreadyTriedNodes.Contains(node.IdHash)).ToArray();
-                    if (tryCandidates.Any() || candidatesTryCount++ > 20)
+
+                    candidatesCount = 0;
+                    foreach (Node closestNode in closestNodes.Where(node => !alreadyTriedNodes.Contains(node.IdHash)))
+                    {
+                        candidatesCount++;
+                        tryCandidates[candidatesCount++] = closestNode;
+                        if (candidatesCount > tryCandidates.Length - 1)
+                        {
+                            break;
+                        }
+                    }
+                    
+                    if (attemptsCount++ > 20 || candidatesCount > 0)
                     {
                         break;
                     }
@@ -91,7 +105,7 @@ namespace Nethermind.Network.Discovery
                     }
                 }
 
-                if (!tryCandidates.Any())
+                if (candidatesCount == 0)
                 {
                     if(_logger.IsTrace) _logger.Trace("No more closer candidates");
                     break;
