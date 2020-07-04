@@ -18,10 +18,10 @@ namespace Nethermind.Synchronization.Peers
 {
     public enum PeerClientType
     {
-        BeSu = 0,
-        Geth = 1,
-        Nethermind = 2,
-        Parity = 3,
-        Unknown = 255
+        Unknown,
+        BeSu,
+        Geth,
+        Nethermind,
+        Parity
     }
 }

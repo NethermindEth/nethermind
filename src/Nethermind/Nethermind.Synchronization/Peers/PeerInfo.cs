@@ -201,8 +201,8 @@ namespace Nethermind.Synchronization.Peers
         {
             if (!string.IsNullOrEmpty(syncPeer.ClientId))
             {
-                // Assume Unknown is value 255
-                Dictionary<string, int> clientTypes = Enum.GetValues(typeof(PeerClientType)).Cast<PeerClientType>().Where(t => (int)t != 255).ToDictionary(k => k.ToString(), v => (int)v);
+                // Assume Unknown is first enum value
+                Dictionary<string, int> clientTypes = Enum.GetValues(typeof(PeerClientType)).Cast<PeerClientType>().Skip(1).ToDictionary(k => k.ToString(), v => (int)v);
                 foreach (KeyValuePair<string, int> t in clientTypes)
                 {
                     if (syncPeer.ClientId.StartsWith(t.Key, StringComparison.InvariantCultureIgnoreCase))
@@ -210,7 +210,6 @@ namespace Nethermind.Synchronization.Peers
                         PeerClientType = (PeerClientType)t.Value;
                         return;
                     }
-
                 }
             }
 
