@@ -1,16 +1,16 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -27,14 +27,14 @@ namespace Nethermind.Core
         public const int ByteLength = 20;
         private const int HexCharsCount = 2 * ByteLength; // 5a4eab120fb44eb6684e5e32785702ff45ea344d
         private const int PrefixedHexCharsCount = 2 + HexCharsCount; // 0x5a4eab120fb44eb6684e5e32785702ff45ea344d
-        
+
         public static Address Zero { get; } = new Address(new byte[ByteLength]);
         public static Address SystemUser { get; } = new Address("0xfffffffffffffffffffffffffffffffffffffffe");
-        
+
         public byte[] Bytes { get; }
 
         public Address(Keccak keccak) : this(keccak.Bytes.Slice(12, ByteLength)) { }
-        
+
         public Address(in ValueKeccak keccak) : this(keccak.BytesAsSpan.Slice(12, ByteLength).ToArray()) { }
 
         public byte this[int index] => Bytes[index];
@@ -137,7 +137,7 @@ namespace Nethermind.Core
 
             return obj.GetType() == GetType() && Equals((Address) obj);
         }
-        
+
         public override int GetHashCode() => MemoryMarshal.Read<int>(Bytes);
 
         public static bool operator ==(Address a, Address b)
@@ -153,20 +153,20 @@ namespace Nethermind.Core
         public static bool operator !=(Address a, Address b) => !(a == b);
 
         public AddressStructRef ToStructRef() => new AddressStructRef(Bytes);
-        
+
         public int CompareTo(Address other) => Bytes.AsSpan().SequenceCompareTo(other?.Bytes);
     }
-    
+
     public ref struct AddressStructRef
     {
         public const int ByteLength = 20;
         private const int HexCharsCount = 2 * ByteLength; // 5a4eab120fb44eb6684e5e32785702ff45ea344d
         private const int PrefixedHexCharsCount = 2 + HexCharsCount; // 0x5a4eab120fb44eb6684e5e32785702ff45ea344d
-        
+
         public Span<byte> Bytes { get; }
 
         public AddressStructRef(KeccakStructRef keccak) : this(keccak.Bytes.Slice(12, ByteLength)) { }
-        
+
         public AddressStructRef(in ValueKeccak keccak) : this(keccak.BytesAsSpan.Slice(12, ByteLength).ToArray()) { }
 
         public byte this[int index] => Bytes[index];
@@ -253,17 +253,17 @@ namespace Nethermind.Core
 
             return obj.GetType() == typeof(Address) && Equals((Address) obj);
         }
-        
+
         public override int GetHashCode() => MemoryMarshal.Read<int>(Bytes);
 
         public static bool operator ==(AddressStructRef a, Address b) => a.Equals(b);
 
         public static bool operator !=(AddressStructRef a, Address b) => !(a == b);
-        
+
         public static bool operator ==(Address a, AddressStructRef b) => b.Equals(a);
 
         public static bool operator !=(Address a, AddressStructRef b) => !(a == b);
-        
+
         public static bool operator ==(AddressStructRef a, AddressStructRef b) => a.Equals(b);
 
         public static bool operator !=(AddressStructRef a, AddressStructRef b) => !(a == b);
