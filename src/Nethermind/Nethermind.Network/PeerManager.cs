@@ -424,22 +424,36 @@ namespace Nethermind.Network
             }
         }
 
-        private static Array _enumValues = Enum.GetValues(typeof(ActivePeerSelectionCounter)); 
+        private static ActivePeerSelectionCounter[] _enumValues = InitEnumValues();
+
+        private static ActivePeerSelectionCounter[] InitEnumValues()
+        {
+            Array values = Enum.GetValues(typeof(ActivePeerSelectionCounter));
+            ActivePeerSelectionCounter[] result = new ActivePeerSelectionCounter[values.Length];
+
+            int index = 0;
+            foreach (ActivePeerSelectionCounter value in values)
+            {
+                result[index++] = value;
+            }
+
+            return result;
+        }
         
         private void SelectAndRankCandidates()
         {
-            _currentSelection.PreCandidates.Clear();
-            _currentSelection.Candidates.Clear();
-            _currentSelection.Incompatible.Clear();
-            
-            foreach (ActivePeerSelectionCounter value in _enumValues)
-            {
-                _currentSelection.Counters[value] = 0;
-            }
-
             if (AvailableActivePeersCount <= 0)
             {
                 return;
+            }
+            
+            _currentSelection.PreCandidates.Clear();
+            _currentSelection.Candidates.Clear();
+            _currentSelection.Incompatible.Clear();
+
+            for (int i = 0; i < _enumValues.Length; i++)
+            {
+                _currentSelection.Counters[_enumValues[i]] = 0;
             }
 
             foreach ((_, Peer peer) in _peerPool.AllPeers)
