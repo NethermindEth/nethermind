@@ -96,7 +96,7 @@ namespace Nethermind.Synchronization.ParallelSync
                             if(Logger.IsTrace) Logger.Trace($"{Feed.GetType().Name} enqueued a null request.");
                         }
 
-                        await Task.Delay(10);
+                        await Task.Delay(10, cancellationToken);
                         continue;
                     }
 
@@ -124,9 +124,8 @@ namespace Nethermind.Synchronization.ParallelSync
 
                             try
                             {
-                                // Logger.Warn($"Freeing allocation of {allocatedPeer}");
-                                Free(allocation);
                                 SyncResponseHandlingResult result = Feed.HandleResponse(request);
+                                Free(allocation);
                                 ReactToHandlingResult(request, result, allocatedPeer);
                             }
                             catch (ObjectDisposedException)
@@ -139,7 +138,7 @@ namespace Nethermind.Synchronization.ParallelSync
                                 // this practically corrupts sync
                                 if (Logger.IsError) Logger.Error("Error when handling response", e);
                             }
-                        });
+                        }, cancellationToken);
                     }
                     else
                     {
