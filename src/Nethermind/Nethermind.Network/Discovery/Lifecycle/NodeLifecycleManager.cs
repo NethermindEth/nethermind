@@ -89,12 +89,18 @@ namespace Nethermind.Network.Discovery.Lifecycle
                 if (IsBonded)
                 {
                     UpdateState(NodeLifecycleState.Active);
+                    if(_logger.IsDebug) _logger.Debug($"Bonded with {ManagedNode.Host}");
+                }
+                else
+                {
+                    if(_logger.IsDebug) _logger.Debug($"Bonding with {ManagedNode} failed.");
                 }
 
                 RefreshNodeContactTime();
             }
             else
             {
+                if(_logger.IsDebug) _logger.Debug($"Unmatched MDC when bonding with {ManagedNode}");
                 // ignore spoofed message
                 _receivedPong = false;
                 return;
@@ -170,8 +176,8 @@ namespace Nethermind.Network.Discovery.Lifecycle
         public async Task SendPingAsync()
         {
             _lastPingSent = DateTime.UtcNow;
-            await CreateAndSendPingAsync(_discoveryConfig.PingRetryCount);
             _sentPing = true;
+            await CreateAndSendPingAsync(_discoveryConfig.PingRetryCount);
         }
 
         public void SendPong(PingMessage discoveryMessage)
