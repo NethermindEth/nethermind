@@ -16,7 +16,7 @@ jobs:
         id: settings
         run: |
           echo "Event '${{ github.event.action }}' with tag: '${{ github.event.client_payload.tag }}'"
-          echo ::set-output name=TAG::1.8.60
+          echo ::set-output name=TAG::1.8.59
           echo ::set-output name=TAG_FROM_REPO::$(git describe --tags $(git rev-list --tags --max-count=1))
           echo ::set-output name=docker_username::${{ secrets.DOCKER_USERNAME }}
           echo ::set-output name=docker_image::nethermindeth/nethermind
