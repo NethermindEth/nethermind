@@ -28,15 +28,19 @@ namespace Nethermind.Core.Extensions
                 if (!allowHexPrefix) return false;
                 offset += 2;
             }
-            for (; offset < value.Length; offset++)
+            if(offset < value.Length)
             {
-                char c = value[offset];
-                if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')))
+                for (; offset < value.Length; offset++)
                 {
-                    return false;
+                    char c = value[offset];
+                    if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')))
+                    {
+                        return false;
+                    }
                 }
+                return true;
             }
-            return true;
+            return false;
         }
     }
 }
