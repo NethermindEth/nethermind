@@ -15,11 +15,13 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.RoutingTable
 {
+    [DebuggerDisplay("{BondedItemsCount} bonded item(s)")]
     public class NodeBucket
     {
         private readonly object _nodeBucketLock = new object();

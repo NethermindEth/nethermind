@@ -79,7 +79,6 @@ namespace Nethermind.Network.Discovery
                     candidatesCount = 0;
                     foreach (Node closestNode in closestNodes.Where(node => !alreadyTriedNodes.Contains(node.IdHash)))
                     {
-                        candidatesCount++;
                         tryCandidates[candidatesCount++] = closestNode;
                         if (candidatesCount > tryCandidates.Length - 1)
                         {
@@ -119,7 +118,7 @@ namespace Nethermind.Network.Discovery
                     int count = failRequestCount > 0 ? failRequestCount : _discoveryConfig.Concurrency;
                     IEnumerable<Node> nodesToSend = tryCandidates.Skip(nodesTriedCount).Take(count);
                     
-                    var sendFindNodeTasks = SendFileNodes(searchedNodeId, cancellationToken, nodesToSend, alreadyTriedNodes);
+                    var sendFindNodeTasks = SendFindNodes(searchedNodeId, cancellationToken, nodesToSend, alreadyTriedNodes);
                     Result[] results = await Task.WhenAll(sendFindNodeTasks);
 
                     if (results.Length == 0)
@@ -158,9 +157,9 @@ namespace Nethermind.Network.Discovery
             }
         }
 
-        private IEnumerable<Task<Result>> SendFileNodes(byte[] searchedNodeId, CancellationToken cancellationToken, IEnumerable<Node> nodesToSend, ISet<Keccak> alreadyTriedNodes)
+        private IEnumerable<Task<Result>> SendFindNodes(byte[] searchedNodeId, CancellationToken cancellationToken, IEnumerable<Node> nodesToSend, ISet<Keccak> alreadyTriedNodes)
         {
-            foreach (Node node in nodesToSend)
+            foreach (Node node in nodesToSend.Where(n => n != null))
             {
                 alreadyTriedNodes.Add(node.IdHash);
                 yield return SendFindNode(node, searchedNodeId, cancellationToken);

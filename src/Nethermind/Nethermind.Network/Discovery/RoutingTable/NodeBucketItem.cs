@@ -24,7 +24,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
         public NodeBucketItem(Node node)
         {
             Node = node;
-            LastContactTime = DateTime.MinValue;
+            LastContactTime = DateTime.UtcNow;
         }
 
         public Node Node { get; }
