@@ -77,7 +77,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             };
             Send(statusMessage);
 
-            if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportOutgoingMessage(Session.Node.Host, Name, statusMessage.ToString());
+            if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportOutgoingMessage(Session.Node.Address, Name, statusMessage.ToString());
             Metrics.LesStatusesSent++;
 
             CheckProtocolInitTimeout().ContinueWith(x =>
@@ -123,7 +123,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             {
                 case LesMessageCode.Status:
                     StatusMessage statusMessage = Deserialize<StatusMessage>(message.Content);
-                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Host, Name, statusMessage.ToString());
+                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, statusMessage.ToString());
                     Handle(statusMessage);
                     break;
             }

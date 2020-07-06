@@ -82,6 +82,8 @@ namespace Nethermind.Network.Test.Discovery
             Assert.AreEqual(message.DestinationAddress, deserializedMessage.DestinationAddress);
             Assert.AreEqual(message.SourceAddress, deserializedMessage.SourceAddress);
             Assert.AreEqual(message.Version, deserializedMessage.Version);
+            
+            // check MDC correctness 
             Assert.IsNotNull(deserializedMessage.Mdc);
         }
 

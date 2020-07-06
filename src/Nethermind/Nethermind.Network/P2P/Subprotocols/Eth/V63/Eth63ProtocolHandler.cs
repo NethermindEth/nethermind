@@ -62,19 +62,19 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             switch (message.PacketType)
             {
                 case Eth63MessageCode.GetReceipts:
-                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Host, Name, nameof(GetReceiptsMessage));
+                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, nameof(GetReceiptsMessage));
                     Handle(Deserialize<GetReceiptsMessage>(message.Content));
                     break;
                 case Eth63MessageCode.Receipts:
-                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Host, Name, nameof(ReceiptsMessage));
+                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, nameof(ReceiptsMessage));
                     Handle(Deserialize<ReceiptsMessage>(message.Content), size);
                     break;
                 case Eth63MessageCode.GetNodeData:
-                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Host, Name, nameof(GetNodeDataMessage));
+                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, nameof(GetNodeDataMessage));
                     Handle(Deserialize<GetNodeDataMessage>(message.Content));
                     break;
                 case Eth63MessageCode.NodeData:
-                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Host, Name, nameof(NodeDataMessage));
+                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, nameof(NodeDataMessage));
                     Handle(Deserialize<NodeDataMessage>(message.Content), size);
                     break;
             }

@@ -19,13 +19,11 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
-using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Lifecycle;
@@ -86,11 +84,11 @@ namespace Nethermind.Network.Discovery
 
                 if (message is PingMessage pingMessage)
                 {
-                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(pingMessage.FarAddress.Address.MapToIPv4().ToString(), "MANAGER disc v4", $"Ping {pingMessage.SourceAddress.Address} -> {pingMessage.DestinationAddress.Address}");
+                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(pingMessage.FarAddress, "MANAGER disc v4", $"Ping {pingMessage.SourceAddress.Address} -> {pingMessage.DestinationAddress.Address}");
                 }
                 else
                 {
-                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(message.FarAddress.Address.MapToIPv4().ToString(), "MANAGER disc v4", message.MessageType.ToString());
+                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(message.FarAddress, "MANAGER disc v4", message.MessageType.ToString());
                 }
                 
                 switch (msgType)
@@ -161,11 +159,11 @@ namespace Nethermind.Network.Discovery
             {
                 if (discoveryMessage is PingMessage pingMessage)
                 {
-                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportOutgoingMessage(pingMessage.FarAddress.Address.MapToIPv4().ToString(), "HANDLER disc v4", $"Ping {pingMessage.SourceAddress.Address} -> {pingMessage.DestinationAddress.Address}");
+                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportOutgoingMessage(pingMessage.FarAddress, "HANDLER disc v4", $"Ping {pingMessage.SourceAddress.Address} -> {pingMessage.DestinationAddress.Address}");
                 }
                 else
                 {
-                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportOutgoingMessage(discoveryMessage.FarAddress.Address.MapToIPv4().ToString(), "HANDLER disc v4", discoveryMessage.MessageType.ToString());
+                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportOutgoingMessage(discoveryMessage.FarAddress, "HANDLER disc v4", discoveryMessage.MessageType.ToString());
                 }
 
                 _messageSender.SendMessage(discoveryMessage);
