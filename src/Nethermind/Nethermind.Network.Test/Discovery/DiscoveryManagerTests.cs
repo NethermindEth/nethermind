@@ -111,7 +111,7 @@ namespace Nethermind.Network.Test.Discovery
 
             //expecting to activate node as valid peer
             var nodes = _nodeTable.GetClosestNodes();
-            Assert.AreEqual(1, nodes.Length);
+            Assert.AreEqual(1, nodes.Count());
             var node = nodes.First();
             Assert.AreEqual(_host, node.Host);
             Assert.AreEqual(_port, node.Port);
@@ -127,7 +127,7 @@ namespace Nethermind.Network.Test.Discovery
 
             //expecting to activate node as valid peer
             var nodes = _nodeTable.GetClosestNodes();
-            Assert.AreEqual(1, nodes.Length);
+            Assert.AreEqual(1, nodes.Count());
             var node = nodes.First();
             Assert.AreEqual(_host, node.Host);
             Assert.AreEqual(_port, node.Port);
@@ -164,7 +164,7 @@ namespace Nethermind.Network.Test.Discovery
 
             //expecting to activate node as valid peer
             var nodes = _nodeTable.GetClosestNodes();
-            Assert.AreEqual(1, nodes.Length);
+            Assert.AreEqual(1, nodes.Count());
             var node = nodes.First();
             Assert.AreEqual(_host, node.Host);
             Assert.AreEqual(_port, node.Port);

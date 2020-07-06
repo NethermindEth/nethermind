@@ -21,14 +21,17 @@ namespace Nethermind.Network.Discovery.RoutingTable
 {
     public class NodeBucketItem
     {
-        public NodeBucketItem(Node node)
+        public NodeBucketItem(Node node, DateTime lastContactTime)
         {
             Node = node;
-            LastContactTime = DateTime.MinValue;
+            LastContactTime = lastContactTime;
         }
 
         public Node Node { get; }
+        
         public DateTime LastContactTime { get; private set; }
+
+        public bool IsBonded => LastContactTime > DateTime.UtcNow - TimeSpan.FromDays(2);
 
         public void OnContactReceived()
         {
