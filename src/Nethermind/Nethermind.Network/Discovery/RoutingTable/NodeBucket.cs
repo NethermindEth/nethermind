@@ -129,7 +129,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
         {
             lock (_nodeBucketLock)
             {
-                NodeBucketItem item = new NodeBucketItem(node);
+                NodeBucketItem item = new NodeBucketItem(node, DateTime.UtcNow);
                 var bucketItem = _items.Find(item);
                 if (bucketItem != null)
                 {

@@ -33,7 +33,7 @@ namespace Nethermind.Network.Test.Discovery.RoutingTable
         public void Last_contacted_time_is_set_to_now_at_the_beginning()
         {
             Node node = new Node(TestItem.PublicKeyA, IPAddress.Loopback.ToString(), 30000);
-            NodeBucketItem nodeBucketItem = new NodeBucketItem(node);
+            NodeBucketItem nodeBucketItem = new NodeBucketItem(node, DateTime.UtcNow);
             nodeBucketItem.LastContactTime.Should().BeAfter(DateTime.UtcNow.AddDays(-1));
         }
 
@@ -41,7 +41,7 @@ namespace Nethermind.Network.Test.Discovery.RoutingTable
         public async Task On_contact_received_we_update_last_contacted_date()
         {
             Node node = new Node(TestItem.PublicKeyA, IPAddress.Loopback.ToString(), 30000);
-            NodeBucketItem nodeBucketItem = new NodeBucketItem(node);
+            NodeBucketItem nodeBucketItem = new NodeBucketItem(node, DateTime.UtcNow);
 
             DateTime dateTime = nodeBucketItem.LastContactTime;
             await Task.Delay(10);
@@ -54,7 +54,7 @@ namespace Nethermind.Network.Test.Discovery.RoutingTable
         public void Is_bonded_at_start()
         {
             Node node = new Node(TestItem.PublicKeyA, IPAddress.Loopback.ToString(), 30000);
-            NodeBucketItem nodeBucketItem = new NodeBucketItem(node);
+            NodeBucketItem nodeBucketItem = new NodeBucketItem(node, DateTime.UtcNow);
             nodeBucketItem.IsBonded.Should().BeTrue();
         }
 
@@ -63,8 +63,8 @@ namespace Nethermind.Network.Test.Discovery.RoutingTable
         {
             Node node = new Node(TestItem.PublicKeyA, IPAddress.Loopback.ToString(), 30000);
 
-            NodeBucketItem nodeBucketItem = new NodeBucketItem(node);
-            NodeBucketItem nodeBucketItem2 = new NodeBucketItem(node);
+            NodeBucketItem nodeBucketItem = new NodeBucketItem(node, DateTime.UtcNow);
+            NodeBucketItem nodeBucketItem2 = new NodeBucketItem(node, DateTime.UtcNow);
             nodeBucketItem.Should().Be(nodeBucketItem2);
         }
         
@@ -74,8 +74,8 @@ namespace Nethermind.Network.Test.Discovery.RoutingTable
             Node node = new Node(TestItem.PublicKeyA, IPAddress.Loopback.ToString(), 30000);
             Node node2 = new Node(TestItem.PublicKeyB, IPAddress.Loopback.ToString(), 30000);
 
-            NodeBucketItem nodeBucketItem = new NodeBucketItem(node);
-            NodeBucketItem nodeBucketItem2 = new NodeBucketItem(node2);
+            NodeBucketItem nodeBucketItem = new NodeBucketItem(node, DateTime.UtcNow);
+            NodeBucketItem nodeBucketItem2 = new NodeBucketItem(node2, DateTime.UtcNow);
             nodeBucketItem.Should().NotBe(nodeBucketItem2);
         }
         
@@ -84,8 +84,8 @@ namespace Nethermind.Network.Test.Discovery.RoutingTable
         {
             Node node = new Node(TestItem.PublicKeyA, IPAddress.Loopback.ToString(), 30000);
 
-            NodeBucketItem nodeBucketItem = new NodeBucketItem(node);
-            NodeBucketItem nodeBucketItem2 = new NodeBucketItem(node);
+            NodeBucketItem nodeBucketItem = new NodeBucketItem(node, DateTime.UtcNow);
+            NodeBucketItem nodeBucketItem2 = new NodeBucketItem(node, DateTime.UtcNow);
             nodeBucketItem.GetHashCode().Should().Be(nodeBucketItem2.GetHashCode());
         }
         
@@ -93,7 +93,7 @@ namespace Nethermind.Network.Test.Discovery.RoutingTable
         public void Same_are_equal()
         {
             Node node = new Node(TestItem.PublicKeyA, IPAddress.Loopback.ToString(), 30000);
-            NodeBucketItem nodeBucketItem = new NodeBucketItem(node);
+            NodeBucketItem nodeBucketItem = new NodeBucketItem(node, DateTime.UtcNow);
             nodeBucketItem.Should().Be(nodeBucketItem);
         }
     }
