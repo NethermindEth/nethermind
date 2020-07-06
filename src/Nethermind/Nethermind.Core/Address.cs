@@ -173,31 +173,9 @@ namespace Nethermind.Core
 
         public static bool IsValidAddress(string hexString, bool allowPrefix)
         {
-            if (!(hexString.Length == HexCharsCount || allowPrefix && hexString.Length == PrefixedHexCharsCount))
-            {
-                return false;
-            }
-
-            bool hasPrefix = hexString.Length == PrefixedHexCharsCount;
-            if (hasPrefix)
-            {
-                if (hexString[0] != '0' || hexString[1] != 'x')
-                {
-                    return false;
-                }
-            }
-
-            for (int i = hasPrefix ? 2 : 0; i < hexString.Length; i++)
-            {
-                char c = hexString[i];
-                bool isHex = (c >= '0' && c <= '9') ||
-                             (c >= 'a' && c <= 'f') ||
-                             (c >= 'A' && c <= 'F');
-
-                if (!isHex) return false;
-            }
-
-            return true;
+            return !(hexString.Length == HexCharsCount || allowPrefix && hexString.Length == PrefixedHexCharsCount)
+                ? false
+                : hexString.IsHex(allowPrefix);
         }
 
         public AddressStructRef(string hexString) : this(Extensions.Bytes.FromHexString(hexString)) { }
