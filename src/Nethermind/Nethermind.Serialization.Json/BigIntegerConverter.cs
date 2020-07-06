@@ -101,7 +101,6 @@ namespace Nethermind.Serialization.Json
 
             if (isHex)
             {
-                // withZero.Reverse();
                 return BigInteger.Parse(withZero, NumberStyles.AllowHexSpecifier);
             }
 
