@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 
 namespace Nethermind.Consensus.Transactions
@@ -44,5 +45,9 @@ namespace Nethermind.Consensus.Transactions
                 }
             }
         }
+        
+        private readonly int _id = ITxSource.IdCounter;
+        public override string ToString() => $"{GetType().Name}_{_id} [ {(string.Join(", ", _transactionSources.Cast<object>()))} ]";
+
     }
 }
