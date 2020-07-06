@@ -34,12 +34,12 @@ jobs:
       - name: Build & Push image to docker registry (major) / trigger DAppNode Build
         if: steps.settings.outputs.TAG == steps.settings.outputs.TAG_FROM_REPO
         run: |
-          docker buildx build --platform=linux/amd64 -t "${{ steps.settings.outputs.docker_image }}:latest" -t "${{ steps.settings.outputs.docker_image }}:${{ steps.settings.outputs.TAG }}" -f Dockerfile.alpine --build-arg GIT_COMMIT=$(git log -1 --format=%h) . --push
+          docker buildx build --platform=linux/amd64 -t "${{ steps.settings.outputs.docker_image }}:latest" -t "${{ steps.settings.outputs.docker_image }}:${{ steps.settings.outputs.TAG }}" -f Dockerfile --build-arg GIT_COMMIT=$(git log -1 --format=%h) . --push
           curl -v -X POST -u "${{ secrets.PAT_GITHUB }}" -H "Accept: application/vnd.github.everest-preview+json" -H "Content-Type: application/json" --data '{"event_type":"dappnode", "client_payload": { "tag":"${{ steps.settings.outputs.TAG }}"}}' https://api.github.com/repos/nethermindeth/nethermind/dispatches
       - name: Build & Push image to docker registry  (patch)
         if: steps.settings.outputs.TAG != steps.settings.outputs.TAG_FROM_REPO
         run: |
-          docker buildx build --platform=linux/amd64 -t "${{ steps.settings.outputs.docker_image }}:${{ steps.settings.outputs.TAG }}" -f Dockerfile.alpine --build-arg GIT_COMMIT=$(git log -1 --format=%h) . --push
+          docker buildx build --platform=linux/amd64 -t "${{ steps.settings.outputs.docker_image }}:${{ steps.settings.outputs.TAG }}" -f Dockerfile --build-arg GIT_COMMIT=$(git log -1 --format=%h) . --push
       - name: Clear
         if: always()
         run: |

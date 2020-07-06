@@ -34,11 +34,11 @@ jobs:
       - name: Build & Push image to docker registry (major)
         if: steps.settings.outputs.TAG == steps.settings.outputs.TAG_FROM_REPO
         run: |
-          docker buildx build --platform=linux/arm64 -t "${{ steps.settings.outputs.docker_image }}:arm64" -t "${{ steps.settings.outputs.docker_image }}:${{ steps.settings.outputs.TAG }}-arm64" -f Dockerfile.alpine.arm64 --build-arg GIT_COMMIT=$(git log -1 --format=%h) . --push
+          docker buildx build --platform=linux/arm64 -t "${{ steps.settings.outputs.docker_image }}:arm64" -t "${{ steps.settings.outputs.docker_image }}:${{ steps.settings.outputs.TAG }}-arm64" -f Dockerfile.arm64 --build-arg GIT_COMMIT=$(git log -1 --format=%h) . --push
       - name: Build & Push image to docker registry  (patch)
         if: steps.settings.outputs.TAG != steps.settings.outputs.TAG_FROM_REPO
         run: |
-          docker buildx build --platform=linux/arm64 -t "${{ steps.settings.outputs.docker_image }}:${{ steps.settings.outputs.TAG }}-arm64" -f Dockerfile.alpine --build-arg GIT_COMMIT=$(git log -1 --format=%h) . --push
+          docker buildx build --platform=linux/arm64 -t "${{ steps.settings.outputs.docker_image }}:${{ steps.settings.outputs.TAG }}-arm64" -f Dockerfile.arm64 --build-arg GIT_COMMIT=$(git log -1 --format=%h) . --push
       - name: Clear
         if: always()
         run: |
