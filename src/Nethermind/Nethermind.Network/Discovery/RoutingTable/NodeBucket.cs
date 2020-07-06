@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -72,7 +73,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
                     var node = _items.Last;
                     while (node != null)
                     {
-                        if (!node.Value.IsBonded)
+                        if (node.Value.IsBonded)
                         {
                             break;
                         }
@@ -114,10 +115,13 @@ namespace Nethermind.Network.Discovery.RoutingTable
                 if (_items.Contains(item))
                 {
                     _items.Remove(item);
+                    AddNode(nodeToAdd);
                 }
-                
-                item = new NodeBucketItem(nodeToAdd);
-                _items.AddFirst(item);
+                else
+                {
+                    throw new InvalidOperationException(
+                        "Cannot replace non-existing node in the node table bucket");
+                }
             }
         }
 

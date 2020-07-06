@@ -59,6 +59,11 @@ namespace Nethermind.Network.Discovery
 
         public async Task LocateNodesAsync(byte[] searchedNodeId, CancellationToken cancellationToken)
         {
+            if (_masterNode == null)
+            {
+                throw new InvalidOperationException("Master node has not been initialized");
+            }
+            
             ISet<Keccak> alreadyTriedNodes = new HashSet<Keccak>();
 
             if(_logger.IsDebug) _logger.Debug($"Starting discovery process for node: {(searchedNodeId != null ? $"randomNode: {new PublicKey(searchedNodeId).ToShortString()}" : $"masterNode: {_masterNode.Id}")}");
@@ -204,18 +209,6 @@ namespace Nethermind.Network.Discovery
             sb.Insert(0, $"------------------------------------------------------{Environment.NewLine}NodeTable, non-empty bucket count: {length}, total items count: {bondedItemsCount}");
             sb.AppendLine("------------------------------------------------------");
             _logger.Trace(sb.ToString());
-        }
-
-        private async Task<Result[]> SendFindNode(Node[] nodesToSend, byte[] searchedNodeId, CancellationToken cancellationToken)
-        {
-            List<Task<Result>> sendFindNodeTasks = new List<Task<Result>>();
-            foreach (Node node in nodesToSend)
-            {
-                Task<Result> task = SendFindNode(node, searchedNodeId, cancellationToken);
-                sendFindNodeTasks.Add(task);
-            }
-
-            return await Task.WhenAll(sendFindNodeTasks);
         }
 
         private async Task<Result> SendFindNode(Node destinationNode, byte[] searchedNodeId, CancellationToken cancellationToken)
