@@ -424,12 +424,15 @@ namespace Nethermind.Network
             }
         }
 
+        private static Array _enumValues = Enum.GetValues(typeof(ActivePeerSelectionCounter)); 
+        
         private void SelectAndRankCandidates()
         {
             _currentSelection.PreCandidates.Clear();
             _currentSelection.Candidates.Clear();
             _currentSelection.Incompatible.Clear();
-            foreach (ActivePeerSelectionCounter value in Enum.GetValues(typeof(ActivePeerSelectionCounter)))
+            
+            foreach (ActivePeerSelectionCounter value in _enumValues)
             {
                 _currentSelection.Counters[value] = 0;
             }
