@@ -21,10 +21,10 @@ namespace Nethermind.Network.Discovery.RoutingTable
 {
     public class NodeBucketItem
     {
-        public NodeBucketItem(Node node)
+        public NodeBucketItem(Node node, DateTime lastContactTime)
         {
             Node = node;
-            LastContactTime = DateTime.UtcNow;
+            LastContactTime = lastContactTime;
         }
 
         public Node Node { get; }

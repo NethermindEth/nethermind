@@ -93,7 +93,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
             {
                 if (_items.Count < BucketSize)
                 {
-                    NodeBucketItem item = new NodeBucketItem(node);
+                    NodeBucketItem item = new NodeBucketItem(node, DateTime.UtcNow);
                     if (!_items.Contains(item))
                     {
                         _items.AddFirst(item);
@@ -111,7 +111,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
         {
             lock (_nodeBucketLock)
             {
-                NodeBucketItem item = new NodeBucketItem(nodeToRemove);
+                NodeBucketItem item = new NodeBucketItem(nodeToRemove, DateTime.Now);
                 if (_items.Contains(item))
                 {
                     _items.Remove(item);
