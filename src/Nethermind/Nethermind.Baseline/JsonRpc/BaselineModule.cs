@@ -1,16 +1,16 @@
 //  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -253,10 +253,10 @@ namespace Nethermind.Baseline.JsonRpc
         }
 
         /// <summary>
-        /// We retrieve the line 3 from here (bytecode) 
-        /// 
+        /// We retrieve the line 3 from here (bytecode)
+        ///
         /// ======= MerkleTreeSHA.sol:MerkleTreeSHA =======
-        /// Binary: 
+        /// Binary:
         /// 608060405234801561001057600080fd5b5061080980610(...)
         /// </summary>
         /// <param name="contract"></param>
@@ -309,18 +309,7 @@ namespace Nethermind.Baseline.JsonRpc
 
         private static bool IsHex(string value)
         {
-            if (value is null || value.Length % 2 != 0)
-                return false;
-
-            if (value.StartsWith("0x"))
-            {
-                value = value.Substring(2);
-            }
-
-            return value.All(
-                c => (c >= '0' && c <= '9') ||
-                     (c >= 'a' && c <= 'f') ||
-                     (c >= 'A' && c <= 'F'));
+            return !(value is null) && value.Length % 2 == 0 && value.IsHex(allowHexPrefix: true);
         }
 
         public Task<ResultWrapper<Keccak>> baseline_deployBytecode(Address address, string byteCode)
