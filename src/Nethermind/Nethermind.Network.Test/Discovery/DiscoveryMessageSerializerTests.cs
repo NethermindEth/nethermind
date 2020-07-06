@@ -83,8 +83,8 @@ namespace Nethermind.Network.Test.Discovery
             Assert.AreEqual(message.SourceAddress, deserializedMessage.SourceAddress);
             Assert.AreEqual(message.Version, deserializedMessage.Version);
             
-            // check MDC correctness 
-            Assert.IsNotNull(Bytes.FromHexString("0xf8c61953f3b94a91aefe611e61dd74fe26aa5c969d9f29b7e063e6169171a772"));
+            byte[] expectedPingMdc = Bytes.FromHexString("0xf8c61953f3b94a91aefe611e61dd74fe26aa5c969d9f29b7e063e6169171a772"); 
+            Assert.IsNotNull(expectedPingMdc);
         }
 
         [Test]

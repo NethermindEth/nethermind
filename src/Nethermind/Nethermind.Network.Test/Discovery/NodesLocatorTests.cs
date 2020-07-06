@@ -35,7 +35,7 @@ using NUnit.Framework;
 namespace Nethermind.Network.Test.Discovery
 {
     [TestFixture]
-    public class NodeLocatorTests
+    public class NodesLocatorTests
     {
         private NodesLocator _nodesLocator;
         private NodeTable _nodeTable;
@@ -105,7 +105,6 @@ namespace Nethermind.Network.Test.Discovery
         public void Throws_when_uninitialized()
         {
             Assert.ThrowsAsync<InvalidOperationException>(() => _nodesLocator.LocateNodesAsync(CancellationToken.None));
-            _nodesLocator.Initialize(_masterNode);
         }
     }
 }
