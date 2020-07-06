@@ -40,7 +40,18 @@ namespace Nethermind.Serialization.Json
         {
             if (value.IsZero)
             {
-                writer.WriteValue("0x0");
+                switch(_conversion)
+                {
+                    case NumberConversion.Hex:
+                        writer.WriteValue("0x0");
+                        break;
+                    case NumberConversion.Decimal:
+                    case NumberConversion.Raw:
+                        writer.WriteValue("0");
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException();
+                }
                 return;
             }
 
