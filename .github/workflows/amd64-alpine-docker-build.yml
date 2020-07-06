@@ -31,13 +31,17 @@ jobs:
           DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
         run: |
           echo "${DOCKER_PASSWORD}" | docker login --username "${{ steps.settings.outputs.docker_username }}" --password-stdin
-      - name: Build & Push latest image to docker registry
+      - name: Build & Push image to docker registry (major)
         if: ${{ steps.settings.outputs.TAG }} == ${{ steps.settings.outputs.TAG_FROM_REPO }}
         run: |
+          echo ${{ steps.settings.outputs.TAG }}
+          echo ${{ steps.settings.outputs.TAG_FROM_REPO }}
           docker buildx build --platform=linux/amd64 -t "${{ steps.settings.outputs.docker_image }}:latest" -t "${{ steps.settings.outputs.docker_image }}:${{ steps.settings.outputs.TAG }}" -f Dockerfile.alpine --build-arg GIT_COMMIT=$(git log -1 --format=%h) . --push
-      - name: Build & Push latest image to docker registry
+      - name: Build & Push image to docker registry  (patch)
         if: ${{ steps.settings.outputs.TAG }} != ${{ steps.settings.outputs.TAG_FROM_REPO }}
         run: |
+          echo ${{ steps.settings.outputs.TAG }}
+          echo ${{ steps.settings.outputs.TAG_FROM_REPO }}
           docker buildx build --platform=linux/amd64 -t "${{ steps.settings.outputs.docker_image }}:${{ steps.settings.outputs.TAG }}" -f Dockerfile.alpine --build-arg GIT_COMMIT=$(git log -1 --format=%h) . --push
       - name: Clear
         if: always()
