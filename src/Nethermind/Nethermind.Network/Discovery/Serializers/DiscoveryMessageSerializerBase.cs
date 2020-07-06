@@ -43,47 +43,6 @@ namespace Nethermind.Network.Discovery.Serializers
             _messageFactory = messageFactory ?? throw new ArgumentNullException(nameof(messageFactory));
             _nodeIdResolver = nodeIdResolver ?? throw new ArgumentNullException(nameof(nodeIdResolver));
         }
-        
-        // protected byte[] Serialize(byte type, Span<byte> data)
-        // {
-        //     Span<byte> result = new byte[32 + 1 + data.Length + 64 + 1].AsSpan();
-        //     result[32 + 65] = type;
-        //     data.CopyTo(result.Slice(32 + 65 + 1, data.Length));
-        //
-        //     Span<byte> payload = result.Slice(32 + 65);
-        //     Keccak toSign = Keccak.Compute(payload);
-        //     Signature signature = _ecdsa.Sign(_privateKey, toSign);
-        //     signature.Bytes.AsSpan().CopyTo(result.Slice(32, 64));
-        //     result[32 + 64] = signature.RecoveryId;
-        //     
-        //     Span<byte> forMdc = result.Slice(32);
-        //     Keccak mdc = Keccak.Compute(forMdc);
-        //     mdc.Bytes.AsSpan().CopyTo(result.Slice(0,32));
-        //     return result.ToArray();
-        // }
-        //
-        // protected (T Message, byte[] Mdc, byte[] Data) PrepareForDeserialization<T>(byte[] msg) where T : DiscoveryMessage
-        // {
-        //     if (msg.Length < 98)
-        //     {
-        //         throw new NetworkingException("Incorrect message", NetworkExceptionType.Validation);
-        //     }
-        //
-        //     byte[] mdc = msg.Slice(0, 32);
-        //     byte[] signature = msg.Slice(32, 65);
-        //     // var type = new[] { msg[97] };
-        //     byte[] data = msg.Slice(98, msg.Length - 98);
-        //     byte[] computedMdc = Keccak.Compute(msg.Slice(32)).Bytes;
-        //
-        //     if (!Bytes.AreEqual(mdc, computedMdc))
-        //     {
-        //         throw new NetworkingException("Invalid MDC", NetworkExceptionType.Validation);
-        //     }
-        //
-        //     PublicKey nodeId = _nodeIdResolver.GetNodeId(signature.Slice(0, 64), signature[64], msg.Slice(97, msg.Length - 97));
-        //     T message = _messageFactory.CreateIncomingMessage<T>(nodeId);
-        //     return (message, mdc, data);
-        // }
 
         protected byte[] Serialize(byte type, Span<byte> data)
         {
