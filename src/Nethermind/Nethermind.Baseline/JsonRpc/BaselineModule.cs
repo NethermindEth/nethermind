@@ -168,7 +168,7 @@ namespace Nethermind.Baseline.JsonRpc
 
         public Task<ResultWrapper<Keccak>> baseline_getRoot(Address contractAddress)
         {
-            bool isTracked = _baselineTrees.TryGetValue(contractAddress, out BaselineTree? tree);
+            bool isTracked = _baselineTrees.TryGetValue(contractAddress, out _);
 
             ResultWrapper<Keccak> result;
             if (!isTracked)
@@ -180,7 +180,7 @@ namespace Nethermind.Baseline.JsonRpc
             else
             {
                 // everything in memory
-                tree = RebuildEntireTree(contractAddress);
+                BaselineTree? tree = RebuildEntireTree(contractAddress);
                 result = ResultWrapper<Keccak>.Success(tree.Root);
             }
 
@@ -189,7 +189,7 @@ namespace Nethermind.Baseline.JsonRpc
 
         public Task<ResultWrapper<BaselineTreeNode>> baseline_getLeaf(Address contractAddress, UInt256 leafIndex)
         {
-            bool isTracked = _baselineTrees.TryGetValue(contractAddress, out BaselineTree? tree);
+            bool isTracked = _baselineTrees.TryGetValue(contractAddress, out _);
             bool isLeafIndexValid = !(leafIndex > BaselineTree.MaxLeafIndex || leafIndex < 0L);
 
             ResultWrapper<BaselineTreeNode> result;
@@ -208,7 +208,7 @@ namespace Nethermind.Baseline.JsonRpc
             else
             {
                 // everything in memory
-                tree = RebuildEntireTree(contractAddress);
+                BaselineTree? tree = RebuildEntireTree(contractAddress);
                 result = ResultWrapper<BaselineTreeNode>.Success(tree.GetLeaf((uint) leafIndex));
             }
 
@@ -406,7 +406,7 @@ namespace Nethermind.Baseline.JsonRpc
             Keccak leaf,
             BaselineTreeNode[] path)
         {
-            bool isTracked = _baselineTrees.TryGetValue(contractAddress, out BaselineTree? tree);
+            bool isTracked = _baselineTrees.TryGetValue(contractAddress, out _);
             ResultWrapper<bool> result;
             if (!isTracked)
             {
@@ -417,7 +417,7 @@ namespace Nethermind.Baseline.JsonRpc
             else
             {
                 // everything in memory
-                tree = RebuildEntireTree(contractAddress);
+                BaselineTree? tree = RebuildEntireTree(contractAddress);
                 bool verificationResult = tree!.Verify(root, leaf, path);
                 result = ResultWrapper<bool>.Success(verificationResult);
             }
@@ -434,7 +434,7 @@ namespace Nethermind.Baseline.JsonRpc
                     ErrorCodes.InvalidInput));
             }
 
-            bool isTracked = _baselineTrees.TryGetValue(contractAddress, out BaselineTree? tree);
+            bool isTracked = _baselineTrees.TryGetValue(contractAddress, out _);
             if (!isTracked)
             {
                 var result = ResultWrapper<BaselineTreeNode[]>.Fail(
@@ -444,8 +444,7 @@ namespace Nethermind.Baseline.JsonRpc
             }
 
             // everything in memory
-            tree = RebuildEntireTree(contractAddress);
-
+            BaselineTree? tree = RebuildEntireTree(contractAddress);
             return Task.FromResult(ResultWrapper<BaselineTreeNode[]>.Success(tree!.GetProof((uint) leafIndex)));
         }
 
