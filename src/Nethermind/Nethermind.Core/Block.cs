@@ -139,13 +139,13 @@ namespace Nethermind.Core
                 case Format.Full:
                     return ToString(string.Empty);
                 case Format.FullHashAndNumber:
-                    return Hash == null ? $"{Number:N0} null" : $"{Number} ({Hash})";
+                    return Hash == null ? $"{Number:N0} null" : $"{Number:N0} ({Hash})";
                 case Format.HashNumberAndTx:
-                    return Hash == null ? $"{Number:N0} null, tx count: {Body.Transactions.Length}" : $"{Number} {TimestampDate:HH:mm:ss} ({Hash?.ToShortString()}), tx count: {Body.Transactions.Length:N0}";
+                    return Hash == null ? $"{Number:N0} null, tx count: {Body.Transactions.Length}" : $"{Number:N0} {TimestampDate:HH:mm:ss} ({Hash?.ToShortString()}), tx count: {Body.Transactions.Length:N0}";
                 case Format.HashNumberDiffAndTx:
-                    return Hash == null ? $"{Number:N0} null, diff: {Difficulty}, tx count: {Body.Transactions.Length}" : $"{Number} ({Hash?.ToShortString()}), diff: {Difficulty}, tx count: {Body.Transactions.Length:N0}";
+                    return Hash == null ? $"{Number:N0} null, diff: {Difficulty}, tx count: {Body.Transactions.Length}" : $"{Number:N0} ({Hash?.ToShortString()}), diff: {Difficulty}, tx count: {Body.Transactions.Length:N0}";
                 default:
-                    return Hash == null ? $"{Number:N0} null" : $"{Number} ({Hash?.ToShortString()})";
+                    return Hash == null ? $"{Number:N0} null" : $"{Number:N0} ({Hash?.ToShortString()})";
             }
         }
     }
