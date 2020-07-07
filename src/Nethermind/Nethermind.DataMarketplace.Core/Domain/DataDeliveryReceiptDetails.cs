@@ -65,7 +65,7 @@ namespace Nethermind.DataMarketplace.Core.Domain
         {
             unchecked
             {
-                return ((int) Number * 397) ^ (DepositId != null ? DepositId.GetHashCode() : 0);
+                return ((int) Number * 397) ^ DepositId.GetHashCode();
             }
         }
     }
