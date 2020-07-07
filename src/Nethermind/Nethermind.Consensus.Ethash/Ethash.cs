@@ -32,7 +32,7 @@ namespace Nethermind.Consensus.Ethash
 {
     public class Ethash : IEthash
     {
-        private HintBasedCache _hintBasedCache;
+        private readonly HintBasedCache _hintBasedCache;
 
         private readonly ILogger _logger;
 
