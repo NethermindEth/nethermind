@@ -44,6 +44,16 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             public static BlockHeader MidWayToPivot { get; set; } = Build.A.Block.WithTotalDifficulty((UInt256) 512).WithNumber(512).TestObject.Header;
 
             public static BlockHeader ChainHead { get; set; } = Build.A.Block.WithTotalDifficulty(Pivot.TotalDifficulty + 2048).WithNumber(Pivot.Number + 2048).TestObject.Header;
+            
+            public static BlockHeader ChainHeadWrongDifficulty
+            {
+                get
+                {
+                    BlockHeader header = Build.A.Block.WithTotalDifficulty(Pivot.TotalDifficulty + 2048 + 128).WithNumber(Pivot.Number + 2048).TestObject.Header;
+                    header.Hash = ChainHead.Hash;
+                    return header;
+                }
+            }
 
             public static BlockHeader FutureHead { get; set; } = Build.A.Block.WithTotalDifficulty(Pivot.TotalDifficulty + 2048 + 128).WithNumber(Pivot.Number + 2048 + 128).TestObject.Header;
 
@@ -91,6 +101,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     SyncProgressResolver.FindBestHeader().Returns(0);
                     SyncProgressResolver.FindBestFullBlock().Returns(0);
                     SyncProgressResolver.FindBestFullState().Returns(0);
+                    SyncProgressResolver.FindBestHeaderHash().Returns(Keccak.Zero);
                     SyncProgressResolver.IsLoadingBlocksFromDb().Returns(false);
                     SyncProgressResolver.IsFastBlocksFinished().Returns(FastBlocksState.None);
 
@@ -146,6 +157,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                             SyncProgressResolver.FindBestFullBlock().Returns(ChainHead.Number);
                             SyncProgressResolver.FindBestFullState().Returns(ChainHead.Number);
                             SyncProgressResolver.FindBestProcessedBlock().Returns(ChainHead.Number);
+                            SyncProgressResolver.FindBestHeaderHash().Returns(ChainHead.Hash);
                             SyncProgressResolver.IsFastBlocksFinished().Returns(FastBlocksState.FinishedReceipts);
                             SyncProgressResolver.ChainDifficulty.Returns(ChainHead.TotalDifficulty ?? 0);
                             return "fully synced node";
@@ -490,6 +502,12 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 public ScenarioBuilder PeersFromDesirableBranchAreKnown()
                 {
                     AddPeeringSetup("better branch", AddPeer(NewBetterBranchWithLowerNumber));
+                    return this;
+                }
+                
+                public ScenarioBuilder PeersWithWrongDifficultyAreKnown()
+                {
+                    AddPeeringSetup("wrong difficulty", AddPeer(ChainHeadWrongDifficulty));
                     return this;
                 }
 
@@ -1028,6 +1046,16 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .PeersFromDesirableBranchAreKnown()
                 .ThenInAnyFastSyncConfiguration()
                 .TheSyncModeShouldBe(SyncMode.Full);
+        }
+        
+        [Test]
+        public void Should_not_switch_to_same_branch_while_full_synced_but_wrong_total_difficulty()
+        {
+            Scenario.GoesLikeThis()
+                .IfThisNodeIsFullySynced()
+                .PeersWithWrongDifficultyAreKnown()
+                .ThenInAnyFastSyncConfiguration()
+                .TheSyncModeShouldBe(SyncMode.None);
         }
 
         [Test]

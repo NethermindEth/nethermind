@@ -18,6 +18,7 @@ using System;
 using System.ComponentModel;
 using System.Timers;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Synchronization.Peers;
@@ -100,7 +101,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 return;
             }
 
-            (UInt256? peerDifficulty, long? peerBlock) = ReloadDataFromPeers();
+            (UInt256? peerDifficulty, long? peerBlock, Keccak peerHeadHash) = ReloadDataFromPeers();
 
             // if there are no peers that we could use then we cannot sync
             if (peerDifficulty == null || peerBlock == null || peerBlock == 0)
@@ -120,7 +121,7 @@ namespace Nethermind.Synchronization.ParallelSync
             Snapshot best;
             try
             {
-                best = TakeSnapshot(peerDifficulty.Value, peerBlock.Value);
+                best = TakeSnapshot(peerDifficulty.Value, peerBlock.Value, peerHeadHash);
             }
             catch (InvalidAsynchronousStateException)
             {
@@ -372,9 +373,14 @@ namespace Nethermind.Synchronization.ParallelSync
         private bool AnyDesiredPeerKnown(Snapshot best)
         {
             UInt256 localChainDifficulty = _syncProgressResolver.ChainDifficulty;
-            if (_logger.IsTrace) _logger.Trace($"Best peer [{best.PeerBlock},{best.PeerDifficulty}] > local [{best.Header},{localChainDifficulty}]");
-            return best.PeerDifficulty > localChainDifficulty ||
-                   best.PeerDifficulty == localChainDifficulty && best.PeerBlock > best.Header;
+            bool anyDesiredPeerKnown = best.PeerDifficulty > localChainDifficulty && best.HeaderHash != best.PeerHeadHash // we don't trust parity TotalDifficulty, so checking peerHeadHash. 
+                                       || best.PeerDifficulty == localChainDifficulty && best.PeerBlock > best.Header;
+            if (anyDesiredPeerKnown)
+            {
+                if (_logger.IsInfo) _logger.Info($"Best peer [{best.PeerBlock},{best.PeerDifficulty},{best.PeerHeadHash}] > local [{best.Header},{localChainDifficulty},{best.HeaderHash}]");
+            }
+            
+            return anyDesiredPeerKnown;
         }
 
         private bool AnyPostPivotPeerKnown(long bestPeerBlock)
@@ -387,20 +393,23 @@ namespace Nethermind.Synchronization.ParallelSync
             return true;
         }
 
-        private (UInt256?, long? number) ReloadDataFromPeers()
+        private (UInt256? maxPeerDifficulty, long? number, Keccak headHash) ReloadDataFromPeers()
         {
             UInt256? maxPeerDifficulty = null;
             long? number = 0;
+            Keccak headHash = Keccak.Zero;
+
             foreach (PeerInfo peer in _syncPeerPool.InitializedPeers)
             {
                 if (peer.TotalDifficulty > (maxPeerDifficulty ?? UInt256.Zero))
                 {
                     maxPeerDifficulty = peer.TotalDifficulty;
                     number = peer.HeadNumber;
+                    headHash = peer.SyncPeer.HeadHash;
                 }
             }
 
-            return (maxPeerDifficulty, number);
+            return (maxPeerDifficulty, number, headHash);
         }
 
         public void Dispose()
@@ -408,7 +417,7 @@ namespace Nethermind.Synchronization.ParallelSync
             _timer?.Dispose();
         }
 
-        private Snapshot TakeSnapshot(UInt256 peerDifficulty, long peerBlock)
+        private Snapshot TakeSnapshot(UInt256 peerDifficulty, long peerBlock, Keccak peerHeadHash)
         {
             // need to find them in the reversed order otherwise we may fall behind the processing
             // and think that we have an invalid snapshot
@@ -416,8 +425,9 @@ namespace Nethermind.Synchronization.ParallelSync
             long state = _syncProgressResolver.FindBestFullState();
             long block = _syncProgressResolver.FindBestFullBlock();
             long header = _syncProgressResolver.FindBestHeader();
+            Keccak headerHash = _syncProgressResolver.FindBestHeaderHash();
 
-            Snapshot best = new Snapshot(processed, state, block, header, peerBlock, peerDifficulty);
+            Snapshot best = new Snapshot(processed, state, block, header, headerHash, peerBlock, peerDifficulty, peerHeadHash);
             VerifySnapshot(best);
             return best;
         }
@@ -452,16 +462,18 @@ namespace Nethermind.Synchronization.ParallelSync
         public event EventHandler<SyncModeChangedEventArgs> Changing;
         public event EventHandler<SyncModeChangedEventArgs> Changed;
 
-        private struct Snapshot
+        private ref struct Snapshot
         {
-            public Snapshot(long processed, long state, long block, long header, long peerBlock, UInt256 peerDifficulty)
+            public Snapshot(long processed, long state, long block, long header, Keccak headerHash, long peerBlock, UInt256 peerDifficulty, Keccak peerHeadHash)
             {
                 Processed = processed;
                 State = state;
                 Block = block;
                 Header = header;
+                HeaderHash = headerHash;
                 PeerBlock = peerBlock;
                 PeerDifficulty = peerDifficulty;
+                PeerHeadHash = peerHeadHash;
 
                 IsInFastReceipts = IsInFastBodies = IsInFastHeaders = IsInFastSync = IsInBeamSync = IsInFullSync = IsInStateSync = false;
             }
@@ -494,12 +506,15 @@ namespace Nethermind.Synchronization.ParallelSync
             /// </summary>
             public long Header { get; }
 
+            public Keccak HeaderHash { get; }
+
             /// <summary>
             /// Best peer block - this is what other peers are advertising - it may be lower than our best block if we get disconnected from best peers
             /// </summary>
             public long PeerBlock { get; }
 
             public UInt256 PeerDifficulty { get; }
+            public Keccak PeerHeadHash { get; }
         }
     }
 }
