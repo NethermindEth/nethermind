@@ -45,7 +45,7 @@ namespace Nethermind.DataMarketplace.Core.Domain
         {
             unchecked
             {
-                return ((UnitsRange != null ? UnitsRange.GetHashCode() : 0) * 397) ^ (Signature != null ? Signature.GetHashCode() : 0);
+                return (UnitsRange.GetHashCode() * 397) ^ (Signature.GetHashCode());
             }
         }
     }
