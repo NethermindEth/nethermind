@@ -1,0 +1,42 @@
+---
+Language:        CSharp
+BasedOnStyle:  Chromium
+AccessModifierOffset: -4
+AlignAfterOpenBracket: DontAlign
+BinPackParameters: true
+BraceWrapping:
+  AfterClass:      true
+  AfterControlStatement: true
+  AfterEnum:       true
+  AfterFunction:   true
+  AfterNamespace:  true
+  AfterObjCDeclaration: true
+  AfterStruct:     true
+  AfterUnion:      true
+  BeforeCatch:     true
+  BeforeElse:      true
+  SplitEmptyFunction: false
+BreakBeforeBraces: Custom
+BreakBeforeTernaryOperators: false
+ColumnLimit:     120
+ConstructorInitializerIndentWidth: 2
+IncludeCategories:
+  - Regex:           '^".*'
+    Priority:        1
+  - Regex:           '^<boost.*'
+    Priority:        98
+  - Regex:           '^<.*\.h>'
+    Priority:        2
+  - Regex:           '^<.*'
+    Priority:        99
+  - Regex:           '.*'
+    Priority:        4
+IncludeIsMainRegex: '(Test)?$'
+IndentCaseLabels: false
+IndentWidth:     4
+MaxEmptyLinesToKeep: 2
+PenaltyBreakAssignment: 1
+PenaltyBreakComment: 50
+TabWidth:        4
+...
+

@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 15
-VisualStudioVersion = 15.0.28307.645
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.30225.117
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Core", "Nethermind.Core\Nethermind.Core.csproj", "{5751C57B-9F2D-45DE-BCC2-42645B85E39E}"
 EndProject
@@ -45,20 +45,20 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Blockchain.Test"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Chains", "Chains", "{D75E83BB-6092-45A4-B751-D05D4A6ED995}"
 	ProjectSection(SolutionItems) = preProject
+		Chains\AuRaTest.json = Chains\AuRaTest.json
+		Chains\baseline.json = Chains\baseline.json
+		Chains\energyweb.json = Chains\energyweb.json
 		Chains\foundation.json = Chains\foundation.json
 		Chains\genesis.json = Chains\genesis.json
 		Chains\goerli.json = Chains\goerli.json
+		Chains\ndmlocal.json = Chains\ndmlocal.json
+		Chains\poacore.json = Chains\poacore.json
 		Chains\rinkeby.json = Chains\rinkeby.json
 		Chains\ropsten.json = Chains\ropsten.json
-		Chains\spaceneth.json = Chains\spaceneth.json
 		Chains\sokol.json = Chains\sokol.json
-		Chains\poacore.json = Chains\poacore.json
+		Chains\spaceneth.json = Chains\spaceneth.json
 		Chains\volta.json = Chains\volta.json
-		Chains\AuRaTest.json = Chains\AuRaTest.json
 		Chains\xdai.json = Chains\xdai.json
-		Chains\ndmlocal.json = Chains\ndmlocal.json
-		Chains\energyweb.json = Chains\energyweb.json
-		Chains\baseline.json = Chains\baseline.json
 	EndProjectSection
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.State.Test", "Nethermind.State.Test\Nethermind.State.Test.csproj", "{0A927E80-884F-4F41-BC5E-1825D32726DB}"
@@ -151,69 +151,74 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.DataMarketplace.
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.DataMarketplace.WebSockets", "Nethermind.DataMarketplace.WebSockets\Nethermind.DataMarketplace.WebSockets.csproj", "{5A0D6198-E28A-4B19-AA61-9F983B6031D3}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Runner.Test", "Nethermind.Runner.Test\Nethermind.Runner.Test.csproj", "{47B19E0D-5DED-436D-9BFB-17EF887634D3}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Runner.Test", "Nethermind.Runner.Test\Nethermind.Runner.Test.csproj", "{47B19E0D-5DED-436D-9BFB-17EF887634D3}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Consensus.AuRa", "Nethermind.Consensus.AuRa\Nethermind.Consensus.AuRa.csproj", "{82C4DEFF-0025-4BFF-9FED-A050F1BEFC3E}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Consensus.AuRa", "Nethermind.Consensus.AuRa\Nethermind.Consensus.AuRa.csproj", "{82C4DEFF-0025-4BFF-9FED-A050F1BEFC3E}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.AuRa.Test", "Nethermind.AuRa.Test\Nethermind.AuRa.Test.csproj", "{2D5512D3-8E5B-4815-9791-A2220559AF92}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.AuRa.Test", "Nethermind.AuRa.Test\Nethermind.AuRa.Test.csproj", "{2D5512D3-8E5B-4815-9791-A2220559AF92}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Facade.Test", "Nethermind.Facade.Test\Nethermind.Facade.Test.csproj", "{0F09355D-ECB3-4F3F-93F7-BCDD70027B30}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Facade.Test", "Nethermind.Facade.Test\Nethermind.Facade.Test.csproj", "{0F09355D-ECB3-4F3F-93F7-BCDD70027B30}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Logging.NLog", "Nethermind.Logging.NLog\Nethermind.Logging.NLog.csproj", "{79330582-F005-494E-AE8D-D8C92A37CD72}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Logging.NLog", "Nethermind.Logging.NLog\Nethermind.Logging.NLog.csproj", "{79330582-F005-494E-AE8D-D8C92A37CD72}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Logging.NLog.Test", "Nethermind.Logging.NLog.Test\Nethermind.Logging.NLog.Test.csproj", "{B6A4B633-1630-4501-BF43-743D6A40FF86}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Logging.NLog.Test", "Nethermind.Logging.NLog.Test\Nethermind.Logging.NLog.Test.csproj", "{B6A4B633-1630-4501-BF43-743D6A40FF86}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Logging.Microsoft", "Nethermind.Logging.Microsoft\Nethermind.Logging.Microsoft.csproj", "{B07BC190-D053-408F-A9EF-C4C45AD0D9E2}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Logging.Microsoft", "Nethermind.Logging.Microsoft\Nethermind.Logging.Microsoft.csproj", "{B07BC190-D053-408F-A9EF-C4C45AD0D9E2}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.DataMarketplace.Consumers.Test.EndToEnd", "Nethermind.DataMarketplace.Consumers.Test.EndToEnd\Nethermind.DataMarketplace.Consumers.Test.EndToEnd.csproj", "{8E1E90EE-982D-452D-8A35-D6A3C27A29F6}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.DataMarketplace.Consumers.Test.EndToEnd", "Nethermind.DataMarketplace.Consumers.Test.EndToEnd\Nethermind.DataMarketplace.Consumers.Test.EndToEnd.csproj", "{8E1E90EE-982D-452D-8A35-D6A3C27A29F6}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Serialization.Json", "Nethermind.Serialization.Json\Nethermind.Serialization.Json.csproj", "{D3475FB1-E71A-430C-A758-460DD6D19A2C}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Serialization.Json", "Nethermind.Serialization.Json\Nethermind.Serialization.Json.csproj", "{D3475FB1-E71A-430C-A758-460DD6D19A2C}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Specs", "Nethermind.Specs\Nethermind.Specs.csproj", "{BABC9F9C-38A4-445A-8BCC-439E5189497F}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Specs", "Nethermind.Specs\Nethermind.Specs.csproj", "{BABC9F9C-38A4-445A-8BCC-439E5189497F}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Crypto", "Nethermind.Crypto\Nethermind.Crypto.csproj", "{3111BE47-C805-43F4-8724-8310D579EB80}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Crypto", "Nethermind.Crypto\Nethermind.Crypto.csproj", "{3111BE47-C805-43F4-8724-8310D579EB80}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Serialization.Rlp", "Nethermind.Serialization.Rlp\Nethermind.Serialization.Rlp.csproj", "{01D726FD-6980-4F7B-A77B-60BCDBDFECDB}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Serialization.Rlp", "Nethermind.Serialization.Rlp\Nethermind.Serialization.Rlp.csproj", "{01D726FD-6980-4F7B-A77B-60BCDBDFECDB}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Cli.Test", "Nethermind.Cli.Test\Nethermind.Cli.Test.csproj", "{E2B9C82E-9711-4241-A9D7-54312D0AF5CB}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Cli.Test", "Nethermind.Cli.Test\Nethermind.Cli.Test.csproj", "{E2B9C82E-9711-4241-A9D7-54312D0AF5CB}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.DataMarketplace.Infrastructure.Test", "Nethermind.DataMarketplace.Infrastructure.Test\Nethermind.DataMarketplace.Infrastructure.Test.csproj", "{EF364625-0EAD-4C4D-BFD7-9F9CDC245201}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.DataMarketplace.Infrastructure.Test", "Nethermind.DataMarketplace.Infrastructure.Test\Nethermind.DataMarketplace.Infrastructure.Test.csproj", "{EF364625-0EAD-4C4D-BFD7-9F9CDC245201}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.TxPool", "Nethermind.TxPool\Nethermind.TxPool.csproj", "{7E5E72BF-5878-4FC0-B18F-CC3E814EC739}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.TxPool", "Nethermind.TxPool\Nethermind.TxPool.csproj", "{7E5E72BF-5878-4FC0-B18F-CC3E814EC739}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Trie", "Nethermind.Trie\Nethermind.Trie.csproj", "{991BF7D6-EC40-48F1-BF26-E4B66BB840BE}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Trie", "Nethermind.Trie\Nethermind.Trie.csproj", "{991BF7D6-EC40-48F1-BF26-E4B66BB840BE}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Db.Rpc", "Nethermind.Db.Rpc\Nethermind.Db.Rpc.csproj", "{78618EE3-9D90-4BD9-80F0-BAF842B3E07D}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Db.Rpc", "Nethermind.Db.Rpc\Nethermind.Db.Rpc.csproj", "{78618EE3-9D90-4BD9-80F0-BAF842B3E07D}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Db.Rocks", "Nethermind.Db.Rocks\Nethermind.Db.Rocks.csproj", "{EBDCE0AD-DDB6-46D6-B86D-396679FEBB3C}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Db.Rocks", "Nethermind.Db.Rocks\Nethermind.Db.Rocks.csproj", "{EBDCE0AD-DDB6-46D6-B86D-396679FEBB3C}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Consensus", "Nethermind.Consensus\Nethermind.Consensus.csproj", "{74F3A9CF-C38C-497C-8FC1-131AC97C0DAE}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Consensus", "Nethermind.Consensus\Nethermind.Consensus.csproj", "{74F3A9CF-C38C-497C-8FC1-131AC97C0DAE}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.DataMarketplace.WebSockets.Test", "Nethermind.DataMarketplace.WebSockets.Test\Nethermind.DataMarketplace.WebSockets.Test.csproj", "{95663D3B-C3AC-4352-9AD0-AB8BB565A928}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.DataMarketplace.WebSockets.Test", "Nethermind.DataMarketplace.WebSockets.Test\Nethermind.DataMarketplace.WebSockets.Test.csproj", "{95663D3B-C3AC-4352-9AD0-AB8BB565A928}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.DataMarketplace.Subprotocols.Test", "Nethermind.DataMarketplace.Subprotocols.Test\Nethermind.DataMarketplace.Subprotocols.Test.csproj", "{F4B65D54-F598-4E9A-8437-AAE2B94D8ADB}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.DataMarketplace.Subprotocols.Test", "Nethermind.DataMarketplace.Subprotocols.Test\Nethermind.DataMarketplace.Subprotocols.Test.csproj", "{F4B65D54-F598-4E9A-8437-AAE2B94D8ADB}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.DataMarketplace.Channels.Test", "Nethermind.DataMarketplace.Channels.Test\Nethermind.DataMarketplace.Channels.Test.csproj", "{A29F1453-9579-4ED0-B97F-4D19177C7D81}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.DataMarketplace.Channels.Test", "Nethermind.DataMarketplace.Channels.Test\Nethermind.DataMarketplace.Channels.Test.csproj", "{A29F1453-9579-4ED0-B97F-4D19177C7D81}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Tools", "Tools", "{F497B61E-1159-4170-85ED-056BA35061E6}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.DataMarketplace.Tools.Refunder", "Nethermind.DataMarketplace.Tools.Refunder\Nethermind.DataMarketplace.Tools.Refunder.csproj", "{CDDEBD56-F81A-4B6B-89FF-EE5BEAFB9513}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.DataMarketplace.Tools.Refunder", "Nethermind.DataMarketplace.Tools.Refunder\Nethermind.DataMarketplace.Tools.Refunder.csproj", "{CDDEBD56-F81A-4B6B-89FF-EE5BEAFB9513}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.WebSockets.Test", "Nethermind.WebSockets.Test\Nethermind.WebSockets.Test.csproj", "{7655686B-E40E-4D0D-8BEA-B9CE57F5D163}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.WebSockets.Test", "Nethermind.WebSockets.Test\Nethermind.WebSockets.Test.csproj", "{7655686B-E40E-4D0D-8BEA-B9CE57F5D163}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Synchronization", "Nethermind.Synchronization\Nethermind.Synchronization.csproj", "{1FC0913D-D3D1-44A2-AA35-B2CF4A4F1815}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Synchronization", "Nethermind.Synchronization\Nethermind.Synchronization.csproj", "{1FC0913D-D3D1-44A2-AA35-B2CF4A4F1815}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Synchronization.Test", "Nethermind.Synchronization.Test\Nethermind.Synchronization.Test.csproj", "{41C27830-0B6C-40E8-B328-76FDB3E6FDA4}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Synchronization.Test", "Nethermind.Synchronization.Test\Nethermind.Synchronization.Test.csproj", "{41C27830-0B6C-40E8-B328-76FDB3E6FDA4}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Logging", "Logging", "{94CF4207-DA03-4D26-AAA2-284475A6DF1E}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Baseline", "Nethermind.Baseline\Nethermind.Baseline.csproj", "{9494FD1A-5A4E-444D-B451-030BFC599ADC}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Baseline", "Nethermind.Baseline\Nethermind.Baseline.csproj", "{9494FD1A-5A4E-444D-B451-030BFC599ADC}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Baseline.Test", "Nethermind.Baseline.Test\Nethermind.Baseline.Test.csproj", "{20ACBDCF-F208-4752-A9FB-11AEAC977F96}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Baseline.Test", "Nethermind.Baseline.Test\Nethermind.Baseline.Test.csproj", "{20ACBDCF-F208-4752-A9FB-11AEAC977F96}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Cryptography.Bls", "Nethermind.Cryptography.Bls\Nethermind.Cryptography.Bls.csproj", "{1A581DDC-020D-4725-89E3-437D15FEF97F}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Cryptography.Bls", "Nethermind.Cryptography.Bls\Nethermind.Cryptography.Bls.csproj", "{1A581DDC-020D-4725-89E3-437D15FEF97F}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Native", "Nethermind.Native\Nethermind.Native.csproj", "{77C56006-3DE8-4B3B-A0BB-CFD2E28CF8A9}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Native", "Nethermind.Native\Nethermind.Native.csproj", "{77C56006-3DE8-4B3B-A0BB-CFD2E28CF8A9}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{04A05EED-B5C8-478C-B1CF-686F5C193EE8}"
+	ProjectSection(SolutionItems) = preProject
+		.clang-format = .clang-format
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -465,10 +470,6 @@ Global
 		{0F09355D-ECB3-4F3F-93F7-BCDD70027B30}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{0F09355D-ECB3-4F3F-93F7-BCDD70027B30}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{0F09355D-ECB3-4F3F-93F7-BCDD70027B30}.Release|Any CPU.Build.0 = Release|Any CPU
-		{8E1E90EE-982D-452D-8A35-D6A3C27A29F6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{8E1E90EE-982D-452D-8A35-D6A3C27A29F6}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{8E1E90EE-982D-452D-8A35-D6A3C27A29F6}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{8E1E90EE-982D-452D-8A35-D6A3C27A29F6}.Release|Any CPU.Build.0 = Release|Any CPU
 		{79330582-F005-494E-AE8D-D8C92A37CD72}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{79330582-F005-494E-AE8D-D8C92A37CD72}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{79330582-F005-494E-AE8D-D8C92A37CD72}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -481,6 +482,10 @@ Global
 		{B07BC190-D053-408F-A9EF-C4C45AD0D9E2}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{B07BC190-D053-408F-A9EF-C4C45AD0D9E2}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{B07BC190-D053-408F-A9EF-C4C45AD0D9E2}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8E1E90EE-982D-452D-8A35-D6A3C27A29F6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8E1E90EE-982D-452D-8A35-D6A3C27A29F6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8E1E90EE-982D-452D-8A35-D6A3C27A29F6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8E1E90EE-982D-452D-8A35-D6A3C27A29F6}.Release|Any CPU.Build.0 = Release|Any CPU
 		{D3475FB1-E71A-430C-A758-460DD6D19A2C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{D3475FB1-E71A-430C-A758-460DD6D19A2C}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{D3475FB1-E71A-430C-A758-460DD6D19A2C}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -553,18 +558,10 @@ Global
 		{41C27830-0B6C-40E8-B328-76FDB3E6FDA4}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{41C27830-0B6C-40E8-B328-76FDB3E6FDA4}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{41C27830-0B6C-40E8-B328-76FDB3E6FDA4}.Release|Any CPU.Build.0 = Release|Any CPU
-		{537E55B1-D5DE-4A01-9C0C-C18D437BCE00}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{537E55B1-D5DE-4A01-9C0C-C18D437BCE00}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{537E55B1-D5DE-4A01-9C0C-C18D437BCE00}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{537E55B1-D5DE-4A01-9C0C-C18D437BCE00}.Release|Any CPU.Build.0 = Release|Any CPU
 		{9494FD1A-5A4E-444D-B451-030BFC599ADC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{9494FD1A-5A4E-444D-B451-030BFC599ADC}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{9494FD1A-5A4E-444D-B451-030BFC599ADC}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{9494FD1A-5A4E-444D-B451-030BFC599ADC}.Release|Any CPU.Build.0 = Release|Any CPU
-		{1E36E03B-7457-42D0-A085-FC2BB23038F5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{1E36E03B-7457-42D0-A085-FC2BB23038F5}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{1E36E03B-7457-42D0-A085-FC2BB23038F5}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{1E36E03B-7457-42D0-A085-FC2BB23038F5}.Release|Any CPU.Build.0 = Release|Any CPU
 		{20ACBDCF-F208-4752-A9FB-11AEAC977F96}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{20ACBDCF-F208-4752-A9FB-11AEAC977F96}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{20ACBDCF-F208-4752-A9FB-11AEAC977F96}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -582,9 +579,26 @@ Global
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
+		{6BAD851C-B0A2-4DFE-A1F3-1C3A634C522B} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
+		{99176509-944E-4330-BCC0-B286A9E585E6} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
+		{44B0C68E-E3F0-4CAE-8C7C-4A3EAB62E7DD} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
+		{F6FDB712-1670-4B62-B341-EC6804815991} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
+		{E9B7F7DC-7FE0-4EAC-B1C4-C9592B266A2A} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
+		{2CE2C804-40B6-4ECA-AF81-556041FA03C6} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
+		{658F7F8A-0314-4005-93E8-03B4EB367597} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
+		{E6C8C319-1BA8-437D-961D-1357FF5A9699} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
+		{0A927E80-884F-4F41-BC5E-1825D32726DB} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
+		{318B0825-0389-4A00-9448-551CA3AF7E45} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
 		{F582324E-2820-4284-B991-CADFCD835632} = {4FD45249-02DC-483E-B76E-100704B3B337}
 		{294F2DF2-1F01-4478-A613-EF911C21DD2E} = {499A7CDB-1708-4460-A6B5-9A2B9AC50FAE}
 		{0CD42613-757B-4AA6-903D-CDFC0EAC697B} = {499A7CDB-1708-4460-A6B5-9A2B9AC50FAE}
+		{462BCF0B-2B76-45F0-A73D-34B540FEA569} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
+		{7765262D-2A18-4C65-80F6-6C94977A5DAD} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
+		{333F90F5-6A53-40AF-98DC-1DE4B024D5D8} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
+		{E513347C-7082-42B8-B3A8-39C3D6992A9B} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
+		{AABF177A-9E50-4736-AE65-0152B0C26121} = {E627BFEF-ABD3-4B8F-A9AC-204251AE440C}
+		{F3A983E4-1E44-49DF-B948-210490415CEB} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
+		{8167D02A-F653-45D6-BDAA-110FEAB6116D} = {94CF4207-DA03-4D26-AAA2-284475A6DF1E}
 		{EB6140AE-86B8-4207-BF17-2826980BB908} = {1B8FD0C8-4F0E-4E14-89A7-F7E69B9C7375}
 		{8BAA8D55-EFBE-425A-9027-CDED985C0C37} = {1B8FD0C8-4F0E-4E14-89A7-F7E69B9C7375}
 		{DE56503A-E80F-4B16-A01E-60CAC2B0A84E} = {1B8FD0C8-4F0E-4E14-89A7-F7E69B9C7375}
@@ -602,39 +616,22 @@ Global
 		{7E5DBEDD-C5FB-4E3B-B697-5C7111535A03} = {568F4A96-2AA2-4B80-A58A-36950E13A242}
 		{6708432B-C547-44B0-ADCB-8396B916B26F} = {568F4A96-2AA2-4B80-A58A-36950E13A242}
 		{5A0D6198-E28A-4B19-AA61-9F983B6031D3} = {568F4A96-2AA2-4B80-A58A-36950E13A242}
+		{47B19E0D-5DED-436D-9BFB-17EF887634D3} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
+		{2D5512D3-8E5B-4815-9791-A2220559AF92} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
+		{0F09355D-ECB3-4F3F-93F7-BCDD70027B30} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
+		{79330582-F005-494E-AE8D-D8C92A37CD72} = {94CF4207-DA03-4D26-AAA2-284475A6DF1E}
+		{B6A4B633-1630-4501-BF43-743D6A40FF86} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
+		{B07BC190-D053-408F-A9EF-C4C45AD0D9E2} = {94CF4207-DA03-4D26-AAA2-284475A6DF1E}
 		{8E1E90EE-982D-452D-8A35-D6A3C27A29F6} = {F2A944CF-7223-40BF-B7B4-D12B5BE24276}
+		{E2B9C82E-9711-4241-A9D7-54312D0AF5CB} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
 		{EF364625-0EAD-4C4D-BFD7-9F9CDC245201} = {568F4A96-2AA2-4B80-A58A-36950E13A242}
 		{95663D3B-C3AC-4352-9AD0-AB8BB565A928} = {568F4A96-2AA2-4B80-A58A-36950E13A242}
 		{F4B65D54-F598-4E9A-8437-AAE2B94D8ADB} = {568F4A96-2AA2-4B80-A58A-36950E13A242}
 		{A29F1453-9579-4ED0-B97F-4D19177C7D81} = {568F4A96-2AA2-4B80-A58A-36950E13A242}
 		{F497B61E-1159-4170-85ED-056BA35061E6} = {1584F88E-C618-4B37-BAB5-05AAC31DF60A}
 		{CDDEBD56-F81A-4B6B-89FF-EE5BEAFB9513} = {F497B61E-1159-4170-85ED-056BA35061E6}
-		{E513347C-7082-42B8-B3A8-39C3D6992A9B} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
-		{2D5512D3-8E5B-4815-9791-A2220559AF92} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
-		{E6C8C319-1BA8-437D-961D-1357FF5A9699} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
-		{E2B9C82E-9711-4241-A9D7-54312D0AF5CB} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
-		{333F90F5-6A53-40AF-98DC-1DE4B024D5D8} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
-		{318B0825-0389-4A00-9448-551CA3AF7E45} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
-		{6BAD851C-B0A2-4DFE-A1F3-1C3A634C522B} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
-		{462BCF0B-2B76-45F0-A73D-34B540FEA569} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
-		{44B0C68E-E3F0-4CAE-8C7C-4A3EAB62E7DD} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
-		{0F09355D-ECB3-4F3F-93F7-BCDD70027B30} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
-		{E9B7F7DC-7FE0-4EAC-B1C4-C9592B266A2A} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
-		{2CE2C804-40B6-4ECA-AF81-556041FA03C6} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
-		{B6A4B633-1630-4501-BF43-743D6A40FF86} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
-		{658F7F8A-0314-4005-93E8-03B4EB367597} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
-		{F6FDB712-1670-4B62-B341-EC6804815991} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
-		{F3A983E4-1E44-49DF-B948-210490415CEB} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
-		{47B19E0D-5DED-436D-9BFB-17EF887634D3} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
-		{99176509-944E-4330-BCC0-B286A9E585E6} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
-		{0A927E80-884F-4F41-BC5E-1825D32726DB} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
-		{41C27830-0B6C-40E8-B328-76FDB3E6FDA4} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
-		{7765262D-2A18-4C65-80F6-6C94977A5DAD} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
 		{7655686B-E40E-4D0D-8BEA-B9CE57F5D163} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
-		{AABF177A-9E50-4736-AE65-0152B0C26121} = {E627BFEF-ABD3-4B8F-A9AC-204251AE440C}
-		{8167D02A-F653-45D6-BDAA-110FEAB6116D} = {94CF4207-DA03-4D26-AAA2-284475A6DF1E}
-		{B07BC190-D053-408F-A9EF-C4C45AD0D9E2} = {94CF4207-DA03-4D26-AAA2-284475A6DF1E}
-		{79330582-F005-494E-AE8D-D8C92A37CD72} = {94CF4207-DA03-4D26-AAA2-284475A6DF1E}
+		{41C27830-0B6C-40E8-B328-76FDB3E6FDA4} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
 		{20ACBDCF-F208-4752-A9FB-11AEAC977F96} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
