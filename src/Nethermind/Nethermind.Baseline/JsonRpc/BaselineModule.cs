@@ -120,13 +120,15 @@ namespace Nethermind.Baseline.JsonRpc
                 ContractMerkleTree.InsertLeafAbiSig,
                 hash);
 
-            Transaction tx = new Transaction();
-            tx.Value = 0;
-            tx.Data = txData;
-            tx.To = contractAddress;
-            tx.SenderAddress = address;
-            tx.GasLimit = 1000000;
-            tx.GasPrice = 0.GWei();
+            Transaction tx = new Transaction
+            {
+                Value = 0,
+                Data = txData,
+                To = contractAddress,
+                SenderAddress = address,
+                GasLimit = 1000000,
+                GasPrice = 0.GWei()
+            };
 
             Keccak txHash = _txPoolBridge.SendTransaction(tx, TxHandlingOptions.ManagedNonce);
             return Task.FromResult(ResultWrapper<Keccak>.Success(txHash));
