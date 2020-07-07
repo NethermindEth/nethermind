@@ -30,25 +30,25 @@ namespace Nethermind.Baseline
         }
 
         public uint Count { get; set; }
-        
+
         /* baseline does not use a sparse merkle tree - instead they use a single zero hash value
            does it expose any attack vectors? */
         internal static Keccak ZeroHash = Keccak.Zero;
 
-        public BaselineTree(IKeyValueStore keyValueStore, byte[] _dbPrefix, int truncationLength)
+        public BaselineTree(IKeyValueStore keyValueStore, byte[] dbPrefix, int truncationLength)
         {
             TruncationLength = truncationLength;
             _keyValueStore = keyValueStore ?? throw new ArgumentNullException(nameof(keyValueStore));
-            this._dbPrefix = _dbPrefix;
+            _dbPrefix = dbPrefix;
             Count = LoadCount();
         }
-        
+
         private uint LoadCount()
         {
             // this is an incorrect binary search approach
             // that will fail if any of the leaves are zero hashes
             // we should read count from the corresponding contract
-            
+
             ulong left = GetMinNodeIndex(LeafRow);
             ulong right = GetMaxNodeIndex(LeafRow);
             ulong? topIndex = Binary.Search(left, right, ni => !ZeroHash.Equals(LoadValue(new Index(ni))));
@@ -56,7 +56,7 @@ namespace Nethermind.Baseline
             {
                 return 0;
             }
-            
+
             return new Index(topIndex.Value).IndexAtRow + 1;
         }
 
@@ -80,7 +80,7 @@ namespace Nethermind.Baseline
 
             return new Keccak(nodeHashBytes);
         }
-        
+
         private static ulong GetMinNodeIndex(in uint row)
         {
             return (1ul << (int) row) - 1;
@@ -156,7 +156,7 @@ namespace Nethermind.Baseline
                     // Console.WriteLine($"  {value.ToHexString()}");
                 }
             }
-            
+
             return value.AsSpan().SequenceEqual(root.Bytes.AsSpan());
         }
 
@@ -193,7 +193,7 @@ namespace Nethermind.Baseline
 
             return leaves;
         }
-        
+
         public static ulong GetParentIndex(in ulong nodeIndex)
         {
             return new Index(nodeIndex).Parent().NodeIndex;
@@ -303,7 +303,7 @@ namespace Nethermind.Baseline
                     throw new ArgumentOutOfRangeException($"Tree level {row} should only have indices between 0 and {maxIndexAtRow}");
                 }
             }
-            
+
             private static void ValidateNodeIndex(ulong nodeIndex)
             {
                 if (nodeIndex > MaxNodeIndex)
@@ -311,7 +311,7 @@ namespace Nethermind.Baseline
                     throw new ArgumentOutOfRangeException($"Node index should be between 0 and {MaxNodeIndex}");
                 }
             }
-            
+
             private static void ValidateNodeIndex(in uint row, in ulong nodeIndex)
             {
                 ulong minNodeIndex = GetMinNodeIndex(row);
