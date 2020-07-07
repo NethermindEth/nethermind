@@ -175,7 +175,7 @@ namespace Nethermind.Synchronization
             if (!_sealValidator.ValidateSeal(block.Header, true))
             {
                 string message = $"Peer {syncPeer?.Node:c} sent a block with an invalid seal";
-                if (_logger.IsDebug) _logger.Debug($"Peer {syncPeer?.Node:c} sent a block with an invalid seal");
+                if (_logger.IsDebug) _logger.Debug(message);
                 throw new EthSyncException(message);
             }
         }
