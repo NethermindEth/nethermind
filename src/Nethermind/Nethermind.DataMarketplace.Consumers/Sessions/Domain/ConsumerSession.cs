@@ -1,16 +1,16 @@
 //  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -71,7 +71,7 @@ namespace Nethermind.DataMarketplace.Consumers.Sessions.Domain
             session.ProviderNodeId, session.State, session.StartUnitsFromConsumer, session.StartUnitsFromProvider,
             session.StartTimestamp, session.FinishTimestamp, session.ConsumedUnits, session.UnpaidUnits,
             session.PaidUnits, session.SettledUnits);
-        
+
         public SessionClient? GetClient(string client)
             => _clients.TryGetValue(client, out var sessionClient) ? sessionClient : null;
 
@@ -113,7 +113,7 @@ namespace Nethermind.DataMarketplace.Consumers.Sessions.Domain
             {
                 throw new ArgumentException("Invalid session client id.", nameof(client));
             }
-            
+
             ValidateIfSessionStarted();
             _clients.AddOrUpdate(client,
                 _ => new SessionClient(client, true, args),
@@ -207,6 +207,10 @@ namespace Nethermind.DataMarketplace.Consumers.Sessions.Domain
             }
         }
 
-        public bool Equals(ConsumerSession other) => base.Equals(other);
+        public bool Equals(ConsumerSession? other)
+        {
+            if (other is null) return false;
+            return base.Equals(other);
+        }
     }
 }

@@ -1,16 +1,16 @@
 //  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -54,11 +54,14 @@ namespace Nethermind.DataMarketplace.Core.Domain
         public static FaucetResponse ProcessingRequestError =>
             new FaucetResponse(FaucetRequestStatus.ProcessingRequestError);
 
-        public bool Equals(FaucetResponse other)
+        public bool Equals(FaucetResponse? other)
         {
-            if (ReferenceEquals(null, other)) return false;
-            if (ReferenceEquals(this, other)) return true;
-            return Status == other.Status && Equals(LatestRequest, other.LatestRequest);
+            if (other is null) return false;
+            if (!ReferenceEquals(this, other))
+            {
+                return Status == other.Status && Equals(LatestRequest, other.LatestRequest);
+            }
+            return true;
         }
 
         public override bool Equals(object? obj)
