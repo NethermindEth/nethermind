@@ -28,8 +28,13 @@ namespace Nethermind.Consensus.Ethash
 
         public EthashCache(uint cacheSize, byte[] seed)
         {
+            if (cacheSize % Ethash.HashBytes != 0)
+            {
+                throw new ArgumentException($"{nameof(cacheSize)} must be a multiple of {Ethash.HashBytes}");
+            }
+
+            Size = cacheSize;
             uint cachePageCount = cacheSize / Ethash.HashBytes;
-            Size = cachePageCount * Ethash.HashBytes;
 
             Data = ArrayPool<uint[]>.Shared.Rent((int)cachePageCount);
             Data[0] = Keccak512.ComputeToUInts(seed);
