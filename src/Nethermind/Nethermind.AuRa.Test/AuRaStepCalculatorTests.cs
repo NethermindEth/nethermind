@@ -61,7 +61,23 @@ namespace Nethermind.AuRa.Test
             var calculator = new AuRaStepCalculator(GetStepDurationsForSingleStep(stepDuration), timestamper, LimboLogs.Instance);
             calculator.CurrentStep.Should().Be(time.ToUnixTimeSeconds() / stepDuration);
         }
-
+        
+        [TestCase(100000060005L, 2, 50000030)]
+        [TestCase(100000060005L, 2, 50000000)]
+        [TestCase(100000060005L, 2, 50000031)]
+        [TestCase(100000060005L, 2, 50000035)]
+        public void time_to_step_is_calculated_correctly(long milliSeconds, int stepDuration, int checkedStep)
+        {
+            const long currentStep = 50000030;
+            TimeSpan timeToNextStep = TimeSpan.FromMilliseconds(1995);
+            var time = DateTimeOffset.FromUnixTimeMilliseconds(milliSeconds);
+            var timestamper = new ManualTimestamper(time.UtcDateTime);
+            var calculator = new AuRaStepCalculator(GetStepDurationsForSingleStep(stepDuration), timestamper, LimboLogs.Instance);
+            TimeSpan expected = checkedStep <= currentStep ? TimeSpan.FromMilliseconds(0) : TimeSpan.FromSeconds((checkedStep - currentStep - 1) * stepDuration) + timeToNextStep;
+            TestContext.Out.WriteLine($"Expected time to step {checkedStep} is {expected}");
+            calculator.TimeToStep(checkedStep).Should().Be(expected);
+        }
+        
         public static IEnumerable StepDurationsTests
         {
             get
