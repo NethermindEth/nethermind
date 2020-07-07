@@ -57,8 +57,13 @@ namespace Nethermind.DataMarketplace.Core.Domain
 
         public bool Equals(DataDeliveryReceiptDetails? other)
         {
-            return !(other is null) && ReferenceEquals(this, other) ||
-                   Number == other.Number && DepositId.Equals(other.DepositId);
+            if (other is null) return false;
+            if (!ReferenceEquals(this, other))
+            {
+                return Number == other.Number &&
+                       DepositId.Equals(other.DepositId);
+            }
+            return true;
         }
 
         public override int GetHashCode()

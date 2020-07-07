@@ -36,9 +36,16 @@ namespace Nethermind.DataMarketplace.Core.Domain
 
         public bool Equals(DataDeliveryReceipt? other)
         {
-            return !(other is null) && (ReferenceEquals(this, other) ||
-                StatusCode == other.StatusCode && ConsumedUnits == other.ConsumedUnits &&
-                UnpaidUnits == other.UnpaidUnits && Signature.Equals(other.Signature));
+
+            if (other is null) return false;
+            if (!ReferenceEquals(this, other))
+            {
+                return StatusCode == other.StatusCode &&
+                       ConsumedUnits == other.ConsumedUnits &&
+                       UnpaidUnits == other.UnpaidUnits &&
+                       Signature.Equals(other.Signature);
+            }
+            return true;
         }
 
         public override int GetHashCode()
