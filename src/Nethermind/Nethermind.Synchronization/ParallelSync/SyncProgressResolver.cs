@@ -127,7 +127,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         public long FindBestHeader() => _blockTree.BestSuggestedHeader?.Number ?? 0;
         
-        public Keccak FindBestHeaderHash() => _blockTree.BestSuggestedHeader?.Hash ?? Keccak.Zero;
+        public Keccak FindBestHeaderHash() => _blockTree.BestSuggestedHeader?.Hash;
 
         public long FindBestFullBlock() => Math.Min(FindBestHeader(), _blockTree.BestSuggestedBody?.Number ?? 0); // avoiding any potential concurrency issue
 

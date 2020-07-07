@@ -373,7 +373,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private bool AnyDesiredPeerKnown(Snapshot best)
         {
             UInt256 localChainDifficulty = _syncProgressResolver.ChainDifficulty;
-            bool anyDesiredPeerKnown = best.PeerDifficulty > localChainDifficulty && best.HeaderHash != best.PeerHeadHash // we don't trust parity TotalDifficulty, so checking peerHeadHash. 
+            bool anyDesiredPeerKnown = best.PeerDifficulty > localChainDifficulty && best.PeerHeadHash != best.HeaderHash // we don't trust parity TotalDifficulty, so checking peerHeadHash. 
                                        || best.PeerDifficulty == localChainDifficulty && best.PeerBlock > best.Header;
             if (anyDesiredPeerKnown)
             {

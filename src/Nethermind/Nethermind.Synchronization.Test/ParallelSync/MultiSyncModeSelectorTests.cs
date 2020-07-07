@@ -101,7 +101,6 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     SyncProgressResolver.FindBestHeader().Returns(0);
                     SyncProgressResolver.FindBestFullBlock().Returns(0);
                     SyncProgressResolver.FindBestFullState().Returns(0);
-                    SyncProgressResolver.FindBestHeaderHash().Returns(Keccak.Zero);
                     SyncProgressResolver.IsLoadingBlocksFromDb().Returns(false);
                     SyncProgressResolver.IsFastBlocksFinished().Returns(FastBlocksState.None);
 
@@ -1049,7 +1048,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
         }
         
         [Test]
-        public void Should_not_switch_to_same_branch_while_full_synced_but_wrong_total_difficulty()
+        public void Should_not_sync_when_synced_and_peer_reports_wrong_higher_total_difficulty()
         {
             Scenario.GoesLikeThis()
                 .IfThisNodeIsFullySynced()
