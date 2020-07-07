@@ -1,16 +1,16 @@
 ﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -45,6 +45,8 @@ namespace Nethermind.Core.Test
         }
 
         [TestCase("0x1", 1)]
+        [TestCase("0x2", 2)]
+        [TestCase("0xa", 10)]
         [TestCase("0x01", 1)]
         [TestCase("1", 1)]
         [TestCase("01", 1)]
@@ -54,9 +56,6 @@ namespace Nethermind.Core.Test
         [TestCase("0123", 1)]
         public void FromHexString(string hexString, byte expectedResult)
         {
-            byte[] bytesOld = Bytes.FromHexStringOld(hexString);
-            Assert.AreEqual(bytesOld[0], expectedResult, "old");
-
             byte[] bytes = Bytes.FromHexString(hexString);
             Assert.AreEqual(bytes[0], expectedResult, "new");
         }
@@ -268,7 +267,7 @@ namespace Nethermind.Core.Test
         {
             Assert.AreEqual(BigInteger.Parse(expectedResult), Bytes.FromHexString(hex).ToSignedBigInteger(length));
         }
-        
+
         [TestCase("0x0123456789abcdef0123456789abcdef", "0xefcdab8967452301efcdab8967452301")]
         [TestCase(
             "0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
@@ -279,13 +278,13 @@ namespace Nethermind.Core.Test
             Bytes.ChangeEndianness8(bytes);
             bytes.ToHexString(true).Should().Be(expectedResult);
         }
-        
+
         [TestCase("0x0001020304050607080910111213141516171819202122232425262728293031")]
         public void Can_create_bit_array_from_bytes(string hex)
         {
             BitArray result = Bytes.FromHexString(hex).AsSpan().ToBigEndianBitArray256();
         }
-        
+
         [TestCase("0x0001020304050607080910111213141516171819202122232425262728293031", "0x3130292827262524232221201918171615141312111009080706050403020100")]
         public void Can_create_bit_array_from_bytes(string hex, string expectedResult)
         {
@@ -312,7 +311,7 @@ namespace Nethermind.Core.Test
                     var resultArray = thisArray.Zip(valueArray, (b1, b2) => b1 | b2).Select(b => (byte) b).ToArray();
                     return new TestCaseData(thisArray, valueArray, resultArray);
                 }
-                
+
                 yield return GenerateTest(1);
                 yield return GenerateTest(10);
                 yield return GenerateTest(32);
@@ -322,7 +321,7 @@ namespace Nethermind.Core.Test
                 yield return GenerateTest(200);
             }
         }
-        
+
         [TestCaseSource(nameof(OrTests))]
         public void Or(byte[] first, byte[] second, byte[] expected)
         {
