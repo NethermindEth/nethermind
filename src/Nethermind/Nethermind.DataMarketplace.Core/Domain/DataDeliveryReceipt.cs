@@ -49,7 +49,7 @@ namespace Nethermind.DataMarketplace.Core.Domain
                 var hashCode = (int) StatusCode;
                 hashCode = (hashCode * 397) ^ (int) ConsumedUnits;
                 hashCode = (hashCode * 397) ^ (int) UnpaidUnits;
-                hashCode = (hashCode * 397) ^ (Signature != null ? Signature.GetHashCode() : 0);
+                hashCode = (hashCode * 397) ^ Signature.GetHashCode();
                 return hashCode;
             }
         }
