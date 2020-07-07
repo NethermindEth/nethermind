@@ -1,16 +1,16 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -42,27 +42,27 @@ namespace Nethermind.Consensus.Ethash
             _hintBasedCache = new HintBasedCache(BuildCache, logManager);
         }
 
-        public const int WordBytes = 4; // bytes in word
-        public static uint DataSetBytesInit = (uint) BigInteger.Pow(2, 30); // bytes in dataset at genesis
-        public static uint DataSetBytesGrowth = (uint) BigInteger.Pow(2, 23); // dataset growth per epoch
-        public static uint CacheBytesInit = (uint) BigInteger.Pow(2, 24); // bytes in cache at genesis
-        public static uint CacheBytesGrowth = (uint) BigInteger.Pow(2, 17); // cache growth per epoch
-        public const int CacheMultiplier = 1024; // Size of the DAG relative to the cache
-        public const long EpochLength = 30000; // blocks per epoch
-        public const uint MixBytes = 128; // width of mix
-        public const int HashBytes = 64; // hash length in bytes
-        public const uint DataSetParents = 256; // blockNumber of parents of each dataset element
-        public const int CacheRounds = 3; // blockNumber of rounds in cache production
-        public const int Accesses = 64; // blockNumber of accesses in hashimoto loop
+        public const int WordBytes = 4;                    // bytes in word
+        public static uint DataSetBytesInit = 1U << 30;    // bytes in dataset at genesis
+        public static uint DataSetBytesGrowth = 1U << 23;  // dataset growth per epoch
+        public static uint CacheBytesInit = 1U << 24;      // bytes in cache at genesis
+        public static uint CacheBytesGrowth = 1U << 17;    // cache growth per epoch
+        public const int CacheMultiplier = 1024;           // Size of the DAG relative to the cache
+        public const long EpochLength = 30000;             // blocks per epoch
+        public const uint MixBytes = 128;                  // width of mix
+        public const int HashBytes = 64;                   // hash length in bytes
+        public const uint DataSetParents = 256;            // blockNumber of parents of each dataset element
+        public const int CacheRounds = 3;                  // blockNumber of rounds in cache production
+        public const int Accesses = 64;                    // blockNumber of accesses in hashimoto loop
 
         public static uint GetEpoch(long blockNumber)
         {
-            return (uint) (blockNumber / EpochLength);
+            return (uint)(blockNumber / EpochLength);
         }
 
         public static ulong GetDataSize(uint epoch)
         {
-            ulong size = DataSetBytesInit + DataSetBytesGrowth * (ulong) epoch;
+            ulong size = DataSetBytesInit + DataSetBytesGrowth * (ulong)epoch;
             size -= MixBytes;
             while (!IsPrime(size / MixBytes))
             {
@@ -151,10 +151,10 @@ namespace Nethermind.Consensus.Ethash
             IEthashDataSet dataSet = _hintBasedCache.Get(epoch);
             if (dataSet == null)
             {
-                if(_logger.IsWarn) _logger.Warn($"Ethash cache miss for block {header.ToString(BlockHeader.Format.Short)}");
+                if (_logger.IsWarn) _logger.Warn($"Ethash cache miss for block {header.ToString(BlockHeader.Format.Short)}");
                 dataSet = BuildCache(epoch);
             }
-            
+
             ulong fullSize = GetDataSize(epoch);
             ulong nonce = startNonce ?? GetRandomNonce();
             BigInteger target = BigInteger.Divide(_2To256, header.Difficulty);
@@ -197,7 +197,7 @@ namespace Nethermind.Consensus.Ethash
 
         private static uint GetUInt(byte[] bytes, uint offset)
         {
-            return BitConverter.ToUInt32(BitConverter.IsLittleEndian ? bytes : Bytes.Reverse(bytes), (int) offset * 4);
+            return BitConverter.ToUInt32(BitConverter.IsLittleEndian ? bytes : Bytes.Reverse(bytes), (int)offset * 4);
         }
 
         public void HintRange(Guid guid, long start, long end)
@@ -206,23 +206,23 @@ namespace Nethermind.Consensus.Ethash
         }
 
         private Guid _hintBasedCacheUser = Guid.Empty;
-        
+
         public bool Validate(BlockHeader header)
         {
             uint epoch = GetEpoch(header.Number);
             IEthashDataSet dataSet = _hintBasedCache.Get(epoch);
             if (dataSet == null)
             {
-                if(_logger.IsWarn) _logger.Warn($"Ethash cache miss for block {header.ToString(BlockHeader.Format.Short)}");
+                if (_logger.IsWarn) _logger.Warn($"Ethash cache miss for block {header.ToString(BlockHeader.Format.Short)}");
                 _hintBasedCache.Hint(_hintBasedCacheUser, header.Number, header.Number);
                 dataSet = _hintBasedCache.Get(epoch);
                 if (dataSet == null)
                 {
-                    if(_logger.IsError) _logger.Error($"Hint based cache could not get data set for {header.ToString(BlockHeader.Format.Short)}");
+                    if (_logger.IsError) _logger.Error($"Hint based cache could not get data set for {header.ToString(BlockHeader.Format.Short)}");
                     return false;
                 }
             }
-            
+
             ulong fullSize = GetDataSize(epoch);
             Keccak headerHashed = GetTruncatedHash(header);
             (byte[] _, byte[] result, bool isValid) = Hashimoto(fullSize, dataSet, headerHashed, header.MixHash, header.Nonce);
@@ -230,7 +230,7 @@ namespace Nethermind.Consensus.Ethash
             {
                 return false;
             }
-            
+
             BigInteger threshold = BigInteger.Divide(BigInteger.Pow(2, 256), header.Difficulty);
             return IsLessThanTarget(result, threshold);
         }
@@ -260,7 +260,7 @@ namespace Nethermind.Consensus.Ethash
 
         public (byte[], byte[], bool) Hashimoto(ulong fullSize, IEthashDataSet dataSet, Keccak headerHash, Keccak expectedMixHash, ulong nonce)
         {
-            uint hashesInFull = (uint) (fullSize / HashBytes); // TODO: at current rate would cover around 200 years... but will the block rate change? what with private chains with shorter block times?
+            uint hashesInFull = (uint)(fullSize / HashBytes); // TODO: at current rate would cover around 200 years... but will the block rate change? what with private chains with shorter block times?
             const uint wordsInMix = MixBytes / WordBytes;
             const uint hashesInMix = MixBytes / HashBytes;
 
@@ -283,7 +283,7 @@ namespace Nethermind.Consensus.Ethash
                 for (uint j = 0; j < hashesInMix; j++)
                 {
                     uint[] item = dataSet.CalcDataSetItem(p + j);
-                    Buffer.BlockCopy(item, 0, newData, (int) (j * item.Length * 4), item.Length * 4);
+                    Buffer.BlockCopy(item, 0, newData, (int)(j * item.Length * 4), item.Length * 4);
                 }
 
                 Fnv(mixInts, newData);
