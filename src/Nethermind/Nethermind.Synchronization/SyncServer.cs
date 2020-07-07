@@ -235,7 +235,7 @@ namespace Nethermind.Synchronization
                 // Generally it tries to find the sealer / miner name.
                 StringBuilder sb = new StringBuilder();
 
-                sb.Append(string.Format("Discovered new block {0,15:N0} {1}", block.Number, block.ToString(Block.Format.HashNumberAndTx)));
+                sb.Append(string.Format("Discovered new block {0}", block.ToString(Block.Format.HashNumberAndTx)));
 
                 if (block.Author != null)
                 {

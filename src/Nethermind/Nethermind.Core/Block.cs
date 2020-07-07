@@ -1,16 +1,16 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -46,7 +46,7 @@ namespace Nethermind.Core
             Header = blockHeader;
             Body = body;
         }
-        
+
         public Block(BlockHeader blockHeader, IEnumerable<Transaction> transactions, IEnumerable<BlockHeader> ommers)
         {
             Header = blockHeader;
@@ -61,9 +61,9 @@ namespace Nethermind.Core
         public bool IsGenesis => Header.IsGenesis;
 
         public Transaction[] Transactions => Body?.Transactions;
-        
+
         public BlockHeader[] Ommers => Body?.Ommers;
-        
+
         public BlockHeader Header { get; set; }
         public BlockBody Body { get; set; }
 
@@ -126,7 +126,7 @@ namespace Nethermind.Core
 
             return builder.ToString();
         }
-        
+
         public override string ToString()
         {
             return ToString(Format.Short);
@@ -139,13 +139,13 @@ namespace Nethermind.Core
                 case Format.Full:
                     return ToString(string.Empty);
                 case Format.FullHashAndNumber:
-                    return Hash == null ? $"{Number} null" : $"{Number} ({Hash})";
+                    return Hash == null ? $"{Number:N0} null" : $"{Number} ({Hash})";
                 case Format.HashNumberAndTx:
-                    return Hash == null ? $"{Number} null, tx count: {Body.Transactions.Length}" : $"{Number} {TimestampDate:HH:mm:ss} ({Hash?.ToShortString()}), tx count: {Body.Transactions.Length}";
+                    return Hash == null ? $"{Number:N0} null, tx count: {Body.Transactions.Length}" : $"{Number} {TimestampDate:HH:mm:ss} ({Hash?.ToShortString()}), tx count: {Body.Transactions.Length:N0}";
                 case Format.HashNumberDiffAndTx:
-                    return Hash == null ? $"{Number} null, diff: {Difficulty}, tx count: {Body.Transactions.Length}" : $"{Number} ({Hash?.ToShortString()}), diff: {Difficulty}, tx count: {Body.Transactions.Length}";
+                    return Hash == null ? $"{Number:N0} null, diff: {Difficulty}, tx count: {Body.Transactions.Length}" : $"{Number} ({Hash?.ToShortString()}), diff: {Difficulty}, tx count: {Body.Transactions.Length:N0}";
                 default:
-                    return Hash == null ? $"{Number} null" : $"{Number} ({Hash?.ToShortString()})";
+                    return Hash == null ? $"{Number:N0} null" : $"{Number} ({Hash?.ToShortString()})";
             }
         }
     }
