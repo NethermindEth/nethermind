@@ -18,6 +18,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using Microsoft.Extensions.Logging;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -235,9 +236,12 @@ namespace Nethermind.Synchronization
             {
                 // Generally it tries to find the sealer / miner name.
                 StringBuilder sb = new StringBuilder();
+
+                sb.Append(string.Format("Discovered new block {0,15:N0} {1}", block.Number, block.ToString(Block.Format.HashNumberAndTx)));
+
                 if (block.Author != null)
                 {
-                    sb.Append("sealed by");
+                    sb.Append(" sealer ");
                     if (KnownAddresses.GoerliValidators.ContainsKey(block.Author))
                     {
                         sb.Append(KnownAddresses.GoerliValidators[block.Author]);
@@ -249,7 +253,7 @@ namespace Nethermind.Synchronization
                 }
                 else if (block.Beneficiary != null)
                 {
-                    sb.Append("mined by");
+                    sb.Append(" miner ");
                     if (KnownAddresses.KnownMiners.ContainsKey(block.Beneficiary))
                     {
                         sb.Append(KnownAddresses.KnownMiners[block.Beneficiary]);
@@ -260,7 +264,8 @@ namespace Nethermind.Synchronization
                     }
                 }
 
-                _logger.Info($"Discovered a new block {string.Empty.PadLeft(9 - block.Number.ToString().Length, ' ')}{block.ToString(Block.Format.HashNumberAndTx)} {sb}, sent by {syncPeer:s}");
+                sb.Append($", sent by {syncPeer:s}");
+                _logger.Info(sb.ToString());
             }
 
 
