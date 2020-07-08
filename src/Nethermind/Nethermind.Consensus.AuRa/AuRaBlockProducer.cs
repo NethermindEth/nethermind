@@ -61,7 +61,7 @@ namespace Nethermind.Consensus.AuRa
             CanProduce = _config.AllowAuRaPrivateChains;
             _gasLimitOverride = gasLimitOverride;
         }
-
+        
         protected override async ValueTask ProducerLoopStep(CancellationToken cancellationToken)
         {
             await base.ProducerLoopStep(cancellationToken);
@@ -129,17 +129,18 @@ namespace Nethermind.Consensus.AuRa
             return base.SealBlock(block, parent, token);
         }
         
+        // This is for debugging.
         private class ValidatedTxSource : ITxSource
         {
             private readonly ITxSource _innerSource;
             private readonly ILogger _logger;
-            private readonly Dictionary<(Address, UInt256), Keccak> _senderNonces = new Dictionary<(Address, UInt256), Keccak>(250);
+            private readonly Dictionary<(Address, UInt256), Transaction> _senderNonces = new Dictionary<(Address, UInt256), Transaction>(250);
 
             public ValidatedTxSource(ITxSource innerSource, ILogManager logManager)
             {
                 _innerSource = innerSource;
                 _logger = logManager.GetClassLogger();
-                if (_logger.IsInfo) _logger.Info($"Transaction sources used when building blocks: {this}");
+                if (_logger.IsDebug) _logger.Debug($"Transaction sources used when building blocks: {this}");
             }
 
             public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
@@ -149,20 +150,24 @@ namespace Nethermind.Consensus.AuRa
                 foreach (var tx in _innerSource.GetTransactions(parent, gasLimit))
                 {
                     var senderNonce = (tx.SenderAddress, tx.Nonce);
-                    if (_senderNonces.TryGetValue(senderNonce, out var txHash))
+                    if (_senderNonces.TryGetValue(senderNonce, out var prevTx))
                     {
-                        if (_logger.IsError) _logger.Error($"Found transactions with same Sender and Nonce when producing block {parent.Number + 1}. Tx1: {txHash}, Tx2: {tx.Hash}. Skipping second one.");
+                        if (_logger.IsError) _logger.Error($"Found transactions with same Sender and Nonce when producing block {parent.Number + 1}. " +
+                                                           $"Tx1: {prevTx.Hash}, from {prevTx.SenderAddress} to {prevTx.To} with nonce {prevTx.Nonce}. " +
+                                                           $"Tx2: {tx.Hash}, from {tx.SenderAddress} to {tx.To} with nonce {tx.Nonce}. " +
+                                                           "Skipping second one.");
                     }
                     else
                     {
-                        _senderNonces.Add(senderNonce, tx.Hash);
+                        _senderNonces.Add(senderNonce, tx);
                         yield return tx;
                     }
                 }
+                
+                _senderNonces.Clear();
             }
             
-            private readonly int _id = ITxSource.IdCounter;
-            public override string ToString() => $"{GetType().Name}_{_id} [ {_innerSource} ]";
+            public override string ToString() => $"{nameof(ValidatedTxSource)} [ {_innerSource} ]";
         }
     }
 }

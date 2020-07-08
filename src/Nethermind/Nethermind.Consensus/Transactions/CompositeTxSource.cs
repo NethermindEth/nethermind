@@ -46,8 +46,7 @@ namespace Nethermind.Consensus.Transactions
             }
         }
         
-        private readonly int _id = ITxSource.IdCounter;
-        public override string ToString() => $"{GetType().Name}_{_id} [ {(string.Join(", ", _transactionSources.Cast<object>()))} ]";
+        public override string ToString() => $"{nameof(CompositeTxSource)} [ {(string.Join(", ", _transactionSources.Cast<object>()))} ]";
 
     }
 }

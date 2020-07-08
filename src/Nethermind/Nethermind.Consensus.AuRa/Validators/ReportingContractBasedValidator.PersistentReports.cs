@@ -141,9 +141,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                 }
             }
         }
-        
-        private readonly int _id = ITxSource.IdCounter;
-        public override string ToString() => $"{GetType().Name}_{_id} [ {_contractValidator} ]";
+        public override string ToString() => $"{nameof(ReportingContractBasedValidator)} [ {_contractValidator} ]";
         
         public class Cache
         {

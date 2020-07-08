@@ -36,8 +36,7 @@ namespace Nethermind.Consensus.Transactions
                 .ThenByDescending(t => t.Timestamp)
                 .Take(1);
         
-        private readonly int _id = ITxSource.IdCounter;
-        public override string ToString() => $"{GetType().Name}_{_id} [ {_innerSource} ]";
+        public override string ToString() => $"{nameof(SinglePendingTxSelector)} [ {_innerSource} ]";
 
     }
 }
