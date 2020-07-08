@@ -26,7 +26,7 @@ namespace Nethermind.Specs
 
         public IReleaseSpec GetSpec(long blockNumber)
         {
-            return Olympic.Instance;
+            return Frontier.Instance;
         }
 
         public long? DaoBlockNumber { get; } = null;
