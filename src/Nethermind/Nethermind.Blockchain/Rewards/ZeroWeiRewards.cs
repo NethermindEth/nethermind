@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,23 +13,26 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using Nethermind.Evm;
+using Nethermind.Core;
 
 namespace Nethermind.Blockchain.Rewards
 {
-    public class InstanceRewardCalculatorSource : IRewardCalculatorSource
-    {
-        private readonly IRewardCalculator _calculator;
-
-        public InstanceRewardCalculatorSource(IRewardCalculator calculator)
+    /// <summary>
+    /// This class may be used in Hive tests where 0 wei accounts are created for block authors.
+    /// </summary>
+    public class ZeroWeiRewards : IRewardCalculator
+    {   
+        private ZeroWeiRewards()
         {
-            _calculator = calculator;
         }
 
-        public IRewardCalculator Get(ITransactionProcessor processor)
+        public static ZeroWeiRewards Instance { get; } = new ZeroWeiRewards();
+
+        public BlockReward[] CalculateRewards(Block block)
         {
-            return _calculator;
+            return new [] {new BlockReward(block.Beneficiary, 0)};
         }
     }
 }
