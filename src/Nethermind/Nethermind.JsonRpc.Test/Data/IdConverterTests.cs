@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Serialization.Json;
 using Newtonsoft.Json;
 using NUnit.Framework;
@@ -47,6 +48,16 @@ namespace Nethermind.JsonRpc.Test.Data
         {
             TestRoundtrip<SomethingWithId>("{\"id\":null}");
         }
+        
+        [Test]
+        public void Decimal_not_supported()
+        {
+            Assert.Throws<NotSupportedException>(() =>
+                TestRoundtrip<SomethingWithId>("{\"id\":2.1}"));
+            
+            Assert.Throws<NotSupportedException>(() =>
+                TestRoundtrip<SomethingWithDecimalId>("{\"id\":2.1}"));
+        }
 
         // ReSharper disable once ClassNeverInstantiated.Global
         // ReSharper disable once MemberCanBePrivate.Global
@@ -55,6 +66,15 @@ namespace Nethermind.JsonRpc.Test.Data
             [JsonConverter(typeof(IdConverter))]
             [JsonProperty(NullValueHandling = NullValueHandling.Include)]
             public object Id { get; set; }
+
+            public string Something { get; set; }
+        }
+        
+        public class SomethingWithDecimalId
+        {
+            [JsonConverter(typeof(IdConverter))]
+            [JsonProperty(NullValueHandling = NullValueHandling.Include)]
+            public decimal Id { get; set; }
 
             public string Something { get; set; }
         }

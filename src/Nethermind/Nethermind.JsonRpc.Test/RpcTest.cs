@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Test.Modules;
@@ -40,12 +41,21 @@ namespace Nethermind.JsonRpc.Test
             IJsonRpcService service = BuildRpcService(module);
             JsonRpcRequest request = GetJsonRequest(method, parameters);
             JsonRpcResponse response = service.SendRequestAsync(request).Result;
-            var serializer = new EthereumJsonSerializer();
-            foreach (var converter in converters)
+            EthereumJsonSerializer serializer = new EthereumJsonSerializer();
+            foreach (JsonConverter converter in converters)
             {
                 serializer.RegisterConverter(converter);
             }
-            var serialized = serializer.Serialize(response);
+            
+            Stream stream = new MemoryStream();
+            serializer.Serialize(stream, response);
+            
+            // for coverage (and to prove that it does not throw
+            Stream indentedStream = new MemoryStream();
+            serializer.Serialize(indentedStream, response, true);
+
+            stream.Seek(0, SeekOrigin.Begin);
+            string serialized = new StreamReader(stream).ReadToEnd(); 
             TestContext.Out?.WriteLine("Serialized:");
             TestContext.Out?.WriteLine(serialized);
             return serialized;
