@@ -246,7 +246,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         {
             _context.Sealer = NullSealEngine.Instance;
             _context.SealValidator = NullSealEngine.Instance;
-            _context.RewardCalculatorSource = NoBlockRewards.Source;
+            _context.RewardCalculatorSource = NoBlockRewards.Instance;
         }
     }
 }

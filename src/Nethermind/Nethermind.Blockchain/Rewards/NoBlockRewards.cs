@@ -16,21 +16,25 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Evm;
 
 namespace Nethermind.Blockchain.Rewards
 {
-    public class NoBlockRewards : IRewardCalculator
+    public class NoBlockRewards : IRewardCalculator, IRewardCalculatorSource
     {   
         private NoBlockRewards()
         {
         }
 
         public static NoBlockRewards Instance { get; } = new NoBlockRewards();
-        
-        public static IRewardCalculatorSource Source { get; } = new InstanceRewardCalculatorSource(Instance); 
-        
+
         private static BlockReward[] _noRewards = Array.Empty<BlockReward>();
 
         public BlockReward[] CalculateRewards(Block block) => _noRewards;
+        
+        public IRewardCalculator Get(ITransactionProcessor processor)
+        {
+            return Instance;
+        }
     }
 }
