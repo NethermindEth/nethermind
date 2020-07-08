@@ -229,7 +229,7 @@ namespace Nethermind.Synchronization.Peers
             Metrics.SyncPeers = _peers.Count;
 
             if (_logger.IsDebug) _logger.Debug($"Adding {syncPeer.Node:c} to refresh queue");
-            if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportInterestingEvent(syncPeer.Node.Host, "adding node to refresh queue");
+            if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportInterestingEvent(syncPeer.Node.Address, "adding node to refresh queue");
             _peerRefreshQueue.Add(new RefreshTotalDiffTask {SyncPeer = syncPeer});
         }
 

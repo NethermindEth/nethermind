@@ -87,7 +87,11 @@ namespace Nethermind.Consensus.AuRa
 
             if (header.AuRaStep > currentStep)
             {
-                if (_logger.IsWarn) _logger.Warn($"Block {header.Number}, hash {header.Hash} step {header.AuRaStep} is {(header.AuRaStep == currentStep + 1 ? _stepCalculator.TimeToNextStep.ToString("g") :  string.Empty)} too early. Current step is {currentStep}.");
+                TimeSpan timeToStep = _stepCalculator.TimeToStep(header.AuRaStep.Value);
+                if (timeToStep.TotalMilliseconds > 500)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Block {header.Number}, hash {header.Hash} step {header.AuRaStep} is {timeToStep:g} too early. Current step is {currentStep}.");
+                }
             }
             
             // if (!ValidateEmptySteps())
