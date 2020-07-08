@@ -42,26 +42,21 @@ namespace Nethermind.Synchronization.Peers
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        private object _writeLock = new object();
-
         private IEnumerable<PeerInfo> OrderedPeers => _peerPool.InitializedPeers.OrderByDescending(p => p.SyncPeer?.HeadNumber).ThenByDescending(p => p.SyncPeer?.Node?.ClientId).ThenBy(p => p.SyncPeer?.Node?.Host);
 
         public void WriteFullReport()
         {
             if (_logger.IsInfo)
             {
-                lock (_writeLock)
+                RememberState(out bool _);
+                _stringBuilder.Append($"Sync peers - Initialized: {_currentInitializedPeerCount} | All: {_peerPool.PeerCount} | Max: {_peerPool.PeerMaxCount}");
+                foreach (PeerInfo peerInfo in OrderedPeers)
                 {
-                    RememberState(out bool _);
-                    _stringBuilder.Append($"Sync peers - Initialized: {_currentInitializedPeerCount} | All: {_peerPool.PeerCount} | Max: {_peerPool.PeerMaxCount}");
-                    foreach (PeerInfo peerInfo in OrderedPeers)
-                    {
-                        AddPeerInfo(peerInfo);
-                    }
-
-                    _logger.Info(_stringBuilder.ToString());
-                    _stringBuilder.Clear();
+                    AddPeerInfo(peerInfo);
                 }
+
+                _logger.Info(_stringBuilder.ToString());
+                _stringBuilder.Clear();
             }
         }
 
@@ -69,23 +64,17 @@ namespace Nethermind.Synchronization.Peers
         {
             if (_logger.IsInfo)
             {
-                lock (_writeLock)
+                RememberState(out bool changed);
+                if (!changed) return;
+
+                _stringBuilder.Append($"Sync peers {_currentInitializedPeerCount}({_peerPool.PeerCount})/{_peerPool.PeerMaxCount}");
+                foreach (PeerInfo peerInfo in OrderedPeers.Where(p => !p.CanBeAllocated(AllocationContexts.All)))
                 {
-                    RememberState(out bool changed);
-                    if (!changed)
-                    {
-                        return;
-                    }
-
-                    _stringBuilder.Append($"Sync peers {_currentInitializedPeerCount}({_peerPool.PeerCount})/{_peerPool.PeerMaxCount}");
-                    foreach (PeerInfo peerInfo in OrderedPeers.Where(p => !p.CanBeAllocated(AllocationContexts.All)))
-                    {
-                        AddPeerInfo(peerInfo);
-                    }
-
-                    _logger.Info(_stringBuilder.ToString());
-                    _stringBuilder.Clear();
+                    AddPeerInfo(peerInfo);
                 }
+
+                _logger.Info(_stringBuilder.ToString());
+                _stringBuilder.Clear();
             }
         }
 
