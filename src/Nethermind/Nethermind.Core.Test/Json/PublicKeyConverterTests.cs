@@ -22,16 +22,18 @@ using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Json
 {
-    public class PublicKeyConverterTests
+    public class PublicKeyConverterTests : ConverterTestBase<PublicKey>
     {
         [Test]
-        public void Can_read_null()
+        public void Null_handling()
         {
-            PublicKeyConverter converter = new PublicKeyConverter();
-            JsonReader reader = new JsonTextReader(new StringReader(""));
-            reader.ReadAsString();
-            PublicKey result = converter.ReadJson(reader, typeof(PublicKey), null, false, JsonSerializer.CreateDefault());
-            Assert.AreEqual(null, result);
+            TestConverter(null, (key, publicKey) => key == publicKey, new PublicKeyConverter());
+        }
+        
+        [Test]
+        public void Zero_handling()
+        {
+            TestConverter(new PublicKey(new byte[64]), (key, publicKey) => key == publicKey, new PublicKeyConverter());
         }
     }
 }

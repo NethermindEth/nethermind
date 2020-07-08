@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Globalization;
 using System.IO;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Serialization.Json;
@@ -73,6 +74,16 @@ namespace Nethermind.Core.Test.Json
             reader.ReadAsString();
             UInt256 result = converter.ReadJson(reader, typeof(UInt256), UInt256.Zero, false, JsonSerializer.CreateDefault());
             Assert.AreEqual(UInt256.Parse("1"), result);
+        }
+        
+        [Test]
+        public void Can_read_unmarked_hex()
+        {
+            UInt256Converter converter = new UInt256Converter();
+            JsonReader reader = new JsonTextReader(new StringReader("\"de\""));
+            reader.ReadAsString();
+            UInt256 result = converter.ReadJson(reader, typeof(UInt256), UInt256.Zero, false, JsonSerializer.CreateDefault());
+            Assert.AreEqual(UInt256.Parse("de", NumberStyles.HexNumber), result);
         }
     }
 }

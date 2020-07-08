@@ -74,8 +74,8 @@ namespace Nethermind.Evm
 
         private void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer, bool isCall)
         {
-            var notSystemTransaction = !transaction.IsSystem();
-            var wasSenderAccountCreatedInsideACall = false;
+            bool notSystemTransaction = !transaction.IsSystem();
+            bool wasSenderAccountCreatedInsideACall = false;
             
             IReleaseSpec spec = _specProvider.GetSpec(block.Number);
             if (!notSystemTransaction)
