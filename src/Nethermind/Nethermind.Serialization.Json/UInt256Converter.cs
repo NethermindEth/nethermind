@@ -95,7 +95,7 @@ namespace Nethermind.Serialization.Json
             }
             catch (Exception)
             {
-                return UInt256.Parse(s, NumberStyles.AllowHexSpecifier);
+                return UInt256.Parse(s, NumberStyles.HexNumber);
             }
         }
     }

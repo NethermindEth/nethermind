@@ -118,6 +118,7 @@ namespace Nethermind.Core.Extensions
 
         public static bool AreEqual(Span<byte> a1, Span<byte> a2)
         {
+            // this works for nulls
             return a1.SequenceEqual(a2);
         }
 
