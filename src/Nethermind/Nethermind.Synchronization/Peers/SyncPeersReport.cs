@@ -37,12 +37,9 @@ namespace Nethermind.Synchronization.Peers
 
         public SyncPeersReport(ISyncPeerPool peerPool, INodeStatsManager statsManager, ILogManager logManager)
         {
-            lock (_writeLock)
-            {
-                _peerPool = peerPool ?? throw new ArgumentNullException(nameof(peerPool));
-                _stats = statsManager ?? throw new ArgumentNullException(nameof(statsManager));
-                _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            }
+            _peerPool = peerPool ?? throw new ArgumentNullException(nameof(peerPool));
+            _stats = statsManager ?? throw new ArgumentNullException(nameof(statsManager));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         private object _writeLock = new object();
