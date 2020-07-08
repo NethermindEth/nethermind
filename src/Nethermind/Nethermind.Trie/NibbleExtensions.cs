@@ -34,31 +34,6 @@ namespace Nethermind.Trie
             return nibbles;
         }
 
-        public class NibbleBytes
-        {
-            private readonly byte[] _byteArray;
-
-            public NibbleBytes(byte[] byteArray)
-            {
-                _byteArray = byteArray;
-            }
-
-            public byte this[int i]
-            {
-                get
-                {
-                    if (i % 2 == 0)
-                    {
-                        return (byte)((_byteArray[i / 2] & 240) >> 4);
-                    }
-
-                    return (byte)(_byteArray[i / 2] & 15);
-                }
-
-                set => throw new NotSupportedException();
-            }
-        }
-
         public static void BytesToNibbleBytes(Span<byte> bytes, Span<byte> nibbles)
         {
             Debug.Assert(nibbles.Length == 2 * bytes.Length);
