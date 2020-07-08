@@ -27,7 +27,7 @@ namespace Nethermind.BeamWallet.Tests
         public async Task personal_unlockAccount_should_succeed()
         {
             var address = new Address("0x0Bf4e8908A9D0f008FD4F4D216e3F5039CB0aD0E");
-            var passphrase = "pass";
+            var passphrase = "";
             var result = await _jsonRpcWalletClientProxy.personal_unlockAccount(address, passphrase);
             result.Should().NotBeNull();
             result.IsValid.Should().BeTrue();

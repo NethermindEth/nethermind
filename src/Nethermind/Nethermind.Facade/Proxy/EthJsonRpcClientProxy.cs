@@ -65,14 +65,22 @@ namespace Nethermind.Facade.Proxy
 
         public Task<RpcResult<Keccak>> eth_sendTransaction(TransactionModel transaction)
             => _proxy.SendAsync<Keccak>(nameof(eth_sendTransaction), transaction);
+        
+        public Task<RpcResult<byte[]>> eth_estimateGas(TransactionModel transaction)
+            => _proxy.SendAsync<byte[]>(nameof(eth_estimateGas), transaction);
 
-        public Task<RpcResult<BlockModel>> eth_getBlockByHash(Keccak blockHash,
+        public Task<RpcResult<BlockModel<Keccak>>> eth_getBlockByHash(Keccak blockHash,
             bool returnFullTransactionObjects = false)
-            => _proxy.SendAsync<BlockModel>(nameof(eth_getBlockByHash), blockHash, returnFullTransactionObjects);
+            => _proxy.SendAsync<BlockModel<Keccak>>(nameof(eth_getBlockByHash), blockHash, returnFullTransactionObjects);
 
-        public Task<RpcResult<BlockModel>> eth_getBlockByNumber(BlockParameterModel blockParameter,
+        public Task<RpcResult<BlockModel<Keccak>>> eth_getBlockByNumber(BlockParameterModel blockParameter,
             bool returnFullTransactionObjects = false)
-            => _proxy.SendAsync<BlockModel>(nameof(eth_getBlockByNumber), MapBlockParameter(blockParameter),
+            => _proxy.SendAsync<BlockModel<Keccak>>(nameof(eth_getBlockByNumber), MapBlockParameter(blockParameter),
+                returnFullTransactionObjects);
+        
+        public Task<RpcResult<BlockModel<TransactionModel>>> eth_getBlockByNumberWithTransactionDetails(BlockParameterModel blockParameter,
+            bool returnFullTransactionObjects = false)
+            => _proxy.SendAsync<BlockModel<TransactionModel>>(nameof(eth_getBlockByNumber), MapBlockParameter(blockParameter),
                 returnFullTransactionObjects);
 
         private static object MapBlockParameter(BlockParameterModel blockParameter)

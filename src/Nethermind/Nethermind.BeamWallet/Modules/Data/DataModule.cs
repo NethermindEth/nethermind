@@ -17,137 +17,125 @@
 
 using System;
 using System.Collections.Generic;
-using System.Globalization;
+using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.BeamWallet.Clients;
-using Nethermind.Core;
-using Nethermind.Core.Extensions;
+using Nethermind.BeamWallet.Modules.Events;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Facade.Proxy;
-using Nethermind.Facade.Proxy.Models;
 using Terminal.Gui;
+using Nethermind.Core;
 
 namespace Nethermind.BeamWallet.Modules.Data
 {
     public class DataModule : IModule
     {
         private readonly IEthJsonRpcClientProxy _ethJsonRpcClientProxy;
-        private readonly IJsonRpcWalletClientProxy _jsonRpcWalletClientProxy;
-        private readonly string _address;
-
-        public DataModule(IEthJsonRpcClientProxy ethJsonRpcClientProxy,
-            IJsonRpcWalletClientProxy jsonRpcWalletClientProxy, string address)
+        private readonly Address _address;
+        private decimal _balance;
+        private readonly Timer _timer;
+        private readonly TimeSpan _interval;
+        private Window _window;
+        private Label _syncingInfoLabel;
+        public event EventHandler<TransferClickedEventArgs> TransferClicked;
+        
+        public DataModule(IEthJsonRpcClientProxy ethJsonRpcClientProxy, string address)
         {
             _ethJsonRpcClientProxy = ethJsonRpcClientProxy;
-            _jsonRpcWalletClientProxy = jsonRpcWalletClientProxy;
-            _address = address;
+            _address = new Address(address);
+            _interval = TimeSpan.FromSeconds(5);
+            // _timer = new Timer(Update, null, TimeSpan.Zero, _interval);
         }
 
-        public async Task<Window> InitAsync()
+        public Task<Window> InitAsync()
         {
-            var window = new Window("Data")
+            _window = new Window("Data")
             {
                 X = 0,
                 Y = 0,
                 Width = Dim.Fill(),
                 Height = Dim.Fill()
             };
-            Application.Top.Add(window);
+            Application.Top.Add(_window);
+            RenderBalanceAsync();
 
-            var address = new Address(_address);
-            var balance = await _ethJsonRpcClientProxy.eth_getBalance(address);
+            return Task.FromResult(_window);
+        }
 
-            var quitBtn = new Button(1, 17, "Quit");
+        private void Update(object state)
+        {
+            _ = UpdateBalanceAsync();
+        }
+
+        private async Task UpdateBalanceAsync()
+        {
+            var balanceValueLabel = new Label(70, 1, $"{_balance} ETH {Guid.NewGuid()}");
+            if (_syncingInfoLabel is null)
+            {
+                return;
+            }
             
-            var enterAddressBtb = new Button(12, 17, "Enter another address");
-            var transferBtn = new Button(40, 17, "Transfer");
+            var balanceResult = await _ethJsonRpcClientProxy.eth_getBalance(_address);
             
-            quitBtn.Clicked = () =>
+            _balance = WeiToEth(balanceResult.Result.ToString());
+            _window.Remove(balanceValueLabel);
+            balanceValueLabel = new Label(70, 1, $"{_balance} ETH");
+            
+            _window.Remove(_syncingInfoLabel);
+            _window.Add(balanceValueLabel);
+        }
+
+        private async Task RenderBalanceAsync()
+        {
+            var addressLabel = new Label(1, 1, "Address:");
+            var addressValueLabel = new Label(15, 1, _address.ToString());
+            var balanceLabel = new Label(60, 1, "Balance:");
+            _syncingInfoLabel = new Label(70, 1, "Syncing...");
+            
+            _window.Add(addressLabel, addressValueLabel, balanceLabel, _syncingInfoLabel);
+            
+            
+            
+            
+            var balanceValueLabel = new Label(70, 1, $"{_balance} ETH");
+            var balanceResult = await _ethJsonRpcClientProxy.eth_getBalance(_address);
+            
+            _balance = WeiToEth(balanceResult.Result.ToString());
+            balanceValueLabel = new Label(70, 1, $"{_balance} ETH");
+            
+            _window.Remove(_syncingInfoLabel);
+            _window.Add(balanceValueLabel);
+            
+            
+            
+            
+            
+            var quitButton = new Button(1, 17, "Quit");
+            var transferButton = new Button(12, 17, "Transfer");
+            
+            quitButton.Clicked = () =>
             {
                 Application.Top.Running = false;
-                Application.Shutdown();
                 Application.RequestStop();
             };
-            enterAddressBtb.Clicked = () =>
+
+            transferButton.Clicked = () =>
             {
-                window.FocusFirst();
-                Application.Run();
+                TransferClicked?.Invoke(this, new TransferClickedEventArgs(_address, _balance));
             };
-            transferBtn.Clicked = () =>
-            {
-                var transferWindow = new Window("Transfer")
-                {
-                    X = 0,
-                    Y = 0,
-                    Width = Dim.Fill(),
-                    Height = Dim.Fill()
-                };
-                Application.Top.Add(transferWindow);
-                var fromAddressLbl = new Label(1, 1, "From address:");
-                var fromAddressValueLbl = new Label(15, 1, address.ToString());
-                var balanceLbl = new Label(60, 1, "Balance:");
-                var balanceValueLbl = new Label(70, 1, $"{ToEth(balance.Result.ToString())} ETH");
-                
-                var toAddressLbl = new Label(1, 3, "To address:");
-                var toAddressTxtField = new TextField(20, 3, 80, "");
-                
-                var valueLbl = new Label(1, 5, "Value [ETH]:");
-                var valueTxtField = new TextField(20, 5, 80, "");
-                
-                var transferBtn = new Button(30, 7, "Transfer");
-                transferBtn.Clicked = async () =>
-                {
-                    var address = new Address("0x0Bf4e8908A9D0f008FD4F4D216e3F5039CB0aD0E");
-                    var passphrase = "pass";
-                    var result = await _jsonRpcWalletClientProxy.personal_unlockAccount(address, passphrase);
-                    if (result.Result)
-                    {
-                        var transaction = new TransactionModel();
-                        transaction.From = address;
-                        transaction.To = new Address("0xB215E5D3199a86367d344db51F189fa50f924C9b");
-                        transaction.Value = new UInt256(10000000000000);
-                        transaction.Gas = new UInt256(30400);
-                        transaction.GasPrice = new UInt256(60000000000);
-                        var resultSendTransaction = await _ethJsonRpcClientProxy.eth_sendTransaction(transaction);
-                        Console.WriteLine();
-                    }
-                    // unlockaccount -
-
-                    // eth_getBlockByNumber(latest, true)
-                    //pobrac tx w blocku
-                    //odrzucic te > 100 GWEI gas price
-                    //obliczyc srednia z gasprice
-                    // wyslac z gas price
-
-                    // sendTransaction
-
-                };
-                var backBtn = new Button(20, 7, "Back");
-                backBtn.Clicked = () =>
-                {
-                    transferWindow.FocusPrev();
-                    Application.Run();
-                    
-                };
-                
-                transferWindow.Add(fromAddressLbl, fromAddressValueLbl, balanceLbl, balanceValueLbl,
-                    toAddressLbl, toAddressTxtField, valueLbl, valueTxtField, backBtn, transferBtn);
-
-                Application.Run(transferWindow);
-            };
-            window.Add(quitBtn, enterAddressBtb, transferBtn);
             
-            // var transaction = new CallTransactionModel();
-            // var signature = "0x70a08231";
-            // var data = signature + "000000000000000000000000" + address.ToString().Substring(2);
-            // transaction.Data = Bytes.FromHexString(data);
+            _window.Add(quitButton, transferButton);
+
+            // var tokenTransaction = new CallTransactionModel();
+            // var tokenSignature = "0x70a08231";
+            // var tokenData = tokenSignature + "000000000000000000000000" + address.ToString().Substring(2);
+            // transaction.Data = Bytes.FromHexString(tokenData);
             //
             // var tokens = InitTokens();
             // var y = 3;
             // foreach (var token in tokens)
             // {
             //     transaction.To = token.Address;
-            //     var call = await _ethJsonRpcClientProxy.eth_call(transaction, BlockParameterModel.Latest);
+            //     var call = await _ethJsonRpcClientProxy.eth_call(tokenTransaction, BlockParameterModel.Latest);
             //     var resultHex = call.Result.ToHexString();
             //     token.Balance = UInt256.Parse(resultHex, NumberStyles.HexNumber);
             //     var tokenBalanceLbl = new Label(1, y+2, $"{token.Name}:");
@@ -155,17 +143,10 @@ namespace Nethermind.BeamWallet.Modules.Data
             //     window.Add(tokenBalanceLbl, tokenBalance);
             //     y += 2;
             // }
-            
-            var addressLbl = new Label(1, 1, "Address:");
-            var addressValueLbl = new Label(15, 1, address.ToString());
-            var balanceLbl = new Label(1, 3, "Balance:");
-            var balanceValueLbl = new Label(15, 3, $"{ToEth(balance.Result.ToString())} ETH");
-            
-            window.Add(addressLbl, addressValueLbl, balanceLbl, balanceValueLbl);
-            return window;
+
         }
 
-        private static decimal ToEth(string result) => (decimal.Parse(result) / 1000000000000000000);
+        private static decimal WeiToEth(string result) => (decimal.Parse(result) / 1000000000000000000);
 
         private static IEnumerable<Token> InitTokens()
         {

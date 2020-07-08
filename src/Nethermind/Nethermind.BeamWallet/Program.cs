@@ -1,8 +1,10 @@
 ﻿using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Threading.Tasks;
 using Nethermind.BeamWallet.Clients;
+using Nethermind.BeamWallet.Modules.Addresses;
 using Nethermind.BeamWallet.Modules.Data;
-using Nethermind.BeamWallet.Modules.Main;
+using Nethermind.BeamWallet.Modules.Transfer;
 using Nethermind.Facade.Proxy;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -15,25 +17,56 @@ namespace Nethermind.BeamWallet
         static async Task Main(string[] args)
         {
             Application.Init();
+            var addressesModule = new AddressesModule();
 
-            var mainModule = new MainModule();
-            var urls = new[] {"http://localhost:8545/"};
-
-            var jsonRpcClientProxy = new JsonRpcClientProxy(new DefaultHttpClient(new HttpClient(),
-                new EthereumJsonSerializer(), LimboLogs.Instance), urls, LimboLogs.Instance);
-
-            var jsonRpcWalletClientProxy = new JsonRpcWalletClientProxy(jsonRpcClientProxy);
-            var ethJsonRpcClientProxy = new EthJsonRpcClientProxy(jsonRpcClientProxy);
-            
-            mainModule.AddressSelected += async (_, address) =>
+            addressesModule.AddressSelected += async (_, data) =>
             {
-                var dataModule = new DataModule(ethJsonRpcClientProxy, jsonRpcWalletClientProxy, address);
-                var dataModuleWindow = await dataModule.InitAsync();
-                Application.Top.Add(dataModuleWindow);
-                Application.Run(dataModuleWindow);
+                var urls = new[] {data.nodeAddress};
+                var httpClient = new HttpClient();
+
+                AddHeader(httpClient, data.nodeAddress);
+                
+                var jsonRpcClientProxy = new JsonRpcClientProxy(new DefaultHttpClient(httpClient,
+                    new EthereumJsonSerializer(), LimboLogs.Instance, int.MaxValue), urls, LimboLogs.Instance);
+
+                var jsonRpcWalletClientProxy = new JsonRpcWalletClientProxy(jsonRpcClientProxy);
+                var ethJsonRpcClientProxy = new EthJsonRpcClientProxy(jsonRpcClientProxy);
+                
+                var dataModule = new DataModule(ethJsonRpcClientProxy, data.address);
+                dataModule.TransferClicked += async (_, e) =>
+                {
+                    var transferModule = new TransferModule(ethJsonRpcClientProxy, jsonRpcWalletClientProxy,
+                        e.Address, e.Balance);
+                    var transferWindow = await transferModule.InitAsync();
+                    Application.Top.Add(transferWindow);
+                    Application.Run(transferWindow);
+                };
+                var dataWindow = await dataModule.InitAsync();
+                Application.Top.Add(dataWindow);
+                Application.Run(dataWindow);
             };
-            Application.Top.Add(await mainModule.InitAsync());
+            Application.Top.Add(await addressesModule.InitAsync());
             Application.Run();
+        }
+
+        private static void AddHeader(HttpClient httpClient, string url)
+        {
+            if (!url.Contains("@"))
+            {
+                return;
+            }
+
+            var urlData = url.Split("://");
+            var data = urlData[1].Split("@")[0];
+
+            var encodedData = Base64Encode(data);
+
+            httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", encodedData);
+        }
+        
+        private static string Base64Encode(string plainText) {
+            var plainTextBytes = System.Text.Encoding.UTF8.GetBytes(plainText);
+            return System.Convert.ToBase64String(plainTextBytes);
         }
     }
 }

@@ -33,5 +33,8 @@ namespace Nethermind.BeamWallet.Clients
 
         public Task<RpcResult<bool>> personal_unlockAccount(Address address, string passphrase)
             => _proxy.SendAsync<bool>(nameof(personal_unlockAccount), address, passphrase);
+
+        public Task<RpcResult<bool>> personal_lockAccount(Address address)
+            => _proxy.SendAsync<bool>(nameof(personal_lockAccount), address);
     }
 }
