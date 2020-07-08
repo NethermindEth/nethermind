@@ -1,16 +1,16 @@
 //  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -29,7 +29,7 @@ namespace Nethermind.Synchronization.Reporting
     public class SyncReport : ISyncReport
     {
         private const int SpeedPaddingLength = 5;
-        
+
         private readonly ISyncPeerPool _syncPeerPool;
         private readonly ISyncConfig _syncConfig;
         private readonly ISyncModeSelector _syncModeSelector;
@@ -59,7 +59,7 @@ namespace Nethermind.Synchronization.Reporting
             _fastBlocksPivotNumber = _syncConfig.PivotNumberParsed;
             _blockPaddingLength = _fastBlocksPivotNumber.ToString().Length;
             _paddedPivot = $"{Pad(_fastBlocksPivotNumber, _blockPaddingLength)}";
-            
+
             StartTime = DateTime.UtcNow;
 
             TickTime = tickTime;
@@ -82,7 +82,7 @@ namespace Nethermind.Synchronization.Reporting
             {
                 return;
             }
-            
+
             if (e.Previous != e.Current)
             {
                 if (_logger.IsInfo) _logger.Info($"Sync mode changed from {e.Previous} to {e.Current}");
@@ -151,7 +151,7 @@ namespace Nethermind.Synchronization.Reporting
         private void WriteSyncReport()
         {
             UpdateMetrics();
-            
+
             if (!_logger.IsInfo)
             {
                 return;
@@ -188,12 +188,12 @@ namespace Nethermind.Synchronization.Reporting
                     WriteStateNodesReport();
                 }
             }
-            
+
             if ((currentSyncMode & SyncMode.FastBlocks) == SyncMode.FastBlocks)
             {
                 WriteFastBlocksReport(currentSyncMode);
             }
-            
+
             if ((currentSyncMode & SyncMode.Full) == SyncMode.Full)
             {
                 WriteFullSyncReport();
@@ -203,7 +203,7 @@ namespace Nethermind.Synchronization.Reporting
             {
                 WriteFullSyncReport();
             }
-            
+
             if ((currentSyncMode & SyncMode.Beam) == SyncMode.Beam)
             {
                 _logger.Info("Beam Sync is ON - you can query the latest state");
@@ -282,7 +282,7 @@ namespace Nethermind.Synchronization.Reporting
             _logger.Info($"Downloaded {Pad(FullSyncBlocksDownloaded.CurrentValue,_blockPaddingLength)} / {Pad(FullSyncBlocksKnown,_blockPaddingLength)} | current {Pad(FullSyncBlocksDownloaded.CurrentPerSecond, SpeedPaddingLength)}bps | total {Pad(FullSyncBlocksDownloaded.TotalPerSecond, SpeedPaddingLength)}bps");
             FullSyncBlocksDownloaded.SetMeasuringPoint();
         }
-    
+
         private void WriteFastBlocksReport(SyncMode currentSyncMode)
         {
             if ((currentSyncMode & SyncMode.FastHeaders) == SyncMode.FastHeaders)
