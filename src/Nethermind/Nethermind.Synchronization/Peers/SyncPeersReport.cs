@@ -51,50 +51,46 @@ namespace Nethermind.Synchronization.Peers
 
         public void WriteFullReport()
         {
-            lock (_writeLock)
+            if (_logger.IsInfo)
             {
-                if (!_logger.IsInfo)
+                lock (_writeLock)
                 {
-                    return;
-                }
+                    RememberState(out bool _);
+                    _stringBuilder.Append($"Sync peers - Initialized: {_currentInitializedPeerCount} | All: {_peerPool.PeerCount} | Max: {_peerPool.PeerMaxCount}");
+                    foreach (PeerInfo peerInfo in OrderedPeers)
+                    {
+                        _stringBuilder.AppendLine();
+                        AddPeerInfo(peerInfo);
+                    }
 
-                RememberState(out bool _);
-                _stringBuilder.Append($"Sync peers - Initialized: {_currentInitializedPeerCount} | All: {_peerPool.PeerCount} | Max: {_peerPool.PeerMaxCount}");
-                foreach (PeerInfo peerInfo in OrderedPeers)
-                {
-                    _stringBuilder.AppendLine();
-                    AddPeerInfo(peerInfo);
+                    _logger.Info(_stringBuilder.ToString());
+                    _stringBuilder.Clear();
                 }
-
-                _logger.Info(_stringBuilder.ToString());
-                _stringBuilder.Clear();
             }
         }
 
         public void WriteShortReport()
         {
-            lock (_writeLock)
+            if (_logger.IsInfo)
             {
-                if (!_logger.IsInfo)
+                lock (_writeLock)
                 {
-                    return;
-                }
+                    RememberState(out bool changed);
+                    if (!changed)
+                    {
+                        return;
+                    }
 
-                RememberState(out bool changed);
-                if (!changed)
-                {
-                    return;
-                }
+                    _stringBuilder.Append($"Sync peers {_currentInitializedPeerCount}({_peerPool.PeerCount})/{_peerPool.PeerMaxCount}");
+                    foreach (PeerInfo peerInfo in OrderedPeers.Where(p => !p.CanBeAllocated(AllocationContexts.All)))
+                    {
+                        _stringBuilder.AppendLine();
+                        AddPeerInfo(peerInfo);
+                    }
 
-                _stringBuilder.Append($"Sync peers {_currentInitializedPeerCount}({_peerPool.PeerCount})/{_peerPool.PeerMaxCount}");
-                foreach (PeerInfo peerInfo in OrderedPeers.Where(p => !p.CanBeAllocated(AllocationContexts.All)))
-                {
-                    _stringBuilder.AppendLine();
-                    AddPeerInfo(peerInfo);
+                    _logger.Info(_stringBuilder.ToString());
+                    _stringBuilder.Clear();
                 }
-
-                _logger.Info(_stringBuilder.ToString());
-                _stringBuilder.Clear();
             }
         }
 
