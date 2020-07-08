@@ -31,14 +31,6 @@ namespace Nethermind.Store.Test
     [TestFixture]
     public class StatsCollectorTests
     {
-        [SetUp]
-        public void Setup()
-        {
-            Trie.Metrics.TreeNodeHashCalculations = 0;
-            Trie.Metrics.TreeNodeRlpDecodings = 0;
-            Trie.Metrics.TreeNodeRlpEncodings = 0;
-        }
-
         [Test]
         public void Can_collect_stats()
         {
