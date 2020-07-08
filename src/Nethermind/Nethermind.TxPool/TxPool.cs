@@ -197,6 +197,12 @@ namespace Nethermind.TxPool
 
         public AddTxResult AddTransaction(Transaction tx, TxHandlingOptions handlingOptions)
         {
+            if (tx is GeneratedTransaction)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Stopped adding engine generated transaction {tx.ToString("  ")} to pool.{Environment.NewLine} {new System.Diagnostics.StackTrace()}");
+                return AddTxResult.PotentiallyUseless;
+            }
+            
             bool managedNonce = (handlingOptions & TxHandlingOptions.ManagedNonce) == TxHandlingOptions.ManagedNonce;
             bool isPersistentBroadcast = (handlingOptions & TxHandlingOptions.PersistentBroadcast) == TxHandlingOptions.PersistentBroadcast;
             if (isPersistentBroadcast)

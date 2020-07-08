@@ -158,6 +158,12 @@ namespace Nethermind.Blockchain.Producers
                     if (_logger.IsDebug) _logger.Debug($"Rejecting (sender balance too low) {tx.ToShortString()}");
                     continue;
                 }
+                
+                if (tx is GeneratedTransaction)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Rejecting (engine generated transaction) {tx.ToShortString()}");
+                    continue;                    
+                }
 
                 selected.Add(tx);
                 nonces[tx.SenderAddress] = tx.Nonce + 1;
