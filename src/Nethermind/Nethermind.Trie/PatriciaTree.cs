@@ -66,7 +66,7 @@ namespace Nethermind.Trie
 
         public PatriciaTree(IKeyValueStore keyValueStore, Keccak rootHash, bool parallelBranches, bool allowCommits)
         {
-            _keyValueStore = keyValueStore;
+            _keyValueStore = keyValueStore ?? throw new ArgumentNullException(nameof(keyValueStore));
             _parallelBranches = parallelBranches;
             _allowCommits = allowCommits;
             RootHash = rootHash;

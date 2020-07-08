@@ -44,11 +44,6 @@ namespace Nethermind.Trie
             }
         }
 
-        public static Nibble[] FromBytes(byte @byte)
-        {
-            return new[] { new Nibble((byte)(@byte & 240)), new Nibble((byte)(@byte & 15)) };
-        }
-        
         public static Nibble[] FromHexString(string hexString)
         {
             if (hexString == null)
@@ -66,17 +61,6 @@ namespace Nethermind.Trie
             }
 
             return nibbles;
-        }
-
-        public static byte[] ToLooseByteArray(this Nibble[] nibbles)
-        {
-            byte[] bytes = new byte[nibbles.Length];
-            for (int i = 0; i < nibbles.Length; i++)
-            {
-                bytes[i] = (byte)nibbles[i];
-            }
-
-            return bytes;
         }
 
         public static byte[] ToPackedByteArray(this Nibble[] nibbles)
