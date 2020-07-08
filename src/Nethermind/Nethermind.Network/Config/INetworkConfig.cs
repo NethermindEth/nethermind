@@ -46,7 +46,7 @@ namespace Nethermind.Network.Config
         [ConfigItem(DefaultValue = "5000")]
         int PeersPersistenceInterval { get; set; }
         
-        [ConfigItem(DefaultValue = "100")]
+        [ConfigItem(DefaultValue = "250")]
         int PeersUpdateInterval { get; set; }
 
         [ConfigItem(DefaultValue = "10000")]

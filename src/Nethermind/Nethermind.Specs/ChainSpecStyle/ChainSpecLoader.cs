@@ -22,6 +22,7 @@ using System.Linq;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle.Json;
@@ -311,11 +312,12 @@ namespace Nethermind.Specs.ChainSpecStyle
                 {
                     continue;
                 }
-
+                
                 chainSpec.Allocations[new Address(account.Key)] = new ChainSpecAllocation(
                     account.Value.Balance,
                     account.Value.Code,
-                    account.Value.Constructor);
+                    account.Value.Constructor,
+                    account.Value.GetConvertedStorage());
             }
         }
 

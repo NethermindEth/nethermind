@@ -16,20 +16,21 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
-using System.Threading;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.RoutingTable
 {
+    [DebuggerDisplay("{BondedItemsCount} bonded item(s)")]
     public class NodeBucket
     {
         private readonly object _nodeBucketLock = new object();
-        private readonly SortedSet<NodeBucketItem> _items;
+        private readonly LinkedList<NodeBucketItem> _items;
 
         public NodeBucket(int distance, int bucketSize)
         {
-            _items = new SortedSet<NodeBucketItem>(LastContactTimeComparer.Instance);
+            _items = new LinkedList<NodeBucketItem>();
             Distance = distance;
             BucketSize = bucketSize;
         }
@@ -38,26 +39,50 @@ namespace Nethermind.Network.Discovery.RoutingTable
         /// Distance from Master Node
         /// </summary>
         public int Distance { get; }
+        
         public int BucketSize { get; }
 
-        public IReadOnlyCollection<NodeBucketItem> Items
+        public IEnumerable<NodeBucketItem> BondedItems
         {
             get
             {
                 lock (_nodeBucketLock)
                 {
-                    return _items.ToArray();
+                    var node = _items.Last;
+                    while (node != null)
+                    {
+                        if (!node.Value.IsBonded)
+                        {
+                            break;
+                        }
+
+                        yield return node.Value;
+                        node = node.Previous;
+                    }
                 }
             }
         }
         
-        public IReadOnlyCollection<NodeBucketItem> BondedItems
+        public int BondedItemsCount
         {
             get
             {
                 lock (_nodeBucketLock)
                 {
-                    return _items.Where(i => (DateTime.UtcNow - i.LastContactTime) < TimeSpan.FromDays(2)).ToArray();
+                    int result = _items.Count;
+                    var node = _items.Last;
+                    while (node != null)
+                    {
+                        if (node.Value.IsBonded)
+                        {
+                            break;
+                        }
+                        
+                        node = node.Previous;
+                        result--;
+                    }
+
+                    return result;
                 }
             }
         }
@@ -68,11 +93,12 @@ namespace Nethermind.Network.Discovery.RoutingTable
             {
                 if (_items.Count < BucketSize)
                 {
-                    NodeBucketItem item = new NodeBucketItem(node);
+                    NodeBucketItem item = new NodeBucketItem(node, DateTime.UtcNow);
                     if (!_items.Contains(item))
                     {
-                        _items.Add(item);
+                        _items.AddFirst(item);
                     }
+                    
                     return NodeAddResult.Added();
                 }
 
@@ -81,31 +107,20 @@ namespace Nethermind.Network.Discovery.RoutingTable
             }  
         }
 
-        public void RemoveNode(Node node)
-        {
-            lock (_nodeBucketLock)
-            {
-                NodeBucketItem item = new NodeBucketItem(node);
-                if (_items.Contains(item))
-                {
-                    _items.Remove(item);
-                }
-            }
-        }
-
         public void ReplaceNode(Node nodeToRemove, Node nodeToAdd)
         {
             lock (_nodeBucketLock)
             {
-                NodeBucketItem item = new NodeBucketItem(nodeToRemove);
+                NodeBucketItem item = new NodeBucketItem(nodeToRemove, DateTime.Now);
                 if (_items.Contains(item))
                 {
                     _items.Remove(item);
+                    AddNode(nodeToAdd);
                 }
-                item = new NodeBucketItem(nodeToAdd);
-                if (!_items.Contains(item))
+                else
                 {
-                    _items.Add(item);
+                    throw new InvalidOperationException(
+                        "Cannot replace non-existing node in the node table bucket");
                 }
             }
         }
@@ -114,70 +129,20 @@ namespace Nethermind.Network.Discovery.RoutingTable
         {
             lock (_nodeBucketLock)
             {
-                NodeBucketItem item = new NodeBucketItem(node);
-                NodeBucketItem bucketItem = _items.FirstOrDefault(x => x.Equals(item));
-                bucketItem?.OnContactReceived();
+                NodeBucketItem item = new NodeBucketItem(node, DateTime.UtcNow);
+                var bucketItem = _items.Find(item);
+                if (bucketItem != null)
+                {
+                    bucketItem.Value.OnContactReceived();
+                    _items.Remove(item);
+                    _items.AddFirst(item);
+                }
             }
         }
 
         private NodeBucketItem GetEvictionCandidate()
         {
             return _items.Last();
-        }
-
-        private class LastContactTimeComparer : IComparer<NodeBucketItem>
-        {
-            private LastContactTimeComparer()
-            {
-            }
-            
-            private static LastContactTimeComparer _lastContactTimeComparer;
-
-            public static LastContactTimeComparer Instance
-            {
-                get
-                {
-                    if (_lastContactTimeComparer == null)
-                    {
-                        LazyInitializer.EnsureInitialized(ref _lastContactTimeComparer, () => new LastContactTimeComparer());
-                    }
-
-                    return _lastContactTimeComparer;
-                }
-            }
-            
-            public int Compare(NodeBucketItem x, NodeBucketItem y)
-            {
-                if (ReferenceEquals(x, y))
-                {
-                    return 0;
-                }
-
-                if (x == null)
-                {
-                    return -1;
-                }
-
-                if (y == null)
-                {
-                    return 1;
-                }                
-
-                //checking if both objects are the same
-                if (x.Equals(y))
-                {
-                    return 0;
-                }
-
-                int timeComparison = x.LastContactTime.CompareTo(y.LastContactTime);
-                if (timeComparison == 0)
-                {
-                    //last contact time is the same, but items are not the same, selecting higher id as higher item
-                    return x.Node.GetHashCode() > y.Node.GetHashCode() ? 1 : -1;
-                }
-
-                return timeComparison;
-            }
         }
     }
 }

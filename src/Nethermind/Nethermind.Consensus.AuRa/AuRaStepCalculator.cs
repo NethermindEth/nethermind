@@ -47,16 +47,38 @@ namespace Nethermind.Consensus.AuRa
 
         public TimeSpan TimeToNextStep => new TimeSpan(TimeToNextStepInTicks);
         
+        public TimeSpan TimeToStep(long step)
+        {
+            var epoch = _timestamper.Epoch;
+            var currentStepInfo = GetStepInfo(epoch.Seconds);
+            long currentStep = currentStepInfo.GetCurrentStep(epoch.Seconds);
+            if (step <= currentStep)
+            {
+                return TimeSpan.Zero;
+            }
+            else
+            {
+                var timeToNextStep = new TimeSpan(GetTimeToNextStepInTicks(epoch, currentStepInfo));
+                return timeToNextStep + TimeSpan.FromSeconds(currentStepInfo.StepDuration * (step - currentStep - 1));
+            }
+            
+        }
+
         private long TimeToNextStepInTicks
         {
             get
             {
                 var epoch = _timestamper.Epoch;
                 var currentStepInfo = GetStepInfo(epoch.Seconds);
-                var timeFromTransition = epoch.Milliseconds - currentStepInfo.TransitionTimestampMilliseconds;
-                var timeAlreadyPassedToNextStep = timeFromTransition % currentStepInfo.StepDurationMilliseconds;
-                return (currentStepInfo.StepDurationMilliseconds - timeAlreadyPassedToNextStep) * TimeSpan.TicksPerMillisecond;
+                return GetTimeToNextStepInTicks(epoch, currentStepInfo);
             }
+        }
+
+        private static long GetTimeToNextStepInTicks((long Seconds, long Milliseconds) epoch, StepDurationInfo currentStepInfo)
+        {
+            var timeFromTransition = epoch.Milliseconds - currentStepInfo.TransitionTimestampMilliseconds;
+            var timeAlreadyPassedToNextStep = timeFromTransition % currentStepInfo.StepDurationMilliseconds;
+            return (currentStepInfo.StepDurationMilliseconds - timeAlreadyPassedToNextStep) * TimeSpan.TicksPerMillisecond;
         }
 
         private StepDurationInfo GetStepInfo(long timestampInSeconds) =>

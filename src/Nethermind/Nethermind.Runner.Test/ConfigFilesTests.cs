@@ -181,14 +181,14 @@ namespace Nethermind.Runner.Test
         [TestCase("fast")]
         public void Caches_in_fast_blocks(string configWildcard)
         {
-            Test<IDbConfig, bool>(configWildcard, c => c.HeadersDbCacheIndexAndFilterBlocks, true);
-            Test<IDbConfig, bool>(configWildcard, c => c.ReceiptsDbCacheIndexAndFilterBlocks, true);
-            Test<IDbConfig, bool>(configWildcard, c => c.BlocksDbCacheIndexAndFilterBlocks, true);
+            Test<IDbConfig, bool>(configWildcard, c => c.HeadersDbCacheIndexAndFilterBlocks, false);
+            Test<IDbConfig, bool>(configWildcard, c => c.ReceiptsDbCacheIndexAndFilterBlocks, false);
+            Test<IDbConfig, bool>(configWildcard, c => c.BlocksDbCacheIndexAndFilterBlocks, false);
             Test<IDbConfig, bool>(configWildcard, c => c.BlockInfosDbCacheIndexAndFilterBlocks, false);
         }
         
-        [TestCase("^archive", true)]
-        [TestCase("archive", true)]
+        [TestCase("^archive", false)]
+        [TestCase("archive", false)]
         public void Cache_state_index(string configWildcard, bool expectedValue)
         {
             Test<IDbConfig, bool>(configWildcard, c => c.CacheIndexAndFilterBlocks, expectedValue);
@@ -278,7 +278,7 @@ namespace Nethermind.Runner.Test
         [TestCase("aura ^archive", true)]
         public void Stays_on_full_sync(string configWildcard, bool stickToFullSyncAfterFastSync)
         {
-            Test<ISyncConfig, long?>(configWildcard, c => c.FastSyncCatchUpHeightDelta, stickToFullSyncAfterFastSync ? 10_000_000_000 : 1024);
+            Test<ISyncConfig, long?>(configWildcard, c => c.FastSyncCatchUpHeightDelta, stickToFullSyncAfterFastSync ? 10_000_000_000 : 8192);
         }
 
         [TestCase("^spaceneth.cfg")]

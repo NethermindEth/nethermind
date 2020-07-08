@@ -15,32 +15,19 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
-using Nethermind.Blockchain.Rewards;
-using Nethermind.Blockchain.Validators;
-using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
-using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Db;
-using Nethermind.Evm;
-using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
-using Nethermind.Runner.Ethereum.Subsystems;
-using Nethermind.State;
-using Nethermind.Db.Blooms;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
     [RunnerStepDependencies(typeof(StartBlockProcessor), typeof(SetupKeyStore), typeof(ReviewBlockTree))]
-    public abstract class StartBlockProducer : IStep, ISubsystemStateAware
+    public abstract class StartBlockProducer : IStep
     {
         private readonly EthereumRunnerContext _context;
         private BlockProducerContext? _blockProducerContext;
@@ -59,8 +46,6 @@ namespace Nethermind.Runner.Ethereum.Steps
                 if (_context.BlockProducer == null) throw new StepDependencyException(nameof(_context.BlockProducer));
 
                 _context.BlockProducer.Start();
-
-                SubsystemStateChanged?.Invoke(this, new SubsystemStateEventArgs(EthereumSubsystemState.Running));
             }
 
             return Task.CompletedTask;
@@ -123,9 +108,5 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.ReceiptStorage,
                 _context.LogManager);
         }
-
-        public event EventHandler<SubsystemStateEventArgs>? SubsystemStateChanged;
-
-        public EthereumSubsystem MonitoredSubsystem => EthereumSubsystem.Mining;
     }
 }

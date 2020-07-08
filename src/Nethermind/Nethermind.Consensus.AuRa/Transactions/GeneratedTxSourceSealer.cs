@@ -71,5 +71,8 @@ namespace Nethermind.Consensus.AuRa.Transactions
              
             return nonces[address] = nonce;
         }
+        
+        private readonly int _id = ITxSource.IdCounter;
+        public override string ToString() => $"{GetType().Name}_{_id} [ {_innerSource} ]";
     }
 }

@@ -50,7 +50,7 @@ namespace Nethermind.Network.Discovery.Serializers
             Span<byte> resultSpan = result.AsSpan();
             resultSpan[32 + 65] = type;
             data.CopyTo(resultSpan.Slice(32 + 65 + 1, data.Length));
-
+        
             Span<byte> payload = resultSpan.Slice(32 + 65);
             Keccak toSign = Keccak.Compute(payload);
             Signature signature = _ecdsa.Sign(_privateKey, toSign);
@@ -69,18 +69,18 @@ namespace Nethermind.Network.Discovery.Serializers
             {
                 throw new NetworkingException("Incorrect message", NetworkExceptionType.Validation);
             }
-
+        
             byte[] mdc = msg.Slice(0, 32);
             Span<byte> signature = msg.AsSpan(32, 65);
             // var type = new[] { msg[97] };
             byte[] data = msg.Slice(98, msg.Length - 98);
             Span<byte> computedMdc = ValueKeccak.Compute(msg.AsSpan(32)).BytesAsSpan;
-
+        
             if (!Bytes.AreEqual(mdc, computedMdc))
             {
                 throw new NetworkingException("Invalid MDC", NetworkExceptionType.Validation);
             }
-
+        
             PublicKey nodeId = _nodeIdResolver.GetNodeId(signature.Slice(0, 64).ToArray(), signature[64], msg.AsSpan(97, msg.Length - 97));
             T message = _messageFactory.CreateIncomingMessage<T>(nodeId);
             return (message, mdc, data);

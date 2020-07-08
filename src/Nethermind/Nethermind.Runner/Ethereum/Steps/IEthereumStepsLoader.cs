@@ -13,18 +13,15 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
 using System;
+using System.Collections.Generic;
 
-namespace Nethermind.Runner.Ethereum.Subsystems
+namespace Nethermind.Runner.Ethereum.Steps
 {
-    public interface ISubsystemStateAware
+    public interface IEthereumStepsLoader
     {
-        public event EventHandler<SubsystemStateEventArgs> SubsystemStateChanged;
-        
-        /// <summary>
-        /// Just to prevent an easy copy paste error of reporting on a different subsystem
-        /// </summary>
-        public EthereumSubsystem MonitoredSubsystem { get; }
+        public IEnumerable<StepInfo> LoadSteps(Type contextType);
     }
 }

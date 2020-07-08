@@ -139,13 +139,13 @@ namespace Nethermind.Network.Test.Discovery
         }
 
         [Test]
-        public void Wrong_pong_will_get_ignored()
+        public async Task Wrong_pong_will_get_ignored()
         {
             var node = new Node(_host, _port);
             var manager = _discoveryManager.GetNodeLifecycleManager(node);
             Assert.AreEqual(NodeLifecycleState.New, manager.State);
             
-            manager.ProcessPongMessage(new PongMessage {FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port), FarPublicKey = _nodeIds[0] });
+            manager.ProcessPongMessage(new PongMessage {FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port), FarPublicKey = _nodeIds[0], PingMdc = new byte[32]});
 
             Assert.AreEqual(NodeLifecycleState.New, manager.State);
         }

@@ -26,7 +26,7 @@ namespace Nethermind.Network.Config
         public bool IsPeersPersistenceOn { get; set; } = true;
         public int ActivePeersMaxCount { get; set; } = 50;
         public int PeersPersistenceInterval { get; set; } = 1000 * 5;
-        public int PeersUpdateInterval { get; set; } = 100;
+        public int PeersUpdateInterval { get; set; } = 250;
         public int P2PPingInterval { get; set; } = 1000 * 10;
         public int MaxPersistedPeerCount { get; set; } = 2000;
         public int PersistedPeerCountCleanupThreshold { get; set; } = 2200;
