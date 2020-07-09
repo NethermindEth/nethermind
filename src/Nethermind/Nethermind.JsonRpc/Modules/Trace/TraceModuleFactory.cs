@@ -72,9 +72,8 @@ namespace Nethermind.JsonRpc.Modules.Trace
             var readOnlyChainProcessingEnv = new ReadOnlyChainProcessingEnv(readOnlyTxProcessingEnv, Always.Valid, _recoveryStep, _rewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor), _receiptStorage, readOnlyDbProvider, _specProvider, _logManager);
             Tracer tracer = new Tracer(readOnlyChainProcessingEnv.StateProvider, readOnlyChainProcessingEnv.ChainProcessor);
 
-            CancellationToken cancellationToken = _jsonRpcConfig.TracerTimeoutEnabled
-                                                    ? new CancellationTokenSource(TimeSpan.FromSeconds(_jsonRpcConfig.TracerTimeout)).Token
-                                                    : CancellationToken.None;
+            TimeSpan cancellationTokenTimeout = TimeSpan.FromMilliseconds(_jsonRpcConfig.TracerTimeout);
+            CancellationToken cancellationToken = new CancellationTokenSource(cancellationTokenTimeout).Token;
             
             return new TraceModule(_receiptStorage, tracer, readOnlyTree, cancellationToken);
         }
