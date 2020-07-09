@@ -19,6 +19,7 @@ using System.Text;
 using System.Timers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Stats;
 using Nethermind.Synchronization.ParallelSync;
@@ -129,8 +130,6 @@ namespace Nethermind.Synchronization.Reporting
             if (_logger.IsTrace) WriteSyncConfigReport();
 
             SyncMode currentSyncMode = _syncModeSelector.Current;
-            _logger.Info(string.Format("currentSyncMode == {0,3} - {1:G}", (int)currentSyncMode, currentSyncMode));
-
             if (!_reportedFastBlocksSummary && FastBlocksHeaders.HasEnded && FastBlocksBodies.HasEnded && FastBlocksReceipts.HasEnded)
             {
                 _reportedFastBlocksSummary = true;
@@ -165,7 +164,7 @@ namespace Nethermind.Synchronization.Reporting
                 WriteFastBlocksReport(currentSyncMode);
             }
 
-            if (currentSyncMode.HasFlag(SyncMode.Full) || currentSyncMode.HasFlag(SyncMode.FastSync))
+            if (currentSyncMode.HasAnyFlag(SyncMode.Full, SyncMode.FastSync))
             {
                 WriteFullSyncReport();
             }
