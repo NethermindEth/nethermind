@@ -1,16 +1,16 @@
 //  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -144,7 +144,7 @@ namespace Nethermind.Synchronization.ParallelSync
             CheckAddFlag(best.IsInFastSync, SyncMode.FastSync, ref newModes);
             CheckAddFlag(best.IsInFullSync, SyncMode.Full, ref newModes);
             CheckAddFlag(best.IsInStateSync, SyncMode.StateNodes, ref newModes);
-            
+
 
             if (IsTheModeSwitchWorthMentioning(newModes))
             {
@@ -298,14 +298,14 @@ namespace Nethermind.Synchronization.ParallelSync
             // also fast blocks headers can run in parallel with all other sync modes
             return !FastBlocksHeadersFinished;
         }
-        
+
         private bool ShouldBeInFastBodiesMode(Snapshot best)
         {
             // fast blocks bodies can run if there are peers until it is done
             // fast blocks bodies can run in parallel with full sync when headers are finished
             return !FastBlocksBodiesFinished && FastBlocksHeadersFinished && best.IsInFullSync;
         }
-        
+
         private bool ShouldBeInFastReceiptsMode(Snapshot best)
         {
             // fast blocks receipts can run if there are peers until it is done
@@ -365,7 +365,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private bool HasJustStartedFullSync(Snapshot best)
         {
             return best.State > PivotNumber // we have saved some root
-                   && best.State == best.Header // and we do not need to catch up to headers anymore 
+                   && best.State == best.Header // and we do not need to catch up to headers anymore
                    && best.Processed < best.State; // not processed the block yet
         }
 
@@ -436,7 +436,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 || best.State > best.Header
                 // we can only process blocks for which we have full body
                 || best.Processed > best.Block
-                // for any processed block we should have its full state   
+                // for any processed block we should have its full state
                 // || (best.Processed > best.State && best.Processed > best.BeamState))
                 // but we only do limited lookups for state so we need to instead fast sync to now
             )
