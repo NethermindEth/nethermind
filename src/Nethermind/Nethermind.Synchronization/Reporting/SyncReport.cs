@@ -43,7 +43,7 @@ namespace Nethermind.Synchronization.Reporting
 
 
         private static readonly string s_fastBlocksReportPattern = "Old {0,-9} {1,12:N0} / {2,12:N0} | queue {3,6:N0} | current {4,9:N2}bps | total {5,9:N2}bps";
-        private static readonly string s_fullSyncReportPattern = "Downloaded    {0,12:N0} / {1,12:N0} |               | current {2,9:N2}bps | total {3,9:N2}bps";
+        private static readonly string s_fullSyncReportPattern = "Downloaded    {0,12:N0} / {1,12:N0} |              | current {2,9:N2}bps | total {3,9:N2}bps";
 
         public SyncReport(ISyncPeerPool syncPeerPool, INodeStatsManager nodeStatsManager, ISyncModeSelector syncModeSelector, ISyncConfig syncConfig, ILogManager logManager, double tickTime = 1000)
         {
