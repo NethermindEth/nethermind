@@ -137,7 +137,7 @@ namespace Nethermind.Synchronization.Reporting
 
             if ((currentSyncMode | SyncMode.Full) != SyncMode.Full)
             {
-                _logger.Info($"Peers | with known best block: {_syncPeerPool.InitializedPeersCount} | all: {_syncPeerPool.PeerCount} |");
+                _logger.Info($"Peers | with known best block: {_syncPeerPool.InitializedPeersCount} | all: {_syncPeerPool.PeerCount}");
             }
 
             if (currentSyncMode == SyncMode.None && _syncPeerPool.InitializedPeersCount == 0)
