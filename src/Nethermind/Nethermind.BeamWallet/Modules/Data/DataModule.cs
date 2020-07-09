@@ -17,6 +17,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.BeamWallet.Modules.Events;
@@ -24,6 +25,8 @@ using Nethermind.Dirichlet.Numerics;
 using Nethermind.Facade.Proxy;
 using Terminal.Gui;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
+using Nethermind.Facade.Proxy.Models;
 
 namespace Nethermind.BeamWallet.Modules.Data
 {
@@ -31,11 +34,12 @@ namespace Nethermind.BeamWallet.Modules.Data
     {
         private readonly IEthJsonRpcClientProxy _ethJsonRpcClientProxy;
         private readonly Address _address;
-        private decimal _balance;
         private readonly Timer _timer;
         private readonly TimeSpan _interval;
+        private decimal _balance;
         private Window _window;
         private Label _syncingInfoLabel;
+        private Label _balanceValueLabel;
         public event EventHandler<TransferClickedEventArgs> TransferClicked;
         
         public DataModule(IEthJsonRpcClientProxy ethJsonRpcClientProxy, string address)
@@ -43,7 +47,7 @@ namespace Nethermind.BeamWallet.Modules.Data
             _ethJsonRpcClientProxy = ethJsonRpcClientProxy;
             _address = new Address(address);
             _interval = TimeSpan.FromSeconds(5);
-            // _timer = new Timer(Update, null, TimeSpan.Zero, _interval);
+            _timer = new Timer(Update, null, TimeSpan.Zero, _interval);
         }
 
         public Task<Window> InitAsync()
@@ -68,8 +72,7 @@ namespace Nethermind.BeamWallet.Modules.Data
 
         private async Task UpdateBalanceAsync()
         {
-            var balanceValueLabel = new Label(70, 1, $"{_balance} ETH {Guid.NewGuid()}");
-            if (_syncingInfoLabel is null)
+            if (_syncingInfoLabel is null || _balanceValueLabel is null)
             {
                 return;
             }
@@ -77,36 +80,31 @@ namespace Nethermind.BeamWallet.Modules.Data
             var balanceResult = await _ethJsonRpcClientProxy.eth_getBalance(_address);
             
             _balance = WeiToEth(balanceResult.Result.ToString());
-            _window.Remove(balanceValueLabel);
-            balanceValueLabel = new Label(70, 1, $"{_balance} ETH");
+            _window.Remove(_balanceValueLabel);
+            _balanceValueLabel = new Label(70, 1, $"{_balance} ETH");
             
             _window.Remove(_syncingInfoLabel);
-            _window.Add(balanceValueLabel);
+            _window.Add(_balanceValueLabel);
         }
 
         private async Task RenderBalanceAsync()
         {
-            var addressLabel = new Label(1, 1, "Address:");
-            var addressValueLabel = new Label(15, 1, _address.ToString());
+            var addressLabel = new Label(1, 1, $"Address: {_address}");
             var balanceLabel = new Label(60, 1, "Balance:");
             _syncingInfoLabel = new Label(70, 1, "Syncing...");
             
-            _window.Add(addressLabel, addressValueLabel, balanceLabel, _syncingInfoLabel);
+            _window.Add(addressLabel, balanceLabel, _syncingInfoLabel);
             
-            
-            
-            
-            var balanceValueLabel = new Label(70, 1, $"{_balance} ETH");
             var balanceResult = await _ethJsonRpcClientProxy.eth_getBalance(_address);
             
             _balance = WeiToEth(balanceResult.Result.ToString());
-            balanceValueLabel = new Label(70, 1, $"{_balance} ETH");
+            _balanceValueLabel = new Label(70, 1, $"{_balance} ETH");
             
             _window.Remove(_syncingInfoLabel);
-            _window.Add(balanceValueLabel);
+            _window.Add(_balanceValueLabel);
             
-            var quitButton = new Button(1, 17, "Quit");
-            var transferButton = new Button(12, 17, "Transfer");
+            var quitButton = new Button(1, 11, "Quit");
+            var transferButton = new Button(12, 11, "Transfer");
             
             quitButton.Clicked = () =>
             {
@@ -121,25 +119,23 @@ namespace Nethermind.BeamWallet.Modules.Data
             
             _window.Add(quitButton, transferButton);
 
-            // var tokenTransaction = new CallTransactionModel();
-            // var tokenSignature = "0x70a08231";
-            // var tokenData = tokenSignature + "000000000000000000000000" + address.ToString().Substring(2);
-            // transaction.Data = Bytes.FromHexString(tokenData);
-            //
-            // var tokens = InitTokens();
-            // var y = 3;
-            // foreach (var token in tokens)
-            // {
-            //     transaction.To = token.Address;
-            //     var call = await _ethJsonRpcClientProxy.eth_call(tokenTransaction, BlockParameterModel.Latest);
-            //     var resultHex = call.Result.ToHexString();
-            //     token.Balance = UInt256.Parse(resultHex, NumberStyles.HexNumber);
-            //     var tokenBalanceLbl = new Label(1, y+2, $"{token.Name}:");
-            //     var tokenBalance = new Label(15, y+2, $"{ToEth(token.Balance.ToString())}");
-            //     window.Add(tokenBalanceLbl, tokenBalance);
-            //     y += 2;
-            // }
-
+            var tokenTransaction = new CallTransactionModel();
+            var tokenSignature = "0x70a08231";
+            var tokenData = tokenSignature + "000000000000000000000000" + _address.ToString().Substring(2);
+            tokenTransaction.Data = Bytes.FromHexString(tokenData);
+            
+            var tokens = InitTokens();
+            var y = 1;
+            foreach (var token in tokens)
+            {
+                y += 2;
+                tokenTransaction.To = token.Address;
+                var call = await _ethJsonRpcClientProxy.eth_call(tokenTransaction, BlockParameterModel.Latest);
+                var resultHex = call.Result.ToHexString();
+                token.Balance = UInt256.Parse(resultHex, NumberStyles.HexNumber);
+                var tokenBalanceLabel = new Label(1, y, $"{token.Name}: {WeiToEth(token.Balance.ToString())}");
+                _window.Add(tokenBalanceLabel);
+            }
         }
 
         private static decimal WeiToEth(string result) => (decimal.Parse(result) / 1000000000000000000);

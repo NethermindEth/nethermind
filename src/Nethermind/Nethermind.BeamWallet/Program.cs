@@ -21,7 +21,7 @@ namespace Nethermind.BeamWallet
             Application.Init();
             var addressesModule = new AddressesModule();
 
-            addressesModule.AddressSelected += async (_, data) =>
+            addressesModule.AddressesSelected += async (_, data) =>
             {
                 var urls = new[] {data.nodeAddress};
                 var httpClient = new HttpClient();

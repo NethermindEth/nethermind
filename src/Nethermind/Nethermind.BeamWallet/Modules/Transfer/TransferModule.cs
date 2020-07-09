@@ -16,6 +16,8 @@
 // 
 
 using System;
+using System.Globalization;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.BeamWallet.Clients;
 using Nethermind.Core;
@@ -32,13 +34,15 @@ namespace Nethermind.BeamWallet.Modules.Transfer
         private readonly IEthJsonRpcClientProxy _ethJsonRpcClientProxy;
         private readonly IJsonRpcWalletClientProxy _jsonRpcWalletClientProxy;
         private readonly Address _address;
-        private decimal _balanceEth;
         private readonly UInt256 _gasPrice = 30000000000;
         private readonly UInt256 _gasLimit = 21000;
+        private readonly Timer _timer;
+        private readonly TimeSpan _interval;
+        private decimal _balanceEth;
+        private string _value;
+        private string _toAddress;
+        private string _passphrase;
         private Window _transferWindow;
-        private TextField _valueTextField;
-        private TextField _passphraseTextField;
-        private TextField _toAddressTextField;
         private UInt256 _currentNonce;
         private BlockModel<TransactionModel> _latestBlock;
         private string _estimateGas;
@@ -49,40 +53,56 @@ namespace Nethermind.BeamWallet.Modules.Transfer
         private Label _unlockedLabel;
         private Label _txHashLabel;
         private Label _accountLockedLabel;
-        private UInt256 _valueWei;
-        private Label _balanceValueLabel;
+        private Label _balanceLabel;
 
         public TransferModule(IEthJsonRpcClientProxy ethJsonRpcClientProxy, IJsonRpcWalletClientProxy
             jsonRpcWalletClientProxy, Address address, decimal balanceEth)
         {
             _ethJsonRpcClientProxy = ethJsonRpcClientProxy;
-            _jsonRpcWalletClientProxy = jsonRpcWalletClientProxy;
+            _jsonRpcWalletClientProxy = jsonRpcWalletClientProxy;        
             _address = address;
             _balanceEth = balanceEth;
+            _interval = TimeSpan.FromSeconds(5);
+            _timer = new Timer(Update, null, TimeSpan.Zero, _interval);
+        }
+        
+        private void Update(object state)
+        {
+            _ = UpdateBalanceAsync();
+        }
+        
+        private async Task UpdateBalanceAsync()
+        {
+            if (_balanceLabel is null)
+            {
+                return;
+            }
+            var balanceResult = await _ethJsonRpcClientProxy.eth_getBalance(_address);
+
+            _balanceEth = WeiToEth(decimal.Parse(balanceResult.Result.ToString()));
+            _transferWindow.Remove(_balanceLabel);
+            _balanceLabel = new Label(65, 1, $"Balance: {_balanceEth} ETH");
+
+            _transferWindow.Add(_balanceLabel);
         }
 
-        public async Task<Window> InitAsync()
+        public Task<Window> InitAsync()
         {
             _transferWindow = new Window("Transfer") {X = 0, Y = 0, Width = Dim.Fill(), Height = Dim.Fill()};
-
             var fromAddressLabel = new Label(1, 1, "From address:");
             var fromAddressValueLabel = new Label(20, 1, _address.ToString());
-
-            var balanceLabel = new Label(65, 1, "Balance");
-            _balanceValueLabel = new Label(73, 1, $"{_balanceEth} ETH");
-
+            _balanceLabel = new Label(65, 1, $"Balance: {_balanceEth} ETH");
             var toAddressLabel = new Label(1, 3, "To address:");
-            _toAddressTextField = new TextField(20, 3, 80, "");
-
+            var toAddressTextField = new TextField(20, 3, 80, "");
             var valueLabel = new Label(1, 5, "Value [ETH]:");
-            _valueTextField = new TextField(20, 5, 80, "");
-
+            var valueTextField = new TextField(20, 5, 80, "");
             var passphraseLabel = new Label(1, 7, "Passphrase:");
-            _passphraseTextField = new TextField(20, 7, 80, "");
-            _transferButton = new Button(30, 9, "Transfer");
+            var passphraseTextField = new TextField(20, 7, 80, "");
 
+            _transferButton = new Button(30, 9, "Transfer");
             _transferButton.Clicked = async () =>
             {
+                SetData(toAddressTextField, valueTextField, passphraseTextField);
                 await MakeTransferAsync();
             };
             _backButton = new Button(20, 9, "Back");
@@ -92,28 +112,40 @@ namespace Nethermind.BeamWallet.Modules.Transfer
                 Application.RequestStop();
             };
 
-            _transferWindow.Add(fromAddressLabel, fromAddressValueLabel, balanceLabel, _balanceValueLabel,
-                toAddressLabel, _toAddressTextField, valueLabel, _valueTextField, passphraseLabel,
-                _passphraseTextField, _backButton, _transferButton);
+            _transferWindow.Add(fromAddressLabel, fromAddressValueLabel, _balanceLabel, toAddressLabel,
+                toAddressTextField, valueLabel, valueTextField, passphraseLabel, passphraseTextField, _backButton,
+                _transferButton);
 
-            return _transferWindow;
+            return Task.FromResult(_transferWindow);
+        }
+
+        private void SetData(TextField address, TextField value, TextField passphrase)
+        {
+            _toAddress = address.Text.ToString();
+            _value = value.Text.ToString();
+            _passphrase = passphrase.Text.ToString();
         }
 
         private async Task MakeTransferAsync()
         {
+            if (!CorrectData(_toAddress, _value, _passphrase))
+            {
+                Application.Run(_transferWindow);
+                return;
+            }
+            
             var averageGasPrice = await GetAverageGasPrice();
-            var resultTransactionCount = await _ethJsonRpcClientProxy.eth_getTransactionCount(_address);
-            if (!resultTransactionCount.IsValid)
+            var transactionCountResult = await _ethJsonRpcClientProxy.eth_getTransactionCount(_address);
+            if (!transactionCountResult.Result.HasValue)
             {
                 throw new Exception("There was an error when getting transaction count.");
             }
 
-            _currentNonce = (UInt256)resultTransactionCount.Result;
-                    
+            _currentNonce = transactionCountResult.Result.Value;
+            
             Address from = _address;
-            Address to = new Address(_toAddressTextField.Text.ToString());
-            _valueWei = EthToWei(_valueTextField.Text.ToString());
-            UInt256 value = _valueWei;
+            Address to = new Address(_toAddress);
+            UInt256 value = EthToWei(_value);
             var transaction = CreateTransaction(from, to, value, _gasLimit, averageGasPrice, _currentNonce);
 
             var resultGasEstimate = await _ethJsonRpcClientProxy.eth_estimateGas(transaction);
@@ -123,12 +155,8 @@ namespace Nethermind.BeamWallet.Modules.Transfer
                 _estimateGas = resultGasEstimate.Result.ToHexString();
                 txFee = decimal.Parse(_estimateGas) * _averageGasPriceNumber;
             }
-            if (!CorrectData(_toAddressTextField, _valueTextField, _passphraseTextField))
-            {
-                Application.Run(_transferWindow);
-                return;
-            }
-            var confirmed = MessageBox.Query(50, 15, "Confirmation",
+
+            var confirmed = MessageBox.Query(40, 10, "Confirmation",
                 $"Do you confirm the transaction?" +
                 $"{Environment.NewLine}" +
                 $"Gas limit: {_estimateGas}" +
@@ -139,14 +167,11 @@ namespace Nethermind.BeamWallet.Modules.Transfer
             
             if (confirmed == 0)
             {
-                _transferWindow.Remove(_unlockedLabel);
-                _transferWindow.Remove(_txHashLabel);
-                _transferWindow.Remove(_accountLockedLabel);
+                DeleteLabels();
 
-                var resultUnlockAccount = await _jsonRpcWalletClientProxy.personal_unlockAccount(_address,
-                    _passphraseTextField.Text.ToString());
+                var unlockAccountResult = await _jsonRpcWalletClientProxy.personal_unlockAccount(_address, _passphrase);
 
-                if (!resultUnlockAccount.Result)
+                if (!unlockAccountResult.Result)
                 {
                     MessageBox.ErrorQuery(40, 7, "Error", "Unlocking account failed.");
                     Application.Run(_transferWindow);
@@ -154,11 +179,11 @@ namespace Nethermind.BeamWallet.Modules.Transfer
                 
                 _unlockedLabel = new Label(1, 11, "Account unlocked.");
                 _transferWindow.Add(_unlockedLabel);
-                if (resultUnlockAccount.Result)
+                if (unlockAccountResult.Result)
                 {
-                    var sendingLbl = new Label(1, 12, $"Sending transaction with nonce {transaction.Nonce}.");
-                    var resultSendTransaction = await _ethJsonRpcClientProxy.eth_sendTransaction(transaction);
-                    _transferWindow.Add(sendingLbl);
+                    var sendingTransactionLabel = new Label(1, 12, $"Sending transaction with nonce {transaction.Nonce}.");
+                    var sendTransactionResult = await _ethJsonRpcClientProxy.eth_sendTransaction(transaction);
+                    _transferWindow.Add(sendingTransactionLabel);
                     _transferWindow.Remove(_backButton);
                     _transferWindow.Remove(_transferButton);
                     
@@ -166,22 +191,17 @@ namespace Nethermind.BeamWallet.Modules.Transfer
                     {
                         var newNoneResult = await _ethJsonRpcClientProxy.eth_getTransactionCount(_address);
                         _newNonce = newNoneResult.Result;
+                        
                     } while (_newNonce == _currentNonce);
                     
                     _transferWindow.Add(_backButton, _transferButton);
-                    _transferWindow.Remove(sendingLbl);
-                    
-                    
-                    var resultGetBalance = await _ethJsonRpcClientProxy.eth_getBalance(_address);
-                    var balanceEth = WeiToEth(resultGetBalance.Result.ToString());
-                    _balanceEth = balanceEth;
-                    _transferWindow.Add(_balanceValueLabel);
+                    _transferWindow.Remove(sendingTransactionLabel);
                     
                     var sentLbl = new Label(1, 12, $"Transaction sent with nonce {transaction.Nonce}.");
                     _transferWindow.Add(sentLbl);
-                    if (resultSendTransaction.IsValid)
+                    if (sendTransactionResult.IsValid)
                     {
-                        _txHashLabel = new Label(1, 13, $"Transaction hash: {resultSendTransaction.Result}");
+                        _txHashLabel = new Label(1, 13, $"Transaction hash: {sendTransactionResult.Result}");
                         _transferWindow.Add(_txHashLabel);
                     }
 
@@ -195,6 +215,13 @@ namespace Nethermind.BeamWallet.Modules.Transfer
             }
         }
 
+        private void DeleteLabels()
+        {
+            _transferWindow.Remove(_unlockedLabel);
+            _transferWindow.Remove(_txHashLabel);
+            _transferWindow.Remove(_accountLockedLabel);
+        }
+
         private TransactionModel CreateTransaction(Address fromAddress, Address toAddress, UInt256 value, UInt256 gas,
             UInt256 averageGasPrice, UInt256 nonce) => new TransactionModel
         {
@@ -206,12 +233,10 @@ namespace Nethermind.BeamWallet.Modules.Transfer
             Nonce = nonce
         };
 
-        private bool CorrectData(TextField address, TextField value, TextField passphrase)
+        private bool CorrectData(string address, string value, string passphrase)
         {
-            var valueWei = WeiToEth((decimal)_valueWei);
-            if (!string.IsNullOrEmpty(address.Text.ToString()) && !string.IsNullOrEmpty(value.Text.ToString()) &&
-                !string.IsNullOrEmpty(passphrase.Text.ToString()) &&
-                decimal.TryParse(value.Text.ToString(), out _) && valueWei < _balanceEth)
+            if (!string.IsNullOrEmpty(address) && !string.IsNullOrEmpty(value) &&
+                !string.IsNullOrEmpty(passphrase) && decimal.TryParse(value, out _) && decimal.Parse(value) < _balanceEth)
             {
                 return true;
             }
@@ -226,15 +251,14 @@ namespace Nethermind.BeamWallet.Modules.Transfer
                 await _ethJsonRpcClientProxy.eth_getBlockByNumberWithTransactionDetails(BlockParameterModel.Latest,
                     true);
             _latestBlock = resultGetBlockByNumber.Result;
-            var transactions = _latestBlock.Transactions;
             UInt256 sum = 0;
             var transactionCount = 0;
-            if (transactions.Count == 0)
+            if (_latestBlock.Transactions.Count == 0)
             {
                 return _gasPrice;
             }
 
-            foreach (var transaction in transactions)
+            foreach (var transaction in _latestBlock.Transactions)
             {
                 if (transaction.GasPrice > 100)
                 {
@@ -256,17 +280,9 @@ namespace Nethermind.BeamWallet.Modules.Transfer
         {
             var resultDecimal = decimal.Parse(result);
             var resultRound = decimal.Round(resultDecimal * 1000000000000000000, 0);
-            return UInt256.Parse(resultRound.ToString());
+            return UInt256.Parse(resultRound.ToString(CultureInfo.InvariantCulture));
         }
 
-        private decimal WeiToEth(decimal result)
-        {
-            return result / 1000000000000000000;
-        }
-
-        private static decimal WeiToEth(string result)
-        {
-            return (decimal.Parse(result) / 1000000000000000000);
-        }
+        private static decimal WeiToEth(decimal result) => result / 1000000000000000000;
     }
 }

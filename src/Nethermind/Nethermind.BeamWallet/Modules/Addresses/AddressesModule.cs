@@ -26,9 +26,8 @@ namespace Nethermind.BeamWallet.Modules.Addresses
     {
         private static readonly Regex _urlRegex = new Regex(@"^http(s)?://([\w-]+.)+[\w-]+(/[\w- ./?%&=])?",
             RegexOptions.Compiled);
-        
         private static readonly Regex _addressRegex = new Regex("(0x)([0-9A-Fa-f]{40})", RegexOptions.Compiled);
-        public event EventHandler<(string nodeAddress, string address)> AddressSelected;
+        public event EventHandler<(string nodeAddress, string address)> AddressesSelected;
 
         public Task<Window> InitAsync()
         {
@@ -39,10 +38,10 @@ namespace Nethermind.BeamWallet.Modules.Addresses
                 Width = Dim.Fill(), 
                 Height = 10
             };
-            var nodeAddressLbl = new Label(3, 1, "Enter node address:");
-            var nodeAddressTxtField = new TextField(28, 1, 80, "");
-            var addressLbl = new Label(3, 3, "Enter account address:");
-            var addressTxtField = new TextField(28, 3, 80, "");
+            var nodeAddressLabel = new Label(3, 1, "Enter node address:");
+            var nodeAddressTextField = new TextField(28, 1, 80, "");
+            var addressLabel = new Label(3, 3, "Enter account address:");
+            var addressTextField = new TextField(28, 3, 80, "");
             
             var okButton = new Button(28, 5, "OK");
             var quitButton = new Button(36, 5, "Quit");
@@ -53,7 +52,7 @@ namespace Nethermind.BeamWallet.Modules.Addresses
             };
             okButton.Clicked = () =>
             {
-                var nodeAddressString = nodeAddressTxtField.Text.ToString();
+                var nodeAddressString = nodeAddressTextField.Text.ToString();
                 
                 if (string.IsNullOrWhiteSpace(nodeAddressString))
                 {
@@ -67,7 +66,7 @@ namespace Nethermind.BeamWallet.Modules.Addresses
                     return;
                 }
                 
-                var addressString = addressTxtField.Text.ToString();
+                var addressString = addressTextField.Text.ToString();
                 
                 if (string.IsNullOrWhiteSpace(addressString))
                 {
@@ -81,10 +80,10 @@ namespace Nethermind.BeamWallet.Modules.Addresses
                     return;
                 }
                 
-                AddressSelected?.Invoke(this, (nodeAddressString, addressString));
+                AddressesSelected?.Invoke(this, (nodeAddressString, addressString));
             };
-            mainWindow.Add(quitButton, nodeAddressLbl, nodeAddressTxtField, addressLbl, addressTxtField,
-                okButton);
+            mainWindow.Add(quitButton, nodeAddressLabel, nodeAddressTextField, addressLabel,
+                addressTextField, okButton);
 
             return Task.FromResult(mainWindow);
         }
