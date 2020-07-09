@@ -35,6 +35,7 @@ namespace Nethermind.Synchronization.Reporting
         private readonly ISyncModeSelector _syncModeSelector;
         private readonly ILogger _logger;
 
+        private readonly Timer _timer;
         private SyncPeersReport _syncPeersReport;
         private int _reportId;
         private const int SyncReportFrequency = 1;
@@ -42,11 +43,6 @@ namespace Nethermind.Synchronization.Reporting
         private const int SyncShortPeersReportFrequency = 30;
         private const int SyncFullPeersReportFrequency = 120;
 
-        public double TickTime
-        {
-            get => _timer.Interval;
-            set => _timer.Interval = value;
-        }
 
         public SyncReport(ISyncPeerPool syncPeerPool, INodeStatsManager nodeStatsManager, ISyncModeSelector syncModeSelector, ISyncConfig syncConfig, ILogManager logManager, double tickTime = 1000)
         {
@@ -62,13 +58,10 @@ namespace Nethermind.Synchronization.Reporting
 
             StartTime = DateTime.UtcNow;
 
-            TickTime = tickTime;
-            _timer.Interval = TickTime;
-            _timer.AutoReset = false;
-            _timer.Elapsed += TimerOnElapsed;
-
             if (_syncConfig.SynchronizationEnabled)
             {
+                _timer = new Timer { Interval = tickTime, AutoReset = false };
+                _timer.Elapsed += TimerOnElapsed;
                 _timer.Start();
             }
 
@@ -112,7 +105,6 @@ namespace Nethermind.Synchronization.Reporting
             _timer.Enabled = true;
         }
 
-        private readonly Timer _timer = new Timer();
 
         private long _fastBlocksPivotNumber;
 
@@ -287,7 +279,7 @@ namespace Nethermind.Synchronization.Reporting
 
         public void Dispose()
         {
-            _timer.Dispose();
+            _timer?.Dispose();
         }
     }
 }
