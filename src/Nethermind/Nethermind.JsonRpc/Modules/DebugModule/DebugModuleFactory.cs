@@ -76,9 +76,9 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             ReadOnlyBlockTree readOnlyTree = new ReadOnlyBlockTree(_blockTree);
             ReadOnlyTxProcessingEnv txEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, readOnlyTree, _specProvider, _logManager);
             ReadOnlyChainProcessingEnv readOnlyChainProcessingEnv = new ReadOnlyChainProcessingEnv(txEnv, _blockValidator, _recoveryStep, _rewardCalculatorSource.Get(txEnv.TransactionProcessor), _receiptStorage, readOnlyDbProvider, _specProvider, _logManager);
-            CancellationToken cancellationToken = _jsonRpcConfig.TracerTimeoutEnabled
-                                                    ? new CancellationTokenSource(TimeSpan.FromSeconds(_jsonRpcConfig.TracerTimeout)).Token
-                                                    : CancellationToken.None;
+            
+            TimeSpan cancellationTokenTimeout = TimeSpan.FromMilliseconds(_jsonRpcConfig.TracerTimeout);
+            CancellationToken cancellationToken = new CancellationTokenSource(cancellationTokenTimeout).Token;
 
             IGethStyleTracer tracer = new GethStyleTracer(readOnlyChainProcessingEnv.ChainProcessor, _receiptStorage, new ReadOnlyBlockTree(_blockTree), cancellationToken);
 
