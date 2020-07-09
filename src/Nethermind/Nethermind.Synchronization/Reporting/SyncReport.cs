@@ -224,7 +224,7 @@ namespace Nethermind.Synchronization.Reporting
             StringBuilder builder = new StringBuilder("Sync config -");
             if (_syncConfig.FastSync)
             {
-                builder.Append(" fast sync");
+                _ = builder.Append(" fast sync");
                 _ = _syncConfig.FastBlocks
                     ? builder.Append($" with fast blocks from block {_syncConfig.PivotNumber}")
                         .Append(_syncConfig.DownloadBodiesInFastSync ? " + bodies" : string.Empty)
