@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
@@ -34,6 +35,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
     {
         private readonly IBlockTree _blockTree;
         private readonly IDbProvider _dbProvider;
+        private readonly IJsonRpcConfig _jsonRpcConfig;
         private readonly IBlockValidator _blockValidator;
         private readonly IRewardCalculatorSource _rewardCalculatorSource;
         private readonly IReceiptStorage _receiptStorage;
@@ -46,6 +48,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         public DebugModuleFactory(
             IDbProvider dbProvider,
             IBlockTree blockTree,
+            IJsonRpcConfig jsonRpcConfig,
             IBlockValidator blockValidator,
             IBlockDataRecoveryStep recoveryStep,
             IRewardCalculatorSource rewardCalculator,
@@ -56,6 +59,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         {
             _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
             _rewardCalculatorSource = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
@@ -72,7 +76,11 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             ReadOnlyBlockTree readOnlyTree = new ReadOnlyBlockTree(_blockTree);
             ReadOnlyTxProcessingEnv txEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, readOnlyTree, _specProvider, _logManager);
             ReadOnlyChainProcessingEnv readOnlyChainProcessingEnv = new ReadOnlyChainProcessingEnv(txEnv, _blockValidator, _recoveryStep, _rewardCalculatorSource.Get(txEnv.TransactionProcessor), _receiptStorage, readOnlyDbProvider, _specProvider, _logManager);
-            IGethStyleTracer tracer = new GethStyleTracer(readOnlyChainProcessingEnv.ChainProcessor, _receiptStorage, new ReadOnlyBlockTree(_blockTree));
+            CancellationToken cancellationToken = _jsonRpcConfig.TracerTimeoutEnabled
+                                                    ? new CancellationTokenSource(TimeSpan.FromSeconds(_jsonRpcConfig.TracerTimeout)).Token
+                                                    : CancellationToken.None;
+
+            IGethStyleTracer tracer = new GethStyleTracer(readOnlyChainProcessingEnv.ChainProcessor, _receiptStorage, new ReadOnlyBlockTree(_blockTree), cancellationToken);
 
             DebugBridge debugBridge = new DebugBridge(_configProvider, readOnlyDbProvider, tracer, readOnlyChainProcessingEnv.BlockProcessingQueue, readOnlyTree);
             return new DebugModule(_logManager, debugBridge);
