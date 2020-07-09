@@ -126,6 +126,7 @@ namespace Nethermind.BeamWallet.Modules.Transfer
             if (!CorrectData(_toAddressTextField, _valueTextField, _passphraseTextField))
             {
                 Application.Run(_transferWindow);
+                return;
             }
             var confirmed = MessageBox.Query(50, 15, "Confirmation",
                 $"Do you confirm the transaction?" +
