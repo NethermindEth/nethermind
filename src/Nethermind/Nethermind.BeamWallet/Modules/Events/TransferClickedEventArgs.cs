@@ -13,32 +13,22 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
 using System;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
-using Newtonsoft.Json;
+using Nethermind.Core;
 
-namespace Nethermind.Serialization.Json
+namespace Nethermind.BeamWallet.Modules.Events
 {
-    public class KeccakConverter : JsonConverter<Keccak>
+    public class TransferClickedEventArgs : EventArgs
     {
-        public override void WriteJson(JsonWriter writer, Keccak value, Newtonsoft.Json.JsonSerializer serializer)
-        {
-            if (value == null)
-            {
-                writer.WriteNull();
-            }
-            else
-            {
-                writer.WriteValue(Bytes.ByteArrayToHexViaLookup32Safe(value.Bytes, true));
-            }
-        }
+        public Address Address { get; }
+        public decimal Balance { get; }
 
-        public override Keccak ReadJson(JsonReader reader, Type objectType, Keccak existingValue, bool hasExistingValue, Newtonsoft.Json.JsonSerializer serializer)
+        public TransferClickedEventArgs(Address address, decimal balance)
         {
-            string s = (string) reader.Value;
-            return string.IsNullOrWhiteSpace(s) ? null : new Keccak(Bytes.FromHexString(s));
+            Address = address;
+            Balance = balance;
         }
     }
 }

@@ -13,32 +13,28 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
 using System;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
-using Newtonsoft.Json;
+using System.Threading.Tasks;
+using Nethermind.Core;
+using Nethermind.Facade.Proxy;
 
-namespace Nethermind.Serialization.Json
+namespace Nethermind.BeamWallet.Clients
 {
-    public class KeccakConverter : JsonConverter<Keccak>
+    public class JsonRpcWalletClientProxy : IJsonRpcWalletClientProxy
     {
-        public override void WriteJson(JsonWriter writer, Keccak value, Newtonsoft.Json.JsonSerializer serializer)
+        private readonly IJsonRpcClientProxy _proxy;
+
+        public JsonRpcWalletClientProxy(IJsonRpcClientProxy proxy)
         {
-            if (value == null)
-            {
-                writer.WriteNull();
-            }
-            else
-            {
-                writer.WriteValue(Bytes.ByteArrayToHexViaLookup32Safe(value.Bytes, true));
-            }
+            _proxy = proxy ?? throw new ArgumentNullException(nameof(proxy));
         }
 
-        public override Keccak ReadJson(JsonReader reader, Type objectType, Keccak existingValue, bool hasExistingValue, Newtonsoft.Json.JsonSerializer serializer)
-        {
-            string s = (string) reader.Value;
-            return string.IsNullOrWhiteSpace(s) ? null : new Keccak(Bytes.FromHexString(s));
-        }
+        public Task<RpcResult<bool>> personal_unlockAccount(Address address, string passphrase)
+            => _proxy.SendAsync<bool>(nameof(personal_unlockAccount), address, passphrase);
+
+        public Task<RpcResult<bool>> personal_lockAccount(Address address)
+            => _proxy.SendAsync<bool>(nameof(personal_lockAccount), address);
     }
 }
