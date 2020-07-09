@@ -36,7 +36,7 @@ namespace Nethermind.Synchronization.LesSync
 
         private static readonly byte[] MaxSectionKey = Encoding.ASCII.GetBytes("MaxSection");
 
-        public CanonicalHashTrie(IKeyValueStore db) : base(db, getMaxRootHash(db), true, true)
+        public CanonicalHashTrie(IKeyValueStore db) : base(db, GetMaxRootHash(db), true, true)
         {
         }
 
@@ -52,7 +52,7 @@ namespace Nethermind.Synchronization.LesSync
 
         public long GetMaxSectionIndex()
         {
-            return getMaxSectionIndex(_keyValueStore);
+            return GetMaxSectionIndex(_keyValueStore);
         }
 
         public static long GetSectionFromBlockNo(long blockNo) => (blockNo / SectionSize) - 1L;
@@ -65,7 +65,7 @@ namespace Nethermind.Synchronization.LesSync
         public byte[][] BuildProof(byte[] key, long sectionIndex, long fromLevel)
         {
             ChtProofCollector proofCollector = new ChtProofCollector(key, fromLevel);
-            Accept(proofCollector, getRootHash(sectionIndex), false);
+            Accept(proofCollector, GetRootHash(sectionIndex), false);
             return proofCollector.BuildResult();
         }
 
@@ -73,42 +73,42 @@ namespace Nethermind.Synchronization.LesSync
         {
             UpdateRootHash();
             _keyValueStore[GetRootHashKey(sectionIndex)] = RootHash.Bytes;
-            if (getMaxSectionIndex(_keyValueStore) < sectionIndex)
+            if (GetMaxSectionIndex(_keyValueStore) < sectionIndex)
             {
-                setMaxSectionIndex(sectionIndex);
+                SetMaxSectionIndex(sectionIndex);
             }
         }
 
-        private static long getMaxSectionIndex(IKeyValueStore db)
+        private static long GetMaxSectionIndex(IKeyValueStore db)
         {
             byte[] storeValue = null;
             try
             {
                 storeValue = db[MaxSectionKey];
             }
-            catch (KeyNotFoundException e) { }
+            catch (KeyNotFoundException) { }
             return storeValue == null ? -1L : storeValue.ToLongFromBigEndianByteArrayWithoutLeadingZeros();
         }
 
-        private void setMaxSectionIndex(long sectionIndex)
+        private void SetMaxSectionIndex(long sectionIndex)
         {
             _keyValueStore[MaxSectionKey] = sectionIndex.ToBigEndianByteArrayWithoutLeadingZeros();
         }
 
-        private Keccak getRootHash(long sectionIndex)
+        private Keccak GetRootHash(long sectionIndex)
         {
-            return getRootHash(_keyValueStore, sectionIndex);
+            return GetRootHash(_keyValueStore, sectionIndex);
         }
-        private static Keccak getRootHash(IKeyValueStore db, long sectionIndex)
+        private static Keccak GetRootHash(IKeyValueStore db, long sectionIndex)
         {
             byte[] hash = db[GetRootHashKey(sectionIndex)];
             return hash == null ? EmptyTreeHash : new Keccak(hash);
         }
 
-        private static Keccak getMaxRootHash(IKeyValueStore db)
+        private static Keccak GetMaxRootHash(IKeyValueStore db)
         {
-            long maxSection = getMaxSectionIndex(db);
-            return maxSection == 0L ? EmptyTreeHash : getRootHash(db, maxSection);
+            long maxSection = GetMaxSectionIndex(db);
+            return maxSection == 0L ? EmptyTreeHash : GetRootHash(db, maxSection);
         }
 
         public void Set(BlockHeader header)
