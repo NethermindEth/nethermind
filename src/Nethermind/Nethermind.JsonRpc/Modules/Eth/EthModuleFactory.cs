@@ -89,8 +89,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
             ReadOnlyBlockTree readOnlyTree = new ReadOnlyBlockTree(_blockTree);
             IReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
             ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, readOnlyTree, _specProvider, _logManager);
-            CancellationToken cancellationToken = _jsonRpcConfig.TracerTimeout
-                                                    ? new CancellationTokenSource(TimeSpan.FromSeconds(5)).Token
+            CancellationToken cancellationToken = _jsonRpcConfig.TracerTimeoutEnabled
+                                                    ? new CancellationTokenSource(TimeSpan.FromSeconds(_jsonRpcConfig.TracerTimeout)).Token
                                                     : CancellationToken.None;
             
             var blockchainBridge = new BlockchainBridge(
