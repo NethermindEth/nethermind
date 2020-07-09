@@ -152,14 +152,10 @@ namespace Nethermind.Synchronization.Reporting
         {
             UpdateMetrics();
 
-            if (!_logger.IsInfo)
-            {
-                return;
-            }
+            if (!_logger.IsInfo) return;
+            if (_logger.IsTrace) WriteSyncConfigReport();
 
             SyncMode currentSyncMode = _syncModeSelector.Current;
-            if (_logger.IsDebug) WriteSyncConfigReport();
-
             if (!_reportedFastBlocksSummary && FastBlocksHeaders.HasEnded && FastBlocksBodies.HasEnded && FastBlocksReceipts.HasEnded)
             {
                 _reportedFastBlocksSummary = true;
@@ -219,8 +215,6 @@ namespace Nethermind.Synchronization.Reporting
 
         private void WriteSyncConfigReport()
         {
-            if (!_logger.IsTrace) return;
-
             StringBuilder builder = new StringBuilder("Sync config -");
             if (_syncConfig.FastSync)
             {
