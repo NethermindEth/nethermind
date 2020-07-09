@@ -221,26 +221,21 @@ namespace Nethermind.Synchronization.Reporting
         {
             if (!_logger.IsTrace) return;
 
-            bool isFastSync = _syncConfig.FastSync;
-            bool isFastBlocks = _syncConfig.FastBlocks;
-            bool bodiesInFastBlocks = _syncConfig.DownloadBodiesInFastSync;
-            bool receiptsInFastBlocks = _syncConfig.DownloadReceiptsInFastSync;
-
             StringBuilder builder = new StringBuilder();
-            if (isFastSync && isFastBlocks)
+            if (_syncConfig.FastSync && _syncConfig.FastBlocks)
             {
                 builder.Append($"Sync config - fast sync with fast blocks from block {_syncConfig.PivotNumber}");
-                if (bodiesInFastBlocks)
+                if (_syncConfig.DownloadBodiesInFastSync)
                 {
                     builder.Append(" + bodies");
                 }
 
-                if (receiptsInFastBlocks)
+                if (_syncConfig.DownloadReceiptsInFastSync)
                 {
                     builder.Append(" + receipts");
                 }
             }
-            else if (isFastSync)
+            else if (_syncConfig.FastSync)
             {
                 builder.Append($"Sync config - fast sync without fast blocks");
             }
