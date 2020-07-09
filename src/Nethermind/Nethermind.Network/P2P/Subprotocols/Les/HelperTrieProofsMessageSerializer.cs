@@ -31,8 +31,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             Rlp[] proofNodesRlp = new Rlp[message.ProofNodes.Length];
             for (int i = 0; i < message.ProofNodes.Length; i++)
             {
-                proofNodesRlp[i] = new Rlp(message.ProofNodes[i]);
+                proofNodesRlp[i] = Rlp.Encode(new Keccak(message.ProofNodes[i]));
             }
+            
             Rlp proofsRlp = Rlp.Encode(proofNodesRlp);
 
             Rlp[] tempAuxRlp = new Rlp[message.AuxiliaryData.Length];
