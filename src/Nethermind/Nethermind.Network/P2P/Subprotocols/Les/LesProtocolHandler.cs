@@ -136,27 +136,27 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
                     break;
                 case LesMessageCode.GetBlockHeaders:
                     GetBlockHeadersMessage getBlockHeadersMessage = Deserialize<GetBlockHeadersMessage>(message.Content);
-                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Host, Name, getBlockHeadersMessage.ToString());
+                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, getBlockHeadersMessage.ToString());
                     Handle(getBlockHeadersMessage);
                     break;
                 case LesMessageCode.GetBlockBodies:
                     GetBlockBodiesMessage getBlockBodiesMessage = Deserialize<GetBlockBodiesMessage>(message.Content);
-                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Host, Name, getBlockBodiesMessage.ToString());
+                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, getBlockBodiesMessage.ToString());
                     Handle(getBlockBodiesMessage);
                     break;
                 case LesMessageCode.GetReceipts:
                     GetReceiptsMessage getReceiptsMessage = Deserialize<GetReceiptsMessage>(message.Content);
-                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Host, Name, getReceiptsMessage.ToString());
+                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, getReceiptsMessage.ToString());
                     Handle(getReceiptsMessage);
                     break;
                 case LesMessageCode.GetContractCodes:
                     GetContractCodesMessage getContractCodesMessage = Deserialize<GetContractCodesMessage>(message.Content);
-                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Host, Name, getContractCodesMessage.ToString());
+                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, getContractCodesMessage.ToString());
                     Handle(getContractCodesMessage);
                     break;
                 case LesMessageCode.GetHelperTrieProofs:
                     GetHelperTrieProofsMessage getHelperTrieProofsMessage = Deserialize<GetHelperTrieProofsMessage>(message.Content);
-                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Host, Name, getHelperTrieProofsMessage.ToString());
+                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, getHelperTrieProofsMessage.ToString());
                     Handle(getHelperTrieProofsMessage);
                     break;
             }
