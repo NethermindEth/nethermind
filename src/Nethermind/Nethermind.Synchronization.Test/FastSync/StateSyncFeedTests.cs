@@ -218,12 +218,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 return Task.FromResult(BlockTree.Head?.Header);
             }
 
-            public void SendNewBlock(Block block)
-            {
-                throw new NotImplementedException();
-            }
-
-            public void HintNewBlock(Keccak blockHash, long number)
+            public void NotifyOfNewBlock(Block block, SendBlockPriority priorty)
             {
                 throw new NotImplementedException();
             }

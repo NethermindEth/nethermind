@@ -23,7 +23,8 @@ namespace Nethermind.Stats.Model
         public NodeStatsEventType EventType { get; set; }
         public DateTime EventDate { get; set; }
         public P2PNodeDetails P2PNodeDetails { get; set; }
-        public EthNodeDetails EthNodeDetails { get; set; }
+        public SyncPeerNodeDetails EthNodeDetails { get; set; }
+        public SyncPeerNodeDetails LesNodeDetails { get; set; }
         public DisconnectDetails DisconnectDetails { get; set; }
         public ConnectionDirection? ConnectionDirection { get; set; }
     }

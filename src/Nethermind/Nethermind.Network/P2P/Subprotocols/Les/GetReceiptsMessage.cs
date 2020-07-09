@@ -14,22 +14,23 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Numerics;
-using Nethermind.Core.Crypto;
-
-namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
+namespace Nethermind.Network.P2P.Subprotocols.Les
 {
-    public class EthProtocolInitializedEventArgs : ProtocolInitializedEventArgs
+    public class GetReceiptsMessage : P2PMessage
     {
-        public string Protocol { get; set; }
-        public byte ProtocolVersion { get; set; }
-        public long ChainId { get; set; }
-        public BigInteger TotalDifficulty { get; set; }
-        public Keccak BestHash { get; set; }
-        public Keccak GenesisHash { get; set; }
+        public override int PacketType { get; } = LesMessageCode.GetReceipts;
+        public override string Protocol { get; } = P2P.Protocol.Les;
+        public long RequestId;
+        public Eth.V63.GetReceiptsMessage EthMessage;
 
-        public EthProtocolInitializedEventArgs(Eth62ProtocolHandler protocolHandler) : base(protocolHandler)
+        public GetReceiptsMessage()
         {
+        }
+
+        public GetReceiptsMessage(Eth.V63.GetReceiptsMessage ethMessage, long requestId)
+        {
+            EthMessage = ethMessage;
+            RequestId = requestId;
         }
     }
 }

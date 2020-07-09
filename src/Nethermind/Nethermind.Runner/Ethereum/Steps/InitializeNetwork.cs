@@ -43,6 +43,7 @@ using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Network.StaticNodes;
 using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Synchronization;
+using Nethermind.Synchronization.LesSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 
@@ -65,6 +66,7 @@ namespace Nethermind.Runner.Ethereum.Steps
     {
         private const string DiscoveryNodesDbPath = "discoveryNodes";
         private const string PeersDbPath = "peers";
+        private const string ChtDbPath = "canonicalHashTrie";
 
         private readonly EthereumRunnerContext _ctx;
         private readonly ILogger _logger;
@@ -102,6 +104,8 @@ namespace Nethermind.Runner.Ethereum.Steps
             ThisNodeInfo.AddInfo("Mem est netty:", $"{NettyMemoryEstimator.Estimate((uint)Environment.ProcessorCount, _networkConfig.NettyArenaOrder) / 1000 / 1000}MB".PadLeft(8));
             ThisNodeInfo.AddInfo("Mem est peers:", $"{_networkConfig.ActivePeersMaxCount}MB".PadLeft(8));
             Environment.SetEnvironmentVariable("io.netty.allocator.maxOrder", _networkConfig.NettyArenaOrder.ToString());
+
+            var cht = new CanonicalHashTrie(_ctx.DbProvider.ChtDb);
 
             int maxPeersCount = _networkConfig.ActivePeersMaxCount;
             _ctx.SyncPeerPool = new SyncPeerPool(_ctx.BlockTree, _ctx.NodeStatsManager, maxPeersCount, _ctx.LogManager);
@@ -143,7 +147,11 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _ctx.SyncPeerPool,
                 _ctx.SyncModeSelector,
                 _ctx.Config<ISyncConfig>(),
-                _ctx.LogManager);
+                _ctx.LogManager,
+                cht);
+
+            _ = _ctx.SyncServer.BuildCHT();
+
             _ctx.DisposeStack.Push(_ctx.SyncServer);
 
             InitDiscovery();
