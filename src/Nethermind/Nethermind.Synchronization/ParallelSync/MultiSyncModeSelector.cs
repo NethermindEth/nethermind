@@ -179,7 +179,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 if (newModes != Current)
                 {
                     string message = $"Changing state to {newModes}";
-                    if (_logger.IsTrace) _logger.Trace(message);
+                    _logger.Trace(message);
                 }
             }
 
