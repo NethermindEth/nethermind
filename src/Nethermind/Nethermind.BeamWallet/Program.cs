@@ -1,5 +1,7 @@
-﻿using System.Net.Http;
+﻿using System;
+using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Text;
 using System.Threading.Tasks;
 using Nethermind.BeamWallet.Clients;
 using Nethermind.BeamWallet.Modules.Addresses;
@@ -24,7 +26,7 @@ namespace Nethermind.BeamWallet
                 var urls = new[] {data.nodeAddress};
                 var httpClient = new HttpClient();
 
-                AddHeader(httpClient, data.nodeAddress);
+                AddAuthorizationHeader(httpClient, data.nodeAddress);
                 
                 var jsonRpcClientProxy = new JsonRpcClientProxy(new DefaultHttpClient(httpClient,
                     new EthereumJsonSerializer(), LimboLogs.Instance, int.MaxValue), urls, LimboLogs.Instance);
@@ -49,7 +51,7 @@ namespace Nethermind.BeamWallet
             Application.Run();
         }
 
-        private static void AddHeader(HttpClient httpClient, string url)
+        private static void AddAuthorizationHeader(HttpClient httpClient, string url)
         {
             if (!url.Contains("@"))
             {
@@ -64,9 +66,7 @@ namespace Nethermind.BeamWallet
             httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", encodedData);
         }
         
-        private static string Base64Encode(string plainText) {
-            var plainTextBytes = System.Text.Encoding.UTF8.GetBytes(plainText);
-            return System.Convert.ToBase64String(plainTextBytes);
-        }
+        private static string Base64Encode(string plainText)
+            => Convert.ToBase64String(Encoding.UTF8.GetBytes(plainText));
     }
 }

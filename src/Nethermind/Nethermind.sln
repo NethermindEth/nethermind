@@ -217,8 +217,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Native", "Nether
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.BeamWallet", "Nethermind.BeamWallet\Nethermind.BeamWallet.csproj", "{ED66305A-00AC-467B-BC53-A591C9E54284}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.BeamWallet.Tests", "Nethermind.BeamWallet.Tests\Nethermind.BeamWallet.Tests.csproj", "{8C78E818-BF43-46DC-A519-D19688E7EF4B}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -589,10 +587,6 @@ Global
 		{ED66305A-00AC-467B-BC53-A591C9E54284}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{ED66305A-00AC-467B-BC53-A591C9E54284}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{ED66305A-00AC-467B-BC53-A591C9E54284}.Release|Any CPU.Build.0 = Release|Any CPU
-		{8C78E818-BF43-46DC-A519-D19688E7EF4B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{8C78E818-BF43-46DC-A519-D19688E7EF4B}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{8C78E818-BF43-46DC-A519-D19688E7EF4B}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{8C78E818-BF43-46DC-A519-D19688E7EF4B}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -653,7 +647,6 @@ Global
 		{79330582-F005-494E-AE8D-D8C92A37CD72} = {94CF4207-DA03-4D26-AAA2-284475A6DF1E}
 		{20ACBDCF-F208-4752-A9FB-11AEAC977F96} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
 		{ED66305A-00AC-467B-BC53-A591C9E54284} = {E627BFEF-ABD3-4B8F-A9AC-204251AE440C}
-		{8C78E818-BF43-46DC-A519-D19688E7EF4B} = {E627BFEF-ABD3-4B8F-A9AC-204251AE440C}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {092CA5E3-6180-4ED7-A3CB-9B57FAC2AA85}

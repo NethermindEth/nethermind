@@ -105,10 +105,6 @@ namespace Nethermind.BeamWallet.Modules.Data
             _window.Remove(_syncingInfoLabel);
             _window.Add(balanceValueLabel);
             
-            
-            
-            
-            
             var quitButton = new Button(1, 17, "Quit");
             var transferButton = new Button(12, 17, "Transfer");
             

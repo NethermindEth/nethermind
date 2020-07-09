@@ -42,6 +42,7 @@ namespace Nethermind.JsonRpc.Client
             _client.Timeout = TimeSpan.FromMinutes(5); // support long block traces better, default 100s might be too small
             _client.DefaultRequestHeaders.Accept.Clear();
             _client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            AddAuthorizationHeader();
         }
 
         public async Task<string> Post(string method, params object[] parameters)
@@ -100,5 +101,22 @@ namespace Nethermind.JsonRpc.Client
 
             return _jsonSerializer.Serialize(request);
         }
+
+        private void AddAuthorizationHeader()
+        {
+            var url = _client.BaseAddress.ToString();
+            if (!url.Contains("@"))
+            {
+                return;
+            }
+
+            var urlData = url.Split("://");
+            var data = urlData[1].Split("@")[0];
+            var encodedData = Base64Encode(data);
+            _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", encodedData);
+        }
+
+        private static string Base64Encode(string plainText)
+            => Convert.ToBase64String(Encoding.UTF8.GetBytes(plainText));
     }
 }
