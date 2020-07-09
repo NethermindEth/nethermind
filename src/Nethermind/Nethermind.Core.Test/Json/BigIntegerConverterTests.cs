@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.IO;
 using System.Numerics;
 using Nethermind.Serialization.Json;
@@ -44,6 +45,16 @@ namespace Nethermind.Core.Test.Json
             reader.ReadAsString();
             BigInteger result = converter.ReadJson(reader, typeof(BigInteger), BigInteger.Zero, false, JsonSerializer.CreateDefault());
             Assert.AreEqual(BigInteger.Parse("10485760"), result);
+        }
+        
+        [TestCase((NumberConversion)99)]
+        public void Unknown_not_supported(NumberConversion notSupportedConversion)
+        {
+            BigIntegerConverter converter = new BigIntegerConverter(notSupportedConversion);
+            Assert.Throws<NotSupportedException>(
+                () => TestConverter(int.MaxValue, (a, b) => a.Equals(b), converter));
+            Assert.Throws<NotSupportedException>(
+                () => TestConverter(1L, (a, b) => a.Equals(b), converter));
         }
         
         [Test]
