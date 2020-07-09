@@ -249,7 +249,7 @@ namespace Nethermind.Synchronization.Reporting
                 builder.Append($"Sync config - full archive sync");
             }
 
-            if (_logger.IsTrace) _logger.Trace(builder.ToString());
+            _logger.Trace(builder.ToString());
         }
 
         private void WriteStateNodesReport()
