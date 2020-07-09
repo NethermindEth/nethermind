@@ -74,7 +74,15 @@ namespace Nethermind.Synchronization.FastBlocks
         /// </summary>
         private long ReceiptsInQueue => _dependencies.Sum(d => d.Value.Count);
 
-        public FastReceiptsSyncFeed(ISyncModeSelector syncModeSelector, ISpecProvider specProvider, IBlockTree blockTree, IReceiptStorage receiptStorage, ISyncPeerPool syncPeerPool, ISyncConfig syncConfig, ISyncReport syncReport, ILogManager logManager)
+        public FastReceiptsSyncFeed(
+            ISyncModeSelector syncModeSelector,
+            ISpecProvider specProvider,
+            IBlockTree blockTree,
+            IReceiptStorage receiptStorage,
+            ISyncPeerPool syncPeerPool,
+            ISyncConfig syncConfig,
+            ISyncReport syncReport,
+            ILogManager logManager)
             : base(syncModeSelector, logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
