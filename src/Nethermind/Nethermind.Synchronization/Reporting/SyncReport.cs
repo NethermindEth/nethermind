@@ -135,22 +135,22 @@ namespace Nethermind.Synchronization.Reporting
                 WriteFastBlocksReport(currentSyncMode);
             }
 
-            if ((currentSyncMode | SyncMode.Full) != SyncMode.Full)
+            if (!currentSyncMode.HasFlag(SyncMode.Full))
             {
                 _logger.Info($"Peers | with known best block: {_syncPeerPool.InitializedPeersCount} | all: {_syncPeerPool.PeerCount}");
             }
 
-            if (currentSyncMode == SyncMode.None && _syncPeerPool.InitializedPeersCount == 0)
+            if (currentSyncMode.Equals(SyncMode.None) && _syncPeerPool.InitializedPeersCount == 0)
             {
                 WriteNotStartedReport();
             }
 
-            if (currentSyncMode == SyncMode.DbLoad)
+            if (currentSyncMode.HasFlag(SyncMode.DbLoad))
             {
                 WriteDbSyncReport();
             }
 
-            if ((currentSyncMode & SyncMode.StateNodes) == SyncMode.StateNodes)
+            if (currentSyncMode.HasFlag(SyncMode.StateNodes))
             {
                 if (_reportId % NoProgressStateSyncReportFrequency == 0)
                 {
@@ -158,22 +158,17 @@ namespace Nethermind.Synchronization.Reporting
                 }
             }
 
-            if ((currentSyncMode & SyncMode.FastBlocks) == SyncMode.FastBlocks)
+            if (currentSyncMode.HasFlag(SyncMode.FastBlocks))
             {
                 WriteFastBlocksReport(currentSyncMode);
             }
 
-            if ((currentSyncMode & SyncMode.Full) == SyncMode.Full)
+            if (currentSyncMode.HasFlag(SyncMode.Full | SyncMode.FastSync))
             {
                 WriteFullSyncReport();
             }
 
-            if ((currentSyncMode & SyncMode.FastSync) == SyncMode.FastSync)
-            {
-                WriteFullSyncReport();
-            }
-
-            if ((currentSyncMode & SyncMode.Beam) == SyncMode.Beam)
+            if (currentSyncMode.HasFlag(SyncMode.Beam))
             {
                 _logger.Info("Beam Sync is ON - you can query the latest state");
             }
