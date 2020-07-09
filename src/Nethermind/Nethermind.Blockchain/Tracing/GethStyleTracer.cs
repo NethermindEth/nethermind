@@ -16,6 +16,7 @@
 
 using System;
 using System.Linq;
+using System.Threading;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
@@ -31,9 +32,11 @@ namespace Nethermind.Blockchain.Tracing
         private readonly IBlockTree _blockTree;
         private readonly IBlockchainProcessor _processor;
         private readonly IReceiptStorage _receiptStorage;
+        private readonly CancellationToken _cancellationToken; 
 
-        public GethStyleTracer(IBlockchainProcessor processor, IReceiptStorage receiptStorage, IBlockTree blockTree)
+        public GethStyleTracer(IBlockchainProcessor processor, IReceiptStorage receiptStorage, IBlockTree blockTree, CancellationToken cancellationToken = default(CancellationToken))
         {
+            _cancellationToken = cancellationToken;
             _processor = processor ?? throw new ArgumentNullException(nameof(processor));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -86,7 +89,7 @@ namespace Nethermind.Blockchain.Tracing
             Block block = _blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.RequireCanonical);
             if (block == null) throw new InvalidOperationException("Only historical blocks");
             block.Body = new BlockBody(new[] {tx}, new BlockHeader[] { });
-            GethLikeBlockTracer blockTracer = new GethLikeBlockTracer(tx.Hash, options);
+            GethLikeBlockTracer blockTracer = new GethLikeBlockTracer(tx.Hash, options, _cancellationToken);
             _processor.Process(block, ProcessingOptions.Trace, blockTracer);
             return blockTracer.BuildResult().SingleOrDefault();
         }
@@ -110,7 +113,7 @@ namespace Nethermind.Blockchain.Tracing
 
         private GethLikeTxTrace Trace(Block block, Keccak txHash, GethTraceOptions options)
         {
-            GethLikeBlockTracer listener = new GethLikeBlockTracer(txHash, options);
+            GethLikeBlockTracer listener = new GethLikeBlockTracer(txHash, options, _cancellationToken);
             _processor.Process(block, ProcessingOptions.Trace, listener);
             return listener.BuildResult().SingleOrDefault();
         }
@@ -125,7 +128,7 @@ namespace Nethermind.Blockchain.Tracing
                 if (!_blockTree.IsMainChain(parent.Hash)) throw new InvalidOperationException("Cannot trace orphaned blocks");
             }
 
-            GethLikeBlockTracer listener = txHash == null ? new GethLikeBlockTracer(options) : new GethLikeBlockTracer(txHash, options);
+            GethLikeBlockTracer listener = txHash == null ? new GethLikeBlockTracer(options, _cancellationToken) : new GethLikeBlockTracer(txHash, options, _cancellationToken);
             _processor.Process(block, ProcessingOptions.Trace, listener);
             return listener.BuildResult().ToArray();
         }
