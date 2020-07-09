@@ -224,7 +224,7 @@ namespace Nethermind.Synchronization.Reporting
             bool isFastSync = _syncConfig.FastSync;
             bool isFastBlocks = _syncConfig.FastBlocks;
             bool bodiesInFastBlocks = _syncConfig.DownloadBodiesInFastSync;
-            bool receiptsInFastBlocks = _syncConfig.DownloadBodiesInFastSync;
+            bool receiptsInFastBlocks = _syncConfig.DownloadReceiptsInFastSync;
 
             StringBuilder builder = new StringBuilder();
             if (isFastSync && isFastBlocks)
