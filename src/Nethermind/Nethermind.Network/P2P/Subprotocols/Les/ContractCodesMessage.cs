@@ -14,17 +14,25 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Numerics;
-using Nethermind.Core.Crypto;
-
-namespace Nethermind.Stats.Model
+namespace Nethermind.Network.P2P.Subprotocols.Les
 {
-    public class EthNodeDetails
+    public class ContractCodesMessage: P2PMessage
     {
-        public byte ProtocolVersion { get; set; }
-        public long ChainId { get; set; }
-        public BigInteger TotalDifficulty { get; set; }
-        public Keccak BestHash { get; set; }
-        public Keccak GenesisHash { get; set; }
+        public override int PacketType { get; } = LesMessageCode.ContractCodes;
+        public override string Protocol { get; } = P2P.Protocol.Les;
+        public long RequestId;
+        public int BufferValue;
+        public byte[][] Codes;
+
+        public ContractCodesMessage()
+        { 
+        }
+
+        public ContractCodesMessage(byte[][] codes, long requestId, int bufferValue)
+        {
+            Codes = codes;
+            RequestId = requestId;
+            BufferValue = bufferValue;
+        }
     }
 }

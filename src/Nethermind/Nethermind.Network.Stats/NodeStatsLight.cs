@@ -66,9 +66,9 @@ namespace Nethermind.Stats
 
         public P2PNodeDetails P2PNodeDetails { get; private set; }
 
-        public EthNodeDetails EthNodeDetails { get; private set; }
+        public SyncPeerNodeDetails EthNodeDetails { get; private set; }
 
-        public LesNodeDetails LesNodeDetails { get; private set; }
+        public SyncPeerNodeDetails LesNodeDetails { get; private set; }
 
         public CompatibilityValidationType? FailedCompatibilityValidation { get; set; }
 
@@ -118,12 +118,12 @@ namespace Nethermind.Stats
             Increment(NodeStatsEventType.P2PInitialized);
         }
 
-        public void AddNodeStatsEth62InitializedEvent(EthNodeDetails nodeDetails)
+        public void AddNodeStatsEth62InitializedEvent(SyncPeerNodeDetails nodeDetails)
         {
             EthNodeDetails = nodeDetails;
             Increment(NodeStatsEventType.Eth62Initialized);
         }
-        public void AddNodeStatsLesInitializedEvent(LesNodeDetails nodeDetails)
+        public void AddNodeStatsLesInitializedEvent(SyncPeerNodeDetails nodeDetails)
         {
             LesNodeDetails = nodeDetails;
             Increment(NodeStatsEventType.LesInitialized);

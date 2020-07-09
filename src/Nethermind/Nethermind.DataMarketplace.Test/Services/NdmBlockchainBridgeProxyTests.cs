@@ -86,7 +86,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         public async Task find_block_by_hash_should_invoke_proxy_eth_getBlockByHash()
         {
             var blockModel = GetBlockModel();
-            _proxy.eth_getBlockByHash(blockModel.Hash).Returns(RpcResult<BlockModel>.Ok(blockModel));
+            _proxy.eth_getBlockByHash(blockModel.Hash).Returns(RpcResult<BlockModel<Keccak>>.Ok(blockModel));
             var block = await _ndmBridge.FindBlockAsync(blockModel.Hash);
             await _proxy.Received().eth_getBlockByHash(blockModel.Hash);
             block.Should().NotBeNull();
@@ -98,7 +98,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         {
             var blockModel = GetBlockModel();
             _proxy.eth_getBlockByNumber(Arg.Is<BlockParameterModel>(x => x.Number == blockModel.Number))
-                .Returns(RpcResult<BlockModel>.Ok(blockModel));
+                .Returns(RpcResult<BlockModel<Keccak>>.Ok(blockModel));
             var block = await _ndmBridge.FindBlockAsync((long) blockModel.Number);
             await _proxy.Received()
                 .eth_getBlockByNumber(Arg.Is<BlockParameterModel>(x => x.Number == blockModel.Number));
@@ -111,7 +111,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         {
             var blockModel = GetBlockModel();
             _proxy.eth_getBlockByNumber(Arg.Is<BlockParameterModel>(x => x.Type == BlockParameterModel.Latest.Type))
-                .Returns(RpcResult<BlockModel>.Ok(blockModel));
+                .Returns(RpcResult<BlockModel<Keccak>>.Ok(blockModel));
             var block = await _ndmBridge.GetLatestBlockAsync();
             await _proxy.Received()
                 .eth_getBlockByNumber(Arg.Is<BlockParameterModel>(x => x.Type == BlockParameterModel.Latest.Type));
@@ -275,7 +275,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             result.Should().BeSameAs(hash);
         }
 
-        private static void ValidateBlock(Block block, BlockModel model)
+        private static void ValidateBlock(Block block, BlockModel<Keccak> model)
         {
             block.Header.ParentHash.Should().Be(model.ParentHash);
             block.Header.OmmersHash.Should().Be(model.Sha3Uncles);
@@ -295,8 +295,8 @@ namespace Nethermind.DataMarketplace.Test.Services
             block.TxRoot.Should().Be(model.TransactionsRoot);
         }
 
-        private BlockModel GetBlockModel()
-            => new BlockModel
+        private BlockModel<Keccak> GetBlockModel()
+            => new BlockModel<Keccak>
             {
                 Difficulty = 1,
                 ExtraData = new byte[] {0, 1, 2},
