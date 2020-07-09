@@ -14,33 +14,21 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Linq;
+using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Json;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Json
 {
     [TestFixture]
-    public class BloomConverterTests : ConverterTestBase<Bloom>
+    public class ByteArrayConverterTests : ConverterTestBase<byte[]>
     {
-        [Test]
-        public void Null_values()
+        [TestCase(null)]
+        [TestCase(new byte[0])]
+        [TestCase(new byte[] {1})]
+        public void Test_roundtrip(byte[] bytes)
         {
-            TestConverter(null, (bloom, bloom1) => bloom == bloom1, new BloomConverter());
-        }
-        
-        [Test]
-        public void Empty_bloom()
-        {
-            TestConverter(Bloom.Empty, (bloom, bloom1) => bloom.Equals(bloom1), new BloomConverter());
-        }
-        
-        [Test]
-        public void Full_bloom()
-        {
-            TestConverter(
-                new Bloom(Enumerable.Range(0, 255).Select(i => (byte)i).ToArray()),
-                (bloom, bloom1) => bloom.Equals(bloom1), new BloomConverter());
+            TestConverter(bytes, (before, after) => Bytes.AreEqual(before, after), new ByteArrayConverter());
         }
     }
 }

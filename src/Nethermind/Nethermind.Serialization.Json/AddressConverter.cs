@@ -25,14 +25,7 @@ namespace Nethermind.Serialization.Json
     {
         public override void WriteJson(JsonWriter writer, Address value, JsonSerializer serializer)
         {
-            if (value == null)
-            {
-                writer.WriteNull();
-            }
-            else
-            {
-                writer.WriteValue(Bytes.ByteArrayToHexViaLookup32Safe(value.Bytes, true));
-            }
+            writer.WriteValue(Bytes.ByteArrayToHexViaLookup32Safe(value.Bytes, true));
         }
 
         public override Address ReadJson(JsonReader reader, Type objectType, Address existingValue, bool hasExistingValue, JsonSerializer serializer)

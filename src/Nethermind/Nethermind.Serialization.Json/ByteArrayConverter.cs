@@ -24,14 +24,7 @@ namespace Nethermind.Serialization.Json
     {
         public override void WriteJson(JsonWriter writer, byte[] value, JsonSerializer serializer)
         {
-            if (value == null)
-            {
-                writer.WriteNull();
-            }
-            else
-            {
-                writer.WriteValue(Bytes.ByteArrayToHexViaLookup32Safe(value, true));
-            }
+            writer.WriteValue(Bytes.ByteArrayToHexViaLookup32Safe(value, true));
         }
 
         public override byte[] ReadJson(JsonReader reader, Type objectType, byte[] existingValue, bool hasExistingValue, Newtonsoft.Json.JsonSerializer serializer)

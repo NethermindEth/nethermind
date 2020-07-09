@@ -21,10 +21,11 @@ using Nethermind.Core.Attributes;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Evm;
 
 namespace Nethermind.Blockchain.Rewards
 {
-    public class RewardCalculator : IRewardCalculator
+    public class RewardCalculator : IRewardCalculator, IRewardCalculatorSource
     {
         private readonly ISpecProvider _specProvider;
 
@@ -67,6 +68,9 @@ namespace Nethermind.Blockchain.Rewards
             return blockReward - ((uint) (blockHeader.Number - ommer.Number) * blockReward >> 3);
         }
 
-        public static IRewardCalculatorSource GetSource(ISpecProvider specProvider) => new InstanceRewardCalculatorSource(new RewardCalculator(specProvider));
+        public IRewardCalculator Get(ITransactionProcessor processor)
+        {
+            return this;
+        }
     }
 }
