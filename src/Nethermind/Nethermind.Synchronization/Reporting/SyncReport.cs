@@ -221,27 +221,19 @@ namespace Nethermind.Synchronization.Reporting
         {
             if (!_logger.IsTrace) return;
 
-            StringBuilder builder = new StringBuilder();
-            if (_syncConfig.FastSync && _syncConfig.FastBlocks)
+            StringBuilder builder = new StringBuilder("Sync config -");
+            if (_syncConfig.FastSync)
             {
-                builder.Append($"Sync config - fast sync with fast blocks from block {_syncConfig.PivotNumber}");
-                if (_syncConfig.DownloadBodiesInFastSync)
-                {
-                    builder.Append(" + bodies");
-                }
-
-                if (_syncConfig.DownloadReceiptsInFastSync)
-                {
-                    builder.Append(" + receipts");
-                }
-            }
-            else if (_syncConfig.FastSync)
-            {
-                builder.Append($"Sync config - fast sync without fast blocks");
+                builder.Append(" fast sync");
+                _ = _syncConfig.FastBlocks
+                    ? builder.Append($" with fast blocks from block {_syncConfig.PivotNumber}")
+                        .Append(_syncConfig.DownloadBodiesInFastSync ? " + bodies" : string.Empty)
+                        .Append(_syncConfig.DownloadReceiptsInFastSync ? " + receipts" : string.Empty)
+                    : builder.Append(" without fast blocks");
             }
             else
             {
-                builder.Append($"Sync config - full archive sync");
+                _ = builder.Append(" full archive sync");
             }
 
             _logger.Trace(builder.ToString());
