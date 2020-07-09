@@ -15,6 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -39,7 +41,7 @@ namespace Nethermind.Blockchain.Tracing
 
         public Keccak Trace(Block block, IBlockTracer blockTracer)
         {
-            /* We force process since we wan to process a block that has already been processed in the past and normally it would be ignored.
+            /* We force process since we want to process a block that has already been processed in the past and normally it would be ignored.
                We also want to make it read only so the state is not modified persistently in any way. */
 
             blockTracer.StartNewBlockTrace(block);

@@ -276,8 +276,36 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
                     case StatusMessage.KeyNames.AnnounceType:
                         statusMessage.AnnounceType = rlpStream.DecodeByte();
                         break;
+                    case StatusMessage.KeyNames.ServeHeaders:
+                        statusMessage.ServeHeaders = true;
+                        rlpStream.SkipItem();
+                        break;
+                    case StatusMessage.KeyNames.ServeChainSince:
+                        statusMessage.ServeChainSince = rlpStream.DecodeLong();
+                        break;
+                    case StatusMessage.KeyNames.ServeRecentChain:
+                        statusMessage.ServeRecentChain = rlpStream.DecodeLong();
+                        break;
+                    case StatusMessage.KeyNames.ServeStateSince:
+                        statusMessage.ServeStateSince = rlpStream.DecodeLong();
+                        break;
+                    case StatusMessage.KeyNames.ServeRecentState:
+                        statusMessage.ServeRecentState = rlpStream.DecodeLong();
+                        break;
+                    case StatusMessage.KeyNames.TxRelay:
+                        statusMessage.TxRelay = true;
+                        rlpStream.SkipItem();
+                        break;
+                    case StatusMessage.KeyNames.BufferLimit:
+                        statusMessage.BufferLimit = rlpStream.DecodeInt();
+                        break;
+                    case StatusMessage.KeyNames.MaximumRechargeRate:
+                        statusMessage.MaximumRechargeRate = rlpStream.DecodeInt();
+                        break;
+                    case StatusMessage.KeyNames.MaximumRequestCosts:
+                        // todo
                     default:
-                        // Ignore unknown keys - forwards compatibility
+                        // Ignore unknown keys
                         rlpStream.Position = readLength;
                         break;
                 }

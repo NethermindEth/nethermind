@@ -82,21 +82,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
         public override string Name => "eth63";
 
-        private void Handle(GetReceiptsMessage msg)
-        {
-            Metrics.Eth63GetReceiptsReceived++;
-            if (msg.Hashes.Count > 512)
-            {
-                throw new EthSyncException("Incoming receipts request for more than 512 blocks");
-            }
-
-            Stopwatch stopwatch = Stopwatch.StartNew();
-            TxReceipt[][] txReceipts = SyncServer.GetReceipts(msg.Hashes);
-            Send(new ReceiptsMessage(txReceipts));
-            stopwatch.Stop();
-            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} Receipts to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
-        }
-
         private void Handle(ReceiptsMessage msg, long size)
         {
             Metrics.Eth63ReceiptsReceived++;
@@ -142,7 +127,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             byte[][] nodeData = await SendRequest(msg, token);
             return nodeData;
         }
-
         public override async Task<TxReceipt[][]> GetReceipts(IList<Keccak> blockHashes, CancellationToken token)
         {
             if (blockHashes.Count == 0)

@@ -49,6 +49,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             ISpecProvider specProvider = MainnetSpecProvider.Instance;
             ITxPool txPool = NullTxPool.Instance;
             MemDbProvider dbProvider = new MemDbProvider();
+            IJsonRpcConfig jsonRpcConfig = new JsonRpcConfig();
 
             BlockTree blockTree = new BlockTree(
                 dbProvider.BlocksDb,
@@ -67,6 +68,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                     dbProvider, 
                     txPool, 
                     NullWallet.Instance, 
+                    jsonRpcConfig,
                     blockTree, 
                     new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance), 
                     NullBlockProcessor.Instance, 

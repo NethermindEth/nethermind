@@ -89,5 +89,10 @@ namespace Nethermind.JsonRpc
         /// 
         /// </summary>
         public const int ExecutionError = -32015;
+         
+        /// <summary>
+        /// Request exceedes defined tracer timeout limit
+        /// </sumary>
+        public const int TracerTimeout = -32016;
     }
 }

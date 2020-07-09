@@ -650,6 +650,39 @@ namespace Nethermind.Blockchain
             return result;
         }
 
+        public BlockHeader FindLowestCommonAncestor(BlockHeader firstDescendant, BlockHeader secondDescendant, long maxSearchDepth)
+        {
+            if (firstDescendant.Number > secondDescendant.Number)
+            {
+                firstDescendant = GetAncestorAtNumber(firstDescendant, secondDescendant.Number);
+            }
+            else if (secondDescendant.Number > firstDescendant.Number)
+            {
+                secondDescendant = GetAncestorAtNumber(secondDescendant, firstDescendant.Number);
+            }
+
+            long currentSearchDepth = 0;
+            while (firstDescendant.Hash != secondDescendant.Hash)
+            {
+                if (currentSearchDepth >= maxSearchDepth) return null;
+                firstDescendant = this.FindParentHeader(firstDescendant, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                secondDescendant = this.FindParentHeader(secondDescendant, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            }
+
+            return firstDescendant;
+        }
+
+        private BlockHeader GetAncestorAtNumber(BlockHeader header, long number)
+        {
+            if (header.Number >= number) return header;
+
+            while (header.Number < number)
+            {
+                header = this.FindParentHeader(header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            }
+            return header;
+        }
+
         private Keccak GetBlockHashOnMainOrBestDifficultyHash(long blockNumber)
         {
             if (blockNumber < 0)

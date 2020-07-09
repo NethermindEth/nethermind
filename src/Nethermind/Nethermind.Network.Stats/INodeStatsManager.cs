@@ -27,8 +27,7 @@ namespace Nethermind.Stats
         CompatibilityValidationType? FindCompatibilityValidationResult(Node node);
         long GetCurrentReputation(Node node);
         void ReportP2PInitializationEvent(Node node, P2PNodeDetails p2PNodeDetails);
-        void ReportEthInitializeEvent(Node node, EthNodeDetails ethNodeDetails);
-        void ReportLesInitializeEvent(Node node, LesNodeDetails lesNodeDetails);
+        void ReportSyncPeerInitializeEvent(string Protocol, Node node, SyncPeerNodeDetails ethNodeDetails);
         void ReportFailedValidation(Node node, CompatibilityValidationType p2PVersion);
         void ReportDisconnect(Node node, DisconnectType disconnectType, DisconnectReason disconnectReason);
         long GetNewPersistedReputation(Node node);
