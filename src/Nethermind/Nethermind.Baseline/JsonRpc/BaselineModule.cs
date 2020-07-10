@@ -96,7 +96,7 @@ namespace Nethermind.Baseline.JsonRpc
             else
             {
                 RlpStream rlpStream = new RlpStream(serializedMetadata);
-                Address?[] addresses = rlpStream.DecodeArray(itemContext => itemContext.DecodeAddress();
+                Address?[] addresses = rlpStream.DecodeArray(itemContext => itemContext.DecodeAddress());
                 metadata = new BaselineMetadata(
                     addresses.Where(a => a != null).Select(a => a!).ToArray());
             }
