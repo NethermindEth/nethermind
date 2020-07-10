@@ -19,8 +19,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
-using Nethermind.Consensus;
-using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
@@ -28,10 +26,18 @@ using Nethermind.Dirichlet.Numerics;
 using NSubstitute;
 using NUnit.Framework;
 
-namespace Nethermind.AuRa.Test.Transactions
+namespace Nethermind.Blockchain.Test.Consensus
 {
     public class CompositeTxSourceTests
     {
+        [Test]
+        public void To_string_does_not_throw()
+        {
+            ITxSource txSource = Substitute.For<ITxSource>();
+            CompositeTxSource selector = new CompositeTxSource(txSource);
+            _ = selector.ToString();
+        }   
+        
         [Test]
         public void selectTransactions_injects_transactions_from_ImmediateTransactionSources_in_front_of_block_transactions()
         {

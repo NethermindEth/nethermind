@@ -29,6 +29,8 @@ namespace Nethermind.Consensus
 
         public static NullSealEngine Instance { get; } = new NullSealEngine();
 
+        public Address Address => Address.Zero;
+        
         public Task<Block> SealBlock(Block block, CancellationToken cancellationToken)
         {
             return Task.FromResult(block);
@@ -38,8 +40,6 @@ namespace Nethermind.Consensus
         {
             return true;
         }
-
-        public Address Address => Address.Zero;
 
         public bool ValidateParams(BlockHeader parent, BlockHeader header)
         {

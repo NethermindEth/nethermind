@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,14 +15,27 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Threading;
+using FluentAssertions;
+using Nethermind.Consensus;
 using Nethermind.Core;
+using NUnit.Framework;
 
-namespace Nethermind.Consensus.AuRa.Transactions
+namespace Nethermind.Blockchain.Test.Consensus
 {
-    public class NullTxPermissionFilter : ITxPermissionFilter
+    [TestFixture]
+    public class NullEngineTests
     {
-        public bool IsAllowed(Transaction tx, BlockHeader parentHeader) => true;
-        
-        public static readonly NullTxPermissionFilter Instance = new NullTxPermissionFilter(); 
+        [Test]
+        public void Test()
+        {
+            NullSealEngine engine = NullSealEngine.Instance;
+            engine.Address.Should().Be(Address.Zero);
+            engine.CanSeal(0, null).Should().BeTrue();
+            engine.ValidateParams(null, null).Should().BeTrue();
+            engine.ValidateSeal(null, true).Should().BeTrue();
+            engine.ValidateSeal(null, false).Should().BeTrue();
+            engine.SealBlock(null, CancellationToken.None).Result.Should().Be(null);
+        }
     }
 }
