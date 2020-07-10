@@ -137,14 +137,13 @@ namespace Nethermind.Synchronization.ParallelSync
             best.IsInFastReceipts = ShouldBeInFastReceiptsMode(best);
 
             SyncMode newModes = SyncMode.None;
-            CheckAddFlag(best.IsInBeamSync, SyncMode.Beam, ref newModes);
-            CheckAddFlag(best.IsInFastHeaders, SyncMode.FastHeaders, ref newModes);
-            CheckAddFlag(best.IsInFastBodies, SyncMode.FastBodies, ref newModes);
-            CheckAddFlag(best.IsInFastReceipts, SyncMode.FastReceipts, ref newModes);
-            CheckAddFlag(best.IsInFastSync, SyncMode.FastSync, ref newModes);
-            CheckAddFlag(best.IsInFullSync, SyncMode.Full, ref newModes);
-            CheckAddFlag(best.IsInStateSync, SyncMode.StateNodes, ref newModes);
-
+            if (best.IsInBeamSync) newModes |= SyncMode.Beam;
+            if (best.IsInFastHeaders) newModes |= SyncMode.FastHeaders;
+            if (best.IsInFastBodies) newModes |= SyncMode.FastBodies;
+            if (best.IsInFastReceipts) newModes |= SyncMode.FastReceipts;
+            if (best.IsInFastSync) newModes |= SyncMode.FastSync;
+            if (best.IsInFullSync) newModes |= SyncMode.Full;
+            if (best.IsInStateSync) newModes |= SyncMode.StateNodes;
 
             if (IsTheModeSwitchWorthMentioning(newModes))
             {
@@ -154,14 +153,6 @@ namespace Nethermind.Synchronization.ParallelSync
             }
 
             UpdateSyncModes(newModes);
-        }
-
-        private void CheckAddFlag(in bool flag, SyncMode mode, ref SyncMode resultMode)
-        {
-            if (flag)
-            {
-                resultMode |= mode;
-            }
         }
 
         private bool IsTheModeSwitchWorthMentioning(SyncMode newModes)
