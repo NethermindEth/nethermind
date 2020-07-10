@@ -182,6 +182,9 @@ namespace Nethermind.Synchronization.ParallelSync
             {
                 case SyncResponseHandlingResult.Emptish:
                     break;
+                case SyncResponseHandlingResult.Ignored:
+                    Logger.Error($"Feed response was ignored.");
+                    break;
                 case SyncResponseHandlingResult.LesserQuality:
                     SyncPeerPool.ReportWeakPeer(peer, Feed.Contexts);
                     break;

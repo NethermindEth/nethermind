@@ -75,6 +75,7 @@ namespace Nethermind.Synchronization.FastSync
 
         private StateSyncProgress _syncProgress;
         private int _hintsToResetRoot;
+        private long _blockNumber;
 
         public StateSyncFeed(ISnapshotableDb codeDb, ISnapshotableDb stateDb, IDb tempDb, ISyncModeSelector syncModeSelector, IBlockTree blockTree, ILogManager logManager)
             : base(logManager)
@@ -307,6 +308,16 @@ namespace Nethermind.Synchronization.FastSync
             {
                 _logger.Error("Received empty batch as a response");
             }
+            
+            if (!_pendingRequests.TryRemove(batch, out _))
+            {
+                if (_logger.IsDebug) _logger.Debug($"Cannot remove pending request {batch}");
+                return SyncResponseHandlingResult.OK;
+            }
+            else
+            {
+                if (_logger.IsTrace) _logger.Trace($"Removing pending request {batch}");
+            }
 
             int requestLength = batch.RequestedNodes?.Length ?? 0;
             int responseLength = batch.Responses?.Length ?? 0;
@@ -465,14 +476,6 @@ namespace Nethermind.Synchronization.FastSync
             finally
             {
                 _handleWatch.Stop();
-                if (!_pendingRequests.TryRemove(batch, out _))
-                {
-                    if (_logger.IsDebug) _logger.Debug($"Cannot remove pending request {batch}");
-                }
-                else
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Removing pending request {batch}");
-                }
             }
         }
 
@@ -511,7 +514,8 @@ namespace Nethermind.Synchronization.FastSync
                     for (int childIndex = 15; childIndex >= 0; childIndex--)
                     {
                         Keccak childHash = trieNode.GetChildHash(childIndex);
-                        if (alreadyProcessedChildHashes.Contains(childHash))
+                        if (childHash != null &&
+                            alreadyProcessedChildHashes.Contains(childHash))
                         {
                             continue;
                         }
@@ -640,6 +644,15 @@ namespace Nethermind.Synchronization.FastSync
             }
         }
 
+        private void FinishThisSyncRound()
+        {
+            lock (_handleWatch)
+            {
+                ResetStateRoot(_blockNumber, _rootNode);
+                FallAsleep();
+            }
+        }
+
         public override async Task<StateSyncBatch> PrepareRequest()
         {
             if ((_syncModeSelector.Current & SyncMode.StateNodes) != SyncMode.StateNodes)
@@ -652,16 +665,16 @@ namespace Nethermind.Synchronization.FastSync
                 if (_rootNode == Keccak.EmptyTreeHash)
                 {
                     if (_logger.IsDebug) _logger.Debug("Falling asleep - root is empty tree");
-                    FallAsleep();
+                    FinishThisSyncRound();
                     return EmptyBatch;
                 }
 
-                if (_hintsToResetRoot >= 32)
-                {
-                    if (_logger.IsDebug) _logger.Debug("Falling asleep - many missing responses");
-                    FallAsleep();
-                    return EmptyBatch;
-                }
+                // if (_hintsToResetRoot >= 32)
+                // {
+                //     if (_logger.IsDebug) _logger.Debug("Falling asleep - many missing responses");
+                //     FinishThisSyncRound();
+                //     return EmptyBatch;
+                // }
 
                 lock (_stateDbLock)
                 {
@@ -669,7 +682,7 @@ namespace Nethermind.Synchronization.FastSync
                     if (_stateDb.KeyExists(_rootNode))
                     {
                         VerifyPostSyncCleanUp();
-                        FallAsleep();
+                        FinishThisSyncRound();
                         return EmptyBatch;
                     }
                 }
@@ -736,6 +749,11 @@ namespace Nethermind.Synchronization.FastSync
         
         public void ResetStateRoot(long blockNumber, Keccak stateRoot)
         {
+            if (CurrentState != SyncFeedState.Dormant)
+            {
+                throw new InvalidOperationException("Cannot reset state sync on an active feed");
+            }
+            
             Interlocked.Exchange(ref _hintsToResetRoot, 0);
             
             if (_logger.IsInfo) _logger.Info($"Setting state sync state root to {blockNumber} {stateRoot}");
@@ -748,6 +766,7 @@ namespace Nethermind.Synchronization.FastSync
             if (_rootNode != stateRoot)
             {
                 _syncProgress = new StateSyncProgress(blockNumber, _logger);
+                _blockNumber = blockNumber;
                 _rootNode = stateRoot;
                 lock (_dependencies) _dependencies.Clear();
                 lock (_codesSameAsNodes) _codesSameAsNodes.Clear();

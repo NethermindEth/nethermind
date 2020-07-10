@@ -19,6 +19,7 @@ namespace Nethermind.Synchronization.ParallelSync
     public enum SyncResponseHandlingResult
     {
         OK,
+        Ignored,
         NoProgress,
         InternalError,
         NotAssigned,
