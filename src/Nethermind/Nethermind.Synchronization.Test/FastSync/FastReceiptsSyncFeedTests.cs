@@ -44,7 +44,8 @@ namespace Nethermind.Synchronization.Test.FastSync
             public Scenario(int numberOfBlocks, int txPerBlock, int emptyBlocks = 0)
             {
                 Blocks = new Block[numberOfBlocks + emptyBlocks];
-                Blocks[0] = Build.A.Block.WithNumber(_pivotNumber - numberOfBlocks - emptyBlocks + 1).TestObject;
+                Blocks[0] = Build.A.Block.WithNumber(_pivotNumber - numberOfBlocks - emptyBlocks + 1)
+                    .WithTransactions(emptyBlocks == 0 ? txPerBlock : 0).TestObject;
                 for (int i = 1; i < emptyBlocks; i++)
                 {
                     Blocks[i] = Build.A.Block
