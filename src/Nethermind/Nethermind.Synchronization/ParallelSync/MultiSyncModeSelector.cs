@@ -174,16 +174,6 @@ namespace Nethermind.Synchronization.ParallelSync
             Changed?.Invoke(this, args);
         }
 
-        /// <summary>
-        /// We display the state in the most likely ascending order
-        /// </summary>
-        /// <param name="best">Snapshot of the best known states</param>
-        /// <returns>A string describing the state of sync</returns>
-        private static string BuildStateString(Snapshot best)
-        {
-            return $"processed:{best.Processed}|state:{best.State}|block:{best.Block}|header:{best.Header}|peer block:{best.PeerBlock}";
-        }
-
         private void TimerOnElapsed(object sender, ElapsedEventArgs e)
         {
             try
@@ -421,8 +411,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 // but we only do limited lookups for state so we need to instead fast sync to now
             )
             {
-                string stateString = BuildStateString(best);
-                string errorMessage = $"Invalid best state calculation: {stateString}";
+                string errorMessage = $"Invalid best state calculation: {best}";
                 if (_logger.IsError) _logger.Error(errorMessage);
                 throw new InvalidAsynchronousStateException(errorMessage);
             }
