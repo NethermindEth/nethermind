@@ -17,6 +17,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
@@ -116,6 +117,11 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             }
 
             return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);            
+        }
+
+        public async Task<ResultWrapper<bool>> debug_setReceiptMigrationPoint(long blockNumber)
+        {
+            return ResultWrapper<bool>.Success(await _debugBridge.SetReceiptMigrationPoint(blockNumber + 1));
         }
 
         public ResultWrapper<GethLikeTxTrace[]> debug_traceBlock(byte[] blockRlp, GethTraceOptions options = null)

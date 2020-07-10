@@ -98,6 +98,12 @@ namespace Nethermind.Cli.Modules
         {
             return NodeManager.Post<string>("debug_getBlockRlp", number).Result;
         }
+        
+        [CliFunction("debug", "setReceiptMigrationPoint")]
+        public bool SetReceiptMigrationPoint(long number)
+        {
+            return NodeManager.Post<bool>("debug_setReceiptMigrationPoint", number).Result;
+        }
 
         public DebugCliModule(ICliEngine cliEngine, INodeManager nodeManager) : base(cliEngine, nodeManager)
         {

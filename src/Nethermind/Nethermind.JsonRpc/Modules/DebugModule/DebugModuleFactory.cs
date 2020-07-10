@@ -37,6 +37,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         private readonly IBlockValidator _blockValidator;
         private readonly IRewardCalculatorSource _rewardCalculatorSource;
         private readonly IReceiptStorage _receiptStorage;
+        private readonly IReceiptsMigration _receiptsMigration;
         private readonly IConfigProvider _configProvider;
         private readonly ISpecProvider _specProvider;
         private readonly ILogManager _logManager;
@@ -50,6 +51,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             IBlockDataRecoveryStep recoveryStep,
             IRewardCalculatorSource rewardCalculator,
             IReceiptStorage receiptStorage,
+            IReceiptsMigration receiptsMigration,
             IConfigProvider configProvider,
             ISpecProvider specProvider,
             ILogManager logManager)
@@ -60,6 +62,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
             _rewardCalculatorSource = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
+            _receiptsMigration = receiptsMigration ?? throw new ArgumentNullException(nameof(receiptsMigration));
             _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
@@ -74,7 +77,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             ReadOnlyChainProcessingEnv readOnlyChainProcessingEnv = new ReadOnlyChainProcessingEnv(txEnv, _blockValidator, _recoveryStep, _rewardCalculatorSource.Get(txEnv.TransactionProcessor), _receiptStorage, readOnlyDbProvider, _specProvider, _logManager);
             IGethStyleTracer tracer = new GethStyleTracer(readOnlyChainProcessingEnv.ChainProcessor, _receiptStorage, new ReadOnlyBlockTree(_blockTree));
 
-            DebugBridge debugBridge = new DebugBridge(_configProvider, readOnlyDbProvider, tracer, readOnlyChainProcessingEnv.BlockProcessingQueue, readOnlyTree);
+            DebugBridge debugBridge = new DebugBridge(_configProvider, readOnlyDbProvider, tracer, readOnlyTree, _receiptsMigration);
             return new DebugModule(_logManager, debugBridge);
         }
 
