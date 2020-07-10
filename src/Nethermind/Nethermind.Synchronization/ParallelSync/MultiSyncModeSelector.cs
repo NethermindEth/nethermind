@@ -52,7 +52,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private bool FastBlocksReceiptsFinished => !FastReceiptsEnabled || _syncProgressResolver.IsFastBlocksReceiptsFinished();
         private long FastSyncCatchUpHeightDelta => _syncConfig.FastSyncCatchUpHeightDelta ?? FastSyncLag;
 
-        private System.Timers.Timer _timer;
+        private Timer _timer;
 
         public MultiSyncModeSelector(ISyncProgressResolver syncProgressResolver, ISyncPeerPool syncPeerPool, ISyncConfig syncConfig, ILogManager logManager, bool withAutoUpdates = true)
         {
@@ -73,9 +73,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private void StartUpdateTimer()
         {
-            _timer = new System.Timers.Timer();
-            _timer.Interval = 1000;
-            _timer.AutoReset = false;
+            _timer = new Timer { Interval = 1000, AutoReset = false };
             _timer.Elapsed += TimerOnElapsed;
             _timer.Enabled = true;
         }
