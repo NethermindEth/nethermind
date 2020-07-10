@@ -41,23 +41,29 @@ namespace Nethermind.Synchronization.Test.FastSync
     {
         private class Scenario
         {
-            public Scenario(int numberOfBlocks, int txPerBlock, int emptyBlocks = 0)
+            public Scenario(int nonEmptyBlocks, int txPerBlock, int emptyBlocks = 0)
             {
-                Blocks = new Block[numberOfBlocks + emptyBlocks];
-                Blocks[0] = Build.A.Block.WithNumber(_pivotNumber - numberOfBlocks - emptyBlocks + 1)
-                    .WithTransactions(emptyBlocks == 0 ? txPerBlock : 0).TestObject;
-                for (int i = 1; i < emptyBlocks; i++)
+                Blocks = new Block[_pivotNumber + 1];
+                Blocks[0] = Build.A.Block.Genesis.TestObject;
+
+                Block parent = Blocks[0];
+                for (int blockNumber = 1; blockNumber <= _pivotNumber; blockNumber++)
                 {
-                    Blocks[i] = Build.A.Block
-                        .WithParent(Blocks[i - 1])
-                        .TestObject;
-                }
-                
-                for (int i = Math.Max(1, emptyBlocks); i < emptyBlocks + numberOfBlocks; i++)
-                {
-                    Blocks[i] = Build.A.Block
-                        .WithParent(Blocks[i - 1])
-                        .WithTransactions(txPerBlock).TestObject;
+                    Block block = Build.A.Block
+                        .WithParent(parent)
+                        .WithTransactions(blockNumber > _pivotNumber - nonEmptyBlocks ? txPerBlock : 0).TestObject;
+                    
+                    if (blockNumber > emptyBlocks - nonEmptyBlocks - emptyBlocks)
+                    {
+                        Blocks[blockNumber] = block;
+                    }
+
+                    if (blockNumber == _pivotNumber - nonEmptyBlocks - emptyBlocks + 1)
+                    {
+                        LowestInsertedBody = block;
+                    }
+
+                    parent = block;
                 }
 
                 BlocksByHash = Blocks.ToDictionary(b => b.Hash, b => b);
@@ -66,6 +72,8 @@ namespace Nethermind.Synchronization.Test.FastSync
             public Dictionary<Keccak, Block> BlocksByHash;
 
             public Block[] Blocks;
+            
+            public Block? LowestInsertedBody;
         }
 
         private IReceiptStorage _receiptStorage;
@@ -314,6 +322,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             _feed.LagBehindBodies = 0;
 
+            _blockTree.Genesis.Returns(scenario.Blocks[0].Header);
             _blockTree.FindBlock(Keccak.Zero, BlockTreeLookupOptions.None)
                 .ReturnsForAnyArgs(ci =>
                     scenario.BlocksByHash.ContainsKey(ci.Arg<Keccak>())
@@ -321,7 +330,24 @@ namespace Nethermind.Synchronization.Test.FastSync
                         : null);
 
             _receiptStorage.LowestInsertedReceiptBlock.Returns((long?) null);
-            _blockTree.LowestInsertedBody.Returns(scenario.Blocks[0]);
+            _blockTree.LowestInsertedBody.Returns(scenario.LowestInsertedBody);
+        }
+        
+        [Test]
+        public void Can_fully_sync_with_full_batches_when_lots_of_peers_are_available()
+        {
+            LoadScenario(_256BodiesWithOneTxEach);
+            
+            /* we have only 256 receipts altogether but we start with many peers
+               so most of our requests will be empty */
+            
+            List<ReceiptsSyncBatch> batches = new List<ReceiptsSyncBatch>();
+            for (int i = 0; i < 100; i++)
+            {
+                batches.Add(_feed.PrepareRequest().Result);
+            }
+            
+            
         }
     }
 }
