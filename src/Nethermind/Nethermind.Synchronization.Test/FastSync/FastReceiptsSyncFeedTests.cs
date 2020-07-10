@@ -15,10 +15,17 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
@@ -32,26 +39,80 @@ namespace Nethermind.Synchronization.Test.FastSync
     [TestFixture]
     public class FastReceiptsSyncFeedTests
     {
-        private ISyncModeSelector _selector;
+        private class Scenario
+        {
+            public Scenario(int numberOfBlocks, int txPerBlock, int emptyBlocks = 0)
+            {
+                Blocks = new Block[numberOfBlocks + emptyBlocks];
+                Blocks[0] = Build.A.Block.WithNumber(_pivotNumber - numberOfBlocks - emptyBlocks + 1).TestObject;
+                for (int i = 1; i < emptyBlocks; i++)
+                {
+                    Blocks[i] = Build.A.Block
+                        .WithParent(Blocks[i - 1])
+                        .TestObject;
+                }
+                
+                for (int i = Math.Max(1, emptyBlocks); i < emptyBlocks + numberOfBlocks; i++)
+                {
+                    Blocks[i] = Build.A.Block
+                        .WithParent(Blocks[i - 1])
+                        .WithTransactions(txPerBlock).TestObject;
+                }
+
+                BlocksByHash = Blocks.ToDictionary(b => b.Hash, b => b);
+            }
+
+            public Dictionary<Keccak, Block> BlocksByHash;
+
+            public Block[] Blocks;
+        }
+
         private IReceiptStorage _receiptStorage;
-        private ISpecProvider _specProvider;
-        private IBlockTree _blockTree;
         private ISyncPeerPool _syncPeerPool;
+        private ISpecProvider _specProvider;
+        private ISyncModeSelector _selector;
+        private FastReceiptsSyncFeed _feed;
         private ISyncConfig _syncConfig;
         private ISyncReport _syncReport;
-        private FastReceiptsSyncFeed _feed;
+        private IBlockTree _blockTree;
 
-        [Test]
-        public void Test()
+        private static long _pivotNumber = 1024;
+
+        private static Scenario _256BodiesWithOneTxEach;
+        private static Scenario _64BodiesWithOneTxEach;
+        private static Scenario _64BodiesWithOneTxEachFollowedByEmpty;
+
+        private MeasuredProgress _measuredProgress;
+        private MeasuredProgress _measuredProgressQueue;
+
+        static FastReceiptsSyncFeedTests()
         {
-            _selector = Substitute.For<ISyncModeSelector>();
-            _specProvider = Substitute.For<ISpecProvider>();
+            _256BodiesWithOneTxEach = new Scenario(256, 1);
+            _64BodiesWithOneTxEach = new Scenario(64, 1);
+            _64BodiesWithOneTxEachFollowedByEmpty = new Scenario(64, 1, 1024 - 64);
+        }
+
+        [SetUp]
+        public void Setup()
+        {
+            _receiptStorage = Substitute.For<IReceiptStorage>();
             _blockTree = Substitute.For<IBlockTree>();
-            _receiptStorage = new InMemoryReceiptStorage();
+
+            _syncConfig = new SyncConfig {FastBlocks = true};
+            _syncConfig.PivotNumber = _pivotNumber.ToString();
+            _syncConfig.PivotHash = Keccak.Zero.ToString();
+
+            _specProvider = Substitute.For<ISpecProvider>();
             _syncPeerPool = Substitute.For<ISyncPeerPool>();
-            _syncConfig = new SyncConfig();
             _syncReport = Substitute.For<ISyncReport>();
-            
+
+            _measuredProgress = new MeasuredProgress();
+            _measuredProgressQueue = new MeasuredProgress();
+            _syncReport.FastBlocksReceipts.Returns(_measuredProgress);
+            _syncReport.ReceiptsInQueue.Returns(_measuredProgressQueue);
+
+            _selector = Substitute.For<ISyncModeSelector>();
+
             _feed = new FastReceiptsSyncFeed(
                 _selector,
                 _specProvider,
@@ -61,6 +122,205 @@ namespace Nethermind.Synchronization.Test.FastSync
                 _syncConfig,
                 _syncReport,
                 LimboLogs.Instance);
+        }
+
+        [Test]
+        public void Should_throw_when_fast_blocks_not_enabled()
+        {
+            _syncConfig = new SyncConfig {FastBlocks = false};
+            Assert.Throws<InvalidOperationException>(
+                () => _feed = new FastReceiptsSyncFeed(
+                    _selector,
+                    _specProvider,
+                    _blockTree,
+                    _receiptStorage,
+                    _syncPeerPool,
+                    _syncConfig,
+                    _syncReport,
+                    LimboLogs.Instance));
+        }
+
+        [Test]
+        public void Contexts_are_correct()
+        {
+            _feed.Contexts.Should().Be(AllocationContexts.Receipts);
+        }
+
+        [Test]
+        public void Should_be_multifeed()
+        {
+            _feed.IsMultiFeed.Should().BeTrue();
+        }
+
+        [Test]
+        public void Should_start_dormant()
+        {
+            _feed.CurrentState.Should().Be(SyncFeedState.Dormant);
+        }
+
+        [Test]
+        public void When_activating_should_emit_an_event()
+        {
+            SyncFeedState state = SyncFeedState.Dormant;
+            _feed.StateChanged += (s, e) => state = e.NewState;
+            _feed.Activate();
+            state.Should().Be(SyncFeedState.Active);
+        }
+
+        [Test]
+        public void Feed_id_should_not_be_zero()
+        {
+            _feed.FeedId.Should().NotBe(0);
+        }
+
+        [Test]
+        public void When_no_bodies_downloaded_then_request_will_be_empty()
+        {
+            _feed.PrepareRequest().Result.Should().BeNull();
+        }
+
+        [Test]
+        public void Can_create_a_request_when_everything_ready()
+        {
+            int expectedBatchSize = 128;
+            LoadScenario(_256BodiesWithOneTxEach);
+            ReceiptsSyncBatch request = _feed.PrepareRequest().Result;
+            request.Should().NotBeNull();
+            request.MinNumber.Should().Be(_pivotNumber - expectedBatchSize + 1);
+            request.Blocks.Length.Should().Be(expectedBatchSize);
+            request.Predecessors.Length.Should().Be(expectedBatchSize);
+            request.Request.Length.Should().Be(expectedBatchSize);
+            request.StartNumber.Should().Be(_pivotNumber - expectedBatchSize + 1);
+            request.EndNumber.Should().Be(_pivotNumber);
+            request.On.Should().Be(long.MaxValue);
+            request.Description.Should().NotBeNull();
+            request.Prioritized.Should().Be(true);
+        }
+        
+        [Test]
+        public void Returns_same_batch_until_filled()
+        {
+            LoadScenario(_256BodiesWithOneTxEach);
+            ReceiptsSyncBatch request = _feed.PrepareRequest().Result;
+            _feed.HandleResponse(request);
+            ReceiptsSyncBatch request2 = _feed.PrepareRequest().Result;
+            request2.Should().Be(request);
+        }
+        
+        [Test]
+        public void Can_create_non_geth_requests()
+        {
+            int expectedBatchSize = 256;
+            _syncConfig.UseGethLimitsInFastBlocks = false;
+            LoadScenario(_256BodiesWithOneTxEach, _syncConfig);
+            ReceiptsSyncBatch request = _feed.PrepareRequest().Result;
+            request.Should().NotBeNull();
+            request.MinNumber.Should().Be(_pivotNumber - expectedBatchSize + 1);
+            request.Blocks.Length.Should().Be(expectedBatchSize);
+            request.Predecessors.Length.Should().Be(expectedBatchSize);
+            request.Request.Length.Should().Be(expectedBatchSize);
+            request.StartNumber.Should().Be(_pivotNumber - expectedBatchSize + 1);
+            request.EndNumber.Should().Be(_pivotNumber);
+            request.On.Should().Be(long.MaxValue);
+            request.Description.Should().NotBeNull();
+            request.Prioritized.Should().Be(true);
+        }
+
+        [Test]
+        public void Can_create_a_smaller_request()
+        {
+            int expectedBatchSize = 64;
+            LoadScenario(_64BodiesWithOneTxEach);
+            ReceiptsSyncBatch request = _feed.PrepareRequest().Result;
+            request.Should().NotBeNull();
+            request.MinNumber.Should().Be(_pivotNumber - expectedBatchSize + 1);
+            request.Blocks.Length.Should().Be(expectedBatchSize);
+            request.Predecessors.Length.Should().Be(expectedBatchSize);
+            request.Request.Length.Should().Be(expectedBatchSize);
+            request.StartNumber.Should().Be(_pivotNumber - expectedBatchSize + 1);
+            request.EndNumber.Should().Be(_pivotNumber);
+            request.On.Should().Be(long.MaxValue);
+            request.Description.Should().NotBeNull();
+            request.Prioritized.Should().Be(true);
+        }
+        
+        [Test]
+        public void Can_create_a_final_batch()
+        {
+            int expectedBatchSize = 64;
+            LoadScenario(_64BodiesWithOneTxEachFollowedByEmpty);
+            ReceiptsSyncBatch request = _feed.PrepareRequest().Result;
+            request.Should().NotBeNull();
+            request.MinNumber.Should().Be(961);
+            request.Blocks.Length.Should().Be(expectedBatchSize);
+            request.Predecessors.Length.Should().Be(expectedBatchSize);
+            request.Request.Length.Should().Be(expectedBatchSize);
+            request.StartNumber.Should().Be(961);
+            request.EndNumber.Should().Be(_pivotNumber);
+            request.On.Should().Be(long.MaxValue);
+            request.Description.Should().NotBeNull();
+            request.Prioritized.Should().Be(true);
+            request.IsFinal.Should().BeTrue();
+        }
+
+        [Test]
+        public void When_configured_to_skip_receipts_then_finishes_immediately()
+        {
+            LoadScenario(_256BodiesWithOneTxEach);
+            _syncConfig.DownloadReceiptsInFastSync = false;
+
+            ReceiptsSyncBatch request = _feed.PrepareRequest().Result;
+            request.Should().BeNull();
+            _feed.CurrentState.Should().Be(SyncFeedState.Finished);
+            _measuredProgress.HasEnded.Should().BeTrue();
+            _measuredProgressQueue.HasEnded.Should().BeTrue();
+        }
+
+        [Test]
+        public void Does_not_create_the_request_if_lag_behind_bodies_requirement_is_not_satisfied()
+        {
+            LoadScenario(_256BodiesWithOneTxEach);
+            _feed.LagBehindBodies = 1024;
+            _feed.PrepareRequest().Result.Should().BeNull();
+        }
+
+        [Test]
+        public void Default_lag_is_correct()
+        {
+            _feed.LagBehindBodies.Should().Be(FastBlocksLags.ForReceipts);
+        }
+
+        private void LoadScenario(Scenario scenario)
+        {
+            LoadScenario(scenario, new SyncConfig{FastBlocks = true});
+        }
+        
+        private void LoadScenario(Scenario scenario, ISyncConfig syncConfig)
+        {
+            _syncConfig = syncConfig;
+            _syncConfig.PivotNumber = _pivotNumber.ToString();
+            _syncConfig.PivotHash = scenario.Blocks.Last().Hash.ToString();
+
+            _feed = new FastReceiptsSyncFeed(
+                _selector,
+                _specProvider,
+                _blockTree,
+                _receiptStorage,
+                _syncPeerPool,
+                _syncConfig,
+                _syncReport,
+                LimboLogs.Instance);
+
+            _feed.LagBehindBodies = 0;
+
+            _blockTree.FindBlock(Keccak.Zero, BlockTreeLookupOptions.None)
+                .ReturnsForAnyArgs(ci =>
+                    scenario.BlocksByHash.ContainsKey(ci.Arg<Keccak>())
+                        ? scenario.BlocksByHash[ci.Arg<Keccak>()]
+                        : null);
+
+            _receiptStorage.LowestInsertedReceiptBlock.Returns((long?) null);
+            _blockTree.LowestInsertedBody.Returns(scenario.Blocks[0]);
         }
     }
 }
