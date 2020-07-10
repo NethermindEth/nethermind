@@ -33,8 +33,6 @@ namespace Nethermind.State
         
         byte[] GetStorage(Keccak storageRoot, UInt256 index);
 
-        Keccak GetCodeHash(Keccak stateRoot, Address address);
-        
         byte[] GetCode(Keccak stateRoot, Address address);
 
         byte[] GetCode(Keccak codeHash);

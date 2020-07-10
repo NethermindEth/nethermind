@@ -1,0 +1,29 @@
+
+FROM nethermindeth/rocksdb:6.4.6 AS rocksdb
+FROM nethermindeth/secp256k1 AS secp256k1
+
+##################################################
+FROM mcr.microsoft.com/dotnet/core/sdk:3.1 AS build
+
+COPY . .
+RUN apt-get update && apt-get install -y libsnappy-dev libc6-dev libc6 libzstd1 libgflags-dev libssl1.0 --no-install-recommends && \
+    git submodule update --init src/Dirichlet src/rocksdb-sharp && \
+    dotnet publish src/Nethermind/Nethermind.Runner --configuration Release --runtime linux-musl-arm64 --output out && \
+    git describe --tags --always --long > out/git-hash
+
+##################################################
+FROM mcr.microsoft.com/dotnet/core/aspnet:3.1-alpine-arm64v8
+
+RUN echo "@v3.12 http://dl-cdn.alpinelinux.org/alpine/v3.12/main/" >> /etc/apk/repositories && \
+    apk --no-cache --no-progress add snappy-dev@v3.12
+
+WORKDIR /nethermind
+
+COPY --from=build /out .
+COPY --from=secp256k1 /nethermind/libsecp256k1.so /nethermind/runtimes/linux-x64/native/libsecp256k1.so
+COPY --from=rocksdb /nethermind/librocksdb.so /nethermind/runtimes/linux-arm64/native/librocksdb.so
+
+ARG GIT_COMMIT=unspecified
+LABEL git_commit=$GIT_COMMIT
+
+ENTRYPOINT ["./Nethermind.Runner"]

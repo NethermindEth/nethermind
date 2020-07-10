@@ -371,6 +371,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             FixCallTx(transactionCall, head);
 
             BlockchainBridge.CallOutput result = _blockchainBridge.EstimateGas(head, transactionCall.ToTransaction());
+
             if (result.Error == null)
             {
                 return ResultWrapper<UInt256?>.Success((UInt256) result.GasSpent);

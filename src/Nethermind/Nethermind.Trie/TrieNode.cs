@@ -35,6 +35,10 @@ namespace Nethermind.Trie
         private object[] _data;
         private bool _isDirty;
 
+        /// <summary>
+        /// This code is not used in production and has some issues (as pointed out in the article)
+        /// It is left here as an incentive to do some more detailed real-time memory analysis of the trie in memory
+        /// </summary>
         public int MemorySize
         {
             get

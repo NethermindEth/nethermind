@@ -14,7 +14,6 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -25,13 +24,11 @@ namespace Nethermind.Consensus
 {
     public class NethDevSealEngine : ISealer, ISealValidator
     {
-        private NethDevSealEngine(Address address = null)
+        public NethDevSealEngine(Address address = null)
         {
             Address = address ?? Address.Zero;
         }
-
-        public static NethDevSealEngine Instance { get; } = new NethDevSealEngine();
-
+        
         public Task<Block> SealBlock(Block block, CancellationToken cancellationToken)
         {
             block.Header.MixHash = Keccak.Zero;

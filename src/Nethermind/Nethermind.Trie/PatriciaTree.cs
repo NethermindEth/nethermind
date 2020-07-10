@@ -46,7 +46,7 @@ namespace Nethermind.Trie
         
         private readonly ConcurrentQueue<TrieNode> _currentCommit;
 
-        private readonly IKeyValueStore _keyValueStore;
+        protected readonly IKeyValueStore _keyValueStore;
         private readonly bool _parallelBranches;
         private readonly bool _allowCommits;
 
@@ -66,7 +66,7 @@ namespace Nethermind.Trie
 
         public PatriciaTree(IKeyValueStore keyValueStore, Keccak rootHash, bool parallelBranches, bool allowCommits)
         {
-            _keyValueStore = keyValueStore;
+            _keyValueStore = keyValueStore ?? throw new ArgumentNullException(nameof(keyValueStore));
             _parallelBranches = parallelBranches;
             _allowCommits = allowCommits;
             RootHash = rootHash;

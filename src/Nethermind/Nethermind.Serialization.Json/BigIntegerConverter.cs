@@ -67,7 +67,7 @@ namespace Nethermind.Serialization.Json
                     writer.WriteValue(value);
                     break;
                 default:
-                    throw new ArgumentOutOfRangeException();
+                    throw new NotSupportedException();
             }
         }
 

@@ -96,7 +96,7 @@ namespace Nethermind.Consensus.AuRa
             
             if (finalizedBlocks.Any())
             {
-                if (_logger.IsDebug) _logger.Debug(finalizedBlocks.Count == 1
+                if (_logger.IsTrace) _logger.Trace(finalizedBlocks.Count == 1
                         ? $"Blocks finalized by {finalizingBlock.ToString(BlockHeader.Format.FullHashAndNumber)}: {finalizedBlocks[0].ToString(BlockHeader.Format.FullHashAndNumber)}."
                         : $"Blocks finalized by {finalizingBlock.ToString(BlockHeader.Format.FullHashAndNumber)}: {finalizedBlocks[0].Number}-{finalizedBlocks[finalizedBlocks.Count - 1].Number} [{string.Join(",", finalizedBlocks.Select(b => b.Hash))}].");
                 

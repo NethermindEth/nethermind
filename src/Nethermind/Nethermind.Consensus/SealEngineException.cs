@@ -23,9 +23,5 @@ namespace Nethermind.Consensus
         public SealEngineException(string message) : base(message)
         {
         }
-
-        public SealEngineException(string message, Exception innerException) : base(message, innerException)
-        {
-        }
     }
 }

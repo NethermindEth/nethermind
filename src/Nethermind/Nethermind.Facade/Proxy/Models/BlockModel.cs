@@ -21,7 +21,7 @@ using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Facade.Proxy.Models
 {
-    public class BlockModel
+    public class BlockModel<T>
     {
         public UInt256 Difficulty { get; set; }
         public byte[] ExtraData { get; set; }
@@ -34,12 +34,12 @@ namespace Nethermind.Facade.Proxy.Models
         public UInt256 Number { get; set; }
         public Keccak ParentHash { get; set; }
         public Keccak ReceiptsRoot { get; set; }
-        public Keccak Sha3Uncles { get; set; }
+        public Keccak Sha3Uncles { get; set; }    
         public UInt256 Size { get; set; }
         public Keccak StateRoot { get; set; }
         public UInt256 Timestamp { get; set; }
         public UInt256 TotalDifficulty { get; set; }
-        public List<Keccak> Transactions { get; set; }
+        public List<T> Transactions { get; set; }
         public Keccak TransactionsRoot { get; set; }
 
         public Block ToBlock()

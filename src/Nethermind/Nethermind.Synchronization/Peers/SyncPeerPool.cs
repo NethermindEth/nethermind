@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -229,7 +229,7 @@ namespace Nethermind.Synchronization.Peers
             Metrics.SyncPeers = _peers.Count;
 
             if (_logger.IsDebug) _logger.Debug($"Adding {syncPeer.Node:c} to refresh queue");
-            if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportInterestingEvent(syncPeer.Node.Host, "adding node to refresh queue");
+            if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportInterestingEvent(syncPeer.Node.Address, "adding node to refresh queue");
             _peerRefreshQueue.Add(new RefreshTotalDiffTask {SyncPeer = syncPeer});
         }
 
@@ -365,7 +365,7 @@ namespace Nethermind.Synchronization.Peers
                             Block block = _blockTree.FindBlock(_blockTree.BestSuggestedHeader.Hash, BlockTreeLookupOptions.None);
                             if (block != null) // can be null if fast syncing headers only
                             {
-                                syncPeer.SendNewBlock(block);
+                                syncPeer.NotifyOfNewBlock(block, SendBlockPriority.High);
                                 if (_logger.IsDebug) _logger.Debug($"Sending my best block {block} to {syncPeer}");
                             }
                         }

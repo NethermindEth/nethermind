@@ -62,40 +62,25 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             switch (message.PacketType)
             {
                 case Eth63MessageCode.GetReceipts:
-                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Host, Name, nameof(GetReceiptsMessage));
+                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, nameof(GetReceiptsMessage));
                     Handle(Deserialize<GetReceiptsMessage>(message.Content));
                     break;
                 case Eth63MessageCode.Receipts:
-                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Host, Name, nameof(ReceiptsMessage));
+                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, nameof(ReceiptsMessage));
                     Handle(Deserialize<ReceiptsMessage>(message.Content), size);
                     break;
                 case Eth63MessageCode.GetNodeData:
-                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Host, Name, nameof(GetNodeDataMessage));
+                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, nameof(GetNodeDataMessage));
                     Handle(Deserialize<GetNodeDataMessage>(message.Content));
                     break;
                 case Eth63MessageCode.NodeData:
-                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Host, Name, nameof(NodeDataMessage));
+                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, nameof(NodeDataMessage));
                     Handle(Deserialize<NodeDataMessage>(message.Content), size);
                     break;
             }
         }
 
         public override string Name => "eth63";
-
-        private void Handle(GetReceiptsMessage msg)
-        {
-            Metrics.Eth63GetReceiptsReceived++;
-            if (msg.Hashes.Count > 512)
-            {
-                throw new EthSyncException("Incoming receipts request for more than 512 blocks");
-            }
-
-            Stopwatch stopwatch = Stopwatch.StartNew();
-            TxReceipt[][] txReceipts = SyncServer.GetReceipts(msg.Hashes);
-            Send(new ReceiptsMessage(txReceipts));
-            stopwatch.Stop();
-            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} Receipts to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
-        }
 
         private void Handle(ReceiptsMessage msg, long size)
         {
@@ -142,7 +127,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             byte[][] nodeData = await SendRequest(msg, token);
             return nodeData;
         }
-
         public override async Task<TxReceipt[][]> GetReceipts(IList<Keccak> blockHashes, CancellationToken token)
         {
             if (blockHashes.Count == 0)

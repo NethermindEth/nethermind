@@ -109,8 +109,11 @@ namespace Nethermind.Network
 
                     _staticPeers.TryRemove(session.ObsoleteRemoteNodeId, out _);
                     AllPeers.TryRemove(session.ObsoleteRemoteNodeId, out Peer oldPeer);
-                    oldPeer.InSession = null;
-                    oldPeer.OutSession = null;
+                    if (oldPeer != null)
+                    {
+                        oldPeer.InSession = null;
+                        oldPeer.OutSession = null;
+                    }
                 }
                 else
                 {

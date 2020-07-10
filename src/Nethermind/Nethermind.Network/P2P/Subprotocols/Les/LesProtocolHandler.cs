@@ -15,8 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Synchronization;
+using Nethermind.Synchronization.FastSync;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
@@ -26,12 +28,18 @@ using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
+using Nethermind.Blockchain.Synchronization;
+using Nethermind.Serialization.Rlp;
+using System.Collections.Generic;
+using Nethermind.Core.Extensions;
+using System.Linq;
 
 namespace Nethermind.Network.P2P.Subprotocols.Les
 {
-    public class LesProtocolHandler : SyncPeerProtocolHandlerBase, IZeroProtocolHandler
+    public class LesProtocolHandler : SyncPeerProtocolHandlerBase, IZeroProtocolHandler, ISyncPeer
     {
         public override string Name => "les3";
+        public override bool IncludeInTxPool => false;
 
         public LesProtocolHandler(
             ISession session,
@@ -41,7 +49,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             ILogManager logManager,
             ITxPool txPool): base(session, serializer, statsManager, syncServer, txPool, logManager)
         {
-
+            _lastSentBlock = SyncServer.Head;
         }
 
         public override void Init()
@@ -77,7 +85,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             };
             Send(statusMessage);
 
-            if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportOutgoingMessage(Session.Node.Host, Name, statusMessage.ToString());
+            if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportOutgoingMessage(Session.Node.Address, Name, statusMessage.ToString());
             Metrics.LesStatusesSent++;
 
             CheckProtocolInitTimeout().ContinueWith(x =>
@@ -94,11 +102,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
 
         public override string ProtocolCode => Protocol.Les;
 
-        public override int MessageIdSpaceSize => 8;
+        public override int MessageIdSpaceSize => 23;
 
         protected override TimeSpan InitTimeout => Timeouts.Les3Status;
 
-        public byte RequestedAnnounceType = 0;
+        public LesAnnounceType RequestedAnnounceType;
 
         public override event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
         public override event EventHandler<ProtocolEventArgs> SubprotocolRequested
@@ -123,8 +131,33 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             {
                 case LesMessageCode.Status:
                     StatusMessage statusMessage = Deserialize<StatusMessage>(message.Content);
-                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Host, Name, statusMessage.ToString());
+                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, statusMessage.ToString());
                     Handle(statusMessage);
+                    break;
+                case LesMessageCode.GetBlockHeaders:
+                    GetBlockHeadersMessage getBlockHeadersMessage = Deserialize<GetBlockHeadersMessage>(message.Content);
+                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, getBlockHeadersMessage.ToString());
+                    Handle(getBlockHeadersMessage);
+                    break;
+                case LesMessageCode.GetBlockBodies:
+                    GetBlockBodiesMessage getBlockBodiesMessage = Deserialize<GetBlockBodiesMessage>(message.Content);
+                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, getBlockBodiesMessage.ToString());
+                    Handle(getBlockBodiesMessage);
+                    break;
+                case LesMessageCode.GetReceipts:
+                    GetReceiptsMessage getReceiptsMessage = Deserialize<GetReceiptsMessage>(message.Content);
+                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, getReceiptsMessage.ToString());
+                    Handle(getReceiptsMessage);
+                    break;
+                case LesMessageCode.GetContractCodes:
+                    GetContractCodesMessage getContractCodesMessage = Deserialize<GetContractCodesMessage>(message.Content);
+                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, getContractCodesMessage.ToString());
+                    Handle(getContractCodesMessage);
+                    break;
+                case LesMessageCode.GetHelperTrieProofs:
+                    GetHelperTrieProofsMessage getHelperTrieProofsMessage = Deserialize<GetHelperTrieProofsMessage>(message.Content);
+                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, getHelperTrieProofsMessage.ToString());
+                    Handle(getHelperTrieProofsMessage);
                     break;
             }
         }
@@ -159,47 +192,133 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
                              Environment.NewLine + $" transaction relay\t{status.TxRelay}" +
                              Environment.NewLine + $" buffer limit\t{status.BufferLimit}" +
                              Environment.NewLine + $" max recharge\t{status.MaximumRechargeRate}");
-                             // todo - log max request costs table
+            // todo - log max request costs table
 
             _remoteHeadBlockHash = status.BestHash;
 
-
             ReceivedProtocolInitMsg(status);
-            LesProtocolInitializedEventArgs eventArgs = new LesProtocolInitializedEventArgs(this)
+            SyncPeerProtocolInitializedEventArgs eventArgs = new SyncPeerProtocolInitializedEventArgs(this)
             {
+                ChainId = (long) status.ChainId,
+                BestHash = status.BestHash,
+                GenesisHash = status.GenesisHash,
                 Protocol = status.Protocol,
                 ProtocolVersion = status.ProtocolVersion,
-                ChainId = (long) status.ChainId, // todo should these really be different data types?
-                TotalDifficulty = status.TotalDifficulty,
-                BestHash = status.BestHash,
-                HeadBlockNo = status.HeadBlockNo,
-                GenesisHash = status.GenesisHash,
-                AnnounceType = status.AnnounceType.Value,
-                ServeHeaders = status.ServeHeaders,
-                ServeChainSince = status.ServeChainSince,
-                ServeRecentChain = status.ServeRecentChain,
-                ServeStateSince = status.ServeStateSince,
-                ServeRecentState = status.ServeRecentState,
-                TxRelay = status.TxRelay,
-                BufferLimit = status.BufferLimit,
-                MaximumRechargeRate = status.MaximumRechargeRate,
-                MaximumRequestCosts = status.MaximumRequestCosts
+                TotalDifficulty = status.TotalDifficulty
             };
 
-            if (status.BestHash == new Keccak("0x828f6e9967f75742364c7ab5efd6e64428e60ad38e218789aaf108fbd0232973"))
-            {
-                InitiateDisconnect(DisconnectReason.UselessPeer, "One of the Rinkeby nodes stuck at Constantinople transition");
-            }
-
             TotalDifficulty = status.TotalDifficulty;
-            RequestedAnnounceType = status.AnnounceType.Value;
+            RequestedAnnounceType = (LesAnnounceType)status.AnnounceType.Value;
+            if (RequestedAnnounceType == LesAnnounceType.Signed) throw new NotImplementedException("Signed announcements are not yet supported.");
 
             ProtocolInitialized?.Invoke(this, eventArgs);
+        }
+
+        public void Handle(GetBlockHeadersMessage getBlockHeaders)
+        {
+            Eth.V62.BlockHeadersMessage ethBlockHeadersMessage = FulfillBlockHeadersRequest(getBlockHeaders.EthMessage);
+            // todo - implement cost tracking
+            Send(new BlockHeadersMessage(ethBlockHeadersMessage, getBlockHeaders.RequestId, int.MaxValue));
+        }
+
+        public void Handle(GetBlockBodiesMessage getBlockBodies)
+        {
+            Eth.V62.BlockBodiesMessage ethBlockBodiesMessage = FulfillBlockBodiesRequest(getBlockBodies.EthMessage);
+            // todo - implement cost tracking
+            Send(new BlockBodiesMessage(ethBlockBodiesMessage, getBlockBodies.RequestId, int.MaxValue));
+        }
+
+        public void Handle(GetReceiptsMessage getReceipts)
+        {
+            Eth.V63.ReceiptsMessage ethReceiptsMessage = FulfillReceiptsRequest(getReceipts.EthMessage);
+            // todo - implement cost tracking
+            Send(new ReceiptsMessage(ethReceiptsMessage, getReceipts.RequestId, int.MaxValue));
+        }
+
+        public void Handle(GetContractCodesMessage getContractCodes)
+        {
+            var codes = SyncServer.GetNodeData(getContractCodes.RequestAddresses, NodeDataType.Code);
+            // todo - implement cost tracking
+            Send(new ContractCodesMessage(codes, getContractCodes.RequestId, int.MaxValue));
+        }
+
+        public void Handle(GetHelperTrieProofsMessage getHelperTrieProofs)
+        {
+            List<byte[]> proofNodes = new List<byte[]>();
+            List<byte[]> auxData = new List<byte[]>();
+
+            for (int requestNo = 0; requestNo < getHelperTrieProofs.Requests.Length; requestNo++)
+            {
+                var request = getHelperTrieProofs.Requests[requestNo];
+                switch (request.SubType)
+                {
+                    case HelperTrieType.CHT:
+                        GetCHTData(request, proofNodes, auxData);
+                        break;
+                    case HelperTrieType.BloomBits:
+                        throw new SubprotocolException("bloom bits trie not yet supported");
+                }
+            }
+            Send(new HelperTrieProofsMessage(proofNodes.Distinct().ToArray(), auxData.ToArray(), getHelperTrieProofs.RequestId, int.MaxValue));
+        }
+
+        public void GetCHTData(HelperTrieRequest request, List<byte[]> proofNodes, List<byte[]> auxData)
+        {
+            var cht = SyncServer.GetCHT();
+            // todo - enum?
+            if (request.AuxiliaryData == 1)
+            {
+                auxData.Add(cht.RootHash.Bytes);
+                return;
+            }
+            else if (request.AuxiliaryData == 2)
+            {
+                (Keccak hash, _) = cht.Get(request.Key);
+                var headerResult = SyncServer.FindHeaders(hash, 1, 0, false);
+                if (headerResult.Length != 1) throw new SubprotocolException($"Unable to find header for block {request.Key.WithoutLeadingZeros().ToArray().ToLongFromBigEndianByteArrayWithoutLeadingZeros()} for GetHelperProofs response.");
+                auxData.Add(Rlp.Encode(headerResult[0]).Bytes);
+            }
+            proofNodes.AddRange(cht.BuildProof(request.Key, request.SectionIndex, request.FromLevel));
         }
 
         public override bool HasAgreedCapability(Capability capability) => false;
 
         public override bool HasAvailableCapability(Capability capability) => false;
+
+        private BlockHeader _lastSentBlock;
+
+        public override void NotifyOfNewBlock(Block block, SendBlockPriority priorty)
+        {
+            if (RequestedAnnounceType == LesAnnounceType.None) return;
+            if (!block.TotalDifficulty.HasValue)
+            {
+                throw new InvalidOperationException($"Trying to send a block {block.Hash} with null total difficulty");
+            }
+
+            if (block.TotalDifficulty <= _lastSentBlock.TotalDifficulty) return;
+
+            AnnounceMessage announceMessage = new AnnounceMessage();
+            announceMessage.HeadHash = block.Hash;
+            announceMessage.HeadBlockNo = block.Number;
+            announceMessage.TotalDifficulty = block.TotalDifficulty.Value;
+            if (_lastSentBlock == null || block.ParentHash == _lastSentBlock.Hash)
+                announceMessage.ReorgDepth = 0;
+            else
+            {
+                BlockHeader firstCommonAncestor = SyncServer.FindLowestCommonAncestor(block.Header, _lastSentBlock);
+                if (firstCommonAncestor == null) throw new SubprotocolException($"Unable to send announcment to LES peer - No common ancestor found between {block.Header} and {_lastSentBlock}");
+                announceMessage.ReorgDepth = _lastSentBlock.Number - firstCommonAncestor.Number;
+            }
+
+            _lastSentBlock = block.Header;
+
+            Send(announceMessage);
+        }
+
+        Task<BlockHeader> ISyncPeer.GetHeadBlockHeader(Keccak hash, CancellationToken token)
+        {
+            return Task.FromResult(_lastSentBlock);
+        }
 
         protected override void OnDisposed() { }
     }

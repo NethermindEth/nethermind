@@ -38,11 +38,6 @@ namespace Nethermind.State
         }
 
         [DebuggerStepThrough]
-        public StateTree(IDb db, Keccak rootHash) : base(db, rootHash, true, true)
-        {
-        }
-
-        [DebuggerStepThrough]
         public Account Get(Address address, Keccak rootHash = null)
         {
             byte[] bytes = Get(ValueKeccak.Compute(address.Bytes).BytesAsSpan, rootHash);

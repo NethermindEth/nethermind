@@ -30,6 +30,9 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
+using Nethermind.Stats.Model;
+using Nethermind.Synchronization.FastSync;
+using Nethermind.Synchronization.LesSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 
@@ -50,6 +53,7 @@ namespace Nethermind.Synchronization
         private readonly ISnapshotableDb _stateDb;
         private readonly ISnapshotableDb _codeDb;
         private readonly ISyncConfig _syncConfig;
+        private readonly CanonicalHashTrie _cht;
         private object _dummyValue = new object();
         private ICache<Keccak, object> _recentlySuggested = new LruCacheWithRecycling<Keccak, object>(128, 128, "recently suggested blocks");
         private long _pivotNumber;
@@ -64,7 +68,8 @@ namespace Nethermind.Synchronization
             ISyncPeerPool pool,
             ISyncModeSelector syncModeSelector,
             ISyncConfig syncConfig,
-            ILogManager logManager)
+            ILogManager logManager,
+            CanonicalHashTrie cht = null)
         {
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _pool = pool ?? throw new ArgumentNullException(nameof(pool));
@@ -76,6 +81,7 @@ namespace Nethermind.Synchronization
             _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _cht = cht;
             _pivotNumber = _syncConfig.PivotNumberParsed;
 
             _blockTree.NewHeadBlock += OnNewHeadBlock;
@@ -310,20 +316,63 @@ namespace Nethermind.Synchronization
             return _blockTree.FindHeaders(hash, numberOfBlocks, skip, reverse);
         }
 
-        public byte[][] GetNodeData(IList<Keccak> keys)
+        public byte[][] GetNodeData(IList<Keccak> keys, NodeDataType includedTypes = NodeDataType.State | NodeDataType.Code)
         {
             var values = new byte[keys.Count][];
             for (int i = 0; i < keys.Count; i++)
             {
                 IDb stateDb = _stateDb.Innermost;
                 IDb codeDb = _codeDb.Innermost;
-                values[i] = stateDb.Get(keys[i]) ?? codeDb.Get(keys[i]);
+
+                values[i] = null;
+                if (includedTypes.HasFlag(NodeDataType.State))
+                    values[i] = stateDb.Get(keys[i]);
+                if (values[i] == null && includedTypes.HasFlag(NodeDataType.Code))
+                    values[i] = codeDb.Get(keys[i]);
             }
 
             return values;
         }
 
+        public BlockHeader FindLowestCommonAncestor(BlockHeader firstDescendant, BlockHeader secondDescendant)
+        {
+            return _blockTree.FindLowestCommonAncestor(firstDescendant, secondDescendant, Sync.MaxReorgLength);
+        }
+
+        private object _chtLock = new object();
+
+        // TODO - Cancellation token?
+        // TODO - not a fan of this function name - CatchUpCHT, AddMissingCHTBlocks, ...?
+        public Task BuildCHT()
+        {
+            return Task.Run(() =>
+            {
+                lock (_chtLock)
+                {
+                    // Note: The spec says this should be 2048, but I don't think we'd ever want it to be higher than the max reorg depth we allow.
+                    long maxSection = CanonicalHashTrie.GetSectionFromBlockNo(_blockTree.FindLatestHeader().Number - Sync.MaxReorgLength);
+                    long maxKnownSection = _cht.GetMaxSectionIndex();
+
+                    for (long section = (maxKnownSection + 1); section <= maxSection; section++)
+                    {
+                        long sectionStart = section * CanonicalHashTrie.SectionSize;
+                        for (int blockOffset = 0; blockOffset < CanonicalHashTrie.SectionSize; blockOffset++)
+                        {
+                            _cht.Set(_blockTree.FindHeader(sectionStart + blockOffset));
+                        }
+                        _cht.Commit(section);
+                    }
+                }
+            });
+        }
+
+        public CanonicalHashTrie GetCHT()
+        {
+            return _cht;
+        }
+
         public Block Find(Keccak hash) => _blockTree.FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+
 
         public Keccak FindHash(long number)
         {
@@ -358,12 +407,12 @@ namespace Nethermind.Synchronization
                 {
                     if (_broadcastRandomizer.NextDouble() < broadcastRatio)
                     {
-                        peerInfo.SyncPeer.SendNewBlock(block);
+                        peerInfo.SyncPeer.NotifyOfNewBlock(block, SendBlockPriority.High);
                         counter++;
                     }
                     else
                     {
-                        peerInfo.SyncPeer.HintNewBlock(block.Hash, block.Number);
+                        peerInfo.SyncPeer.NotifyOfNewBlock(block, SendBlockPriority.Low);
                     }
                 }
             }
@@ -371,6 +420,11 @@ namespace Nethermind.Synchronization
             if (counter > 0)
             {
                 if (_logger.IsDebug) _logger.Debug($"Broadcasting block {block.ToString(Block.Format.Short)} to {counter} peers.");
+            }
+
+            if ((block.Number - Sync.MaxReorgLength) % CanonicalHashTrie.SectionSize == 0)
+            {
+                _ = BuildCHT();
             }
         }
 

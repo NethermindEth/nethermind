@@ -24,8 +24,8 @@ namespace Nethermind.Stats
         void AddNodeStatsHandshakeEvent(ConnectionDirection connectionDirection);
         void AddNodeStatsDisconnectEvent(DisconnectType disconnectType, DisconnectReason disconnectReason);
         void AddNodeStatsP2PInitializedEvent(P2PNodeDetails nodeDetails);
-        void AddNodeStatsEth62InitializedEvent(EthNodeDetails nodeDetails);
-        void AddNodeStatsLesInitializedEvent(LesNodeDetails nodeDetails);
+        void AddNodeStatsEth62InitializedEvent(SyncPeerNodeDetails nodeDetails);
+        void AddNodeStatsLesInitializedEvent(SyncPeerNodeDetails nodeDetails);
         void AddNodeStatsSyncEvent(NodeStatsEventType nodeStatsEventType);
 
         bool DidEventHappen(NodeStatsEventType nodeStatsEventType);
@@ -40,7 +40,8 @@ namespace Nethermind.Stats
         long NewPersistedNodeReputation { get; }
         
         P2PNodeDetails P2PNodeDetails { get; }
-        EthNodeDetails EthNodeDetails { get; }
+        SyncPeerNodeDetails EthNodeDetails { get; }
+        SyncPeerNodeDetails LesNodeDetails { get; }
         CompatibilityValidationType? FailedCompatibilityValidation { get; set; }
     }
 }

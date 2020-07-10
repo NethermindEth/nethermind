@@ -175,7 +175,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
                 LimboLogs.Instance,
                 _validator,
                 NullRecoveryStep.Instance,
-                new InstanceRewardCalculatorSource(NoBlockRewards.Instance),
+                NoBlockRewards.Instance,
                 _blockchainProcessingQueue,
                 _blockchainProcessor,
                 syncModeSelector ?? new StaticSelector(SyncMode.Beam)

@@ -167,6 +167,11 @@ namespace Nethermind.PerfTest
                 return _blockTree.FindHeaders(hash, numberOfBlocks, skip, reverse);
             }
 
+            public BlockHeader FindLowestCommonAncestor(BlockHeader firstDescendant, BlockHeader secondDescendant, long maxSearchDepth)
+            {
+                return _blockTree.FindLowestCommonAncestor(firstDescendant, secondDescendant, maxSearchDepth);
+            }
+
             public void DeleteInvalidBlock(Block invalidBlock)
             {
                 _blockTree.DeleteInvalidBlock(invalidBlock);

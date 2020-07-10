@@ -14,6 +14,8 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+using System.Globalization;
 using System.IO;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Serialization.Json;
@@ -33,6 +35,27 @@ namespace Nethermind.Core.Test.Json
             TestConverter(int.MaxValue, (integer, bigInteger) => integer.Equals(bigInteger), converter);
             TestConverter(UInt256.One, (integer, bigInteger) => integer.Equals(bigInteger), converter);
             TestConverter(UInt256.Zero, (integer, bigInteger) => integer.Equals(bigInteger), converter);
+        }
+        
+        [TestCase((NumberConversion)99)]
+        [TestCase(NumberConversion.Raw)]
+        public void Raw_not_supported(NumberConversion notSupportedConversion)
+        {
+            UInt256Converter converter = new UInt256Converter(notSupportedConversion);
+            Assert.Throws<NotSupportedException>(
+                () => TestConverter(int.MaxValue, (integer, bigInteger) => integer.Equals(bigInteger), converter));
+            Assert.Throws<NotSupportedException>(
+                () => TestConverter(UInt256.One, (integer, bigInteger) => integer.Equals(bigInteger), converter));
+        }
+
+        [Test]
+        public void Raw_works_with_zero_and_this_is_ok()
+        {
+            UInt256Converter converter = new UInt256Converter(NumberConversion.Raw);
+            TestConverter(0, (integer, bigInteger) => integer.Equals(bigInteger), converter);
+            
+            converter = new UInt256Converter((NumberConversion)99);
+            TestConverter(0, (integer, bigInteger) => integer.Equals(bigInteger), converter);
         }
         
         [Test]
@@ -56,6 +79,16 @@ namespace Nethermind.Core.Test.Json
         }
         
         [Test]
+        public void Can_read_0x000()
+        {
+            UInt256Converter converter = new UInt256Converter();
+            JsonReader reader = new JsonTextReader(new StringReader("0x0000"));
+            reader.ReadAsString();
+            UInt256 result = converter.ReadJson(reader, typeof(UInt256), UInt256.Zero, false, JsonSerializer.CreateDefault());
+            Assert.AreEqual(UInt256.Parse("0"), result);
+        }
+        
+        [Test]
         public void Can_read_0()
         {
             UInt256Converter converter = new UInt256Converter();
@@ -73,6 +106,26 @@ namespace Nethermind.Core.Test.Json
             reader.ReadAsString();
             UInt256 result = converter.ReadJson(reader, typeof(UInt256), UInt256.Zero, false, JsonSerializer.CreateDefault());
             Assert.AreEqual(UInt256.Parse("1"), result);
+        }
+        
+        [Test]
+        public void Can_read_unmarked_hex()
+        {
+            UInt256Converter converter = new UInt256Converter();
+            JsonReader reader = new JsonTextReader(new StringReader("\"de\""));
+            reader.ReadAsString();
+            UInt256 result = converter.ReadJson(reader, typeof(UInt256), UInt256.Zero, false, JsonSerializer.CreateDefault());
+            Assert.AreEqual(UInt256.Parse("de", NumberStyles.HexNumber), result);
+        }
+        
+        [Test]
+        public void Throws_on_null()
+        {
+            UInt256Converter converter = new UInt256Converter();
+            JsonReader reader = new JsonTextReader(new StringReader("null"));
+            reader.ReadAsString();
+            Assert.Throws<JsonException>(
+                () => converter.ReadJson(reader, typeof(UInt256), UInt256.Zero, false, JsonSerializer.CreateDefault()));
         }
     }
 }
