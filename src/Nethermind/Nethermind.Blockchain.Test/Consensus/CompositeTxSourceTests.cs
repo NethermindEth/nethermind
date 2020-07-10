@@ -36,7 +36,13 @@ namespace Nethermind.Blockchain.Test.Consensus
             ITxSource txSource = Substitute.For<ITxSource>();
             CompositeTxSource selector = new CompositeTxSource(txSource);
             _ = selector.ToString();
-        }   
+        } 
+        
+        [Test]
+        public void Throws_on_null_argument()
+        {
+            Assert.Throws<ArgumentNullException>(() => new CompositeTxSource(null));
+        } 
         
         [Test]
         public void selectTransactions_injects_transactions_from_ImmediateTransactionSources_in_front_of_block_transactions()

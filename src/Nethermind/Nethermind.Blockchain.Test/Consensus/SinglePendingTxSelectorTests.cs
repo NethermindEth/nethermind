@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Consensus.Transactions;
@@ -35,6 +36,12 @@ namespace Nethermind.Blockchain.Test.Consensus
             ITxSource txSource = Substitute.For<ITxSource>();
             SinglePendingTxSelector selector = new SinglePendingTxSelector(txSource);
             _ = selector.ToString();
+        }
+        
+        [Test]
+        public void Throws_on_null_argument()
+        {
+            Assert.Throws<ArgumentNullException>(() => new SinglePendingTxSelectorTests());
         }
         
         [Test]
