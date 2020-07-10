@@ -139,7 +139,7 @@ namespace Nethermind.Network.Test.Discovery
         }
 
         [Test]
-        public async Task Wrong_pong_will_get_ignored()
+        public void Wrong_pong_will_get_ignored()
         {
             var node = new Node(_host, _port);
             var manager = _discoveryManager.GetNodeLifecycleManager(node);

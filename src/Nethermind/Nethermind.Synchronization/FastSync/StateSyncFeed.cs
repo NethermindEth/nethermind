@@ -668,13 +668,13 @@ namespace Nethermind.Synchronization.FastSync
                     FinishThisSyncRound();
                     return EmptyBatch;
                 }
-
-                // if (_hintsToResetRoot >= 32)
-                // {
-                //     if (_logger.IsDebug) _logger.Debug("Falling asleep - many missing responses");
-                //     FinishThisSyncRound();
-                //     return EmptyBatch;
-                // }
+                
+                if (_hintsToResetRoot >= 32)
+                {
+                    if (_logger.IsDebug) _logger.Debug("Falling asleep - many missing responses");
+                    FinishThisSyncRound();
+                    return EmptyBatch;
+                }
 
                 lock (_stateDbLock)
                 {
