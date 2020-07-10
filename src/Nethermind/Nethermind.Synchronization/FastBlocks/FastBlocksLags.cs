@@ -13,17 +13,20 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System;
-using Nethermind.State;
-
-namespace Nethermind.Synchronization.BeamSync
+namespace Nethermind.Synchronization.FastBlocks
 {
-    [Serializable]
-    public class BeamSyncException : StateException
+    internal static class FastBlocksLags
     {
-        public BeamSyncException(string message) : base(message)
-        {
-        }
+        /// <summary>
+        /// That many headers will be downloaded before we start downloading bodies
+        /// </summary>
+        public const long ForBodies = 32 * 1024;
+
+        /// <summary>
+        /// That many bodies will be downloaded before we start downloading receipts
+        /// </summary>
+        public const long ForReceipts = 32 * 1024;
     }
 }

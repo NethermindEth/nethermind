@@ -13,17 +13,24 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System;
-using Nethermind.State;
+using System.Threading;
+using FluentAssertions;
+using Nethermind.Consensus;
+using Nethermind.Core;
+using NUnit.Framework;
 
-namespace Nethermind.Synchronization.BeamSync
+namespace Nethermind.Blockchain.Test.Consensus
 {
-    [Serializable]
-    public class BeamSyncException : StateException
+    [TestFixture]
+    public class SealEngineExceptionTests
     {
-        public BeamSyncException(string message) : base(message)
+        [Test]
+        public void Test()
         {
+            SealEngineException exception = new SealEngineException("message");
+            exception.Message.Should().Be("message");
         }
     }
 }

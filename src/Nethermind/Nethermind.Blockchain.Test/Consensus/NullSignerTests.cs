@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,42 +13,33 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System.Threading;
-using System.Threading.Tasks;
+using FluentAssertions;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using NUnit.Framework;
 
-namespace Nethermind.Consensus
+namespace Nethermind.Blockchain.Test.Consensus
 {
-    public class NullSealEngine : ISealer, ISealValidator
+    [TestFixture]
+    public class NullSignerTests
     {
-        private NullSealEngine()
+        [Test]
+        public void Test()
         {
+            NullSigner signer = NullSigner.Instance;
+            signer.Address.Should().Be(Address.Zero);
+            signer.CanSign.Should().BeTrue();
         }
-
-        public static NullSealEngine Instance { get; } = new NullSealEngine();
-
-        public Address Address => Address.Zero;
         
-        public Task<Block> SealBlock(Block block, CancellationToken cancellationToken)
+        [Test]
+        public void Test_signing()
         {
-            return Task.FromResult(block);
-        }
-
-        public bool CanSeal(long blockNumber, Keccak parentHash)
-        {
-            return true;
-        }
-
-        public bool ValidateParams(BlockHeader parent, BlockHeader header)
-        {
-            return true;
-        }
-
-        public bool ValidateSeal(BlockHeader header, bool force)
-        {
-            return true;
+            NullSigner signer = NullSigner.Instance;
+            signer.Sign((Transaction)null);
+            signer.Sign((Keccak) null).Bytes.Should().HaveCount(64);
         }
     }
 }

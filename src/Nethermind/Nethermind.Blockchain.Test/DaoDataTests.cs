@@ -13,17 +13,23 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System;
-using Nethermind.State;
+using FluentAssertions;
+using Nethermind.Core;
+using NUnit.Framework;
 
-namespace Nethermind.Synchronization.BeamSync
+namespace Nethermind.Blockchain.Test
 {
-    [Serializable]
-    public class BeamSyncException : StateException
+    [TestFixture]
+    public class DaoDataTests
     {
-        public BeamSyncException(string message) : base(message)
+        [Test]
+        public void Test()
         {
+            DaoData.DaoAccounts.Should().HaveCount(116);
+            DaoData.DaoWithdrawalAccount.Should().Be(
+                new Address("bf4ed7b27f1d666546e30d74d50d173d20bca754"));
         }
     }
 }
