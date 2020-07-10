@@ -35,6 +35,7 @@ using Nethermind.Trie;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Block = Nethermind.Core.Block;
+using System.Threading;
 
 namespace Nethermind.Facade
 {
@@ -54,6 +55,7 @@ namespace Nethermind.Facade
         private readonly IStorageProvider _storageProvider;
         private readonly ITransactionProcessor _transactionProcessor;
         private readonly ILogFinder _logFinder;
+        private readonly CancellationToken _cancellationToken;
 
         public BlockchainBridge(IStateReader stateReader,
             IStateProvider stateProvider,
@@ -70,7 +72,8 @@ namespace Nethermind.Facade
             ITimestamper timestamper,
             ILogManager logManager,
             bool isMining,
-            int findLogBlockDepthLimit = 1000)
+            int findLogBlockDepthLimit = 1000,
+            CancellationToken cancellationToken = default(CancellationToken))
         {
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
@@ -85,7 +88,7 @@ namespace Nethermind.Facade
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
             IsMining = isMining;
-
+            _cancellationToken = cancellationToken;
             _logFinder = new LogFinder(_blockTree, _receiptFinder, bloomStorage, logManager, new ReceiptsRecovery(), findLogBlockDepthLimit);
         }
 
@@ -178,7 +181,7 @@ namespace Nethermind.Facade
 
         public CallOutput EstimateGas(BlockHeader header, Transaction tx)
         {
-            EstimateGasTracer estimateGasTracer = new EstimateGasTracer();
+            EstimateGasTracer estimateGasTracer = new EstimateGasTracer(_cancellationToken);
             CallAndRestore(header, tx, UInt256.Max(header.Timestamp + 1, _timestamper.EpochSeconds), estimateGasTracer);
             long estimate = estimateGasTracer.CalculateEstimate(tx);
             return new CallOutput {Error = estimateGasTracer.Error, GasSpent = estimate};

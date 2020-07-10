@@ -118,7 +118,7 @@ namespace Nethermind.Core.Test.Blockchain
 
             StateReader = new StateReader(StateDb, CodeDb, LimboLogs.Instance);
             TxPoolTxSource txPoolTxSource = new TxPoolTxSource(TxPool, StateReader, LimboLogs.Instance);
-            ISealer sealer = new FakeSealer(TestItem.AddressD, TimeSpan.Zero);
+            ISealer sealer = new NethDevSealEngine(TestItem.AddressD);
             BlockProducer = new TestBlockProducer(txPoolTxSource, chainProcessor, State, sealer, BlockTree, chainProcessor, Timestamper, LimboLogs.Instance);
             BlockProducer.Start();
 

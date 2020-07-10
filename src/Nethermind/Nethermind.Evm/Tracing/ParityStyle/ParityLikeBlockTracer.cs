@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Linq;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
@@ -24,25 +25,28 @@ namespace Nethermind.Evm.Tracing.ParityStyle
     public class ParityLikeBlockTracer : BlockTracerBase<ParityLikeTxTrace, ParityLikeTxTracer>
     {
         private Block _block;
+        private readonly CancellationToken _cancellationToken;
 
         private readonly ParityTraceTypes _types;
 
-        public ParityLikeBlockTracer(Keccak txHash, ParityTraceTypes types)
+        public ParityLikeBlockTracer(Keccak txHash, ParityTraceTypes types, CancellationToken cancellationToken = default(CancellationToken))
             : base(txHash)
         {
+            _cancellationToken = cancellationToken;
             _types = types;
             IsTracingRewards = (types & ParityTraceTypes.Rewards) == ParityTraceTypes.Rewards;
         }
 
-        public ParityLikeBlockTracer(ParityTraceTypes types)
+        public ParityLikeBlockTracer(ParityTraceTypes types, CancellationToken cancellationToken = default(CancellationToken))
         {
+            _cancellationToken = cancellationToken;
             _types = types;
             IsTracingRewards = (types & ParityTraceTypes.Rewards) == ParityTraceTypes.Rewards;
         }
 
         protected override ParityLikeTxTracer OnStart(Keccak txHash)
         {
-            return new ParityLikeTxTracer(_block, txHash == null ? null : _block.Transactions.Single(t => t.Hash == txHash), _types);
+            return new ParityLikeTxTracer(_block, txHash == null ? null : _block.Transactions.Single(t => t.Hash == txHash), _types, _cancellationToken);
         }
 
         protected override ParityLikeTxTrace OnEnd(ParityLikeTxTracer txTracer)
@@ -54,6 +58,8 @@ namespace Nethermind.Evm.Tracing.ParityStyle
 
         public override void ReportReward(Address author, string rewardType, UInt256 rewardValue)
         {
+            _cancellationToken.ThrowIfCancellationRequested();
+
             ParityLikeTxTrace rewardTrace = TxTraces.Last();
             rewardTrace.Action = new ParityTraceAction();
             rewardTrace.Action.RewardType = rewardType;

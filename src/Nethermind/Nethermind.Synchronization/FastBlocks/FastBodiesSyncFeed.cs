@@ -88,7 +88,7 @@ namespace Nethermind.Synchronization.FastBlocks
         protected override SyncMode ActivationSyncModes { get; } = SyncMode.FastBodies & ~SyncMode.FastBlocks;
 
         private bool ShouldFinish => !_syncConfig.DownloadBodiesInFastSync || (_blockTree.LowestInsertedBody?.Number ?? 0) == 1;
-        
+
         private long BodiesInQueue => _dependencies.Sum(d => d.Value.Count);
 
         public override bool IsMultiFeed => true;
@@ -103,7 +103,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
             bool noBatchesLeft = !shouldDownloadBodies
                                  || allBodiesDownloaded
-                                 || requestedGenesis 
+                                 || requestedGenesis
                                  || BodiesInQueue >= FastBlocksQueueLimits.ForBodies;
 
             if (noBatchesLeft)
@@ -180,7 +180,8 @@ namespace Nethermind.Synchronization.FastBlocks
                 long? lowestInsertedHeader = _blockTree.LowestInsertedHeader?.Number;
                 long? lowestInsertedBody = _blockTree.LowestInsertedBody?.Number;
                 if (lowestInsertedHeader != 1 &&
-                    (lowestInsertedHeader ?? _pivotNumber) > (lowestInsertedBody ?? _pivotNumber) - 1024 * 32)
+                    (lowestInsertedHeader ?? _pivotNumber) >
+                    (lowestInsertedBody ?? _pivotNumber) - FastBlocksLags.ForBodies)
                 {
                     return Task.FromResult((BodiesSyncBatch) null);
                 }

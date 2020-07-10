@@ -23,6 +23,7 @@ using System.Timers;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Consumers.Deposits;
 using Nethermind.DataMarketplace.Consumers.Deposits.Domain;
 using Nethermind.DataMarketplace.Consumers.Deposits.Queries;
@@ -123,7 +124,7 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
                         return;
                     }
 
-                    BlockModel? block = t.Result?.IsValid == true ? t.Result.Result : null;
+                    BlockModel<Keccak>? block = t.Result?.IsValid == true ? t.Result.Result : null;
                     if (block is null)
                     {
                         _logger.Error("Latest block fetched via proxy is null.", t.Exception);

@@ -21,7 +21,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
 {
     public class StatusMessage : P2PMessage
     {
-
         public static class KeyNames
         {
             public const string ProtocolVersion = "protocolVersion";
@@ -43,7 +42,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
         }
 
         public override int PacketType { get; } = LesMessageCode.Status;
-        public override string Protocol => "les";
+        public override string Protocol => P2P.Protocol.Les;
         public byte ProtocolVersion { get; set; }
         public UInt256 ChainId { get; set; }
         public UInt256 TotalDifficulty { get; set; }
@@ -67,17 +66,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
         // TODO: Implement cost scaling to account for users with different capabilities - https://github.com/ethereum/go-ethereum/blob/01d92531ee0993c0e6e5efe877a1242bfd808626/les/costtracker.go#L437
         // TODO: Implement multiple cost lists, so it can be limited based on the minimum of available bandwidth, cpu time, etc. - https://github.com/ethereum/go-ethereum/blob/01d92531ee0993c0e6e5efe877a1242bfd808626/les/costtracker.go#L186
         // TODO: This might be better as a dictionary
-        public RequestCostItem[] MaximumRequestCosts = new RequestCostItem[]
-        {
-            new RequestCostItem(LesMessageCode.GetBlockHeaders, 150_000, 30_000),
-            new RequestCostItem(LesMessageCode.GetBlockBodies, 0, 700_000),
-            new RequestCostItem(LesMessageCode.GetReceipts, 0, 1_000_000),
-            new RequestCostItem(LesMessageCode.GetContractCodes, 0, 450_000),
-            new RequestCostItem(LesMessageCode.GetProofsV2, 0, 600_000),
-            new RequestCostItem(LesMessageCode.GetHelperTrieProofs, 0, 1_000_000),
-            new RequestCostItem(LesMessageCode.SendTxV2, 0, 450_000),
-            new RequestCostItem(LesMessageCode.GetTxStatus, 0, 250_000)
-        };
+        public RequestCostItem[] MaximumRequestCosts = CostTracker.DefaultRequestCostTable;
         #endregion
     }
 }

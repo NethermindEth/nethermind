@@ -23,7 +23,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 {
     public class GetBlockHeadersMessageSerializer : IZeroMessageSerializer<GetBlockHeadersMessage>
     {
-       private static GetBlockHeadersMessage Deserialize(RlpStream rlpStream)
+       public static GetBlockHeadersMessage Deserialize(RlpStream rlpStream)
         {
             GetBlockHeadersMessage message = new GetBlockHeadersMessage();
             rlpStream.ReadSequenceLength();

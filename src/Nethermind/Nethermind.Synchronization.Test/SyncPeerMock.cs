@@ -146,6 +146,14 @@ namespace Nethermind.Synchronization.Test
 
         private BlockingCollection<Action> _sendQueue = new BlockingCollection<Action>();
         
+        public void NotifyOfNewBlock(Block block, SendBlockPriority priority)
+        {
+            if (priority == SendBlockPriority.High)
+                SendNewBlock(block);
+            else
+                HintNewBlock(block.Hash, block.Number);
+        }
+
         public void SendNewBlock(Block block)
         {
             _sendQueue.Add(() => _remoteSyncServer?.AddNewBlock(block, this));

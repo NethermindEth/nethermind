@@ -17,6 +17,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -35,9 +37,11 @@ namespace Nethermind.JsonRpc.Modules.Trace
         private readonly ITracer _tracer;
         private readonly IBlockFinder _blockFinder;
         private readonly TransactionDecoder _txDecoder = new TransactionDecoder();
+        private readonly CancellationToken _cancellationToken; 
 
-        public TraceModule(IReceiptFinder receiptFinder, ITracer tracer, IBlockFinder blockFinder)
+        public TraceModule(IReceiptFinder receiptFinder, ITracer tracer, IBlockFinder blockFinder, CancellationToken cancellationToken = default(CancellationToken))
         {
+            _cancellationToken = cancellationToken;
             _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
             _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
@@ -146,7 +150,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             }
 
             Block block = blockSearch.Object;
-
+            
             IReadOnlyCollection<ParityLikeTxTrace> txTraces = TraceBlock(block, ParityTraceTypes.Trace | ParityTraceTypes.Rewards);
             return ResultWrapper<ParityTxTraceFromStore[]>.Success(txTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace).ToArray());
         }
@@ -178,15 +182,17 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         private IReadOnlyCollection<ParityLikeTxTrace> TraceBlock(Block block, ParityTraceTypes traceTypes)
         {
-            ParityLikeBlockTracer listener = new ParityLikeBlockTracer(traceTypes);
+            ParityLikeBlockTracer listener = new ParityLikeBlockTracer(traceTypes, _cancellationToken);
             _tracer.Trace(block, listener);
+
             return listener.BuildResult();
         }
 
         private ParityLikeTxTrace TraceTx(Block block, Keccak txHash, ParityTraceTypes traceTypes)
         {
-            ParityLikeBlockTracer listener = new ParityLikeBlockTracer(txHash, traceTypes);
+            ParityLikeBlockTracer listener = new ParityLikeBlockTracer(txHash, traceTypes, _cancellationToken);
             _tracer.Trace(block, listener);
+
             return listener.BuildResult().SingleOrDefault();
         }
     }

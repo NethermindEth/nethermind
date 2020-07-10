@@ -74,7 +74,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         {
             return _blockTree.FindLevel(number);
         }
-        
+
         public int DeleteChainSlice(long startNumber)
         {
             return _blockTree.DeleteChainSlice(startNumber);
@@ -107,12 +107,12 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
 
         public GethLikeTxTrace[] GetBlockTrace(Keccak blockHash, GethTraceOptions gethTraceOptions = null)
         {
-            return _tracer.TraceBlock(blockHash, gethTraceOptions ?? GethTraceOptions.Default);
+            return _tracer.TraceBlock(blockHash, gethTraceOptions ?? GethTraceOptions.Default); 
         }
 
         public GethLikeTxTrace[] GetBlockTrace(long blockNumber, GethTraceOptions gethTraceOptions = null)
         {
-            return _tracer.TraceBlock(blockNumber, gethTraceOptions ?? GethTraceOptions.Default);
+            return _tracer.TraceBlock(blockNumber, gethTraceOptions ?? GethTraceOptions.Default); 
         }
 
         public GethLikeTxTrace[] GetBlockTrace(Rlp blockRlp, GethTraceOptions gethTraceOptions = null)
@@ -130,7 +130,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             Keccak hash = _blockTree.FindHash(number);
             return hash == null ? null : _dbMappings[DbNames.Blocks].Get(hash);
         }
-    
+
         public object GetConfigValue(string category, string name)
         {
             return _configProvider.GetRawValue(category, name);

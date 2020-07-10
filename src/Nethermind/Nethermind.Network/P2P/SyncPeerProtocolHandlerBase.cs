@@ -30,6 +30,7 @@ using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
+using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
@@ -45,6 +46,8 @@ namespace Nethermind.Network.P2P
         public string ClientId => Session?.Node?.ClientId;
         public UInt256 TotalDifficulty { get; set; }
         public PublicKey Id => Node.Id;
+
+        public virtual bool IncludeInTxPool => true;
         protected ISyncServer SyncServer { get; }
         
         public long HeadNumber { get; set; }
@@ -240,30 +243,7 @@ namespace Nethermind.Network.P2P
             await Task.CompletedTask;
             throw new NotSupportedException("Fast sync not supported by eth62 protocol");
         }
-
-        public void SendNewBlock(Block block)
-        {
-            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} NewBlock to {Node:c}");
-            if (block.TotalDifficulty == null)
-            {
-                throw new InvalidOperationException($"Trying to send a block {block.Hash} with null total difficulty");
-            }
-
-            NewBlockMessage msg = new NewBlockMessage();
-            msg.Block = block;
-            msg.TotalDifficulty = block.TotalDifficulty ?? 0;
-
-            Send(msg);
-        }
-
-        public void HintNewBlock(Keccak blockHash, long number)
-        {
-            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} HintBlock to {Node:c}");
-
-            NewBlockHashesMessage msg = new NewBlockHashesMessage();
-            msg.BlockHashes = new[] {(blockHash, number)};
-            Send(msg);
-        }
+        public abstract void NotifyOfNewBlock(Block block, SendBlockPriority priority);
 
         public virtual async Task<byte[][]> GetNodeData(IList<Keccak> hashes, CancellationToken token)
         {
@@ -322,6 +302,13 @@ namespace Nethermind.Network.P2P
             //     return;
             // }
 
+            Send(FulfillBlockHeadersRequest(getBlockHeadersMessage));
+            stopwatch.Stop();
+            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} BlockHeaders to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
+        }
+
+        protected BlockHeadersMessage FulfillBlockHeadersRequest(GetBlockHeadersMessage getBlockHeadersMessage)
+        {
             if (getBlockHeadersMessage.MaxHeaders > 1024)
             {
                 throw new EthSyncException("Incoming headers request for more than 1024 headers");
@@ -340,9 +327,7 @@ namespace Nethermind.Network.P2P
 
             headers = FixHeadersForGeth(headers);
 
-            Send(new BlockHeadersMessage(headers));
-            stopwatch.Stop();
-            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} BlockHeaders to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
+            return new BlockHeadersMessage(headers);
         }
 
         protected void Handle(BlockHeadersMessage message, long size)
@@ -370,7 +355,16 @@ namespace Nethermind.Network.P2P
             }
 
             Stopwatch stopwatch = Stopwatch.StartNew();
-            IList<Keccak> hashes = request.BlockHashes;
+
+            Interlocked.Increment(ref Counter);
+            Send(FulfillBlockBodiesRequest(request));
+            stopwatch.Stop();
+            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} BlockBodies to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
+        }
+
+        protected BlockBodiesMessage FulfillBlockBodiesRequest(GetBlockBodiesMessage getBlockBodiesMessage)
+        {
+            IList<Keccak> hashes = getBlockBodiesMessage.BlockHashes;
             Block[] blocks = new Block[hashes.Count];
 
             for (int i = 0; i < hashes.Count; i++)
@@ -378,10 +372,7 @@ namespace Nethermind.Network.P2P
                 blocks[i] = SyncServer.Find(hashes[i]);
             }
 
-            Interlocked.Increment(ref Counter);
-            Send(new BlockBodiesMessage(blocks));
-            stopwatch.Stop();
-            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} BlockBodies to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
+            return new BlockBodiesMessage(blocks);
         }
 
         protected void Handle(BlockBodiesMessage message, long size)
@@ -393,6 +384,26 @@ namespace Nethermind.Network.P2P
                 request.ResponseSize = size;
                 request.CompletionSource.SetResult(message.Bodies);
             }
+        }
+
+        protected void Handle(GetReceiptsMessage msg)
+        {
+            Metrics.Eth63GetReceiptsReceived++;
+            if (msg.Hashes.Count > 512)
+            {
+                throw new EthSyncException("Incoming receipts request for more than 512 blocks");
+            }
+
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            Send(FulfillReceiptsRequest(msg));
+            stopwatch.Stop();
+            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} Receipts to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
+        }
+
+        protected ReceiptsMessage FulfillReceiptsRequest(GetReceiptsMessage getReceiptsMessage)
+        {
+            TxReceipt[][] txReceipts = SyncServer.GetReceipts(getReceiptsMessage.Hashes);
+            return new ReceiptsMessage(txReceipts);
         }
 
         private static BlockHeader[] FixHeadersForGeth(BlockHeader[] headers)
