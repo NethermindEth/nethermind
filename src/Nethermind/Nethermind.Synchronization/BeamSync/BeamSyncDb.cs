@@ -1,16 +1,16 @@
 //  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -72,7 +72,7 @@ namespace Nethermind.Synchronization.BeamSync
 
         private void SyncModeSelectorOnChanged(object sender, SyncModeChangedEventArgs e)
         {
-            if ((e.Current & SyncMode.Full) == SyncMode.Full)
+            if (e.To.HasFlag(SyncMode.Full))
             {
                 // the beam processor either already switched or is about ti switch to the full sync mode
                 // we should be already switched to the new database
@@ -97,7 +97,7 @@ namespace Nethermind.Synchronization.BeamSync
         {
             // at this stage beam executors are already cancelled and they no longer save to beam DB
             // standard processor is for sure not started yet - it is waiting for us to replace the target
-            if ((e.Current & SyncMode.Full) == SyncMode.Full)
+            if (e.To.HasFlag(SyncMode.Full))
             {
                 Interlocked.Exchange(ref _targetDbForSaves, _stateDb);
             }
@@ -164,12 +164,12 @@ namespace Nethermind.Synchronization.BeamSync
                             throw new Exception();
                         }
                     }
-                    
+
                     byte[] fromMem = _tempDb[key] ?? _stateDb[key];
                     if (fromMem == null)
                     {
                         if (_logger.IsTrace) _logger.Trace($"Beam sync miss - {key.ToHexString()} - retrieving");
-                        
+
                         if (BeamSyncContext.Cancelled.Value.IsCancellationRequested)
                         {
                             throw new BeamCanceledException("Beam cancellation requested");
@@ -217,7 +217,7 @@ namespace Nethermind.Synchronization.BeamSync
                         }
 
                         BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
-                        
+
                         // if (!Bytes.AreEqual(Keccak.Compute(fromMem).Bytes, key))
                         // {
                         //     throw new Exception("DB had an entry with a hash mismatch {key}");

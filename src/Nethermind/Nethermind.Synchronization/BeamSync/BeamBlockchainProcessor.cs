@@ -1,16 +1,16 @@
 //  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -112,16 +112,10 @@ namespace Nethermind.Synchronization.BeamSync
 
         private void SyncModeSelectorOnPreparing(object sender, SyncModeChangedEventArgs e)
         {
-            if ((e.Current & SyncMode.Full) == SyncMode.Full)
+            if (!_isAfterBeam && e.To.HasFlag(SyncMode.Full))
             {
                 lock (_transitionLock)
                 {
-                    if (_isAfterBeam)
-                    {
-                        // we do it only once - later we stay forever in full sync mode
-                        return;
-                    }
-
                     _isAfterBeam = true;
                     if(_logger.IsInfo) _logger.Info($"Setting block action to shelving.");
                     _blockAction = Shelve;
@@ -138,7 +132,7 @@ namespace Nethermind.Synchronization.BeamSync
 
         private void SyncModeSelectorOnChanged(object sender, SyncModeChangedEventArgs e)
         {
-            if ((e.Current & SyncMode.Full) == SyncMode.Full)
+            if (e.To.HasFlag(SyncMode.Full))
             {
                 if(_logger.IsInfo) _logger.Info($"Setting block action to standard processing.");
                 _blockAction = EnqueueForStandardProcessing;
@@ -259,7 +253,7 @@ namespace Nethermind.Synchronization.BeamSync
                 {
                     prefetchTasks = PrefetchNew(stateReader, block, parentHeader.StateRoot, parentHeader.Author ?? parentHeader.Beneficiary);
                 }
-                
+
                 Stopwatch stopwatch = Stopwatch.StartNew();
                 Block processedBlock = null;
                 beamProcessingTask = Task.Run(() =>
@@ -293,11 +287,11 @@ namespace Nethermind.Synchronization.BeamSync
                         // if (_logger.IsDebug) _logger.Debug($"Running standard processor after beam sync for {block}");
                         // at this stage we are sure to have all the state available
                         CancelPreviousBeamSyncingBlocks(processedBlock.Number);
-                        
+
                         // do I even need this?
                         // do I even need to process any of these blocks or just leave the RPC available
                         // (based on user expectations they may need to trace or just query balance)
-                        
+
                         // soo - there should be a separate beam queue that we can wait for to finish?
                         // then we can ensure that it finishes before the normal queue fires
                         // and so they never hit the wrong databases?
@@ -422,7 +416,7 @@ namespace Nethermind.Synchronization.BeamSync
         }
 
         private bool _isDisposed;
-        
+
         public void Dispose()
         {
             lock (_tokens)
@@ -430,7 +424,7 @@ namespace Nethermind.Synchronization.BeamSync
                 _isDisposed = true;
                 CancelAllBeamSyncTasks();
             }
-            
+
             UnregisterListeners();
         }
     }

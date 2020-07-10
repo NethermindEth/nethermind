@@ -1,16 +1,16 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -83,7 +83,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
             _blockTree = _context.BlockTree ?? throw new StepDependencyException(nameof(_context.BlockTree));
             _syncModeSelector = _context.SyncModeSelector ?? throw new StepDependencyException(nameof(_context.SyncModeSelector));
             _chainLevelInfoRepository = _context.ChainLevelInfoRepository ?? throw new StepDependencyException(nameof(_context.ChainLevelInfoRepository));
-            
+
             var initConfig = _context.Config<IInitConfig>();
 
             if (initConfig.StoreReceipts)
@@ -105,7 +105,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
                 }
             }
         }
-        
+
         private bool CanMigrate(SyncMode syncMode)
         {
             return (syncMode & SyncMode.Full) == SyncMode.Full;
@@ -113,7 +113,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
 
         private void OnSyncModeChanged(object? sender, SyncModeChangedEventArgs e)
         {
-            if (CanMigrate(e.Current))
+            if (CanMigrate(e.To))
             {
                 RunMigration();
                 _syncModeSelector.Changed -= OnSyncModeChanged;
@@ -123,7 +123,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
         private void RunMigration()
         {
             _toBlock = MigrateToBlockNumber;
-            
+
             if (_toBlock > 0)
             {
                 _cancellationTokenSource = new CancellationTokenSource();
@@ -180,12 +180,12 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
                         {
                             _receiptStorage.Insert(block, false, notNullReceipts);
                             _receiptStorage.MigratedBlockNumber = block.Number;
-                            
+
                             for (int i = 0; i < notNullReceipts.Length; i++)
                             {
                                 receiptsDb.Delete(notNullReceipts[i].TxHash);
                             }
-                            
+
                             if (notNullReceipts.Length != receipts.Length)
                             {
                                 if(_logger.IsWarn) _logger.Warn(GetLogMessage("warning", $"Block {block.ToString(Block.Format.FullHashAndNumber)} is missing {receipts.Length - notNullReceipts.Length} receipts!"));
@@ -215,7 +215,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
                                     _chainLevelInfoRepository.PersistLevel(number, level, batch);
                                 }
                             }
-                                
+
                             blockHash = level.MainChainBlock?.BlockHash;
                             return blockHash != null;
                         }
@@ -225,7 +225,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
                             return false;
                         }
                     }
-                    
+
                     for (long i = _toBlock - 1; i > 0; i--)
                     {
                         if (token.IsCancellationRequested)
@@ -234,7 +234,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
                             if (_logger.IsInfo) _logger.Info(GetLogMessage("cancelled"));
                             yield break;
                         }
-                        
+
                         if (TryGetMainChainBlockHashFromLevel(i, out var blockHash))
                         {
                             var header = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.None);
@@ -261,7 +261,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
 
         private long MigrateToBlockNumber =>
             _receiptStorage.MigratedBlockNumber == long.MaxValue
-                ? _syncModeSelector.Current == SyncMode.Full 
+                ? _syncModeSelector.Current == SyncMode.Full
                     ? _blockTree.Head?.Number ?? 0
                     : _blockTree.BestKnownNumber
                 : _receiptStorage.MigratedBlockNumber - 1;

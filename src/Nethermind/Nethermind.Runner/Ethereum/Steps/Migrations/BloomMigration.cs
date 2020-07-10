@@ -1,16 +1,16 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -41,7 +41,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
     public class BloomMigration : IDatabaseMigration
     {
         private static readonly BlockHeader EmptyHeader = new BlockHeader(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.Zero, 0L, 0L, UInt256.Zero, Bytes.Empty);
-        
+
         private readonly EthereumRunnerContext _context;
         private readonly ILogger _logger;
         private Stopwatch? _stopwatch;
@@ -52,14 +52,14 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
         private Average[]? _averages;
         private readonly StringBuilder _builder = new StringBuilder();
         private readonly IBloomConfig _bloomConfig;
-        
+
         public BloomMigration(EthereumRunnerContext context)
         {
             _context = context;
             _logger = context.LogManager.GetClassLogger<BloomMigration>();
             _bloomConfig = context.Config<IBloomConfig>();
         }
-        
+
         public void Run()
         {
             if (_context.BloomStorage == null) throw new StepDependencyException(nameof(_context.BloomStorage));
@@ -90,7 +90,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
                 if (_logger.IsDebug) _logger.Debug("BloomDb migration not needed.");
             }
         }
-        
+
         private bool CanMigrate(SyncMode syncMode)
         {
             return (syncMode & SyncMode.Full) == SyncMode.Full;
@@ -98,7 +98,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
 
         private void SynchronizerOnSyncModeChanged(object? sender, SyncModeChangedEventArgs e)
         {
-            if (CanMigrate(e.Current))
+            if (CanMigrate(e.To))
             {
                 if (_context.SyncModeSelector == null) throw new StepDependencyException(nameof(_context.SyncModeSelector));
 
@@ -135,7 +135,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
             {
                 if (_context.BloomStorage == null) throw new StepDependencyException(nameof(_context.BloomStorage));
                 if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
-                
+
                 return _context.BloomStorage.MinBlockNumber == long.MaxValue
                     ? _context.BlockTree.BestKnownNumber
                     : _context.BloomStorage.MinBlockNumber - 1;
@@ -153,7 +153,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
             if (_context.BloomStorage == null) throw new StepDependencyException(nameof(_context.BloomStorage));
             if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
             if (_context.ChainLevelInfoRepository == null) throw new StepDependencyException(nameof(_context.ChainLevelInfoRepository));
-            
+
             IBlockTree blockTree = _context.BlockTree;
             IBloomStorage storage = _context.BloomStorage;
             long to = MinBlockNumber;
@@ -200,7 +200,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
                                     chainLevelInfoRepository.PersistLevel(number, level, batch);
                                 }
                             }
-                                
+
                             blockHash = level.MainChainBlock?.BlockHash;
                             return blockHash != null;
                         }
@@ -210,7 +210,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
                             return false;
                         }
                     }
-                    
+
                     for (long i = from; i <= to; i++)
                     {
                         if (token.IsCancellationRequested)

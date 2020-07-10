@@ -174,15 +174,15 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private void UpdateSyncModes(SyncMode newModes)
         {
-            if (_logger.IsTrace && newModes != Current)
+            if (newModes == Current) return;
+
+            if (_logger.IsTrace)
             {
                 string message = $"Changing state to {newModes}";
                 _logger.Trace(message);
             }
 
-            SyncMode previous = Current;
-
-            SyncModeChangedEventArgs args = new SyncModeChangedEventArgs(previous, Current);
+            SyncModeChangedEventArgs args = new SyncModeChangedEventArgs(from:Current, to:newModes);
 
             // Changing is invoked here so we can block until all the subsystems are ready to switch
             // for example when switching to Full sync we need to ensure that we safely transition

@@ -1,16 +1,16 @@
 //  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -22,7 +22,6 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -97,7 +96,7 @@ namespace Nethermind.Synchronization.FastSync
         {
             if (CurrentState == SyncFeedState.Dormant)
             {
-                if ((e.Current & SyncMode.StateNodes) == SyncMode.StateNodes)
+                if (e.To.HasFlag(SyncMode.StateNodes))
                 {
                     BlockHeader bestSuggested = _blockTree.BestSuggestedHeader;
                     if (bestSuggested == null || bestSuggested.Number == 0)
@@ -683,7 +682,7 @@ namespace Nethermind.Synchronization.FastSync
                 //         _logger.Error($"Could have used the beam synced item {_beamSyncedUsable}");
                 //     }
                 // }
-                
+
                 LogRequestInfo(requestHashes);
 
                 if (requestHashes.Count > 0)
@@ -733,11 +732,11 @@ namespace Nethermind.Synchronization.FastSync
                 }
             }
         }
-        
+
         public void ResetStateRoot(long blockNumber, Keccak stateRoot)
         {
             Interlocked.Exchange(ref _hintsToResetRoot, 0);
-            
+
             if (_logger.IsInfo) _logger.Info($"Setting state sync state root to {blockNumber} {stateRoot}");
             _currentSyncStart = DateTime.UtcNow;
             _currentSyncStartSecondsInSync = _data.SecondsInSync;

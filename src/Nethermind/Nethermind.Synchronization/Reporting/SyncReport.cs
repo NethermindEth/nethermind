@@ -16,6 +16,7 @@
 
 using System;
 using System.Text;
+using System.Threading;
 using System.Timers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
@@ -24,6 +25,7 @@ using Nethermind.Logging;
 using Nethermind.Stats;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Timer = System.Timers.Timer;
 
 namespace Nethermind.Synchronization.Reporting
 {
@@ -34,6 +36,8 @@ namespace Nethermind.Synchronization.Reporting
         private readonly ISyncModeSelector _syncModeSelector;
         private readonly ILogger _logger;
 
+        private SyncMode _currentSyncMode = SyncMode.None;
+
         private readonly Timer _timer;
         private SyncPeersReport _syncPeersReport;
         private int _reportId;
@@ -43,8 +47,8 @@ namespace Nethermind.Synchronization.Reporting
         private const int SyncFullPeersReportFrequency = 120;
 
 
-        private static readonly string s_fastBlocksReportPattern = "Old {0,-9} {1,12:N0} / {2,12:N0} | queue {3,6:N0} | current {4,9:N2}bps | total {5,9:N2}bps";
-        private static readonly string s_fullSyncReportPattern = "Downloaded    {0,12:N0} / {1,12:N0} |              | current {2,9:N2}bps | total {3,9:N2}bps";
+        private static readonly string s_fastBlocksReportPattern = "Old {0,-9} {1,12:N0} / {2,12:N0} | queue {3,9:N0} | current {4,9:N2}bps | total {5,9:N2}bps";
+        private static readonly string s_fullSyncReportPattern = "Downloaded    {0,12:N0} / {1,12:N0} |                 | current {2,9:N2}bps | total {3,9:N2}bps";
 
         public SyncReport(ISyncPeerPool syncPeerPool, INodeStatsManager nodeStatsManager, ISyncModeSelector syncModeSelector, ISyncConfig syncConfig, ILogManager logManager, double tickTime = 1000)
         {
@@ -68,16 +72,7 @@ namespace Nethermind.Synchronization.Reporting
 
         private void SyncModeSelectorOnChanged(object sender, SyncModeChangedEventArgs e)
         {
-            if (e.Previous == SyncMode.None && e.Current == SyncMode.Full ||
-                e.Previous == SyncMode.Full && e.Current == SyncMode.None)
-            {
-                return;
-            }
-
-            if (e.Previous != e.Current)
-            {
-                if (_logger.IsInfo) _logger.Info($"Sync mode changed from {e.Previous} to {e.Current}");
-            }
+            _currentSyncMode = e.To;
         }
 
         private DateTime StartTime { get; }
@@ -129,29 +124,28 @@ namespace Nethermind.Synchronization.Reporting
             if (!_logger.IsInfo) return;
             if (_logger.IsTrace) WriteSyncConfigReport();
 
-            SyncMode currentSyncMode = _syncModeSelector.Current;
             if (!_reportedFastBlocksSummary && FastBlocksHeaders.HasEnded && FastBlocksBodies.HasEnded && FastBlocksReceipts.HasEnded)
             {
                 _reportedFastBlocksSummary = true;
-                WriteFastBlocksReport(currentSyncMode);
+                WriteFastBlocksReport(_currentSyncMode);
             }
 
-            if (!currentSyncMode.HasFlag(SyncMode.Full))
+            if (!_currentSyncMode.HasFlag(SyncMode.Full))
             {
                 _logger.Info($"Peers | with known best block: {_syncPeerPool.InitializedPeersCount} | all: {_syncPeerPool.PeerCount}");
             }
 
-            if (currentSyncMode.Equals(SyncMode.None) && _syncPeerPool.InitializedPeersCount == 0)
+            if (_currentSyncMode.Equals(SyncMode.None) && _syncPeerPool.InitializedPeersCount == 0)
             {
                 WriteNotStartedReport();
             }
 
-            if (currentSyncMode.HasFlag(SyncMode.DbLoad))
+            if (_currentSyncMode.HasFlag(SyncMode.DbLoad))
             {
                 WriteDbSyncReport();
             }
 
-            if (currentSyncMode.HasFlag(SyncMode.StateNodes))
+            if (_currentSyncMode.HasFlag(SyncMode.StateNodes))
             {
                 if (_reportId % NoProgressStateSyncReportFrequency == 0)
                 {
@@ -159,17 +153,17 @@ namespace Nethermind.Synchronization.Reporting
                 }
             }
 
-            if (currentSyncMode.HasFlag(SyncMode.FastBlocks))
+            if (_currentSyncMode.HasFlag(SyncMode.FastBlocks))
             {
-                WriteFastBlocksReport(currentSyncMode);
+                WriteFastBlocksReport(_currentSyncMode);
             }
 
-            if (currentSyncMode.HasAnyFlag(SyncMode.Full, SyncMode.FastSync))
+            if (_currentSyncMode.HasAnyFlag(SyncMode.Full, SyncMode.FastSync))
             {
                 WriteFullSyncReport();
             }
 
-            if (currentSyncMode.HasFlag(SyncMode.Beam))
+            if (_currentSyncMode.HasFlag(SyncMode.Beam))
             {
                 _logger.Info("Beam Sync is ON - you can query the latest state");
             }
