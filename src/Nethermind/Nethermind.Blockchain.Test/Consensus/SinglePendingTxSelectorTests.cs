@@ -41,7 +41,7 @@ namespace Nethermind.Blockchain.Test.Consensus
         [Test]
         public void Throws_on_null_argument()
         {
-            Assert.Throws<ArgumentNullException>(() => new SinglePendingTxSelectorTests());
+            Assert.Throws<ArgumentNullException>(() => new SinglePendingTxSelector(null));
         }
         
         [Test]
