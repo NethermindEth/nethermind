@@ -68,11 +68,6 @@ namespace Nethermind.Synchronization.ParallelSync
 
             _pivotNumber = _syncConfig.PivotNumberParsed;
 
-            StartUpdateTimer();
-        }
-
-        private void StartUpdateTimer()
-        {
             _timer = new Timer { Interval = 1000, AutoReset = false };
             _timer.Elapsed += TimerOnElapsed;
             _timer.Enabled = true;
