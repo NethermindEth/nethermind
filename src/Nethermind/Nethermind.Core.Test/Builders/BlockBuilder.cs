@@ -61,6 +61,17 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
+        public BlockBuilder WithTransactions(int txCount)
+        {
+            Transaction[] txs = new Transaction[txCount];
+            for (int i = 0; i < txCount; i++)
+            {
+                txs[i] = new Transaction();
+            }
+
+            return WithTransactions(txs);
+        }
+        
         public BlockBuilder WithTransactions(params Transaction[] transactions)
         {
             TestObjectInternal.Body = TestObjectInternal.Body.WithChangedTransactions(transactions);

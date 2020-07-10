@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,14 +15,18 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Core;
-
-namespace Nethermind.Consensus.AuRa.Transactions
+namespace Nethermind.Synchronization.FastBlocks
 {
-    public class NullTxPermissionFilter : ITxPermissionFilter
+    internal static class FastBlocksLags
     {
-        public bool IsAllowed(Transaction tx, BlockHeader parentHeader) => true;
-        
-        public static readonly NullTxPermissionFilter Instance = new NullTxPermissionFilter(); 
+        /// <summary>
+        /// That many headers will be downloaded before we start downloading bodies
+        /// </summary>
+        public const long ForBodies = 32 * 1024;
+
+        /// <summary>
+        /// That many bodies will be downloaded before we start downloading receipts
+        /// </summary>
+        public const long ForReceipts = 32 * 1024;
     }
 }

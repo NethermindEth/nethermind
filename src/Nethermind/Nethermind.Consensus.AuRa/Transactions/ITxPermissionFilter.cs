@@ -19,7 +19,6 @@ using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
