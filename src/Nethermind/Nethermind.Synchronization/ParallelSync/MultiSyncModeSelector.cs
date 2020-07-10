@@ -145,9 +145,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
             if (IsTheModeSwitchWorthMentioning(newModes))
             {
-                string stateString = BuildStateString(best);
-                string message = $"Changing state to {newModes} at {stateString}";
-                if (_logger.IsInfo) _logger.Info(message);
+                _logger.Info($"Changing state to {newModes} at {best}");
             }
 
             UpdateSyncModes(newModes);
@@ -155,21 +153,15 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private bool IsTheModeSwitchWorthMentioning(SyncMode newModes)
         {
-            return _logger.IsDebug ||
-                   newModes != Current &&
+            return _logger.IsTrace ||
+                   (newModes != Current &&
                    (newModes != SyncMode.None || Current != SyncMode.Full) &&
-                   (newModes != SyncMode.Full || Current != SyncMode.None);
+                   (newModes != SyncMode.Full || Current != SyncMode.None));
         }
 
         private void UpdateSyncModes(SyncMode newModes)
         {
             if (newModes == Current) return;
-
-            if (_logger.IsTrace)
-            {
-                string message = $"Changing state to {newModes}";
-                _logger.Trace(message);
-            }
 
             SyncModeChangedEventArgs args = new SyncModeChangedEventArgs(from:Current, to:newModes);
 
@@ -442,6 +434,27 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private struct Snapshot
         {
+
+            #region "Props"
+
+            public bool IsInFastHeaders { get; set; }
+            public bool IsInFastBodies { get; set; }
+            public bool IsInFastReceipts { get; set; }
+            public bool IsInFastSync { get; set; }
+            public bool IsInStateSync { get; set; }
+            public bool IsInBeamSync { get; set; }
+            public bool IsInFullSync { get; set; }
+
+            public long Processed { get; }          // Best block that has been processed
+            public long State { get; }              // Best full block state in the state trie (may not be processed if we just finished state trie download)
+            public long Block { get; }              // Best block body
+            public long Header { get; }             // Best block header - may be missing body if we just insert headers
+            public long PeerBlock { get; }          // Best peer block - this is what other peers are advertising - it may be lower than our best block if we get disconnected from best peers
+            public UInt256 PeerDifficulty { get; }
+
+            #endregion
+
+            #region "Constructor"
             public Snapshot(long processed, long state, long block, long header, long peerBlock, UInt256 peerDifficulty)
             {
                 Processed = processed;
@@ -453,41 +466,17 @@ namespace Nethermind.Synchronization.ParallelSync
 
                 IsInFastReceipts = IsInFastBodies = IsInFastHeaders = IsInFastSync = IsInBeamSync = IsInFullSync = IsInStateSync = false;
             }
+            #endregion
 
-            public bool IsInFastHeaders { get; set; }
-            public bool IsInFastBodies { get; set; }
-            public bool IsInFastReceipts { get; set; }
-            public bool IsInFastSync { get; set; }
-            public bool IsInStateSync { get; set; }
-            public bool IsInBeamSync { get; set; }
-            public bool IsInFullSync { get; set; }
+            #region "Overrides"
 
-            /// <summary>
-            /// Best block that has been processed
-            /// </summary>
-            public long Processed { get; }
+            public override string ToString()
+            {
+                return $"processed:{Processed}|state:{State}|block:{Block}|header:{Header}|peer block:{PeerBlock}";
+            }
 
-            /// <summary>
-            /// Best full block state in the state trie (may not be processed if we just finished state trie download)
-            /// </summary>
-            public long State { get; }
+            #endregion
 
-            /// <summary>
-            /// Best block body
-            /// </summary>
-            public long Block { get; }
-
-            /// <summary>
-            /// Best block header - may be missing body if we just insert headers
-            /// </summary>
-            public long Header { get; }
-
-            /// <summary>
-            /// Best peer block - this is what other peers are advertising - it may be lower than our best block if we get disconnected from best peers
-            /// </summary>
-            public long PeerBlock { get; }
-
-            public UInt256 PeerDifficulty { get; }
         }
     }
 }
