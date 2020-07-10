@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
@@ -221,47 +222,28 @@ namespace Nethermind.Blockchain.Processing
             return NullBlockTracer.Instance;
         }
 
-        private void LogDiagnosticTrace(IBlockTracer blockTracer)
+        private void LogDiagnosticTrace(IBlockTracer blockTracer, Block block)
         {
+            FileStream GetDiagnosticFile() => new FileStream($"trace_{block}.txt", FileMode.Create, FileAccess.Write);
+
             GethLikeBlockTracer gethTracer = blockTracer as GethLikeBlockTracer;
             ParityLikeBlockTracer parityTracer = blockTracer as ParityLikeBlockTracer;
             if (gethTracer != null)
             {
+                using var diagnosticFile = GetDiagnosticFile();
                 var serializer = new EthereumJsonSerializer();
                 var trace = gethTracer.BuildResult();
-                
-                try
-                {
-                    var serialized = serializer.Serialize(trace, true);
-                    if(_logger.IsInfo) _logger.Info(serialized);
-                }
-                catch (OutOfMemoryException)
-                {
-                    foreach (var txTrace in trace)
-                    {
-                        var serialized = serializer.Serialize(txTrace, true);
-                        if(_logger.IsInfo) _logger.Info(serialized);
-                    }
-                }
+                serializer.Serialize(diagnosticFile, trace, true);
+                if (_logger.IsInfo) _logger.Info($"Created trace of block {block} in file {diagnosticFile.Name}");
             }
 
             if (parityTracer != null)
             {
+                using var diagnosticFile = GetDiagnosticFile();
                 var serializer = new EthereumJsonSerializer();
                 var trace = parityTracer.BuildResult();
-                try
-                {
-                    var serialized = serializer.Serialize(trace, true);
-                    if (_logger.IsInfo) _logger.Info(serialized);
-                }
-                catch (OutOfMemoryException)
-                {
-                    foreach (var txTrace in trace)
-                    {
-                        var serialized = serializer.Serialize(txTrace, true);
-                        if (_logger.IsInfo) _logger.Info(serialized);
-                    }
-                }
+                serializer.Serialize(diagnosticFile, trace, true);
+                if (_logger.IsInfo) _logger.Info($"Created trace of block {block} in file {diagnosticFile.Name}");
             }
         }
 
@@ -308,7 +290,7 @@ namespace Nethermind.Blockchain.Processing
                 }
                 finally
                 {
-                    LogDiagnosticTrace(tracer);
+                    LogDiagnosticTrace(tracer, block);
                 }
             }
 
