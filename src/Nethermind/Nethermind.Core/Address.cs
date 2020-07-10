@@ -67,17 +67,8 @@ namespace Nethermind.Core
 
         public bool Equals(Address other)
         {
-            if (ReferenceEquals(null, other))
-            {
-                return false;
-            }
-
-            if (ReferenceEquals(this, other))
-            {
-                return true;
-            }
-
-            return Nethermind.Core.Extensions.Bytes.AreEqual(Bytes, other.Bytes);
+            if (other is null) return false;
+            return ReferenceEquals(this, other) || Extensions.Bytes.AreEqual(Bytes, other.Bytes);
         }
 
         public static Address FromNumber(UInt256 number)
