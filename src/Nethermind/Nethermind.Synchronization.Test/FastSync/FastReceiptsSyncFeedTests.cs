@@ -53,7 +53,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                         .WithParent(parent)
                         .WithTransactions(blockNumber > _pivotNumber - nonEmptyBlocks ? txPerBlock : 0).TestObject;
                     
-                    if (blockNumber > emptyBlocks - nonEmptyBlocks - emptyBlocks)
+                    if (blockNumber > _pivotNumber - nonEmptyBlocks - emptyBlocks)
                     {
                         Blocks[blockNumber] = block;
                     }
@@ -66,7 +66,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                     parent = block;
                 }
 
-                BlocksByHash = Blocks.ToDictionary(b => b.Hash, b => b);
+                BlocksByHash = Blocks.Where(b => b != null).ToDictionary(b => b.Hash, b => b);
             }
 
             public Dictionary<Keccak, Block> BlocksByHash;
@@ -87,6 +87,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
         private static long _pivotNumber = 1024;
 
+        private static Scenario _1024BodiesWithOneTxEach;
         private static Scenario _256BodiesWithOneTxEach;
         private static Scenario _64BodiesWithOneTxEach;
         private static Scenario _64BodiesWithOneTxEachFollowedByEmpty;
@@ -96,6 +97,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
         static FastReceiptsSyncFeedTests()
         {
+            _1024BodiesWithOneTxEach = new Scenario(1024, 1);
             _256BodiesWithOneTxEach = new Scenario(256, 1);
             _64BodiesWithOneTxEach = new Scenario(64, 1);
             _64BodiesWithOneTxEachFollowedByEmpty = new Scenario(64, 1, 1024 - 64);
@@ -334,7 +336,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         }
         
         [Test]
-        public void Can_fully_sync_with_full_batches_when_lots_of_peers_are_available()
+        public void Can_create_receipts_batches_for_all_bodies_inserted_and_then_generate_null_batches_for_other_peers()
         {
             LoadScenario(_256BodiesWithOneTxEach);
             
@@ -346,8 +348,23 @@ namespace Nethermind.Synchronization.Test.FastSync
             {
                 batches.Add(_feed.PrepareRequest().Result);
             }
-            
-            
+
+            for (int i = 2; i < 100; i++)
+            {
+                batches[i].Should().Be(null);
+            }
+        }
+        
+        [Test]
+        public void Can_sync_1024()
+        {
+            LoadScenario(_1024BodiesWithOneTxEach);
+
+            List<ReceiptsSyncBatch> batches = new List<ReceiptsSyncBatch>();
+            for (int i = 0; i < 100; i++)
+            {
+                batches.Add(_feed.PrepareRequest().Result);
+            }
         }
     }
 }
