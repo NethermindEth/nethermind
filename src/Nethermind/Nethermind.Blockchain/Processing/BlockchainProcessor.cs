@@ -229,16 +229,39 @@ namespace Nethermind.Blockchain.Processing
             {
                 var serializer = new EthereumJsonSerializer();
                 var trace = gethTracer.BuildResult();
-                var serialized = serializer.Serialize(trace, true);
-                if(_logger.IsInfo) _logger.Info(serialized);
+                
+                try
+                {
+                    var serialized = serializer.Serialize(trace, true);
+                    if(_logger.IsInfo) _logger.Info(serialized);
+                }
+                catch (OutOfMemoryException)
+                {
+                    foreach (var txTrace in trace)
+                    {
+                        var serialized = serializer.Serialize(txTrace, true);
+                        if(_logger.IsInfo) _logger.Info(serialized);
+                    }
+                }
             }
 
             if (parityTracer != null)
             {
                 var serializer = new EthereumJsonSerializer();
                 var trace = parityTracer.BuildResult();
-                var serialized = serializer.Serialize(trace, true);
-                if(_logger.IsInfo) _logger.Info(serialized);
+                try
+                {
+                    var serialized = serializer.Serialize(trace, true);
+                    if (_logger.IsInfo) _logger.Info(serialized);
+                }
+                catch (OutOfMemoryException)
+                {
+                    foreach (var txTrace in trace)
+                    {
+                        var serialized = serializer.Serialize(txTrace, true);
+                        if (_logger.IsInfo) _logger.Info(serialized);
+                    }
+                }
             }
         }
 
