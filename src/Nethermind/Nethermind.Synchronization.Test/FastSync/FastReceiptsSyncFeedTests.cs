@@ -27,6 +27,8 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -41,36 +43,44 @@ namespace Nethermind.Synchronization.Test.FastSync
     {
         private class Scenario
         {
-            public Scenario(int numberOfBlocks, int txPerBlock, int emptyBlocks = 0)
+            public Scenario(ISpecProvider specProvider, int nonEmptyBlocks, int txPerBlock, int emptyBlocks = 0)
             {
-                Blocks = new Block[numberOfBlocks + emptyBlocks];
-                Blocks[0] = Build.A.Block.WithNumber(_pivotNumber - numberOfBlocks - emptyBlocks + 1)
-                    .WithTransactions(emptyBlocks == 0 ? txPerBlock : 0).TestObject;
-                for (int i = 1; i < emptyBlocks; i++)
+                Blocks = new Block[_pivotNumber + 1];
+                Blocks[0] = Build.A.Block.Genesis.TestObject;
+
+                Block parent = Blocks[0];
+                for (int blockNumber = 1; blockNumber <= _pivotNumber; blockNumber++)
                 {
-                    Blocks[i] = Build.A.Block
-                        .WithParent(Blocks[i - 1])
-                        .TestObject;
-                }
-                
-                for (int i = Math.Max(1, emptyBlocks); i < emptyBlocks + numberOfBlocks; i++)
-                {
-                    Blocks[i] = Build.A.Block
-                        .WithParent(Blocks[i - 1])
-                        .WithTransactions(txPerBlock).TestObject;
+                    Block block = Build.A.Block
+                        .WithParent(parent)
+                        .WithTransactions(blockNumber > _pivotNumber - nonEmptyBlocks ? txPerBlock : 0, specProvider).TestObject;
+
+                    if (blockNumber > _pivotNumber - nonEmptyBlocks - emptyBlocks)
+                    {
+                        Blocks[blockNumber] = block;
+                    }
+
+                    if (blockNumber == _pivotNumber - nonEmptyBlocks - emptyBlocks + 1)
+                    {
+                        LowestInsertedBody = block;
+                    }
+
+                    parent = block;
                 }
 
-                BlocksByHash = Blocks.ToDictionary(b => b.Hash, b => b);
+                BlocksByHash = Blocks.Where(b => b != null).ToDictionary(b => b.Hash, b => b);
             }
 
             public Dictionary<Keccak, Block> BlocksByHash;
 
             public Block[] Blocks;
+
+            public Block LowestInsertedBody;
         }
 
+        private static ISpecProvider _specProvider;
         private IReceiptStorage _receiptStorage;
         private ISyncPeerPool _syncPeerPool;
-        private ISpecProvider _specProvider;
         private ISyncModeSelector _selector;
         private FastReceiptsSyncFeed _feed;
         private ISyncConfig _syncConfig;
@@ -79,6 +89,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
         private static long _pivotNumber = 1024;
 
+        private static Scenario _1024BodiesWithOneTxEach;
         private static Scenario _256BodiesWithOneTxEach;
         private static Scenario _64BodiesWithOneTxEach;
         private static Scenario _64BodiesWithOneTxEachFollowedByEmpty;
@@ -88,9 +99,11 @@ namespace Nethermind.Synchronization.Test.FastSync
 
         static FastReceiptsSyncFeedTests()
         {
-            _256BodiesWithOneTxEach = new Scenario(256, 1);
-            _64BodiesWithOneTxEach = new Scenario(64, 1);
-            _64BodiesWithOneTxEachFollowedByEmpty = new Scenario(64, 1, 1024 - 64);
+            _specProvider = new SingleReleaseSpecProvider(Istanbul.Instance, 1);
+            _1024BodiesWithOneTxEach = new Scenario(_specProvider, 1024, 1);
+            _256BodiesWithOneTxEach = new Scenario(_specProvider, 256, 1);
+            _64BodiesWithOneTxEach = new Scenario(_specProvider, 64, 1);
+            _64BodiesWithOneTxEachFollowedByEmpty = new Scenario(_specProvider, 64, 1, 1024 - 64);
         }
 
         [SetUp]
@@ -102,8 +115,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             _syncConfig = new SyncConfig {FastBlocks = true};
             _syncConfig.PivotNumber = _pivotNumber.ToString();
             _syncConfig.PivotHash = Keccak.Zero.ToString();
-
-            _specProvider = Substitute.For<ISpecProvider>();
+            
             _syncPeerPool = Substitute.For<ISyncPeerPool>();
             _syncReport = Substitute.For<ISyncReport>();
 
@@ -197,7 +209,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             request.Description.Should().NotBeNull();
             request.Prioritized.Should().Be(true);
         }
-        
+
         [Test]
         public void Returns_same_batch_until_filled()
         {
@@ -207,7 +219,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             ReceiptsSyncBatch request2 = _feed.PrepareRequest().Result;
             request2.Should().Be(request);
         }
-        
+
         [Test]
         public void Can_create_non_geth_requests()
         {
@@ -244,7 +256,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             request.Description.Should().NotBeNull();
             request.Prioritized.Should().Be(true);
         }
-        
+
         [Test]
         public void Can_create_a_final_batch()
         {
@@ -293,9 +305,9 @@ namespace Nethermind.Synchronization.Test.FastSync
 
         private void LoadScenario(Scenario scenario)
         {
-            LoadScenario(scenario, new SyncConfig{FastBlocks = true});
+            LoadScenario(scenario, new SyncConfig {FastBlocks = true});
         }
-        
+
         private void LoadScenario(Scenario scenario, ISyncConfig syncConfig)
         {
             _syncConfig = syncConfig;
@@ -314,6 +326,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             _feed.LagBehindBodies = 0;
 
+            _blockTree.Genesis.Returns(scenario.Blocks[0].Header);
             _blockTree.FindBlock(Keccak.Zero, BlockTreeLookupOptions.None)
                 .ReturnsForAnyArgs(ci =>
                     scenario.BlocksByHash.ContainsKey(ci.Arg<Keccak>())
@@ -321,7 +334,190 @@ namespace Nethermind.Synchronization.Test.FastSync
                         : null);
 
             _receiptStorage.LowestInsertedReceiptBlock.Returns((long?) null);
-            _blockTree.LowestInsertedBody.Returns(scenario.Blocks[0]);
+            _blockTree.LowestInsertedBody.Returns(scenario.LowestInsertedBody);
+        }
+
+        [Test]
+        public void Can_create_receipts_batches_for_all_bodies_inserted_and_then_generate_null_batches_for_other_peers()
+        {
+            LoadScenario(_256BodiesWithOneTxEach);
+
+            /* we have only 256 receipts altogether but we start with many peers
+               so most of our requests will be empty */
+
+            List<ReceiptsSyncBatch> batches = new List<ReceiptsSyncBatch>();
+            for (int i = 0; i < 100; i++)
+            {
+                batches.Add(_feed.PrepareRequest().Result);
+            }
+
+            for (int i = 0; i < 2; i++)
+            {
+                batches[i].Should().NotBeNull();
+                batches[i].ToString().Should().NotBeNull();
+            }
+            
+            for (int i = 2; i < 100; i++)
+            {
+                batches[i].Should().BeNull();
+            }
+        }
+
+        [Test]
+        public void If_comes_back_empty_then_it_can_be_reused()
+        {
+            LoadScenario(_1024BodiesWithOneTxEach);
+            ReceiptsSyncBatch batch = _feed.PrepareRequest().Result;
+            SyncResponseHandlingResult handlingResult = _feed.HandleResponse(batch);
+            handlingResult.Should().Be(SyncResponseHandlingResult.NotAssigned);
+            ReceiptsSyncBatch batch2 = _feed.PrepareRequest().Result;
+            batch2.Should().BeSameAs(batch);
+            batch2.Retries.Should().Be(1);
+        }
+        
+        [Test]
+        public void If_comes_back_filled_with_empty_responses_then_it_can_be_reused()
+        {
+            LoadScenario(_1024BodiesWithOneTxEach);
+            ReceiptsSyncBatch batch = _feed.PrepareRequest().Result;
+            batch.Response = new TxReceipt[batch.Request.Length][];
+            SyncResponseHandlingResult handlingResult = _feed.HandleResponse(batch);
+            handlingResult.Should().Be(SyncResponseHandlingResult.NoProgress);
+            ReceiptsSyncBatch batch2 = _feed.PrepareRequest().Result;
+            batch2.Should().BeSameAs(batch);
+            batch2.Retries.Should().Be(1);
+        }
+        
+        [Test]
+        public void If_comes_back_filled_with_invalid_responses_then_it_can_be_reused()
+        {
+            LoadScenario(_1024BodiesWithOneTxEach);
+            ReceiptsSyncBatch batch = _feed.PrepareRequest().Result;
+            batch.Response = new TxReceipt[batch.Request.Length][];
+            batch.Response[0] = new TxReceipt[1];
+            
+            SyncResponseHandlingResult handlingResult = _feed.HandleResponse(batch);
+            handlingResult.Should().Be(SyncResponseHandlingResult.NoProgress);
+            ReceiptsSyncBatch batch2 = _feed.PrepareRequest().Result;
+            batch2.Should().BeSameAs(batch);
+            batch2.Retries.Should().Be(1);
+        }
+        
+        [Test]
+        public void If_receipts_root_comes_invalid_then_reports_breach_of_protocol()
+        {
+            LoadScenario(_1024BodiesWithOneTxEach);
+            ReceiptsSyncBatch batch = _feed.PrepareRequest().Result;
+            batch.Response = new TxReceipt[batch.Request.Length][];
+            
+            // default receipts that we use when constructing receipt root for tests have stats code 0
+            // so by using 1 here we create a different tx root
+            batch.Response[0] = new [] {Build.A.Receipt.WithStatusCode(1).TestObject};
+            
+            PeerInfo peerInfo = new PeerInfo(Substitute.For<ISyncPeer>());
+            batch.ResponseSourcePeer = peerInfo;
+            
+            SyncResponseHandlingResult handlingResult = _feed.HandleResponse(batch);
+            handlingResult.Should().Be(SyncResponseHandlingResult.NoProgress);
+
+            _syncPeerPool.Received().ReportBreachOfProtocol(peerInfo, Arg.Any<string>());
+        }
+        
+        [Test]
+        public void If_only_one_valid_item_comes_back_then_we_create_a_filler_batch()
+        {
+            LoadScenario(_1024BodiesWithOneTxEach);
+            ReceiptsSyncBatch batch = _feed.PrepareRequest().Result;
+            batch.Response = new TxReceipt[batch.Request.Length][];
+            batch.Response[0] = new [] {Build.A.Receipt.TestObject};
+
+            SyncResponseHandlingResult handlingResult = _feed.HandleResponse(batch);
+            handlingResult.Should().Be(SyncResponseHandlingResult.OK);
+            
+            ReceiptsSyncBatch batch2 = _feed.PrepareRequest().Result;
+            batch2.Request.Length.Should().Be(batch.Request.Length - 1);
+        }
+        
+        [Test]
+        public void Can_handle_dependent_batches()
+        {
+            LoadScenario(_1024BodiesWithOneTxEach);
+            ReceiptsSyncBatch batch = _feed.PrepareRequest().Result;
+            ReceiptsSyncBatch batch2 = _feed.PrepareRequest().Result;
+
+            FillBatchResponses(batch);
+            FillBatchResponses(batch2);
+
+            _feed.HandleResponse(batch2).Should().Be(SyncResponseHandlingResult.OK);
+            _feed.HandleResponse(batch).Should().Be(SyncResponseHandlingResult.OK);
+
+            _receiptStorage.Received().Insert(Arg.Is<Block>(b => b.Number == 897), true, Arg.Any<TxReceipt[]>());
+            _receiptStorage.DidNotReceive().Insert(Arg.Is<Block>(b => b.Number == 896), true, Arg.Any<TxReceipt[]>());
+            _receiptStorage.LowestInsertedReceiptBlock.Returns(897);
+
+            _feed.PrepareRequest();
+            _receiptStorage.Received().Insert(Arg.Is<Block>(b => b.Number == 896), true, Arg.Any<TxReceipt[]>());
+        }
+        
+        [Test]
+        public void Can_have_many_dependent_batches()
+        {
+            LoadScenario(_1024BodiesWithOneTxEach);
+            ReceiptsSyncBatch batch = _feed.PrepareRequest().Result;
+            ReceiptsSyncBatch batch2 = _feed.PrepareRequest().Result;
+            ReceiptsSyncBatch batch3 = _feed.PrepareRequest().Result;
+
+            FillBatchResponses(batch);
+            FillBatchResponses(batch2);
+            FillBatchResponses(batch3);
+
+            _feed.HandleResponse(batch3).Should().Be(SyncResponseHandlingResult.OK);
+            _feed.HandleResponse(batch2).Should().Be(SyncResponseHandlingResult.OK);
+            _feed.HandleResponse(batch).Should().Be(SyncResponseHandlingResult.OK);
+            _receiptStorage.LowestInsertedReceiptBlock.Returns(897);
+            
+            _feed.PrepareRequest();
+            _receiptStorage.Received().Insert(Arg.Is<Block>(b => b.Number == 896), true, Arg.Any<TxReceipt[]>());
+        }
+
+        private static void FillBatchResponses(ReceiptsSyncBatch batch)
+        {
+            batch.Response = new TxReceipt[batch.Request.Length][];
+            for (int i = 0; i < batch.Response.Length; i++)
+            {
+                batch.Response[i] = new[] {Build.A.Receipt.TestObject};
+            }
+        }
+
+        [Test]
+        public void Can_have_many_pending()
+        {
+            LoadScenario(_1024BodiesWithOneTxEach);
+            ReceiptsSyncBatch batch = _feed.PrepareRequest().Result;
+            ReceiptsSyncBatch batch2 = _feed.PrepareRequest().Result;
+            ReceiptsSyncBatch batch3 = _feed.PrepareRequest().Result;
+
+            _feed.HandleResponse(batch3);
+            _feed.HandleResponse(batch);
+            _feed.HandleResponse(batch2);
+            
+            _feed.PrepareRequest().Result.Should().BeSameAs(batch3);
+            _feed.PrepareRequest().Result.Should().BeSameAs(batch);
+            _feed.PrepareRequest().Result.Should().BeSameAs(batch2);
+        }
+        
+        [Test]
+        public void Can_sync_final_batch()
+        {
+            LoadScenario(_64BodiesWithOneTxEach);
+            ReceiptsSyncBatch batch = _feed.PrepareRequest().Result;
+            
+            FillBatchResponses(batch);
+            _feed.HandleResponse(batch);
+            _receiptStorage.LowestInsertedReceiptBlock.Returns(1);
+            _feed.PrepareRequest().Result.Should().Be(null);
+
+            _feed.CurrentState.Should().Be(SyncFeedState.Finished);
         }
     }
 }
