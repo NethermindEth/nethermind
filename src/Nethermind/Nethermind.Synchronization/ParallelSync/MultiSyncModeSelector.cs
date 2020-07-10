@@ -349,12 +349,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private bool AnyPostPivotPeerKnown(long bestPeerBlock)
         {
-            if (bestPeerBlock <= _syncConfig.PivotNumberParsed)
-            {
-                return false;
-            }
-
-            return true;
+            return bestPeerBlock > _syncConfig.PivotNumberParsed;
         }
 
         private (UInt256?, long? number) ReloadDataFromPeers()
