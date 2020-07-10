@@ -189,8 +189,10 @@ namespace Nethermind.Synchronization.ParallelSync
         /// </summary>
         /// <param name="best">Snapshot of the best known states</param>
         /// <returns>A string describing the state of sync</returns>
-        private static string BuildStateString(Snapshot best) =>
-            $"processed:{best.Processed}|state:{best.State}|block:{best.Block}|header:{best.Header}|peer block:{best.PeerBlock}";
+        private static string BuildStateString(Snapshot best)
+        {
+            return $"processed:{best.Processed}|state:{best.State}|block:{best.Block}|header:{best.Header}|peer block:{best.PeerBlock}";
+        }
 
         private void TimerOnElapsed(object sender, ElapsedEventArgs e)
         {
