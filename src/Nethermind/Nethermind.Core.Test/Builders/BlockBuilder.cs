@@ -16,8 +16,10 @@
 
 using System.Linq;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Specs;
 using Nethermind.State.Proofs;
 
 namespace Nethermind.Core.Test.Builders
@@ -72,11 +74,35 @@ namespace Nethermind.Core.Test.Builders
             return WithTransactions(txs);
         }
         
+        public BlockBuilder WithTransactions(int txCount, ISpecProvider specProvider)
+        {
+            Transaction[] txs = new Transaction[txCount];
+            for (int i = 0; i < txCount; i++)
+            {
+                txs[i] = new Transaction();
+            }
+            
+            TxReceipt[] receipts = new TxReceipt[txCount];
+            for (int i = 0; i < txCount; i++)
+            {
+                receipts[i] = Build.A.Receipt.TestObject;
+            }
+
+            var number = TestObjectInternal.Number;
+            ReceiptTrie receiptTrie = new ReceiptTrie(number, specProvider, receipts);
+            receiptTrie.UpdateRootHash();
+
+            BlockBuilder result = WithTransactions(txs);
+            TestObjectInternal.Header.ReceiptsRoot = receiptTrie.RootHash;
+            return result;
+        }
+        
         public BlockBuilder WithTransactions(params Transaction[] transactions)
         {
             TestObjectInternal.Body = TestObjectInternal.Body.WithChangedTransactions(transactions);
             TxTrie trie = new TxTrie(transactions, false);
             trie.UpdateRootHash();
+
             TestObjectInternal.Header.TxRoot = trie.RootHash;
             return this;
         }
