@@ -41,7 +41,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private readonly ISyncConfig _syncConfig;
         private readonly ILogger _logger;
 
-        private long PivotNumber;
+        private long _pivotNumber;
         private bool BeamSyncEnabled => _syncConfig.BeamSync;
         private bool FastSyncEnabled => _syncConfig.FastSync;
         private bool FastBlocksEnabled => _syncConfig.FastSync && _syncConfig.FastBlocks;
@@ -66,7 +66,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 if (_logger.IsWarn) _logger.Warn($"'FastSyncCatchUpHeightDelta' parameter is less or equal to {FastSyncLag}, which is a threshold of blocks always downloaded in full sync. 'FastSyncCatchUpHeightDelta' will have no effect.");
             }
 
-            PivotNumber = _syncConfig.PivotNumberParsed;
+            _pivotNumber = _syncConfig.PivotNumberParsed;
 
             StartUpdateTimer();
         }
@@ -192,7 +192,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private bool IsInAStickyFullSyncMode(Snapshot best)
         {
-            bool hasEverBeenInFullSync = best.Processed > PivotNumber && best.State > PivotNumber;
+            bool hasEverBeenInFullSync = best.Processed > _pivotNumber && best.State > _pivotNumber;
             long heightDelta = best.PeerBlock - best.Processed;
             return hasEverBeenInFullSync && heightDelta < FastSyncCatchUpHeightDelta;
         }
@@ -204,7 +204,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 return false;
             }
 
-            if (_syncConfig.FastBlocks && PivotNumber != 0 && best.Header == 0)
+            if (_syncConfig.FastBlocks && _pivotNumber != 0 && best.Header == 0)
             {
                 // do not start fast sync until at least one header is downloaded or we would start from zero
                 // we are fine to start from zero if we do not use fast blocks
@@ -238,7 +238,7 @@ namespace Nethermind.Synchronization.ParallelSync
         {
             bool desiredPeerKnown = AnyDesiredPeerKnown(best);
             bool postPivotPeerAvailable = AnyPostPivotPeerKnown(best.PeerBlock);
-            bool hasFastSyncBeenActive = best.Header >= PivotNumber;
+            bool hasFastSyncBeenActive = best.Header >= _pivotNumber;
             bool notInBeamSync = !best.IsInBeamSync;
             bool notInFastSync = !best.IsInFastSync;
             bool notInStateSync = !best.IsInStateSync;
@@ -286,7 +286,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private bool ShouldBeInStateNodesMode(Snapshot best)
         {
             bool fastSyncEnabled = FastSyncEnabled;
-            bool fastFastSyncBeenActive = best.Header >= PivotNumber;
+            bool fastFastSyncBeenActive = best.Header >= _pivotNumber;
             bool hasAnyPostPivotPeer = AnyPostPivotPeerKnown(best.PeerBlock);
             bool notInFastSync = !best.IsInFastSync;
             bool stickyStateNodes = best.PeerBlock - best.Header < (FastSyncLag + StickyStateNodesDelta);
@@ -334,7 +334,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private bool HasJustStartedFullSync(Snapshot best)
         {
-            return best.State > PivotNumber         // we have saved some root
+            return best.State > _pivotNumber        // we have saved some root
                    && best.State == best.Header     // and we do not need to catch up to headers anymore
                    && best.Processed < best.State;  // not processed the block yet
         }
