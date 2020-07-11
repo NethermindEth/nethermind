@@ -166,7 +166,6 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private bool IsTheModeSwitchWorthMentioning(SyncMode newModes)
         {
-            return true;
             return _logger.IsDebug ||
                    newModes != Current &&
                    (newModes != SyncMode.None || Current != SyncMode.Full) &&
@@ -248,12 +247,12 @@ namespace Nethermind.Synchronization.ParallelSync
             bool notInAStickyFullSync = !IsInAStickyFullSyncMode(best);
             bool notHasJustStartedFullSync = !HasJustStartedFullSync(best);
 
-            if (_logger.IsInfo)
+            if (_logger.IsTrace)
             {
-                _logger.Info("======================== FAST");
-                _logger.Info("postPivotPeerAvailable " + postPivotPeerAvailable);
-                _logger.Info("heightDeltaGreaterThanLag " + heightDeltaGreaterThanLag);
-                _logger.Info("notInAStickyFullSync " + notInAStickyFullSync);
+                _logger.Trace("======================== FAST");
+                _logger.Trace("postPivotPeerAvailable " + postPivotPeerAvailable);
+                _logger.Trace("heightDeltaGreaterThanLag " + heightDeltaGreaterThanLag);
+                _logger.Trace("notInAStickyFullSync " + notInAStickyFullSync);
             }
 
             return
@@ -274,15 +273,15 @@ namespace Nethermind.Synchronization.ParallelSync
             bool notInFastSync = !best.IsInFastSync;
             bool notInStateSync = !best.IsInStateSync;
 
-            if (_logger.IsInfo)
+            if (_logger.IsTrace)
             {
-                _logger.Info("======================== FULL");
-                _logger.Info("higherDiffPeerKnown " + desiredPeerKnown);
-                _logger.Info("postPivotPeerAvailable " + postPivotPeerAvailable);
-                _logger.Info("hasFastSyncBeenActive " + hasFastSyncBeenActive);
-                _logger.Info("notInBeamSync " + notInBeamSync);
-                _logger.Info("notInFastSync " + notInFastSync);
-                _logger.Info("notInStateSync " + notInStateSync);
+                _logger.Trace("======================== FULL");
+                _logger.Trace("higherDiffPeerKnown " + desiredPeerKnown);
+                _logger.Trace("postPivotPeerAvailable " + postPivotPeerAvailable);
+                _logger.Trace("hasFastSyncBeenActive " + hasFastSyncBeenActive);
+                _logger.Trace("notInBeamSync " + notInBeamSync);
+                _logger.Trace("notInFastSync " + notInFastSync);
+                _logger.Trace("notInStateSync " + notInStateSync);
             }
 
             return desiredPeerKnown &&
@@ -317,7 +316,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private bool ShouldBeInStateNodesMode(Snapshot best)
         {
             bool fastSyncEnabled = FastSyncEnabled;
-            bool fastSyncHasBeenActive = best.Header >= PivotNumber;
+            bool fastFastSyncBeenActive = best.Header >= PivotNumber;
             bool hasAnyPostPivotPeer = AnyPostPivotPeerKnown(best.PeerBlock);
             bool notInFastSync = !best.IsInFastSync;
             bool stickyStateNodes = best.PeerBlock - best.Header < (FastSyncLag + StickyStateNodesDelta);
@@ -326,20 +325,20 @@ namespace Nethermind.Synchronization.ParallelSync
             bool notInAStickyFullSync = !IsInAStickyFullSyncMode(best);
             bool notHasJustStartedFullSync = !HasJustStartedFullSync(best);
 
-            if (_logger.IsInfo)
+            if (_logger.IsTrace)
             {
-                _logger.Info("======================== STATE");
-                _logger.Info("fastSyncEnabled " + fastSyncEnabled);
-                _logger.Info("fastSyncHasBeenActive " + fastSyncHasBeenActive);
-                _logger.Info("hasAnyPostPivotPeer " + hasAnyPostPivotPeer);
-                _logger.Info("notInFastSync " + notInFastSync);
-                _logger.Info("stateNotDownloadedYet " + stateNotDownloadedYet);
-                _logger.Info("notInAStickyFullSync " + notInAStickyFullSync);
-                _logger.Info("notHasJustStartedFullSync " + notHasJustStartedFullSync);
+                _logger.Trace("======================== STATE");
+                _logger.Trace("fastSyncEnabled " + fastSyncEnabled);
+                _logger.Trace("fastFastSyncBeenActive " + fastFastSyncBeenActive);
+                _logger.Trace("hasAnyPostPivotPeer " + hasAnyPostPivotPeer);
+                _logger.Trace("notInFastSync " + notInFastSync);
+                _logger.Trace("stateNotDownloadedYet " + stateNotDownloadedYet);
+                _logger.Trace("notInAStickyFullSync " + notInAStickyFullSync);
+                _logger.Trace("notHasJustStartedFullSync " + notHasJustStartedFullSync);
             }
 
             return fastSyncEnabled &&
-                   fastSyncHasBeenActive &&
+                   fastFastSyncBeenActive &&
                    hasAnyPostPivotPeer &&
                    (notInFastSync || stickyStateNodes) &&
                    stateNotDownloadedYet &&
@@ -352,11 +351,11 @@ namespace Nethermind.Synchronization.ParallelSync
             bool beamSyncEnabled = BeamSyncEnabled;
             bool isInStateSync = best.IsInStateSync;
 
-            if (_logger.IsInfo)
+            if (_logger.IsTrace)
             {
-                _logger.Info("======================== BEAM");
-                _logger.Info("beamSyncEnabled " + beamSyncEnabled);
-                _logger.Info("isInStateSync " + isInStateSync);
+                _logger.Trace("======================== BEAM");
+                _logger.Trace("beamSyncEnabled " + beamSyncEnabled);
+                _logger.Trace("isInStateSync " + isInStateSync);
             }
 
             return beamSyncEnabled &&
