@@ -214,9 +214,9 @@ namespace Nethermind.Synchronization.Test
                 return header;
             }
 
-            public void NotifyOfNewBlock(Block block, SendBlockPriority priorty)
+            public void NotifyOfNewBlock(Block block, SendBlockPriority priority)
             {
-                if (priorty == SendBlockPriority.High)
+                if (priority == SendBlockPriority.High)
                     ReceivedBlocks.Push(block);
             }
 
