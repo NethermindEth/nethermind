@@ -679,10 +679,17 @@ namespace Nethermind.Synchronization.FastSync
                 lock (_stateDbLock)
                 {
                     // if finished downloading
-                    if (_stateDb.KeyExists(_rootNode))
+                    try
                     {
-                        VerifyPostSyncCleanUp();
-                        FinishThisSyncRound();
+                        if (_stateDb.KeyExists(_rootNode))
+                        {
+                            VerifyPostSyncCleanUp();
+                            FinishThisSyncRound();
+                            return EmptyBatch;
+                        }
+                    }
+                    catch (ObjectDisposedException)
+                    {
                         return EmptyBatch;
                     }
                 }
