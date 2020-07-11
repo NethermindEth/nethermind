@@ -15,10 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Threading;
 using FluentAssertions;
 using Nethermind.Consensus;
-using Nethermind.Core;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Consensus
