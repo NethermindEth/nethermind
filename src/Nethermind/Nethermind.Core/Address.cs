@@ -165,7 +165,7 @@ namespace Nethermind.Core
         
         public Span<byte> Bytes { get; }
 
-        public AddressStructRef(KeccakStructRef keccak) : this(keccak.Bytes.Slice(12, ByteLength)) { }
+        public AddressStructRef(ValueKeccak keccak) : this(keccak.BytesAsSpan.Slice(12, ByteLength)) { }
         
         public AddressStructRef(in ValueKeccak keccak) : this(keccak.BytesAsSpan.Slice(12, ByteLength).ToArray()) { }
 
