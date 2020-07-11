@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Diagnostics;
 using System.Net;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
@@ -37,11 +38,7 @@ namespace Nethermind.Stats.Model
             get => _id;
             private set
             {
-                if (_id != null)
-                {
-                    throw new InvalidOperationException($"ID already set for the node {Id}");
-                }
-
+                Debug.Assert(_id != null, "Node ID is expected to be set only once");
                 _id = value;
                 IdHash = Keccak.Compute(_id.PrefixedBytes);
             }
@@ -158,7 +155,7 @@ namespace Nethermind.Stats.Model
        
         public string ToString(string format, IFormatProvider formatProvider)
         {
-            string formattedHost = Host?.Replace("::ffff:", string.Empty);
+            string formattedHost = Host.Replace("::ffff:", string.Empty);
             return format switch
             {
                 "s" => $"{formattedHost}:{Port}",
