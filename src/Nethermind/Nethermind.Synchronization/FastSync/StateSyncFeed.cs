@@ -648,8 +648,8 @@ namespace Nethermind.Synchronization.FastSync
         {
             lock (_handleWatch)
             {
-                ResetStateRoot(_blockNumber, _rootNode);
                 FallAsleep();
+                ResetStateRoot(_blockNumber, _rootNode);
             }
         }
 
