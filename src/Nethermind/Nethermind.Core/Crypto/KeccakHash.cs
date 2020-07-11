@@ -65,10 +65,7 @@ namespace Nethermind.Core.Crypto
             get
             {
                 // If the hash is null, recalculate.
-                _hash = _hash ?? UpdateFinal();
-
-                // Return it.
-                return _hash;
+                return _hash ??= UpdateFinal();
             }
         }
 
@@ -442,7 +439,7 @@ namespace Nethermind.Core.Crypto
             MemoryMarshal.AsBytes(state.Slice(0, HASH_SIZE / sizeof(ulong))).CopyTo(output);
         }
         
-        public void Update(byte[] array, int index, int size)
+        public void Update(Span<byte> array, int index, int size)
         {
             // Bounds checking.
             if (size < 0)
