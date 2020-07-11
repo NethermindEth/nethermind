@@ -156,7 +156,7 @@ namespace Nethermind.Network.P2P
             msg.MaxHeaders = maxBlocks;
             msg.Reverse = 0;
             msg.Skip = skip;
-            msg.StartingBlockNumber = number;
+            msg.StartBlockNumber = number;
 
             BlockHeader[] headers = await SendRequest(msg, token);
             return headers;
@@ -173,7 +173,7 @@ namespace Nethermind.Network.P2P
             msg.MaxHeaders = maxBlocks;
             msg.Reverse = 0;
             msg.Skip = skip;
-            msg.StartingBlockHash = blockHash;
+            msg.StartBlockHash = blockHash;
 
             BlockHeader[] headers = await SendRequest(msg, token);
             return headers;
@@ -190,8 +190,8 @@ namespace Nethermind.Network.P2P
             if (Logger.IsTrace)
             {
                 Logger.Trace($"Sending headers request to {Session.Node:c}:");
-                Logger.Trace($"  Starting blockhash: {message.StartingBlockHash}");
-                Logger.Trace($"  Starting number: {message.StartingBlockNumber}");
+                Logger.Trace($"  Starting blockhash: {message.StartBlockHash}");
+                Logger.Trace($"  Starting number: {message.StartBlockNumber}");
                 Logger.Trace($"  Skip: {message.Skip}");
                 Logger.Trace($"  Reverse: {message.Reverse}");
                 Logger.Trace($"  Max headers: {message.MaxHeaders}");
@@ -229,7 +229,7 @@ namespace Nethermind.Network.P2P
         async Task<BlockHeader> ISyncPeer.GetHeadBlockHeader(Keccak hash, CancellationToken token)
         {
             GetBlockHeadersMessage msg = new GetBlockHeadersMessage();
-            msg.StartingBlockHash = hash ?? _remoteHeadBlockHash;
+            msg.StartBlockHash = hash ?? _remoteHeadBlockHash;
             msg.MaxHeaders = 1;
             msg.Reverse = 0;
             msg.Skip = 0;
@@ -282,8 +282,8 @@ namespace Nethermind.Network.P2P
                 Logger.Trace($"  MaxHeaders: {getBlockHeadersMessage.MaxHeaders}");
                 Logger.Trace($"  Reverse: {getBlockHeadersMessage.Reverse}");
                 Logger.Trace($"  Skip: {getBlockHeadersMessage.Skip}");
-                Logger.Trace($"  StartingBlockhash: {getBlockHeadersMessage.StartingBlockHash}");
-                Logger.Trace($"  StartingBlockNumber: {getBlockHeadersMessage.StartingBlockNumber}");
+                Logger.Trace($"  StartingBlockhash: {getBlockHeadersMessage.StartBlockHash}");
+                Logger.Trace($"  StartingBlockNumber: {getBlockHeadersMessage.StartBlockNumber}");
             }
 
             Interlocked.Increment(ref Counter);
@@ -314,10 +314,10 @@ namespace Nethermind.Network.P2P
                 throw new EthSyncException("Incoming headers request for more than 1024 headers");
             }
 
-            Keccak startingHash = getBlockHeadersMessage.StartingBlockHash;
+            Keccak startingHash = getBlockHeadersMessage.StartBlockHash;
             if (startingHash == null)
             {
-                startingHash = SyncServer.FindHash(getBlockHeadersMessage.StartingBlockNumber);
+                startingHash = SyncServer.FindHash(getBlockHeadersMessage.StartBlockNumber);
             }
 
             BlockHeader[] headers =

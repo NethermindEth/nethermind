@@ -39,7 +39,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         private readonly Random _random = new Random();
         private bool _statusReceived;
 
-        public Eth62ProtocolHandler(ISession session,
+        public Eth62ProtocolHandler(
+            ISession session,
             IMessageSerializationService serializer,
             INodeStatsManager statsManager,
             ISyncServer syncServer,
@@ -86,7 +87,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 if (_notAcceptedTxsSinceLastCheck / _txFloodCheckInterval.TotalSeconds > 100)
                 {
                     if (Logger.IsDebug) Logger.Debug($"Disconnecting {Node.Id} due to tx flooding");
-                    InitiateDisconnect(DisconnectReason.UselessPeer, $"tx flooding {_notAcceptedTxsSinceLastCheck}/{_txFloodCheckInterval.TotalSeconds > 100}");
+                    InitiateDisconnect(
+                        DisconnectReason.UselessPeer,
+                        $"tx flooding {_notAcceptedTxsSinceLastCheck}/{_txFloodCheckInterval.TotalSeconds > 100}");
                 }
             }
 
@@ -99,16 +102,18 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             }
         }
 
-        public virtual void EnrichStatusMessage(StatusMessage statusMessage)
+        protected virtual void EnrichStatusMessage(StatusMessage statusMessage)
         {
         }
         
         public override void Init()
         {
-            if (Logger.IsTrace) Logger.Trace($"{ProtocolCode} v{ProtocolVersion} subprotocol initializing with {Session.Node:c}");
+            if (Logger.IsTrace) Logger.Trace(
+                $"{ProtocolCode} v{ProtocolVersion} subprotocol initializing with {Session.Node:c}");
             if (SyncServer.Head == null)
             {
-                throw new InvalidOperationException($"Cannot initialize {ProtocolCode} v{ProtocolVersion} protocol without the head block set");
+                throw new InvalidOperationException(
+                    $"Cannot initialize {ProtocolCode} v{ProtocolVersion} protocol without the head block set");
             }
 
             BlockHeader head = SyncServer.Head;
@@ -139,52 +144,72 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             int packetType = message.PacketType;
             if (packetType != Eth62MessageCode.Status && !_statusReceived)
             {
-                throw new SubprotocolException($"No {nameof(StatusMessage)} received prior to communication with {Session.Node:c}.");
+                throw new SubprotocolException(
+                    $"No {nameof(StatusMessage)} received prior to communication with {Session.Node:c}.");
             }
 
             int size = message.Content.ReadableBytes;
-            if (Logger.IsTrace) Logger.Trace($"{Counter:D5} {Eth62MessageCode.GetDescription(packetType)} from {Node:c}");
+            if (Logger.IsTrace) Logger.Trace(
+                $"{Counter:D5} {Eth62MessageCode.GetDescription(packetType)} from {Node:c}");
             
             switch (packetType)
             {
                 case Eth62MessageCode.Status:
-                    StatusMessage statusMessage = Deserialize<StatusMessage>(message.Content);
-                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, statusMessage.ToString());
-                    Handle(statusMessage);
+                    StatusMessage statusMsg = Deserialize<StatusMessage>(message.Content);
+                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(
+                        Session.Node.Address, Name, statusMsg.ToString());
+                    Handle(statusMsg);
                     break;
                 case Eth62MessageCode.NewBlockHashes:
-                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, nameof(NewBlockHashesMessage));
+                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(
+                        Session.Node.Address, Name, nameof(NewBlockHashesMessage));
                     Handle(Deserialize<NewBlockHashesMessage>(message.Content));
                     break;
                 case Eth62MessageCode.Transactions:
-                    TransactionsMessage transactionsMessage = Deserialize<TransactionsMessage>(message.Content);
-                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, $"{nameof(TransactionsMessage)}({transactionsMessage.Transactions.Count})");
-                    Handle(transactionsMessage);
+                    TransactionsMessage txMsg = Deserialize<TransactionsMessage>(message.Content);
+                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(
+                        Session.Node.Address, Name, $"{nameof(TransactionsMessage)}({txMsg.Transactions.Count})");
+                    Handle(txMsg);
                     break;
                 case Eth62MessageCode.GetBlockHeaders:
-                    GetBlockHeadersMessage getBlockHeadersMessage = Deserialize<GetBlockHeadersMessage>(message.Content);
-                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, $"{nameof(GetBlockHeadersMessage)}({getBlockHeadersMessage.StartingBlockNumber}|{getBlockHeadersMessage.StartingBlockHash}, {getBlockHeadersMessage.MaxHeaders})");
-                    Handle(getBlockHeadersMessage);
+                    GetBlockHeadersMessage msg = Deserialize<GetBlockHeadersMessage>(message.Content);
+                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(
+                        Session.Node.Address,
+                        Name,
+                        $"{nameof(GetBlockHeadersMessage)}({msg.StartBlockNumber}|{msg.StartBlockHash}, {msg.MaxHeaders})");
+                    Handle(msg);
                     break;
                 case Eth62MessageCode.BlockHeaders:
-                    BlockHeadersMessage blockHeadersMessage = Deserialize<BlockHeadersMessage>(message.Content);
-                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, $"{nameof(BlockHeadersMessage)}({blockHeadersMessage.BlockHeaders.Length})");
-                    Handle(blockHeadersMessage, size);
+                    BlockHeadersMessage headersMsg = Deserialize<BlockHeadersMessage>(message.Content);
+                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(
+                        Session.Node.Address,
+                        Name,
+                        $"{nameof(BlockHeadersMessage)}({headersMsg.BlockHeaders.Length})");
+                    Handle(headersMsg, size);
                     break;
                 case Eth62MessageCode.GetBlockBodies:
-                    GetBlockBodiesMessage getBlockBodiesMessage = Deserialize<GetBlockBodiesMessage>(message.Content);
-                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, $"{nameof(GetBlockBodiesMessage)}({getBlockBodiesMessage.BlockHashes.Count})");
-                    Handle(getBlockBodiesMessage);
+                    GetBlockBodiesMessage getBodiesMsg = Deserialize<GetBlockBodiesMessage>(message.Content);
+                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(
+                        Session.Node.Address,
+                        Name,
+                        $"{nameof(GetBlockBodiesMessage)}({getBodiesMsg.BlockHashes.Count})");
+                    Handle(getBodiesMsg);
                     break;
                 case Eth62MessageCode.BlockBodies:
-                    BlockBodiesMessage blockBodiesMessage = Deserialize<BlockBodiesMessage>(message.Content);
-                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, $"{nameof(BlockBodiesMessage)}({blockBodiesMessage.Bodies.Length})");
-                    Handle(blockBodiesMessage, size);
+                    BlockBodiesMessage bodiesMsg = Deserialize<BlockBodiesMessage>(message.Content);
+                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(
+                        Session.Node.Address,
+                        Name,
+                        $"{nameof(BlockBodiesMessage)}({bodiesMsg.Bodies.Length})");
+                    Handle(bodiesMsg, size);
                     break;
                 case Eth62MessageCode.NewBlock:
-                    NewBlockMessage newBlockMessage = Deserialize<NewBlockMessage>(message.Content);
-                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, $"{nameof(NewBlockMessage)}({newBlockMessage.Block.Number})");
-                    Handle(newBlockMessage);
+                    NewBlockMessage newBlockMsg = Deserialize<NewBlockMessage>(message.Content);
+                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(
+                        Session.Node.Address,
+                        Name,
+                        $"{nameof(NewBlockMessage)}({newBlockMsg.Block.Number})");
+                    Handle(newBlockMsg);
                     break;
             }
         }
@@ -220,11 +245,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 TotalDifficulty = status.TotalDifficulty
             };
             
-            if (status.BestHash == new Keccak("0x828f6e9967f75742364c7ab5efd6e64428e60ad38e218789aaf108fbd0232973"))
-            {
-                InitiateDisconnect(DisconnectReason.UselessPeer, "One of the Rinkeby nodes stuck at Constantinople transition");
-            }
-
             HeadHash = status.BestHash;
             TotalDifficulty = status.TotalDifficulty;
             ProtocolInitialized?.Invoke(this, eventArgs);
@@ -244,16 +264,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             Metrics.Eth62TransactionsReceived++;
             for (int i = 0; i < msg.Transactions.Count; i++)
             {
-                Transaction transaction = msg.Transactions[i];
-                transaction.DeliveredBy = Node.Id;
-                transaction.Timestamp = _timestamper.EpochSeconds;
-                AddTxResult result = _txPool.AddTransaction(transaction, TxHandlingOptions.None);
+                Transaction tx = msg.Transactions[i];
+                tx.DeliveredBy = Node.Id;
+                tx.Timestamp = _timestamper.EpochSeconds;
+                AddTxResult result = _txPool.AddTransaction(tx, TxHandlingOptions.None);
                 if (result != AddTxResult.Added)
                 {
                     _notAcceptedTxsSinceLastCheck++;
                 }
 
-                if (Logger.IsTrace) Logger.Trace($"{Node:c} sent {transaction.Hash} tx and it was {result} (chain ID = {transaction.Signature.ChainId})");
+                if (Logger.IsTrace) Logger.Trace(
+                    $"{Node:c} sent {tx.Hash} tx and it was {result} (chain ID = {tx.Signature.ChainId})");
             }
         }
 
@@ -266,19 +287,22 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             }
         }
 
-        private void Handle(NewBlockMessage newBlockMessage)
+        private void Handle(NewBlockMessage msg)
         {
             Metrics.Eth62NewBlockReceived++;
-            if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, $"{nameof(NewBlockMessage)}({newBlockMessage.Block.Number})");
-            newBlockMessage.Block.Header.TotalDifficulty = newBlockMessage.TotalDifficulty;
+            if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(
+                Session.Node.Address,
+                Name,
+                $"{nameof(NewBlockMessage)}({msg.Block.Number})");
+            msg.Block.Header.TotalDifficulty = msg.TotalDifficulty;
 
             try
             {
-                SyncServer.AddNewBlock(newBlockMessage.Block, this);
+                SyncServer.AddNewBlock(msg.Block, this);
             }
             catch (Exception e)
             {
-                Logger.Debug($"Adding new block {newBlockMessage.Block?.ToString(Block.Format.Short)} from {Node:c} failed: " + e.Message);
+                Logger.Debug($"Adding new block {msg.Block?.ToString(Block.Format.Short)} from {Node:c} failed: " + e.Message);
                 throw;
             }
         }
@@ -294,20 +318,22 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     HintNewBlock(block.Hash, block.Number);
                     break;
                 default:
-                    Logger.Error($"Unknown priority ({priority.ToString()}) passed to NotifyOfNewBlock - handling as low priority");
+                    Logger.Error(
+                        $"Unknown priority ({priority.ToString()}) passed to {nameof(NotifyOfNewBlock)} - handling as low priority");
                     HintNewBlock(block.Hash, block.Number);
                     break;
             }
         }
 
-        public void SendNewBlock(Block block)
+        private void SendNewBlock(Block block)
         {
-            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} NewBlock to {Node:c}");
             if (!block.TotalDifficulty.HasValue)
             {
                 throw new InvalidOperationException($"Trying to send a block {block.Hash} with null total difficulty");
             }
-
+            
+            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} NewBlock to {Node:c}");
+            
             NewBlockMessage msg = new NewBlockMessage();
             msg.Block = block;
             msg.TotalDifficulty = block.TotalDifficulty.Value;
@@ -315,7 +341,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             Send(msg);
         }
 
-        public void HintNewBlock(Keccak blockHash, long number)
+        private void HintNewBlock(Keccak blockHash, long number)
         {
             if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} HintBlock to {Node:c}");
 
@@ -323,7 +349,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             msg.BlockHashes = new[] { (blockHash, number) };
             Send(msg);
         }
-
 
         protected override void OnDisposed()
         {
