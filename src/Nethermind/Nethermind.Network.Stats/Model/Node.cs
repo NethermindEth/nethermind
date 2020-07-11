@@ -27,27 +27,15 @@ namespace Nethermind.Stats.Model
     /// </summary>
     public class Node : IFormattable
     {
-        private PublicKey _id;
-
         /// <summary>
         /// Node public key - same as in enode. 
         /// </summary>
-        /// <exception cref="InvalidOperationException"></exception>
-        public PublicKey Id
-        {
-            get => _id;
-            private set
-            {
-                Debug.Assert(_id != null, "Node ID is expected to be set only once");
-                _id = value;
-                IdHash = Keccak.Compute(_id.PrefixedBytes);
-            }
-        }
+        public PublicKey Id { get; }
 
         /// <summary>
         /// Hash of the node ID used extensively in discovery and kept here to avoid rehashing.
         /// </summary>
-        public Keccak IdHash { get; private set; }
+        public Keccak IdHash { get; }
         
         /// <summary>
         /// Host part of the network node.
@@ -89,6 +77,7 @@ namespace Nethermind.Stats.Model
         public Node(PublicKey id, IPEndPoint address)
         {
             Id = id;
+            IdHash = Keccak.Compute(Id.PrefixedBytes);
             AddedToDiscovery = false;
             SetIPEndPoint(address);
         }
@@ -96,6 +85,7 @@ namespace Nethermind.Stats.Model
         public Node(PublicKey id, string host, int port, bool addedToDiscovery = false)
         {
             Id = id;
+            IdHash = Keccak.Compute(Id.PrefixedBytes);
             AddedToDiscovery = addedToDiscovery;
             SetIPEndPoint(host, port);
         }
@@ -104,6 +94,7 @@ namespace Nethermind.Stats.Model
         {
             Keccak512 socketHash = Keccak512.Compute($"{host}:{port}");
             Id = new PublicKey(socketHash.Bytes);
+            IdHash = Keccak.Compute(Id.PrefixedBytes);
             AddedToDiscovery = true;
             IsStatic = isStatic;
             SetIPEndPoint(host, port);
@@ -140,7 +131,7 @@ namespace Nethermind.Stats.Model
 
         public override int GetHashCode()
         {
-            return (_id != null ? _id.GetHashCode() : 0);
+            return HashCode.Combine(Id);
         }
 
         public override string ToString()
