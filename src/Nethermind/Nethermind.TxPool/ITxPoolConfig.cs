@@ -20,12 +20,6 @@ namespace Nethermind.TxPool
 {
     public interface ITxPoolConfig : IConfig
     {
-        [ConfigItem(DefaultValue = "15")]
-        int ObsoletePendingTransactionInterval { get; set; }
-        
-        [ConfigItem(DefaultValue = "600")]
-        int RemovePendingTransactionInterval { get; set; }
-        
         [ConfigItem(DefaultValue = "5")]
         int PeerNotificationThreshold { get; set; }
         
