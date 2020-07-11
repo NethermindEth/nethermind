@@ -15,9 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Specs;
-using Nethermind.Evm.Precompiles;
-using Nethermind.Evm.Precompiles.Snarks;
-using Nethermind.Evm.Precompiles.Snarks.Mcl;
+using Nethermind.Evm.Precompiles.Snarks.Shamatar;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
