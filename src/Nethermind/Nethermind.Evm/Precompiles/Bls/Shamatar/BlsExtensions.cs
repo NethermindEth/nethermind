@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2020s Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,24 +14,11 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
-
-namespace Nethermind.Crypto.ZkSnarks.Obsolete
+namespace Nethermind.Evm.Precompiles.Bls.Shamatar
 {
-    /// <summary>
-    ///     Code adapted from ethereumJ (https://github.com/ethereum/ethereumj)
-    /// </summary>
-    public interface IField<T> : IEquatable<T>
+    public static class BlsParams
     {
-        T Add(T o);
-        T Mul(T o);
-        T MulByNonResidue();
-        T Sub(T o);
-        T Squared();
-        T Double();
-        T Inverse();
-        T Negate();
-        bool IsZero();
-        bool IsValid();
+        public const int LenFr = 32;
+        public const int LenFp = 64;
     }
 }
