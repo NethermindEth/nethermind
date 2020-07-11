@@ -16,6 +16,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Blockchain.Filters.Topics
 {
@@ -33,7 +34,7 @@ namespace Nethermind.Blockchain.Filters.Topics
 
         public override bool Accepts(Keccak topic) => topic == _topic;
         
-        public override bool Accepts(ref KeccakStructRef topic) => topic == _topic;
+        public override bool Accepts(ref ValueKeccak topic) => Bytes.AreEqual(topic.BytesAsSpan, _topic.Bytes);
 
         public override bool Matches(Bloom bloom) => bloom.Matches(BloomExtract);
         

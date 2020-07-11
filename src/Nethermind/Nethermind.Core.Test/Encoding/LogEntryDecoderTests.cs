@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Linq;
 using FluentAssertions;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core.Extensions;
@@ -55,7 +56,7 @@ namespace Nethermind.Core.Test.Encoding
             for (int i = 0; i < logEntry.Topics.Length; i++)
             {
                 iterator.TryGetNext(out var keccak);
-                Assert.That(logEntry.Topics[i] == keccak, $"topics[{i}]"); 
+                Assert.That(Bytes.AreEqual(logEntry.Topics[i].Bytes, keccak.BytesAsSpan), $"topics[{i}]"); 
             }
         }
 

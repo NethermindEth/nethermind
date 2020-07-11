@@ -41,7 +41,7 @@ namespace Nethermind.Blockchain.Filters.Topics
             return false;
         }
 
-        public override bool Accepts(ref KeccakStructRef topic)
+        public override bool Accepts(ref ValueKeccak topic)
         {
             for (int i = 0; i < _subexpression.Length; i++)
             {
