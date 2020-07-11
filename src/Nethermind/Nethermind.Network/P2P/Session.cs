@@ -369,7 +369,9 @@ namespace Nethermind.Network.P2P
             }
 
             DisconnectMetrics.Update(disconnectType, disconnectReason);
-            if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportDisconnect(Node.Address, $"{disconnectType} {disconnectReason} {details}");
+            
+            if(NetworkDiagTracer.IsEnabled && RemoteHost != null)
+                NetworkDiagTracer.ReportDisconnect(Node.Address, $"{disconnectType} {disconnectReason} {details}");
             
             if (BestStateReached >= SessionState.Initialized && disconnectReason != DisconnectReason.TooManyPeers)
             {

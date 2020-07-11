@@ -271,6 +271,7 @@ namespace Nethermind.Network.Test
                 msg.TotalDifficulty = 1;
                 msg.ChainId = 2;
                 msg.GenesisHash = TestItem.KeccakA;
+                msg.BestHash = TestItem.KeccakA;
                 msg.ProtocolVersion = 63;
 
                 return ReceiveStatus(msg);
@@ -282,6 +283,7 @@ namespace Nethermind.Network.Test
                 msg.TotalDifficulty = 1;
                 msg.ChainId = 1;
                 msg.GenesisHash = TestItem.KeccakB;
+                msg.BestHash = TestItem.KeccakB;
                 msg.ProtocolVersion = 63;
 
                 return ReceiveStatus(msg);

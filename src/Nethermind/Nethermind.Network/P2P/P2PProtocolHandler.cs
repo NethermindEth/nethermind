@@ -283,7 +283,8 @@ namespace Nethermind.Network.P2P
 
         private void HandlePing()
         {
-            if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, "p2p", "Ping");
+            if(NetworkDiagTracer.IsEnabled)
+                NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, "p2p", "Ping");
             if (Logger.IsTrace) Logger.Trace($"{Session} P2P responding to ping");
             Send(PongMessage.Instance);
         }
