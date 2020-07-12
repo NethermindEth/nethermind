@@ -37,9 +37,7 @@ using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
 using NSubstitute;
-using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
-using IPAddress = Org.BouncyCastle.Utilities.Net.IPAddress;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
 {
@@ -96,6 +94,13 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _handler.ClientId.Should().Be(_session.Node?.ClientId);
             _handler.HeadHash.Should().BeNull();
             _handler.HeadNumber.Should().Be(0);
+        }
+        
+        [Test]
+        public void Cannot_init_if_sync_server_head_is_not_set()
+        {
+            _syncManager.Head.Returns((BlockHeader)null);
+            Assert.Throws<InvalidOperationException>(() => _handler.Init());
         }
 
         [Test]
@@ -343,7 +348,16 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             HandleIncomingStatusMessage();
             Assert.Throws<OperationCanceledException>(() => HandleZeroMessage(msg, Eth62MessageCode.BlockHeaders));
         }
+        
+        [Test]
+        public void Add_remove_listener()
+        {
+            static void HandlerOnSubprotocolRequested(object sender, ProtocolEventArgs e) { }
 
+            _handler.SubprotocolRequested += HandlerOnSubprotocolRequested;
+            _handler.SubprotocolRequested -= HandlerOnSubprotocolRequested;
+        }
+            
         private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
         {
             IByteBuffer getBlockHeadersPacket = _svc.ZeroSerialize(msg);

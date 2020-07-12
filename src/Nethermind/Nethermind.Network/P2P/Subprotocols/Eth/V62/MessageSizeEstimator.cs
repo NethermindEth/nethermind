@@ -33,6 +33,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         public static ulong EstimateSize(Block block)
         {
+            if (block == null)
+            {
+                return 0;
+            }
+            
             ulong estimate = EstimateSize(block.Header);
             var transactions = block.Transactions;
             for (int i = 0; i < transactions.Length; i++)

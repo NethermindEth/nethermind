@@ -16,71 +16,55 @@
 // 
 
 using System;
-using System.Threading;
-using System.Timers;
 using Nethermind.Logging;
 using Nethermind.Stats.Model;
-using Timer = System.Timers.Timer;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 {
-    internal class TxFloodController : IDisposable
+    internal class TxFloodController
     {
+        private DateTime _checkpoint = DateTime.UtcNow;
         private readonly Eth62ProtocolHandler _protocolHandler;
         private readonly ILogger _logger;
         private readonly TimeSpan _checkInterval = TimeSpan.FromSeconds(60);
-        private readonly Timer _txFloodCheckTimer;
-        private bool isDowngraded;
         private long _notAcceptedSinceLastCheck;
         private readonly Random _random = new Random();
-        private int _disposed;
+        
+        internal bool IsDowngraded { get; private set; }
 
         public TxFloodController(Eth62ProtocolHandler protocolHandler, ILogger logger)
         {
             _protocolHandler = protocolHandler ?? throw new ArgumentNullException(nameof(protocolHandler));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-
-            _txFloodCheckTimer = new Timer(_checkInterval.TotalMilliseconds);
-            _txFloodCheckTimer.Elapsed += CheckTxFlooding;
-            _txFloodCheckTimer.Start();
-        }
-
-        private void CheckTxFlooding(object sender, ElapsedEventArgs e)
-        {
-            if (_protocolHandler.Session.IsClosing)
-            {
-                Dispose();
-            }
-            else
-            {
-                if (!isDowngraded && _notAcceptedSinceLastCheck / _checkInterval.TotalSeconds > 10)
-                {
-                    if (_logger.IsDebug) _logger.Debug($"Downgrading {_protocolHandler} due to tx flooding");
-                    isDowngraded = true;
-                }
-                else
-                {
-                    if (_notAcceptedSinceLastCheck / _checkInterval.TotalSeconds > 100)
-                    {
-                        if (_logger.IsDebug) _logger.Debug($"Disconnecting {_protocolHandler} due to tx flooding");
-                        _protocolHandler.InitiateDisconnect(
-                            DisconnectReason.UselessPeer,
-                            $"tx flooding {_notAcceptedSinceLastCheck}/{_checkInterval.TotalSeconds > 100}");
-                    }
-                }   
-                
-                _notAcceptedSinceLastCheck = 0;
-            }
         }
 
         public void ReportNotAccepted()
         {
+            DateTime now = DateTime.UtcNow;
+            if (now >= _checkpoint + _checkInterval)
+            {
+                _checkpoint = now;
+                _notAcceptedSinceLastCheck = 0;
+            }
+            
             _notAcceptedSinceLastCheck++;
+            if (!IsDowngraded && _notAcceptedSinceLastCheck / _checkInterval.TotalSeconds > 10)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Downgrading {_protocolHandler} due to tx flooding");
+                IsDowngraded = true;
+            }
+            else if (_notAcceptedSinceLastCheck / _checkInterval.TotalSeconds > 100)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Disconnecting {_protocolHandler} due to tx flooding");
+                    _protocolHandler.Session.InitiateDisconnect(
+                        DisconnectReason.UselessPeer,
+                        $"tx flooding {_notAcceptedSinceLastCheck}/{_checkInterval.TotalSeconds > 100}");
+            }
         }
         
         public bool IsAllowed()
         {
-            if (IsEnabled && (isDowngraded || 10 < _random.Next(0, 99)))
+            if (IsEnabled && (IsDowngraded || 10 < _random.Next(0, 99)))
             {
                 // we only accept 10% of transactions from downgraded nodes
                 return false;
@@ -88,16 +72,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
             return true;
         }
-        
-        public bool IsEnabled { get; set; }
 
-        public void Dispose()
-        {
-            if (Interlocked.Increment(ref _disposed) == 1)
-            {
-                _txFloodCheckTimer.Elapsed -= CheckTxFlooding;
-                _txFloodCheckTimer?.Dispose();
-            }
-        }
+        public bool IsEnabled { get; set; } = true;
     }
 }

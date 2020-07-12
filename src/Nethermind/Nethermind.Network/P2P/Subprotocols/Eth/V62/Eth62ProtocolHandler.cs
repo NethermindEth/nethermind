@@ -291,19 +291,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             msg.BlockHashes = new[] {(blockHash, number)};
             Send(msg);
         }
-
+        
         protected override void OnDisposed()
         {
-            try
-            {
-                _floodController.Dispose();
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-            catch (NullReferenceException)
-            {
-            }
         }
     }
 }

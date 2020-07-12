@@ -436,6 +436,7 @@ namespace Nethermind.Network.P2P
         
         public override void InitiateDisconnect(DisconnectReason disconnectReason, string details)
         {
+            /* there is a problem here as the protocol disconnection is inconsistent with session disconnection */
             Session.MarkDisconnected(disconnectReason, DisconnectType.Local, details);
             Dispose();
         }
