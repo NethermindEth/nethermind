@@ -27,26 +27,12 @@ namespace Nethermind.Core
     [DebuggerDisplay("{Hash} ({Number})")]
     public class Block
     {
-        public enum Format
-        {
-            Full,
-            FullHashAndNumber,
-            HashNumberAndTx,
-            HashNumberDiffAndTx,
-            Short
-        }
-
-        private Block()
-        {
-            Body = new BlockBody();
-        }
-
         public Block(BlockHeader blockHeader, BlockBody body)
         {
             Header = blockHeader;
             Body = body;
         }
-        
+
         public Block(BlockHeader blockHeader, IEnumerable<Transaction> transactions, IEnumerable<BlockHeader> ommers)
         {
             Header = blockHeader;
@@ -58,54 +44,76 @@ namespace Nethermind.Core
         {
         }
 
-        public bool IsGenesis => Header.IsGenesis;
-
-        public Transaction[] Transactions => Body?.Transactions;
-        
-        public BlockHeader[] Ommers => Body?.Ommers;
-        
         public BlockHeader Header { get; set; }
+
         public BlockBody Body { get; set; }
 
-        public Keccak Hash => Header.Hash;
+        public bool IsGenesis => Header.IsGenesis;
 
-        public Keccak ParentHash => Header.ParentHash;
+        public Transaction[] Transactions => Body?.Transactions; // do not add setter here
 
-        public ulong Nonce => Header.Nonce;
+        public BlockHeader[] Ommers => Body?.Ommers; // do not add setter here
 
-        public Keccak MixHash => Header.MixHash;
+        public Keccak Hash => Header.Hash; // do not add setter here
 
-        public byte[] ExtraData => Header.ExtraData;
+        public Keccak ParentHash => Header.ParentHash; // do not add setter here
 
-        public Bloom Bloom => Header.Bloom;
+        public ulong Nonce => Header.Nonce; // do not add setter here
 
-        public Keccak OmmersHash => Header.OmmersHash;
+        public Keccak MixHash => Header.MixHash; // do not add setter here
 
-        public Address Beneficiary => Header.Beneficiary;
+        public byte[] ExtraData => Header.ExtraData; // do not add setter here
 
-        public Address Author => Header.Author;
+        public Bloom Bloom => Header.Bloom; // do not add setter here
 
-        public Keccak StateRoot => Header.StateRoot;
+        public Keccak OmmersHash => Header.OmmersHash; // do not add setter here
 
-        public Keccak TxRoot => Header.TxRoot;
+        public Address Beneficiary => Header.Beneficiary; // do not add setter here
 
-        public Keccak ReceiptsRoot => Header.ReceiptsRoot;
+        public Address Author => Header.Author; // do not add setter here
 
-        public long GasLimit => Header.GasLimit;
+        public Keccak StateRoot => Header.StateRoot; // do not add setter here
 
-        public long GasUsed => Header.GasUsed;
+        public Keccak TxRoot => Header.TxRoot; // do not add setter here
 
-        public UInt256 Timestamp => Header.Timestamp;
+        public Keccak ReceiptsRoot => Header.ReceiptsRoot; // do not add setter here
 
-        public DateTime TimestampDate => Header.TimestampDate;
+        public long GasLimit => Header.GasLimit; // do not add setter here
 
-        public long Number => Header.Number;
+        public long GasUsed => Header.GasUsed; // do not add setter here
 
-        public UInt256 Difficulty => Header.Difficulty;
+        public UInt256 Timestamp => Header.Timestamp; // do not add setter here
 
-        public UInt256? TotalDifficulty => Header?.TotalDifficulty;
+        public DateTime TimestampDate => Header.TimestampDate; // do not add setter here
 
-        public string ToString(string indent)
+        public long Number => Header.Number; // do not add setter here
+
+        public UInt256 Difficulty => Header.Difficulty; // do not add setter here
+
+        public UInt256? TotalDifficulty => Header.TotalDifficulty; // do not add setter here
+
+        public override string ToString()
+        {
+            return ToString(Format.Short);
+        }
+
+        public string ToString(Format format)
+        {
+            return format switch
+            {
+                Format.Full => ToFullString(),
+                Format.FullHashAndNumber => Hash == null ? $"{Number} null" : $"{Number} ({Hash})",
+                Format.HashNumberAndTx => Hash == null
+                    ? $"{Number} null, tx count: {Body.Transactions.Length}"
+                    : $"{Number} {TimestampDate:HH:mm:ss} ({Hash?.ToShortString()}), tx count: {Body.Transactions.Length}",
+                Format.HashNumberDiffAndTx => Hash == null
+                    ? $"{Number} null, diff: {Difficulty}, tx count: {Body.Transactions.Length}"
+                    : $"{Number} ({Hash?.ToShortString()}), diff: {Difficulty}, tx count: {Body.Transactions.Length}",
+                _ => Hash == null ? $"{Number} null" : $"{Number} ({Hash?.ToShortString()})"
+            };
+        }
+
+        private string ToFullString()
         {
             StringBuilder builder = new StringBuilder();
             builder.AppendLine($"Block {Number}");
@@ -126,27 +134,14 @@ namespace Nethermind.Core
 
             return builder.ToString();
         }
-        
-        public override string ToString()
-        {
-            return ToString(Format.Short);
-        }
 
-        public string ToString(Format format)
+        public enum Format
         {
-            switch (format)
-            {
-                case Format.Full:
-                    return ToString(string.Empty);
-                case Format.FullHashAndNumber:
-                    return Hash == null ? $"{Number} null" : $"{Number} ({Hash})";
-                case Format.HashNumberAndTx:
-                    return Hash == null ? $"{Number} null, tx count: {Body.Transactions.Length}" : $"{Number} {TimestampDate:HH:mm:ss} ({Hash?.ToShortString()}), tx count: {Body.Transactions.Length}";
-                case Format.HashNumberDiffAndTx:
-                    return Hash == null ? $"{Number} null, diff: {Difficulty}, tx count: {Body.Transactions.Length}" : $"{Number} ({Hash?.ToShortString()}), diff: {Difficulty}, tx count: {Body.Transactions.Length}";
-                default:
-                    return Hash == null ? $"{Number} null" : $"{Number} ({Hash?.ToShortString()})";
-            }
+            Full,
+            FullHashAndNumber,
+            HashNumberAndTx,
+            HashNumberDiffAndTx,
+            Short
         }
     }
 }

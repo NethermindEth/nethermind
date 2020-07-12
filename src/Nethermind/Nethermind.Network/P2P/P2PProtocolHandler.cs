@@ -185,7 +185,7 @@ namespace Nethermind.Network.P2P
 
             if (!capabilities.Any(c => SupportedCapabilities.Contains(c)))
             {
-                InitiateDisconnect(DisconnectReason.UselessPeer, $"capabilities: {string.Join(", ", capabilities.Select(c => string.Concat(c.ProtocolCode, c.Version)))}");
+                Session.InitiateDisconnect(DisconnectReason.UselessPeer, $"capabilities: {string.Join(", ", capabilities.Select(c => string.Concat(c.ProtocolCode, c.Version)))}");
             }
 
             ReceivedProtocolInitMsg(hello);

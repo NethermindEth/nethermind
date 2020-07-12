@@ -31,7 +31,7 @@ namespace Nethermind.Network.P2P
         public abstract string Name { get; }
         protected INodeStatsManager StatsManager { get; }
         private readonly IMessageSerializationService _serializer;
-        protected ISession Session { get; }
+        protected internal ISession Session { get; }
         protected long Counter;
 
         private readonly TaskCompletionSource<MessageBase> _initCompletionSource;
@@ -65,7 +65,7 @@ namespace Nethermind.Network.P2P
             Interlocked.Increment(ref Counter);
             if (Logger.IsTrace) Logger.Trace($"{Counter} Sending {typeof(T).Name}");
             if(NetworkDiagTracer.IsEnabled)
-                NetworkDiagTracer.ReportOutgoingMessage(Session.Node.Address, Name, typeof(T).Name);
+                NetworkDiagTracer.ReportOutgoingMessage(Session.Node.Address, Name, message.ToString());
             Session.DeliverMessage(message);
         }
 
@@ -79,7 +79,7 @@ namespace Nethermind.Network.P2P
             {
                 if (Logger.IsTrace)
                 {
-                    Logger.Trace($"Disconnecting due to timeout for protocol init message ({GetType().Name}): {Session.RemoteNodeId}");
+                    Logger.Trace($"Disconnecting due to timeout for protocol init message ({Name}): {Session.RemoteNodeId}");
                 }
                 
                 Session.InitiateDisconnect(DisconnectReason.ReceiveMessageTimeout, "protocol init timeout");
