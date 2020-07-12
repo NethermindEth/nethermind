@@ -105,7 +105,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             });
         }
 
-        private void ReportIn(MessageBase messageBase)
+        protected void ReportIn(MessageBase messageBase)
         {
             if (NetworkDiagTracer.IsEnabled)
                 NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, messageBase.ToString());

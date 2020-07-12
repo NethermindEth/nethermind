@@ -34,8 +34,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
     /// </summary>
     public class Eth65ProtocolHandler : Eth64ProtocolHandler
     {
-        private readonly ISpecProvider _specProvider;
-
         public Eth65ProtocolHandler(ISession session,
             IMessageSerializationService serializer,
             INodeStatsManager nodeStatsManager,
@@ -44,7 +42,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             ISpecProvider specProvider,
             ILogManager logManager) : base(session, serializer, nodeStatsManager, syncServer, txPool, specProvider, logManager)
         {
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         }
 
         public override string Name => "eth65";
@@ -57,10 +54,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             switch (message.PacketType)
             {
                 case Eth65MessageCode.PooledTransactions:
-                    Handle(Deserialize<PooledTransactionsMessage>(message.Content));
+                    PooledTransactionsMessage pooledTxMsg
+                        = Deserialize<PooledTransactionsMessage>(message.Content);
+                    ReportIn(pooledTxMsg);
+                    Handle(pooledTxMsg);
                     break;
                 case Eth65MessageCode.GetPooledTransactions:
-                    Handle(Deserialize<GetPooledTransactionsMessage>(message.Content));
+                    GetPooledTransactionsMessage getPooledTxMsg
+                        = Deserialize<GetPooledTransactionsMessage>(message.Content);
+                    ReportIn(getPooledTxMsg);
+                    Handle(getPooledTxMsg);
                     break;
                 case Eth65MessageCode.NewPooledTransactionHashes:
                     Metrics.Eth65NewPooledTransactionHashesReceived++;

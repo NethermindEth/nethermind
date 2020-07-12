@@ -85,7 +85,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
         private void Handle(ReceiptsMessage msg, long size)
         {
             Metrics.Eth63ReceiptsReceived++;
-            Request<GetReceiptsMessage, TxReceipt[][]> request = _receiptsRequests.Take();
+            using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
+            cancellationTokenSource.CancelAfter(1000);
+            Request<GetReceiptsMessage, TxReceipt[][]> request = _receiptsRequests.Take(cancellationTokenSource.Token);
             request.ResponseSize = size;
             request.CompletionSource.SetResult(msg.TxReceipts);
         }
@@ -108,7 +110,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
         private void Handle(NodeDataMessage msg, int size)
         {
             Metrics.Eth63NodeDataReceived++;
-            Request<GetNodeDataMessage, byte[][]> request = _nodeDataRequests.Take();
+            using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
+            cancellationTokenSource.CancelAfter(1000);
+            Request<GetNodeDataMessage, byte[][]> request = _nodeDataRequests.Take(cancellationTokenSource.Token);
             request.ResponseSize = size;
             request.CompletionSource.SetResult(msg.Data);
         }
