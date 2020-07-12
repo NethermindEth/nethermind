@@ -37,6 +37,10 @@ using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
 using Nethermind.TxPool;
 using NUnit.Framework;
+using Nethermind.Evm.Tracing.ParityStyle;
+using System.Threading;
+using System;
+using NSubstitute;
 
 namespace Nethermind.JsonRpc.Test.Modules.Trace
 {
@@ -84,6 +88,30 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             TraceModule traceModule = new TraceModule(NullReceiptStorage.Instance, _tracer, _blockTree);
             ResultWrapper<ParityTxTraceFromReplay> result = traceModule.trace_rawTransaction(Bytes.FromHexString("f889808609184e72a00082271094000000000000000000000000000000000000000080a47f74657374320000000000000000000000000000000000000000000000000000006000571ca08a8bbf888cfa37bbf0bb965423625641fc956967b81d12e23709cead01446075a01ce999b56a8a88504be365442ea61239198e23d1fce7d00fcfc5cd3b44b7215f"), new[] {"trace"});
             Assert.NotNull(result.Data);
+        }
+
+        [Test]
+        public void Throw_operation_canceled_after_given_timeout()
+        {
+            var timeout = TimeSpan.FromSeconds(1);
+            Transaction transactionMock = Substitute.For<Transaction>();
+            ParityTraceTypes type = ParityTraceTypes.Trace; 
+            Address address = new Address(new byte[] {0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1}); 
+            CancellationToken cancellationToken = new CancellationTokenSource(timeout).Token;
+            
+            ParityLikeTxTracer tracer = new ParityLikeTxTracer(_blockTree.Head, transactionMock, type, cancellationToken);
+
+            Thread.Sleep(timeout);
+            
+            Assert.Throws<OperationCanceledException>(() => tracer.StartOperation(0, 0, default(Instruction), 0));
+
+            Assert.Throws<OperationCanceledException>(() => tracer.ReportAction(0, 0, address, address, new byte[] {0, 0, 0}, ExecutionType.Transaction));
+
+            Assert.Throws<OperationCanceledException>(() => tracer.ReportAction(0, 0, address, address, new byte[] {0, 0, 0}, ExecutionType.Transaction));
+
+            Assert.Throws<OperationCanceledException>(() => tracer.ReportSelfDestruct(address, 0, address));
+
+            Assert.Throws<OperationCanceledException>(() => tracer.ReportStackPush(null));
         }
     }
 }

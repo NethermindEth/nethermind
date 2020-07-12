@@ -14,7 +14,9 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Linq;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
@@ -22,6 +24,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing
@@ -390,6 +393,23 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.AreEqual(2, trace.Entries[6].Memory.Count, "entry[2] length");
             Assert.AreEqual(SampleHexData1.PadLeft(64, '0'), trace.Entries[6].Memory[0], "entry[6][0]");
             Assert.AreEqual(SampleHexData2.PadLeft(64, '0'), trace.Entries[6].Memory[1], "entry[6][1]");
+        }
+
+        [Test]
+        public void Throw_operation_canceled_after_given_timeout()
+        {
+            var timeout = TimeSpan.FromSeconds(1);
+            CancellationToken cancellationToken = new CancellationTokenSource(timeout).Token;
+            GethTraceOptions options = Substitute.For<GethTraceOptions>();
+            var tracer = new GethLikeTxTracer(options, cancellationToken);
+
+            Thread.Sleep(timeout);
+
+            Assert.Throws<OperationCanceledException>(() => tracer.StartOperation(0, 0, Instruction.ADD, 0));
+            
+            Assert.Throws<OperationCanceledException>(() => tracer.ReportOperationRemainingGas(0));
+
+            Assert.Throws<OperationCanceledException>(() => tracer.SetOperationMemorySize(0)); 
         }
     }
 }

@@ -14,11 +14,14 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+using System.Threading;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing
@@ -173,6 +176,18 @@ namespace Nethermind.Evm.Test.Tracing
             }
 
             tracer.CalculateEstimate(Build.A.Transaction.WithGasLimit(1000).TestObject).Should().Be(17);
+        }
+
+        [Test]
+        public void Throw_operation_canceled_after_given_timeout()
+        {
+            CancellationToken cancellationToken = new CancellationTokenSource(1000).Token;
+            Transaction transactionMock = Substitute.For<Transaction>();
+            var tracer = new EstimateGasTracer(cancellationToken);
+
+            Thread.Sleep(1500);
+
+            Assert.Throws<OperationCanceledException>(() => tracer.CalculateEstimate(transactionMock));
         }
     }
 }
