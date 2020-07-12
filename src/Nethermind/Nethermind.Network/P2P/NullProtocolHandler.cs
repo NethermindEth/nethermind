@@ -44,7 +44,7 @@ namespace Nethermind.Network.P2P
             throw new NotSupportedException();
         }
 
-        public void InitiateDisconnect(DisconnectReason disconnectReason, string details)
+        public void DisconnectProtocol(DisconnectReason disconnectReason, string details)
         {
             throw new NotSupportedException();
         }

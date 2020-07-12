@@ -104,7 +104,7 @@ namespace Nethermind.Network.P2P
 
         public abstract void HandleMessage(Packet message);
 
-        public abstract void InitiateDisconnect(DisconnectReason disconnectReason, string details);
+        public abstract void DisconnectProtocol(DisconnectReason disconnectReason, string details);
 
         public abstract bool HasAvailableCapability(Capability capability);
 

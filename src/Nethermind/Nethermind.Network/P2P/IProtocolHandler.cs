@@ -34,7 +34,7 @@ namespace Nethermind.Network.P2P
         int MessageIdSpaceSize { get; }
         void Init();
         void HandleMessage(Packet message);
-        void InitiateDisconnect(DisconnectReason disconnectReason, string details);
+        void DisconnectProtocol(DisconnectReason disconnectReason, string details);
         bool HasAvailableCapability(Capability capability);
         bool HasAgreedCapability(Capability capability);
         void AddSupportedCapability(Capability capability);

@@ -241,7 +241,7 @@ namespace Nethermind.Network.P2P
             }
         }
 
-        public override void InitiateDisconnect(DisconnectReason disconnectReason, string details)
+        public override void DisconnectProtocol(DisconnectReason disconnectReason, string details)
         {
             if (Logger.IsTrace) Logger.Trace($"Sending disconnect {disconnectReason} ({details}) to {Session.Node:s}");
             DisconnectMessage message = new DisconnectMessage(disconnectReason);

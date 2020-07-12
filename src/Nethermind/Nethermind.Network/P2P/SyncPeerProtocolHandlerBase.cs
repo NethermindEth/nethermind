@@ -417,10 +417,8 @@ namespace Nethermind.Network.P2P
         private int _isDisposed;
         protected abstract void OnDisposed();
         
-        public override void InitiateDisconnect(DisconnectReason disconnectReason, string details)
+        public override void DisconnectProtocol(DisconnectReason disconnectReason, string details)
         {
-            /* there is a problem here as the protocol disconnection is inconsistent with session disconnection */
-            Session.MarkDisconnected(disconnectReason, DisconnectType.Local, details);
             Dispose();
         }
 

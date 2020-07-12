@@ -326,7 +326,7 @@ namespace Nethermind.Network.P2P
                     try
                     {
                         if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {this} disconnecting {protocolHandler.ProtocolCode}.{protocolHandler.ProtocolVersion} {disconnectReason} ({details})");
-                        protocolHandler.InitiateDisconnect(disconnectReason, details);
+                        protocolHandler.DisconnectProtocol(disconnectReason, details);
                     }
                     catch (Exception e)
                     {
