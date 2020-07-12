@@ -72,15 +72,9 @@ namespace Nethermind.Core2.Configuration
             parts.Add(product1);
 
             Architecture osArchiteture = RuntimeInformation.OSArchitecture;
-            string osDescription = RuntimeInformation.OSDescription;
-            if (osDescription.Contains('#'))
-            {
-                int indexOfHash = osDescription.IndexOf('#');
-                osDescription = osDescription.Substring(0, Math.Max(0, indexOfHash - 1));
-            }
 
             string frameworkDescription = RuntimeInformation.FrameworkDescription;
-            string osFrameworkComment = $"({osArchiteture}-{osDescription}/{frameworkDescription})";
+            string osFrameworkComment = $"({osArchiteture}-{Nethermind.Core.Platform.GetPlatformName()}/{frameworkDescription})";
             parts.Add(osFrameworkComment);
 
             if (!string.IsNullOrWhiteSpace(environmentName) && environmentName != Environments.Production)
