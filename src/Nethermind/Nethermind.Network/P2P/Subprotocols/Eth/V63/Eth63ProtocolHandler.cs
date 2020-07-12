@@ -20,9 +20,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
-using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
@@ -62,20 +60,24 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             switch (message.PacketType)
             {
                 case Eth63MessageCode.GetReceipts:
-                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, nameof(GetReceiptsMessage));
-                    Handle(Deserialize<GetReceiptsMessage>(message.Content));
+                    GetReceiptsMessage getReceiptsMessage = Deserialize<GetReceiptsMessage>(message.Content);
+                    ReportIn(getReceiptsMessage);
+                    Handle(getReceiptsMessage);
                     break;
                 case Eth63MessageCode.Receipts:
-                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, nameof(ReceiptsMessage));
-                    Handle(Deserialize<ReceiptsMessage>(message.Content), size);
+                    ReceiptsMessage receiptsMessage = Deserialize<ReceiptsMessage>(message.Content);
+                    ReportIn(receiptsMessage);
+                    Handle(receiptsMessage, size);
                     break;
                 case Eth63MessageCode.GetNodeData:
-                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, nameof(GetNodeDataMessage));
-                    Handle(Deserialize<GetNodeDataMessage>(message.Content));
+                    GetNodeDataMessage getNodeDataMessage = Deserialize<GetNodeDataMessage>(message.Content);
+                    ReportIn(getNodeDataMessage);
+                    Handle(getNodeDataMessage);
                     break;
                 case Eth63MessageCode.NodeData:
-                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, nameof(NodeDataMessage));
-                    Handle(Deserialize<NodeDataMessage>(message.Content), size);
+                    NodeDataMessage nodeDataMessage = Deserialize<NodeDataMessage>(message.Content);
+                    ReportIn(nodeDataMessage);
+                    Handle(nodeDataMessage, size);
                     break;
             }
         }
@@ -104,7 +106,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             byte[][] nodeData = SyncServer.GetNodeData(msg.Hashes);
             Send(new NodeDataMessage(nodeData));
             stopwatch.Stop();
-            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} NodeData to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
+            if (Logger.IsTrace)
+                Logger.Trace($"OUT {Counter:D5} NodeData to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
         }
 
         private void Handle(NodeDataMessage msg, int size)
@@ -142,8 +145,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             TxReceipt[][] txReceipts = await SendRequest(msg, token);
             return txReceipts;
         }
-
-        [Todo(Improve.Refactor, "Generic approach to requests")]
+        
         private async Task<byte[][]> SendRequest(GetNodeDataMessage message, CancellationToken token)
         {
             if (Logger.IsTrace)
@@ -160,7 +162,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             Task<byte[][]> task = request.CompletionSource.Task;
 
             using CancellationTokenSource delayCancellation = new CancellationTokenSource();
-            using CancellationTokenSource compositeCancellation = CancellationTokenSource.CreateLinkedTokenSource(token, delayCancellation.Token);
+            using CancellationTokenSource compositeCancellation
+                = CancellationTokenSource.CreateLinkedTokenSource(token, delayCancellation.Token);
             Task firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.Eth, compositeCancellation.Token));
             if (firstTask.IsCanceled)
             {
@@ -172,7 +175,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                 delayCancellation.Cancel();
                 long elapsed = request.FinishMeasuringTime();
                 long bytesPerMillisecond = (long) ((decimal) request.ResponseSize / Math.Max(1, elapsed));
-                if (Logger.IsTrace) Logger.Trace($"{this} speed is {request.ResponseSize}/{elapsed} = {bytesPerMillisecond}");
+                if (Logger.IsTrace)
+                    Logger.Trace($"{this} speed is {request.ResponseSize}/{elapsed} = {bytesPerMillisecond}");
                 StatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.NodeData, bytesPerMillisecond);
 
                 return task.Result;
@@ -181,8 +185,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             StatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.NodeData, 0L);
             throw new TimeoutException($"{Session} Request timeout in {nameof(GetNodeDataMessage)}");
         }
-
-        [Todo(Improve.Refactor, "Generic approach to requests")]
+        
         private async Task<TxReceipt[][]> SendRequest(GetReceiptsMessage message, CancellationToken token)
         {
             if (Logger.IsTrace)
@@ -191,7 +194,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                 Logger.Trace($"Hashes count: {message.Hashes.Count}");
             }
 
-            Request<GetReceiptsMessage, TxReceipt[][]> request = new Request<GetReceiptsMessage, TxReceipt[][]>(message);
+            Request<GetReceiptsMessage, TxReceipt[][]> request
+                = new Request<GetReceiptsMessage, TxReceipt[][]>(message);
             request.StartMeasuringTime();
             _receiptsRequests.Add(request, token);
 
@@ -199,7 +203,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
             Task<TxReceipt[][]> task = request.CompletionSource.Task;
             using CancellationTokenSource delayCancellation = new CancellationTokenSource();
-            using CancellationTokenSource compositeCancellation = CancellationTokenSource.CreateLinkedTokenSource(token, delayCancellation.Token);
+            using CancellationTokenSource compositeCancellation 
+                = CancellationTokenSource.CreateLinkedTokenSource(token, delayCancellation.Token);
             Task firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.Eth, compositeCancellation.Token));
             if (firstTask.IsCanceled)
             {
@@ -211,7 +216,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                 delayCancellation.Cancel();
                 long elapsed = request.FinishMeasuringTime();
                 long bytesPerMillisecond = (long) ((decimal) request.ResponseSize / Math.Max(1, elapsed));
-                if (Logger.IsTrace) Logger.Trace($"{this} speed is {request.ResponseSize}/{elapsed} = {bytesPerMillisecond}");
+                if (Logger.IsTrace)
+                    Logger.Trace($"{this} speed is {request.ResponseSize}/{elapsed} = {bytesPerMillisecond}");
                 StatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.Receipts, bytesPerMillisecond);
 
                 return task.Result;
