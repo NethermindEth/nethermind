@@ -104,7 +104,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 }
             });
         }
-
+        
         protected void ReportIn(MessageBase messageBase)
         {
             if (NetworkDiagTracer.IsEnabled)
