@@ -32,7 +32,7 @@ namespace Nethermind.Core
             Header = blockHeader;
             Body = body;
         }
-        
+
         public Block(BlockHeader blockHeader, IEnumerable<Transaction> transactions, IEnumerable<BlockHeader> ommers)
         {
             Header = blockHeader;
@@ -45,13 +45,13 @@ namespace Nethermind.Core
         }
 
         public BlockHeader Header { get; set; }
-        
+
         public BlockBody Body { get; set; }
-        
+
         public bool IsGenesis => Header.IsGenesis;
 
         public Transaction[] Transactions => Body?.Transactions; // do not add setter here
-        
+
         public BlockHeader[] Ommers => Body?.Ommers; // do not add setter here
 
         public Keccak Hash => Header.Hash; // do not add setter here
@@ -112,7 +112,7 @@ namespace Nethermind.Core
                 _ => Hash == null ? $"{Number} null" : $"{Number} ({Hash?.ToShortString()})"
             };
         }
-        
+
         private string ToFullString()
         {
             StringBuilder builder = new StringBuilder();
@@ -134,7 +134,7 @@ namespace Nethermind.Core
 
             return builder.ToString();
         }
-        
+
         public enum Format
         {
             Full,
