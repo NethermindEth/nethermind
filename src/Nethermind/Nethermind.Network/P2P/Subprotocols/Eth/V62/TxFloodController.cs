@@ -56,7 +56,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             else if (_notAcceptedSinceLastCheck / _checkInterval.TotalSeconds > 100)
             {
                 if (_logger.IsDebug) _logger.Debug($"Disconnecting {_protocolHandler} due to tx flooding");
-                    _protocolHandler.Session.InitiateDisconnect(
+                    _protocolHandler.Disconnect(
                         DisconnectReason.UselessPeer,
                         $"tx flooding {_notAcceptedSinceLastCheck}/{_checkInterval.TotalSeconds > 100}");
             }

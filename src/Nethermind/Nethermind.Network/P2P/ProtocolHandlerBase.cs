@@ -31,7 +31,7 @@ namespace Nethermind.Network.P2P
         public abstract string Name { get; }
         protected INodeStatsManager StatsManager { get; }
         private readonly IMessageSerializationService _serializer;
-        protected internal ISession Session { get; }
+        protected ISession Session { get; }
         protected long Counter;
 
         private readonly TaskCompletionSource<MessageBase> _initCompletionSource;
