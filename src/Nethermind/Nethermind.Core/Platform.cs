@@ -16,34 +16,6 @@
 
 using System;
 using System.Runtime.InteropServices;
-/*public class NativeLib
-{
-
-    private static OSPlatform GetPlatform()
-    {
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-        {
-            return OSPlatform.Windows;
-        }
-
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-        {
-            return OSPlatform.Linux;
-        }
-
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-        {
-            return OSPlatform.OSX;
-        }
-
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.FreeBSD))
-        {
-            return OSPlatform.Linux;
-        }
-
-        throw new InvalidOperationException("Unsupported platform.");
-    }
-}*/
 
 namespace Nethermind.Core
 {
