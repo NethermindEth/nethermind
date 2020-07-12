@@ -15,12 +15,16 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using System.Net;
+using System.Threading;
+using System.Threading.Tasks;
 using DotNetty.Buffers;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
@@ -33,6 +37,7 @@ using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 using IPAddress = Org.BouncyCastle.Utilities.Net.IPAddress;
 
@@ -55,7 +60,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _svc = Build.A.SerializationService().WithEth().TestObject;
 
             NetworkDiagTracer.IsEnabled = true;
-            
+
             _session = Substitute.For<ISession>();
             Node node = new Node(TestItem.PublicKeyA, new IPEndPoint(System.Net.IPAddress.Broadcast, 30303));
             _session.Node.Returns(node);
@@ -92,7 +97,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _handler.HeadHash.Should().BeNull();
             _handler.HeadNumber.Should().Be(0);
         }
-        
+
         [Test]
         public void Capabilities_are_implemented_badly()
         {
@@ -102,7 +107,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _handler.HasAgreedCapability(new Capability("eth", 62)).Should().BeFalse();
             _handler.HasAvailableCapability(new Capability("eth", 62)).Should().BeFalse();
         }
-        
+
         [Test]
         public void Can_broadcast_a_block()
         {
@@ -113,10 +118,10 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _handler.NotifyOfNewBlock(block, SendBlockPriority.Low);
             _session.Received().DeliverMessage(Arg.Any<NewBlockHashesMessage>());
             _session.ClearReceivedCalls();
-            _handler.NotifyOfNewBlock(block, (SendBlockPriority)99);
+            _handler.NotifyOfNewBlock(block, (SendBlockPriority) 99);
             _session.Received().DeliverMessage(Arg.Any<NewBlockHashesMessage>());
         }
-        
+
         [Test]
         public void Cannot_broadcast_a_block_without_total_difficulty_but_can_hint()
         {
@@ -124,9 +129,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             Assert.Throws<InvalidOperationException>(
                 () => _handler.NotifyOfNewBlock(block, SendBlockPriority.High));
             _handler.NotifyOfNewBlock(block, SendBlockPriority.Low);
-            _handler.NotifyOfNewBlock(block, (SendBlockPriority)99);
+            _handler.NotifyOfNewBlock(block, (SendBlockPriority) 99);
         }
-        
+
         [Test]
         public void Get_headers_from_genesis()
         {
@@ -135,22 +140,13 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             msg.MaxHeaders = 3;
             msg.Skip = 1;
             msg.Reverse = 1;
-            
-            var statusMsg = new StatusMessage();
-            statusMsg.BestHash = _genesisBlock.Hash;
-            statusMsg.GenesisHash = _genesisBlock.Hash;
 
-            IByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg);
-            statusPacket.ReadByte();
+            HandleIncomingStatusMessage();
+            HandleZeroMessage(msg, Eth62MessageCode.GetBlockHeaders);
 
-            IByteBuffer getBlockHeadersPacket = _svc.ZeroSerialize(msg);
-            getBlockHeadersPacket.ReadByte();
-            
-            _handler.HandleMessage(new ZeroPacket(statusPacket){PacketType = 0});
-            _handler.HandleMessage(new ZeroPacket(getBlockHeadersPacket){PacketType = Eth62MessageCode.GetBlockHeaders});
             _syncManager.Received().FindHeaders(TestItem.KeccakA, 3, 1, true);
         }
-        
+
         [Test]
         public void Receiving_request_before_status_fails()
         {
@@ -162,11 +158,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
 
             IByteBuffer packet = _svc.ZeroSerialize(msg);
             packet.ReadByte();
-            
+
             Assert.Throws<SubprotocolException>(
-                () => _handler.HandleMessage(new ZeroPacket(packet){PacketType = Eth62MessageCode.GetBlockHeaders}));
+                () => _handler.HandleMessage(new ZeroPacket(packet) {PacketType = Eth62MessageCode.GetBlockHeaders}));
         }
-        
+
         [Test]
         public void Get_headers_when_blocks_are_missing_at_the_end()
         {
@@ -174,7 +170,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             headers[0] = Build.A.BlockHeader.TestObject;
             headers[1] = Build.A.BlockHeader.TestObject;
             headers[2] = Build.A.BlockHeader.TestObject;
-            
+
             _syncManager.FindHash(100).Returns(TestItem.KeccakA);
             _syncManager.FindHeaders(TestItem.KeccakA, 5, 1, true).Returns(headers);
             _syncManager.Head.Returns(_genesisBlock.Header);
@@ -185,22 +181,19 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             msg.MaxHeaders = 5;
             msg.Skip = 1;
             msg.Reverse = 1;
-            
-            var statusMsg = new StatusMessage();
-            statusMsg.GenesisHash = _genesisBlock.Hash;
-            statusMsg.BestHash = _genesisBlock.Hash;
-            
-            IByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg);
-            statusPacket.ReadByte();
 
-            IByteBuffer getBlockHeadersPacket = _svc.ZeroSerialize(msg);
-            getBlockHeadersPacket.ReadByte();
-            
-            _handler.HandleMessage(new ZeroPacket(statusPacket){PacketType = 0});
-            _handler.HandleMessage(new ZeroPacket(getBlockHeadersPacket){PacketType = Eth62MessageCode.GetBlockHeaders});
-            
+            HandleIncomingStatusMessage();
+            HandleZeroMessage(msg, Eth62MessageCode.GetBlockHeaders);
+
             _session.Received().DeliverMessage(Arg.Is<BlockHeadersMessage>(bhm => bhm.BlockHeaders.Length == 3));
             _syncManager.Received().FindHash(100);
+        }
+        
+        [Test]
+        public void Throws_after_receiving_status_message_for_the_second_time()
+        {
+            HandleIncomingStatusMessage();
+            Assert.Throws<SubprotocolException>(HandleIncomingStatusMessage);
         }
 
         [Test]
@@ -212,11 +205,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             headers[2] = null;
             headers[3] = Build.A.BlockHeader.TestObject;
             headers[4] = Build.A.BlockHeader.TestObject;
-            
+
             _syncManager.FindHash(100).Returns(TestItem.KeccakA);
             _syncManager.FindHeaders(TestItem.KeccakA, 5, 1, true)
                 .Returns(headers);
-            
+
             _syncManager.Head.Returns(_genesisBlock.Header);
             _syncManager.Genesis.Returns(_genesisBlock.Header);
 
@@ -225,22 +218,162 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             msg.MaxHeaders = 5;
             msg.Skip = 1;
             msg.Reverse = 1;
-            
+
+            HandleIncomingStatusMessage();
+            HandleZeroMessage(msg, Eth62MessageCode.GetBlockHeaders);
+
+            _session.Received().DeliverMessage(Arg.Is<BlockHeadersMessage>(bhm => bhm.BlockHeaders.Length == 5));
+            _syncManager.Received().FindHash(100);
+        }
+
+        [Test]
+        public void Can_handle_new_block_message()
+        {
+            NewBlockMessage newBlockMessage = new NewBlockMessage();
+            newBlockMessage.Block = Build.A.Block.WithParent(_genesisBlock).TestObject;
+            newBlockMessage.TotalDifficulty = _genesisBlock.Difficulty + newBlockMessage.Block.Difficulty;
+
+            HandleIncomingStatusMessage();
+            HandleZeroMessage(newBlockMessage, Eth62MessageCode.NewBlock);
+
+            _syncManager.Received().AddNewBlock(
+                Arg.Is<Block>(b => b.Hash == newBlockMessage.Block.Hash),
+                _handler);
+        }
+
+        [Test]
+        public void Throws_if_adding_new_block_fails()
+        {
+            NewBlockMessage newBlockMessage = new NewBlockMessage();
+            newBlockMessage.Block = Build.A.Block.WithParent(_genesisBlock).TestObject;
+            newBlockMessage.TotalDifficulty = _genesisBlock.Difficulty + newBlockMessage.Block.Difficulty;
+
+            HandleIncomingStatusMessage();
+
+            IByteBuffer getBlockHeadersPacket = _svc.ZeroSerialize(newBlockMessage);
+            getBlockHeadersPacket.ReadByte();
+
+            _syncManager.WhenForAnyArgs(w => w.AddNewBlock(null, _handler)).Do(ci => throw new Exception());
+            Assert.Throws<Exception>(
+                () => _handler.HandleMessage(
+                    new ZeroPacket(getBlockHeadersPacket) {PacketType = Eth62MessageCode.NewBlock}));
+        }
+
+        [Test]
+        public void Can_handle_new_block_hashes()
+        {
+            NewBlockHashesMessage msg = new NewBlockHashesMessage();
+            msg.BlockHashes = new (Keccak, long)[] {(Keccak.Zero, 1), (Keccak.Zero, 2)};
+
+            HandleIncomingStatusMessage();
+            HandleZeroMessage(msg, Eth62MessageCode.NewBlockHashes);
+        }
+
+        [Test]
+        public void Can_handle_get_block_bodies()
+        {
+            GetBlockBodiesMessage msg = new GetBlockBodiesMessage(new[] {Keccak.Zero, TestItem.KeccakA});
+
+            HandleIncomingStatusMessage();
+            HandleZeroMessage(msg, Eth62MessageCode.GetBlockBodies);
+        }
+
+        [Test]
+        public void Can_handle_transactions()
+        {
+            TransactionsMessage msg = new TransactionsMessage(new List<Transaction>(Build.A.Transaction.SignedAndResolved().TestObjectNTimes(3)));
+
+            HandleIncomingStatusMessage();
+            HandleZeroMessage(msg, Eth62MessageCode.Transactions);
+        }
+        
+        [Test]
+        public void Can_handle_transactions_without_filtering()
+        {
+            TransactionsMessage msg = new TransactionsMessage(new List<Transaction>(Build.A.Transaction.SignedAndResolved().TestObjectNTimes(3)));
+
+            _handler.DisableTxFiltering();
+            HandleIncomingStatusMessage();
+            HandleZeroMessage(msg, Eth62MessageCode.Transactions);
+        }
+
+        [Test]
+        public void Can_handle_block_bodies()
+        {
+            BlockBodiesMessage msg = new BlockBodiesMessage(Build.A.Block.TestObjectNTimes(3));
+
+            HandleIncomingStatusMessage();
+            ((ISyncPeer) _handler).GetBlockBodies(new List<Keccak>(new[] {Keccak.Zero}), CancellationToken.None);
+            HandleZeroMessage(msg, Eth62MessageCode.BlockBodies);
+        }
+
+        [Test]
+        public async Task Get_block_bodies_returns_immediately_when_empty_hash_list()
+        {
+            BlockBody[] bodies =
+                await ((ISyncPeer) _handler).GetBlockBodies(new List<Keccak>(), CancellationToken.None);
+
+            bodies.Should().HaveCount(0);
+        }
+
+        [Test]
+        public void Throws_on_unordered_bodies()
+        {
+            BlockBodiesMessage msg = new BlockBodiesMessage(Build.A.Block.TestObjectNTimes(3));
+
+            HandleIncomingStatusMessage();
+            Assert.Throws<OperationCanceledException>(() => HandleZeroMessage(msg, Eth62MessageCode.BlockBodies));
+        }
+
+        [Test]
+        public void Can_handle_headers()
+        {
+            BlockHeadersMessage msg = new BlockHeadersMessage(Build.A.BlockHeader.TestObjectNTimes(3));
+
+            ((ISyncPeer) _handler).GetBlockHeaders(1, 1, 1, CancellationToken.None);
+            HandleIncomingStatusMessage();
+            HandleZeroMessage(msg, Eth62MessageCode.BlockHeaders);
+        }
+
+        [Test]
+        public void Throws_on_unordered_headers()
+        {
+            BlockHeadersMessage msg = new BlockHeadersMessage(Build.A.BlockHeader.TestObjectNTimes(3));
+
+            HandleIncomingStatusMessage();
+            Assert.Throws<OperationCanceledException>(() => HandleZeroMessage(msg, Eth62MessageCode.BlockHeaders));
+        }
+
+        private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
+        {
+            IByteBuffer getBlockHeadersPacket = _svc.ZeroSerialize(msg);
+            getBlockHeadersPacket.ReadByte();
+            _handler.HandleMessage(new ZeroPacket(getBlockHeadersPacket) {PacketType = (byte) messageCode});
+        }
+
+        [Test]
+        public void Throws_if_new_block_message_received_before_status()
+        {
+            NewBlockMessage newBlockMessage = new NewBlockMessage();
+            newBlockMessage.Block = Build.A.Block.WithParent(_genesisBlock).TestObject;
+            newBlockMessage.TotalDifficulty = _genesisBlock.Difficulty + newBlockMessage.Block.Difficulty;
+
+            IByteBuffer getBlockHeadersPacket = _svc.ZeroSerialize(newBlockMessage);
+            getBlockHeadersPacket.ReadByte();
+            Assert.Throws<SubprotocolException>(
+                () => _handler.HandleMessage(
+                    new ZeroPacket(getBlockHeadersPacket) {PacketType = Eth62MessageCode.NewBlock}));
+        }
+
+        private void HandleIncomingStatusMessage()
+        {
             var statusMsg = new StatusMessage();
             statusMsg.GenesisHash = _genesisBlock.Hash;
             statusMsg.BestHash = _genesisBlock.Hash;
-            
+
             IByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg);
             statusPacket.ReadByte();
-
-            IByteBuffer getBlockHeadersPacket = _svc.ZeroSerialize(msg);
-            getBlockHeadersPacket.ReadByte();
-            
-            _handler.HandleMessage(new ZeroPacket(statusPacket){PacketType = 0});
-            _handler.HandleMessage(new ZeroPacket(getBlockHeadersPacket){PacketType = Eth62MessageCode.GetBlockHeaders});
-            
-            _session.Received().DeliverMessage(Arg.Is<BlockHeadersMessage>(bhm => bhm.BlockHeaders.Length == 5));
-            _syncManager.Received().FindHash(100);
+            _handler.HandleMessage(new ZeroPacket(statusPacket) {PacketType = 0});
         }
     }
 }

@@ -333,7 +333,9 @@ namespace Nethermind.Network.P2P
         protected void Handle(BlockHeadersMessage message, long size)
         {
             Metrics.Eth62BlockHeadersReceived++;
-            Request<GetBlockHeadersMessage, BlockHeader[]> request = _headersRequests.Take();
+            using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
+            cancellationTokenSource.CancelAfter(1000);
+            Request<GetBlockHeadersMessage, BlockHeader[]> request = _headersRequests.Take(cancellationTokenSource.Token);
             if (message.PacketType == Eth62MessageCode.BlockHeaders)
             {
                 request.ResponseSize = size;
@@ -378,7 +380,9 @@ namespace Nethermind.Network.P2P
         protected void Handle(BlockBodiesMessage message, long size)
         {
             Metrics.Eth62BlockBodiesReceived++;
-            Request<GetBlockBodiesMessage, BlockBody[]> request = _bodiesRequests.Take();
+            using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
+            cancellationTokenSource.CancelAfter(1000);
+            Request<GetBlockBodiesMessage, BlockBody[]> request = _bodiesRequests.Take(cancellationTokenSource.Token);
             if (message.PacketType == Eth62MessageCode.BlockBodies)
             {
                 request.ResponseSize = size;
