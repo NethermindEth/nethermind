@@ -78,7 +78,7 @@ namespace Nethermind.EthStats.Integrations
 
         public async Task InitAsync()
         {
-            _timer = new Timer {Interval = SendStatsInterval};
+            _timer = new Timer { Interval = SendStatsInterval };
             _timer.Elapsed += TimerOnElapsed;
             _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
             _websocketClient = await _ethStatsClient.InitAsync();
@@ -150,13 +150,13 @@ namespace Nethermind.EthStats.Integrations
         private Task SendHelloAsync()
             => _sender.SendAsync(_websocketClient, new HelloMessage(_secret, new Info(_name, _node, _port, _network,
                 _protocol,
-                _api, RuntimeInformation.OSDescription, RuntimeInformation.OSArchitecture.ToString(), _client,
+                _api, GetOSName(), RuntimeInformation.OSArchitecture.ToString(), _client,
                 _contact, _canUpdateHistory)));
 
         private Task SendBlockAsync(Core.Block block)
             => _sender.SendAsync(_websocketClient, new BlockMessage(new Block(block.Number, block.Hash?.ToString(),
                 block.ParentHash?.ToString(),
-                (long) block.Timestamp, (block.Author ?? block.Beneficiary)?.ToString(), block.GasUsed, block.GasLimit,
+                (long)block.Timestamp, (block.Author ?? block.Beneficiary)?.ToString(), block.GasUsed, block.GasLimit,
                 block.Difficulty.ToString(), block.TotalDifficulty?.ToString(),
                 block.Transactions?.Select(t => new Transaction(t.Hash?.ToString())) ?? Enumerable.Empty<Transaction>(),
                 block.TxRoot.ToString(), block.StateRoot.ToString(),
@@ -167,6 +167,27 @@ namespace Nethermind.EthStats.Integrations
 
         private Task SendStatsAsync()
             => _sender.SendAsync(_websocketClient, new StatsMessage(new Messages.Models.Stats(true, true, false, 0,
-                _peerManager.ActivePeers.Count, (long) 20.GWei(), 100)));
+                _peerManager.ActivePeers.Count, (long)20.GWei(), 100)));
+
+        private string GetOSName()
+        {
+            string osName;
+            switch (RuntimeInformation.OSDescription.Split(" ")[0])
+            {
+                case "Microsoft":
+                    // Replace "Microsoft Windows" => "Windows"
+                    osName = "Windows";
+                    break;
+                case "Darwin":
+                    // Replace "Darwin" => "macOS"
+                    osName = "macOS";
+                    break;
+                default:
+                    // Don't do anything as "Linux" is "Linux", "FreeBSD" is "FreeBSD"...
+                    osName = RuntimeInformation.OSDescription.Split(" ")[0];
+                    break;
+            }
+            return osName;
+        }
     }
 }
