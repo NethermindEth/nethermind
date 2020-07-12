@@ -171,7 +171,7 @@ namespace Nethermind.Blockchain
             long left = (Head?.Number ?? 0) == 0
                 ? Math.Max(_syncConfig.PivotNumberParsed, LowestInsertedHeader?.Number ?? 0) - 1
                 : Head.Number;
-            long right = left + BestKnownSearchLimit;
+            long right = Math.Max(0, left) + BestKnownSearchLimit;
 
             bool LevelExists(long blockNumber)
             {
