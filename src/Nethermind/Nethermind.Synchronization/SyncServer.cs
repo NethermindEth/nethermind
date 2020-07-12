@@ -294,10 +294,15 @@ namespace Nethermind.Synchronization
                 IDb codeDb = _codeDb.Innermost;
 
                 values[i] = null;
-                if (includedTypes.HasFlag(NodeDataType.State))
+                if ((includedTypes & NodeDataType.State) == NodeDataType.State)
+                {
                     values[i] = stateDb.Get(keys[i]);
-                if (values[i] == null && includedTypes.HasFlag(NodeDataType.Code))
+                }
+
+                if (values[i] == null && (includedTypes & NodeDataType.Code) == NodeDataType.Code)
+                {
                     values[i] = codeDb.Get(keys[i]);
+                }
             }
 
             return values;

@@ -23,12 +23,22 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
     {
         public static ulong EstimateSize(BlockHeader blockHeader)
         {
+            if (blockHeader == null)
+            {
+                return 0;
+            }
+            
             return 512;
         }
 
         public static ulong EstimateSize(Transaction tx)
         {
-            return 100UL + (ulong)tx.Data.Length + (ulong)tx.Init.Length;
+            if (tx == null)
+            {
+                return 0;
+            }
+            
+            return 100UL + (ulong)(tx.Data?.Length ?? 0) + (ulong)(tx.Init?.Length ?? 0);
         }
 
         public static ulong EstimateSize(Block block)

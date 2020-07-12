@@ -14,12 +14,17 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+
 namespace Nethermind.Synchronization.FastSync
 {
+    [Flags]
     public enum NodeDataType
     {
-        Code,
-        State,
-        Storage,
+        None = 0,
+        Code = 1,
+        State = 2,
+        Storage = 4,
+        All = 7
     }
 }
