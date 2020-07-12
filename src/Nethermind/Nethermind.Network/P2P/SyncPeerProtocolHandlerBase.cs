@@ -160,23 +160,6 @@ namespace Nethermind.Network.P2P
             return headers;
         }
 
-        async Task<BlockHeader[]> ISyncPeer.GetBlockHeaders(Keccak blockHash, int maxBlocks, int skip, CancellationToken token)
-        {
-            if (maxBlocks == 0)
-            {
-                return Array.Empty<BlockHeader>();
-            }
-
-            GetBlockHeadersMessage msg = new GetBlockHeadersMessage();
-            msg.MaxHeaders = maxBlocks;
-            msg.Reverse = 0;
-            msg.Skip = skip;
-            msg.StartBlockHash = blockHash;
-
-            BlockHeader[] headers = await SendRequest(msg, token);
-            return headers;
-        }
-        
         private async Task<BlockHeader[]> SendRequest(GetBlockHeadersMessage message, CancellationToken token)
         {
             if (_headersRequests.IsAddingCompleted || _isDisposed == 1)
