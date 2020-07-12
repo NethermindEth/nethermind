@@ -34,17 +34,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
     /// </summary>
     public class Eth65ProtocolHandler : Eth64ProtocolHandler
     {
-        private readonly ISpecProvider _specProvider;
-
         public Eth65ProtocolHandler(ISession session,
             IMessageSerializationService serializer,
             INodeStatsManager nodeStatsManager,
             ISyncServer syncServer,
             ITxPool txPool,
             ISpecProvider specProvider,
-            ILogManager logManager) : base(session, serializer, nodeStatsManager, syncServer, txPool, specProvider, logManager)
+            ILogManager logManager)
+            : base(session, serializer, nodeStatsManager, syncServer, txPool, specProvider, logManager)
         {
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         }
 
         public override string Name => "eth65";
@@ -57,10 +55,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             switch (message.PacketType)
             {
                 case Eth65MessageCode.PooledTransactions:
-                    Handle(Deserialize<PooledTransactionsMessage>(message.Content));
+                    PooledTransactionsMessage pooledTxMsg
+                        = Deserialize<PooledTransactionsMessage>(message.Content);
+                    ReportIn(pooledTxMsg);
+                    Handle(pooledTxMsg);
                     break;
                 case Eth65MessageCode.GetPooledTransactions:
-                    Handle(Deserialize<GetPooledTransactionsMessage>(message.Content));
+                    GetPooledTransactionsMessage getPooledTxMsg
+                        = Deserialize<GetPooledTransactionsMessage>(message.Content);
+                    ReportIn(getPooledTxMsg);
+                    Handle(getPooledTxMsg);
                     break;
                 case Eth65MessageCode.NewPooledTransactionHashes:
                     Metrics.Eth65NewPooledTransactionHashesReceived++;
@@ -85,7 +89,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
             Send(new PooledTransactionsMessage(txs));
             stopwatch.Stop();
-            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} GetPooledTransactionsMessage to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
+            if (Logger.IsTrace)
+                Logger.Trace($"OUT {Counter:D5} {nameof(GetPooledTransactionsMessage)} to {Node:c} " +
+                             $"in {stopwatch.Elapsed.TotalMilliseconds}ms");
         }
 
         public override void SendNewTransaction(Transaction transaction, bool isPriority)

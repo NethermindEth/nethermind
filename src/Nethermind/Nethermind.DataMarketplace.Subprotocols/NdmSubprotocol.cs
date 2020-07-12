@@ -295,7 +295,7 @@ namespace Nethermind.DataMarketplace.Subprotocols
             });
         }
 
-        public override void InitiateDisconnect(DisconnectReason disconnectReason, string details)
+        public override void DisconnectProtocol(DisconnectReason disconnectReason, string details)
         {
             if (Interlocked.Exchange(ref DisconnectedValue, 1) == 1)
             {
@@ -309,7 +309,6 @@ namespace Nethermind.DataMarketplace.Subprotocols
                     Logger.Error("There was an error within NDM subprotocol.", t.Exception);
                 }
             });
-            Session.InitiateDisconnect(disconnectReason, details);
         }
 
         private void SendGetDataAssets()

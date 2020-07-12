@@ -22,78 +22,80 @@ namespace Nethermind.Network.P2P
 {
     public class NettyRlpStream : RlpStream
     {
-        private readonly IByteBuffer _byteBuffer;
+        private readonly IByteBuffer _buffer;
 
         private int _initialPosition;
-        
-        public NettyRlpStream(IByteBuffer byteBuffer)
+
+        public NettyRlpStream(IByteBuffer buffer)
         {
-            _byteBuffer = byteBuffer;
-            _initialPosition = byteBuffer.ReaderIndex;
+            _buffer = buffer;
+            _initialPosition = buffer.ReaderIndex;
         }
 
         public override void Write(Span<byte> bytesToWrite)
         {
-            _byteBuffer.EnsureWritable(bytesToWrite.Length, true);
+            _buffer.EnsureWritable(bytesToWrite.Length, true);
 
-            bytesToWrite.CopyTo(_byteBuffer.Array.AsSpan(_byteBuffer.ArrayOffset + _byteBuffer.WriterIndex, bytesToWrite.Length));
-            int newWriterIndex = _byteBuffer.WriterIndex + bytesToWrite.Length;
+            Span<byte> target =
+                _buffer.Array.AsSpan(_buffer.ArrayOffset + _buffer.WriterIndex, bytesToWrite.Length);
+            bytesToWrite.CopyTo(target);
+            int newWriterIndex = _buffer.WriterIndex + bytesToWrite.Length;
 
-            _byteBuffer.SetWriterIndex(newWriterIndex);
+            _buffer.SetWriterIndex(newWriterIndex);
         }
 
         public override void WriteByte(byte byteToWrite)
         {
-            _byteBuffer.EnsureWritable(1, true);
-            _byteBuffer.WriteByte(byteToWrite);
+            _buffer.EnsureWritable(1, true);
+            _buffer.WriteByte(byteToWrite);
         }
 
         protected override void WriteZero(int length)
         {
-            _byteBuffer.EnsureWritable(length, true);
-            _byteBuffer.WriteZero(length);
+            _buffer.EnsureWritable(length, true);
+            _buffer.WriteZero(length);
         }
 
         public override byte ReadByte()
         {
-            return _byteBuffer.ReadByte();
+            return _buffer.ReadByte();
         }
-        
+
         protected override Span<byte> Read(int length)
         {
-            Span<byte> span = _byteBuffer.Array.AsSpan(_byteBuffer.ArrayOffset + _byteBuffer.ReaderIndex, length);
-             _byteBuffer.SkipBytes(span.Length);
-             return span;
+            Span<byte> span = _buffer.Array.AsSpan(_buffer.ArrayOffset + _buffer.ReaderIndex, length);
+            _buffer.SkipBytes(span.Length);
+            return span;
         }
 
         public override byte PeekByte()
         {
-            byte result = _byteBuffer.ReadByte();
-            _byteBuffer.SetReaderIndex(_byteBuffer.ReaderIndex - 1);
+            byte result = _buffer.ReadByte();
+            _buffer.SetReaderIndex(_buffer.ReaderIndex - 1);
             return result;
         }
 
         protected override byte PeekByte(int offset)
         {
-            _byteBuffer.MarkReaderIndex();
-            _byteBuffer.SkipBytes(offset);
-            byte result = _byteBuffer.ReadByte();
-            _byteBuffer.ResetReaderIndex();
+            _buffer.MarkReaderIndex();
+            _buffer.SkipBytes(offset);
+            byte result = _buffer.ReadByte();
+            _buffer.ResetReaderIndex();
             return result;
         }
 
         protected override void SkipBytes(int length)
         {
-            _byteBuffer.SkipBytes(length);
+            _buffer.SkipBytes(length);
         }
 
         public override int Position
         {
-            get => _byteBuffer.ReaderIndex - _initialPosition;
-            set => _byteBuffer.SetReaderIndex(_initialPosition + value);
+            get => _buffer.ReaderIndex - _initialPosition;
+            set => _buffer.SetReaderIndex(_initialPosition + value);
         }
 
-        public override int Length => _byteBuffer.ReadableBytes + (_byteBuffer.ReaderIndex - _initialPosition);
+        public override int Length => _buffer.ReadableBytes + (_buffer.ReaderIndex - _initialPosition);
 
         protected override string Description => "|NettyRlpStream|description missing|";
     }

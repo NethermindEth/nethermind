@@ -22,7 +22,7 @@ namespace Nethermind.Network.P2P
     {
         public override string Protocol => "p2p";
         public override int PacketType => P2PMessageCode.AddCapability;
-        public Capability Capability { get; set; }
+        public Capability Capability { get; }
 
         public AddCapabilityMessage(Capability capability)
         {
