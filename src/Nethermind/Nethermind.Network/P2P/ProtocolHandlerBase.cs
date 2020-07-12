@@ -94,12 +94,26 @@ namespace Nethermind.Network.P2P
         {
             _initCompletionSource?.SetResult(msg);
         }
+        
+        protected void ReportIn(MessageBase messageBase)
+        {
+            ReportIn(messageBase.ToString());
+        }
+        
+        protected void ReportIn(string messageInfo)
+        {
+            if (NetworkDiagTracer.IsEnabled)
+                NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, messageInfo);
+        }
 
         public abstract void Dispose();
 
         public abstract byte ProtocolVersion { get; protected set; }
+        
         public abstract string ProtocolCode { get; }
+        
         public abstract int MessageIdSpaceSize { get; }
+        
         public abstract void Init();
 
         public abstract void HandleMessage(Packet message);
@@ -113,6 +127,7 @@ namespace Nethermind.Network.P2P
         public abstract void AddSupportedCapability(Capability capability);
 
         public abstract event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
+        
         public abstract event EventHandler<ProtocolEventArgs> SubprotocolRequested;
     }
 }

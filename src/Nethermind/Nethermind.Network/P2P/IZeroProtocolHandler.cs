@@ -13,29 +13,14 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using Nethermind.Serialization.Rlp;
-using Nethermind.Stats.Model;
+using Nethermind.Network.Rlpx;
 
 namespace Nethermind.Network.P2P
 {
-    /// <summary>
-    /// This is probably used in NDM
-    /// </summary>
-    public class AddCapabilityMessageSerializer : IMessageSerializer<AddCapabilityMessage>
+    public interface IZeroProtocolHandler : IProtocolHandler
     {
-        public byte[] Serialize(AddCapabilityMessage message)
-            => Rlp.Encode(Rlp.Encode(message.Capability.ProtocolCode.ToLowerInvariant()),
-                Rlp.Encode(message.Capability.Version)).Bytes;
-
-        public AddCapabilityMessage Deserialize(byte[] bytes)
-        {
-            RlpStream context = bytes.AsRlpStream();
-            context.ReadSequenceLength();
-            string protocolCode = context.DecodeString();
-            byte version = context.DecodeByte();
-
-            return new AddCapabilityMessage(new Capability(protocolCode, version));
-        }
+        void HandleMessage(ZeroPacket message);
     }
 }

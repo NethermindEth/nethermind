@@ -40,7 +40,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             ISyncServer syncServer,
             ITxPool txPool,
             ISpecProvider specProvider,
-            ILogManager logManager) : base(session, serializer, nodeStatsManager, syncServer, txPool, specProvider, logManager)
+            ILogManager logManager)
+            : base(session, serializer, nodeStatsManager, syncServer, txPool, specProvider, logManager)
         {
         }
 
@@ -88,7 +89,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
             Send(new PooledTransactionsMessage(txs));
             stopwatch.Stop();
-            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} GetPooledTransactionsMessage to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
+            if (Logger.IsTrace)
+                Logger.Trace($"OUT {Counter:D5} {nameof(GetPooledTransactionsMessage)} to {Node:c} " +
+                             $"in {stopwatch.Elapsed.TotalMilliseconds}ms");
         }
 
         public override void SendNewTransaction(Transaction transaction, bool isPriority)

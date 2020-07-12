@@ -20,15 +20,9 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.P2P
 {
-    
-    
-    public interface IZeroProtocolHandler : IProtocolHandler
-    {
-        void HandleMessage(ZeroPacket message);
-    }
-    
     public interface IProtocolHandler : IDisposable
     {
+        string Name { get; }
         byte ProtocolVersion { get; }
         string ProtocolCode { get; }
         int MessageIdSpaceSize { get; }
