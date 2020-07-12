@@ -73,26 +73,8 @@ namespace Nethermind.Core2.Configuration
 
             Architecture osArchiteture = RuntimeInformation.OSArchitecture;
 
-            string osName;
-
-            switch (RuntimeInformation.OSDescription.Split(" ")[0])
-            {
-                case "Microsoft":
-                    // Replace "Microsoft Windows" => "Windows"
-                    osName = "Windows";
-                    break;
-                case "Darwin":
-                    // Replace "Darwin" => "macOS"
-                    osName = "macOS";
-                    break;
-                default:
-                    // Don't do anything as "Linux" is "Linux", "FreeBSD" is "FreeBSD"...
-                    osName = RuntimeInformation.OSDescription.Split(" ")[0];
-                    break;
-            }
-
             string frameworkDescription = RuntimeInformation.FrameworkDescription;
-            string osFrameworkComment = $"({osArchiteture}-{osName}/{frameworkDescription})";
+            string osFrameworkComment = $"({osArchiteture}-{Nethermind.Core.Platform.GetPlatformName()}/{frameworkDescription})";
             parts.Add(osFrameworkComment);
 
             if (!string.IsNullOrWhiteSpace(environmentName) && environmentName != Environments.Production)

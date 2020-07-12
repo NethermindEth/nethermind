@@ -24,31 +24,14 @@ namespace Nethermind.Core
     {
         private static string _gitTag;
 
-        private static string _osName;
         private static string _date;
 
         static ClientVersion()
         {
-            switch (RuntimeInformation.OSDescription.Split(" ")[0])
-            {
-                case "Microsoft":
-                    // Replace "Microsoft Windows" => "Windows"
-                    _osName = "Windows";
-                    break;
-                case "Darwin":
-                    // Replace "Darwin" => "macOS"
-                    _osName = "macOS";
-                    break;
-                default:
-                    // Don't do anything as "Linux" is "Linux", "FreeBSD" is "FreeBSD"...
-                    _osName = RuntimeInformation.OSDescription.Split(" ")[0];
-                    break;
-            }
-
             _date = DateTime.UtcNow.ToString("yyyyMMdd");
             _gitTag = File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "git-hash")) ? File.ReadAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "git-hash")).Trim().Replace("g", "") : string.Empty;
 
-            Description = $"Nethermind/v{Version}/{RuntimeInformation.OSArchitecture}-{_osName}/{RuntimeInformation.FrameworkDescription.Trim().Replace(".NET ", "").Replace(" ", "")}";
+            Description = $"Nethermind/v{Version}/{RuntimeInformation.OSArchitecture}-{Nethermind.Core.Platform.GetPlatformName()}/{RuntimeInformation.FrameworkDescription.Trim().Replace(".NET ", "").Replace(" ", "")}";
         }
 
         public static string Version => $"{_gitTag}-{_date}";
