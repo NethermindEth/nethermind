@@ -22,7 +22,7 @@
 [Linux](http://downloads.nethermind.io)<br/>
 [MacOS](http://downloads.nethermind.io)<br/>
 
-it syncs fully on Mainnet, Ropsten, Rinkeby, Goerli
+It syncs fully on Mainnet, Ropsten, Rinkeby, Goerli
 
 ## Build from Source
 
@@ -32,31 +32,26 @@ it syncs fully on Mainnet, Ropsten, Rinkeby, Goerli
 
 #### Windows
 
-*	Windows https://www.microsoft.com/net/download?initial-os=windows
-* you may need to install https://support.microsoft.com/en-us/help/2977003/the-latest-supported-visual-c-downloads
+* Install .NET https://www.microsoft.com/net/download
+* You may need to install https://support.microsoft.com/en-us/help/2977003/the-latest-supported-visual-c-downloads
 
 #### Linux (Ubuntu)
 
-*	Linux https://www.microsoft.com/net/download?initial-os=linux (make sure to select the right distribution)
-* `sudo apt-get update && sudo apt-get install libsnappy-dev libc6-dev libc6`
-
-Additionally for Ubuntu 16.04
-
+* Install .NET
+```sh
+wget https://packages.microsoft.com/config/ubuntu/20.04/packages-microsoft-prod.deb -O packages-microsoft-prod.deb
+sudo dpkg -i packages-microsoft-prod.deb
+sudo apt update && apt install dotnet-sdk-3.1
 ```
-sudo add-apt-repository ppa:ubuntu-toolchain-r/test && \
-sudo apt-get update && \
-sudo apt-get install gcc-6 g++-6 && \
-sudo apt install libzstd1
-```
+* `sudo apt install libsnappy-dev libc6-dev libc6`
 
 Instructions for other distributions such as CentOS, Fedora or Debian are available here https://nethermind.readthedocs.io/en/latest/build.html
 
 #### Mac
 
-*	Mac https://www.microsoft.com/net/download?initial-os=macos
-* `brew install gmp && brew install snappy && brew install lz4 && brew install zstd`
-* if you have issues on launch you may need to call
-`brew install rocksdb`
+* Install .NET https://www.microsoft.com/net/download
+* `brew install gmp snappy lz4 zstd`
+* Additionally, if you have problems with start `brew install rocksdb`
 
 ### Build
 
@@ -81,14 +76,14 @@ dotnet test EthereumTests.sln
 
 ### IDE
 
-•	JetBrains Rider https://www.jetbrains.com/rider/<br/>
-•	VS Code https://code.visualstudio.com/docs/other/dotnet<br/>
+* JetBrains Rider ([Link](https://www.jetbrains.com/rider))
+* Visual Studio Code ([Link](https://code.visualstudio.com/docs/other/dotnet))
 
 
 ## Contributors welcome
-[![GitHub issues](https://img.shields.io/github/issues/nethermindeth/nethermind.svg)](https://github.com/NethermindEth/nethermind/issues)
+[![GitHub Issues](https://img.shields.io/github/issues/nethermindeth/nethermind.svg)](https://github.com/NethermindEth/nethermind/issues)
 [![Gitter](https://img.shields.io/gitter/room/nethermindeth/nethermind.svg)](https://gitter.im/nethermindeth/nethermind)
-[![GitHub contributors](https://img.shields.io/github/contributors/nethermindeth/nethermind.svg)](https://github.com/NethermindEth/nethermind/graphs/contributors)
+[![GitHub Contributors](https://img.shields.io/github/contributors/nethermindeth/nethermind.svg)](https://github.com/NethermindEth/nethermind/graphs/contributors)
 
 At Nethermind we are building an open source multiplatform Ethereum client implementation in .NET Core (running seamlessly on Linux, Windows and MacOS). Simultaneously our team works on Nethermind Data Marketplace and on-chain data extraction tools and client customizations.
 
