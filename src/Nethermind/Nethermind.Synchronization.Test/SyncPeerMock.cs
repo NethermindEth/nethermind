@@ -172,7 +172,13 @@ namespace Nethermind.Synchronization.Test
 
         public Task<TxReceipt[][]> GetReceipts(IList<Keccak> blockHash, CancellationToken token)
         {
-            return Task.FromResult(_remoteSyncServer.GetReceipts(blockHash));
+            TxReceipt[][] result = new TxReceipt[blockHash.Count][];
+            for (int i = 0; i < blockHash.Count; i++)
+            {
+                result[i] = _remoteSyncServer.GetReceipts(blockHash[i]);
+            }
+            
+            return Task.FromResult(result);
         }
 
         public Task<byte[][]> GetNodeData(IList<Keccak> hashes, CancellationToken token)

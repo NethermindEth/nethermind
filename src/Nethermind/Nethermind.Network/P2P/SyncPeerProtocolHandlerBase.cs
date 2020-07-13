@@ -384,8 +384,24 @@ namespace Nethermind.Network.P2P
 
         protected ReceiptsMessage FulfillReceiptsRequest(GetReceiptsMessage getReceiptsMessage)
         {
-            TxReceipt[][] txReceipts = SyncServer.GetReceipts(getReceiptsMessage.Hashes);
-            return new ReceiptsMessage(txReceipts);
+            TxReceipt[][] txReceipts = new TxReceipt[getReceiptsMessage.Hashes.Count][];
+
+            ulong sizeEstimate = 0;
+            for (int i = 0; i < getReceiptsMessage.Hashes.Count; i++)
+            {
+                txReceipts[i] = SyncServer.GetReceipts(getReceiptsMessage.Hashes[i]);
+                for (int j = 0; j < txReceipts[i].Length; j++)
+                {
+                    sizeEstimate += MessageSizeEstimator.EstimateSize(txReceipts[i][j]);
+                }
+
+                if (sizeEstimate > 2.MB())
+                {
+                    break;
+                }
+            }
+            
+            return new ReceiptsMessage(txReceipts);    
         }
 
         private static BlockHeader[] FixHeadersForGeth(BlockHeader[] headers)

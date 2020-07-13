@@ -50,6 +50,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Blockchain", "Ne
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Wallet", "Nethermind.Wallet\Nethermind.Wallet.csproj", "{00079614-AD8D-45D3-B628-8B14404EDFF1}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Synchronization", "Nethermind.Synchronization\Nethermind.Synchronization.csproj", "{4A437D5B-0799-476D-BC92-7A9B9AC2E164}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -152,6 +154,10 @@ Global
 		{00079614-AD8D-45D3-B628-8B14404EDFF1}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{00079614-AD8D-45D3-B628-8B14404EDFF1}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{00079614-AD8D-45D3-B628-8B14404EDFF1}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4A437D5B-0799-476D-BC92-7A9B9AC2E164}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4A437D5B-0799-476D-BC92-7A9B9AC2E164}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4A437D5B-0799-476D-BC92-7A9B9AC2E164}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4A437D5B-0799-476D-BC92-7A9B9AC2E164}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{0F53A016-3141-4384-A81F-6444AD116E39} = {57CE427C-455B-47A9-85D6-CEF379DC00F6}
@@ -172,5 +178,6 @@ Global
 		{C7EE6D69-99FA-403C-BF5B-A14173771B92} = {57CE427C-455B-47A9-85D6-CEF379DC00F6}
 		{98E7871D-7894-4EF5-B515-CC35EFAA154D} = {57CE427C-455B-47A9-85D6-CEF379DC00F6}
 		{00079614-AD8D-45D3-B628-8B14404EDFF1} = {57CE427C-455B-47A9-85D6-CEF379DC00F6}
+		{4A437D5B-0799-476D-BC92-7A9B9AC2E164} = {57CE427C-455B-47A9-85D6-CEF379DC00F6}
 	EndGlobalSection
 EndGlobal
