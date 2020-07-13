@@ -89,79 +89,72 @@ namespace Nethermind.Synchronization.ParallelSync
 
         public void Update()
         {
+            if (_syncProgressResolver.IsLoadingBlocksFromDb())
+            {
+                UpdateSyncModes(SyncMode.DbLoad);
+                return;
+            }
+
+            if (!_syncConfig.SynchronizationEnabled)
+            {
+                UpdateSyncModes(SyncMode.None);
+                return;
+            }
+
+            (UInt256? peerDifficulty, long? peerBlock, Keccak peerHeadHash) = ReloadDataFromPeers();
+
+            // if there are no peers that we could use then we cannot sync
+            if (peerDifficulty == null || peerBlock == null || peerBlock == 0)
+            {
+                UpdateSyncModes(SyncMode.None);
+                return;
+            }
+
+            // to avoid expensive checks we make this simple check at the beginning
+            if (!FastSyncEnabled)
+            {
+                bool anyPeers = peerBlock.Value > 0 && peerDifficulty.Value >= _syncProgressResolver.ChainDifficulty;
+                UpdateSyncModes(anyPeers ? SyncMode.Full : SyncMode.None);
+                return;
+            }
+
+            Snapshot best;
             try
             {
-                if (_syncProgressResolver.IsLoadingBlocksFromDb())
-                {
-                    UpdateSyncModes(SyncMode.DbLoad);
-                    return;
-                }
-
-                if (!_syncConfig.SynchronizationEnabled)
-                {
-                    UpdateSyncModes(SyncMode.None);
-                    return;
-                }
-
-                (UInt256? peerDifficulty, long? peerBlock, Keccak peerHeadHash) = ReloadDataFromPeers();
-
-                // if there are no peers that we could use then we cannot sync
-                if (peerDifficulty == null || peerBlock == null || peerBlock == 0)
-                {
-                    UpdateSyncModes(SyncMode.None);
-                    return;
-                }
-
-                // to avoid expensive checks we make this simple check at the beginning
-                if (!FastSyncEnabled)
-                {
-                    bool anyPeers = peerBlock.Value > 0 && peerDifficulty.Value >= _syncProgressResolver.ChainDifficulty;
-                    UpdateSyncModes(anyPeers ? SyncMode.Full : SyncMode.None);
-                    return;
-                }
-
-                Snapshot best;
-                try
-                {
-                    best = TakeSnapshot(peerDifficulty.Value, peerBlock.Value, peerHeadHash);
-                }
-                catch (InvalidAsynchronousStateException)
-                {
-                    UpdateSyncModes(SyncMode.None);
-                    return;
-                }
-
-                best.IsInFastSync = ShouldBeInFastSyncMode(best);
-                best.IsInStateSync = ShouldBeInStateNodesMode(best);
-                best.IsInBeamSync = ShouldBeInBeamSyncMode(best);
-                best.IsInFullSync = ShouldBeInFullSyncMode(best);
-                best.IsInFastHeaders = ShouldBeInFastHeadersMode(best);
-                best.IsInFastBodies = ShouldBeInFastBodiesMode(best);
-                best.IsInFastReceipts = ShouldBeInFastReceiptsMode(best);
-
-                SyncMode newModes = SyncMode.None;
-                CheckAddFlag(best.IsInBeamSync, SyncMode.Beam, ref newModes);
-                CheckAddFlag(best.IsInFastHeaders, SyncMode.FastHeaders, ref newModes);
-                CheckAddFlag(best.IsInFastBodies, SyncMode.FastBodies, ref newModes);
-                CheckAddFlag(best.IsInFastReceipts, SyncMode.FastReceipts, ref newModes);
-                CheckAddFlag(best.IsInFastSync, SyncMode.FastSync, ref newModes);
-                CheckAddFlag(best.IsInFullSync, SyncMode.Full, ref newModes);
-                CheckAddFlag(best.IsInStateSync, SyncMode.StateNodes, ref newModes);
-
-
-                if (IsTheModeSwitchWorthMentioning(newModes))
-                {
-                    string stateString = BuildStateString(best);
-                    string message = $"Changing state to {newModes} at {stateString}";
-                    if (_logger.IsInfo) _logger.Info(message);
-                }
-
-                UpdateSyncModes(newModes);
+                best = TakeSnapshot(peerDifficulty.Value, peerBlock.Value, peerHeadHash);
             }
-            catch (Exception e)
+            catch (InvalidAsynchronousStateException)
             {
-                if(_logger.IsError) _logger.Error($"{nameof(MultiSyncModeSelector)} failure.", e);
+                UpdateSyncModes(SyncMode.None);
+                return;
             }
+
+            best.IsInFastSync = ShouldBeInFastSyncMode(best);
+            best.IsInStateSync = ShouldBeInStateNodesMode(best);
+            best.IsInBeamSync = ShouldBeInBeamSyncMode(best);
+            best.IsInFullSync = ShouldBeInFullSyncMode(best);
+            best.IsInFastHeaders = ShouldBeInFastHeadersMode(best);
+            best.IsInFastBodies = ShouldBeInFastBodiesMode(best);
+            best.IsInFastReceipts = ShouldBeInFastReceiptsMode(best);
+
+            SyncMode newModes = SyncMode.None;
+            CheckAddFlag(best.IsInBeamSync, SyncMode.Beam, ref newModes);
+            CheckAddFlag(best.IsInFastHeaders, SyncMode.FastHeaders, ref newModes);
+            CheckAddFlag(best.IsInFastBodies, SyncMode.FastBodies, ref newModes);
+            CheckAddFlag(best.IsInFastReceipts, SyncMode.FastReceipts, ref newModes);
+            CheckAddFlag(best.IsInFastSync, SyncMode.FastSync, ref newModes);
+            CheckAddFlag(best.IsInFullSync, SyncMode.Full, ref newModes);
+            CheckAddFlag(best.IsInStateSync, SyncMode.StateNodes, ref newModes);
+
+
+            if (IsTheModeSwitchWorthMentioning(newModes))
+            {
+                string stateString = BuildStateString(best);
+                string message = $"Changing state to {newModes} at {stateString}";
+                if (_logger.IsInfo) _logger.Info(message);
+            }
+
+            UpdateSyncModes(newModes);
         }
 
         private void CheckAddFlag(in bool flag, SyncMode mode, ref SyncMode resultMode)
@@ -194,9 +187,15 @@ namespace Nethermind.Synchronization.ParallelSync
             // Changing is invoked here so we can block until all the subsystems are ready to switch
             // for example when switching to Full sync we need to ensure that we safely transition
             // the beam sync DB and beam processor
+            
+            // dead lock somewhere here...
+            _logger.Trace("Preparing?.Invoke(this, args);");
             Preparing?.Invoke(this, args);
+            _logger.Trace("Changing?.Invoke(this, args);");
             Changing?.Invoke(this, args);
+            _logger.Trace("Current = newModes;");
             Current = newModes;
+            _logger.Trace("Changed?.Invoke(this, args);");
             Changed?.Invoke(this, args);
         }
 
