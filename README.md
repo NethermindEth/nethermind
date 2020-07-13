@@ -22,38 +22,60 @@
 [Linux](http://downloads.nethermind.io)<br/>
 [MacOS](http://downloads.nethermind.io)<br/>
 
-It syncs fully on Mainnet, Ropsten, Rinkeby, Goerli
+It syncs fully on Mainnet, Ropsten, Rinkeby, Goerli.
 
-## Build from Source
+# Build from Source
 
-### Prerequisites
+## Prerequisites
 
 .NET 3.0 SDK
 
-#### Windows
+### Windows
 
 * Install .NET https://www.microsoft.com/net/download
 * You may need to install https://support.microsoft.com/en-us/help/2977003/the-latest-supported-visual-c-downloads
 
-#### Linux (Ubuntu)
+### Linux
 
-* Install .NET
+#### - Ubuntu/Debian
 ```sh
+# Activate Microsoft repository
 wget https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/packages-microsoft-prod.deb -O packages-microsoft-prod.deb
-sudo dpkg -i packages-microsoft-prod.deb
-sudo apt update && apt install dotnet-sdk-3.1
+sudo apt install -y ./packages-microsoft-prod.deb apt-transport-https && sudo apt update
+
+# Install dependencies
+sudo apt install -y dotnet-sdk-3.1 libsnappy-dev libc6-dev libc6
 ```
-* `sudo apt install libsnappy-dev libc6-dev libc6`
+*Tested on Ubuntu (18.04, 20.04) and Debian (9, 10)*
 
-Instructions for other distributions such as CentOS, Fedora or Debian are available here https://nethermind.readthedocs.io/en/latest/build.html
+#### - CentOS
+```sh
+# Install dependencies
+sudo yum install --enablerepo=PowerTools -y dotnet-sdk-3.1 gcc snappy-devel glibc-devel bzip2-devel libzstd
 
-#### Mac
+# Link libraries
+sudo ln -s `find /usr/lib64/ -type f -name "libsnappy.so.1*"` /usr/lib64/libsnappy.so 
+sudo ln -s `find /usr/lib64/ -type f -name "libbz2.so.1*"` /usr/lib64/libbz2.so.1.0
+```
+*Tested on CentOS 8*
+
+#### - Fedora
+```sh
+# Install dependencies
+sudo dnf install -y dotnet-sdk-3.1 gcc snappy-devel glibc-devel bzip2-devel libzstd
+
+# Link libraries
+sudo ln -s `find /usr/lib64/ -type f -name "libbz2.so.1*"` /usr/lib64/libbz2.so.1.0
+```
+*Tested on Fedora 32*
+
+### Mac
 
 * Install .NET https://www.microsoft.com/net/download
-* `brew install gmp snappy lz4 zstd`
-* Additionally, if you have problems with start `brew install rocksdb`
+* Install deps `brew install gmp snappy lz4 zstd`
+* Additionally, if you have problems with startup `brew install rocksdb`
 
-### Build
+## Build and Run
 
 ```
 git clone https://github.com/NethermindEth/nethermind --recursive
@@ -63,7 +85,7 @@ cd Nethermind.Runner
 dotnet run -c Release --no-build -- --config mainnet
 ```
 
-### Test
+## Test
 
 if you want to run the Nethermind or Ethereum Foundation tests, then:
 ```
@@ -74,7 +96,7 @@ dotnet build EthereumTests.sln -c Debug
 dotnet test EthereumTests.sln
 ```
 
-### IDE
+## IDE
 
 * JetBrains Rider ([Link](https://www.jetbrains.com/rider))
 * Visual Studio Code ([Link](https://code.visualstudio.com/docs/other/dotnet))
