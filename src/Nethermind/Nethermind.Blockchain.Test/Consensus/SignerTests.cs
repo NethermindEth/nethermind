@@ -36,7 +36,16 @@ namespace Nethermind.Blockchain.Test.Consensus
             Assert.Throws<ArgumentNullException>(() => new Signer(1, (PrivateKey) null, null));
             Assert.Throws<ArgumentNullException>(() => new Signer(1, (ProtectedPrivateKey) null, null));
         }
-        
+
+        [Test]
+        public void Address_is_zero_when_key_is_null()
+        {
+            // not a great fan of using Address.Zero like a null value but let us show in test
+            // what it does
+            Signer signer = new Signer(1, (PrivateKey)null, LimboLogs.Instance);
+            signer.Address.Should().Be(Address.Zero);
+        }
+
         [Test]
         public void Cannot_sign_when_null_key()
         {
@@ -72,9 +81,9 @@ namespace Nethermind.Blockchain.Test.Consensus
         [Test]
         public void Test_signing()
         {
-            NullSigner signer = NullSigner.Instance;
-            signer.Sign((Transaction)null);
-            signer.Sign((Keccak) null).Bytes.Should().HaveCount(64);
+            Signer signer = new Signer(1, TestItem.PrivateKeyA, LimboLogs.Instance);
+            signer.Sign(Build.A.Transaction.TestObject);
+            signer.Sign(Keccak.Zero).Bytes.Should().HaveCount(64);
         }
     }
 }

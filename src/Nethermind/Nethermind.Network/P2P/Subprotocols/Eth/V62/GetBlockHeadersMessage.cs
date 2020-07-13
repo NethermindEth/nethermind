@@ -19,16 +19,19 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 { 
-    [DebuggerDisplay("{StartingBlockHash} {MaxHeaders} {Skip} {Reverse}")]
+    [DebuggerDisplay("{StartBlockHash} {MaxHeaders} {Skip} {Reverse}")]
     public class GetBlockHeadersMessage : P2PMessage
     {
         public override int PacketType { get; } = Eth62MessageCode.GetBlockHeaders;
         public override string Protocol { get; } = "eth";
 
-        public long StartingBlockNumber { get; set; }
-        public Keccak StartingBlockHash { get; set; }
+        public long StartBlockNumber { get; set; }
+        public Keccak StartBlockHash { get; set; }
         public long MaxHeaders { get; set; }
         public long Skip { get; set; }
         public byte Reverse { get; set; }
+
+        public override string ToString()
+            => $"{nameof(GetBlockHeadersMessage)}({StartBlockNumber}|{StartBlockHash}, {MaxHeaders})";
     }
 }

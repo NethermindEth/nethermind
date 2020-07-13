@@ -322,10 +322,10 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
-                item.PostTransactionState = firstItem.Length == 0 ? new KeccakStructRef() : new KeccakStructRef(firstItem);
+                item.PostTransactionState = firstItem.Length == 0 ? new ValueKeccak() : new ValueKeccak(firstItem);
             }
 
-            if(isStorage) decoderContext.DecodeKeccakStructRef(out item.BlockHash);
+            if(isStorage) decoderContext.DecodeValueKeccak(out item.BlockHash);
             if(isStorage) item.BlockNumber = (long)decoderContext.DecodeUInt256();
             if(isStorage) item.Index = decoderContext.DecodeInt();
             if(isStorage) decoderContext.DecodeAddressStructRef(out item.Sender);
@@ -349,7 +349,7 @@ namespace Nethermind.Serialization.Rlp
                     if (decoderContext.PeekByte() == MarkTxHashByte)
                     {
                         decoderContext.ReadByte();
-                        decoderContext.DecodeKeccakStructRef(out item.TxHash);
+                        decoderContext.DecodeValueKeccak(out item.TxHash);
                     }
                 }
 

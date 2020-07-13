@@ -169,7 +169,7 @@ namespace Nethermind.Synchronization.Test
                 throw new NotImplementedException();
             }
 
-            public void NotifyOfNewBlock(Block block, SendBlockPriority priorty)
+            public void NotifyOfNewBlock(Block block, SendBlockPriority priority)
             {
                 throw new NotImplementedException();
             }
@@ -834,7 +834,7 @@ namespace Nethermind.Synchronization.Test
                 throw new NotImplementedException();
             }
 
-            public void NotifyOfNewBlock(Block block, SendBlockPriority priorty)
+            public void NotifyOfNewBlock(Block block, SendBlockPriority priority)
             {
                 throw new NotImplementedException();
             }

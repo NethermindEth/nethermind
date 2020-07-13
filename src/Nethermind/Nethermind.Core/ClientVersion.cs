@@ -23,26 +23,19 @@ namespace Nethermind.Core
     public static class ClientVersion
     {
         private static string _gitTag;
-        private static string _osDescription;
+
         private static string _date;
 
         static ClientVersion()
         {
-            _osDescription = RuntimeInformation.OSDescription;
-            if (_osDescription.Contains('#'))
-            {
-                int indexOfHash = _osDescription.IndexOf('#');
-                _osDescription = _osDescription.Substring(0, Math.Max(0, indexOfHash - 1));
-            }
-            
             _date = DateTime.UtcNow.ToString("yyyyMMdd");
             _gitTag = File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "git-hash")) ? File.ReadAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "git-hash")).Trim().Replace("g", "") : string.Empty;
 
-            Description = $"Nethermind/v{Version}/{RuntimeInformation.OSArchitecture}-{_osDescription}/{RuntimeInformation.FrameworkDescription.Trim().Replace(".NET ", "").Replace(" ", "")}";
+            Description = $"Nethermind/v{Version}/{RuntimeInformation.OSArchitecture}-{Nethermind.Core.Platform.GetPlatformName()}/{RuntimeInformation.FrameworkDescription.Trim().Replace(".NET ", "").Replace(" ", "")}";
         }
 
         public static string Version => $"{_gitTag}-{_date}";
-        
+
         public static string Description { get; }
     }
 }

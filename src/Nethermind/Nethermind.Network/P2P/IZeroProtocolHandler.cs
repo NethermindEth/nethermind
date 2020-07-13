@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,19 +13,14 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System;
+using Nethermind.Network.Rlpx;
 
-namespace Nethermind.Stats.Model
+namespace Nethermind.Network.P2P
 {
-    public class NodeStatsEvent
+    public interface IZeroProtocolHandler : IProtocolHandler
     {
-        public NodeStatsEventType EventType { get; set; }
-        public DateTime EventDate { get; set; }
-        public P2PNodeDetails P2PNodeDetails { get; set; }
-        public SyncPeerNodeDetails EthNodeDetails { get; set; }
-        public SyncPeerNodeDetails LesNodeDetails { get; set; }
-        public DisconnectDetails DisconnectDetails { get; set; }
-        public ConnectionDirection? ConnectionDirection { get; set; }
+        void HandleMessage(ZeroPacket message);
     }
 }

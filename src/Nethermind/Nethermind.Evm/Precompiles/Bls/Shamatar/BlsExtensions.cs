@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2020s Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,24 +14,11 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Microsoft.AspNetCore.Builder;
-using Microsoft.Extensions.DependencyInjection;
-using Nethermind.Monitoring.Metrics;
-using Prometheus;
-
-namespace Nethermind.Monitoring
+namespace Nethermind.Evm.Precompiles.Bls.Shamatar
 {
-    public static class Extensions
+    public static class BlsParams
     {
-        public static void AddMonitoring(this IServiceCollection services)
-        {
-            services.AddHostedService<MetricsHostedService>();
-            services.AddSingleton<IMetricsUpdater, MetricsUpdater>();
-        }
-        
-        public static void UseMonitoring(this IApplicationBuilder app)
-        {
-            app.UseMetricServer();
-        }
+        public const int LenFr = 32;
+        public const int LenFp = 64;
     }
 }

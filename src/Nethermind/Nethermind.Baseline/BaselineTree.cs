@@ -41,6 +41,7 @@ namespace Nethermind.Baseline
             _keyValueStore = keyValueStore ?? throw new ArgumentNullException(nameof(keyValueStore));
             _dbPrefix = dbPrefix;
             Count = LoadCount();
+            Root = Keccak.Zero; // TODO: need to check what should be the initial root of an empty tree
         }
 
         private uint LoadCount()

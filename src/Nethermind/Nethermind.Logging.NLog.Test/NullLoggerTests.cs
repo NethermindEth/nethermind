@@ -13,13 +13,31 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using Nethermind.Core;
+using FluentAssertions;
+using NUnit.Framework;
 
-namespace Nethermind.TxPool.Filters
+namespace Nethermind.Logging.NLog.Test
 {
-    public class AcceptAllTxFilter : ITxFilter
+    [TestFixture]
+    public class NullLoggerTests
     {
-        public bool IsValid(Transaction transaction) => true;
+        [Test]
+        public void Test()
+        {
+            NullLogger nullLogger = NullLogger.Instance;
+            nullLogger.IsDebug.Should().BeFalse();
+            nullLogger.IsInfo.Should().BeFalse();
+            nullLogger.IsWarn.Should().BeFalse();
+            nullLogger.IsError.Should().BeFalse();
+            nullLogger.IsTrace.Should().BeFalse();
+            
+            nullLogger.Debug(null);
+            nullLogger.Info(null);
+            nullLogger.Warn(null);
+            nullLogger.Error(null);
+            nullLogger.Trace(null);
+        }
     }
 }

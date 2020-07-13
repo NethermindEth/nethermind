@@ -76,7 +76,7 @@ namespace Nethermind.Network
                         if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with peer: {session.RemoteNodeId}, different chainId: {ChainId.GetChainName((int) syncPeerArgs.ChainId)}, our chainId: {ChainId.GetChainName(_blockTree.ChainId)}");
                         _nodeStatsManager.ReportFailedValidation(session.Node, CompatibilityValidationType.ChainId);
                         Disconnect(session, DisconnectReason.UselessPeer, $"invalid chain id - {syncPeerArgs.ChainId}");
-                        if (session.Node.IsStatic && _logger.IsWarn) _logger.Warn($"Disconnected an invalid static node: {session.Node.Host}:{session.Node.Port}, reason: {DisconnectReason.UselessPeer} (invalid chain id - {syncPeerArgs.ChainId})"); 
+                        if (session.Node.IsStatic && _logger.IsWarn) _logger.Warn($"Disconnected an invalid static node: {session.Node.Host}:{session.Node.Port}, reason: {DisconnectReason.UselessPeer} (invalid chain id - {syncPeerArgs.ChainId})");
                         return false;
                     }
 
@@ -107,8 +107,14 @@ namespace Nethermind.Network
 
         private bool ValidateCapabilities(IEnumerable<Capability> capabilities)
         {
-            // todo - this is duplicated from P2PProtocolHandler.HandleHello. One should probably be removed
-            return capabilities.Any(x => x.ProtocolCode == Protocol.Les || x.ProtocolCode == Protocol.Eth && (x.Version == 62 || x.Version == 63 || x.Version == 64 || x.Version == 65));
+            // TODO: this is duplicated from P2PProtocolHandler.HandleHello. One should probably be removed
+            return capabilities.Any(x =>
+                // x.ProtocolCode == Protocol.Les ||
+                x.ProtocolCode == Protocol.Eth && (
+                    x.Version == 62 || 
+                    x.Version == 63 || 
+                    x.Version == 64 || 
+                    x.Version == 65));
         }
 
         private bool ValidateChainId(long chainId)

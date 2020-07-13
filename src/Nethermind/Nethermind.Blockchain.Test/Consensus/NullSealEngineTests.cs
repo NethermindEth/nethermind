@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Threading;
 using FluentAssertions;
 using Nethermind.Consensus;
@@ -24,8 +25,15 @@ using NUnit.Framework;
 namespace Nethermind.Blockchain.Test.Consensus
 {
     [TestFixture]
-    public class NullEngineTests
+    public class NullSealEngineTests
     {
+        [Test]
+        public void Default_hints()
+        {
+            ISealValidator sealValidator = NullSealEngine.Instance;
+            sealValidator.HintValidationRange(Guid.Empty, 0, 0);
+        }
+
         [Test]
         public void Test()
         {

@@ -55,8 +55,8 @@ namespace Nethermind.Core
         /// </summary>
         public byte StatusCode { get; set; }
         public long BlockNumber { get; set; }
-        public KeccakStructRef BlockHash;
-        public KeccakStructRef TxHash;
+        public ValueKeccak BlockHash;
+        public ValueKeccak TxHash;
         public int Index { get; set; }
         public long GasUsed { get; set; }
         public long GasUsedTotal { get; set; }
@@ -70,7 +70,7 @@ namespace Nethermind.Core
         /// <summary>
         ///     Removed in EIP-658
         /// </summary>
-        public KeccakStructRef PostTransactionState;
+        public ValueKeccak PostTransactionState;
 
         public BloomStructRef Bloom;
         

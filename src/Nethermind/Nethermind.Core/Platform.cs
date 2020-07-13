@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2020 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,55 +13,63 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
 
 using System;
-using System.Reflection;
 using System.Runtime.InteropServices;
 
-namespace Nethermind.Native
+namespace Nethermind.Core
 {
+
     public static class NativeLib
     {
-        private static OsPlatform GetPlatform()
+        private static OSPlatform GetPlatform()
         {
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
-                return OsPlatform.Windows;
+                return OSPlatform.Windows;
             }
 
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
             {
-                return OsPlatform.Linux;
+                return OSPlatform.Linux;
             }
 
             if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
             {
-                return OsPlatform.Mac;
+                return OSPlatform.OSX;
             }
-            
+
             if (RuntimeInformation.IsOSPlatform(OSPlatform.FreeBSD))
             {
-                return OsPlatform.Linux;
+                return OSPlatform.Linux;
             }
 
             throw new InvalidOperationException("Unsupported platform.");
         }
+    }
 
-        public static IntPtr ImportResolver(string libraryName, Assembly assembly, DllImportSearchPath? searchPath)
+    public class Platform
+    {
+        public static String GetPlatformName()
         {
-            OsPlatform platform = GetPlatform();
-            string libPath = platform switch
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
             {
-                OsPlatform.Linux => $"runtimes/linux-x64/native/lib{libraryName}.so",
-                OsPlatform.Mac => $"runtimes/osx-x64/native/lib{libraryName}.dylib",
-                OsPlatform.Windows => $"runtimes\\win-x64\\native\\{libraryName}.dll",
-                _ => throw new NotSupportedException($"Platform support missing: {platform}")
-            };
-            
-            // Console.WriteLine($"Trying to load a lib {libraryName} from {libPath} with search path {searchPath} for asembly {assembly} on platform {platform}");
-            NativeLibrary.TryLoad(libPath, assembly, searchPath, out IntPtr libHandle);
-            return libHandle;
+                return "Linux";
+            }
+            else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            {
+                return "macOS";
+            }
+            else if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                return "Windows";
+            }
+            else if (RuntimeInformation.IsOSPlatform(OSPlatform.FreeBSD))
+            {
+                return "FreeBSD";
+            }
+
+            throw new InvalidOperationException("Unsupported platform.");
         }
     }
 }

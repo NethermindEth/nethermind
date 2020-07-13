@@ -21,14 +21,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 {
     public class StatusMessage : P2PMessage
     {
-        public override int PacketType { get; } = Eth62MessageCode.Status;
-        public override string Protocol { get; } = "eth";
         public byte ProtocolVersion { get; set; }
         public UInt256 ChainId { get; set; }
         public UInt256 TotalDifficulty { get; set; }
         public Keccak BestHash { get; set; }
         public Keccak GenesisHash { get; set; }
         public ForkId? ForkId { get; set; }
+
+        public override int PacketType { get; } = Eth62MessageCode.Status;
+        public override string Protocol { get; } = "eth";
 
         public override string ToString()
         {
