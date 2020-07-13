@@ -37,7 +37,7 @@ It syncs fully on Mainnet, Ropsten, Rinkeby, Goerli.
 
 ### Linux
 
-#### - Ubuntu/Debian
+#### - Ubuntu
 ```sh
 # Activate Microsoft repository
 wget https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/packages-microsoft-prod.deb -O packages-microsoft-prod.deb
@@ -46,7 +46,20 @@ sudo apt install -y ./packages-microsoft-prod.deb apt-transport-https && sudo ap
 # Install dependencies
 sudo apt install -y dotnet-sdk-3.1 libsnappy-dev libc6-dev libc6
 ```
-*Tested on Ubuntu (18.04, 20.04) and Debian (9, 10)*
+*Tested on Ubuntu 20.04 LTS and 18.04 LTS*
+
+#### - Debian
+```sh
+# Activate Microsoft repository
+wget https://packages.microsoft.com/config/debian/$(lsb_release -rs | cut -d. -f1)/packages-microsoft-prod.deb -O packages-microsoft-prod.deb
+sudo apt install -y ./packages-microsoft-prod.deb apt-transport-https && sudo apt update
+
+# Install dependencies
+sudo apt install -y dotnet-sdk-3.1 libsnappy-dev libc6-dev libc6
+```
+
+*Tested on Debian 10 (9 not working)*
+
 
 #### - CentOS
 ```sh
