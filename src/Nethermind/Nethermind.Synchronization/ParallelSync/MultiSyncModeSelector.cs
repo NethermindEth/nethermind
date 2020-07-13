@@ -188,7 +188,6 @@ namespace Nethermind.Synchronization.ParallelSync
             // for example when switching to Full sync we need to ensure that we safely transition
             // the beam sync DB and beam processor
             
-            // dead lock somewhere here...
             Preparing?.Invoke(this, args);
             Changing?.Invoke(this, args);
             Current = newModes;
