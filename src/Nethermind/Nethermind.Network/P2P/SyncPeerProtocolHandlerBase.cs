@@ -40,6 +40,7 @@ namespace Nethermind.Network.P2P
 {
     public abstract class SyncPeerProtocolHandlerBase : ProtocolHandlerBase, ISyncPeer
     {
+        public static readonly ulong SoftOutgoingMessageSizeLimit = 2.MB();
         public Node Node => Session?.Node;
         public string ClientId => Session?.Node?.ClientId;
         public UInt256 TotalDifficulty { get; set; }
@@ -346,7 +347,7 @@ namespace Nethermind.Network.P2P
                 blocks[i] = SyncServer.Find(hashes[i]);
                 sizeEstimate += MessageSizeEstimator.EstimateSize(blocks[i]);
 
-                if (sizeEstimate > 2.MB())
+                if (sizeEstimate > SoftOutgoingMessageSizeLimit)
                 {
                     break;
                 }
@@ -395,7 +396,7 @@ namespace Nethermind.Network.P2P
                     sizeEstimate += MessageSizeEstimator.EstimateSize(txReceipts[i][j]);
                 }
 
-                if (sizeEstimate > 2.MB())
+                if (sizeEstimate > SoftOutgoingMessageSizeLimit)
                 {
                     break;
                 }

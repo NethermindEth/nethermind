@@ -16,6 +16,7 @@
 // 
 
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 {
@@ -28,7 +29,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 return 0;
             }
 
-            return 512;
+            return 512; // rough knowledge about the size of a header
         }
 
         public static ulong EstimateSize(Transaction tx)
@@ -60,10 +61,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         public static ulong EstimateSize(TxReceipt receipt)
         {
-            ulong estimate = 256; // bloom
+            ulong estimate = Bloom.ByteLength; // receipt is mostly Bloom + Logs
             for (int i = 0; i < receipt.Logs.Length; i++)
             {
-                estimate += (ulong) receipt.Logs[i].Data.Length + (ulong) receipt.Logs[i].Topics.Length * 32UL;
+                estimate += (ulong) receipt.Logs[i].Data.Length + (ulong) receipt.Logs[i].Topics.Length * Keccak.Size;
             }
 
             return estimate;
