@@ -185,8 +185,7 @@ namespace Nethermind.Synchronization.ParallelSync
             }
 
             SyncMode previous = Current;
-
-            SyncModeChangedEventArgs args = new SyncModeChangedEventArgs(previous, Current);
+            SyncModeChangedEventArgs args = new SyncModeChangedEventArgs(previous, newModes);
 
             // Changing is invoked here so we can block until all the subsystems are ready to switch
             // for example when switching to Full sync we need to ensure that we safely transition
