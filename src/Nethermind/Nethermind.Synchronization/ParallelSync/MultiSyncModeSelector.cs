@@ -189,13 +189,9 @@ namespace Nethermind.Synchronization.ParallelSync
             // the beam sync DB and beam processor
             
             // dead lock somewhere here...
-            _logger.Trace("Preparing?.Invoke(this, args);");
             Preparing?.Invoke(this, args);
-            _logger.Trace("Changing?.Invoke(this, args);");
             Changing?.Invoke(this, args);
-            _logger.Trace("Current = newModes;");
             Current = newModes;
-            _logger.Trace("Changed?.Invoke(this, args);");
             Changed?.Invoke(this, args);
         }
 
