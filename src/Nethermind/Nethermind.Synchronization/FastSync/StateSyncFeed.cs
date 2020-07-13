@@ -276,7 +276,7 @@ namespace Nethermind.Synchronization.FastSync
                 if (_logger.IsInfo) _logger.Info($"Saving root {syncItem.Hash} of {_syncProgress.CurrentSyncBlock}");
 
                 VerifyPostSyncCleanUp();
-                _alreadySaved.Clear();
+                FinishThisSyncRound();
             }
 
             _syncProgress.ReportSynced(syncItem.Level, syncItem.ParentBranchChildIndex, syncItem.BranchChildIndex, syncItem.NodeDataType, NodeProgressState.Saved);
