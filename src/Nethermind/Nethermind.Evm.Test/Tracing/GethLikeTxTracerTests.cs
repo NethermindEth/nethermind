@@ -404,12 +404,12 @@ namespace Nethermind.Evm.Test.Tracing
             var tracer = new GethLikeTxTracer(options, cancellationToken);
 
             Thread.Sleep(timeout);
-
-            Assert.Throws<OperationCanceledException>(() => tracer.StartOperation(0, 0, Instruction.ADD, 0));
             
             Assert.Throws<OperationCanceledException>(() => tracer.ReportOperationRemainingGas(0));
 
             Assert.Throws<OperationCanceledException>(() => tracer.SetOperationMemorySize(0)); 
+
+            Assert.Throws<OperationCanceledException>(() => tracer.StartOperation(0, 0, Instruction.ADD, 0));
         }
     }
 }
