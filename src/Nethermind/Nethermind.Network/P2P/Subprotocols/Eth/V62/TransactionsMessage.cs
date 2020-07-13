@@ -31,6 +31,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             Transactions = transactions;
         }
 
-        public override string ToString() => $"{nameof(TransactionsMessage)}({Transactions.Count})";
+        public override string ToString() => $"{nameof(TransactionsMessage)}({Transactions?.Count})";
     }
 }

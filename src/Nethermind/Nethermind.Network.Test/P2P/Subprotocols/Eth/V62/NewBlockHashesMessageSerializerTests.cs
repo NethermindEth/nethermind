@@ -31,5 +31,12 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             var serializer = new NewBlockHashesMessageSerializer();
             SerializerTester.TestZero(serializer, message);
         }
+        
+        [Test]
+        public void To_string()
+        {
+            NewBlockHashesMessage statusMessage = new NewBlockHashesMessage();
+            _ = statusMessage.ToString();
+        }
     }
 }

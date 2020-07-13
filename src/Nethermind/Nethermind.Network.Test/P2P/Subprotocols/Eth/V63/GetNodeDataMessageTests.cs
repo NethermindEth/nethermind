@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
@@ -27,7 +28,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
     public class GetNodeDataMessageTests
     {
         [Test]
-        public void Sets_values_from_contructor_argument()
+        public void Sets_values_from_constructor_argument()
         {
             Keccak[] keys = {TestItem.KeccakA, TestItem.KeccakB};
             GetNodeDataMessage message = new GetNodeDataMessage(keys);
@@ -38,6 +39,13 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         public void Throws_on_null_argument()
         {
             Assert.Throws<ArgumentNullException>(() => new GetNodeDataMessage(null));
+        }
+        
+        [Test]
+        public void To_string()
+        {
+            GetNodeDataMessage statusMessage = new GetNodeDataMessage(new List<Keccak>());
+            _ = statusMessage.ToString();
         }
     }
 }

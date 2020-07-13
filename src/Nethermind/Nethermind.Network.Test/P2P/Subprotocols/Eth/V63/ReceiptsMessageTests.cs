@@ -40,11 +40,18 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         }
 
         [Test]
-        public void Sets_values_from_contructor_argument()
+        public void Sets_values_from_constructor_argument()
         {
             TxReceipt[][] data = {new[] {new TxReceipt(), new TxReceipt()}, new[] {new TxReceipt(), new TxReceipt()}};
             ReceiptsMessage message = new ReceiptsMessage(data);
             Assert.AreSame(data, message.TxReceipts);
+        }
+        
+        [Test]
+        public void To_string()
+        {
+            ReceiptsMessage statusMessage = new ReceiptsMessage(null);
+            _ = statusMessage.ToString();
         }
     }
 }

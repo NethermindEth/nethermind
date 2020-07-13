@@ -47,5 +47,12 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
             Keccak[] keys = {null, TestItem.KeccakA, null, TestItem.KeccakB, null, null};
             Test(keys);
         }
+        
+        [Test]
+        public void Empty_to_string()
+        {
+            GetPooledTransactionsMessage message = new GetPooledTransactionsMessage(new Keccak[] { });
+            _ = message.ToString();
+        }
     }
 }
