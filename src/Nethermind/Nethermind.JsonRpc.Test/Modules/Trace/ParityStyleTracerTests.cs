@@ -101,7 +101,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             
             ParityLikeTxTracer tracer = new ParityLikeTxTracer(_blockTree.Head, transactionMock, type, cancellationToken);
 
-            Thread.Sleep(timeout);
+            Thread.Sleep(TimeSpan.FromSeconds(2));
             
             Assert.Throws<OperationCanceledException>(() => tracer.StartOperation(0, 0, default(Instruction), 0));
 
