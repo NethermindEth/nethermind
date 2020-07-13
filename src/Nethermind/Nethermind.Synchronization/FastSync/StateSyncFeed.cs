@@ -60,6 +60,7 @@ namespace Nethermind.Synchronization.FastSync
         private readonly Stopwatch _handleWatch = new Stopwatch();
 
         private Keccak _rootNode = Keccak.EmptyTreeHash;
+        private int _rootSaved;
 
         private readonly ILogger _logger;
         private readonly IDb _codeDb;
@@ -274,9 +275,8 @@ namespace Nethermind.Synchronization.FastSync
             if (syncItem.IsRoot)
             {
                 if (_logger.IsInfo) _logger.Info($"Saving root {syncItem.Hash} of {_syncProgress.CurrentSyncBlock}");
-
-                VerifyPostSyncCleanUp();
-                FinishThisSyncRound();
+                
+                Interlocked.Exchange(ref _rootSaved, 1);
             }
 
             _syncProgress.ReportSynced(syncItem.Level, syncItem.ParentBranchChildIndex, syncItem.BranchChildIndex, syncItem.NodeDataType, NodeProgressState.Saved);
@@ -655,6 +655,13 @@ namespace Nethermind.Synchronization.FastSync
 
         public override async Task<StateSyncBatch> PrepareRequest()
         {
+            if (_rootSaved == 1)
+            {
+                VerifyPostSyncCleanUp();
+                FinishThisSyncRound();
+                return EmptyBatch;
+            }
+            
             if ((_syncModeSelector.Current & SyncMode.StateNodes) != SyncMode.StateNodes)
             {
                 return null;
@@ -778,9 +785,9 @@ namespace Nethermind.Synchronization.FastSync
                 lock (_dependencies) _dependencies.Clear();
                 lock (_codesSameAsNodes) _codesSameAsNodes.Clear();
 
-                _pendingItems.Clear();
-
                 if (_logger.IsDebug) _logger.Debug($"Clearing node stacks ({_pendingItems.Description})");
+                _pendingItems.Clear();
+                Interlocked.Exchange(ref _rootSaved, 0);
             }
             else
             {
