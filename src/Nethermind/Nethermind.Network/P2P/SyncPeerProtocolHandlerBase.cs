@@ -160,23 +160,6 @@ namespace Nethermind.Network.P2P
             return headers;
         }
 
-        async Task<BlockHeader[]> ISyncPeer.GetBlockHeaders(Keccak blockHash, int maxBlocks, int skip, CancellationToken token)
-        {
-            if (maxBlocks == 0)
-            {
-                return Array.Empty<BlockHeader>();
-            }
-
-            GetBlockHeadersMessage msg = new GetBlockHeadersMessage();
-            msg.MaxHeaders = maxBlocks;
-            msg.Reverse = 0;
-            msg.Skip = skip;
-            msg.StartBlockHash = blockHash;
-
-            BlockHeader[] headers = await SendRequest(msg, token);
-            return headers;
-        }
-        
         private async Task<BlockHeader[]> SendRequest(GetBlockHeadersMessage message, CancellationToken token)
         {
             if (_headersRequests.IsAddingCompleted || _isDisposed == 1)
@@ -434,10 +417,8 @@ namespace Nethermind.Network.P2P
         private int _isDisposed;
         protected abstract void OnDisposed();
         
-        public override void InitiateDisconnect(DisconnectReason disconnectReason, string details)
+        public override void DisconnectProtocol(DisconnectReason disconnectReason, string details)
         {
-            /* there is a problem here as the protocol disconnection is inconsistent with session disconnection */
-            Session.MarkDisconnected(disconnectReason, DisconnectType.Local, details);
             Dispose();
         }
 

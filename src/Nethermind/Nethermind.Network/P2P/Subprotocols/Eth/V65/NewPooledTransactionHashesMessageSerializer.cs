@@ -15,20 +15,17 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using DotNetty.Buffers;
+using Nethermind.Core.Crypto;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 {
-    public class NewPooledTransactionHashesMessageSerializer : HashesMessageSerializer<NewPooledTransactionHashesMessage>
+    public class NewPooledTransactionHashesMessageSerializer
+        : HashesMessageSerializer<NewPooledTransactionHashesMessage>
     {
-        public NewPooledTransactionHashesMessageSerializer()
-        {
-            
-        }
-
         public override NewPooledTransactionHashesMessage Deserialize(IByteBuffer byteBuffer)
         {
-            var hashes = DeserializeHashes(byteBuffer);
+            Keccak[] hashes = DeserializeHashes(byteBuffer);
             return new NewPooledTransactionHashesMessage(hashes);
         }
     }

@@ -46,7 +46,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         public void Serialize(IByteBuffer byteBuffer, GetBlockHeadersMessage message)
         {
-            int contentLength = message.StartBlockHash == null ? Rlp.LengthOf(message.StartBlockNumber) : Rlp.LengthOf(message.StartBlockHash);
+            int contentLength = message.StartBlockHash == null
+                ? Rlp.LengthOf(message.StartBlockNumber)
+                : Rlp.LengthOf(message.StartBlockHash);
             contentLength += Rlp.LengthOf(message.MaxHeaders);
             contentLength += Rlp.LengthOf(message.Skip);
             contentLength += Rlp.LengthOf(message.Reverse);
