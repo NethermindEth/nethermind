@@ -119,10 +119,8 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);            
         }
 
-        public async Task<ResultWrapper<bool>> debug_setReceiptMigrationPoint(long blockNumber)
-        {
-            return ResultWrapper<bool>.Success(await _debugBridge.SetReceiptMigrationPoint(blockNumber + 1));
-        }
+        public async Task<ResultWrapper<bool>> debug_migrateReceipts(long blockNumber) => 
+            ResultWrapper<bool>.Success(await _debugBridge.MigrateReceipts(blockNumber));
 
         public ResultWrapper<GethLikeTxTrace[]> debug_traceBlock(byte[] blockRlp, GethTraceOptions options = null)
         {

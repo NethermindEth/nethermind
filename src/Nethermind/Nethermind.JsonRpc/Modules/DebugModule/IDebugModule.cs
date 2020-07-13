@@ -87,6 +87,6 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         ResultWrapper<GethLikeTxTrace> debug_traceTransactionInBlockByIndex(byte[] blockRlp, int txIndex, GethTraceOptions options = null);
         
         [JsonRpcMethod(Description = "Sets the block number up to which receipts will be migrated to (Nethermind specific).")]
-        Task<ResultWrapper<bool>> debug_setReceiptMigrationPoint(long blockNumber);
+        Task<ResultWrapper<bool>> debug_migrateReceipts(long blockNumber);
     }
 }
