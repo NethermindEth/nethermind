@@ -54,7 +54,7 @@ namespace Nethermind.Core
                 }
             }
             
-            File.WriteAllText(@"C:\\Temp\\network_diag.txt", stringBuilder.ToString());
+            File.WriteAllText(@"network_diag.txt", stringBuilder.ToString());
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
