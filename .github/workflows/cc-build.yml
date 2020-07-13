@@ -1,11 +1,9 @@
 name: Build with Code Coverage
 
-# on:
-#   push:
-#     branches:
-#       - master
-
-on: push
+on:
+  push:
+    branches:
+      - master
 
 jobs:
   neth-tests-cc:
