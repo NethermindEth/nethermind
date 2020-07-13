@@ -182,6 +182,7 @@ jobs:
         path: src/Nethermind/Ethereum.*/coverage.opencover.xml
   codecov-upload:
     name: Codecov Reports Upload
+    needs: [neth-tests-cc, eth-tests-cc]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
