@@ -350,12 +350,9 @@ namespace Nethermind.Synchronization.Test
             Block block0 = _blockTree.FindBlock(0, BlockTreeLookupOptions.None);
             Block block1 = _blockTree.FindBlock(1, BlockTreeLookupOptions.None);
 
-            TxReceipt[][] txReceipts = _syncServer.GetReceipts(new[] {block0.Hash, block1.Hash, TestItem.KeccakA});
-
-            Assert.AreEqual(3, txReceipts.Length, "data.Length");
-            Assert.AreEqual(0, txReceipts[0].Length, "data[0]");
-            Assert.AreEqual(0, txReceipts[1].Length, "data[1]");
-            Assert.AreEqual(0, txReceipts[2].Length, "data[2]");
+            _syncServer.GetReceipts(block0.Hash).Should().HaveCount(0);
+            _syncServer.GetReceipts(block1.Hash).Should().HaveCount(0);
+            _syncServer.GetReceipts(TestItem.KeccakA).Should().HaveCount(0);
         }
     }
 }

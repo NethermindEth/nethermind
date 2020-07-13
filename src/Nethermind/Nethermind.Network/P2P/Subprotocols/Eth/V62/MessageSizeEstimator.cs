@@ -27,7 +27,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             {
                 return 0;
             }
-            
+
             return 512;
         }
 
@@ -37,8 +37,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             {
                 return 0;
             }
-            
-            return 100UL + (ulong)(tx.Data?.Length ?? 0) + (ulong)(tx.Init?.Length ?? 0);
+
+            return 100UL + (ulong) (tx.Data?.Length ?? 0) + (ulong) (tx.Init?.Length ?? 0);
         }
 
         public static ulong EstimateSize(Block block)
@@ -47,12 +47,23 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             {
                 return 0;
             }
-            
+
             ulong estimate = EstimateSize(block.Header);
             var transactions = block.Transactions;
             for (int i = 0; i < transactions.Length; i++)
             {
                 estimate += EstimateSize(transactions[i]);
+            }
+
+            return estimate;
+        }
+
+        public static ulong EstimateSize(TxReceipt receipt)
+        {
+            ulong estimate = 256; // bloom
+            for (int i = 0; i < receipt.Logs.Length; i++)
+            {
+                estimate += (ulong) receipt.Logs[i].Data.Length + (ulong) receipt.Logs[i].Topics.Length * 32UL;
             }
 
             return estimate;
