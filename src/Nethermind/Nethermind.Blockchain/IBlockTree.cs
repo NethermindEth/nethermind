@@ -53,7 +53,7 @@ namespace Nethermind.Blockchain
         BlockHeader LowestInsertedHeader { get; }
 
         /// <summary>
-        /// Lowest header added in reverse insert
+        /// Lowest body added in reverse insert
         /// </summary>
         Block LowestInsertedBody { get; }
         

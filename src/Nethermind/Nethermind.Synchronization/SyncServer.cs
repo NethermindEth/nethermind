@@ -268,16 +268,9 @@ namespace Nethermind.Synchronization
             }
         }
 
-        public TxReceipt[][] GetReceipts(IList<Keccak> blockHashes)
+        public TxReceipt[] GetReceipts(Keccak blockHash)
         {
-            var receipts = new TxReceipt[blockHashes.Count][];
-            for (int blockIndex = 0; blockIndex < blockHashes.Count; blockIndex++)
-            {
-                Keccak blockHash = blockHashes[blockIndex];
-                receipts[blockIndex] = blockHash != null ? _receiptFinder.Get(blockHash) : Array.Empty<TxReceipt>();
-            }
-
-            return receipts;
+            return blockHash != null ? _receiptFinder.Get(blockHash) : Array.Empty<TxReceipt>();
         }
 
         public BlockHeader[] FindHeaders(Keccak hash, int numberOfBlocks, int skip, bool reverse)
@@ -294,10 +287,15 @@ namespace Nethermind.Synchronization
                 IDb codeDb = _codeDb.Innermost;
 
                 values[i] = null;
-                if (includedTypes.HasFlag(NodeDataType.State))
+                if ((includedTypes & NodeDataType.State) == NodeDataType.State)
+                {
                     values[i] = stateDb.Get(keys[i]);
-                if (values[i] == null && includedTypes.HasFlag(NodeDataType.Code))
+                }
+
+                if (values[i] == null && (includedTypes & NodeDataType.Code) == NodeDataType.Code)
+                {
                     values[i] = codeDb.Get(keys[i]);
+                }
             }
 
             return values;

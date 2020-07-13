@@ -32,6 +32,8 @@ namespace Nethermind.Network.P2P
 
         public override string Protocol => "p2p";
         public override int PacketType => P2PMessageCode.Disconnect;
-        public int Reason { get; set; }
+        public int Reason { get; }
+
+        public override string ToString() => $"Disconnect({Reason})";
     }
 }

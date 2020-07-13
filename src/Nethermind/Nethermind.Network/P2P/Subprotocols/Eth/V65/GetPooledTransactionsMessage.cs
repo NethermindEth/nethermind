@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Core.Crypto;
-using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 {
@@ -28,5 +27,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             : base(hashes)
         {
         }
+        
+        public override string ToString() => $"{nameof(GetPooledTransactionsMessage)}({Hashes?.Count})";
     }
 }

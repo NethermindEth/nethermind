@@ -53,59 +53,18 @@ using YamlDotNet.Serialization.TypeInspectors;
 
 namespace Nethermind.Runner.Test
 {
-    [TestFixture, Parallelizable(ParallelScope.Self)]
+    [TestFixture, Parallelizable(ParallelScope.None)]
     public class EthereumRunnerTests
     {
-        public class ConfigSource : IConfigSource
-        {
-            private readonly string _chainspecPath;
-
-            public ConfigSource(string chainspecPath)
-            {
-                _chainspecPath = chainspecPath;
-            }
-
-            public (bool IsSet, object Value) GetValue(Type type, string category, string name)
-            {
-                if (name == "ChainSpecPath")
-                {
-                    return (true, _chainspecPath);
-                }
-
-                if (name == "UseMemDb")
-                {
-                    return (true, true);
-                }
-
-                if (name.EndsWith("Enabled"))
-                {
-                    return (true, true);
-                }
-
-                return (false, null);
-            }
-
-            public (bool IsSet, string Value) GetRawValue(string category, string name)
-            {
-                return (false, null);
-            }
-        }
-
         public static IEnumerable ChainSpecRunnerTests
         {
             get
             {
-                ISet<string> ignoredSpecs = new HashSet<string>()
+                ISet<string> ignoredConfigs = new HashSet<string>()
                 {
-                    "genesis.json",
-                    "ndm.json",
-                    "hive.json",
-                    "ndmtestnet0.json",
-                    "ndmtestnet0_local.json",
                 };
-                yield return new TestCaseData("testspec.json");
 
-                foreach (var config in Directory.GetFiles("chainspec").Where(c => !ignoredSpecs.Contains(Path.GetFileName(c))))
+                foreach (var config in Directory.GetFiles("configs").Where(c => !ignoredConfigs.Contains(Path.GetFileName(c))))
                 {
                     yield return new TestCaseData(config);
                 }
@@ -113,7 +72,7 @@ namespace Nethermind.Runner.Test
         }
 
         [TestCaseSource(nameof(ChainSpecRunnerTests))]
-        [Timeout(12000)] // just to make sure we are not on infinite loop on steps because of incorrect dependencies
+        [Timeout(30000)] // just to make sure we are not on infinite loop on steps because of incorrect dependencies
         public async Task Smoke(string chainSpecPath)
         {
             Type type1 = typeof(ITxPoolConfig);
@@ -127,7 +86,7 @@ namespace Nethermind.Runner.Test
             Type type9 = typeof(IBloomConfig);
 
             var configProvider = new ConfigProvider();
-            configProvider.AddSource(new ConfigSource(chainSpecPath));
+            configProvider.AddSource(new JsonConfigSource(chainSpecPath));
 
             Console.WriteLine(type1.Name);
             Console.WriteLine(type2.Name);
@@ -168,7 +127,7 @@ namespace Nethermind.Runner.Test
             }
         }
         [TestCaseSource(nameof(ChainSpecRunnerTests))]
-        [Timeout(12000)] // just to make sure we are not on infinite loop on steps because of incorrect dependencies
+        [Timeout(30000)] // just to make sure we are not on infinite loop on steps because of incorrect dependencies
         public async Task Smoke_cancel(string chainSpecPath)
         {
             Type type1 = typeof(ITxPoolConfig);
@@ -182,7 +141,7 @@ namespace Nethermind.Runner.Test
             Type type9 = typeof(IBloomConfig);
 
             var configProvider = new ConfigProvider();
-            configProvider.AddSource(new ConfigSource(chainSpecPath));
+            configProvider.AddSource(new JsonConfigSource(chainSpecPath));
 
             Console.WriteLine(type1.Name);
             Console.WriteLine(type2.Name);

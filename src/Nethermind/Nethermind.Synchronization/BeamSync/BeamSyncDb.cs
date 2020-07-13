@@ -109,6 +109,7 @@ namespace Nethermind.Synchronization.BeamSync
         {
             _isDisposed = true;
             UnregisterHandlers();
+            _stateDb.Dispose();
             _tempDb.Dispose();
         }
 

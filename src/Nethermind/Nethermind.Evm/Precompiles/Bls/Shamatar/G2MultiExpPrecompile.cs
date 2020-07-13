@@ -59,7 +59,7 @@ namespace Nethermind.Evm.Precompiles.Bls.Shamatar
 
             (byte[], bool) result;
             
-            Span<byte> output = stackalloc byte[4 * BlsExtensions.LenFp];
+            Span<byte> output = stackalloc byte[4 * BlsParams.LenFp];
             bool success = ShamatarLib.BlsG2MultiExp(inputData, output);
             if (success)
             {

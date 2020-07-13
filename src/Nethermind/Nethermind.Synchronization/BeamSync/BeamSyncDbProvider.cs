@@ -33,7 +33,7 @@ namespace Nethermind.Synchronization.BeamSync
             _otherProvider = otherProvider ?? throw new ArgumentNullException(nameof(otherProvider));
             BeamSyncDb codeDb = new BeamSyncDb(otherProvider.CodeDb.Innermost, otherProvider.BeamStateDb, syncModeSelector, logManager, syncConfig.BeamSyncContextTimeout, syncConfig.BeamSyncPreProcessorTimeout);
             BeamSyncDb stateDb = new BeamSyncDb(otherProvider.StateDb.Innermost, otherProvider.BeamStateDb, syncModeSelector, logManager, syncConfig.BeamSyncContextTimeout, syncConfig.BeamSyncPreProcessorTimeout);
-            BeamSyncFeed = new CompositeStateSyncFeed<StateSyncBatch>(logManager,codeDb, stateDb);
+            BeamSyncFeed = new CompositeStateSyncFeed<StateSyncBatch>(logManager, codeDb, stateDb);
             StateDb = new StateDb(stateDb);
             CodeDb = new StateDb(codeDb);
         }

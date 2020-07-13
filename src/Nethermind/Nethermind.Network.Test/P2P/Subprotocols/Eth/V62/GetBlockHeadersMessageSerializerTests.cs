@@ -32,7 +32,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             message.MaxHeaders = 1;
             message.Skip = 2;
             message.Reverse = 1;
-            message.StartingBlockHash = Keccak.OfAnEmptyString;
+            message.StartBlockHash = Keccak.OfAnEmptyString;
             GetBlockHeadersMessageSerializer serializer = new GetBlockHeadersMessageSerializer();
             byte[] bytes = serializer.Serialize(message);
             byte[] expectedBytes = Bytes.FromHexString("e4a0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470010201");
@@ -40,7 +40,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             Assert.True(Bytes.AreEqual(bytes, expectedBytes), "bytes");
 
             GetBlockHeadersMessage deserialized = serializer.Deserialize(bytes);
-            Assert.AreEqual(message.StartingBlockHash, deserialized.StartingBlockHash, $"{nameof(message.StartingBlockHash)}");
+            Assert.AreEqual(message.StartBlockHash, deserialized.StartBlockHash, $"{nameof(message.StartBlockHash)}");
             Assert.AreEqual(message.MaxHeaders, deserialized.MaxHeaders, $"{nameof(message.MaxHeaders)}");
             Assert.AreEqual(message.Reverse, deserialized.Reverse, $"{nameof(message.Reverse)}");
             Assert.AreEqual(message.Skip, deserialized.Skip, $"{nameof(message.Skip)}");
@@ -55,7 +55,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             message.MaxHeaders = 1;
             message.Skip = 2;
             message.Reverse = 1;
-            message.StartingBlockNumber = 100;
+            message.StartBlockNumber = 100;
             GetBlockHeadersMessageSerializer serializer = new GetBlockHeadersMessageSerializer();
             byte[] bytes = serializer.Serialize(message);
             byte[] expectedBytes = Bytes.FromHexString("c464010201");
@@ -63,7 +63,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             Assert.True(Bytes.AreEqual(bytes, expectedBytes), "bytes");
 
             GetBlockHeadersMessage deserialized = serializer.Deserialize(bytes);
-            Assert.AreEqual(message.StartingBlockNumber, deserialized.StartingBlockNumber, $"{nameof(message.StartingBlockNumber)}");
+            Assert.AreEqual(message.StartBlockNumber, deserialized.StartBlockNumber, $"{nameof(message.StartBlockNumber)}");
             Assert.AreEqual(message.MaxHeaders, deserialized.MaxHeaders, $"{nameof(message.MaxHeaders)}");
             Assert.AreEqual(message.Reverse, deserialized.Reverse, $"{nameof(message.Reverse)}");
             Assert.AreEqual(message.Skip, deserialized.Skip, $"{nameof(message.Skip)}");
@@ -78,7 +78,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             message.MaxHeaders = 1;
             message.Skip = 2;
             message.Reverse = 0;
-            message.StartingBlockNumber = 100;
+            message.StartBlockNumber = 100;
             GetBlockHeadersMessageSerializer serializer = new GetBlockHeadersMessageSerializer();
             
             byte[] bytes = serializer.Serialize(message);
@@ -87,12 +87,19 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             Assert.AreEqual(expectedBytes, bytes, "bytes");
 
             GetBlockHeadersMessage deserialized = serializer.Deserialize(bytes);
-            Assert.AreEqual(message.StartingBlockNumber, deserialized.StartingBlockNumber, $"{nameof(message.StartingBlockNumber)}");
+            Assert.AreEqual(message.StartBlockNumber, deserialized.StartBlockNumber, $"{nameof(message.StartBlockNumber)}");
             Assert.AreEqual(message.MaxHeaders, deserialized.MaxHeaders, $"{nameof(message.MaxHeaders)}");
             Assert.AreEqual(message.Reverse, deserialized.Reverse, $"{nameof(message.Reverse)}");
             Assert.AreEqual(message.Skip, deserialized.Skip, $"{nameof(message.Skip)}");
             
             SerializerTester.TestZero(serializer, message);
+        }
+        
+        [Test]
+        public void To_string()
+        {
+            GetBlockHeadersMessage newBlockMessage = new GetBlockHeadersMessage();
+            _ = newBlockMessage.ToString();
         }
     }
 }

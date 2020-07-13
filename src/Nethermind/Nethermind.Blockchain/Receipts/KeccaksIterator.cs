@@ -33,17 +33,17 @@ namespace Nethermind.Blockchain.Receipts
             Index = -1;
         }
 
-        public bool TryGetNext(out KeccakStructRef current)
+        public bool TryGetNext(out ValueKeccak current)
         {
             if (_decoderContext.Position < _length)
             {
-                _decoderContext.DecodeKeccakStructRef(out current);
+                _decoderContext.DecodeValueKeccak(out current);
                 Index++;
                 return true;
             }
             else
             {
-                current = new KeccakStructRef(Keccak.Zero.Bytes);
+                current = new ValueKeccak();
                 return false;
             }
         }
