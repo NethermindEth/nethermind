@@ -109,9 +109,13 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
                         if (_logger.IsInfo) _logger.Info($"ReceiptsDb migration will start after switching to full sync.");
                     }
                 }
-                else if (MigrateToBlockNumber != 0)
+                else
                 {
-                    if (_logger.IsInfo) _logger.Info($"ReceiptsDb migration disabled. Finding logs when multiple blocks receipts need to be scanned might be slow.");
+                    long migrateToBlockNumber = MigrateToBlockNumber;
+                    if (migrateToBlockNumber > 0)
+                    {
+                        if (_logger.IsInfo) _logger.Info($"ReceiptsDb migration disabled. Finding logs when multiple blocks receipts need to be scanned might be slow below {migrateToBlockNumber} block.");
+                    }
                 }
             }
         }
