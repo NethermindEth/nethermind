@@ -32,7 +32,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
         {
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         }
-        
+
         public byte[] Serialize(ReceiptsMessage message)
         {
             if (message.TxReceipts == null) return Rlp.OfEmptySequence.Bytes;
@@ -51,11 +51,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             if (bytes.Length == 0 || bytes[0] == Rlp.OfEmptySequence[0]) return new ReceiptsMessage(null);
 
             RlpStream rlpStream = bytes.AsRlpStream();
+            return Deserialize(rlpStream);
+        }
 
+        public ReceiptsMessage Deserialize(RlpStream rlpStream)
+        {
             TxReceipt[][] data = rlpStream.DecodeArray(itemContext =>
                 itemContext.DecodeArray(nestedContext => _decoder.Decode(nestedContext)) ?? new TxReceipt[0], true);
             ReceiptsMessage message = new ReceiptsMessage(data);
-            
+
             return message;
         }
     }

@@ -16,6 +16,7 @@
 
 using System;
 using System.Numerics;
+using FluentAssertions;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
@@ -60,9 +61,9 @@ namespace Nethermind.Core.Test
         public void Length_of_uint()
         {
             Assert.AreEqual(1, Rlp.LengthOf(UInt256.Zero));
-            Assert.AreEqual(1, Rlp.LengthOf((UInt256)127));
-            Assert.AreEqual(2, Rlp.LengthOf((UInt256)128));
-            
+            Assert.AreEqual(1, Rlp.LengthOf((UInt256) 127));
+            Assert.AreEqual(2, Rlp.LengthOf((UInt256) 128));
+
             UInt256 item = 255;
             for (int i = 0; i < 32; i++)
             {
@@ -70,7 +71,7 @@ namespace Nethermind.Core.Test
                 item *= 256;
             }
         }
-        
+
         [Test]
         public void Long_negative()
         {
@@ -179,8 +180,37 @@ namespace Nethermind.Core.Test
             Assert.AreEqual(expectedResult, Rlp.Encode(input), "byte array");
             Assert.AreEqual(expectedResult, Rlp.Encode(input.AsSpan()), "span");
         }
+
+        [TestCase(new byte[] {127, 1, 2, 2}, false)]
+        [TestCase(new byte[] {130, 1, 0}, true)]
+        [TestCase(new byte[] {130, 0, 2, 2}, false)]
+        [TestCase(new byte[] {130, 0, 2, 2}, false)]
+        [TestCase(new byte[]
+        {184, 56,
+            1,0,0,0,0,0,0,0,
+            1,0,0,0,0,0,0,0,
+            1,0,0,0,0,0,0,0,
+            1,0,0,0,0,0,0,0,
+            1,0,0,0,0,0,0,0,
+            1,0,0,0,0,0,0,0
+        }, true)]
+        public void Strange_bool(byte[] rlp, bool expectedBool)
+        {
+            rlp.AsRlpValueContext().DecodeBool().Should().Be(expectedBool);
+            rlp.AsRlpStream().DecodeBool().Should().Be(expectedBool);
+        }
         
-        
+        [TestCase(new byte[] {129, 127})]
+        [TestCase(new byte[] {188, 0})]
+        [TestCase(new byte[] {184, 55, 1})]
+        [TestCase(new byte[] {193})]
+        public void Strange_bool_exceptional_cases(byte[] rlp)
+        {
+            Assert.Throws<RlpException>(() => rlp.AsRlpValueContext().DecodeBool());
+            Assert.Throws<RlpException>(() => rlp.AsRlpStream().DecodeBool());
+        }
+
+
         [TestCase(Int64.MinValue)]
         [TestCase(-1L)]
         [TestCase(0L)]
@@ -199,7 +229,7 @@ namespace Nethermind.Core.Test
             {
                 rlpBigInt = Rlp.Encode(new BigInteger(value), 8);
             }
-            
+
             Assert.AreEqual(rlpLong.Bytes, rlpBigInt.Bytes);
         }
     }

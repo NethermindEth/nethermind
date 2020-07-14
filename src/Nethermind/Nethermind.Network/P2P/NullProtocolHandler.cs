@@ -32,6 +32,7 @@ namespace Nethermind.Network.P2P
         {
         }
 
+        public string Name => "nul.0";
         public byte ProtocolVersion => 0;
         public string ProtocolCode => "nul";
         public int MessageIdSpaceSize => 0;
@@ -41,12 +42,10 @@ namespace Nethermind.Network.P2P
 
         public void HandleMessage(Packet message)
         {
-            throw new NotSupportedException();
         }
 
-        public void InitiateDisconnect(DisconnectReason disconnectReason, string details)
+        public void DisconnectProtocol(DisconnectReason disconnectReason, string details)
         {
-            throw new NotSupportedException();
         }
 
         public bool HasAvailableCapability(Capability capability)

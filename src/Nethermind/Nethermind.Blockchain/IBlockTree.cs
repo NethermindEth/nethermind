@@ -53,7 +53,7 @@ namespace Nethermind.Blockchain
         BlockHeader LowestInsertedHeader { get; }
 
         /// <summary>
-        /// Lowest header added in reverse insert
+        /// Lowest body added in reverse insert
         /// </summary>
         Block LowestInsertedBody { get; }
         
@@ -125,6 +125,8 @@ namespace Nethermind.Blockchain
         Keccak FindHash(long blockNumber);
 
         BlockHeader[] FindHeaders(Keccak hash, int numberOfBlocks, int skip, bool reverse);
+
+        BlockHeader FindLowestCommonAncestor(BlockHeader firstDescendant, BlockHeader secondDescendant, long maxSearchDepth);
         
         void DeleteInvalidBlock(Block invalidBlock);
 

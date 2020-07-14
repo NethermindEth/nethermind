@@ -14,24 +14,33 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.IO;
+using System.Linq;
 using Nethermind.Serialization.Json;
-using Newtonsoft.Json;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Json
 {
     [TestFixture]
-    public class BloomConverterTests
+    public class BloomConverterTests : ConverterTestBase<Bloom>
     {
         [Test]
-        public void Can_read_null()
+        public void Null_values()
         {
-            BloomConverter converter = new BloomConverter();
-            JsonReader reader = new JsonTextReader(new StringReader(""));
-            reader.ReadAsString();
-            Bloom result = converter.ReadJson(reader, typeof(Bloom), null, false, JsonSerializer.CreateDefault());
-            Assert.AreEqual(null, result);
+            TestConverter(null, (bloom, bloom1) => bloom == bloom1, new BloomConverter());
+        }
+        
+        [Test]
+        public void Empty_bloom()
+        {
+            TestConverter(Bloom.Empty, (bloom, bloom1) => bloom.Equals(bloom1), new BloomConverter());
+        }
+        
+        [Test]
+        public void Full_bloom()
+        {
+            TestConverter(
+                new Bloom(Enumerable.Range(0, 255).Select(i => (byte)i).ToArray()),
+                (bloom, bloom1) => bloom.Equals(bloom1), new BloomConverter());
         }
     }
 }

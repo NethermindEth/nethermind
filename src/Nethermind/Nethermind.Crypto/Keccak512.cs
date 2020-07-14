@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Buffers.Binary;
 using System.Threading;
 using Nethermind.HashLib;
 using Nethermind.Serialization.Rlp;
@@ -144,16 +145,7 @@ namespace Nethermind.Crypto
 
         public override int GetHashCode()
         {
-            unchecked
-            {
-                const int p = 16777619;
-                int hash = (int)2166136261;
-
-                hash = hash ^ (Bytes[0] * p);
-                hash = hash ^ (Bytes[Size / 2] * p);
-                hash = hash ^ (Bytes[Size - 1] * p);
-                return hash;
-            }
+            return BinaryPrimitives.ReadInt32LittleEndian(Bytes);
         }
 
         public static bool operator ==(Keccak512 a, Keccak512 b)

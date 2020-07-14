@@ -120,16 +120,15 @@ namespace Nethermind.Stats
             stats.AddNodeStatsP2PInitializedEvent(p2PNodeDetails);
         }
 
-        public void ReportEthInitializeEvent(Node node, EthNodeDetails ethNodeDetails)
+        public void ReportSyncPeerInitializeEvent(string protocol, Node node, SyncPeerNodeDetails syncPeerNodeDetails)
         {
             INodeStats stats = GetOrAdd(node);
-            stats.AddNodeStatsEth62InitializedEvent(ethNodeDetails);
-        }
-
-        public void ReportLesInitializeEvent(Node node, LesNodeDetails lesNodeDetails)
-        {
-            INodeStats stats = GetOrAdd(node);
-            stats.AddNodeStatsLesInitializedEvent(lesNodeDetails);
+            if (protocol == "eth")
+                stats.AddNodeStatsEth62InitializedEvent(syncPeerNodeDetails);
+            else if (protocol == "les")
+                stats.AddNodeStatsLesInitializedEvent(syncPeerNodeDetails);
+            else
+                throw new ArgumentException($"Unknown protocol: {protocol}");
         }
 
         public void ReportFailedValidation(Node node, CompatibilityValidationType validationType)

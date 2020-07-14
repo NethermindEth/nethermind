@@ -25,19 +25,12 @@ namespace Nethermind.Serialization.Json
     {
         public override void WriteJson(JsonWriter writer, Bloom value, Newtonsoft.Json.JsonSerializer serializer)
         {
-            if (value == null)
-            {
-                writer.WriteNull();
-            }
-            else
-            {
-                writer.WriteValue(Bytes.ByteArrayToHexViaLookup32Safe(value.Bytes, true));
-            }
+            writer.WriteValue(Bytes.ByteArrayToHexViaLookup32Safe(value.Bytes, true));
         }
 
         public override Bloom ReadJson(JsonReader reader, Type objectType, Bloom existingValue, bool hasExistingValue, Newtonsoft.Json.JsonSerializer serializer)
         {
-            string s = (string)reader.Value;
+            string s = (string) reader.Value;
             return s == null ? null : new Bloom(Bytes.FromHexString(s));
         }
     }

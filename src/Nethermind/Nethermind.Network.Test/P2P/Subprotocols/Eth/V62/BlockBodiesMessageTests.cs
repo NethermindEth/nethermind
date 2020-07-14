@@ -30,5 +30,12 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             var message = new BlockBodiesMessage(new[] {Build.A.Block.TestObject, null, Build.A.Block.TestObject});
             Assert.AreEqual(3, message.Bodies.Length);
         }
+        
+        [Test]
+        public void To_string()
+        {
+            BlockBodiesMessage newBlockMessage = new BlockBodiesMessage();
+            _ = newBlockMessage.ToString();
+        }
     }
 }

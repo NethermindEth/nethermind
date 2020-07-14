@@ -14,6 +14,12 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+using System.IO;
+using System.Numerics;
+using System.Text;
+using FluentAssertions;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Serialization.Json;
 using Newtonsoft.Json;
 using NUnit.Framework;
@@ -31,6 +37,42 @@ namespace Nethermind.JsonRpc.Test.Data
         }
         
         [Test]
+        public void Can_handle_int()
+        {
+            IdConverter converter = new IdConverter();
+            converter.WriteJson(new JsonTextWriter(new StringWriter()), 1, JsonSerializer.CreateDefault());
+        }
+        
+        [Test]
+        public void Throws_on_writing_decimal()
+        {
+            IdConverter converter = new IdConverter();
+            Assert.Throws<NotSupportedException>(
+                () => converter.WriteJson(new JsonTextWriter(new StringWriter()), 1.1, JsonSerializer.CreateDefault()));
+        }
+        
+        [TestCase(typeof(int))]
+        [TestCase(typeof(string))]
+        [TestCase(typeof(long))]
+        [TestCase(typeof(BigInteger))]
+        [TestCase(typeof(BigInteger?))]
+        [TestCase(typeof(UInt256?))]
+        [TestCase(typeof(UInt256))]
+        public void It_supports_the_types_that_it_needs_to_support(Type type)
+        {
+            IdConverter converter = new IdConverter();
+            converter.CanConvert(type).Should().Be(true);
+        }
+        
+        [TestCase(typeof(object))]
+        [TestCase(typeof(IdConverterTests))]
+        public void It_supports_all_silly_types_and_we_can_live_with_it(Type type)
+        {
+            IdConverter converter = new IdConverter();
+            converter.CanConvert(type).Should().Be(true);
+        }
+
+        [Test]
         public void Can_do_roundtrip_long()
         {
             TestRoundtrip<SomethingWithId>("{\"id\":1234}");
@@ -47,6 +89,16 @@ namespace Nethermind.JsonRpc.Test.Data
         {
             TestRoundtrip<SomethingWithId>("{\"id\":null}");
         }
+        
+        [Test]
+        public void Decimal_not_supported()
+        {
+            Assert.Throws<NotSupportedException>(() =>
+                TestRoundtrip<SomethingWithId>("{\"id\":2.1}"));
+            
+            Assert.Throws<NotSupportedException>(() =>
+                TestRoundtrip<SomethingWithDecimalId>("{\"id\":2.1}"));
+        }
 
         // ReSharper disable once ClassNeverInstantiated.Global
         // ReSharper disable once MemberCanBePrivate.Global
@@ -55,6 +107,15 @@ namespace Nethermind.JsonRpc.Test.Data
             [JsonConverter(typeof(IdConverter))]
             [JsonProperty(NullValueHandling = NullValueHandling.Include)]
             public object Id { get; set; }
+
+            public string Something { get; set; }
+        }
+        
+        public class SomethingWithDecimalId
+        {
+            [JsonConverter(typeof(IdConverter))]
+            [JsonProperty(NullValueHandling = NullValueHandling.Include)]
+            public decimal Id { get; set; }
 
             public string Something { get; set; }
         }

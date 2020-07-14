@@ -54,7 +54,7 @@ namespace Nethermind.Consensus
 
         public Signature Sign(Keccak message)
         {
-            if (!CanSign) throw new NotSupportedException("Cannot sign without provided key.");
+            if (!CanSign) throw new InvalidOperationException("Cannot sign without provided key.");
             
             using var key = _key.Unprotect();
             var rs = Proxy.SignCompact(message.Bytes, key.KeyBytes, out int v);

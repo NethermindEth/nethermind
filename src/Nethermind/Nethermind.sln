@@ -215,6 +215,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Cryptography.Bls
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Native", "Nethermind.Native\Nethermind.Native.csproj", "{77C56006-3DE8-4B3B-A0BB-CFD2E28CF8A9}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.BeamWallet", "Nethermind.BeamWallet\Nethermind.BeamWallet.csproj", "{ED66305A-00AC-467B-BC53-A591C9E54284}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -569,6 +571,10 @@ Global
 		{20ACBDCF-F208-4752-A9FB-11AEAC977F96}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{20ACBDCF-F208-4752-A9FB-11AEAC977F96}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{20ACBDCF-F208-4752-A9FB-11AEAC977F96}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9FD2C89A-9194-4C15-8267-8FEC0135A315}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9FD2C89A-9194-4C15-8267-8FEC0135A315}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9FD2C89A-9194-4C15-8267-8FEC0135A315}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9FD2C89A-9194-4C15-8267-8FEC0135A315}.Release|Any CPU.Build.0 = Release|Any CPU
 		{1A581DDC-020D-4725-89E3-437D15FEF97F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{1A581DDC-020D-4725-89E3-437D15FEF97F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{1A581DDC-020D-4725-89E3-437D15FEF97F}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -577,6 +583,10 @@ Global
 		{77C56006-3DE8-4B3B-A0BB-CFD2E28CF8A9}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{77C56006-3DE8-4B3B-A0BB-CFD2E28CF8A9}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{77C56006-3DE8-4B3B-A0BB-CFD2E28CF8A9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{ED66305A-00AC-467B-BC53-A591C9E54284}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{ED66305A-00AC-467B-BC53-A591C9E54284}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{ED66305A-00AC-467B-BC53-A591C9E54284}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{ED66305A-00AC-467B-BC53-A591C9E54284}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -636,6 +646,7 @@ Global
 		{B07BC190-D053-408F-A9EF-C4C45AD0D9E2} = {94CF4207-DA03-4D26-AAA2-284475A6DF1E}
 		{79330582-F005-494E-AE8D-D8C92A37CD72} = {94CF4207-DA03-4D26-AAA2-284475A6DF1E}
 		{20ACBDCF-F208-4752-A9FB-11AEAC977F96} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
+		{ED66305A-00AC-467B-BC53-A591C9E54284} = {E627BFEF-ABD3-4B8F-A9AC-204251AE440C}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {092CA5E3-6180-4ED7-A3CB-9B57FAC2AA85}

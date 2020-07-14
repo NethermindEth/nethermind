@@ -22,15 +22,7 @@ namespace Nethermind.Synchronization.BeamSync
     [Serializable]
     public class BeamSyncException : StateException
     {
-        public BeamSyncException()
-        {
-        }
-
         public BeamSyncException(string message) : base(message)
-        {
-        }
-
-        public BeamSyncException(string message, Exception inner) : base(message, inner)
         {
         }
     }

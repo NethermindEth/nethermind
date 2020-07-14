@@ -116,11 +116,7 @@ namespace Nethermind.Synchronization.Test
                 return await Task.FromResult(Build.A.BlockHeader.TestObject);
             }
 
-            public void SendNewBlock(Block block)
-            {
-            }
-
-            public void HintNewBlock(Keccak blockHash, long number)
+            public void NotifyOfNewBlock(Block block, SendBlockPriority priority)
             {
             }
 

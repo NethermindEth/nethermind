@@ -85,7 +85,7 @@ namespace Nethermind.Synchronization.FastBlocks
             _handlingEndTime = _stopwatch.ElapsedMilliseconds;
         }
         
-        protected int Retries { get; set; }
+        public int Retries { get; protected set; }
         public double? AgeInMs => _stopwatch.ElapsedMilliseconds;
         public double? SchedulingTime => (_requestSentTime ?? _stopwatch.ElapsedMilliseconds) - (_scheduledLastTime ?? _stopwatch.ElapsedMilliseconds);
         public double? RequestTime => (_validationStartTime ?? _stopwatch.ElapsedMilliseconds) - (_requestSentTime ?? _stopwatch.ElapsedMilliseconds);

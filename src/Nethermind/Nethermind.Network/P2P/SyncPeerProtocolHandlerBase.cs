@@ -25,12 +25,11 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
+using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
-using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
-using Nethermind.Network.P2P.Subprotocols.Eth.V65;
+using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -41,16 +40,19 @@ namespace Nethermind.Network.P2P
 {
     public abstract class SyncPeerProtocolHandlerBase : ProtocolHandlerBase, ISyncPeer
     {
+        public static readonly ulong SoftOutgoingMessageSizeLimit = 2.MB();
         public Node Node => Session?.Node;
         public string ClientId => Session?.Node?.ClientId;
         public UInt256 TotalDifficulty { get; set; }
         public PublicKey Id => Node.Id;
+
+        public virtual bool IncludeInTxPool => true;
         protected ISyncServer SyncServer { get; }
         
         public long HeadNumber { get; set; }
         public Keccak HeadHash { get; set; }
         
-        // this mean that we know what the number, hash, and total diff of the head block is
+        // this means that we know what the number, hash, and total diff of the head block is
         public bool IsInitialized { get; set; }
         
         public override string ToString() => $"[Peer|{Name}|{HeadNumber}|{ClientId}|{Node:s}]";
@@ -100,9 +102,9 @@ namespace Nethermind.Network.P2P
         [Todo(Improve.Refactor, "Generic approach to requests")]
         private async Task<BlockBody[]> SendRequest(GetBlockBodiesMessage message, CancellationToken token)
         {
-            if (_headersRequests.IsAddingCompleted || _isDisposed)
+            if (_headersRequests.IsAddingCompleted || _isDisposed == 1)
             {
-                throw new TimeoutException("Session disposed");
+                return Array.Empty<BlockBody>();
             }
 
             if (Logger.IsTrace)
@@ -146,49 +148,31 @@ namespace Nethermind.Network.P2P
         {
             if (maxBlocks == 0)
             {
-                return new BlockHeader[0];
+                return Array.Empty<BlockHeader>();
             }
 
             GetBlockHeadersMessage msg = new GetBlockHeadersMessage();
             msg.MaxHeaders = maxBlocks;
             msg.Reverse = 0;
             msg.Skip = skip;
-            msg.StartingBlockNumber = number;
+            msg.StartBlockNumber = number;
 
             BlockHeader[] headers = await SendRequest(msg, token);
             return headers;
         }
 
-        async Task<BlockHeader[]> ISyncPeer.GetBlockHeaders(Keccak blockHash, int maxBlocks, int skip, CancellationToken token)
-        {
-            if (maxBlocks == 0)
-            {
-                return new BlockHeader[0];
-            }
-
-            GetBlockHeadersMessage msg = new GetBlockHeadersMessage();
-            msg.MaxHeaders = maxBlocks;
-            msg.Reverse = 0;
-            msg.Skip = skip;
-            msg.StartingBlockHash = blockHash;
-
-            BlockHeader[] headers = await SendRequest(msg, token);
-            return headers;
-        }
-
-        [Todo(Improve.Refactor, "Generic approach to requests")]
         private async Task<BlockHeader[]> SendRequest(GetBlockHeadersMessage message, CancellationToken token)
         {
-            if (_headersRequests.IsAddingCompleted || _isDisposed)
+            if (_headersRequests.IsAddingCompleted || _isDisposed == 1)
             {
-                throw new TimeoutException("Session disposed");
+                return Array.Empty<BlockHeader>();
             }
 
             if (Logger.IsTrace)
             {
                 Logger.Trace($"Sending headers request to {Session.Node:c}:");
-                Logger.Trace($"  Starting blockhash: {message.StartingBlockHash}");
-                Logger.Trace($"  Starting number: {message.StartingBlockNumber}");
+                Logger.Trace($"  Starting blockhash: {message.StartBlockHash}");
+                Logger.Trace($"  Starting number: {message.StartBlockNumber}");
                 Logger.Trace($"  Skip: {message.Skip}");
                 Logger.Trace($"  Reverse: {message.Reverse}");
                 Logger.Trace($"  Max headers: {message.MaxHeaders}");
@@ -226,7 +210,7 @@ namespace Nethermind.Network.P2P
         async Task<BlockHeader> ISyncPeer.GetHeadBlockHeader(Keccak hash, CancellationToken token)
         {
             GetBlockHeadersMessage msg = new GetBlockHeadersMessage();
-            msg.StartingBlockHash = hash ?? _remoteHeadBlockHash;
+            msg.StartBlockHash = hash ?? _remoteHeadBlockHash;
             msg.MaxHeaders = 1;
             msg.Reverse = 0;
             msg.Skip = 0;
@@ -235,45 +219,20 @@ namespace Nethermind.Network.P2P
             return headers.Length > 0 ? headers[0] : null;
         }
 
-        public virtual async Task<TxReceipt[][]> GetReceipts(IList<Keccak> blockHash, CancellationToken token)
+        public virtual Task<TxReceipt[][]> GetReceipts(IList<Keccak> blockHash, CancellationToken token)
         {
-            await Task.CompletedTask;
             throw new NotSupportedException("Fast sync not supported by eth62 protocol");
         }
 
-        public void SendNewBlock(Block block)
+        public virtual Task<byte[][]> GetNodeData(IList<Keccak> hashes, CancellationToken token)
         {
-            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} NewBlock to {Node:c}");
-            if (block.TotalDifficulty == null)
-            {
-                throw new InvalidOperationException($"Trying to send a block {block.Hash} with null total difficulty");
-            }
-
-            NewBlockMessage msg = new NewBlockMessage();
-            msg.Block = block;
-            msg.TotalDifficulty = block.TotalDifficulty ?? 0;
-
-            Send(msg);
-        }
-
-        public void HintNewBlock(Keccak blockHash, long number)
-        {
-            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} HintBlock to {Node:c}");
-
-            NewBlockHashesMessage msg = new NewBlockHashesMessage();
-            msg.BlockHashes = new[] {(blockHash, number)};
-            Send(msg);
-        }
-
-        public virtual async Task<byte[][]> GetNodeData(IList<Keccak> hashes, CancellationToken token)
-        {
-            await Task.CompletedTask;
             throw new NotSupportedException("Fast sync not supported by eth62 protocol");
         }
+        
+        public abstract void NotifyOfNewBlock(Block block, SendBlockPriority priority);
 
         public virtual void SendNewTransaction(Transaction transaction, bool isPriority)
         {
-            Interlocked.Increment(ref Counter);
             if (transaction.Hash == null)
             {
                 throw new InvalidOperationException("Trying to send a transaction with null hash");
@@ -302,11 +261,9 @@ namespace Nethermind.Network.P2P
                 Logger.Trace($"  MaxHeaders: {getBlockHeadersMessage.MaxHeaders}");
                 Logger.Trace($"  Reverse: {getBlockHeadersMessage.Reverse}");
                 Logger.Trace($"  Skip: {getBlockHeadersMessage.Skip}");
-                Logger.Trace($"  StartingBlockhash: {getBlockHeadersMessage.StartingBlockHash}");
-                Logger.Trace($"  StartingBlockNumber: {getBlockHeadersMessage.StartingBlockNumber}");
+                Logger.Trace($"  StartingBlockhash: {getBlockHeadersMessage.StartBlockHash}");
+                Logger.Trace($"  StartingBlockNumber: {getBlockHeadersMessage.StartBlockNumber}");
             }
-
-            Interlocked.Increment(ref Counter);
 
             // // to clearly state that this client is an ETH client and not ETC (and avoid disconnections on reversed sync)
             // // also to improve performance as this is the most common request
@@ -322,33 +279,40 @@ namespace Nethermind.Network.P2P
             //     return;
             // }
 
-            if (getBlockHeadersMessage.MaxHeaders > 1024)
+            Send(FulfillBlockHeadersRequest(getBlockHeadersMessage));
+            stopwatch.Stop();
+            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} BlockHeaders to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
+        }
+
+        protected BlockHeadersMessage FulfillBlockHeadersRequest(GetBlockHeadersMessage msg)
+        {
+            if (msg.MaxHeaders > 1024)
             {
                 throw new EthSyncException("Incoming headers request for more than 1024 headers");
             }
 
-            Keccak startingHash = getBlockHeadersMessage.StartingBlockHash;
+            Keccak startingHash = msg.StartBlockHash;
             if (startingHash == null)
             {
-                startingHash = SyncServer.FindHash(getBlockHeadersMessage.StartingBlockNumber);
+                startingHash = SyncServer.FindHash(msg.StartBlockNumber);
             }
 
             BlockHeader[] headers =
                 startingHash == null
                     ? Array.Empty<BlockHeader>()
-                    : SyncServer.FindHeaders(startingHash, (int) getBlockHeadersMessage.MaxHeaders, (int) getBlockHeadersMessage.Skip, getBlockHeadersMessage.Reverse == 1);
+                    : SyncServer.FindHeaders(startingHash, (int) msg.MaxHeaders, (int) msg.Skip, msg.Reverse == 1);
 
             headers = FixHeadersForGeth(headers);
 
-            Send(new BlockHeadersMessage(headers));
-            stopwatch.Stop();
-            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} BlockHeaders to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
+            return new BlockHeadersMessage(headers);
         }
 
         protected void Handle(BlockHeadersMessage message, long size)
         {
             Metrics.Eth62BlockHeadersReceived++;
-            Request<GetBlockHeadersMessage, BlockHeader[]> request = _headersRequests.Take();
+            using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
+            cancellationTokenSource.CancelAfter(1000);
+            Request<GetBlockHeadersMessage, BlockHeader[]> request = _headersRequests.Take(cancellationTokenSource.Token);
             if (message.PacketType == Eth62MessageCode.BlockHeaders)
             {
                 request.ResponseSize = size;
@@ -359,40 +323,86 @@ namespace Nethermind.Network.P2P
         protected void Handle(GetBlockBodiesMessage request)
         {
             Metrics.Eth62GetBlockBodiesReceived++;
-            if (request.BlockHashes.Count > 512)
-            {
-                throw new EthSyncException("Incoming bodies request for more than 512 bodies");
-            }
-
             if (Logger.IsTrace)
             {
                 Logger.Trace($"Received bodies request of length {request.BlockHashes.Count} from {Session.Node:c}:");
             }
 
             Stopwatch stopwatch = Stopwatch.StartNew();
-            IList<Keccak> hashes = request.BlockHashes;
+
+            Interlocked.Increment(ref Counter);
+            Send(FulfillBlockBodiesRequest(request));
+            stopwatch.Stop();
+            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} BlockBodies to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
+        }
+
+        protected BlockBodiesMessage FulfillBlockBodiesRequest(GetBlockBodiesMessage getBlockBodiesMessage)
+        {
+            IList<Keccak> hashes = getBlockBodiesMessage.BlockHashes;
             Block[] blocks = new Block[hashes.Count];
 
+            ulong sizeEstimate = 0;
             for (int i = 0; i < hashes.Count; i++)
             {
                 blocks[i] = SyncServer.Find(hashes[i]);
+                sizeEstimate += MessageSizeEstimator.EstimateSize(blocks[i]);
+
+                if (sizeEstimate > SoftOutgoingMessageSizeLimit)
+                {
+                    break;
+                }
             }
 
-            Interlocked.Increment(ref Counter);
-            Send(new BlockBodiesMessage(blocks));
-            stopwatch.Stop();
-            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} BlockBodies to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
+            return new BlockBodiesMessage(blocks);
         }
 
         protected void Handle(BlockBodiesMessage message, long size)
         {
             Metrics.Eth62BlockBodiesReceived++;
-            Request<GetBlockBodiesMessage, BlockBody[]> request = _bodiesRequests.Take();
+            using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
+            cancellationTokenSource.CancelAfter(1000);
+            Request<GetBlockBodiesMessage, BlockBody[]> request = _bodiesRequests.Take(cancellationTokenSource.Token);
             if (message.PacketType == Eth62MessageCode.BlockBodies)
             {
                 request.ResponseSize = size;
                 request.CompletionSource.SetResult(message.Bodies);
             }
+        }
+
+        protected void Handle(GetReceiptsMessage msg)
+        {
+            Metrics.Eth63GetReceiptsReceived++;
+            if (msg.Hashes.Count > 512)
+            {
+                throw new EthSyncException("Incoming receipts request for more than 512 blocks");
+            }
+
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            Send(FulfillReceiptsRequest(msg));
+            stopwatch.Stop();
+            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} Receipts to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
+        }
+
+        protected ReceiptsMessage FulfillReceiptsRequest(GetReceiptsMessage getReceiptsMessage)
+        {
+            TxReceipt[][] txReceipts = new TxReceipt[getReceiptsMessage.Hashes.Count][];
+
+            ulong sizeEstimate = 0;
+            for (int i = 0; i < getReceiptsMessage.Hashes.Count; i++)
+            {
+                txReceipts[i] = SyncServer.GetReceipts(getReceiptsMessage.Hashes[i]);
+                for (int j = 0; j < txReceipts[i].Length; j++)
+                {
+                    sizeEstimate += MessageSizeEstimator.EstimateSize(txReceipts[i][j]);
+                }
+
+                if (sizeEstimate > SoftOutgoingMessageSizeLimit)
+                {
+                    break;
+                }
+            }
+            
+            return new ReceiptsMessage(txReceipts);    
         }
 
         private static BlockHeader[] FixHeadersForGeth(BlockHeader[] headers)
@@ -421,57 +431,35 @@ namespace Nethermind.Network.P2P
 
         #region Cleanup
 
-        private bool _isDisposed;
+        private int _isDisposed;
         protected abstract void OnDisposed();
-
-        // todo - why can't this just be Dispose()?
-        public override void InitiateDisconnect(DisconnectReason disconnectReason, string details)
+        
+        public override void DisconnectProtocol(DisconnectReason disconnectReason, string details)
         {
-            try
-            {
-                _headersRequests.CompleteAdding();
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-
-            try
-            {
-                _bodiesRequests.CompleteAdding();
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-
-            Session.MarkDisconnected(disconnectReason, DisconnectType.Local, details);
+            Dispose();
         }
 
         public override void Dispose()
         {
-            // todo Interlocked.Exchange?
-            if (_isDisposed)
+            if (Interlocked.Exchange(ref _isDisposed, 1) == 0)
             {
-                return;
-            }
+                OnDisposed();
 
-            _isDisposed = true;
+                try
+                {
+                    _headersRequests?.CompleteAdding();
+                }
+                catch (ObjectDisposedException)
+                {
+                }
 
-            OnDisposed();
-
-            try
-            {
-                _headersRequests?.CompleteAdding();
-            }
-            catch (ObjectDisposedException)
-            {
-            }
-
-            try
-            {
-                _bodiesRequests?.CompleteAdding();
-            }
-            catch (ObjectDisposedException)
-            {
+                try
+                {
+                    _bodiesRequests?.CompleteAdding();
+                }
+                catch (ObjectDisposedException)
+                {
+                }
             }
         }
 

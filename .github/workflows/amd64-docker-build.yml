@@ -40,6 +40,9 @@ jobs:
         if: steps.settings.outputs.TAG != steps.settings.outputs.TAG_FROM_REPO
         run: |
           docker buildx build --platform=linux/amd64 -t "${{ steps.settings.outputs.docker_image }}:${{ steps.settings.outputs.TAG }}" -f Dockerfile --build-arg GIT_COMMIT=$(git log -1 --format=%h) . --push
+      - name: Trigger docker smoke test
+        run: |
+          curl ${{ secrets.BUILD_SERVER }}/smoke-docker
       - name: Clear
         if: always()
         run: |

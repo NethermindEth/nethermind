@@ -44,5 +44,12 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             
             SerializerTester.TestZero(serializer, message);
         }
+        
+        [Test]
+        public void To_string()
+        {
+            GetBlockBodiesMessage newBlockMessage = new GetBlockBodiesMessage();
+            _ = newBlockMessage.ToString();
+        }
     }
 }

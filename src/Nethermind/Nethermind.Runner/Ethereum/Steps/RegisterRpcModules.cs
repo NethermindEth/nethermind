@@ -39,6 +39,7 @@ using Nethermind.Baseline.Config;
 using Nethermind.Baseline.JsonRpc;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Runner.Ethereum.Steps.Migrations;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
@@ -83,7 +84,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
             else
             {
-                EthModuleFactory ethModuleFactory = new EthModuleFactory(_context.DbProvider, _context.TxPool, _context.Wallet, _context.BlockTree,
+                EthModuleFactory ethModuleFactory = new EthModuleFactory(_context.DbProvider, _context.TxPool, _context.Wallet, rpcConfig, _context.BlockTree,
                     _context.EthereumEcdsa, _context.MainBlockProcessor, _context.ReceiptFinder, _context.SpecProvider, rpcConfig, _context.BloomStorage, _context.LogManager, initConfig.IsMining);
                 _context.RpcModuleProvider.Register(new BoundedModulePool<IEthModule>(8, ethModuleFactory));
             }
@@ -91,10 +92,21 @@ namespace Nethermind.Runner.Ethereum.Steps
             ProofModuleFactory proofModuleFactory = new ProofModuleFactory(_context.DbProvider, _context.BlockTree, _context.RecoveryStep, _context.ReceiptFinder, _context.SpecProvider,  _context.LogManager);
             _context.RpcModuleProvider.Register(new BoundedModulePool<IProofModule>(2, proofModuleFactory));
 
-            DebugModuleFactory debugModuleFactory = new DebugModuleFactory(_context.DbProvider, _context.BlockTree, _context.BlockValidator, _context.RecoveryStep, _context.RewardCalculatorSource, _context.ReceiptStorage, _context.ConfigProvider, _context.SpecProvider, _context.LogManager);
+            DebugModuleFactory debugModuleFactory = new DebugModuleFactory(
+                _context.DbProvider, 
+                _context.BlockTree,
+				rpcConfig, 
+                _context.BlockValidator, 
+                _context.RecoveryStep, 
+                _context.RewardCalculatorSource, 
+                _context.ReceiptStorage,
+                new ReceiptMigration(_context), 
+                _context.ConfigProvider, 
+                _context.SpecProvider, 
+                _context.LogManager);
             _context.RpcModuleProvider.Register(new BoundedModulePool<IDebugModule>(8, debugModuleFactory));
 
-            TraceModuleFactory traceModuleFactory = new TraceModuleFactory(_context.DbProvider, _context.BlockTree, _context.RecoveryStep, _context.RewardCalculatorSource, _context.ReceiptStorage, _context.SpecProvider, _context.LogManager);
+            TraceModuleFactory traceModuleFactory = new TraceModuleFactory(_context.DbProvider, _context.BlockTree, rpcConfig, _context.RecoveryStep, _context.RewardCalculatorSource, _context.ReceiptStorage, _context.SpecProvider, _context.LogManager);
             _context.RpcModuleProvider.Register(new BoundedModulePool<ITraceModule>(8, traceModuleFactory));
 
             PersonalBridge personalBridge = new PersonalBridge(_context.EthereumEcdsa, _context.Wallet);

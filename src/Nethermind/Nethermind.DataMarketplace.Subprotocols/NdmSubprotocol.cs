@@ -189,7 +189,7 @@ namespace Nethermind.DataMarketplace.Subprotocols
             catch (Exception ex)
             {
                 if (Logger.IsError) Logger.Error(ex.ToString(), ex);
-                InitiateDisconnect(DisconnectReason.NdmInvalidHiSignature, "Invalid NDM signature for Hi message.");
+                Session.InitiateDisconnect(DisconnectReason.NdmInvalidHiSignature, "Invalid NDM signature for Hi message.");
                 throw;
             }
         }
@@ -239,7 +239,7 @@ namespace Nethermind.DataMarketplace.Subprotocols
             if (!(IsConsumer || IsProvider))
             {
                 if (Logger.IsWarn) Logger.Warn("NDM peer is neither provider nor consumer (no addresses configured), skipping subprotocol connection.");
-                InitiateDisconnect(DisconnectReason.NdmPeerAddressesNotConfigured, "Addresses not configured for NDM peer.");
+                Session.InitiateDisconnect(DisconnectReason.NdmPeerAddressesNotConfigured, "Addresses not configured for NDM peer.");
                 return;
             }
 
@@ -251,7 +251,7 @@ namespace Nethermind.DataMarketplace.Subprotocols
                 if (!message.NodeId.Address.Equals(address))
                 {
                     if (Logger.IsError) Logger.Error($"Invalid signature: '{message.NodeId.Address}' <> '{address}'.");
-                    InitiateDisconnect(DisconnectReason.NdmInvalidHiSignature, "Invalid NDM signature for Hi message.");
+                    Session.InitiateDisconnect(DisconnectReason.NdmInvalidHiSignature, "Invalid NDM signature for Hi message.");
 
                     return;
                 }
@@ -295,7 +295,7 @@ namespace Nethermind.DataMarketplace.Subprotocols
             });
         }
 
-        public override void InitiateDisconnect(DisconnectReason disconnectReason, string details)
+        public override void DisconnectProtocol(DisconnectReason disconnectReason, string details)
         {
             if (Interlocked.Exchange(ref DisconnectedValue, 1) == 1)
             {
@@ -309,7 +309,6 @@ namespace Nethermind.DataMarketplace.Subprotocols
                     Logger.Error("There was an error within NDM subprotocol.", t.Exception);
                 }
             });
-            Session.InitiateDisconnect(disconnectReason, details);
         }
 
         private void SendGetDataAssets()

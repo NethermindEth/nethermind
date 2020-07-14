@@ -152,14 +152,17 @@ namespace Nethermind.Blockchain.Visitors
 
             if (_gapStart != null)
             {
-                if(_logger.IsInfo) _logger.Info($"Found a gap in blocks after last shutdown - deleting {_currentLevelNumber}");
-                return Task.FromResult(LevelVisitOutcome.DeleteLevel);
+                if(_logger.IsWarn) _logger.Warn($"Found a gap in blocks after last shutdown at level {_currentLevelNumber}. The node will attempt to continue (the problem may be auto-corrected).");
+                // if(_logger.IsInfo) _logger.Info($"Found a gap in blocks after last shutdown - deleting {_currentLevelNumber}");
+                return Task.FromResult(LevelVisitOutcome.StopVisiting);
+                // return Task.FromResult(LevelVisitOutcome.DeleteLevel);
             }
 
             if (_bodiesInCurrentLevel == 0)
             {
                 _gapStart = _currentLevelNumber;
-                return Task.FromResult(LevelVisitOutcome.DeleteLevel);
+                return Task.FromResult(LevelVisitOutcome.None);
+                // return Task.FromResult(LevelVisitOutcome.DeleteLevel);
             }
 
             return Task.FromResult(LevelVisitOutcome.None);

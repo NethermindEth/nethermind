@@ -17,8 +17,9 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Processing;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -34,13 +35,15 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         private readonly IConfigProvider _configProvider;
         private readonly IGethStyleTracer _tracer;
         private readonly IBlockTree _blockTree;
-        private Dictionary<string, IDb> _dbMappings;
+        private readonly IReceiptsMigration _receiptsMigration;
+        private readonly Dictionary<string, IDb> _dbMappings;
 
-        public DebugBridge(IConfigProvider configProvider, IReadOnlyDbProvider dbProvider, IGethStyleTracer tracer, IBlockProcessingQueue receiptsBlockQueue, IBlockTree blockTree)
+        public DebugBridge(IConfigProvider configProvider, IReadOnlyDbProvider dbProvider, IGethStyleTracer tracer, IBlockTree blockTree, IReceiptsMigration receiptsMigration)
         {
             _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));
             _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _receiptsMigration = receiptsMigration ?? throw new ArgumentNullException(nameof(receiptsMigration));
             dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
             IDb blockInfosDb = dbProvider.BlockInfosDb ?? throw new ArgumentNullException(nameof(dbProvider.BlockInfosDb));
             IDb blocksDb = dbProvider.BlocksDb ?? throw new ArgumentNullException(nameof(dbProvider.BlocksDb));
@@ -71,12 +74,14 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         {
             return _blockTree.FindLevel(number);
         }
-        
+
         public int DeleteChainSlice(long startNumber)
         {
             return _blockTree.DeleteChainSlice(startNumber);
         }
-        
+
+        public Task<bool> MigrateReceipts(long blockNumber) => _receiptsMigration.Run(blockNumber + 1); // add 1 to make go from inclusive (better for API) to exclusive (better for internal)
+
         public GethLikeTxTrace GetTransactionTrace(Keccak transactionHash, GethTraceOptions gethTraceOptions = null)
         {
             return _tracer.Trace(transactionHash, gethTraceOptions ?? GethTraceOptions.Default);
@@ -99,12 +104,12 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
 
         public GethLikeTxTrace[] GetBlockTrace(Keccak blockHash, GethTraceOptions gethTraceOptions = null)
         {
-            return _tracer.TraceBlock(blockHash, gethTraceOptions ?? GethTraceOptions.Default);
+            return _tracer.TraceBlock(blockHash, gethTraceOptions ?? GethTraceOptions.Default); 
         }
 
         public GethLikeTxTrace[] GetBlockTrace(long blockNumber, GethTraceOptions gethTraceOptions = null)
         {
-            return _tracer.TraceBlock(blockNumber, gethTraceOptions ?? GethTraceOptions.Default);
+            return _tracer.TraceBlock(blockNumber, gethTraceOptions ?? GethTraceOptions.Default); 
         }
 
         public GethLikeTxTrace[] GetBlockTrace(Rlp blockRlp, GethTraceOptions gethTraceOptions = null)
@@ -120,14 +125,9 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         public byte[] GetBlockRlp(long number)
         {
             Keccak hash = _blockTree.FindHash(number);
-            if (hash == null)
-            {
-                return null;
-            }
-
-            return _dbMappings[DbNames.Blocks].Get(hash);
+            return hash == null ? null : _dbMappings[DbNames.Blocks].Get(hash);
         }
-    
+
         public object GetConfigValue(string category, string name)
         {
             return _configProvider.GetRawValue(category, name);

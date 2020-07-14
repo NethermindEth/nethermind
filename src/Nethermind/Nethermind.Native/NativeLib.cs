@@ -39,6 +39,11 @@ namespace Nethermind.Native
             {
                 return OsPlatform.Mac;
             }
+            
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.FreeBSD))
+            {
+                return OsPlatform.Linux;
+            }
 
             throw new InvalidOperationException("Unsupported platform.");
         }

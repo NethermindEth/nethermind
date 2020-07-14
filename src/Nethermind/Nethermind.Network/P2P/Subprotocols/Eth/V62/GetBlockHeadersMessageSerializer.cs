@@ -23,19 +23,19 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 {
     public class GetBlockHeadersMessageSerializer : IZeroMessageSerializer<GetBlockHeadersMessage>
     {
-       private static GetBlockHeadersMessage Deserialize(RlpStream rlpStream)
+       public static GetBlockHeadersMessage Deserialize(RlpStream rlpStream)
         {
             GetBlockHeadersMessage message = new GetBlockHeadersMessage();
             rlpStream.ReadSequenceLength();
             byte[] startingBytes = rlpStream.DecodeByteArray();
             if (startingBytes.Length == 32)
             {
-                message.StartingBlockHash = new Keccak(startingBytes);
+                message.StartBlockHash = new Keccak(startingBytes);
             }
             else
             {
                 UInt256.CreateFromBigEndian(out UInt256 result, startingBytes);
-                message.StartingBlockNumber = (long)result;
+                message.StartBlockNumber = (long)result;
             }
 
             message.MaxHeaders = rlpStream.DecodeInt();
@@ -46,7 +46,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         public void Serialize(IByteBuffer byteBuffer, GetBlockHeadersMessage message)
         {
-            int contentLength = message.StartingBlockHash == null ? Rlp.LengthOf(message.StartingBlockNumber) : Rlp.LengthOf(message.StartingBlockHash);
+            int contentLength = message.StartBlockHash == null
+                ? Rlp.LengthOf(message.StartBlockNumber)
+                : Rlp.LengthOf(message.StartBlockHash);
             contentLength += Rlp.LengthOf(message.MaxHeaders);
             contentLength += Rlp.LengthOf(message.Skip);
             contentLength += Rlp.LengthOf(message.Reverse);
@@ -57,13 +59,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             byteBuffer.EnsureWritable(totalLength, true);
 
             rlpStream.StartSequence(contentLength);
-            if (message.StartingBlockHash == null)
+            if (message.StartBlockHash == null)
             {
-                rlpStream.Encode(message.StartingBlockNumber);
+                rlpStream.Encode(message.StartBlockNumber);
             }
             else
             {
-                rlpStream.Encode(message.StartingBlockHash);
+                rlpStream.Encode(message.StartBlockHash);
             }
             
             rlpStream.Encode(message.MaxHeaders);

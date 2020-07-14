@@ -17,7 +17,6 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Crypto;
 
 namespace Nethermind.Consensus
 {
@@ -25,9 +24,10 @@ namespace Nethermind.Consensus
     {
         public static readonly NullSigner Instance = new NullSigner();
         
+        public Address Address { get; } = Address.Zero;
+        
         public void Sign(Transaction tx) { }
 
-        public Address Address { get; } = Address.Zero;
         public Signature Sign(Keccak message) { return new Signature(new byte[65]); }
 
         public bool CanSign { get; } = true;

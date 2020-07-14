@@ -14,24 +14,31 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.IO;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Json;
-using Newtonsoft.Json;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Json
 {
     [TestFixture]
-    public class AddressConverterTests
+    public class AddressConverterTests : ConverterTestBase<Address>
     {
         [Test]
-        public void Can_read_null()
+        public void Null_value()
         {
-            AddressConverter converter = new AddressConverter();
-            JsonReader reader = new JsonTextReader(new StringReader(""));
-            reader.ReadAsString();
-            Address result = converter.ReadJson(reader, typeof(Address), null, false, JsonSerializer.CreateDefault());
-            Assert.AreEqual(null, result);
+            TestConverter(null, (address, address1) => address == address1, new AddressConverter());
+        }
+        
+        [Test]
+        public void Zero_value()
+        {
+            TestConverter(Address.Zero, (address, address1) => address == address1, new AddressConverter());
+        }
+        
+        [Test]
+        public void Some_value()
+        {
+            TestConverter(TestItem.AddressA, (address, address1) => address == address1, new AddressConverter());
         }
     }
 }
