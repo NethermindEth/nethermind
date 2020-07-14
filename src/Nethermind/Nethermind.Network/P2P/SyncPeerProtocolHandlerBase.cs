@@ -40,6 +40,7 @@ namespace Nethermind.Network.P2P
 {
     public abstract class SyncPeerProtocolHandlerBase : ProtocolHandlerBase, ISyncPeer
     {
+        public static readonly ulong SoftOutgoingMessageSizeLimit = 2.MB();
         public Node Node => Session?.Node;
         public string ClientId => Session?.Node?.ClientId;
         public UInt256 TotalDifficulty { get; set; }
@@ -346,7 +347,7 @@ namespace Nethermind.Network.P2P
                 blocks[i] = SyncServer.Find(hashes[i]);
                 sizeEstimate += MessageSizeEstimator.EstimateSize(blocks[i]);
 
-                if (sizeEstimate > 2.MB())
+                if (sizeEstimate > SoftOutgoingMessageSizeLimit)
                 {
                     break;
                 }
@@ -384,8 +385,24 @@ namespace Nethermind.Network.P2P
 
         protected ReceiptsMessage FulfillReceiptsRequest(GetReceiptsMessage getReceiptsMessage)
         {
-            TxReceipt[][] txReceipts = SyncServer.GetReceipts(getReceiptsMessage.Hashes);
-            return new ReceiptsMessage(txReceipts);
+            TxReceipt[][] txReceipts = new TxReceipt[getReceiptsMessage.Hashes.Count][];
+
+            ulong sizeEstimate = 0;
+            for (int i = 0; i < getReceiptsMessage.Hashes.Count; i++)
+            {
+                txReceipts[i] = SyncServer.GetReceipts(getReceiptsMessage.Hashes[i]);
+                for (int j = 0; j < txReceipts[i].Length; j++)
+                {
+                    sizeEstimate += MessageSizeEstimator.EstimateSize(txReceipts[i][j]);
+                }
+
+                if (sizeEstimate > SoftOutgoingMessageSizeLimit)
+                {
+                    break;
+                }
+            }
+            
+            return new ReceiptsMessage(txReceipts);    
         }
 
         private static BlockHeader[] FixHeadersForGeth(BlockHeader[] headers)

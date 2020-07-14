@@ -13,21 +13,14 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using Nethermind.Core.Crypto;
+using System.Threading.Tasks;
 
-namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
+namespace Nethermind.Blockchain.Receipts
 {
-    public class GetPooledTransactionsMessage : HashesMessage
+    public interface IReceiptsMigration
     {
-        public override int PacketType { get; } = Eth65MessageCode.GetPooledTransactions;
-        public override string Protocol { get; } = "eth";
-
-        public GetPooledTransactionsMessage(Keccak[] hashes)
-            : base(hashes)
-        {
-        }
-        
-        public override string ToString() => $"{nameof(GetPooledTransactionsMessage)}({Hashes?.Count})";
+        Task<bool> Run(long blockNumber);
     }
 }

@@ -33,7 +33,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         public override string ToString()
         {
-            return $"{Protocol}.{ProtocolVersion} chain: {ChainId} | diff: {TotalDifficulty} | best: {BestHash.ToShortString()} | genesis: {GenesisHash.ToShortString()}";
+            return $"{Protocol}.{ProtocolVersion} chain: {ChainId} | diff: {TotalDifficulty} | best: {BestHash?.ToShortString()} | genesis: {GenesisHash?.ToShortString()}";
         }
     }
 }

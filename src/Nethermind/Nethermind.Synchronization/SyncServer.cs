@@ -300,16 +300,9 @@ namespace Nethermind.Synchronization
             }
         }
 
-        public TxReceipt[][] GetReceipts(IList<Keccak> blockHashes)
+        public TxReceipt[] GetReceipts(Keccak blockHash)
         {
-            var receipts = new TxReceipt[blockHashes.Count][];
-            for (int blockIndex = 0; blockIndex < blockHashes.Count; blockIndex++)
-            {
-                Keccak blockHash = blockHashes[blockIndex];
-                receipts[blockIndex] = blockHash != null ? _receiptFinder.Get(blockHash) : Array.Empty<TxReceipt>();
-            }
-
-            return receipts;
+            return blockHash != null ? _receiptFinder.Get(blockHash) : Array.Empty<TxReceipt>();
         }
 
         public BlockHeader[] FindHeaders(Keccak hash, int numberOfBlocks, int skip, bool reverse)

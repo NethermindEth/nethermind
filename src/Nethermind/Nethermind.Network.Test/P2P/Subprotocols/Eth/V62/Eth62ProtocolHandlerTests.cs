@@ -60,7 +60,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             NetworkDiagTracer.IsEnabled = true;
 
             _session = Substitute.For<ISession>();
-            Node node = new Node(TestItem.PublicKeyA, new IPEndPoint(System.Net.IPAddress.Broadcast, 30303));
+            Node node = new Node(TestItem.PublicKeyA, new IPEndPoint(IPAddress.Broadcast, 30303));
             _session.Node.Returns(node);
             _syncManager = Substitute.For<ISyncServer>();
             _transactionPool = Substitute.For<ITxPool>();

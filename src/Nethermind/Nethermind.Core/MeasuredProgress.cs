@@ -49,6 +49,13 @@ namespace Nethermind.Core
                 UtcEndTime = DateTime.UtcNow;
             }
         }
+        
+        public void Reset(long startValue)
+        {
+            LastMeasurement = UtcEndTime = null;
+            UtcStartTime = DateTime.UtcNow;
+            StartValue = CurrentValue = startValue;
+        }
 
         private long StartValue { get; set; }
 

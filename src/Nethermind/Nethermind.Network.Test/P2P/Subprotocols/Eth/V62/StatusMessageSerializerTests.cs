@@ -147,5 +147,12 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             byte[] serialized = serializer.Serialize(message);
             Assert.AreEqual(bytes, serialized, "serializing to same format");
         }
+
+        [Test]
+        public void To_string()
+        {
+            StatusMessage statusMessage = new StatusMessage();
+            _ = statusMessage.ToString();
+        }
     }
 }

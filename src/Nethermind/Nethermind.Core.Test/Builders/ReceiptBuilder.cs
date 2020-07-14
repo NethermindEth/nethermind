@@ -26,16 +26,16 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.Logs = new[] {new LogEntry(Address.Zero, new byte[0], new[] {Keccak.Zero}),};
         }
 
-        public ReceiptBuilder WithAllFieldsFilled => WithBloom(Test.Builders.TestItem.NonZeroBloom)
+        public ReceiptBuilder WithAllFieldsFilled => WithBloom(TestItem.NonZeroBloom)
             .WithError("error")
             .WithIndex(2)
-            .WithSender(Test.Builders.TestItem.AddressA)
-            .WithRecipient(Test.Builders.TestItem.AddressB)
-            .WithContractAddress(Test.Builders.TestItem.AddressC)
+            .WithSender(TestItem.AddressA)
+            .WithRecipient(TestItem.AddressB)
+            .WithContractAddress(TestItem.AddressC)
             .WithGasUsed(100)
-            .WithTransactionHash(Builders.TestItem.KeccakA)
-            .WithState(Builders.TestItem.KeccakB)
-            .WithBlockHash(Builders.TestItem.KeccakC)
+            .WithTransactionHash(TestItem.KeccakA)
+            .WithState(TestItem.KeccakB)
+            .WithBlockHash(TestItem.KeccakC)
             .WithBlockNumber(2)
             .WithBloom(Bloom.Empty)
             .WithGasUsedTotal(1000)
