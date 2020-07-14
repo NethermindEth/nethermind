@@ -98,9 +98,13 @@ cd Nethermind.Runner
 dotnet run -c Release --no-build -- --config mainnet
 ```
 
+## Docker Image
+
+Official Nethermind docker images are available on [Docker Hub](https://hub.docker.com/r/nethermind/nethermind).
+
 ## Test
 
-if you want to run the Nethermind or Ethereum Foundation tests, then:
+If you want to run the Nethermind or Ethereum Foundation tests, then:
 ```
 dotnet build Nethermind.sln -c Debug
 dotnet test Nethermind.sln
