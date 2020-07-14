@@ -159,12 +159,6 @@ namespace Nethermind.Blockchain.Producers
                     continue;
                 }
                 
-                if (tx is GeneratedTransaction)
-                {
-                    if (_logger.IsDebug) _logger.Debug($"Rejecting (engine generated transaction) {tx.ToShortString()}");
-                    continue;                    
-                }
-
                 selected.Add(tx);
                 nonces[tx.SenderAddress] = tx.Nonce + 1;
                 gasRemaining -= tx.GasLimit;
