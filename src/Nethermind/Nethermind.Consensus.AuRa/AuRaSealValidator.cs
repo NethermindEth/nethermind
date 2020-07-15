@@ -87,8 +87,10 @@ namespace Nethermind.Consensus.AuRa
 
             if (header.AuRaStep > currentStep)
             {
+                const int blockTooEarlyWarningMillisecondThreshold = 1000;
+                
                 TimeSpan timeToStep = _stepCalculator.TimeToStep(header.AuRaStep.Value);
-                if (timeToStep.TotalMilliseconds > 500)
+                if (timeToStep.TotalMilliseconds > blockTooEarlyWarningMillisecondThreshold)
                 {
                     if (_logger.IsWarn) _logger.Warn($"Block {header.Number}, hash {header.Hash} step {header.AuRaStep} is {timeToStep:g} too early. Current step is {currentStep}.");
                 }
