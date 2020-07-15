@@ -105,7 +105,7 @@ namespace Nethermind.Blockchain.Processing
                 for (int i = 0; i < suggestedBlocks.Count; i++)
                 {
                     processedBlocks[i] = ProcessOne(suggestedBlocks[i], options, blockTracer);
-                    
+
                     // be cautious here as AuRa depends on processing
                     PreCommitBlock(newBranchStateRoot); // only needed if we plan to read state root?
                     if (!readOnly)
@@ -275,7 +275,7 @@ namespace Nethermind.Blockchain.Processing
                 bh.Timestamp,
                 bh.ExtraData)
             {
-                Bloom = Core.Bloom.Empty,
+                Bloom = Bloom.Empty,
                 Author = bh.Author,
                 Hash = bh.Hash,
                 MixHash = bh.MixHash,

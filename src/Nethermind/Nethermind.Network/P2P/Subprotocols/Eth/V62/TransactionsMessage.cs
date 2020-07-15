@@ -24,11 +24,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         public override int PacketType { get; } = Eth62MessageCode.Transactions;
         public override string Protocol { get; } = "eth";
         
-        public IList<Transaction> Transactions { get; set; }
+        public IList<Transaction> Transactions { get; }
 
         public TransactionsMessage(IList<Transaction> transactions)
         {
             Transactions = transactions;
         }
+
+        public override string ToString() => $"{nameof(TransactionsMessage)}({Transactions?.Count})";
     }
 }

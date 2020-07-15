@@ -74,7 +74,15 @@ namespace Nethermind.Synchronization.FastBlocks
         /// </summary>
         private long ReceiptsInQueue => _dependencies.Sum(d => d.Value.Count);
 
-        public FastReceiptsSyncFeed(ISyncModeSelector syncModeSelector, ISpecProvider specProvider, IBlockTree blockTree, IReceiptStorage receiptStorage, ISyncPeerPool syncPeerPool, ISyncConfig syncConfig, ISyncReport syncReport, ILogManager logManager)
+        public FastReceiptsSyncFeed(
+            ISyncModeSelector syncModeSelector,
+            ISpecProvider specProvider,
+            IBlockTree blockTree,
+            IReceiptStorage receiptStorage,
+            ISyncPeerPool syncPeerPool,
+            ISyncConfig syncConfig,
+            ISyncReport syncReport,
+            ILogManager logManager)
             : base(syncModeSelector, logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -98,6 +106,8 @@ namespace Nethermind.Synchronization.FastBlocks
             _pivotNumber = _syncConfig.PivotNumberParsed;
             _pivotHash = _syncConfig.PivotHashParsed;
 
+            LagBehindBodies = FastBlocksLags.ForReceipts;
+
             long lowestInserted = _receiptStorage.LowestInsertedReceiptBlock ?? long.MaxValue;
             if (lowestInserted < _pivotNumber)
             {
@@ -108,9 +118,12 @@ namespace Nethermind.Synchronization.FastBlocks
             _lowestRequestedHash = _startHash;
         }
 
-        protected override SyncMode ActivationSyncModes { get; } = SyncMode.FastReceipts & ~SyncMode.FastBlocks;
+        protected override SyncMode ActivationSyncModes { get; }
+            = SyncMode.FastReceipts & ~SyncMode.FastBlocks;
 
         public override bool IsMultiFeed => true;
+        
+        public long LagBehindBodies { get; set; }
 
         public override AllocationContexts Contexts => AllocationContexts.Receipts;
 
@@ -153,7 +166,8 @@ namespace Nethermind.Synchronization.FastBlocks
             long? lowestInsertedBody = _blockTree.LowestInsertedBody?.Number;
             long? lowestInsertedReceipt = _receiptStorage.LowestInsertedReceiptBlock;
             if (lowestInsertedBody != 1 &&
-                (lowestInsertedBody ?? _pivotNumber) > (lowestInsertedReceipt ?? _pivotNumber) - 1024 * 32)
+                (lowestInsertedBody ?? _pivotNumber) >
+                (lowestInsertedReceipt ?? _pivotNumber) - LagBehindBodies)
             {
                 return null;
             }
@@ -167,7 +181,7 @@ namespace Nethermind.Synchronization.FastBlocks
             Block block;
             if (_lowestRequestedHash != _pivotHash)
             {
-                // if we have already requested receipts of the block number 1 then we have no moe requests
+                // if we have already requested receipts of the block number 1 then we have no more requests
                 if (predecessorBlock.ParentHash == _blockTree.Genesis.Hash)
                 {
                     return null;
@@ -191,7 +205,7 @@ namespace Nethermind.Synchronization.FastBlocks
             batch.Predecessors = new long?[requestSize];
             batch.Blocks = new Block[requestSize];
             batch.Request = new Keccak[requestSize];
-            batch.MinNumber = block.Number; // not really a min number...
+            batch.MinNumber = block.Number;
 
             int collectedRequests = 0;
             while (collectedRequests < requestSize)
@@ -202,6 +216,7 @@ namespace Nethermind.Synchronization.FastBlocks
                     batch.Predecessors[collectedRequests] = predecessorBlock?.Number;
                     batch.Blocks[collectedRequests] = block;
                     batch.Request[collectedRequests] = block.Hash;
+                    batch.MinNumber = block.Number;
                     predecessorBlock = block;
                     collectedRequests++;
                 }
@@ -282,7 +297,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 throw new InvalidOperationException("Batch needs to have the min number set to determine priority");
             }
 
-            if (_receiptStorage.LowestInsertedReceiptBlock - batch.MinNumber < FastBlocksPriorities.ForReceipts)
+            if ((_receiptStorage.LowestInsertedReceiptBlock ?? _pivotNumber) - batch.MinNumber < FastBlocksPriorities.ForReceipts)
             {
                 batch.Prioritized = true;
             }

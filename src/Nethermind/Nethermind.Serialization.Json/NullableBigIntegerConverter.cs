@@ -36,12 +36,6 @@ namespace Nethermind.Serialization.Json
 
         public override void WriteJson(JsonWriter writer, BigInteger? value, Newtonsoft.Json.JsonSerializer serializer)
         {
-            if (!value.HasValue)
-            {
-                writer.WriteNull();
-                return;
-            }
-            
             _bigIntegerConverter.WriteJson(writer, value.Value, serializer);
         }
 

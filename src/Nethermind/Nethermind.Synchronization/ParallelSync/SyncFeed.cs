@@ -65,7 +65,7 @@ namespace Nethermind.Synchronization.ParallelSync
             ChangeState(SyncFeedState.Finished);
         }
 
-        protected void FallAsleep()
+        public void FallAsleep()
         {
             if (CurrentState == SyncFeedState.Finished)
             {

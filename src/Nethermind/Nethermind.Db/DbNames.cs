@@ -35,5 +35,6 @@ namespace Nethermind.Db
         public const string Configs = "configs";
         public const string EthRequests = "ethRequests";
         public const string Bloom = "bloom";
+        public const string CHT = "canonicalHashTrie";
     }
 }

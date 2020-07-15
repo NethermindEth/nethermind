@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 
 namespace Nethermind.Core.Extensions
@@ -36,35 +35,6 @@ namespace Nethermind.Core.Extensions
             }
 
             return result;
-        }
-        
-        public static byte[] Xor(this Span<byte> bytes, Span<byte> otherBytes)
-        {
-            if (bytes.Length != otherBytes.Length)
-            {
-                throw new InvalidOperationException($"Trying to xor arrays of different lengths: {bytes.Length} and {otherBytes.Length}");
-            }
-            
-            byte[] result = new byte[bytes.Length];
-            for (int i = 0; i < result.Length; i++)
-            {
-                result[i] = (byte)(bytes[i] ^ otherBytes[i]);
-            }
-
-            return result;
-        }
-        
-        public static void XorInPlace(this byte[] bytes, byte[] otherBytes)
-        {
-            if (bytes.Length != otherBytes.Length)
-            {
-                throw new InvalidOperationException($"Trying to xor arrays of different lengths: {bytes?.Length} and {otherBytes?.Length}");
-            }
-            
-            for (int i = 0; i < bytes.Length; i++)
-            {
-                bytes[i] = (byte)(bytes[i] ^ otherBytes[i]);
-            }
         }
 
         public static byte[] Slice(this byte[] bytes, int startIndex)

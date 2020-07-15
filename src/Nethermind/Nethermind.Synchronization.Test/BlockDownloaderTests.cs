@@ -169,12 +169,7 @@ namespace Nethermind.Synchronization.Test
                 throw new NotImplementedException();
             }
 
-            public void SendNewBlock(Block block)
-            {
-                throw new NotImplementedException();
-            }
-
-            public void HintNewBlock(Keccak blockHash, long number)
+            public void NotifyOfNewBlock(Block block, SendBlockPriority priority)
             {
                 throw new NotImplementedException();
             }
@@ -839,12 +834,7 @@ namespace Nethermind.Synchronization.Test
                 throw new NotImplementedException();
             }
 
-            public void SendNewBlock(Block block)
-            {
-                throw new NotImplementedException();
-            }
-
-            public void HintNewBlock(Keccak blockHash, long number)
+            public void NotifyOfNewBlock(Block block, SendBlockPriority priority)
             {
                 throw new NotImplementedException();
             }

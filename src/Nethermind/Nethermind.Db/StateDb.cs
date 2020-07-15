@@ -87,6 +87,7 @@ namespace Nethermind.Db
 
         public void Remove(byte[] key)
         {
+            throw new NotSupportedException("Data should never be deleted from the state DB");
         }
 
         public bool KeyExists(byte[] key)

@@ -50,13 +50,17 @@ namespace Nethermind.State
         private Change[] _changes = new Change[StartCapacity];
         private int _currentPosition = -1;
 
-        public StateProvider(ISnapshotableDb stateDb, IDb codeDb, ILogManager logManager)
+        public StateProvider(StateTree stateTree, IDb codeDb, ILogManager logManager)
         {
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            if (stateDb == null) throw new ArgumentNullException(nameof(stateDb));
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
-            _tree = new StateTree(stateDb);
+            _tree = stateTree ?? throw new ArgumentNullException(nameof(stateTree));
+        }
+
+        public StateProvider(ISnapshotableDb stateDb, IDb codeDb, ILogManager logManager)
+            : this(new StateTree(stateDb), codeDb, logManager)
+        {
         }
 
         public void Accept(ITreeVisitor visitor, Keccak stateRoot)
@@ -682,7 +686,7 @@ namespace Nethermind.State
             {
                 return;
             }
-            
+
             IncrementChangePosition();
             _intraBlockCache[address].Push(_currentPosition);
             _changes[_currentPosition] = new Change(changeType, address, touchedAccount);

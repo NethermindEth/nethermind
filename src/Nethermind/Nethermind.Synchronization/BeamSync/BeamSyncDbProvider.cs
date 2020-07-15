@@ -33,7 +33,7 @@ namespace Nethermind.Synchronization.BeamSync
             _otherProvider = otherProvider ?? throw new ArgumentNullException(nameof(otherProvider));
             BeamSyncDb codeDb = new BeamSyncDb(otherProvider.CodeDb.Innermost, otherProvider.BeamStateDb, syncModeSelector, logManager, syncConfig.BeamSyncContextTimeout, syncConfig.BeamSyncPreProcessorTimeout);
             BeamSyncDb stateDb = new BeamSyncDb(otherProvider.StateDb.Innermost, otherProvider.BeamStateDb, syncModeSelector, logManager, syncConfig.BeamSyncContextTimeout, syncConfig.BeamSyncPreProcessorTimeout);
-            BeamSyncFeed = new CompositeStateSyncFeed<StateSyncBatch>(logManager,codeDb, stateDb);
+            BeamSyncFeed = new CompositeStateSyncFeed<StateSyncBatch>(logManager, codeDb, stateDb);
             StateDb = new StateDb(stateDb);
             CodeDb = new StateDb(codeDb);
         }
@@ -49,6 +49,7 @@ namespace Nethermind.Synchronization.BeamSync
         public IDb EthRequestsDb => _otherProvider.EthRequestsDb;
         public IDb BloomDb => _otherProvider.BloomDb;
         public IDb BeamStateDb => _otherProvider.BeamStateDb;
+        public IDb ChtDb => _otherProvider.ChtDb;
 
         public void Dispose()
         {
@@ -62,6 +63,7 @@ namespace Nethermind.Synchronization.BeamSync
             ConfigsDb?.Dispose();
             EthRequestsDb?.Dispose();
             BloomDb?.Dispose();
+            ChtDb?.Dispose();
         }
     }
 }

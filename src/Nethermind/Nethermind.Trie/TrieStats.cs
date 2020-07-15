@@ -58,7 +58,7 @@ namespace Nethermind.Trie
             builder.AppendLine($"  STATE NODES {StateCount} ({StateBranchCount}|{StateExtensionCount}|{AccountCount})");
             builder.AppendLine($"  STORAGE NODES {StorageCount} ({StorageBranchCount}|{StorageExtensionCount}|{StorageLeafCount})");
             builder.AppendLine($"  ACCOUNTS {AccountCount} OF WHICH ({CodeCount}) ARE CONTRACTS");
-            builder.AppendLine($"  MISSING STATE {MissingState}, CODE {MissingCode}, STORAGE {MissingStorage}");
+            builder.AppendLine($"  MISSING {MissingNodes} (STATE {MissingState}, CODE {MissingCode}, STORAGE {MissingStorage})");
             return builder.ToString();
         }
     }

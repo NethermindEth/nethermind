@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using Nethermind.Abi;
 using Nethermind.Consensus.AuRa.Contracts;
@@ -27,6 +28,7 @@ using Nethermind.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.HashLib;
+using Nethermind.Logging;
 using Nethermind.State;
 
 namespace Nethermind.Consensus.AuRa.Transactions
@@ -41,31 +43,51 @@ namespace Nethermind.Consensus.AuRa.Transactions
         private readonly ProtectedPrivateKey _cryptoKey;
         private readonly IList<IRandomContract> _contracts;
         private readonly ICryptoRandom _random;
+        private readonly ILogger _logger;
 
-        public RandomContractTxSource(IList<IRandomContract> contracts,
+        public RandomContractTxSource(
+            IList<IRandomContract> contracts,
             IEciesCipher eciesCipher,
             ProtectedPrivateKey cryptoKey, 
-            ICryptoRandom cryptoRandom)
+            ICryptoRandom cryptoRandom,
+            ILogManager logManager)
         {
             _contracts = contracts ?? throw new ArgumentNullException(nameof(contracts));
             _eciesCipher = eciesCipher ?? throw new ArgumentNullException(nameof(eciesCipher));
             _cryptoKey = cryptoKey ?? throw new ArgumentNullException(nameof(cryptoKey));
-            _random = cryptoRandom;
+            _random = cryptoRandom ?? throw new ArgumentNullException(nameof(cryptoRandom));
+            _logger = logManager?.GetClassLogger<RandomContractTxSource>() ?? throw new ArgumentNullException(nameof(logManager));
         }
         
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
         {
+            if (_lastTransactionInfo != null && _lastTransactionInfo.ParentBlockHash == parent.Hash)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Trying to produce multiple RANDAO transactions on same block {parent.Number + 1} on phase {_lastTransactionInfo.Phase}. " +
+                                                 $"First transaction produced by object_{_lastTransactionInfo.Id} on stack trace {_lastTransactionInfo.StackTrace}. " +
+                                                 $"Second transaction produced by object_{_id} on stack trace {new StackTrace()}");
+                yield break;
+            }
+            
             if (_contracts.TryGetForBlock(parent.Number + 1, out var contract))
             {
-                var tx = GetTransaction(contract, parent);
+                var (phase, tx) = GetTransaction(contract, parent);
                 if (tx != null && tx.GasLimit <= gasLimit)
                 {
+                    _lastTransactionInfo = new TransactionInfo()
+                    {
+                        ParentBlockHash = parent.Hash,
+                        Phase = phase,
+                        StackTrace = new StackTrace(),
+                        Id = _id
+                    };
+                    
                     yield return tx;
                 }
             }
         }
 
-        private Transaction GetTransaction(in IRandomContract contract, in BlockHeader parent)
+        private (IRandomContract.Phase, Transaction) GetTransaction(in IRandomContract contract, in BlockHeader parent)
         {
             var (phase, round) = contract.GetPhase(parent);
             switch (phase)
@@ -76,7 +98,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
                     _random.GenerateRandomBytes(bytes);
                     var hash = Keccak.Compute(bytes);
                     var cipher = _eciesCipher.Encrypt(_cryptoKey.PublicKey, bytes);
-                    return contract.CommitHash(hash, cipher);
+                    return (phase, contract.CommitHash(hash, cipher));
                 }
                 case IRandomContract.Phase.Reveal:
                 {
@@ -97,14 +119,24 @@ namespace Nethermind.Consensus.AuRa.Transactions
                     
                     UInt256.CreateFromBigEndian(out var number, bytes);
                     
-                    return contract.RevealNumber(number);
+                    return (phase, contract.RevealNumber(number));
                 }
-                case IRandomContract.Phase.Waiting:
-                case IRandomContract.Phase.Committed:
-                    return null;
             }
             
-            return null;
+            return (phase, null);
         }
+        
+        private static TransactionInfo _lastTransactionInfo = new TransactionInfo();
+
+        private class TransactionInfo
+        {
+            public Keccak ParentBlockHash { get; set; }
+            public StackTrace StackTrace { get; set; }
+            public IRandomContract.Phase Phase { get; set; }
+            public int Id { get; set; }
+        }
+
+        private readonly int _id = ITxSource.IdCounter;
+        public override string ToString() => $"{GetType().Name}_{_id}";
     }
 }

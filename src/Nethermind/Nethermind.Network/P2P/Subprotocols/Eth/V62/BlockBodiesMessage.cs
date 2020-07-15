@@ -42,5 +42,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         }
         
         public BlockBody[] Bodies { get; set; }
+
+        public override string ToString() => $"{nameof(BlockBodiesMessage)}({Bodies?.Length ?? 0})";
     }
 }

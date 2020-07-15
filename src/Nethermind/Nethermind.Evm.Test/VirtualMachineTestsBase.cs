@@ -112,7 +112,11 @@ namespace Nethermind.Evm.Test
             return tracer;
         }
 
-        protected (Block block, Transaction transaction) PrepareTx(long blockNumber, long gasLimit, byte[] code, SenderRecipientAndMiner senderRecipientAndMiner = null)
+        protected (Block block, Transaction transaction) PrepareTx(
+            long blockNumber,
+            long gasLimit,
+            byte[] code,
+            SenderRecipientAndMiner senderRecipientAndMiner = null)
         {
             senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
             TestState.CreateAccount(senderRecipientAndMiner.Sender, 100.Ether());

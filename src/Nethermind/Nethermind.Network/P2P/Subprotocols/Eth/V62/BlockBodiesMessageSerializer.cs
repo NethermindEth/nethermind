@@ -45,7 +45,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             return Deserialize(rlpStream);
         }
         
-        private static BlockBodiesMessage Deserialize(RlpStream rlpStream)
+        public static BlockBodiesMessage Deserialize(RlpStream rlpStream)
         {
             BlockBodiesMessage message = new BlockBodiesMessage();
             message.Bodies = rlpStream.DecodeArray(ctx =>

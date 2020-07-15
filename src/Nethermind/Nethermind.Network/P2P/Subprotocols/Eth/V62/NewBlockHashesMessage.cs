@@ -33,5 +33,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         {
             BlockHashes = blockHashes;
         }
+
+        public override string ToString()
+        {
+            return $"{nameof(NewBlockHashesMessage)}({BlockHashes?.Length ?? 0})";
+        }
     }
 }

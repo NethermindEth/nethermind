@@ -215,5 +215,15 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":{\"gas\":\"0x0\",\"failed\":false,\"returnValue\":\"0xa2\",\"structLogs\":[{\"pc\":0,\"op\":\"STOP\",\"gas\":22000,\"gasCost\":1,\"depth\":1,\"error\":null,\"stack\":[],\"memory\":[\"0000000000000000000000000000000000000000000000000000000000000005\",\"0000000000000000000000000000000000000000000000000000000000000006\"],\"storage\":{\"0000000000000000000000000000000000000000000000000000000000000001\":\"0000000000000000000000000000000000000000000000000000000000000002\",\"0000000000000000000000000000000000000000000000000000000000000003\":\"0000000000000000000000000000000000000000000000000000000000000004\"}}]},\"id\":67}", response);
         }
+        
+        [Test]
+        public void Migrate_receipts()
+        {
+            IDebugBridge debugBridge = Substitute.For<IDebugBridge>();
+            debugBridge.MigrateReceipts(Arg.Any<long>()).Returns(true);
+            IDebugModule module = new DebugModule(LimboLogs.Instance, debugBridge);
+            string response = RpcTest.TestSerializedRequest(module, "debug_migrateReceipts", "100");
+            Assert.NotNull(response);
+        }
     }
 }

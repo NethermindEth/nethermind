@@ -33,5 +33,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         {
             BlockHeaders = blockHeaders;
         }
+
+        public override string ToString() => $"{nameof(BlockHeadersMessage)}({BlockHeaders?.Length ?? 0})";
     }
 }
