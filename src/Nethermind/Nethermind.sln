@@ -211,7 +211,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Cryptography.Bls
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Native", "Nethermind.Native\Nethermind.Native.csproj", "{77C56006-3DE8-4B3B-A0BB-CFD2E28CF8A9}"
 EndProject
-<<<<<<< HEAD
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Vault", "Nethermind.Vault\Nethermind.Vault.csproj", "{69FC5271-88BE-4A0A-9F86-3AEE4F63906E}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Vault.Test", "Nethermind.Vault.Test\Nethermind.Vault.Test.csproj", "{4EC78EFC-3661-430A-8A88-CBF7F7BA707C}"
