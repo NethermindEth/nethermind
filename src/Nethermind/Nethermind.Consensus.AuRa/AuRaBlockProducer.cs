@@ -145,6 +145,7 @@ namespace Nethermind.Consensus.AuRa
 
             public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
             {
+                int index = 0;
                 _senderNonces.Clear();
                 
                 foreach (var tx in _innerSource.GetTransactions(parent, gasLimit))
@@ -160,6 +161,7 @@ namespace Nethermind.Consensus.AuRa
                     else
                     {
                         _senderNonces.Add(senderNonce, tx);
+                        if (_logger.IsDebug) _logger.Debug($"Adding transaction {index++}: {tx.ToShortString()} to block {parent.Number + 1}.");
                         yield return tx;
                     }
                 }
