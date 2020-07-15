@@ -806,7 +806,7 @@ namespace Nethermind.Evm.Test.Tracing
                     Assert.Fail("Threw OperationCancelledException before timeout.");
             }
 
-            Thread.Sleep(TimeSpan.FromSeconds(3));
+            Thread.Sleep(TimeSpan.FromSeconds(5));
 
             Assert.Throws<OperationCanceledException>(() => tracer.StartOperation(0, 0, Instruction.ADD, 0));
         }

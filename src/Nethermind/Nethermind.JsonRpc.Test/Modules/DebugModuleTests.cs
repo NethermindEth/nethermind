@@ -204,7 +204,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             trace.ReturnValue = Bytes.FromHexString("a2");
             trace.Entries.Add(entry);
 
-            debugBridge.GetTransactionTrace(Arg.Any<Keccak>(), default(CancellationToken), Arg.Any<GethTraceOptions>()).Returns(trace);
+            debugBridge.GetTransactionTrace(Arg.Any<Keccak>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>()).Returns(trace);
 
             DebugModule module = new DebugModule(LimboLogs.Instance, debugBridge, jsonRpcConfig);
             string response = RpcTest.TestSerializedRequest<IDebugModule>(DebugModuleFactory.Converters, module, "debug_traceTransaction", TestItem.KeccakA.ToString(true), "{disableStack : true}");
