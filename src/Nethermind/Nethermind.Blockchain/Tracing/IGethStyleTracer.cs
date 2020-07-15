@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing.GethStyle;
@@ -23,13 +24,13 @@ namespace Nethermind.Blockchain.Tracing
 {
     public interface IGethStyleTracer
     {
-        GethLikeTxTrace Trace(Keccak txHash, GethTraceOptions options);
-        GethLikeTxTrace Trace(long blockNumber, Transaction transaction, GethTraceOptions options);
-        GethLikeTxTrace Trace(long blockNumber, int txIndex, GethTraceOptions options);
-        GethLikeTxTrace Trace(Keccak blockHash, int txIndex, GethTraceOptions options);
-        GethLikeTxTrace Trace(Rlp blockRlp, Keccak txHash, GethTraceOptions options);
-        GethLikeTxTrace[] TraceBlock(Keccak blockHash, GethTraceOptions options);
-        GethLikeTxTrace[] TraceBlock(long blockNumber, GethTraceOptions options);
-        GethLikeTxTrace[] TraceBlock(Rlp blockRlp, GethTraceOptions options);
+        GethLikeTxTrace Trace(Keccak txHash, GethTraceOptions options, CancellationToken cancellationToken);
+        GethLikeTxTrace Trace(long blockNumber, Transaction transaction, GethTraceOptions options, CancellationToken cancellationToken);
+        GethLikeTxTrace Trace(long blockNumber, int txIndex, GethTraceOptions options, CancellationToken cancellationToken);
+        GethLikeTxTrace Trace(Keccak blockHash, int txIndex, GethTraceOptions options, CancellationToken cancellationToken);
+        GethLikeTxTrace Trace(Rlp blockRlp, Keccak txHash, GethTraceOptions options, CancellationToken cancellationToken);
+        GethLikeTxTrace[] TraceBlock(Keccak blockHash, GethTraceOptions options, CancellationToken cancellationToken);
+        GethLikeTxTrace[] TraceBlock(long blockNumber, GethTraceOptions options, CancellationToken cancellationToken);
+        GethLikeTxTrace[] TraceBlock(Rlp blockRlp, GethTraceOptions options, CancellationToken cancellationToken);
     }
 }

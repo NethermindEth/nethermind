@@ -190,5 +190,17 @@ namespace Nethermind.Evm.Test.Tracing
 
             Assert.Throws<OperationCanceledException>(() => tracer.CalculateEstimate(transactionMock));
         }
+
+        [Test]
+        public void Does_not_throw_if_cancellation_token_is_default()
+        {
+            CancellationToken cancellationToken = default(CancellationToken);
+            var tracer = new EstimateGasTracer(cancellationToken);
+            Transaction transactionMock = Substitute.For<Transaction>();
+            
+            Thread.Sleep(TimeSpan.FromSeconds(2));
+
+            Assert.DoesNotThrow(() => tracer.CalculateEstimate(transactionMock)); 
+        }
     }
 }

@@ -16,6 +16,7 @@
 
 using System;
 using System.Linq;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
@@ -772,6 +773,21 @@ namespace Nethermind.Evm.Test.Tracing
             ParityLikeBlockTracer tracer2 = new ParityLikeBlockTracer(ParityTraceTypes.Rewards);
             Assert.True(tracer2.IsTracingRewards);
         }
+
+        [Test]
+        public void Tracers_cancellation_tokens_does_not_affect_each_other()
+        {
+            CancellationToken cancellationToken = new CancellationTokenSource(TimeSpan.FromMilliseconds(1)).Token;
+            ParityLikeBlockTracer tracer = new ParityLikeBlockTracer(ParityTraceTypes.All, cancellationToken);
+
+            CancellationToken cancellationToken2 = new CancellationTokenSource().Token;
+            ParityLikeBlockTracer tracer2 = new ParityLikeBlockTracer(ParityTraceTypes.All, cancellationToken2);
+
+            Thread.Sleep(5);
+
+            Assert.AreNotEqual(cancellationToken, cancellationToken2); 
+        }
+
 
         private (ParityLikeTxTrace trace, Block block, Transaction tx) ExecuteInitAndTraceParityCall(params byte[] code)
         {

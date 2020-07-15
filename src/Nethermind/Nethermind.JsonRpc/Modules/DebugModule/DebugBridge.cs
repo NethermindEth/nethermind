@@ -82,39 +82,39 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
 
         public Task<bool> MigrateReceipts(long blockNumber) => _receiptsMigration.Run(blockNumber + 1); // add 1 to make go from inclusive (better for API) to exclusive (better for internal)
 
-        public GethLikeTxTrace GetTransactionTrace(Keccak transactionHash, GethTraceOptions gethTraceOptions = null)
+        public GethLikeTxTrace GetTransactionTrace(Keccak transactionHash, CancellationToken cancellationToken, GethTraceOptions gethTraceOptions = null)
         {
-            return _tracer.Trace(transactionHash, gethTraceOptions ?? GethTraceOptions.Default);
+            return _tracer.Trace(transactionHash, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
         }
 
-        public GethLikeTxTrace GetTransactionTrace(long blockNumber, int index, GethTraceOptions gethTraceOptions = null)
+        public GethLikeTxTrace GetTransactionTrace(long blockNumber, int index, CancellationToken cancellationToken,GethTraceOptions gethTraceOptions = null)
         {
-            return _tracer.Trace(blockNumber, index, gethTraceOptions ?? GethTraceOptions.Default);
+            return _tracer.Trace(blockNumber, index, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
         }
 
-        public GethLikeTxTrace GetTransactionTrace(Keccak blockHash, int index, GethTraceOptions gethTraceOptions = null)
+        public GethLikeTxTrace GetTransactionTrace(Keccak blockHash, int index, CancellationToken cancellationToken, GethTraceOptions gethTraceOptions = null)
         {
-            return _tracer.Trace(blockHash, index, gethTraceOptions ?? GethTraceOptions.Default);
+            return _tracer.Trace(blockHash, index, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
         }
 
-        public GethLikeTxTrace GetTransactionTrace(Rlp blockRlp, Keccak transactionHash, GethTraceOptions gethTraceOptions = null)
+        public GethLikeTxTrace GetTransactionTrace(Rlp blockRlp, Keccak transactionHash,CancellationToken cancellationToken, GethTraceOptions gethTraceOptions = null)
         {
-            return _tracer.Trace(blockRlp, transactionHash, gethTraceOptions ?? GethTraceOptions.Default);
+            return _tracer.Trace(blockRlp, transactionHash, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
         }
 
-        public GethLikeTxTrace[] GetBlockTrace(Keccak blockHash, GethTraceOptions gethTraceOptions = null)
+        public GethLikeTxTrace[] GetBlockTrace(Keccak blockHash,CancellationToken cancellationToken, GethTraceOptions gethTraceOptions = null)
         {
-            return _tracer.TraceBlock(blockHash, gethTraceOptions ?? GethTraceOptions.Default); 
+            return _tracer.TraceBlock(blockHash, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken); 
         }
 
-        public GethLikeTxTrace[] GetBlockTrace(long blockNumber, GethTraceOptions gethTraceOptions = null)
+        public GethLikeTxTrace[] GetBlockTrace(long blockNumber, CancellationToken cancellationToken,GethTraceOptions gethTraceOptions = null)
         {
-            return _tracer.TraceBlock(blockNumber, gethTraceOptions ?? GethTraceOptions.Default); 
+            return _tracer.TraceBlock(blockNumber, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken); 
         }
 
-        public GethLikeTxTrace[] GetBlockTrace(Rlp blockRlp, GethTraceOptions gethTraceOptions = null)
+        public GethLikeTxTrace[] GetBlockTrace(Rlp blockRlp, CancellationToken cancellationToken,GethTraceOptions gethTraceOptions = null)
         {
-            return _tracer.TraceBlock(blockRlp, gethTraceOptions ?? GethTraceOptions.Default);
+            return _tracer.TraceBlock(blockRlp, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
         }
 
         public byte[] GetBlockRlp(Keccak blockHash)

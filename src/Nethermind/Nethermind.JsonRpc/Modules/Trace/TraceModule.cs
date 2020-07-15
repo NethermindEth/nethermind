@@ -37,14 +37,16 @@ namespace Nethermind.JsonRpc.Modules.Trace
         private readonly ITracer _tracer;
         private readonly IBlockFinder _blockFinder;
         private readonly TransactionDecoder _txDecoder = new TransactionDecoder();
-        private readonly CancellationToken _cancellationToken; 
+        private readonly IJsonRpcConfig _jsonRpcConfig;
+        private readonly TimeSpan _cancellationTokenTimeout;
 
-        public TraceModule(IReceiptFinder receiptFinder, ITracer tracer, IBlockFinder blockFinder, CancellationToken cancellationToken = default(CancellationToken))
+        public TraceModule(IReceiptFinder receiptFinder, ITracer tracer, IBlockFinder blockFinder, IJsonRpcConfig jsonRpcConfig)
         {
-            _cancellationToken = cancellationToken;
             _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
             _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
+            _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
+            _cancellationTokenTimeout = TimeSpan.FromMilliseconds(_jsonRpcConfig.TracerTimeout);
         }
 
         private static ParityTraceTypes GetParityTypes(string[] types)
@@ -182,7 +184,9 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         private IReadOnlyCollection<ParityLikeTxTrace> TraceBlock(Block block, ParityTraceTypes traceTypes)
         {
-            ParityLikeBlockTracer listener = new ParityLikeBlockTracer(traceTypes, _cancellationToken);
+            CancellationToken cancellationToken = new CancellationTokenSource(_cancellationTokenTimeout).Token;
+
+            ParityLikeBlockTracer listener = new ParityLikeBlockTracer(traceTypes, cancellationToken);
             _tracer.Trace(block, listener);
 
             return listener.BuildResult();
@@ -190,7 +194,9 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         private ParityLikeTxTrace TraceTx(Block block, Keccak txHash, ParityTraceTypes traceTypes)
         {
-            ParityLikeBlockTracer listener = new ParityLikeBlockTracer(txHash, traceTypes, _cancellationToken);
+            CancellationToken cancellationToken = new CancellationTokenSource(_cancellationTokenTimeout).Token;
+
+            ParityLikeBlockTracer listener = new ParityLikeBlockTracer(txHash, traceTypes, cancellationToken);
             _tracer.Trace(block, listener);
 
             return listener.BuildResult().SingleOrDefault();

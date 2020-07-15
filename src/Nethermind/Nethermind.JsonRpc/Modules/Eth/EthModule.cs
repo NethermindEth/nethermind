@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Security;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
@@ -370,7 +371,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
             
             FixCallTx(transactionCall, head);
 
-            BlockchainBridge.CallOutput result = _blockchainBridge.EstimateGas(head, transactionCall.ToTransaction());
+            var tokenTimeout = TimeSpan.FromMilliseconds(_rpcConfig.TracerTimeout);
+            CancellationToken cancellationToken = new CancellationTokenSource(tokenTimeout).Token;
+            BlockchainBridge.CallOutput result = _blockchainBridge.EstimateGas(head, transactionCall.ToTransaction(), cancellationToken);
 
             if (result.Error == null)
             {
