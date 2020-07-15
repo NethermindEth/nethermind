@@ -194,20 +194,21 @@ namespace Nethermind.Consensus.AuRa.Validators
             }
         }
         
-        private long _lastReportedBlockNumber;
-        private readonly ConcurrentDictionary<(Address Validator, bool Malicious, object cause), bool> _lastBlockReports = new ConcurrentDictionary<(Address Validator, bool Type, object cause), bool>(); 
+        private static long LastReportedBlockNumber;
+        private static readonly ConcurrentDictionary<(Address Validator, bool Malicious, object cause), bool> LastBlockReports = new ConcurrentDictionary<(Address Validator, bool Type, object cause), bool>(); 
         
         private bool AlreadyReported(bool malicious, Address validator, in long blockNumber, object cause)
         {
-            var lastReportedBlockNumber = Interlocked.Exchange(ref _lastReportedBlockNumber, blockNumber);
+            var lastReportedBlockNumber = Interlocked.Exchange(ref LastReportedBlockNumber, blockNumber);
             if (lastReportedBlockNumber == blockNumber)
             {
                 (Address Validator, bool Malicious, object cause) key = (validator, malicious, cause);
-                return !_lastBlockReports.TryAdd(key, true);
+                return !LastBlockReports.TryAdd(key, true);
             }
             else
             {
-                _lastBlockReports.Clear();
+                if (_logger.IsDebug) _logger.Debug($"Skipping report of {validator} at {blockNumber} with {cause} as its already reported.");
+                LastBlockReports.Clear();
                 return false;
             }
         }
