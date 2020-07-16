@@ -51,6 +51,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
         private BlockchainProcessor _processor;
         private BlockTree _blockTree;
         private Tracer _tracer;
+        private IJsonRpcConfig _jsonRpcConfig = new JsonRpcConfig();
 
         [SetUp]
         public void Setup()
@@ -85,7 +86,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
         [Test]
         public void Can_trace_raw_parity_style()
         {
-            TraceModule traceModule = new TraceModule(NullReceiptStorage.Instance, _tracer, _blockTree);
+            TraceModule traceModule = new TraceModule(NullReceiptStorage.Instance, _tracer, _blockTree, _jsonRpcConfig);
             ResultWrapper<ParityTxTraceFromReplay> result = traceModule.trace_rawTransaction(Bytes.FromHexString("f889808609184e72a00082271094000000000000000000000000000000000000000080a47f74657374320000000000000000000000000000000000000000000000000000006000571ca08a8bbf888cfa37bbf0bb965423625641fc956967b81d12e23709cead01446075a01ce999b56a8a88504be365442ea61239198e23d1fce7d00fcfc5cd3b44b7215f"), new[] {"trace"});
             Assert.NotNull(result.Data);
         }
@@ -93,7 +94,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
         [Test]
         public void Throw_operation_canceled_after_given_timeout()
         {
-            var timeout = TimeSpan.FromSeconds(1);
+            var timeout = TimeSpan.FromMilliseconds(25);
             Transaction transactionMock = Substitute.For<Transaction>();
             ParityTraceTypes type = ParityTraceTypes.Trace; 
             Address address = new Address(new byte[] {0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1}); 
@@ -101,7 +102,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             
             ParityLikeTxTracer tracer = new ParityLikeTxTracer(_blockTree.Head, transactionMock, type, cancellationToken);
 
-            Thread.Sleep(TimeSpan.FromSeconds(2));
+            Thread.Sleep(TimeSpan.FromMilliseconds(50));
             
             Assert.Throws<OperationCanceledException>(() => tracer.StartOperation(0, 0, default(Instruction), 0));
 
