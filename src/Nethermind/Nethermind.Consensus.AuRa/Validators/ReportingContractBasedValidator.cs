@@ -115,15 +115,16 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         private void Report(bool malicious, Address validator, long blockNumber, byte[] proof, object cause, CreateReportTransactionDelegate createReportTransactionDelegate)
         {
-            if (_cache.AlreadyReported(malicious, validator, blockNumber, cause))
+            try
             {
-                if (_logger.IsDebug) _logger.Debug($"Skipping report of {validator} at {blockNumber} with {cause} as its already reported.");
-            }
-            else
-            {
-                string type = malicious ? "malicious" : "benign";
-                try
+                if (_cache.AlreadyReported(malicious, validator, blockNumber, cause))
                 {
+                    if (_logger.IsDebug) _logger.Debug($"Skipping report of {validator} at {blockNumber} with {cause} as its already reported.");
+                }
+                else
+                {
+                    string type = malicious ? "malicious" : "benign";
+
                     if (!Validators.Contains(ValidatorContract.NodeAddress))
                     {
                         if (_logger.IsTrace) _logger.Trace($"Skipping reporting {type} misbehaviour (cause: {cause}) at block #{blockNumber} from {validator} as we are not validator");
@@ -143,11 +144,12 @@ namespace Nethermind.Consensus.AuRa.Validators
                         }
                     }
                 }
-                catch (Exception e)
-                {
-                    if (_logger.IsError) _logger.Error($"Validator {validator} could not be reported on block {blockNumber} with cause {cause}", e);
-                }
             }
+            catch (Exception e)
+            {
+                if (_logger.IsError) _logger.Error($"Validator {validator} could not be reported on block {blockNumber} with cause {cause}", e);
+            }
+
         }
 
         private static void SendTransaction(bool malicious, ITxSender txSender, Transaction transaction)
