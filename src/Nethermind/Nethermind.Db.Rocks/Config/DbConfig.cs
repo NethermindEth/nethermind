@@ -21,7 +21,8 @@ namespace Nethermind.Db.Rocks.Config
     public class DbConfig : IDbConfig
     {
         public static DbConfig Default = new DbConfig();
-
+        public bool EnableStatistics { get; set; }
+        
         public ulong WriteBufferSize { get; set; } = 16.MiB();
         public uint WriteBufferNumber { get; set; } = 4;
         public ulong BlockCacheSize { get; set; } = 64.MiB();

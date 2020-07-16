@@ -34,7 +34,6 @@ namespace Nethermind.Db.Rocks
         private bool _isDisposed;
         internal readonly RocksDb Db;
         internal WriteBatch CurrentBatch { get; private set; }
-        internal WriteOptions WriteOptions { get; private set; }
 
         public abstract string Name { get; }
 
@@ -123,14 +122,14 @@ namespace Nethermind.Db.Rocks
         {
             _maxThisDbSize = 0;
             BlockBasedTableOptions tableOptions = new BlockBasedTableOptions();
-            tableOptions.SetBlockSize(16 * 1024);
-            tableOptions.SetPinL0FilterAndIndexBlocksInCache(true);
+            tableOptions.SetBlockSize(32 * 1024);
+            tableOptions.SetPinL0FilterAndIndexBlocksInCache(false);
             tableOptions.SetCacheIndexAndFilterBlocks(ReadConfig<bool>(dbConfig, nameof(dbConfig.CacheIndexAndFilterBlocks)));
 
-            tableOptions.SetFilterPolicy(BloomFilterPolicy.Create(10, true));
-            tableOptions.SetFormatVersion(2);
+            tableOptions.SetFilterPolicy(BloomFilterPolicy.Create(10, false));
+            tableOptions.SetFormatVersion(4);
 
-            ulong blockCacheSize = ReadConfig<ulong>(dbConfig, nameof(dbConfig.BlockCacheSize));
+            ulong blockCacheSize = dbConfig.BlockCacheSize;
 
             tableOptions.SetBlockCache(_cache);
             
@@ -138,11 +137,11 @@ namespace Nethermind.Db.Rocks
             // tableOptions.SetBlockCache(cache);
 
             DbOptions options = new DbOptions();
+            options.EnableStatistics();
             options.SetCreateIfMissing(true);
             options.SetAdviseRandomOnOpen(true);
             options.OptimizeForPointLookup(blockCacheSize); // I guess this should be the one option controlled by the DB size property - bind it to LRU cache size
             //options.SetCompression(CompressionTypeEnum.rocksdb_snappy_compression);
-            //options.SetLevelCompactionDynamicLevelBytes(true);
 
             /*
              * Multi-Threaded Compactions
@@ -153,6 +152,8 @@ namespace Nethermind.Db.Rocks
              * TKS: CPU goes to insane 30% usage on idle - compacting only app
              */
             options.SetMaxBackgroundCompactions(Environment.ProcessorCount);
+            options.SetMaxBackgroundFlushes(Environment.ProcessorCount);
+            options.IncreaseParallelism(Environment.ProcessorCount);
 
             //options.SetMaxOpenFiles(32);
             ulong writeBufferSize = ReadConfig<ulong>(dbConfig, nameof(dbConfig.WriteBufferSize));
@@ -171,14 +172,8 @@ namespace Nethermind.Db.Rocks
             }
 
             options.SetBlockBasedTableFactory(tableOptions);
-
-            options.SetMaxBackgroundFlushes(Environment.ProcessorCount);
-            options.IncreaseParallelism(Environment.ProcessorCount);
             options.SetRecycleLogFileNum(dbConfig.RecycleLogFileNum); // potential optimization for reusing allocated log files
-
-//            options.SetLevelCompactionDynamicLevelBytes(true); // only switch on on empty DBs
-            WriteOptions = new WriteOptions();
-            WriteOptions.SetSync(dbConfig.WriteAheadLogSync); // potential fix for corruption on hard process termination, may cause performance degradation
+            options.SetLevelCompactionDynamicLevelBytes(true); // only switch on on empty DBs
 
             return options;
         }
@@ -218,11 +213,11 @@ namespace Nethermind.Db.Rocks
                 {
                     if (value == null)
                     {
-                        Db.Remove(key, null, WriteOptions);
+                        Db.Remove(key);
                     }
                     else
                     {
-                        Db.Put(key, value, null, WriteOptions);
+                        Db.Put(key, value);
                     }
                 }
             }
@@ -253,7 +248,7 @@ namespace Nethermind.Db.Rocks
                 throw new ObjectDisposedException($"Attempted to delete form a disposed database {Name}");
             }
             
-            Db.Remove(key, null, WriteOptions);
+            Db.Remove(key);
         }
 
         public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false)
@@ -349,7 +344,7 @@ namespace Nethermind.Db.Rocks
                 throw new ObjectDisposedException($"Attempted to commit a batch on a disposed database {Name}");
             }
             
-            Db.Write(CurrentBatch, WriteOptions);
+            Db.Write(CurrentBatch);
             CurrentBatch.Dispose();
             CurrentBatch = null;
         }

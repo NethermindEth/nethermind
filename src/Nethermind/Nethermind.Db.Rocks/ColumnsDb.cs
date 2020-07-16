@@ -55,11 +55,10 @@ namespace Nethermind.Db.Rocks
             InitCache(dbConfig);
             
             var result = new ColumnFamilies();
-            var blockCacheSize = ReadConfig<ulong>(dbConfig, nameof(dbConfig.BlockCacheSize), name);
             foreach (var key in keys)
             {
                 var columnFamilyOptions = new ColumnFamilyOptions();
-                columnFamilyOptions.OptimizeForPointLookup(blockCacheSize);
+                columnFamilyOptions.OptimizeForPointLookup(dbConfig.BlockCacheSize);
                 columnFamilyOptions.SetBlockBasedTableFactory(
                     new BlockBasedTableOptions()
                         .SetFilterPolicy(BloomFilterPolicy.Create())

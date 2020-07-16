@@ -20,6 +20,8 @@ namespace Nethermind.Db.Rocks.Config
 {
     public interface IDbConfig : IConfig
     {
+        bool EnableStatistics { get; set; }
+        
         ulong WriteBufferSize { get; set; }
         uint WriteBufferNumber { get; set; }
         ulong BlockCacheSize { get; set; }
@@ -96,7 +98,6 @@ namespace Nethermind.Db.Rocks.Config
         bool CanonicalHashTrieDbCacheIndexAndFilterBlocks { get; set; }
         
         uint RecycleLogFileNum { get; set; }
-        bool WriteAheadLogSync { get; set; }
         
     }
 }

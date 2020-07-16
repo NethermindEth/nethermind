@@ -64,11 +64,11 @@ namespace Nethermind.Db.Rocks
                 {
                     if (value == null)
                     {
-                        _rocksDb.Remove(key, _columnFamily, _mainDb.WriteOptions);
+                        _rocksDb.Remove(key, _columnFamily);
                     }
                     else
                     {
-                        _rocksDb.Put(key, value, _columnFamily, _mainDb.WriteOptions);
+                        _rocksDb.Put(key, value, _columnFamily);
                     }
                 }
             }
@@ -100,7 +100,7 @@ namespace Nethermind.Db.Rocks
 
         public void Remove(byte[] key)
         {
-            _rocksDb.Remove(key, _columnFamily, _mainDb.WriteOptions);
+            _rocksDb.Remove(key, _columnFamily);
         }
 
         public bool KeyExists(byte[] key) => _rocksDb.Get(key, _columnFamily) != null;
