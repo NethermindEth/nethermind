@@ -55,7 +55,7 @@ namespace Nethermind.JsonRpc.Test.Modules
     [TestFixture]
     public class TraceModuleTests
     {
-        private IJsonRpcConfig jsonRpcConfig;
+        private IJsonRpcConfig _jsonRpcConfig;
 
         [SetUp]
         public void SetUp()
@@ -66,7 +66,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         private void Initialize(bool auRa = false)
         {
             ISpecProvider specProvider = MainnetSpecProvider.Instance;
-            jsonRpcConfig = new JsonRpcConfig();
+            _jsonRpcConfig = new JsonRpcConfig();
             IEthereumEcdsa ethereumEcdsa = new EthereumEcdsa(specProvider.ChainId, LimboLogs.Instance);
             ITxStorage txStorage = new InMemoryTxStorage();
             _stateDb = new StateDb();
@@ -152,7 +152,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             IReceiptFinder receiptFinder = new FullInfoReceiptFinder(receiptStorage, receiptsRecovery, blockTree);
 
             resetEvent.Wait(2000);
-            _traceModule = new TraceModule(receiptFinder, new Tracer(_stateProvider, blockchainProcessor), _blockchainBridge, jsonRpcConfig);
+            _traceModule = new TraceModule(receiptFinder, new Tracer(_stateProvider, blockchainProcessor), _blockchainBridge, _jsonRpcConfig);
         }
 
         private IBlockchainBridge _blockchainBridge;
@@ -168,12 +168,14 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
-        public void trace_timeout_is_separate_for_rpc_calls()     
+        public void trace_timeout_is_separate_for_rpc_calls()
         {
+            _jsonRpcConfig.TracerTimeout = 25;
+            
             var searchParameter = new BlockParameter(number: 0); 
             Assert.DoesNotThrow(() => _traceModule.trace_block(searchParameter)); 
 
-            Thread.Sleep(jsonRpcConfig.TracerTimeout + 1000); //additional second just to show that in this time span timeout should occur if given one for whole class 
+            Thread.Sleep(_jsonRpcConfig.TracerTimeout + 25); //additional second just to show that in this time span timeout should occur if given one for whole class 
 
             Assert.DoesNotThrow(() => _traceModule.trace_block(searchParameter));
         }
