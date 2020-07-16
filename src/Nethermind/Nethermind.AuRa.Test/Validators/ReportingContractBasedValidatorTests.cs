@@ -58,7 +58,7 @@ namespace Nethermind.AuRa.Test.Validators
             var transaction = Build.A.Transaction.TestObject;
             context.ReportingValidatorContract.ReportBenign(MaliciousMinerAddress, (UInt256) blockNumber).Returns(transaction);
             context.Validator.ReportBenign(MaliciousMinerAddress, blockNumber, IReportingValidator.BenignCause.FutureBlock);
-            context.TxSender.Received(1).SendTransaction(transaction, TxHandlingOptions.ManagedNonce | TxHandlingOptions.PersistentBroadcast);            
+            context.TxSender.Received(1).SendTransaction(transaction, TxHandlingOptions.ManagedNonce);            
         }
         
         [Test]
@@ -145,7 +145,7 @@ namespace Nethermind.AuRa.Test.Validators
             context.ReportingValidatorContract.Received(1).ReportBenign(TestItem.AddressC, (UInt256) header.Number);
             context.ReportingValidatorContract.Received(1).ReportBenign(TestItem.AddressD, (UInt256) header.Number);
             context.ReportingValidatorContract.Received(0).ReportBenign(NodeAddress, (UInt256) header.Number);
-            context.TxSender.Received(3).SendTransaction(Arg.Is<Transaction>(t => t is GeneratedTransaction), TxHandlingOptions.ManagedNonce | TxHandlingOptions.PersistentBroadcast);
+            context.TxSender.Received(3).SendTransaction(Arg.Is<Transaction>(t => t is GeneratedTransaction), TxHandlingOptions.ManagedNonce);
         }
         
         [Test]
@@ -164,7 +164,7 @@ namespace Nethermind.AuRa.Test.Validators
             context.Validator.ReportBenign(TestItem.AddressC, 100, IReportingValidator.BenignCause.FutureBlock); // ignored
             context.Validator.ReportBenign(MaliciousMinerAddress, 101, IReportingValidator.BenignCause.FutureBlock); //sent
             
-            context.TxSender.Received(5).SendTransaction(transaction, TxHandlingOptions.ManagedNonce | TxHandlingOptions.PersistentBroadcast);            
+            context.TxSender.Received(5).SendTransaction(transaction, Arg.Any<TxHandlingOptions>());            
         }
         
         public class TestContext

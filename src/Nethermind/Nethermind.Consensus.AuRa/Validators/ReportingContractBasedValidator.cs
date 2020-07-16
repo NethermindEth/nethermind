@@ -130,7 +130,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                         {
                             var posdao = IsPosdao(blockNumber);
                             var txSender = posdao ? _posdaoTxSender : _nonPosdaoTxSender;
-                            SendTransaction(txSender, transaction);
+                            SendTransaction(malicious, txSender, transaction);
                             if (_logger.IsWarn) _logger.Warn($"Reported {type} validator {validator} misbehaviour (cause: {cause}) at block {blockNumber}");
                         }
                     }
@@ -142,9 +142,9 @@ namespace Nethermind.Consensus.AuRa.Validators
             }
         }
 
-        private static void SendTransaction(ITxSender txSender, Transaction transaction)
+        private static void SendTransaction(bool malicious, ITxSender txSender, Transaction transaction)
         {
-            txSender.SendTransaction(transaction, TxHandlingOptions.ManagedNonce | TxHandlingOptions.PersistentBroadcast);
+            txSender.SendTransaction(transaction, malicious ? TxHandlingOptions.ManagedNonce | TxHandlingOptions.PersistentBroadcast : TxHandlingOptions.ManagedNonce);
         }
 
         private bool IsPosdao(long blockNumber) => _posdaoTransition <= blockNumber;
