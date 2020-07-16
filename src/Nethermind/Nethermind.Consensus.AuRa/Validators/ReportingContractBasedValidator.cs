@@ -112,7 +112,7 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         private void Report(bool malicious, Address validator, long blockNumber, byte[] proof, object cause, CreateReportTransactionDelegate createReportTransactionDelegate)
         {
-            if (!AlreadyReported(malicious, validator, blockNumber, cause))
+            // if (!AlreadyReported(malicious, validator, blockNumber, cause))
             {
                 string type = malicious ? "malicious" : "benign";
                 try
