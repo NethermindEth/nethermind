@@ -94,7 +94,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
         [Test]
         public void Throw_operation_canceled_after_given_timeout()
         {
-            var timeout = TimeSpan.FromMilliseconds(25);
+            var timeout = TimeSpan.FromMilliseconds(100);
             Transaction transactionMock = Substitute.For<Transaction>();
             ParityTraceTypes type = ParityTraceTypes.Trace; 
             Address address = new Address(new byte[] {0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1}); 
@@ -102,7 +102,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             
             ParityLikeTxTracer tracer = new ParityLikeTxTracer(_blockTree.Head, transactionMock, type, cancellationToken);
 
-            Thread.Sleep(TimeSpan.FromMilliseconds(50));
+            Thread.Sleep(timeout.Add(TimeSpan.FromMilliseconds(100)));
             
             Assert.Throws<OperationCanceledException>(() => tracer.StartOperation(0, 0, default(Instruction), 0));
 
