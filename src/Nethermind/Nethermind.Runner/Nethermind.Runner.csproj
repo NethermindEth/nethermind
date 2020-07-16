@@ -55,6 +55,7 @@
     <ProjectReference Include="..\Nethermind.WebSockets\Nethermind.WebSockets.csproj" />
     <ProjectReference Include="..\Nethermind.Baseline\Nethermind.Baseline.csproj" />
     <ProjectReference Include="..\Nethermind.Vault\Nethermind.Vault.csproj" />
+    <ProjectReference Include="..\Nethermind.Seq\Nethermind.Seq.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="..\..\..\Nethermind Data Marketplace - Terms and Conditions 20190831.pdf">

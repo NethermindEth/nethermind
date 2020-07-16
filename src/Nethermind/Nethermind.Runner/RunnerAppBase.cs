@@ -51,6 +51,7 @@ using Nethermind.Runner.Ethereum;
 using Nethermind.Serialization.Json;
 using Nethermind.WebSockets;
 using ILogger = Nethermind.Logging.ILogger;
+using Nethermind.Seq.Config;
 
 namespace Nethermind.Runner
 {
@@ -60,7 +61,7 @@ namespace Nethermind.Runner
         private IRunner _jsonRpcRunner = NullRunner.Instance;
         private IRunner _ethereumRunner = NullRunner.Instance;
         private IRunner _grpcRunner = NullRunner.Instance;
-        
+
         private CancellationTokenSource _processCloseCancellationSource = new CancellationTokenSource();
         private TaskCompletionSource<object?>? _cancelKeySource;
         private TaskCompletionSource<object?>? _processExit;
@@ -142,18 +143,27 @@ namespace Nethermind.Runner
             IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
             IJsonRpcConfig jsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
             IMetricsConfig metricsConfig = configProvider.GetConfig<IMetricsConfig>();
+            ISeqConfig seqConfig = configProvider.GetConfig<ISeqConfig>();
             NLogManager logManager = new NLogManager(initConfig.LogFileName, initConfig.LogDirectory);
             IRpcModuleProvider rpcModuleProvider = jsonRpcConfig.Enabled
                 ? new RpcModuleProvider(configProvider.GetConfig<IJsonRpcConfig>(), logManager)
-                : (IRpcModuleProvider) NullModuleProvider.Instance;
+                : (IRpcModuleProvider)NullModuleProvider.Instance;
             EthereumJsonSerializer jsonSerializer = new EthereumJsonSerializer();
             WebSocketsManager webSocketsManager = new WebSocketsManager();
+
+            if (seqConfig.MinLevel != "Off")
+            {
+                if (_logger?.IsInfo ?? false) _logger!.Info($"Seq Logging Enabled with level: {seqConfig.MinLevel}, on host: {seqConfig.ServerUrl}");
+                logManager.SetGlobalVariable("minLevel", seqConfig.MinLevel);
+                logManager.SetGlobalVariable("serverUrl", seqConfig.ServerUrl);
+                logManager.SetGlobalVariable("apiKey", seqConfig.ApiKey);
+            }
 
             if (!string.IsNullOrEmpty(metricsConfig.NodeName))
             {
                 logManager.SetGlobalVariable("nodeName", metricsConfig.NodeName);
             }
-            
+
             if (metricsConfig.Enabled)
             {
                 Metrics.Version = VersionToMetrics.ConvertToNumber(ClientVersion.Version);
@@ -229,7 +239,7 @@ namespace Nethermind.Runner
                 webSocketsManager,
                 jsonSerializer,
                 _monitoringService);
-            
+
             IAnalyticsConfig analyticsConfig = configProvider.GetConfig<IAnalyticsConfig>();
             if (analyticsConfig.PluginsEnabled ||
                 analyticsConfig.StreamBlocks ||
@@ -237,7 +247,7 @@ namespace Nethermind.Runner
             {
                 webSocketsManager.AddModule(new AnalyticsWebSocketsModule(jsonSerializer), true);
             }
-            
+
             await _ethereumRunner.Start(cancellationToken).ContinueWith(x =>
             {
                 if (x.IsFaulted && (_logger?.IsError ?? false)) _logger!.Error("Error during ethereum runner start", x.Exception);
