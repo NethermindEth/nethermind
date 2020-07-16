@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2020 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,40 +14,32 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
-using Nethermind.Core.Attributes;
+using System.Collections.Generic;
+using System.Security;
+using System.Threading.Tasks;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Vault.Styles;
 
-namespace Nethermind.JsonRpc.Modules
+namespace Nethermind.Vault
 {
-    [Todo(Improve.Refactor, "Can we use string instead to avoid coupling and introduce conventions?")]
-    public enum ModuleType
+    public interface IVaultWallet
     {
-        Admin,
-        Clique,
-        Db,
-        Debug,
-        Eth,
-        NdmProvider,
-        NdmConsumer,
-        Net,
-        Parity,
-        Personal,
-        Proof,
-        Trace,
-        TxPool,
-        Web3,
-        Baseline,
-        Vault,
-        Deposit
-    }
+        Task<Address[]> GetAccounts();
+        Task<Address> NewAccount(Dictionary<string, object> parameters);
+        Task DeleteAccount(Address address);
+        Task<Signature> Sign(Address address, Keccak message);
 
-    public class RpcModuleAttribute : Attribute
-    {
-        public ModuleType ModuleType { get; }
+        Task<string> SetWalletVault();
 
-        public RpcModuleAttribute(ModuleType moduleType)
+        public Task<Address> NewAccount(KeyArgs args) 
         {
-            ModuleType = moduleType;
+            return NewAccount(new Dictionary<string, object> 
+            {
+                {
+                    "keyArgs", args
+                }
+            });
         }
     }
 }

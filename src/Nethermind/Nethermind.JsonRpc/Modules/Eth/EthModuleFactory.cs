@@ -89,8 +89,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
             ReadOnlyBlockTree readOnlyTree = new ReadOnlyBlockTree(_blockTree);
             IReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
             ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, readOnlyTree, _specProvider, _logManager);
-            TimeSpan cancellationTokenTimeout = TimeSpan.FromMilliseconds(_jsonRpcConfig.TracerTimeout);
-            CancellationToken cancellationToken = new CancellationTokenSource(cancellationTokenTimeout).Token;
             
             var blockchainBridge = new BlockchainBridge(
                 readOnlyTxProcessingEnv.StateReader,
@@ -108,8 +106,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 Timestamper.Default,
                 _logManager,
                 _isMining,
-                _rpcConfig.FindLogBlockDepthLimit,
-                cancellationToken);
+                _rpcConfig.FindLogBlockDepthLimit
+                );
             
             TxPoolBridge txPoolBridge = new TxPoolBridge(_txPool, new WalletTxSigner(_wallet, _specProvider.ChainId), Timestamper.Default);
             

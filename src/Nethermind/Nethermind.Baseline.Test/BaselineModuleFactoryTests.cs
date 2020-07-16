@@ -20,9 +20,11 @@ using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.Baseline.JsonRpc;
 using Nethermind.Blockchain.Find;
+using Nethermind.Consensus;
 using Nethermind.Facade;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using NSubstitute;
@@ -39,6 +41,7 @@ namespace Nethermind.Baseline.Test
             var txPool = Substitute.For<ITxPool>();
             BaselineModuleFactory factory = new BaselineModuleFactory(
                 txPool,
+                Substitute.For<IStateReader>(),
                 Substitute.For<ILogFinder>(),
                 Substitute.For<IBlockFinder>(),
                 new AbiEncoder(),

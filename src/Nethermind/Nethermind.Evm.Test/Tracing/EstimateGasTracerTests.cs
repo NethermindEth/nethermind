@@ -181,14 +181,26 @@ namespace Nethermind.Evm.Test.Tracing
         [Test]
         public void Throw_operation_canceled_after_given_timeout()
         {
-            var timeout = TimeSpan.FromSeconds(1);
-            CancellationToken cancellationToken = new CancellationTokenSource(1000).Token;
+            TimeSpan timeout = TimeSpan.FromMilliseconds(100);
+            CancellationToken cancellationToken = new CancellationTokenSource(timeout).Token;
             Transaction transactionMock = Substitute.For<Transaction>();
             var tracer = new EstimateGasTracer(cancellationToken);
 
-            Thread.Sleep(TimeSpan.FromSeconds(2));
+            Thread.Sleep(timeout.Add(TimeSpan.FromMilliseconds(100)));
 
             Assert.Throws<OperationCanceledException>(() => tracer.CalculateEstimate(transactionMock));
+        }
+
+        [Test]
+        public void Does_not_throw_if_cancellation_token_is_default()
+        {
+            CancellationToken cancellationToken = default(CancellationToken);
+            var tracer = new EstimateGasTracer(cancellationToken);
+            Transaction transactionMock = Substitute.For<Transaction>();
+            
+            Thread.Sleep(TimeSpan.FromSeconds(2));
+
+            Assert.DoesNotThrow(() => tracer.CalculateEstimate(transactionMock)); 
         }
     }
 }
