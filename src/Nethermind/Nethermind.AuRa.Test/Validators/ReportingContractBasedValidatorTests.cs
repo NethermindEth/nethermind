@@ -153,8 +153,8 @@ namespace Nethermind.AuRa.Test.Validators
         {
             var context = new TestContext(true, initialValidators: new[] {TestItem.AddressA, NodeAddress, TestItem.AddressC});
             var transaction = Build.A.Transaction.TestObject;
-            context.ReportingValidatorContract.ReportBenign(MaliciousMinerAddress, Arg.Any<UInt256>()).Returns(transaction); 
-            context.ReportingValidatorContract.ReportMalicious(MaliciousMinerAddress, Arg.Any<UInt256>(), Arg.Any<byte[]>()).Returns(transaction);
+            context.ReportingValidatorContract.ReportBenign(Arg.Any<Address>(), Arg.Any<UInt256>()).Returns(transaction); 
+            context.ReportingValidatorContract.ReportMalicious(Arg.Any<Address>(), Arg.Any<UInt256>(), Arg.Any<byte[]>()).Returns(transaction);
             
             context.Validator.ReportBenign(MaliciousMinerAddress, 100, IReportingValidator.BenignCause.FutureBlock); // sent
             context.Validator.ReportBenign(MaliciousMinerAddress, 100, IReportingValidator.BenignCause.IncorrectProposer); // sent
@@ -164,7 +164,7 @@ namespace Nethermind.AuRa.Test.Validators
             context.Validator.ReportBenign(TestItem.AddressC, 100, IReportingValidator.BenignCause.FutureBlock); // ignored
             context.Validator.ReportBenign(MaliciousMinerAddress, 101, IReportingValidator.BenignCause.FutureBlock); //sent
             
-            context.TxSender.Received(5).SendTransaction(transaction, Arg.Any<TxHandlingOptions>());            
+            context.TxSender.Received(5).SendTransaction(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());            
         }
         
         public class TestContext

@@ -49,6 +49,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         private readonly long _posdaoTransition;
         private readonly ITxSender _posdaoTxSender;
         private readonly IStateProvider _stateProvider;
+        private readonly Cache _cache;
         private readonly ITxSender _nonPosdaoTxSender;
         private readonly ILogger _logger;
         
@@ -67,8 +68,9 @@ namespace Nethermind.Consensus.AuRa.Validators
             _posdaoTransition = posdaoTransition;
             _posdaoTxSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
+            _cache = cache ?? throw new ArgumentNullException(nameof(cache));
             _nonPosdaoTxSender = new TxGasPriceSender(txSender, txPool);
-            _persistentReports = cache?.PersistentReports ?? throw new ArgumentNullException(nameof(cache));
+            _persistentReports = cache.PersistentReports ?? throw new ArgumentNullException(nameof(cache));
             _logger = logManager?.GetClassLogger<ReportingContractBasedValidator>() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
@@ -113,7 +115,11 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         private void Report(bool malicious, Address validator, long blockNumber, byte[] proof, object cause, CreateReportTransactionDelegate createReportTransactionDelegate)
         {
-            // if (!AlreadyReported(malicious, validator, blockNumber, cause))
+            if (_cache.AlreadyReported(malicious, validator, blockNumber, cause))
+            {
+                if (_logger.IsDebug) _logger.Debug($"Skipping report of {validator} at {blockNumber} with {cause} as its already reported.");
+            }
+            else
             {
                 string type = malicious ? "malicious" : "benign";
                 try
@@ -193,25 +199,6 @@ namespace Nethermind.Consensus.AuRa.Validators
             if (!_contractValidator.ForSealing)
             {
                 ResendPersistedReports(block.Header);
-            }
-        }
-        
-        private static long LastReportedBlockNumber;
-        private static readonly ConcurrentDictionary<(Address Validator, bool Malicious, object cause), bool> LastBlockReports = new ConcurrentDictionary<(Address Validator, bool Type, object cause), bool>(); 
-        
-        private bool AlreadyReported(bool malicious, Address validator, in long blockNumber, object cause)
-        {
-            var lastReportedBlockNumber = Interlocked.Exchange(ref LastReportedBlockNumber, blockNumber);
-            if (lastReportedBlockNumber == blockNumber)
-            {
-                (Address Validator, bool Malicious, object cause) key = (validator, malicious, cause);
-                return !LastBlockReports.TryAdd(key, true);
-            }
-            else
-            {
-                if (_logger.IsDebug) _logger.Debug($"Skipping report of {validator} at {blockNumber} with {cause} as its already reported.");
-                LastBlockReports.Clear();
-                return false;
             }
         }
     }

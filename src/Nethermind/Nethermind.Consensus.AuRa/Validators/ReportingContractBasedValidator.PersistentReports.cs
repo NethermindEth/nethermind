@@ -142,11 +142,6 @@ namespace Nethermind.Consensus.AuRa.Validators
             }
         }
         public override string ToString() => $"{nameof(ReportingContractBasedValidator)} [ {_contractValidator} ]";
-        
-        public class Cache
-        {
-            internal LinkedList<PersistentReport> PersistentReports { get; } = new LinkedList<PersistentReport>();
-        }
 
         internal class PersistentReport : IEquatable<PersistentReport>
         {
