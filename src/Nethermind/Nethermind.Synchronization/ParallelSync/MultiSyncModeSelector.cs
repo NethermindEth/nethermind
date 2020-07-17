@@ -151,8 +151,8 @@ namespace Nethermind.Synchronization.ParallelSync
             if (IsTheModeSwitchWorthMentioning(newModes))
             {
                 string stateString = BuildStateString(best);
-                string message = $"Changing state to {newModes} at {stateString}";
-                if (_logger.IsInfo) _logger.Info(message);
+                if (_logger.IsDebug) _logger.Debug($"Changing state to {newModes} from {Current} at {stateString}");
+                if (_logger.IsInfo) _logger.Info($"Changing state to {newModes} at {stateString}");
             }
 
             UpdateSyncModes(newModes);

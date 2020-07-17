@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Processing;
@@ -100,7 +101,8 @@ namespace Nethermind.Blockchain.Producers
                 }
                 else
                 {
-                    if (Logger.IsDebug) Logger.Debug("Delaying producing block, chain not processed yet.");
+                    if (Logger.IsDebug) Logger.Debug($"Delaying producing block, chain not processed yet. BlockProcessingQueue count {BlockProcessingQueue.Count}.{Environment.NewLine}" +
+                                                     $"{string.Join(Environment.NewLine, BlockProcessingQueue.Blocks.Select(b => b?.ToString() ?? "null block"))}");
                     await Task.Delay(ChainNotYetProcessedMillisecondsDelay, LoopCancellationTokenSource.Token);
                 }
             }

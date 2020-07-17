@@ -300,6 +300,23 @@ namespace Nethermind.Blockchain.Processing
         public event EventHandler ProcessingQueueEmpty;
 
         public bool IsEmpty => _blockQueue.Count == 0 && _recoveryQueue.Count == 0;
+        public int Count => _blockQueue.Count + _recoveryQueue.Count;
+
+        public IEnumerable<Block> Blocks
+        {
+            get
+            {
+                foreach (BlockRef blockRef in _blockQueue)
+                {
+                    yield return blockRef.Block;
+                }
+                
+                foreach (BlockRef blockRef in _recoveryQueue)
+                {
+                    yield return blockRef.Block;
+                }
+            }
+        }
 
         [Todo("Introduce priority queue and create a SuggestWithPriority that waits for block execution to return a block, then make this private")]
         public Block Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer tracer)
