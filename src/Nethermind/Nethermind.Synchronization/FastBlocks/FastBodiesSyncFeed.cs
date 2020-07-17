@@ -169,6 +169,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
         public override Task<BodiesSyncBatch> PrepareRequest()
         {
+            _logger.Info($"Body Counts - waiting:{BodyCounter.WaitingForHandling}|inhandler:{BodyCounter.InHandler}|dependent:{BodyCounter.HeldInQueues}|inserting{BodyCounter.Inserting}");
             HandleDependentBatches();
 
             if (_pending.TryDequeue(out BodiesSyncBatch batch))
@@ -271,6 +272,7 @@ namespace Nethermind.Synchronization.FastBlocks
             while (lowest.HasValue && _dependencies.TryRemove(lowest.Value - 1, out List<Block> dependentBatch))
             {
                 dependentBatch.Reverse();
+                BodyCounter.HeldInQueues -= dependentBatch.Count;
                 InsertBlocks(dependentBatch);
                 lowest = _blockTree.LowestInsertedBody?.Number;
             }
@@ -278,32 +280,37 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private void InsertBlocks(List<Block> validResponses)
         {
+            BodyCounter.Inserting += validResponses.Count;
             _blockTree.Insert(validResponses);
+            BodyCounter.Inserting -= validResponses.Count;
         }
 
         public override SyncResponseHandlingResult HandleResponse(BodiesSyncBatch batch)
         {
-            if (batch.IsResponseEmpty)
-            {
-                batch.MarkHandlingStart();
-                if (_logger.IsTrace) _logger.Trace($"{batch} - came back EMPTY");
-                _pending.Enqueue(batch);
-                batch.MarkHandlingEnd();
-                return batch.ResponseSourcePeer == null ? SyncResponseHandlingResult.NotAssigned : SyncResponseHandlingResult.NoProgress; //(BlocksDataHandlerResult.OK, 0);
-            }
-
+            BodyCounter.WaitingForHandling -= batch.Response.Count(r => r != null);
+            BodyCounter.InHandler += batch.Response.Count(r => r != null);
+            batch.MarkHandlingStart();
             try
             {
-                batch.MarkHandlingStart();
-                Stopwatch stopwatch = Stopwatch.StartNew();
-                int added = InsertBodies(batch);
-                stopwatch.Stop();
-                //                        var nonNull = batch.Bodies.Headers.Where(h => h != null).OrderBy(h => h.Number).ToArray();
-                //                        _logger.Warn($"Handled blocks response blocks [{nonNull.First().Number},{nonNull.Last().Number}]{batch.Bodies.Request.Length} in {stopwatch.ElapsedMilliseconds}ms");
-                return SyncResponseHandlingResult.OK; //(BlocksDataHandlerResult.OK, added);
+                if (batch.IsResponseEmpty)
+                {
+                    if (_logger.IsTrace) _logger.Trace($"{batch} - came back EMPTY");
+                    _pending.Enqueue(batch);
+                    return batch.ResponseSourcePeer == null ? SyncResponseHandlingResult.NotAssigned : SyncResponseHandlingResult.NoProgress; //(BlocksDataHandlerResult.OK, 0);
+                }
+                else
+                {
+                    Stopwatch stopwatch = Stopwatch.StartNew();
+                    int added = InsertBodies(batch);
+                    stopwatch.Stop();
+                    //                        var nonNull = batch.Bodies.Headers.Where(h => h != null).OrderBy(h => h.Number).ToArray();
+                    //                        _logger.Warn($"Handled blocks response blocks [{nonNull.First().Number},{nonNull.Last().Number}]{batch.Bodies.Request.Length} in {stopwatch.ElapsedMilliseconds}ms");
+                    return SyncResponseHandlingResult.OK; //(BlocksDataHandlerResult.OK, added);    
+                }
             }
             finally
             {
+                BodyCounter.InHandler -= batch.Response.Count(r => r != null);
                 batch.MarkHandlingEnd();
                 _sent.TryRemove(batch, out _);
             }
@@ -357,6 +364,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 long expectedNumber = _blockTree.LowestInsertedBody?.Number - 1 ?? LongConverter.FromString(_syncConfig.PivotNumber ?? "0");
                 if (validResponses.Last().Number != expectedNumber)
                 {
+                    BodyCounter.HeldInQueues += validResponses.Count;
                     _dependencies.TryAdd(validResponses.Last().Number, validResponses);
                 }
                 else

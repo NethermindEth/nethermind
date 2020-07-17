@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
@@ -41,6 +42,7 @@ namespace Nethermind.Synchronization.FastBlocks
             batch.ResponseSourcePeer = peerInfo;
             batch.MarkSent();
             Task<BlockBody[]> getBodiesTask = peer.GetBlockBodies(batch.Request, cancellationToken);
+            BodyCounter.WaitingForHandling += getBodiesTask.Result.Count(r => r != null);
             await getBodiesTask.ContinueWith(
                 (t, state) =>
                 {

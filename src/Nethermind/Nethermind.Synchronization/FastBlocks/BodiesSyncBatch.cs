@@ -19,6 +19,14 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
+    public static class BodyCounter
+    {
+        public static long InHandler { get; set; }
+        public static long WaitingForHandling { get; set; }
+        public static long HeldInQueues { get; set; }
+        public static long Inserting { get; set; }
+    }
+    
     public class BodiesSyncBatch : FastBlocksBatch
     {
         public long StartNumber => Headers[0].Number;
