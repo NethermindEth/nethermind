@@ -14,6 +14,8 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using NUnit.Framework;
@@ -83,8 +85,9 @@ namespace Nethermind.Secp256k1.Test
             byte[] messageHash = new byte[32];
             messageHash[0] = 1;
             byte[] signature =  Proxy.SignCompact(messageHash, privateKey, out int recoveryId);
-            byte[] recovered =  Proxy.RecoverKeyFromCompact(messageHash, signature, recoveryId, true);
-            Assert.AreEqual(33, recovered.Length);
+            byte[] recovered = new byte[33]; 
+            bool result = Proxy.RecoverKeyFromCompact(recovered, messageHash, signature, recoveryId, true);
+            result.Should().BeTrue();
         }
         
         [Test]
@@ -128,7 +131,8 @@ namespace Nethermind.Secp256k1.Test
             byte[] messageHash = new byte[32];
             messageHash[0] = 1;
             byte[] signature =  Proxy.SignCompact(messageHash, privateKey, out int recoveryId);
-            byte[] recovered =  Proxy.RecoverKeyFromCompact(messageHash, signature, recoveryId, false);
+            byte[] recovered = new byte[65];
+            Proxy.RecoverKeyFromCompact(recovered, messageHash, signature, recoveryId, false);
             Assert.AreEqual(65, recovered.Length);
         }
         
@@ -146,8 +150,9 @@ namespace Nethermind.Secp256k1.Test
             var recoveryId = signature[64];
             var signatureObject = new Signature(signatureSlice, recoveryId);
             var keccak = Keccak.Compute(Bytes.Concat(messageType, data));
-            var publicKey = Proxy.RecoverKeyFromCompact(keccak.Bytes, signatureObject.Bytes, signatureObject.RecoveryId, false);
-            Assert.AreEqual(65, publicKey.Length);
+            Span<byte> publicKey = stackalloc byte[65];
+            bool result = Proxy.RecoverKeyFromCompact(publicKey, keccak.Bytes, signatureObject.Bytes, signatureObject.RecoveryId, false);
+            result.Should().BeTrue();
         }
     }
 }

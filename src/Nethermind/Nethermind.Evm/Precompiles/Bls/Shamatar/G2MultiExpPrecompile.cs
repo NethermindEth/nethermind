@@ -50,11 +50,11 @@ namespace Nethermind.Evm.Precompiles.Bls.Shamatar
 
         public (byte[], bool) Run(byte[] inputData)
         {
-            inputData ??= Bytes.Empty;
+            inputData ??= Array.Empty<byte>();
             if (inputData.Length % ItemSize > 0)
             {
                 // note that it will not happen in case of null / 0 length
-                return (Bytes.Empty, false);
+                return (Array.Empty<byte>(), false);
             }
 
             (byte[], bool) result;
@@ -67,7 +67,7 @@ namespace Nethermind.Evm.Precompiles.Bls.Shamatar
             }
             else
             {
-                result = (Bytes.Empty, false);
+                result = (Array.Empty<byte>(), false);
             }
 
             return result;

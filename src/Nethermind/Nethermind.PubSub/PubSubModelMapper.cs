@@ -29,8 +29,8 @@ namespace Nethermind.PubSub
                 {
                     Hash = block.Hash.Bytes,
                     Header = MapBlockHeader(block.Header),
-                    Transactions = block.Transactions?.Select(MapTransaction).ToArray() ?? new Transaction[0],
-                    Ommers = block.Ommers?.Select(MapBlockHeader).ToArray() ?? new BlockHeader[0],
+                    Transactions = block.Transactions?.Select(MapTransaction).ToArray() ?? Array.Empty<Transaction>(),
+                    Ommers = block.Ommers?.Select(MapBlockHeader).ToArray() ?? Array.Empty<BlockHeader>(),
                     ParentHash = block.ParentHash.Bytes,
                     Beneficiary = block.Beneficiary.Bytes,
                     StateRoot = block.StateRoot.Bytes,
@@ -126,7 +126,7 @@ namespace Nethermind.PubSub
                 : new LogEntry
                 {
                     LoggersAddress = entry.LoggersAddress?.Bytes,
-                    Topics = entry.Topics?.Select(t => t.Bytes).ToArray() ?? new Byte[0][],
+                    Topics = entry.Topics?.Select(t => t.Bytes).ToArray() ?? Array.Empty<byte[]>(),
                     Data = entry.Data
                 };
     }

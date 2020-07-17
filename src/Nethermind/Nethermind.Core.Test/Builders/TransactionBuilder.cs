@@ -34,7 +34,7 @@ namespace Nethermind.Core.Test.Builders
                 To = Address.Zero,
                 Nonce = 0,
                 Value = 1,
-                Data = new byte[0],
+                Data = Array.Empty<byte>(),
                 Timestamp = 0
             };
         }

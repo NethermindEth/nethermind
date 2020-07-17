@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Precompiles;
@@ -35,7 +36,7 @@ namespace Nethermind.Evm
         public CodeInfo(IPrecompile precompile)
         {
             Precompile = precompile;
-            MachineCode = Bytes.Empty;
+            MachineCode = Array.Empty<byte>();
         }
         
         public byte[] MachineCode { get; set; }

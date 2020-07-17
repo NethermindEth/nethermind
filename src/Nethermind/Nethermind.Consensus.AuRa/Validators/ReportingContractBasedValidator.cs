@@ -102,7 +102,7 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         public void ReportBenign(Address validator, long blockNumber, IReportingValidator.BenignCause cause)
         {
-            Report("benign", validator, blockNumber, Bytes.Empty, cause.ToString(), CreateReportBenignTransaction);
+            Report("benign", validator, blockNumber, Array.Empty<byte>(), cause.ToString(), CreateReportBenignTransaction);
         }
 
         private Transaction CreateReportBenignTransaction(Address validator, long blockNumber, byte[] proof) => ValidatorContract.ReportBenign(validator, (UInt256) blockNumber);

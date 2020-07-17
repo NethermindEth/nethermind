@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain;
@@ -73,7 +74,7 @@ namespace Nethermind.PubSub.Kafka.Avro
                 v = transaction.Signature.V,
                 r = transaction.Signature.R.ToString(),
                 s = transaction.Signature.S.ToString(),
-                input = transaction.Data ?? new byte[0],
+                input = transaction.Data ?? Array.Empty<byte>(),
                 gas = (long) transaction.GasLimit,
                 weiValue = transaction.Value.ToString()
             };

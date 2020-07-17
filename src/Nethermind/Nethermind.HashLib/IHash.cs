@@ -78,7 +78,7 @@ namespace Nethermind.HashLib
         void TransformShorts(short[] a_data);
         void TransformUShorts(ushort[] a_data);
         void TransformInts(int[] a_data);
-        void TransformUInts(uint[] a_data);
+        void TransformUInts(Span<uint> a_data);
         void TransformLongs(long[] a_data);
         void TransformULongs(ulong[] a_data);
         void TransformDoubles(double[] a_data);

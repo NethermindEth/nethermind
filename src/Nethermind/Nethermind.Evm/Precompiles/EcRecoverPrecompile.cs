@@ -54,7 +54,7 @@ namespace Nethermind.Evm.Precompiles
         {
             Metrics.EcRecoverPrecompile++;
 
-            inputData ??= Bytes.Empty;
+            inputData ??= Array.Empty<byte>();
             Span<byte> inputDataSpan = stackalloc byte[128];
             inputData.AsSpan(0, Math.Min(128, inputData.Length))
                 .CopyTo(inputDataSpan.Slice(0, Math.Min(128, inputData.Length)));
@@ -68,20 +68,20 @@ namespace Nethermind.Evm.Precompiles
             // TEST: CALLCODEEcrecoverV_prefixedf0_d1g0v0
             if (!Bytes.AreEqual(_zero31, vBytes.Slice(0, 31)))
             {
-                return (Bytes.Empty, true);
+                return (Array.Empty<byte>(), true);
             }
             
             byte v = vBytes[31];
             if (v != 27 && v != 28)
             {
-                return (Bytes.Empty, true);
+                return (Array.Empty<byte>(), true);
             }
 
             Signature signature = new Signature(r, s, v);
             Address recovered = _ecdsa.RecoverAddress(signature, hash);
             if (recovered == null)
             {
-                return (Bytes.Empty, true);
+                return (Array.Empty<byte>(), true);
             }
 
             byte[] result = recovered.Bytes;

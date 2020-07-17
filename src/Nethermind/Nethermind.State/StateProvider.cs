@@ -290,7 +290,7 @@ namespace Nethermind.State
 
         public byte[] GetCode(Keccak codeHash)
         {
-            return codeHash == Keccak.OfAnEmptyString ? new byte[0] : _codeDb[codeHash.Bytes];
+            return codeHash == Keccak.OfAnEmptyString ? Array.Empty<byte>() : _codeDb[codeHash.Bytes];
         }
 
         public byte[] GetCode(Address address)
@@ -298,7 +298,7 @@ namespace Nethermind.State
             Account account = GetThroughCache(address);
             if (account == null)
             {
-                return new byte[0];
+                return Array.Empty<byte>();
             }
 
             return GetCode(account.CodeHash);
@@ -579,12 +579,12 @@ namespace Nethermind.State
                     byte[] beforeCode = beforeCodeHash == null
                         ? null
                         : beforeCodeHash == Keccak.OfAnEmptyString
-                            ? Bytes.Empty
+                            ? Array.Empty<byte>()
                             : _codeDb.Get(beforeCodeHash);
                     byte[] afterCode = afterCodeHash == null
                         ? null
                         : afterCodeHash == Keccak.OfAnEmptyString
-                            ? Bytes.Empty
+                            ? Array.Empty<byte>()
                             : _codeDb.Get(afterCodeHash);
 
                     if (!((beforeCode?.Length ?? 0) == 0 && (afterCode?.Length ?? 0) == 0))

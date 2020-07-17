@@ -60,7 +60,7 @@ namespace Nethermind.Evm.Precompiles.Bls.Shamatar
             }
             else
             {
-                result = (Bytes.Empty, false);
+                result = (Array.Empty<byte>(), false);
             }
 
             return result;
