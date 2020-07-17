@@ -105,10 +105,13 @@ namespace Nethermind.Synchronization.FastBlocks
             bool allBodiesDownloaded = (_blockTree.LowestInsertedBody?.Number ?? 0) == 1;
             bool requestedGenesis = _lowestRequestedBodyHash == _blockTree.Genesis.Hash;
 
+            ulong memoryInQueue = MemoryInQueue;
+            ulong memoryAllowance = MemoryAllowance.FastBlocksMemory;
+            _logger.Warn($"{memoryInQueue / 1000 / 1000}MB / {memoryAllowance / 1000 / 1000}MB");
             bool noBatchesLeft = !shouldDownloadBodies
                                  || allBodiesDownloaded
                                  || requestedGenesis
-                                 || MemoryInQueue >= MemoryAllowance.FastBlocksMemory;
+                                 || memoryInQueue >= memoryAllowance;
 
             if (noBatchesLeft)
             {
