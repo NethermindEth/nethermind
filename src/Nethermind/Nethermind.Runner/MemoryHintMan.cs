@@ -17,12 +17,15 @@
 
 using System;
 using System.Diagnostics;
+using System.Text;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Extensions;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Runner.Ethereum.Steps;
+using Nethermind.TxPool;
+using MemoryAllowance = Nethermind.Evm.MemoryAllowance;
 
 namespace Nethermind.Runner
 {
@@ -41,63 +44,136 @@ namespace Nethermind.Runner
                       ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        private const decimal AvailableForDb = 0.75m;
-        private const decimal AvailableForNetty = 0.25m;
-
-        /// <param name="memoryHint"></param>
-        /// <param name="cpuCount"></param>
-        /// <param name="syncConfig"></param>
-        /// <param name="dbConfig"></param>
-        public void UpdateDbConfig(ulong memoryHint, uint cpuCount, ISyncConfig syncConfig, IDbConfig dbConfig)
+        public void SetMemoryAllowances(
+            IDbConfig dbConfig,
+            IInitConfig initConfig,
+            INetworkConfig networkConfig,
+            ISyncConfig syncConfig,
+            ITxPoolConfig txPoolConfig,
+            uint cpuCount)
         {
-            ValidateMemoryHint(memoryHint);
+            TotalMemory = (ulong) (initConfig.MemoryHint ?? (long) 2.GB());
+            ValidateMemoryHint(TotalMemory);
             ValidateCpuCount(cpuCount);
+            
+            StringBuilder builder = new StringBuilder();
+            builder.AppendLine("Setting up memory allowances");
+            builder.AppendLine($"  memory hint:        {TotalMemory / 1024 / 1024}MB");
+            _remainingMemory = (ulong) (initConfig.MemoryHint ?? (long) 2.GB());
+            _remainingMemory -= GeneralMemory;
+            builder.AppendLine($"  general memory:     {GeneralMemory / 1024 / 1024}MB");
+            AssignPeersMemory(networkConfig);
+            _remainingMemory -= PeersMemory;
+            builder.AppendLine($"  peers memory:       {PeersMemory / 1024 / 1024}MB");
+            AssignNettyMemory(networkConfig, cpuCount);
+            _remainingMemory -= NettyMemory;
+            builder.AppendLine($"  Netty memory:       {NettyMemory / 1024 / 1024}MB");
+            AssignTxPoolMemory(txPoolConfig);
+            _remainingMemory -= TxPoolMemory;
+            builder.AppendLine($"  mempool memory:     {TxPoolMemory / 1024 / 1024}MB");
+            AssignFastBlocksMemory(syncConfig);
+            _remainingMemory -= FastBlocksMemory;
+            builder.AppendLine($"  fast blocks memory: {FastBlocksMemory / 1024 / 1024}MB");
+            AssignTrieCacheMemory();
+            _remainingMemory -= TrieCacheMemory;
+            builder.AppendLine($"  trie memory:        {TrieCacheMemory / 1024 / 1024}MB");
+        }
 
-            ulong remaining = (ulong)(memoryHint * AvailableForDb);
+        private ulong _remainingMemory;
+        
+        public ulong TotalMemory = 1024 * 1024 * 1024;
+        public ulong GeneralMemory { get; } = 32.MB();
+        public ulong FastBlocksMemory { get; private set; }
+        public ulong DbMemory { get; private set; }
+        public ulong NettyMemory { get; private set; }
+        public ulong TxPoolMemory { get; private set; }
+        public ulong PeersMemory { get; private set; }
+        public ulong TrieCacheMemory { get; private set; }
+
+        private void AssignTrieCacheMemory()
+        {
+            TrieCacheMemory = (ulong)(0.2 * _remainingMemory);
+        }
+        
+        private void AssignDbMemory()
+        {
+            DbMemory = _remainingMemory;
+        }
+        
+        private void AssignPeersMemory(INetworkConfig networkConfig)
+        {
+            PeersMemory = (ulong) networkConfig.ActivePeersMaxCount * 1.MB();
+        }
+
+        private void AssignTxPoolMemory(ITxPoolConfig txPoolConfig)
+        {
+            ulong hashCache = 512 * 1024;
+            ulong txPoolMemory = (ulong) txPoolConfig.Size * 100.KB() + (hashCache * 128);
+            TxPoolMemory = txPoolMemory;
+        }
+        
+        private void AssignFastBlocksMemory(ISyncConfig syncConfig)
+        {
+            if (syncConfig.FastBlocks)
+            {
+                if (!syncConfig.DownloadBodiesInFastSync && !syncConfig.DownloadReceiptsInFastSync)
+                {
+                    FastBlocksMemory = (ulong) Math.Min((long) 128.MB(), (long) (0.1 * _remainingMemory));
+                }
+                else
+                {
+                    FastBlocksMemory = (ulong) Math.Max((long) 1.GB(), (long) (0.1 * _remainingMemory));
+                }
+            }
+        }
+
+        private void UpdateDbConfig(uint cpuCount, ISyncConfig syncConfig, IDbConfig dbConfig)
+        {
+            ulong remaining = DbMemory;
             DbNeeds dbNeeds = GetHeaderNeeds(cpuCount, syncConfig);
-            DbGets dbGets = GiveItWhatYouCan(dbNeeds, memoryHint, remaining);
+            DbGets dbGets = GiveItWhatYouCan(dbNeeds, DbMemory, remaining);
             remaining -= dbGets.CacheMem + dbGets.Buffers * dbGets.SingleBufferMem;
             dbConfig.HeadersDbWriteBufferNumber = dbGets.Buffers;
             dbConfig.HeadersDbWriteBufferSize = dbGets.SingleBufferMem;
             dbConfig.HeadersDbBlockCacheSize = dbGets.CacheMem;
 
             dbNeeds = GetBlocksNeeds(cpuCount, syncConfig);
-            dbGets = GiveItWhatYouCan(dbNeeds, memoryHint, remaining);
+            dbGets = GiveItWhatYouCan(dbNeeds, DbMemory, remaining);
             remaining -= dbGets.CacheMem + dbGets.Buffers * dbGets.SingleBufferMem;
             dbConfig.BlocksDbWriteBufferNumber = dbGets.Buffers;
             dbConfig.BlocksDbWriteBufferSize = dbGets.SingleBufferMem;
             dbConfig.BlocksDbBlockCacheSize = dbGets.CacheMem;
 
             dbNeeds = GetBlockInfosNeeds(cpuCount, syncConfig);
-            dbGets = GiveItWhatYouCan(dbNeeds, memoryHint, remaining);
+            dbGets = GiveItWhatYouCan(dbNeeds, DbMemory, remaining);
             remaining -= dbGets.CacheMem + dbGets.Buffers * dbGets.SingleBufferMem;
             dbConfig.BlockInfosDbWriteBufferNumber = dbGets.Buffers;
             dbConfig.BlockInfosDbWriteBufferSize = dbGets.SingleBufferMem;
             dbConfig.BlockInfosDbBlockCacheSize = dbGets.CacheMem;
 
             dbNeeds = GetReceiptsNeeds(cpuCount, syncConfig);
-            dbGets = GiveItWhatYouCan(dbNeeds, memoryHint, remaining);
+            dbGets = GiveItWhatYouCan(dbNeeds, DbMemory, remaining);
             remaining -= dbGets.CacheMem + dbGets.Buffers * dbGets.SingleBufferMem;
             dbConfig.ReceiptsDbWriteBufferNumber = dbGets.Buffers;
             dbConfig.ReceiptsDbWriteBufferSize = dbGets.SingleBufferMem;
             dbConfig.ReceiptsDbBlockCacheSize = dbGets.CacheMem;
 
             dbNeeds = GetCodeNeeds(cpuCount, syncConfig);
-            dbGets = GiveItWhatYouCan(dbNeeds, memoryHint, remaining);
+            dbGets = GiveItWhatYouCan(dbNeeds, DbMemory, remaining);
             remaining -= dbGets.CacheMem + dbGets.Buffers * dbGets.SingleBufferMem;
             dbConfig.CodeDbWriteBufferNumber = dbGets.Buffers;
             dbConfig.CodeDbWriteBufferSize = dbGets.SingleBufferMem;
             dbConfig.CodeDbBlockCacheSize = dbGets.CacheMem;
 
             dbNeeds = GetPendingTxNeeds(cpuCount, syncConfig);
-            dbGets = GiveItWhatYouCan(dbNeeds, memoryHint, remaining);
+            dbGets = GiveItWhatYouCan(dbNeeds, DbMemory, remaining);
             remaining -= dbGets.CacheMem + dbGets.Buffers * dbGets.SingleBufferMem;
             dbConfig.PendingTxsDbWriteBufferNumber = dbGets.Buffers;
             dbConfig.PendingTxsDbWriteBufferSize = dbGets.SingleBufferMem;
             dbConfig.PendingTxsDbBlockCacheSize = dbGets.CacheMem;
 
             dbNeeds = GetStateNeeds(cpuCount, syncConfig);
-            dbGets = GiveItWhatYouCan(dbNeeds, memoryHint, remaining);
+            dbGets = GiveItWhatYouCan(dbNeeds, DbMemory, remaining);
             remaining -= dbGets.CacheMem + dbGets.Buffers * dbGets.SingleBufferMem;
             dbConfig.WriteBufferNumber = dbGets.Buffers;
             dbConfig.WriteBufferSize = dbGets.SingleBufferMem;
@@ -259,11 +335,10 @@ namespace Nethermind.Runner
                 0); // db memory %
         }
 
-        public void UpdateNetworkConfig(ulong memoryHint, uint cpuCount, INetworkConfig networkConfig)
+        private void AssignNettyMemory(INetworkConfig networkConfig, uint cpuCount)
         {
-            ValidateMemoryHint(memoryHint);
-            ValidateCpuCount(cpuCount);
-
+            ulong estimate = NettyMemoryEstimator.Estimate(cpuCount, networkConfig.NettyArenaOrder);
+            
             /* first of all we assume that the mainnet will be heavier than any other chain on the side */
             /* we will leave the arena order as in config if it is set to a non-default value */
             if (networkConfig.NettyArenaOrder != INetworkConfig.DefaultNettyArenaOrder)
@@ -277,8 +352,8 @@ namespace Nethermind.Runner
                 int targetNettyArenaOrder = INetworkConfig.DefaultNettyArenaOrder;
                 for (int i = networkConfig.NettyArenaOrder; i > 0; i--)
                 {
-                    ulong estimate = NettyMemoryEstimator.Estimate(cpuCount, i);
-                    ulong maxAvailableFoNetty = (ulong) (AvailableForNetty * memoryHint);
+                    estimate = NettyMemoryEstimator.Estimate(cpuCount, i);
+                    ulong maxAvailableFoNetty = NettyMemory;
                     if (estimate <= maxAvailableFoNetty)
                     {
                         targetNettyArenaOrder = i;
@@ -288,6 +363,8 @@ namespace Nethermind.Runner
 
                 networkConfig.NettyArenaOrder = Math.Min(11, targetNettyArenaOrder);
             }
+
+            NettyMemory = estimate;
         }
 
         private static void ValidateMemoryHint(ulong memoryHint)

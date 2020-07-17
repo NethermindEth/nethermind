@@ -22,6 +22,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
+using Nethermind.TxPool;
 using NUnit.Framework;
 
 namespace Nethermind.Runner.Test
@@ -32,6 +33,24 @@ namespace Nethermind.Runner.Test
         private const ulong GB = 1000 * 1000 * 1000;
         private const ulong MB = 1000 * 1000;
 
+        private IDbConfig _dbConfig = new DbConfig();
+        private ISyncConfig _syncConfig = new SyncConfig();
+        private IInitConfig _initConfig = new InitConfig();
+        private ITxPoolConfig _txPoolConfig = new TxPoolConfig();
+        private INetworkConfig _networkConfig = new NetworkConfig();
+        private MemoryHintMan _memoryHintMan = new MemoryHintMan(LimboLogs.Instance);
+
+        private void SetMemoryAllowances(uint cpuCount)
+        {
+            _memoryHintMan.SetMemoryAllowances(
+                _dbConfig,
+                _initConfig,
+                _networkConfig,
+                _syncConfig,
+                _txPoolConfig,
+                cpuCount);
+        }
+        
         [TestCase(4 * GB, 2u, 11)]
         [TestCase(4 * GB, 4u, 11)]
         [TestCase(8 * GB, 1u, 11)]
@@ -42,10 +61,9 @@ namespace Nethermind.Runner.Test
         [TestCase(2000 * MB, 12u, 11)]
         public void Netty_arena_order_is_configured_correctly(ulong memoryHint, uint cpuCount, int expectedArenaOrder)
         {
-            MemoryHintMan memoryHintMan = new MemoryHintMan(LimboLogs.Instance);
-            NetworkConfig networkConfig = new NetworkConfig();
-            memoryHintMan.UpdateNetworkConfig(memoryHint, cpuCount, networkConfig);
-            networkConfig.NettyArenaOrder.Should().Be(expectedArenaOrder);
+            _initConfig.MemoryHint = (long)memoryHint;
+            SetMemoryAllowances(cpuCount);
+            _networkConfig.NettyArenaOrder.Should().Be(expectedArenaOrder);
         }
 
         [Test]
@@ -62,13 +80,14 @@ namespace Nethermind.Runner.Test
                 return;
             }
             
-            MemoryHintMan memoryHintMan = new MemoryHintMan(LimboLogs.Instance);
+            _initConfig.MemoryHint = (long)memoryHint;
+            SetMemoryAllowances(cpuCount);
+            
             SyncConfig syncConfig = new SyncConfig();
             syncConfig.FastSync = fastSync;
             syncConfig.FastBlocks = fastBlocks;
 
-            DbConfig dbConfig = new DbConfig();
-            memoryHintMan.UpdateDbConfig(memoryHint, cpuCount, syncConfig, dbConfig);
+            IDbConfig dbConfig = _dbConfig;
 
             ulong totalForHeaders = dbConfig.HeadersDbBlockCacheSize
                                     + dbConfig.HeadersDbWriteBufferNumber * dbConfig.HeadersDbWriteBufferSize;
@@ -107,14 +126,11 @@ namespace Nethermind.Runner.Test
         [TestCase(256 * MB, 1u, 1)]
         public void Will_not_change_non_default_arena_order(ulong memoryHint, uint cpuCount, int differenceFromDefault)
         {
-            MemoryHintMan memoryHintMan = new MemoryHintMan(LimboLogs.Instance);
-            NetworkConfig networkConfig = new NetworkConfig();
+            _initConfig.MemoryHint = (long)memoryHint;
             int manuallyConfiguredArenaOrder = INetworkConfig.DefaultNettyArenaOrder + differenceFromDefault;
-            networkConfig.NettyArenaOrder = manuallyConfiguredArenaOrder;
-
-            memoryHintMan.UpdateNetworkConfig(memoryHint, cpuCount, networkConfig);
-
-            networkConfig.NettyArenaOrder.Should().Be(manuallyConfiguredArenaOrder);
+            _networkConfig.NettyArenaOrder = manuallyConfiguredArenaOrder;
+            SetMemoryAllowances(cpuCount);
+            _networkConfig.NettyArenaOrder.Should().Be(manuallyConfiguredArenaOrder);
         }
 
         [TestCase(0 * GB, 16u)]
@@ -122,11 +138,9 @@ namespace Nethermind.Runner.Test
         [TestCase(MemoryHintMan.MinMemoryHint - 1, 0u)]
         public void Incorrect_input_throws(ulong memoryHint, uint cpuCount)
         {
-            MemoryHintMan memoryHintMan = new MemoryHintMan(LimboLogs.Instance);
-            NetworkConfig networkConfig = new NetworkConfig();
-
+            _initConfig.MemoryHint = (long) memoryHint;
             Assert.Throws<ArgumentOutOfRangeException>(
-                () => memoryHintMan.UpdateNetworkConfig(memoryHint, cpuCount, networkConfig));
+                () => SetMemoryAllowances(cpuCount));
         }
     }
 }
