@@ -185,24 +185,26 @@ namespace Nethermind.Blockchain.Processing
             if (_logger.IsDebug) _logger.Debug($"Starting recovery loop - {_blockQueue.Count} blocks waiting in the queue.");
             foreach (BlockRef blockRef in _recoveryQueue.GetConsumingEnumerable(_loopCancellationSource.Token))
             {
-                if (!blockRef.Resolve(_blockTree))
+                if (blockRef.Resolve(_blockTree))
+                {
+                    Interlocked.Add(ref _currentRecoveryQueueSize, -blockRef.Block.Transactions.Length);
+                    if (_logger.IsTrace) _logger.Trace($"Recovering addresses for block {blockRef.BlockHash?.ToString() ?? blockRef.Block.ToString(Block.Format.Short)}.");
+                    _recoveryStep.RecoverData(blockRef.Block);
+
+                    try
+                    {
+                        _blockQueue.Add(blockRef);
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        if (_logger.IsDebug) _logger.Debug($"Recovery loop stopping.");
+                        return;
+                    }
+                }
+                else
                 {
                     if (_logger.IsTrace) _logger.Trace("Block was removed from the DB and cannot be recovered (it belonged to an invalid branch). Skipping.");
-                    continue;
-                }
-
-                Interlocked.Add(ref _currentRecoveryQueueSize, -blockRef.Block.Transactions.Length);
-                if (_logger.IsTrace) _logger.Trace($"Recovering addresses for block {blockRef.BlockHash?.ToString() ?? blockRef.Block.ToString(Block.Format.Short)}.");
-                _recoveryStep.RecoverData(blockRef.Block);
-
-                try
-                {
-                    _blockQueue.Add(blockRef);
-                }
-                catch (InvalidOperationException)
-                {
-                    if (_logger.IsDebug) _logger.Debug($"Recovery loop stopping.");
-                    return;
+                    FireProcessingQueueEmpty();
                 }
             }
         }
@@ -252,10 +254,7 @@ namespace Nethermind.Blockchain.Processing
             _stats.Start();
             if (_logger.IsDebug) _logger.Debug($"Starting block processor - {_blockQueue.Count} blocks waiting in the queue.");
 
-            if (IsEmpty)
-            {
-                ProcessingQueueEmpty?.Invoke(this, EventArgs.Empty);
-            }
+            FireProcessingQueueEmpty();
 
             foreach (BlockRef blockRef in _blockQueue.GetConsumingEnumerable(_loopCancellationSource.Token))
             {
@@ -283,10 +282,7 @@ namespace Nethermind.Blockchain.Processing
                     }
 
                     if (_logger.IsTrace) _logger.Trace($"Now {_blockQueue.Count} blocks waiting in the queue.");
-                    if (IsEmpty)
-                    {
-                        ProcessingQueueEmpty?.Invoke(this, EventArgs.Empty);
-                    }
+                    FireProcessingQueueEmpty();
                 }
                 finally
                 {
@@ -295,6 +291,14 @@ namespace Nethermind.Blockchain.Processing
             }
 
             if (_logger.IsInfo) _logger.Info("Block processor queue stopped.");
+        }
+
+        private void FireProcessingQueueEmpty()
+        {
+            if (IsEmpty)
+            {
+                ProcessingQueueEmpty?.Invoke(this, EventArgs.Empty);
+            }
         }
 
         public event EventHandler ProcessingQueueEmpty;
