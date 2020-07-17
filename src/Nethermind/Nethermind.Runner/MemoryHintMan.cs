@@ -137,6 +137,8 @@ namespace Nethermind.Runner
                 {
                     FastBlocksMemory = (ulong) Math.Min((long) 1.GB(), (long) (0.1 * _remainingMemory));
                 }
+                
+                Synchronization.MemoryAllowance.FastBlocksMemory = FastBlocksMemory;
             }
         }
 

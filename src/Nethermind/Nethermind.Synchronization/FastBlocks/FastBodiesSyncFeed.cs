@@ -91,6 +91,9 @@ namespace Nethermind.Synchronization.FastBlocks
         private bool ShouldFinish => !_syncConfig.DownloadBodiesInFastSync || (_blockTree.LowestInsertedBody?.Number ?? 0) == 1;
 
         private long BodiesInQueue => _dependencies.Sum(d => d.Value.Count);
+        private ulong MemoryInQueue => (ulong)_dependencies
+            .Sum(d => d.Value.Sum(b =>
+                MemorySizeEstimator.EstimateSize(b)));
 
         public override bool IsMultiFeed => true;
 
@@ -105,7 +108,7 @@ namespace Nethermind.Synchronization.FastBlocks
             bool noBatchesLeft = !shouldDownloadBodies
                                  || allBodiesDownloaded
                                  || requestedGenesis
-                                 || BodiesInQueue >= FastBlocksQueueLimits.ForBodies;
+                                 || MemoryInQueue >= MemoryAllowance.FastBlocksMemory;
 
             if (noBatchesLeft)
             {

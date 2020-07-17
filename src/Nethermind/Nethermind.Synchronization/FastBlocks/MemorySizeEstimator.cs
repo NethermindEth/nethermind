@@ -20,9 +20,28 @@ using Nethermind.Core;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
-    internal class MemorySizeEstimator
+    internal static class MemorySizeEstimator
     {
-        public long EstimateSize(BlockBody blockBody)
+        public static long EstimateSize(Block block)
+        {
+            long estimate = 80L;
+            estimate += EstimateSize(block.Header);
+            estimate += EstimateSize(block.Body);
+            return estimate;
+        }
+        
+        public static long EstimateSize(TxReceipt txReceipt)
+        {
+            long estimate = 320L;
+            foreach (LogEntry logEntry in txReceipt.Logs)
+            {
+                estimate += logEntry.Data.Length + logEntry.Topics.Length * 80;
+            }
+
+            return estimate;
+        }
+        
+        public static long EstimateSize(BlockBody blockBody)
         {
             long estimate = 80L;
             estimate += (blockBody.Transactions?.Length ?? 0) * 8L;
@@ -46,7 +65,7 @@ namespace Nethermind.Synchronization.FastBlocks
         /// </summary>
         /// <param name="header"></param>
         /// <returns></returns>
-        public long EstimateSize(BlockHeader header)
+        public static long EstimateSize(BlockHeader header)
         {
             if (header == null)
             {
@@ -56,7 +75,7 @@ namespace Nethermind.Synchronization.FastBlocks
             return 1212 + (header.ExtraData?.Length ?? 0);
         }
         
-        public long EstimateSize(Transaction transaction)
+        public static long EstimateSize(Transaction transaction)
         {
             if (transaction == null)
             {

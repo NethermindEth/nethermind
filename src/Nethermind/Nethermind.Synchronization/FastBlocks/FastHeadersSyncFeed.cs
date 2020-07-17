@@ -71,6 +71,9 @@ namespace Nethermind.Synchronization.FastBlocks
         private bool AnyHeaderDownloaded => _blockTree.LowestInsertedHeader != null;
 
         private long HeadersInQueue => _dependencies.Sum(hd => hd.Value.Response.Length);
+        private ulong MemoryInQueue => (ulong)_dependencies
+            .Sum(d => d.Value.Response.Sum(h =>
+                MemorySizeEstimator.EstimateSize(h)));
 
         public FastHeadersSyncFeed(IBlockTree blockTree, ISyncPeerPool syncPeerPool, ISyncConfig syncConfig, ISyncReport syncReport, ILogManager logManager)
             : base(logManager)
@@ -117,7 +120,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
             bool noBatchesLeft = AllHeadersDownloaded
                                  || genesisHeaderRequested
-                                 || HeadersInQueue >= FastBlocksQueueLimits.ForHeaders
+                                 || MemoryInQueue >= MemoryAllowance.FastBlocksMemory
                                  || isImmediateSync && AnyHeaderDownloaded;
 
             if (noBatchesLeft)

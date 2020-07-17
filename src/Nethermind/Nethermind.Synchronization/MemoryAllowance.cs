@@ -15,23 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-namespace Nethermind.Synchronization.FastBlocks
+using Nethermind.Core.Extensions;
+
+namespace Nethermind.Synchronization
 {
-    internal static class FastBlocksQueueLimits
+    public static class MemoryAllowance
     {
-        /// <summary>
-        /// Max queued headers
-        /// </summary>
-        public const long ForHeaders = 128 * 1024;
-        
-        /// <summary>
-        /// Max queued bodies
-        /// </summary>
-        public const long ForBodies = 16 * 1024;
-        
-        /// <summary>
-        /// Max queued receipts
-        /// </summary>
-        public const long ForReceipts = 16 * 1024;
+        public static ulong FastBlocksMemory = 128.MB();
     }
 }

@@ -73,6 +73,10 @@ namespace Nethermind.Synchronization.FastBlocks
         /// Not it is meant to be counting blocks and not receipts
         /// </summary>
         private long ReceiptsInQueue => _dependencies.Sum(d => d.Value.Count);
+        private ulong MemoryInQueue => (ulong)_dependencies
+            .Sum(d => d.Value.Sum(v =>
+                MemorySizeEstimator.EstimateSize(v.Item1) +
+                v.Item2.Sum(r => MemorySizeEstimator.EstimateSize(r))));
 
         public FastReceiptsSyncFeed(
             ISyncModeSelector syncModeSelector,
@@ -134,7 +138,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
             bool noBatchesLeft = !shouldDownloadReceipts
                                  || allReceiptsDownloaded
-                                 || ReceiptsInQueue >= FastBlocksQueueLimits.ForReceipts;
+                                 || MemoryInQueue >= MemoryAllowance.FastBlocksMemory;
 
             if (noBatchesLeft)
             {
