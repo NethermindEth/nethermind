@@ -2075,7 +2075,7 @@ namespace Nethermind.Evm
                         if (env.CallDepth >= MaxCallDepth) // TODO: fragile ordering / potential vulnerability for different clients
                         {
                             // TODO: need a test for this
-                            _returnDataBuffer = Array.Empty<byte[]>();
+                            _returnDataBuffer = Array.Empty<byte>();
                             stack.PushZero();
                             break;
                         }

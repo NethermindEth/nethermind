@@ -17,6 +17,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 using Nethermind.HashLib.Extensions;
@@ -383,7 +384,8 @@ namespace Nethermind.HashLib
 
         public void TransformUInts(uint[] a_data)
         {
-            TransformBytes(Converters.ConvertUIntsToBytes(a_data));
+            TransformBytes(MemoryMarshal.Cast<uint, byte>(a_data));
+            // TransformBytes(Converters.ConvertUIntsToBytes(a_data));
         }
 
         public void TransformLongs(long[] a_data)
