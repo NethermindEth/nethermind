@@ -283,9 +283,9 @@ namespace Nethermind.Synchronization.ParallelSync
                           notInFastSync &&
                           notInStateSync;
 
-            if (_logger.IsTrace)
+            if (_logger.IsInfo)
             {
-                _logger.Trace("FULL: " +
+                _logger.Info("FULL: " +
                               $"{GetBoolFlagString(desiredPeerKnown)}{nameof(desiredPeerKnown)} && " +
                               $"{GetBoolFlagString(postPivotPeerAvailable)}{nameof(postPivotPeerAvailable)} && " +
                               $"{GetBoolFlagString(hasFastSyncBeenActive)}{nameof(hasFastSyncBeenActive)} && " +
