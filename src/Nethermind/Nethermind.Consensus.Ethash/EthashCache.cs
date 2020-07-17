@@ -74,7 +74,7 @@ namespace Nethermind.Consensus.Ethash
             }
         }
 
-        private ArrayPool<Bucket> _arrayPool = ArrayPool<Bucket>.Create(1024 * 1024 * 4, 50);
+        private ArrayPool<Bucket> _arrayPool = ArrayPool<Bucket>.Create(1024 * 1024 * 2, 50);
 
         private Bucket[] Data { get; set; }
 
