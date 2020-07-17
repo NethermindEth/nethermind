@@ -96,12 +96,12 @@ namespace Nethermind.Synchronization.FastBlocks
                 MemorySizeEstimator.EstimateSize(b)));
         
         private ulong MemoryInSent => (ulong)_sent
-            .Sum(d => d.Key.Response.Sum(b =>
-                MemorySizeEstimator.EstimateSize(b)));
+            .Sum(d => d.Key.Response?.Sum(b =>
+                MemorySizeEstimator.EstimateSize(b)) ?? 0);
         
         private ulong MemoryInPending => (ulong)_pending
-            .Sum(d => d.Value.Response.Sum(b =>
-                MemorySizeEstimator.EstimateSize(b)));
+            .Sum(d => d.Value.Response?.Sum(b =>
+                MemorySizeEstimator.EstimateSize(b)) ?? 0);
 
         public override bool IsMultiFeed => true;
 
