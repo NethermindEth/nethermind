@@ -95,12 +95,12 @@ namespace Nethermind.Synchronization.FastBlocks
             .Sum(d => d.Value.Sum(b =>
                 MemorySizeEstimator.EstimateSize(b)));
         
-        private ulong MemoryInSent => (ulong)_dependencies
-            .Sum(d => d.Value.Sum(b =>
+        private ulong MemoryInSent => (ulong)_sent
+            .Sum(d => d.Key.Response.Sum(b =>
                 MemorySizeEstimator.EstimateSize(b)));
         
-        private ulong MemoryInPending => (ulong)_dependencies
-            .Sum(d => d.Value.Sum(b =>
+        private ulong MemoryInPending => (ulong)_pending
+            .Sum(d => d.Value.Response.Sum(b =>
                 MemorySizeEstimator.EstimateSize(b)));
 
         public override bool IsMultiFeed => true;
@@ -114,7 +114,8 @@ namespace Nethermind.Synchronization.FastBlocks
             bool requestedGenesis = _lowestRequestedBodyHash == _blockTree.Genesis.Hash;
 
             ulong memoryInQueue = MemoryInQueue;
-            ulong memoryInPending = MemoryInPending;
+            ulong memoryInPending = 0;
+            lock(_pending){ memoryInPending = MemoryInPending;}
             ulong memoryInSent = MemoryInSent;
             ulong memoryAllowance = MemoryAllowance.FastBlocksMemory;
             _logger.Warn(
