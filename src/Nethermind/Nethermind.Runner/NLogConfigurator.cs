@@ -1,3 +1,4 @@
+using System.Reflection;
 using NLog;
 using NLog.Config;
 using NLog.Targets.Seq;
@@ -8,7 +9,10 @@ namespace Nethermind.Runner
     public class NLogConfigurator
     {
 
-        public NLogConfigurator() {}
+        public NLogConfigurator() {
+            var assembly = Assembly.Load("NLog.Targets.Seq");
+            NLog.Config.ConfigurationItemFactory.Default.RegisterItemsFromAssembly(assembly);
+        }
         
         public void ConfigureSeqBufferTarget(LogLevel level,
             string url = "http://localhost:5341", 
