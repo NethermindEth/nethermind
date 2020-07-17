@@ -51,7 +51,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private readonly ConcurrentDictionary<long, List<Block>> _dependencies = new ConcurrentDictionary<long, List<Block>>();
         private readonly ConcurrentDictionary<BodiesSyncBatch, object> _sent = new ConcurrentDictionary<BodiesSyncBatch, object>();
-        private readonly ConcurrentQueue<BodiesSyncBatch> _pending = new ConcurrentQueue<BodiesSyncBatch>();
+        private readonly SortedList<long, BodiesSyncBatch> _pending = new SortedList<long, BodiesSyncBatch>();
 
         private Keccak _lowestRequestedBodyHash;
 
@@ -132,7 +132,7 @@ namespace Nethermind.Synchronization.FastBlocks
             _syncReport.FastBlocksBodies.Update(_pivotNumber);
             _syncReport.FastBlocksBodies.MarkEnd();
             _dependencies.Clear();
-            _pending.Clear();
+            lock(_pending) _pending.Clear();
             _sent.Clear();
             _syncReport.BodiesInQueue.Update(0L);
             _syncReport.BodiesInQueue.MarkEnd();
@@ -153,9 +153,12 @@ namespace Nethermind.Synchronization.FastBlocks
                         all.TryAdd(headerDependency.Value.Last().Number, $"  DEPENDENCY [{headerDependency.Value.First().Number}, {headerDependency.Value.Last().Number}]");
                     }
 
-                    foreach (var pendingBatch in _pending)
+                    lock (_pending)
                     {
-                        all.TryAdd(pendingBatch.EndNumber, $"  PENDING    {pendingBatch}");
+                        foreach (var pendingBatch in _pending)
+                        {
+                            all.TryAdd(pendingBatch.Value.EndNumber, $"  PENDING    {pendingBatch}");
+                        }
                     }
 
                     foreach (var sentBatch in _sent)
@@ -179,11 +182,17 @@ namespace Nethermind.Synchronization.FastBlocks
             _logger.Info($"Body Counts - waiting:{BodyCounter.WaitingForHandling}|inhandler:{BodyCounter.InHandler}|dependent:{BodyCounter.HeldInQueues}|inserting{BodyCounter.Inserting}, {BlockBody.Number}");
             HandleDependentBatches();
 
-            if (_pending.TryDequeue(out BodiesSyncBatch batch))
+            BodiesSyncBatch batch = null;
+            lock (_pending)
             {
-                batch.MarkRetry();
+                if (_pending.Any())
+                {
+                    batch = _pending.Last().Value;
+                    batch.MarkRetry();
+                }
             }
-            else if (ShouldBuildANewBatch())
+            
+            if (batch == null && ShouldBuildANewBatch())
             {
                 long? lowestInsertedHeader = _blockTree.LowestInsertedHeader?.Number;
                 long? lowestInsertedBody = _blockTree.LowestInsertedBody?.Number;
@@ -303,7 +312,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 if (batch.IsResponseEmpty)
                 {
                     if (_logger.IsTrace) _logger.Trace($"{batch} - came back EMPTY");
-                    _pending.Enqueue(batch);
+                    lock(_pending) _pending.Add(batch.EndNumber, batch);
                     return batch.ResponseSourcePeer == null ? SyncResponseHandlingResult.NotAssigned : SyncResponseHandlingResult.NoProgress; //(BlocksDataHandlerResult.OK, 0);
                 }
                 else
@@ -364,7 +373,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 }
 
                 if (_logger.IsDebug) _logger.Debug($"{batch} -> FILLER {fillerBatch}");
-                _pending.Enqueue(fillerBatch);
+                lock(_pending) _pending.Add(fillerBatch.EndNumber, fillerBatch);
             }
 
             if (validResponses.Any())
