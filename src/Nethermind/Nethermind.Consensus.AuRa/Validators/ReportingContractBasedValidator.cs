@@ -164,11 +164,16 @@ namespace Nethermind.Consensus.AuRa.Validators
             var firstBlock = header.Number == 1;
             if (areThereSkipped && !firstBlock)
             {
-                if (_logger.IsDebug) _logger.Debug($"Author {header.Beneficiary} built block with step gap. current step: {header.AuRaStep}, parent step: {parent.AuRaStep}");
+                Address[] validators = Validators;
+                
+                if (_logger.IsDebug) _logger.Debug($"Author {header.Beneficiary} built block with step gap indicating skipped steps. " +
+                                                   $"Current step: {header.AuRaStep} at block {header.Number}, parent step: {parent.AuRaStep} at block {parent.Number}. " +
+                                                   $"CurrentValidators [{(string.Join(", ", validators.AsEnumerable()))}");
+                
                 ISet<Address> reported = new HashSet<Address>();
                 for (long step = parent.AuRaStep.Value + 1; step < header.AuRaStep.Value; step++)
                 {
-                    var skippedValidator = Validators.GetItemRoundRobin(step);
+                    var skippedValidator = validators.GetItemRoundRobin(step);
                     if (skippedValidator != ValidatorContract.NodeAddress)
                     {
                         if (reported.Contains(skippedValidator))
@@ -178,10 +183,11 @@ namespace Nethermind.Consensus.AuRa.Validators
                         
                         ReportBenign(skippedValidator, header.Number, IReportingValidator.BenignCause.SkippedStep);
                         reported.Add(skippedValidator);
+                        if (_logger.IsDebug) _logger.Debug($"Found skipped step {step} by author {skippedValidator}, actual author {header.Beneficiary} at block {header.Number}.");
                     }
                     else
                     {
-                        if (_logger.IsTrace) _logger.Trace("Primary that skipped is self, not self-reporting.");
+                        if (_logger.IsDebug) _logger.Debug($"Found skipped step {step} by self {skippedValidator}, actual author {header.Beneficiary} at block {header.Number}. Not self-reporting.");
                     }
                 }
             }
