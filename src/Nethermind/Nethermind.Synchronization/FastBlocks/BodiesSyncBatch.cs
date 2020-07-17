@@ -21,10 +21,10 @@ namespace Nethermind.Synchronization.FastBlocks
 {
     public static class BodyCounter
     {
-        public static long InHandler { get; set; }
-        public static long WaitingForHandling { get; set; }
-        public static long HeldInQueues { get; set; }
-        public static long Inserting { get; set; }
+        public static long InHandler;
+        public static long WaitingForHandling;
+        public static long HeldInQueues;
+        public static long Inserting;
     }
     
     public class BodiesSyncBatch : FastBlocksBatch

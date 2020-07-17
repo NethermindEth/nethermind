@@ -42,7 +42,6 @@ namespace Nethermind.Synchronization.FastBlocks
             batch.ResponseSourcePeer = peerInfo;
             batch.MarkSent();
             Task<BlockBody[]> getBodiesTask = peer.GetBlockBodies(batch.Request, cancellationToken);
-            BodyCounter.WaitingForHandling += getBodiesTask.Result.Count(r => r != null);
             await getBodiesTask.ContinueWith(
                 (t, state) =>
                 {

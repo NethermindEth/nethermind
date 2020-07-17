@@ -18,6 +18,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -34,6 +35,7 @@ using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
+using Nethermind.Synchronization.FastBlocks;
 using Nethermind.TxPool;
 
 namespace Nethermind.Network.P2P
@@ -96,6 +98,9 @@ namespace Nethermind.Network.P2P
 
             BlockBody[] blocks = await SendRequest(bodiesMsg, token);
 
+            long notNull = blocks?.Count(r => r != null) ?? 0;
+            Logger.Info($"+WAITING {notNull}");
+            Interlocked.Add(ref BodyCounter.WaitingForHandling, notNull);
             return blocks;
         }
 

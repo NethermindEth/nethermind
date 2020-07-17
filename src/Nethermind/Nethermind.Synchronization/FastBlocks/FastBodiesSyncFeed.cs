@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -169,7 +170,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
         public override Task<BodiesSyncBatch> PrepareRequest()
         {
-            _logger.Info($"Body Counts - waiting:{BodyCounter.WaitingForHandling}|inhandler:{BodyCounter.InHandler}|dependent:{BodyCounter.HeldInQueues}|inserting{BodyCounter.Inserting}");
+            _logger.Info($"Body Counts - waiting:{BodyCounter.WaitingForHandling}|inhandler:{BodyCounter.InHandler}|dependent:{BodyCounter.HeldInQueues}|inserting{BodyCounter.Inserting}, {BlockBody.Number}");
             HandleDependentBatches();
 
             if (_pending.TryDequeue(out BodiesSyncBatch batch))
@@ -287,8 +288,9 @@ namespace Nethermind.Synchronization.FastBlocks
 
         public override SyncResponseHandlingResult HandleResponse(BodiesSyncBatch batch)
         {
-            BodyCounter.WaitingForHandling -= batch.Response.Count(r => r != null);
-            BodyCounter.InHandler += batch.Response.Count(r => r != null);
+            _logger.Info($"-WAITING from {batch}");
+            Interlocked.Add(ref BodyCounter.WaitingForHandling, -batch.Response?.Count(r => r != null) ?? 0);
+            Interlocked.Add(ref BodyCounter.InHandler, batch.Response?.Count(r => r != null) ?? 0);
             batch.MarkHandlingStart();
             try
             {
@@ -310,7 +312,7 @@ namespace Nethermind.Synchronization.FastBlocks
             }
             finally
             {
-                BodyCounter.InHandler -= batch.Response.Count(r => r != null);
+                BodyCounter.InHandler -= batch.Response?.Count(r => r != null) ?? 0;
                 batch.MarkHandlingEnd();
                 _sent.TryRemove(batch, out _);
             }
