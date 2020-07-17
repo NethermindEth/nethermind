@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -169,7 +170,7 @@ namespace Nethermind.Evm.Test
 
             Transaction transaction = Build.A.Transaction
                 .WithTo(null)
-                .WithData(Bytes.Empty)
+                .WithData(Array.Empty<byte>())
                 .WithGasLimit(gasLimit)
                 .WithGasPrice(1)
                 .WithInit(code)

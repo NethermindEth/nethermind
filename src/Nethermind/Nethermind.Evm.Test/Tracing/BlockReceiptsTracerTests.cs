@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -64,9 +65,9 @@ namespace Nethermind.Evm.Test.Tracing
             tracer.SetOtherTracer(otherTracer);
             tracer.StartNewBlockTrace(block);
             tracer.StartNewTxTrace(block.Transactions[0].Hash);
-            tracer.MarkAsFailed(TestItem.AddressA, 100, Bytes.Empty, "error", TestItem.KeccakF);
+            tracer.MarkAsFailed(TestItem.AddressA, 100, Array.Empty<byte>(), "error", TestItem.KeccakF);
             
-            (otherTracer as ITxTracer).Received().MarkAsFailed(TestItem.AddressA, 100, Bytes.Empty, "error", TestItem.KeccakF);
+            (otherTracer as ITxTracer).Received().MarkAsFailed(TestItem.AddressA, 100, Array.Empty<byte>(), "error", TestItem.KeccakF);
         }
         
         [Test]
@@ -80,9 +81,9 @@ namespace Nethermind.Evm.Test.Tracing
             tracer.StartNewBlockTrace(block);
             tracer.StartNewTxTrace(block.Transactions[0].Hash);
             var logEntries = new LogEntry[0];
-            tracer.MarkAsSuccess(TestItem.AddressA, 100, Bytes.Empty, logEntries, TestItem.KeccakF);
+            tracer.MarkAsSuccess(TestItem.AddressA, 100, Array.Empty<byte>(), logEntries, TestItem.KeccakF);
             
-            (otherTracer as ITxTracer).Received().MarkAsSuccess(TestItem.AddressA, 100, Bytes.Empty, logEntries, TestItem.KeccakF);
+            (otherTracer as ITxTracer).Received().MarkAsSuccess(TestItem.AddressA, 100, Array.Empty<byte>(), logEntries, TestItem.KeccakF);
         }
     }
 }

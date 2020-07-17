@@ -25,7 +25,7 @@ namespace Nethermind.Crypto
     // TODO: it is a copy-paste from Keccak, consider later a similar structure to Hashlib but compare the perf first
     public struct Keccak512 : IEquatable<Keccak512>
     {
-        private const int Size = 64;
+        public const int Size = 64;
 
         public Keccak512(byte[] bytes)
         {
@@ -106,6 +106,21 @@ namespace Nethermind.Crypto
             }
 
             return _hash.ComputeUIntsToUint(input);
+        }
+        
+        public static void ComputeUIntsToUInts(uint[] input, uint[] output)
+        {
+            if (input == null || input.Length == 0)
+            {
+                throw new NotSupportedException();
+            }
+
+            if (_hash == null)
+            {
+                LazyInitializer.EnsureInitialized(ref _hash, Init);
+            }
+
+            _hash.ComputeUIntsToUint(input, output);
         }
 
         private static HashLib.Crypto.SHA3.Keccak512 Init()

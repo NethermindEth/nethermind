@@ -60,12 +60,12 @@ namespace Nethermind.Core.Extensions
         {
             if (startIndex >= bytes.Length || length == 0)
             {
-                return new byte[0];
+                return Array.Empty<byte>();
             }
 
             if (length == 1)
             {
-                return bytes.Length == 0 ? new byte[0] : new[] {bytes[(int)startIndex]};
+                return bytes.Length == 0 ? Array.Empty<byte>() : new[] {bytes[(int)startIndex]};
             }
 
             byte[] slice = new byte[length];

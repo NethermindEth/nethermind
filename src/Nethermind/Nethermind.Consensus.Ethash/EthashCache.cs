@@ -35,7 +35,8 @@ namespace Nethermind.Consensus.Ethash
             Data[0] = Keccak512.ComputeToUInts(seed);
             for (uint i = 1; i < cachePageCount; i++)
             {
-                Data[i] = Keccak512.ComputeUIntsToUInts(Data[i - 1]);
+                Data[i] = new uint[Keccak512.Size / sizeof(uint)];
+                Keccak512.ComputeUIntsToUInts(Data[i - 1], Data[i]);
             }
 
             // http://www.hashcash.org/papers/memohash.pdf
@@ -51,7 +52,7 @@ namespace Nethermind.Consensus.Ethash
                         Data[i][j] = Data[page][j] ^ Data[v][j];
                     }
 
-                    Data[i] = Keccak512.ComputeUIntsToUInts(Data[i]);
+                    Keccak512.ComputeUIntsToUInts(Data[i], Data[i]);
                 }
             }
         }

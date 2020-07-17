@@ -78,7 +78,7 @@ namespace Nethermind.Blockchain.Test
             tx.To = new Address(0x0f.ToBigEndianByteArray().PadLeft(20));
             tx.Nonce = _nonce++;
             tx.Value = 1;
-            tx.Data = new byte[0];
+            tx.Data = Array.Empty<byte>();
             tx.Nonce = _count++;
             tx.SenderAddress = SenderAddress;
             _ecdsa.Sign(_privateKey, tx);

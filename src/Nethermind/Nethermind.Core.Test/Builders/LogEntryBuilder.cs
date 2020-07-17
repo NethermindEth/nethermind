@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core.Test.Builders
@@ -21,7 +22,7 @@ namespace Nethermind.Core.Test.Builders
     public class LogEntryBuilder : BuilderBase<LogEntry>
     {
         private Address _address = Address.Zero;
-        private byte[] _data = new byte[0];
+        private byte[] _data = Array.Empty<byte>();
         private Keccak[] _topics = new [] {Keccak.Zero}; 
 
         public LogEntryBuilder()

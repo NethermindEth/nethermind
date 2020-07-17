@@ -14,6 +14,8 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 {
     public class NodeDataMessage : P2PMessage
@@ -24,7 +26,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
         public NodeDataMessage(byte[][] data)
         {
-            Data = data ?? new byte[0][];
+            Data = data ?? Array.Empty<byte[]>();
         }
     }
 }

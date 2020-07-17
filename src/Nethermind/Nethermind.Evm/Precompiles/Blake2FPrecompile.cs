@@ -56,13 +56,13 @@ namespace Nethermind.Evm.Precompiles
         {
             if (inputData.Length != RequiredInputLength)
             {
-                return (Bytes.Empty, false);
+                return (Array.Empty<byte>(), false);
             }
 
             byte finalByte = inputData[212];
             if (finalByte != 0 && finalByte != 1)
             {
-                return (Bytes.Empty, false);
+                return (Array.Empty<byte>(), false);
             }
 
             byte[] result = new byte[64];

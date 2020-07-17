@@ -94,7 +94,7 @@ namespace Nethermind.Evm.Tracing.Proofs
 
         public void ReportCodeChange(Address address, byte[] before, byte[] after)
         {
-            if (_treatSystemAccountDifferently && Address.SystemUser == address && before == null && after == Bytes.Empty)
+            if (_treatSystemAccountDifferently && Address.SystemUser == address && before == null && after == Array.Empty<byte>())
             {
                 return;
             }

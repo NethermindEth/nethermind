@@ -14,14 +14,16 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+
 namespace Nethermind.Core
 {
     public class BlockBody
     {
         public BlockBody()
         {
-            Transactions = new Transaction[0];
-            Ommers = new BlockHeader[0];
+            Transactions = Array.Empty<Transaction>();
+            Ommers = Array.Empty<BlockHeader>();
         }
         
         public BlockBody(Transaction[] transactions, BlockHeader[] ommers)

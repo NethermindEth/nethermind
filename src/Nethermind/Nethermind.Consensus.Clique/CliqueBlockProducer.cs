@@ -318,7 +318,7 @@ namespace Nethermind.Consensus.Clique
                 parentBlock.Number + 1,
                 parentBlock.GasLimit,
                 timestamp > parentBlock.Timestamp ? timestamp : parentBlock.Timestamp + 1,
-                new byte[0]);
+                Array.Empty<byte>());
 
             // If the block isn't a checkpoint, cast a random vote (good enough for now)
             long number = header.Number;
@@ -383,7 +383,7 @@ namespace Nethermind.Consensus.Clique
             _stateProvider.StateRoot = parentHeader.StateRoot;
 
             var selectedTxs = _txSource.GetTransactions(parentBlock.Header, header.GasLimit);
-            Block block = new Block(header, selectedTxs, new BlockHeader[0]);
+            Block block = new Block(header, selectedTxs, Array.Empty<BlockHeader>());
             header.TxRoot = new TxTrie(block.Transactions).RootHash;
             block.Header.Author = _sealer.Address;
             return block;
