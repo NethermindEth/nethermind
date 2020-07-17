@@ -36,6 +36,9 @@ namespace Nethermind.Runner
                     }
                 }
             }
+            // // // re-initialize single target
+            LogManager.Configuration?.AllTargets.OfType<SeqTarget>().ToList().ForEach(t => t.Dispose());
+            LogManager.ReconfigExistingLoggers();
         }
 
         public void ConfigureLogLevels(CommandOption logLevelOverride)
@@ -78,6 +81,7 @@ namespace Nethermind.Runner
                     }                        
                 }
             }
+            LogManager.ReconfigExistingLoggers();
         }
     }
 }

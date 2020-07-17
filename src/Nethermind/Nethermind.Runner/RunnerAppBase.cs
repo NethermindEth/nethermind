@@ -156,8 +156,6 @@ namespace Nethermind.Runner
             {
                 if (_logger?.IsInfo ?? false) _logger!.Info($"Seq Logging enabled on host: {seqConfig.ServerUrl} with level: {seqConfig.MinLevel}");
                 (new NLogConfigurator()).ConfigureSeqBufferTarget(seqConfig.ServerUrl, seqConfig.ApiKey, seqConfig.MinLevel);
-                // re-initialize all targets
-                LogManager.ReconfigExistingLoggers();
             }
 
             if (!string.IsNullOrEmpty(metricsConfig.NodeName))
