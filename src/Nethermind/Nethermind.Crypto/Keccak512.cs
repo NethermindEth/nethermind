@@ -93,7 +93,7 @@ namespace Nethermind.Crypto
             return _hash.ComputeBytesToUint(input);
         }
 
-        public static uint[] ComputeUIntsToUInts(uint[] input)
+        public static uint[] ComputeUIntsToUInts(Span<uint> input)
         {
             if (input == null || input.Length == 0)
             {
@@ -108,7 +108,7 @@ namespace Nethermind.Crypto
             return _hash.ComputeUIntsToUint(input);
         }
         
-        public static void ComputeUIntsToUInts(uint[] input, uint[] output)
+        public static void ComputeUIntsToUInts(Span<uint> input, Span<uint> output)
         {
             if (input == null || input.Length == 0)
             {

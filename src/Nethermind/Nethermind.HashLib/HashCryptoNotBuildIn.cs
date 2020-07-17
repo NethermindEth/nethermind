@@ -110,7 +110,7 @@ namespace Nethermind.HashLib
             return result;
         }
         
-        public override void TransformFinalUInts(uint[] output)
+        public override void TransformFinalUInts(Span<uint> output)
         {
             Finish();
 
@@ -145,7 +145,7 @@ namespace Nethermind.HashLib
             throw new NotSupportedException();
         }
         
-        protected virtual void GetResultUInts(uint[] result)
+        protected virtual void GetResultUInts(Span<uint> result)
         {
             throw new NotSupportedException();
         }
