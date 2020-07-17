@@ -68,7 +68,7 @@ namespace Nethermind.Secp256k1
 
         [SuppressUnmanagedCodeSecurity]
         [DllImport(Secp256k1)]
-        public static extern unsafe bool secp256k1_ecdsa_recoverable_signature_parse_compact( /* secp256k1_context */ IntPtr context, void* signature, byte[] compactSignature, int recoveryId);
+        public static extern unsafe bool secp256k1_ecdsa_recoverable_signature_parse_compact( /* secp256k1_context */ IntPtr context, void* signature, void* compactSignature, int recoveryId);
 
         [SuppressUnmanagedCodeSecurity]
         [DllImport(Secp256k1)]
@@ -170,7 +170,39 @@ namespace Nethermind.Secp256k1
             return compactSignature;
         }
 
-        public static unsafe bool RecoverKeyFromCompact(Span<byte> output, byte[] messageHash, byte[] compactSignature, int recoveryId, bool compressed)
+        // public static unsafe bool RecoverKeyFromCompact(Span<byte> output, byte[] messageHash, Span<byte> recoverableSignature, bool compressed)
+        // {
+        //     Span<byte> publicKey = stackalloc byte[64];
+        //     int expectedLength = compressed ? 33 : 65;
+        //     if (output.Length != expectedLength)
+        //     {
+        //         throw new ArgumentException($"{nameof(output)} length should be {expectedLength}");
+        //     }
+        //
+        //     fixed (byte*
+        //         pubKeyPtr = &MemoryMarshal.GetReference(publicKey),
+        //         recoverableSignaturePtr = &MemoryMarshal.GetReference(recoverableSignature),
+        //         serializedPublicKeyPtr = &MemoryMarshal.GetReference(output))
+        //     {
+        //         if (!secp256k1_ecdsa_recover(Context, pubKeyPtr, recoverableSignaturePtr, messageHash))
+        //         {
+        //             return false;
+        //         }
+        //         
+        //         uint flags = compressed ? Secp256K1EcCompressed : Secp256K1EcUncompressed;
+        //         
+        //         uint outputSize = (uint) output.Length;
+        //         if (!secp256k1_ec_pubkey_serialize(
+        //             Context, serializedPublicKeyPtr, ref outputSize, pubKeyPtr, flags))
+        //         {
+        //             return false;
+        //         }
+        //
+        //         return true;
+        //     }
+        // }
+        
+        public static unsafe bool RecoverKeyFromCompact(Span<byte> output, byte[] messageHash, Span<byte> compactSignature, int recoveryId, bool compressed)
         {
             Span<byte> recoverableSignature = stackalloc byte[65];
             Span<byte> publicKey = stackalloc byte[64];
@@ -181,12 +213,13 @@ namespace Nethermind.Secp256k1
             }
 
             fixed (byte*
+                compactSigPtr = &MemoryMarshal.GetReference(compactSignature),
                 pubKeyPtr = &MemoryMarshal.GetReference(publicKey),
                 recoverableSignaturePtr = &MemoryMarshal.GetReference(recoverableSignature),
                 serializedPublicKeyPtr = &MemoryMarshal.GetReference(output))
             {
                 if (!secp256k1_ecdsa_recoverable_signature_parse_compact(
-                    Context, recoverableSignaturePtr, compactSignature, recoveryId))
+                    Context, recoverableSignaturePtr, compactSigPtr, recoveryId))
                 {
                     return false;
                 }

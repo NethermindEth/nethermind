@@ -56,7 +56,6 @@ namespace Nethermind.Crypto
             if(_logger.IsDebug) _logger.Debug($"Transaction {tx.SenderAddress} -> {tx.To} ({tx.Value}) signed");
         }
 
-        
         /// <summary>
         /// 
         /// </summary>
@@ -83,8 +82,13 @@ namespace Nethermind.Crypto
 
         public Address RecoverAddress(Signature signature, Keccak message)
         {
+            return RecoverAddress(signature.BytesWithRecovery, message);
+        }
+        
+        public Address RecoverAddress(Span<byte> signatureBytes, Keccak message)
+        {
             Span<byte> publicKey = stackalloc byte[65];
-            Proxy.RecoverKeyFromCompact(publicKey, message.Bytes, signature.Bytes, signature.RecoveryId, false);
+            Proxy.RecoverKeyFromCompact(publicKey, message.Bytes, signatureBytes.Slice(0, 64), signatureBytes[64], false);
             if (publicKey == null)
             {
                 return null;
