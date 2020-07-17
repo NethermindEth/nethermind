@@ -147,14 +147,14 @@ namespace Nethermind.Trie
                 if (!AllowBranchValues)
                 {
                     // branches that we use for state will never have value set as all the keys are equal length
-                    return new byte[0];
+                    return Array.Empty<byte>();
                 }
 
                 if (_data[16] == null)
                 {
                     if (_rlpStream == null)
                     {
-                        _data[16] = new byte[0];
+                        _data[16] = Array.Empty<byte>();
                     }
                     else
                     {

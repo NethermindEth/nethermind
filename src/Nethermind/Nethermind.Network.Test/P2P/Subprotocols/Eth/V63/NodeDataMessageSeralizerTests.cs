@@ -57,7 +57,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         [Test]
         public void Roundtrip_with_nulls()
         {
-            byte[][] data = {TestItem.KeccakA.Bytes, Bytes.Empty, TestItem.KeccakC.Bytes};
+            byte[][] data = {TestItem.KeccakA.Bytes, Array.Empty<byte>(), TestItem.KeccakC.Bytes};
             Test(data);
         }
     }

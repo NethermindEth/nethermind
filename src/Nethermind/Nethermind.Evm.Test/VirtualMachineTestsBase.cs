@@ -169,7 +169,7 @@ namespace Nethermind.Evm.Test
 
             Transaction transaction = Build.A.Transaction
                 .WithTo(null)
-                .WithData(Bytes.Empty)
+                .WithData(Array.Empty<byte>())
                 .WithGasLimit(gasLimit)
                 .WithGasPrice(1)
                 .WithInit(code)

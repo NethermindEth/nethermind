@@ -97,7 +97,7 @@ namespace Nethermind.WebSockets
         {
             int currentMessageLength = 0;
             byte[] buffer = new byte[1024 * 4];
-            byte[] combinedData = Bytes.Empty;
+            byte[] combinedData = Array.Empty<byte>();
 
             WebSocketReceiveResult result = null;
             Task<WebSocketReceiveResult> receiveBeforeTheLoop = webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
@@ -130,7 +130,7 @@ namespace Nethermind.WebSockets
 
                 byte[] newBytes = ArrayPool<byte>.Shared.Rent(newMessageLength);
                 buffer.AsSpan(0, result.Count).CopyTo(newBytes.AsSpan(currentMessageLength, result.Count));
-                if (!ReferenceEquals(combinedData, Bytes.Empty))
+                if (!ReferenceEquals(combinedData, Array.Empty<byte>()))
                 {
                     combinedData.AsSpan(0, currentMessageLength).CopyTo(newBytes.AsSpan(0, currentMessageLength));
                     ArrayPool<byte>.Shared.Return(combinedData);
@@ -145,7 +145,7 @@ namespace Nethermind.WebSockets
                     await client.ReceiveAsync(data);
                     currentMessageLength = 0;
                     ArrayPool<byte>.Shared.Return(combinedData);
-                    combinedData = Bytes.Empty;
+                    combinedData = Array.Empty<byte>();
                 }
 
                 Task<WebSocketReceiveResult> receiveInTheLoop = webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);

@@ -105,7 +105,7 @@ namespace Nethermind.Evm
             {
                 if (!currentState.IsContinuation)
                 {
-                    _returnDataBuffer = Bytes.Empty;
+                    _returnDataBuffer = Array.Empty<byte>();
                 }
 
                 try
@@ -148,7 +148,7 @@ namespace Nethermind.Evm
                             _stateStack.Push(currentState);
                             currentState = callResult.StateToExecute;
                             previousCallResult = null; // TODO: testing on ropsten sync, write VirtualMachineTest for this case as it was not covered by Ethereum tests (failing block 9411 on Ropsten https://ropsten.etherscan.io/vmtrace?txhash=0x666194d15c14c54fffafab1a04c08064af165870ef9a87f65711dcce7ed27fe1)
-                            _returnDataBuffer = Bytes.Empty;
+                            _returnDataBuffer = Array.Empty<byte>();
                             previousCallOutput = ZeroPaddedSpan.Empty;
                             continue;
                         }
@@ -172,7 +172,7 @@ namespace Nethermind.Evm
 
                             previousCallResult = StatusCode.FailureBytes;
                             previousCallOutputDestination = UInt256.Zero;
-                            _returnDataBuffer = Bytes.Empty;
+                            _returnDataBuffer = Array.Empty<byte>();
                             previousCallOutput = ZeroPaddedSpan.Empty;
 
                             currentState.Dispose();
@@ -232,7 +232,7 @@ namespace Nethermind.Evm
                         {
                             previousCallResult = callCodeOwner.Bytes;
                             previousCallOutputDestination = UInt256.Zero;
-                            _returnDataBuffer = Bytes.Empty;
+                            _returnDataBuffer = Array.Empty<byte>();
                             previousCallOutput = ZeroPaddedSpan.Empty;
 
                             long codeDepositGasCost = CodeDepositHandler.CalculateCost(callResult.Output.Length, spec);
@@ -356,7 +356,7 @@ namespace Nethermind.Evm
 
                     previousCallResult = StatusCode.FailureBytes;
                     previousCallOutputDestination = UInt256.Zero;
-                    _returnDataBuffer = Bytes.Empty;
+                    _returnDataBuffer = Array.Empty<byte>();
                     previousCallOutput = new ZeroPaddedSpan(Span<byte>.Empty, 0);
 
                     currentState.Dispose();
@@ -503,7 +503,7 @@ namespace Nethermind.Evm
             }
             catch (Exception)
             {
-                CallResult callResult = new CallResult(new byte[0], false);
+                CallResult callResult = new CallResult(Array.Empty<byte>(), false);
                 return callResult;
             }
         }
@@ -2075,7 +2075,7 @@ namespace Nethermind.Evm
                         if (env.CallDepth >= MaxCallDepth) // TODO: fragile ordering / potential vulnerability for different clients
                         {
                             // TODO: need a test for this
-                            _returnDataBuffer = new byte[0];
+                            _returnDataBuffer = Array.Empty<byte[]>();
                             stack.PushZero();
                             break;
                         }
@@ -2137,7 +2137,7 @@ namespace Nethermind.Evm
                         callEnv.GasPrice = env.GasPrice;
                         callEnv.ExecutingAccount = contractAddress;
                         callEnv.CodeInfo = new CodeInfo(initCode.ToArray());
-                        callEnv.InputData = Bytes.Empty;
+                        callEnv.InputData = Array.Empty<byte>();
                         EvmState callState = new EvmState(
                             callGas,
                             callEnv,
@@ -2660,12 +2660,12 @@ namespace Nethermind.Evm
             public static CallResult StaticCallViolationException => new CallResult(EvmExceptionType.StaticCallViolation);
             public static CallResult StackOverflowException => new CallResult(EvmExceptionType.StackOverflow); // TODO: use these to avoid CALL POP attacks
             public static CallResult StackUnderflowException => new CallResult(EvmExceptionType.StackUnderflow); // TODO: use these to avoid CALL POP attacks
-            public static CallResult Empty => new CallResult(Bytes.Empty, null);
+            public static CallResult Empty => new CallResult(Array.Empty<byte>(), null);
 
             public CallResult(EvmState stateToExecute)
             {
                 StateToExecute = stateToExecute;
-                Output = Bytes.Empty;
+                Output = Array.Empty<byte>();
                 PrecompileSuccess = null;
                 ShouldRevert = false;
                 ExceptionType = EvmExceptionType.None;

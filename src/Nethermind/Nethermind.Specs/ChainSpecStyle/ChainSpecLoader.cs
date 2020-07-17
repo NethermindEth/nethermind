@@ -226,7 +226,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                     HomesteadTransition = chainSpecJson.Engine.Ethash.HomesteadTransition ?? 0,
                     DaoHardforkTransition = chainSpecJson.Engine.Ethash.DaoHardforkTransition,
                     DaoHardforkBeneficiary = chainSpecJson.Engine.Ethash.DaoHardforkBeneficiary,
-                    DaoHardforkAccounts = chainSpecJson.Engine.Ethash.DaoHardforkAccounts ?? new Address[0],
+                    DaoHardforkAccounts = chainSpecJson.Engine.Ethash.DaoHardforkAccounts ?? Array.Empty<Address>(),
                     Eip100bTransition = chainSpecJson.Engine.Ethash.Eip100bTransition ?? 0L,
                     BlockRewards = new Dictionary<long, UInt256>()
                 };
@@ -268,7 +268,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             var parentHash = chainSpecJson.Genesis.ParentHash ?? Keccak.Zero;
             var timestamp = chainSpecJson.Genesis.Timestamp;
             var difficulty = chainSpecJson.Genesis.Difficulty;
-            var extraData = chainSpecJson.Genesis.ExtraData ?? new byte[0];
+            var extraData = chainSpecJson.Genesis.ExtraData ?? Array.Empty<byte>();
             var gasLimit = chainSpecJson.Genesis.GasLimit;
             var beneficiary = chainSpecJson.Genesis.Author ?? Address.Zero;
 
@@ -325,7 +325,7 @@ namespace Nethermind.Specs.ChainSpecStyle
         {
             if (chainSpecJson.Nodes == null)
             {
-                chainSpec.Bootnodes = new NetworkNode[0];
+                chainSpec.Bootnodes = Array.Empty<NetworkNode>();
                 return;
             }
 

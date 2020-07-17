@@ -399,7 +399,7 @@ namespace Nethermind.Baseline.JsonRpc
 
             var insertLeavesLogs = _logFinder.FindLogs(insertLeavesFilter);
             var insertLeafLogs = _logFinder.FindLogs(insertLeafFilter);
-            BaselineTree baselineTree = new ShaBaselineTree(new MemDb(), new byte[0], 5);
+            BaselineTree baselineTree = new ShaBaselineTree(new MemDb(), Array.Empty<byte>(), 5);
 
             // Keccak leafTopic = new Keccak("0x8ec50f97970775682a68d3c6f9caedf60fd82448ea40706b8b65d6c03648b922");
             foreach (FilterLog filterLog in insertLeavesLogs)

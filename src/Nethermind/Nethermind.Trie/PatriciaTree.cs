@@ -250,7 +250,7 @@ namespace Nethermind.Trie
         [DebuggerStepThrough]
         public void Set(Span<byte> rawKey, Rlp value)
         {
-            Set(rawKey, value == null ? new byte[0] : value.Bytes);
+            Set(rawKey, value == null ? Array.Empty<byte>() : value.Bytes);
         }
 
         internal byte[] GetNode(Keccak keccak, bool allowCaching)

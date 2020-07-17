@@ -35,7 +35,7 @@ namespace Nethermind.Evm
         public CodeInfo(IPrecompile precompile)
         {
             Precompile = precompile;
-            MachineCode = Bytes.Empty;
+            MachineCode = Array.Empty<byte>();
         }
         
         public byte[] MachineCode { get; set; }

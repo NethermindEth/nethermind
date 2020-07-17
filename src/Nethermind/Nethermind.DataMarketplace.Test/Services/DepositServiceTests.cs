@@ -102,7 +102,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             _ndmBridge = new NdmBlockchainBridge(Substitute.For<ITxPoolBridge>(), bridge, _txPool);
             DepositService depositService = new DepositService(_ndmBridge, _abiEncoder, _wallet, _contractAddress);
             Address contractAddress = new Address(_ndmConfig.ContractAddress);
-            bridge.GetCode(contractAddress).Returns(Bytes.Empty);
+            bridge.GetCode(contractAddress).Returns(Array.Empty<byte>());
             Assert.ThrowsAsync<InvalidDataException>(async () => await depositService.ValidateContractAddressAsync(contractAddress));
         }
         

@@ -46,7 +46,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
                 parentHeader,
                 nameof(AllowedTxTypes),
                 Address.Zero,
-                tx.SenderAddress, tx.To ?? Address.Zero, tx.Value, tx.GasPrice, tx.Data ?? tx.Init ?? Bytes.Empty);
+                tx.SenderAddress, tx.To ?? Address.Zero, tx.Value, tx.GasPrice, tx.Data ?? tx.Init ?? Array.Empty<byte>());
 
         public override UInt256 Version => Three;
     }

@@ -34,7 +34,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
                 CallType = "call",
                 From = TestItem.AddressC,
                 To = TestItem.AddressD,
-                Input = Bytes.Empty,
+                Input = Array.Empty<byte>(),
                 Gas = 10000,
                 TraceAddress = new int[] {0, 0}
             };

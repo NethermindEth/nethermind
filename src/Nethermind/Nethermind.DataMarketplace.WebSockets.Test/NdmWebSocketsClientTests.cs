@@ -135,7 +135,7 @@ namespace Nethermind.DataMarketplace.WebSockets.Test
             INdmDataPublisher dataPublisher = Substitute.For<INdmDataPublisher>();
             NdmWebSocketsClient client = new NdmWebSocketsClient(webSocketsClient, dataPublisher);
             client.ReceiveAsync(null);
-            client.ReceiveAsync(Bytes.Empty);
+            client.ReceiveAsync(Array.Empty<byte>());
         }
     }
 }

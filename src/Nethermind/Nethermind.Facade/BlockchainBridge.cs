@@ -208,7 +208,7 @@ namespace Nethermind.Facade
                     blockHeader.Number + 1,
                     blockHeader.GasLimit,
                     timestamp,
-                    Bytes.Empty);
+                    Array.Empty<byte>());
 
                 transaction.Hash = transaction.CalculateHash();
                 _transactionProcessor.CallAndRestore(transaction, callHeader, tracer);

@@ -46,7 +46,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence.R
         {
             try
             {
-                db.Set(Keccak.Zero, Bytes.Empty);
+                db.Set(Keccak.Zero, Array.Empty<byte>());
                 db.Get(Keccak.Zero);
                 db.Name.Should().Be(typeof(T).Name.Replace("RocksDb", string.Empty));
             }

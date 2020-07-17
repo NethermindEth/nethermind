@@ -41,7 +41,7 @@ namespace Nethermind.Config
             string[] nodeStrings = enodesString?.Split(",", StringSplitOptions.RemoveEmptyEntries);
             if (nodeStrings == null)
             {
-                return new NetworkNode[0];
+                return Array.Empty<NetworkNode>();
             }
 
             List<NetworkNode> nodes = new List<NetworkNode>();

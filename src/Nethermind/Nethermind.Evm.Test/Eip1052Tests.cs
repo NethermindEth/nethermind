@@ -219,7 +219,7 @@ namespace Nethermind.Evm.Test
         public void Newly_created_empty_account_returns_empty_data_hash()
         {
             byte[] code = Prepare.EvmCode
-                .Create(Bytes.Empty, 0)
+                .Create(Array.Empty<byte>(), 0)
                 .PushData(ContractAddress.From(Recipient, 0))
                 .Op(Instruction.EXTCODEHASH)
                 .PushData(0)

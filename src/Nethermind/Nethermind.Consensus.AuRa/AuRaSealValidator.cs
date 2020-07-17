@@ -66,13 +66,13 @@ namespace Nethermind.Consensus.AuRa
             else if (header.AuRaStep == parent.AuRaStep)
             {
                 if (_logger.IsWarn) _logger.Warn($"Multiple blocks proposed for step {header.AuRaStep}. Block {header.Number}, hash {header.Hash} is duplicate.");
-                ReportingValidator.ReportMalicious(header.Beneficiary, header.Number, Bytes.Empty, IReportingValidator.MaliciousCause.DuplicateStep);
+                ReportingValidator.ReportMalicious(header.Beneficiary, header.Number, Array.Empty<byte>(), IReportingValidator.MaliciousCause.DuplicateStep);
                 return false;
             }
             else if (header.AuRaStep < parent.AuRaStep && header.Number >= _parameters.ValidateStepTransition)
             {
                 if (_logger.IsError) _logger.Error($"Block {header.Number}, hash {header.Hash} step {header.AuRaStep} is lesser than parents step {parent.AuRaStep}.");
-                ReportingValidator.ReportMalicious(header.Beneficiary, header.Number, Bytes.Empty, IReportingValidator.MaliciousCause.DuplicateStep);
+                ReportingValidator.ReportMalicious(header.Beneficiary, header.Number, Array.Empty<byte>(), IReportingValidator.MaliciousCause.DuplicateStep);
                 return false;
             }
 
@@ -102,7 +102,7 @@ namespace Nethermind.Consensus.AuRa
             if (_receivedSteps.ContainsSiblingOrInsert(header, _validatorStore.GetValidators().Length))
             {
                 if (_logger.IsDebug) _logger.Debug($"Validator {header.Beneficiary} produced sibling blocks in the same step {header.AuRaStep} in block {header.Number}.");
-                ReportingValidator.ReportMalicious(header.Beneficiary, header.Number, Bytes.Empty, IReportingValidator.MaliciousCause.SiblingBlocksInSameStep);
+                ReportingValidator.ReportMalicious(header.Beneficiary, header.Number, Array.Empty<byte>(), IReportingValidator.MaliciousCause.SiblingBlocksInSameStep);
             }
             
             if (header.Number >= _parameters.ValidateScoreTransition)
