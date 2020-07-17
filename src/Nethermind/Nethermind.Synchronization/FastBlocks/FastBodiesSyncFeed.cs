@@ -357,7 +357,7 @@ namespace Nethermind.Synchronization.FastBlocks
                     break;
                 }
 
-                Block block = new Block(batch.Headers[i], blockBody.Transactions, blockBody.Ommers);
+                Block block = new Block(batch.Headers[i], blockBody);
                 if (new TxTrie(block.Transactions).RootHash != block.TxRoot ||
                     OmmersHash.Calculate(block) != block.OmmersHash)
                 {
