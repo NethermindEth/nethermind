@@ -26,7 +26,6 @@ namespace Nethermind.Consensus.Ethash
 {
     public class EthashCache : IEthashDataSet
     {
-<<<<<<< HEAD
         private struct Bucket
         {
             public uint Item0;
@@ -55,11 +54,6 @@ namespace Nethermind.Consensus.Ethash
         private ArrayPool<Bucket> _arrayPool = ArrayPool<Bucket>.Create(1024 * 1024 * 4, 50);
 
         private Bucket[] Data { get; set; }
-=======
-        private ArrayPool<uint[]> _arrayPool = ArrayPool<uint[]>.Create(1024 * 1024 * 4, 50);
-        
-        private uint[][] Data { get; set; }
->>>>>>> master
 
         public uint Size { get; set; }
 
@@ -67,15 +61,10 @@ namespace Nethermind.Consensus.Ethash
         {
             uint cachePageCount = cacheSize / Ethash.HashBytes;
             Size = cachePageCount * Ethash.HashBytes;
-<<<<<<< HEAD
 
             Data = _arrayPool.Rent((int) cachePageCount);
             Data[0] = MemoryMarshal.Cast<uint, Bucket>(Keccak512.ComputeToUInts(seed))[0];
-=======
-                
-            Data = _arrayPool.Rent((int)cachePageCount);
-            Data[0] = Keccak512.ComputeToUInts(seed);
->>>>>>> master
+
             for (uint i = 1; i < cachePageCount; i++)
             {
                 Span<Bucket> bucket = MemoryMarshal.CreateSpan(ref Data[i - 1], 1);
