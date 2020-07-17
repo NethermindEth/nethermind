@@ -188,7 +188,8 @@ namespace Nethermind.Synchronization.FastBlocks
                 if (_pending.Any())
                 {
                     batch = _pending.Last().Value;
-                    batch.MarkRetry();
+                    _pending.Remove(batch.EndNumber);
+;                    batch.MarkRetry();
                 }
             }
             
