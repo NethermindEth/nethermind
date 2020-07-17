@@ -50,6 +50,7 @@ using Nethermind.Serialization.Json;
 using Nethermind.WebSockets;
 using ILogger = Nethermind.Logging.ILogger;
 using Nethermind.Seq.Config;
+using NLog;
 
 namespace Nethermind.Runner
 {
@@ -86,6 +87,7 @@ namespace Nethermind.Runner
         public Task Run(string[] args)
         {
             (CommandLineApplication app, var buildConfigProvider, var getDbBasePath) = BuildCommandLineApp();
+
             ManualResetEventSlim appClosed = new ManualResetEventSlim(true);
             app.OnExecute(async () =>
             {
@@ -103,7 +105,7 @@ namespace Nethermind.Runner
                     if (_logger.IsDebug) _logger.Debug($"Adding prefix to baseDbPath, new value: {newDbPath}, old value: {initConfig.BaseDbPath}");
                     initConfig.BaseDbPath = newDbPath ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory ?? "", "db");
                 }
-
+                
                 Console.Title = initConfig.LogFileName;
                 Console.CancelKeyPress += ConsoleOnCancelKeyPress;
 
@@ -114,6 +116,7 @@ namespace Nethermind.Runner
                 _cancelKeySource = new TaskCompletionSource<object?>();
 
                 await StartRunners(_processCloseCancellationSource.Token, configProvider);
+
                 await Task.WhenAny(_cancelKeySource.Task, _processExit.Task);
 
                 Console.WriteLine("Closing, please wait until all functions are stopped properly...");
@@ -153,6 +156,8 @@ namespace Nethermind.Runner
             {
                 if (_logger?.IsInfo ?? false) _logger!.Info($"Seq Logging enabled on host: {seqConfig.ServerUrl} with level: {seqConfig.MinLevel}");
                 (new NLogConfigurator()).ConfigureSeqBufferTarget(seqConfig.ServerUrl, seqConfig.ApiKey, seqConfig.MinLevel);
+                // re-initialize all targets
+                LogManager.ReconfigExistingLoggers();
             }
 
             if (!string.IsNullOrEmpty(metricsConfig.NodeName))

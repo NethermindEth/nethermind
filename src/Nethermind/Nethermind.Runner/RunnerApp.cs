@@ -26,9 +26,6 @@ using Nethermind.Core;
 using Nethermind.Logging;
 using NLog;
 using NLog.Config;
-using NLog.Targets;
-using NLog.Targets.Seq;
-using NLog.Targets.Wrappers;
 
 namespace Nethermind.Runner
 {
@@ -123,40 +120,7 @@ namespace Nethermind.Runner
                 // TODO: dynamically switch log levels from CLI!
                 if (logLevelOverride.HasValue())
                 {
-                    string logLevel = logLevelOverride.Value();
-                    NLog.LogLevel nLogLevel = NLog.LogLevel.Info;
-                    switch (logLevel.ToUpperInvariant())
-                    {
-                        case "OFF":
-                            nLogLevel = NLog.LogLevel.Off;
-                            break;
-                        case "ERROR":
-                            nLogLevel = NLog.LogLevel.Error;
-                            break;
-                        case "WARN":
-                            nLogLevel = NLog.LogLevel.Warn;
-                            break;
-                        case "INFO":
-                            nLogLevel = NLog.LogLevel.Info;
-                            break;
-                        case "DEBUG":
-                            nLogLevel = NLog.LogLevel.Debug;
-                            break;
-                        case "TRACE":
-                            nLogLevel = NLog.LogLevel.Trace;
-                            break;
-                    }
-
-                    Console.WriteLine($"Enabling log level override: {logLevel.ToUpperInvariant()}");
-
-                    foreach (LoggingRule rule in LogManager.Configuration.LoggingRules)
-                    {
-                        rule.DisableLoggingForLevels(NLog.LogLevel.Trace, nLogLevel);
-                        rule.EnableLoggingForLevels(nLogLevel, NLog.LogLevel.Off);
-                    }
-
-                    //Call to update existing Loggers created with GetLogger() or //GetCurrentClassLogger()
-                    LogManager.ReconfigExistingLoggers();
+                    (new NLogConfigurator()).ConfigureLogLevels(logLevelOverride);
                 }
 
                 ConfigProvider configProvider = new ConfigProvider();

@@ -1,12 +1,9 @@
 using System;
-using System.Reflection;
-using System.IO;
 using System.Linq;
 using NLog;
 using NLog.Config;
 using NLog.Targets.Seq;
-using NLog.Targets.Wrappers;
-
+using Microsoft.Extensions.CommandLineUtils;
 
 namespace Nethermind.Runner
 {
@@ -33,15 +30,54 @@ namespace Nethermind.Runner
                         {
                             if (ruleTarget.Name == "seq")
                             {
-                                rule.EnableLoggingForLevel(LogLevel.FromString(minLevel));
-                            }                        
+                                rule.EnableLoggingForLevels(LogLevel.FromString(minLevel), LogLevel.Fatal);
+                            }              
                         }
                     }
                 }
             }
-            // re-initialize single target
-            LogManager.Configuration?.AllTargets.OfType<SeqTarget>().ToList().ForEach(t => t.Dispose());
-            LogManager.ReconfigExistingLoggers();
+        }
+
+        public void ConfigureLogLevels(CommandOption logLevelOverride)
+        {
+            string logLevel = logLevelOverride.Value();
+            NLog.LogLevel nLogLevel = NLog.LogLevel.Info;
+            switch (logLevel.ToUpperInvariant())
+            {
+                case "OFF":
+                    nLogLevel = NLog.LogLevel.Off;
+                    break;
+                case "ERROR":
+                    nLogLevel = NLog.LogLevel.Error;
+                    break;
+                case "WARN":
+                    nLogLevel = NLog.LogLevel.Warn;
+                    break;
+                case "INFO":
+                    nLogLevel = NLog.LogLevel.Info;
+                    break;
+                case "DEBUG":
+                    nLogLevel = NLog.LogLevel.Debug;
+                    break;
+                case "TRACE":
+                    nLogLevel = NLog.LogLevel.Trace;
+                    break;
+            }
+
+            Console.WriteLine($"Enabling log level override: {logLevel.ToUpperInvariant()}");
+
+            foreach (LoggingRule rule in LogManager.Configuration.LoggingRules)
+            {
+                foreach (var ruleTarget in rule.Targets)
+                {
+                    if (ruleTarget.Name != "seq")
+                    {
+                        Console.WriteLine($"{ruleTarget.Name} TEST");
+                        rule.DisableLoggingForLevels(NLog.LogLevel.Trace, nLogLevel);
+                        rule.EnableLoggingForLevels(nLogLevel, NLog.LogLevel.Off);                    
+                    }                        
+                }
+            }
         }
     }
 }
