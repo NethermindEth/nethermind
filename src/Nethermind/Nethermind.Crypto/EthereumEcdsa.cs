@@ -88,8 +88,8 @@ namespace Nethermind.Crypto
         public Address RecoverAddress(Span<byte> signatureBytes, Keccak message)
         {
             Span<byte> publicKey = stackalloc byte[65];
-            Proxy.RecoverKeyFromCompact(publicKey, message.Bytes, signatureBytes.Slice(0, 64), signatureBytes[64], false);
-            if (publicKey == null)
+            bool success = Proxy.RecoverKeyFromCompact(publicKey, message.Bytes, signatureBytes.Slice(0, 64), signatureBytes[64], false);
+            if (!success)
             {
                 return null;
             }
