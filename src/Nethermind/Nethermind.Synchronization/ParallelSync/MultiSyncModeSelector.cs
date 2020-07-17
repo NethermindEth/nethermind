@@ -151,8 +151,7 @@ namespace Nethermind.Synchronization.ParallelSync
             if (IsTheModeSwitchWorthMentioning(newModes))
             {
                 string stateString = BuildStateString(best);
-                if (_logger.IsDebug) _logger.Debug($"Changing state to {newModes} from {Current} at {stateString}");
-                if (_logger.IsInfo) _logger.Info($"Changing state to {newModes} at {stateString}");
+                if (_logger.IsWarn) _logger.Warn($"Changing state {Current} to {newModes} at {stateString}");
             }
 
             UpdateSyncModes(newModes);
@@ -272,15 +271,15 @@ namespace Nethermind.Synchronization.ParallelSync
             bool notInFastSync = !best.IsInFastSync;
             bool notInStateSync = !best.IsInStateSync;
 
-            if (_logger.IsTrace)
+            if (_logger.IsWarn)
             {
-                _logger.Trace("======================== FULL");
-                _logger.Trace("higherDiffPeerKnown " + desiredPeerKnown);
-                _logger.Trace("postPivotPeerAvailable " + postPivotPeerAvailable);
-                _logger.Trace("hasFastSyncBeenActive " + hasFastSyncBeenActive);
-                _logger.Trace("notInBeamSync " + notInBeamSync);
-                _logger.Trace("notInFastSync " + notInFastSync);
-                _logger.Trace("notInStateSync " + notInStateSync);
+                _logger.Warn("======================== FULL");
+                _logger.Warn("higherDiffPeerKnown " + desiredPeerKnown);
+                _logger.Warn("postPivotPeerAvailable " + postPivotPeerAvailable);
+                _logger.Warn("hasFastSyncBeenActive " + hasFastSyncBeenActive);
+                _logger.Warn("notInBeamSync " + notInBeamSync);
+                _logger.Warn("notInFastSync " + notInFastSync);
+                _logger.Warn("notInStateSync " + notInStateSync);
             }
 
             return desiredPeerKnown &&
