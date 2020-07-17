@@ -80,6 +80,9 @@ namespace Nethermind.Runner.Ethereum
             EthereumStepsLoader stepsLoader = new EthereumStepsLoader(GetType().Assembly);
             EthereumStepsManager stepsManager = new EthereumStepsManager(stepsLoader, _context, _context.LogManager);
             await stepsManager.InitializeAll(cancellationToken);
+
+            // free memory
+            _context.ChainSpec = null;
             
             string infoScreen = ThisNodeInfo.BuildNodeInfoScreen();
             if (_logger.IsInfo) _logger.Info(infoScreen);
