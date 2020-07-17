@@ -19,6 +19,7 @@ using System.Buffers;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Xml.XPath;
 using Nethermind.Core;
 using Nethermind.Crypto;
 
@@ -29,25 +30,47 @@ namespace Nethermind.Consensus.Ethash
         private struct Bucket
         {
             public uint Item0;
-            public uint Item1;
-            public uint Item2;
-            public uint Item3;
-            public uint Item4;
-            public uint Item5;
-            public uint Item6;
-            public uint Item7;
-            public uint Item8;
-            public uint Item9;
-            public uint Item10;
-            public uint Item11;
-            public uint Item12;
-            public uint Item13;
-            public uint Item14;
-            public uint Item15;
+            private uint Item1;
+            private uint Item2;
+            private uint Item3;
+            private uint Item4;
+            private uint Item5;
+            private uint Item6;
+            private uint Item7;
+            private uint Item8;
+            private uint Item9;
+            private uint Item10;
+            private uint Item11;
+            private uint Item12;
+            private uint Item13;
+            private uint Item14;
+            private uint Item15;
 
             public Span<uint> AsUInts()
             {
                 return MemoryMarshal.Cast<Bucket, uint>(MemoryMarshal.CreateSpan(ref this, 1));
+            }
+
+            public static Bucket Xor(Bucket a, Bucket b)
+            {
+                Bucket result = new Bucket();
+                result.Item0 = a.Item0 ^ b.Item0;
+                result.Item1 = a.Item1 ^ b.Item1;
+                result.Item2 = a.Item2 ^ b.Item2;
+                result.Item3 = a.Item3 ^ b.Item3;
+                result.Item4 = a.Item4 ^ b.Item4;
+                result.Item5 = a.Item5 ^ b.Item5;
+                result.Item6 = a.Item6 ^ b.Item6;
+                result.Item7 = a.Item7 ^ b.Item7;
+                result.Item8 = a.Item8 ^ b.Item8;
+                result.Item9 = a.Item9 ^ b.Item9;
+                result.Item10 = a.Item10 ^ b.Item10;
+                result.Item11 = a.Item11 ^ b.Item11;
+                result.Item12 = a.Item12 ^ b.Item12;
+                result.Item13 = a.Item13 ^ b.Item13;
+                result.Item14 = a.Item14 ^ b.Item14;
+                result.Item15 = a.Item15 ^ b.Item15;
+                return result;
             }
         }
 
@@ -67,11 +90,7 @@ namespace Nethermind.Consensus.Ethash
 
             for (uint i = 1; i < cachePageCount; i++)
             {
-                Span<Bucket> bucket = MemoryMarshal.CreateSpan(ref Data[i - 1], 1);
-                Span<Bucket> targetBucket = MemoryMarshal.CreateSpan(ref Data[i], 1);
-                Keccak512.ComputeUIntsToUInts(
-                    MemoryMarshal.Cast<Bucket, uint>(bucket),
-                    MemoryMarshal.Cast<Bucket, uint>(targetBucket));
+                Keccak512.ComputeUIntsToUInts(Data[i - 1].AsUInts(), Data[i].AsUInts());
             }
 
             // http://www.hashcash.org/papers/memohash.pdf
@@ -82,25 +101,9 @@ namespace Nethermind.Consensus.Ethash
                 {
                     uint v = Data[i].Item0 % cachePageCount;
                     long page = (i - 1 + cachePageCount) % cachePageCount;
-                    Data[i].Item0 = Data[page].Item0 ^ Data[v].Item0;
-                    Data[i].Item1 = Data[page].Item1 ^ Data[v].Item1;
-                    Data[i].Item2 = Data[page].Item2 ^ Data[v].Item2;
-                    Data[i].Item3 = Data[page].Item3 ^ Data[v].Item3;
-                    Data[i].Item4 = Data[page].Item4 ^ Data[v].Item4;
-                    Data[i].Item5 = Data[page].Item5 ^ Data[v].Item5;
-                    Data[i].Item6 = Data[page].Item6 ^ Data[v].Item6;
-                    Data[i].Item7 = Data[page].Item7 ^ Data[v].Item7;
-                    Data[i].Item8 = Data[page].Item8 ^ Data[v].Item8;
-                    Data[i].Item9 = Data[page].Item9 ^ Data[v].Item9;
-                    Data[i].Item10 = Data[page].Item10 ^ Data[v].Item10;
-                    Data[i].Item11 = Data[page].Item11 ^ Data[v].Item11;
-                    Data[i].Item12 = Data[page].Item12 ^ Data[v].Item12;
-                    Data[i].Item13 = Data[page].Item13 ^ Data[v].Item13;
-                    Data[i].Item14 = Data[page].Item14 ^ Data[v].Item14;
-                    Data[i].Item15 = Data[page].Item15 ^ Data[v].Item15;
-
-                    Span<Bucket> bucket = MemoryMarshal.CreateSpan(ref Data[i], 1);
-                    Keccak512.ComputeUIntsToUInts(MemoryMarshal.Cast<Bucket, uint>(bucket), MemoryMarshal.Cast<Bucket, uint>(bucket));
+                    Data[i] = Bucket.Xor(Data[page], Data[v]);
+                    Span<uint> bucketAsUInts = Data[i].AsUInts();
+                    Keccak512.ComputeUIntsToUInts(bucketAsUInts, bucketAsUInts);
                 }
             }
         }
