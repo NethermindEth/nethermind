@@ -253,6 +253,14 @@ namespace Nethermind.HashLib
             Initialize();
             return result;
         }
+        
+        public virtual void ComputeUIntsToUint(uint[] a_data, uint[] output)
+        {
+            Initialize();
+            TransformUInts(a_data);
+            TransformFinalUInts(output);
+            Initialize();
+        }
 
         public void TransformObject(object a_data)
         {
@@ -568,6 +576,11 @@ namespace Nethermind.HashLib
         public abstract HashResult TransformFinal();
 
         public virtual uint[] TransformFinalUInts()
+        {
+            throw new NotSupportedException();
+        }
+        
+        public virtual void TransformFinalUInts(uint[] output)
         {
             throw new NotSupportedException();
         }

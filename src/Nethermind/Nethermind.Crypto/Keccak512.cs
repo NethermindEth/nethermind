@@ -107,6 +107,21 @@ namespace Nethermind.Crypto
 
             return _hash.ComputeUIntsToUint(input);
         }
+        
+        public static void ComputeUIntsToUInts(uint[] input, uint[] output)
+        {
+            if (input == null || input.Length == 0)
+            {
+                throw new NotSupportedException();
+            }
+
+            if (_hash == null)
+            {
+                LazyInitializer.EnsureInitialized(ref _hash, Init);
+            }
+
+            _hash.ComputeUIntsToUint(input, output);
+        }
 
         private static HashLib.Crypto.SHA3.Keccak512 Init()
         {
