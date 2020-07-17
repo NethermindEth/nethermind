@@ -25,14 +25,14 @@ namespace Nethermind.Core
         
         public BlockBody()
         {
-            Interlocked.Increment(ref Number);
+            // Interlocked.Increment(ref Number);
             Transactions = Array.Empty<Transaction>();
             Ommers = Array.Empty<BlockHeader>();
         }
         
         public BlockBody(Transaction[] transactions, BlockHeader[] ommers)
         {
-            Interlocked.Increment(ref Number);
+            // Interlocked.Increment(ref Number);
             Transactions = transactions;
             Ommers = ommers;
         }
@@ -52,9 +52,9 @@ namespace Nethermind.Core
         
         public static BlockBody Empty = new BlockBody();
 
-        ~BlockBody()
-        {
-            Interlocked.Add(ref Number, -1);
-        }
+        // ~BlockBody()
+        // {
+        //     Interlocked.Add(ref Number, -1);
+        // }
     }
 }
