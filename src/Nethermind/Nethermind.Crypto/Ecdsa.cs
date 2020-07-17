@@ -15,7 +15,9 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Secp256k1;
 
 namespace Nethermind.Crypto
@@ -64,8 +66,9 @@ namespace Nethermind.Crypto
 
         public PublicKey RecoverPublicKey(Signature signature, Keccak message)
         {
-            byte[] publicKey = Proxy.RecoverKeyFromCompact(message.Bytes, signature.Bytes, signature.RecoveryId, false);
-            if (publicKey == null)
+            byte[] publicKey = new byte[65];
+            bool success = Proxy.RecoverKeyFromCompact(publicKey, message.Bytes, signature.Bytes, signature.RecoveryId, false);
+            if (!success)
             {
                 return null;
             }
