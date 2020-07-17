@@ -40,8 +40,6 @@ using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Web3;
 using Nethermind.JsonRpc.WebSockets;
-using Nethermind.Baseline.Config;
-using Nethermind.Baseline;
 using Nethermind.Monitoring;
 using Nethermind.Monitoring.Metrics;
 using Nethermind.Logging.NLog;
@@ -51,6 +49,8 @@ using Nethermind.Runner.Ethereum;
 using Nethermind.Serialization.Json;
 using Nethermind.WebSockets;
 using ILogger = Nethermind.Logging.ILogger;
+using Nethermind.Seq.Config;
+using NLog;
 
 namespace Nethermind.Runner
 {
@@ -60,7 +60,7 @@ namespace Nethermind.Runner
         private IRunner _jsonRpcRunner = NullRunner.Instance;
         private IRunner _ethereumRunner = NullRunner.Instance;
         private IRunner _grpcRunner = NullRunner.Instance;
-        
+
         private CancellationTokenSource _processCloseCancellationSource = new CancellationTokenSource();
         private TaskCompletionSource<object?>? _cancelKeySource;
         private TaskCompletionSource<object?>? _processExit;
@@ -87,6 +87,7 @@ namespace Nethermind.Runner
         public Task Run(string[] args)
         {
             (CommandLineApplication app, var buildConfigProvider, var getDbBasePath) = BuildCommandLineApp();
+
             ManualResetEventSlim appClosed = new ManualResetEventSlim(true);
             app.OnExecute(async () =>
             {
@@ -104,7 +105,7 @@ namespace Nethermind.Runner
                     if (_logger.IsDebug) _logger.Debug($"Adding prefix to baseDbPath, new value: {newDbPath}, old value: {initConfig.BaseDbPath}");
                     initConfig.BaseDbPath = newDbPath ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory ?? "", "db");
                 }
-
+                
                 Console.Title = initConfig.LogFileName;
                 Console.CancelKeyPress += ConsoleOnCancelKeyPress;
 
@@ -115,6 +116,7 @@ namespace Nethermind.Runner
                 _cancelKeySource = new TaskCompletionSource<object?>();
 
                 await StartRunners(_processCloseCancellationSource.Token, configProvider);
+
                 await Task.WhenAny(_cancelKeySource.Task, _processExit.Task);
 
                 Console.WriteLine("Closing, please wait until all functions are stopped properly...");
@@ -142,18 +144,25 @@ namespace Nethermind.Runner
             IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
             IJsonRpcConfig jsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
             IMetricsConfig metricsConfig = configProvider.GetConfig<IMetricsConfig>();
+            ISeqConfig seqConfig = configProvider.GetConfig<ISeqConfig>();
             NLogManager logManager = new NLogManager(initConfig.LogFileName, initConfig.LogDirectory);
             IRpcModuleProvider rpcModuleProvider = jsonRpcConfig.Enabled
                 ? new RpcModuleProvider(configProvider.GetConfig<IJsonRpcConfig>(), logManager)
-                : (IRpcModuleProvider) NullModuleProvider.Instance;
+                : (IRpcModuleProvider)NullModuleProvider.Instance;
             EthereumJsonSerializer jsonSerializer = new EthereumJsonSerializer();
             WebSocketsManager webSocketsManager = new WebSocketsManager();
+
+            if (seqConfig.MinLevel != "Off")
+            {
+                if (_logger?.IsInfo ?? false) _logger!.Info($"Seq Logging enabled on host: {seqConfig.ServerUrl} with level: {seqConfig.MinLevel}");
+                (new NLogConfigurator()).ConfigureSeqBufferTarget(seqConfig.ServerUrl, seqConfig.ApiKey, seqConfig.MinLevel);
+            }
 
             if (!string.IsNullOrEmpty(metricsConfig.NodeName))
             {
                 logManager.SetGlobalVariable("nodeName", metricsConfig.NodeName);
             }
-            
+
             if (metricsConfig.Enabled)
             {
                 Metrics.Version = VersionToMetrics.ConvertToNumber(ClientVersion.Version);
@@ -229,7 +238,7 @@ namespace Nethermind.Runner
                 webSocketsManager,
                 jsonSerializer,
                 _monitoringService);
-            
+
             IAnalyticsConfig analyticsConfig = configProvider.GetConfig<IAnalyticsConfig>();
             if (analyticsConfig.PluginsEnabled ||
                 analyticsConfig.StreamBlocks ||
@@ -237,7 +246,7 @@ namespace Nethermind.Runner
             {
                 webSocketsManager.AddModule(new AnalyticsWebSocketsModule(jsonSerializer), true);
             }
-            
+
             await _ethereumRunner.Start(cancellationToken).ContinueWith(x =>
             {
                 if (x.IsFaulted && (_logger?.IsError ?? false)) _logger!.Error("Error during ethereum runner start", x.Exception);
