@@ -245,7 +245,7 @@ namespace Nethermind.HashLib
             return result;
         }
 
-        public virtual uint[] ComputeUIntsToUint(uint[] a_data)
+        public virtual uint[] ComputeUIntsToUint(Span<uint> a_data)
         {
             Initialize();
             TransformUInts(a_data);
@@ -254,7 +254,7 @@ namespace Nethermind.HashLib
             return result;
         }
         
-        public virtual void ComputeUIntsToUint(uint[] a_data, uint[] output)
+        public virtual void ComputeUIntsToUint(Span<uint> a_data, Span<uint> output)
         {
             Initialize();
             TransformUInts(a_data);
@@ -390,7 +390,7 @@ namespace Nethermind.HashLib
             TransformBytes(Converters.ConvertIntsToBytes(a_data));
         }
 
-        public void TransformUInts(uint[] a_data)
+        public void TransformUInts(Span<uint> a_data)
         {
             TransformBytes(MemoryMarshal.Cast<uint, byte>(a_data));
             // TransformBytes(Converters.ConvertUIntsToBytes(a_data));
@@ -580,7 +580,7 @@ namespace Nethermind.HashLib
             throw new NotSupportedException();
         }
         
-        public virtual void TransformFinalUInts(uint[] output)
+        public virtual void TransformFinalUInts(Span<uint> output)
         {
             throw new NotSupportedException();
         }

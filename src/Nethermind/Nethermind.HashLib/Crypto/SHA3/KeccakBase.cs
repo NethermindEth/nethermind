@@ -2737,7 +2737,7 @@ namespace Nethermind.HashLib.Crypto.SHA3
             return result;
         }
         
-        protected override void GetResultUInts(uint[] output)
+        protected override void GetResultUInts(Span<uint> output)
         {
             for (int i = 0; i < output.Length / 2; i = i + 1)
             {
