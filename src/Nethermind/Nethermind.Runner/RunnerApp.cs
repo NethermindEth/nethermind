@@ -26,6 +26,9 @@ using Nethermind.Core;
 using Nethermind.Logging;
 using NLog;
 using NLog.Config;
+using NLog.Targets;
+using NLog.Targets.Seq;
+using NLog.Targets.Wrappers;
 
 namespace Nethermind.Runner
 {
@@ -69,6 +72,9 @@ namespace Nethermind.Runner
             CommandLineApplication app = new CommandLineApplication {Name = "Nethermind.Runner"};
             app.HelpOption("-?|-h|--help");
             app.VersionOption("-v|--version", () => ClientVersion.Version, () => ClientVersion.Description);
+
+            NLog.GlobalDiagnosticsContext.Set("version", ClientVersion.Version);
+
             CommandOption configFile = app.Option("-c|--config <configFile>", "config file path", CommandOptionType.SingleValue);
             CommandOption dbBasePath = app.Option("-d|--baseDbPath <baseDbPath>", "base db path", CommandOptionType.SingleValue);
             CommandOption logLevelOverride = app.Option("-l|--log <logLevel>", "log level", CommandOptionType.SingleValue);

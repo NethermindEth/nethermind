@@ -52,11 +52,7 @@ using Nethermind.Serialization.Json;
 using Nethermind.WebSockets;
 using ILogger = Nethermind.Logging.ILogger;
 using Nethermind.Seq.Config;
-using NLog.LayoutRenderers;
 using NLog;
-using NLog.Config;
-using Nethermind.Logging;
-using NLog.Targets.Seq;
 
 namespace Nethermind.Runner
 {
@@ -158,27 +154,8 @@ namespace Nethermind.Runner
 
             if (seqConfig.MinLevel != "Off")
             {
-                if (_logger?.IsInfo ?? false) _logger!.Info($"Seq Logging Enabled with level: {seqConfig.MinLevel}, on host: {seqConfig.ServerUrl}");
-                LogManager.Configuration = new XmlLoggingConfiguration("NLog.config".GetApplicationResourcePath());
-                NLog.GlobalDiagnosticsContext.Set("serverUrl", seqConfig.ServerUrl);
-                NLog.GlobalDiagnosticsContext.Set("apiKey", seqConfig.ApiKey);
-                // LogManager.Configuration = LogManager.Configuration?.Reload();
-                // config.Variables["serverUrl"] = seqConfig.ServerUrl;
-                // config.Variables["apiKey"] = seqConfig.ApiKey;
-                foreach (var target in NLog.GlobalDiagnosticsContext.GetNames())
-                {
-                    Console.WriteLine(target);
-                }
-                // var rule = config.LoggingRules[3];
-                // Console.WriteLine(rule);
-                // rule.EnableLoggingForLevel(NLog.LogLevel.Info);
-                // Console.WriteLine(rule);
-                // LogManager.Configuration = config;
-                LogManager.Configuration = LogManager.Configuration;
-                LogManager.ReconfigExistingLoggers(); // Ensures all targets are initialized
-                // logManager.SetGlobalVariable("minLevel", seqConfig.MinLevel);
-                // logManager.SetGlobalVariable("serverUrl", seqConfig.ServerUrl);
-                // logManager.SetGlobalVariable("apiKey", seqConfig.ApiKey);
+                var config = LogManager.Configuration;
+                (new NLogConfigurator()).ConfigureSeqBufferTarget(NLog.LogLevel.FromString(seqConfig.MinLevel), seqConfig.ServerUrl, seqConfig.ApiKey);
             }
 
             if (!string.IsNullOrEmpty(metricsConfig.NodeName))
