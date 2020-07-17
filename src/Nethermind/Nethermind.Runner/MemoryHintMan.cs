@@ -56,31 +56,30 @@ namespace Nethermind.Runner
             TotalMemory = (ulong) (initConfig.MemoryHint ?? (long) 2.GB());
             ValidateMemoryHint(TotalMemory);
             ValidateCpuCount(cpuCount);
-
-            StringBuilder builder = new StringBuilder();
-            builder.AppendLine("Setting up memory allowances");
-            builder.AppendLine($"  memory hint:        {TotalMemory / 1024 / 1024}MB");
+            
+            if(_logger.IsInfo) _logger.Info("Setting up memory allowances");
+            if(_logger.IsInfo) _logger.Info($"  memory hint:        {TotalMemory / 1000 / 1000}MB");
             _remainingMemory = (ulong) (initConfig.MemoryHint ?? (long) 2.GB());
             _remainingMemory -= GeneralMemory;
-            builder.AppendLine($"  general memory:     {GeneralMemory / 1024 / 1024}MB");
+            if(_logger.IsInfo) _logger.Info($"  general memory:     {GeneralMemory / 1000 / 1000}MB");
             AssignPeersMemory(networkConfig);
             _remainingMemory -= PeersMemory;
-            builder.AppendLine($"  peers memory:       {PeersMemory / 1024 / 1024}MB");
+            if(_logger.IsInfo) _logger.Info($"  peers memory:       {PeersMemory / 1000 / 1000}MB");
             AssignNettyMemory(networkConfig, cpuCount);
             _remainingMemory -= NettyMemory;
-            builder.AppendLine($"  Netty memory:       {NettyMemory / 1024 / 1024}MB");
+            if(_logger.IsInfo) _logger.Info($"  Netty memory:       {NettyMemory / 1000 / 1000}MB");
             AssignTxPoolMemory(txPoolConfig);
             _remainingMemory -= TxPoolMemory;
-            builder.AppendLine($"  mempool memory:     {TxPoolMemory / 1024 / 1024}MB");
+            if(_logger.IsInfo) _logger.Info($"  mempool memory:     {TxPoolMemory / 1000 / 1000}MB");
             AssignFastBlocksMemory(syncConfig);
             _remainingMemory -= FastBlocksMemory;
-            builder.AppendLine($"  fast blocks memory: {FastBlocksMemory / 1024 / 1024}MB");
+            if(_logger.IsInfo) _logger.Info($"  fast blocks memory: {FastBlocksMemory / 1000 / 1000}MB");
             AssignTrieCacheMemory();
             _remainingMemory -= TrieCacheMemory;
-            builder.AppendLine($"  trie memory:        {TrieCacheMemory / 1024 / 1024}MB");
+            if(_logger.IsInfo) _logger.Info($"  trie memory:        {TrieCacheMemory / 1000 / 1000}MB");
             UpdateDbConfig(cpuCount, syncConfig, dbConfig, initConfig);
             _remainingMemory -= DbMemory;
-            builder.AppendLine($"  DB memory:          {DbMemory / 1024 / 1024}MB");
+            if(_logger.IsInfo) _logger.Info($"  DB memory:          {DbMemory / 1000 / 1000}MB");
         }
 
         private ulong _remainingMemory;
@@ -97,6 +96,7 @@ namespace Nethermind.Runner
         private void AssignTrieCacheMemory()
         {
             TrieCacheMemory = (ulong) (0.2 * _remainingMemory);
+            Trie.MemoryAllowance.TrieNodeCacheMemory = (ulong)TrieCacheMemory;
         }
 
         private void AssignPeersMemory(INetworkConfig networkConfig)
@@ -135,7 +135,7 @@ namespace Nethermind.Runner
                 }
                 else
                 {
-                    FastBlocksMemory = (ulong) Math.Max((long) 1.GB(), (long) (0.1 * _remainingMemory));
+                    FastBlocksMemory = (ulong) Math.Min((long) 1.GB(), (long) (0.1 * _remainingMemory));
                 }
             }
         }
@@ -211,7 +211,7 @@ namespace Nethermind.Runner
             ulong minMemory = minBufferMem + minCacheMem;
             if (minMemory > availableMemory)
             {
-                throw new ArgumentException($"Memory hint of {memoryHint} is not enough to cover DB requirements.");
+                throw new ArgumentException($"Memory hint of {TotalMemory} is not enough to cover DB requirements.");
             }
 
             ulong maxWantedMemory = Math.Max(minMemory, (ulong) (memoryHint * maxPercentage));

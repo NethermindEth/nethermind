@@ -101,8 +101,6 @@ namespace Nethermind.Runner.Ethereum.Steps
                 NetworkDiagTracer.Start();
             }
             
-            ThisNodeInfo.AddInfo("Mem est netty:", $"{NettyMemoryEstimator.Estimate((uint)Environment.ProcessorCount, _networkConfig.NettyArenaOrder) / 1000 / 1000}MB".PadLeft(8));
-            ThisNodeInfo.AddInfo("Mem est peers:", $"{_networkConfig.ActivePeersMaxCount}MB".PadLeft(8));
             Environment.SetEnvironmentVariable("io.netty.allocator.maxOrder", _networkConfig.NettyArenaOrder.ToString());
 
             var cht = new CanonicalHashTrie(_ctx.DbProvider.ChtDb);

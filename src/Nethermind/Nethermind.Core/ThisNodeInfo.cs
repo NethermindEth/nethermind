@@ -25,33 +25,9 @@ namespace Nethermind.Core
     {
         private static ConcurrentDictionary<string, string> _nodeInfoItems = new ConcurrentDictionary<string, string>();
 
-        private static object _totalMemLock = new object();
-
-        static ThisNodeInfo()
-        {
-            _nodeInfoItems["Mem est      :"] = "0MB".PadLeft(8);
-        }
-        
         public static void AddInfo(string infoDescription, string value)
         {
             _nodeInfoItems[infoDescription] = value;
-
-            if (infoDescription.Contains("Mem est"))
-            {
-                lock (_totalMemLock)
-                {
-                    int total = 0;
-                    foreach (KeyValuePair<string,string> nodeInfoItem in _nodeInfoItems)
-                    {
-                        if (nodeInfoItem.Key.Contains("Mem est") && nodeInfoItem.Key != "Mem est      :")
-                        {
-                            total += int.Parse(nodeInfoItem.Value.Trim().Replace("MB", string.Empty));        
-                        }
-                    }
-                    
-                    _nodeInfoItems["Mem est      :"] = $"{total}MB".PadLeft(8);
-                }
-            }
         }
 
         public static string BuildNodeInfoScreen()

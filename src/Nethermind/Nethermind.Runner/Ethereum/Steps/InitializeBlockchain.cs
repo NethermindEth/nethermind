@@ -211,8 +211,6 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.DisposeStack.Push(beamBlockchainProcessor);
             }
 
-            ThisNodeInfo.AddInfo("Mem est trie :", $"{LruCache<Keccak, byte[]>.CalculateMemorySize(52 + 320, Trie.MemoryAllowance.TrieNodeCacheSize) / 1024 / 1024}MB".PadLeft(8));
-
             return Task.CompletedTask;
         }
 

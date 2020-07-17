@@ -72,6 +72,8 @@ namespace Nethermind.Runner.Test
         [TestCase(2000 * MB, 12u, 10)]
         public void Netty_arena_order_is_configured_correctly(ulong memoryHint, uint cpuCount, int expectedArenaOrder)
         {
+            _txPoolConfig.Size = 128;
+            _initConfig.DiagnosticMode = DiagnosticMode.MemDb;
             _initConfig.MemoryHint = (long) memoryHint;
             SetMemoryAllowances(cpuCount);
             _networkConfig.NettyArenaOrder.Should().Be(expectedArenaOrder);

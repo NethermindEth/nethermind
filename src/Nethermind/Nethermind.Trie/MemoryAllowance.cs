@@ -14,10 +14,12 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Core.Extensions;
+
 namespace Nethermind.Trie
 {
     public static class MemoryAllowance
     {
-        public static int TrieNodeCacheSize { get; set; } = 1 << 19;
+        public static ulong TrieNodeCacheMemory { get; set; } = 128.MB();
     }
 }
