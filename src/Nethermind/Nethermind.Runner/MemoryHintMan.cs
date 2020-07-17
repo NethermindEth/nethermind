@@ -17,6 +17,7 @@
 
 using System;
 using System.Diagnostics;
+using System.IO;
 using System.Text;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Extensions;
@@ -55,7 +56,7 @@ namespace Nethermind.Runner
             TotalMemory = (ulong) (initConfig.MemoryHint ?? (long) 2.GB());
             ValidateMemoryHint(TotalMemory);
             ValidateCpuCount(cpuCount);
-            
+
             StringBuilder builder = new StringBuilder();
             builder.AppendLine("Setting up memory allowances");
             builder.AppendLine($"  memory hint:        {TotalMemory / 1024 / 1024}MB");
@@ -77,10 +78,13 @@ namespace Nethermind.Runner
             AssignTrieCacheMemory();
             _remainingMemory -= TrieCacheMemory;
             builder.AppendLine($"  trie memory:        {TrieCacheMemory / 1024 / 1024}MB");
+            UpdateDbConfig(cpuCount, syncConfig, dbConfig, initConfig);
+            _remainingMemory -= DbMemory;
+            builder.AppendLine($"  DB memory:          {DbMemory / 1024 / 1024}MB");
         }
 
         private ulong _remainingMemory;
-        
+
         public ulong TotalMemory = 1024 * 1024 * 1024;
         public ulong GeneralMemory { get; } = 32.MB();
         public ulong FastBlocksMemory { get; private set; }
@@ -92,14 +96,9 @@ namespace Nethermind.Runner
 
         private void AssignTrieCacheMemory()
         {
-            TrieCacheMemory = (ulong)(0.2 * _remainingMemory);
+            TrieCacheMemory = (ulong) (0.2 * _remainingMemory);
         }
-        
-        private void AssignDbMemory()
-        {
-            DbMemory = _remainingMemory;
-        }
-        
+
         private void AssignPeersMemory(INetworkConfig networkConfig)
         {
             PeersMemory = (ulong) networkConfig.ActivePeersMaxCount * 1.MB();
@@ -107,11 +106,25 @@ namespace Nethermind.Runner
 
         private void AssignTxPoolMemory(ITxPoolConfig txPoolConfig)
         {
-            ulong hashCache = 512 * 1024;
-            ulong txPoolMemory = (ulong) txPoolConfig.Size * 100.KB() + (hashCache * 128);
+            ulong hashCacheMemory = 512 * 1024 * 128;
+            if ((_remainingMemory * 0.05) < hashCacheMemory)
+            {
+                hashCacheMemory = (ulong)Math.Min((long)(_remainingMemory * 0.05), (long)(hashCacheMemory));
+            }
+
+            Nethermind.TxPool.MemoryAllowance.TxHashCacheSize = (int)(hashCacheMemory / 128);
+            hashCacheMemory = (ulong)(Nethermind.TxPool.MemoryAllowance.TxHashCacheSize * 128);
+            
+            ulong txPoolMemory = (ulong) txPoolConfig.Size * 40.KB() + hashCacheMemory;
+            if (txPoolMemory > _remainingMemory * 0.5)
+            {
+                throw new InvalidDataException(
+                    $"Memory hint is not enough to satisfy the {nameof(TxPoolConfig)}.{nameof(TxPoolConfig.Size)}");
+            }
+
             TxPoolMemory = txPoolMemory;
         }
-        
+
         private void AssignFastBlocksMemory(ISyncConfig syncConfig)
         {
             if (syncConfig.FastBlocks)
@@ -127,8 +140,15 @@ namespace Nethermind.Runner
             }
         }
 
-        private void UpdateDbConfig(uint cpuCount, ISyncConfig syncConfig, IDbConfig dbConfig)
+        private void UpdateDbConfig(uint cpuCount, ISyncConfig syncConfig, IDbConfig dbConfig, IInitConfig initConfig)
         {
+            if (initConfig.DiagnosticMode == DiagnosticMode.MemDb)
+            {
+                DbMemory = _remainingMemory;
+                return;
+            }
+            
+            DbMemory = _remainingMemory;
             ulong remaining = DbMemory;
             DbNeeds dbNeeds = GetHeaderNeeds(cpuCount, syncConfig);
             DbGets dbGets = GiveItWhatYouCan(dbNeeds, DbMemory, remaining);
@@ -337,8 +357,9 @@ namespace Nethermind.Runner
 
         private void AssignNettyMemory(INetworkConfig networkConfig, uint cpuCount)
         {
+            NettyMemory = (ulong) Math.Min((long) 512.MB(), (long) (0.2 * _remainingMemory));
             ulong estimate = NettyMemoryEstimator.Estimate(cpuCount, networkConfig.NettyArenaOrder);
-            
+
             /* first of all we assume that the mainnet will be heavier than any other chain on the side */
             /* we will leave the arena order as in config if it is set to a non-default value */
             if (networkConfig.NettyArenaOrder != INetworkConfig.DefaultNettyArenaOrder)
