@@ -22,6 +22,8 @@ namespace Nethermind.Consensus.Ethash
 {
     public class EthashCache : IEthashDataSet
     {
+        private ArrayPool<uint[]> _arrayPool = ArrayPool<uint[]>.Create(1024 * 1024 * 4, 50);
+        
         private uint[][] Data { get; set; }
 
         public uint Size { get; set; }
@@ -31,7 +33,7 @@ namespace Nethermind.Consensus.Ethash
             uint cachePageCount = cacheSize / Ethash.HashBytes;
             Size = cachePageCount * Ethash.HashBytes;
                 
-            Data = ArrayPool<uint[]>.Shared.Rent((int)cachePageCount);
+            Data = _arrayPool.Rent((int)cachePageCount);
             Data[0] = Keccak512.ComputeToUInts(seed);
             for (uint i = 1; i < cachePageCount; i++)
             {
@@ -99,7 +101,7 @@ namespace Nethermind.Consensus.Ethash
                 GC.SuppressFinalize(this);
             }
             
-            ArrayPool<uint[]>.Shared.Return(Data);
+            _arrayPool.Return(Data);
         }
 
         ~EthashCache()
