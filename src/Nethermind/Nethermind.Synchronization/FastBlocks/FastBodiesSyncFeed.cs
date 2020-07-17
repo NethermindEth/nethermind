@@ -94,6 +94,14 @@ namespace Nethermind.Synchronization.FastBlocks
         private ulong MemoryInQueue => (ulong)_dependencies
             .Sum(d => d.Value.Sum(b =>
                 MemorySizeEstimator.EstimateSize(b)));
+        
+        private ulong MemoryInSent => (ulong)_dependencies
+            .Sum(d => d.Value.Sum(b =>
+                MemorySizeEstimator.EstimateSize(b)));
+        
+        private ulong MemoryInPending => (ulong)_dependencies
+            .Sum(d => d.Value.Sum(b =>
+                MemorySizeEstimator.EstimateSize(b)));
 
         public override bool IsMultiFeed => true;
 
@@ -106,8 +114,11 @@ namespace Nethermind.Synchronization.FastBlocks
             bool requestedGenesis = _lowestRequestedBodyHash == _blockTree.Genesis.Hash;
 
             ulong memoryInQueue = MemoryInQueue;
+            ulong memoryInPending = MemoryInPending;
+            ulong memoryInSent = MemoryInSent;
             ulong memoryAllowance = MemoryAllowance.FastBlocksMemory;
-            _logger.Warn($"{memoryInQueue / 1000 / 1000}MB / {memoryAllowance / 1000 / 1000}MB");
+            _logger.Warn(
+                $"{memoryInQueue / 1000 / 1000}MB / {memoryAllowance / 1000 / 1000}MB (pending: {memoryInPending / 1000 / 1000}MB, sent: {memoryInSent / 1000 / 1000}MB");
             bool noBatchesLeft = !shouldDownloadBodies
                                  || allBodiesDownloaded
                                  || requestedGenesis

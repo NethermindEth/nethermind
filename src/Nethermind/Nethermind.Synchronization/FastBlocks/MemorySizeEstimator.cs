@@ -24,6 +24,11 @@ namespace Nethermind.Synchronization.FastBlocks
     {
         public static long EstimateSize(Block block)
         {
+            if (block == null)
+            {
+                return 0;
+            }
+            
             long estimate = 80L;
             estimate += EstimateSize(block.Header);
             estimate += EstimateSize(block.Body);
@@ -32,6 +37,11 @@ namespace Nethermind.Synchronization.FastBlocks
         
         public static long EstimateSize(TxReceipt txReceipt)
         {
+            if (txReceipt == null)
+            {
+                return 0;
+            }
+            
             long estimate = 320L;
             foreach (LogEntry logEntry in txReceipt.Logs)
             {
@@ -43,16 +53,21 @@ namespace Nethermind.Synchronization.FastBlocks
         
         public static long EstimateSize(BlockBody blockBody)
         {
+            if (blockBody == null)
+            {
+                return 0;
+            }
+            
             long estimate = 80L;
             estimate += (blockBody.Transactions?.Length ?? 0) * 8L;
             estimate += (blockBody.Ommers?.Length ?? 0) * 8L;
             
-            foreach (Transaction transaction in blockBody?.Transactions ?? Array.Empty<Transaction>())
+            foreach (Transaction transaction in blockBody.Transactions ?? Array.Empty<Transaction>())
             {
                 estimate += EstimateSize(transaction);
             }
             
-            foreach (BlockHeader header in blockBody?.Ommers ?? Array.Empty<BlockHeader>())
+            foreach (BlockHeader header in blockBody.Ommers ?? Array.Empty<BlockHeader>())
             {
                 estimate += EstimateSize(header);
             }
