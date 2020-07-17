@@ -40,8 +40,6 @@ using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Web3;
 using Nethermind.JsonRpc.WebSockets;
-using Nethermind.Baseline.Config;
-using Nethermind.Baseline;
 using Nethermind.Monitoring;
 using Nethermind.Monitoring.Metrics;
 using Nethermind.Logging.NLog;
@@ -52,7 +50,6 @@ using Nethermind.Serialization.Json;
 using Nethermind.WebSockets;
 using ILogger = Nethermind.Logging.ILogger;
 using Nethermind.Seq.Config;
-using NLog;
 
 namespace Nethermind.Runner
 {
@@ -154,7 +151,6 @@ namespace Nethermind.Runner
 
             if (seqConfig.MinLevel != "Off")
             {
-                var config = LogManager.Configuration;
                 (new NLogConfigurator()).ConfigureSeqBufferTarget(NLog.LogLevel.FromString(seqConfig.MinLevel), seqConfig.ServerUrl, seqConfig.ApiKey);
             }
 
