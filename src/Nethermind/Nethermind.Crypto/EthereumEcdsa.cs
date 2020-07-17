@@ -90,7 +90,7 @@ namespace Nethermind.Crypto
                 return null;
             }
             
-            return PublicKey.ComputeAddress(publicKey.Slice(64));
+            return PublicKey.ComputeAddress(publicKey.Slice(1, 64));
         }
     }
 }
