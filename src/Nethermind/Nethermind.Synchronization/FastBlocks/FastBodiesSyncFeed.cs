@@ -192,6 +192,7 @@ namespace Nethermind.Synchronization.FastBlocks
         public override Task<BodiesSyncBatch> PrepareRequest()
         {
             _logger.Info($"Body Counts - waiting:{BodyCounter.WaitingForHandling}|inhandler:{BodyCounter.InHandler}|dependent:{BodyCounter.HeldInQueues}|inserting{BodyCounter.Inserting}, {BlockBody.Number}");
+            _logger.Info($"Txs - request:{Transaction.FromRequestGeneration}|resp:{Transaction.FromBlockResponse}|msg:{Transaction.FromTransactionsMessage}|other:{Transaction.Other}");
             HandleDependentBatches();
 
             BodiesSyncBatch batch = null;
