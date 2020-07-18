@@ -35,7 +35,6 @@ using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
-using Nethermind.Synchronization.FastBlocks;
 using Nethermind.TxPool;
 
 namespace Nethermind.Network.P2P
@@ -118,6 +117,7 @@ namespace Nethermind.Network.P2P
             _bodiesRequests.Add(request, token);
             request.StartMeasuringTime();
 
+            Logger.Warn($"Sending bodies request of length {request.Message.BlockHashes.Count} to {this}");
             Send(request.Message);
 
             Task<BlockBody[]> task = request.CompletionSource.Task;
@@ -126,11 +126,13 @@ namespace Nethermind.Network.P2P
             Task firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.Eth, compositeCancellation.Token));
             if (firstTask.IsCanceled)
             {
+                Logger.Warn($"Bodies request of length {request.Message.BlockHashes.Count} expired with {this}");
                 token.ThrowIfCancellationRequested();
             }
 
             if (firstTask == task)
             {
+                Logger.Warn($"Bodies request of length {request.Message.BlockHashes.Count} received with size {request.ResponseSize} from {this}");
                 delayCancellation.Cancel();
                 long elapsed = request.FinishMeasuringTime();
                 long bytesPerMillisecond = (long) ((decimal) request.ResponseSize / Math.Max(1, elapsed));
