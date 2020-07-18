@@ -50,13 +50,13 @@ namespace Nethermind.Network.P2P
 
         public virtual bool IncludeInTxPool => true;
         protected ISyncServer SyncServer { get; }
-        
+
         public long HeadNumber { get; set; }
         public Keccak HeadHash { get; set; }
-        
+
         // this means that we know what the number, hash, and total diff of the head block is
         public bool IsInitialized { get; set; }
-        
+
         public override string ToString() => $"[Peer|{Name}|{HeadNumber}|{ClientId}|{Node:s}]";
 
         protected Keccak _remoteHeadBlockHash;
@@ -142,7 +142,7 @@ namespace Nethermind.Network.P2P
 
                 return task.Result;
             }
-            
+
             Logger.Warn($"Bodies request of length {request.Message.BlockHashes.Count} timed out with size {request.ResponseSize} from {this}");
 
             StatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.Bodies, 0L);
@@ -209,7 +209,7 @@ namespace Nethermind.Network.P2P
                 return task.Result;
             }
 
-            StatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.Headers,0);
+            StatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.Headers, 0);
             throw new TimeoutException($"{Session} Request timeout in {nameof(GetBlockHeadersMessage)} with {message.MaxHeaders} max headers");
         }
 
@@ -234,7 +234,7 @@ namespace Nethermind.Network.P2P
         {
             throw new NotSupportedException("Fast sync not supported by eth62 protocol");
         }
-        
+
         public abstract void NotifyOfNewBlock(Block block, SendBlockPriority priority);
 
         public virtual void SendNewTransaction(Transaction transaction, bool isPriority)
@@ -365,6 +365,11 @@ namespace Nethermind.Network.P2P
         protected void HandleBodies(IByteBuffer buffer, long size)
         {
             Metrics.Eth62BlockBodiesReceived++;
+            if (_bodiesRequests.Count > 1)
+            {
+                Logger.Warn($"Bodies requests queue is {_bodiesRequests.Count}");
+            }
+
             if (_bodiesRequests.TryTake(
                 out Request<GetBlockBodiesMessage, BlockBody[]> request,
                 TimeSpan.FromSeconds(1)))
@@ -409,8 +414,8 @@ namespace Nethermind.Network.P2P
                     break;
                 }
             }
-            
-            return new ReceiptsMessage(txReceipts);    
+
+            return new ReceiptsMessage(txReceipts);
         }
 
         private static BlockHeader[] FixHeadersForGeth(BlockHeader[] headers)
@@ -441,7 +446,7 @@ namespace Nethermind.Network.P2P
 
         private int _isDisposed;
         protected abstract void OnDisposed();
-        
+
         public override void DisconnectProtocol(DisconnectReason disconnectReason, string details)
         {
             Dispose();
