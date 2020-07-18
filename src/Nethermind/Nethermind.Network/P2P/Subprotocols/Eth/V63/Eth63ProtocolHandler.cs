@@ -28,6 +28,7 @@ using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
+using Org.BouncyCastle.Ocsp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 {
@@ -181,7 +182,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
                 return task.Result;
             }
-
+            
             StatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.NodeData, 0L);
             throw new TimeoutException($"{Session} Request timeout in {nameof(GetNodeDataMessage)}");
         }
@@ -219,7 +220,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                 if (Logger.IsTrace)
                     Logger.Trace($"{this} speed is {request.ResponseSize}/{elapsed} = {bytesPerMillisecond}");
                 StatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.Receipts, bytesPerMillisecond);
-
                 return task.Result;
             }
 

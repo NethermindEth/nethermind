@@ -42,7 +42,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private readonly ISpecProvider _specProvider;
         private readonly IReceiptStorage _receiptStorage;
         private readonly ISyncPeerPool _syncPeerPool;
-        
+
         private FastStatusList _fastStatusList;
         private readonly long _pivotNumber;
 
@@ -148,7 +148,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 else
                 {
                     int added = InsertReceipts(batch);
-                    return added == 0 ? SyncResponseHandlingResult.NoProgress : SyncResponseHandlingResult.OK;    
+                    return added == 0 ? SyncResponseHandlingResult.NoProgress : SyncResponseHandlingResult.OK;
                 }
             }
             finally
@@ -156,34 +156,41 @@ namespace Nethermind.Synchronization.FastBlocks
                 batch.MarkHandlingEnd();
             }
         }
-        
+
         private bool TryPrepareReceipts(BlockInfo blockInfo, TxReceipt[] receipts, out TxReceipt[] preparedReceipts)
         {
             BlockHeader header = _blockTree.FindHeader(blockInfo.BlockHash);
-            Keccak receiptsRoot = new ReceiptTrie(blockInfo.BlockNumber, _specProvider, receipts).RootHash;
-            if (receiptsRoot != header.ReceiptsRoot)
+            if (header.ReceiptsRoot == Keccak.EmptyTreeHash)
             {
-                preparedReceipts = null;
+                preparedReceipts = receipts.Length == 0 ? receipts : null;
             }
             else
             {
-                preparedReceipts = receipts;
+                Keccak receiptsRoot = new ReceiptTrie(blockInfo.BlockNumber, _specProvider, receipts).RootHash;
+                if (receiptsRoot != header.ReceiptsRoot)
+                {
+                    preparedReceipts = null;
+                }
+                else
+                {
+                    preparedReceipts = receipts;
+                }
             }
 
             return preparedReceipts != null;
         }
-        
+
         private int InsertReceipts(SimpleReceiptsSyncBatch batch)
         {
             bool hasBreachedProtocol = false;
             int validResponsesCount = 0;
-            
+
             for (int i = 0; i < batch.Infos.Length; i++)
             {
                 BlockInfo blockInfo = batch.Infos[i];
                 TxReceipt[] receipts = (batch.Response?.Length ?? 0) <= i
                     ? null
-                    : batch.Response![i];
+                    : (batch.Response![i] ?? Array.Empty<TxReceipt>());
                 if (receipts != null)
                 {
                     TxReceipt[] prepared = null;
@@ -198,7 +205,7 @@ namespace Nethermind.Synchronization.FastBlocks
                     else
                     {
                         hasBreachedProtocol = true;
-                        if (_logger.IsWarn) _logger.Warn($"{batch} - reporting INVALID - tx or ommers");
+                        // if (_logger.IsWarn) _logger.Warn($"{batch} - reporting INVALID - tx or ommers");
                         _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, "invalid tx or ommers root");
                         _fastStatusList.MarkUnknown(blockInfo.BlockNumber);
                     }
@@ -213,7 +220,7 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 if (validResponsesCount == batch.Infos.Length)
                 {
-                    _requestSize = Math.Min(256, _requestSize * 2);
+                    _requestSize = Math.Min(512, _requestSize * 2);
                 }
 
                 if (validResponsesCount == 0)
@@ -221,9 +228,9 @@ namespace Nethermind.Synchronization.FastBlocks
                     _requestSize = Math.Max(4, _requestSize / 2);
                 }
             }
-            
+
             _logger.Warn($"Receipts sync batch back from {batch.ResponseSourcePeer} with {validResponsesCount}/{batch.Infos.Length}");
-            
+
             _syncReport.FastBlocksReceipts.Update(_pivotNumber - _fastStatusList.LowestInsertWithoutGaps);
             _syncReport.ReceiptsInQueue.Update(_fastStatusList.QueueSize);
             return validResponsesCount;
