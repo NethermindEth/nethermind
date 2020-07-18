@@ -62,7 +62,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 Transaction[] transactions = rlpStream.DecodeArray(txCtx => Rlp.Decode<Transaction>(ctx));
                 foreach (Transaction transaction in transactions)
                 {
-                    Interlocked.Increment(ref Transaction.FromTransactionsMessage);
                     transaction.Type = 3;
                 }
                 

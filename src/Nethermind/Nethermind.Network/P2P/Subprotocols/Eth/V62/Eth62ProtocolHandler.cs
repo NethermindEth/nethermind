@@ -203,7 +203,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             IList<Transaction> transactions = msg.Transactions;
             foreach (Transaction transaction in transactions)
             {
-                Interlocked.Increment(ref Transaction.FromTransactionsMessage);
                 transaction.Type = 1;
             }
             
