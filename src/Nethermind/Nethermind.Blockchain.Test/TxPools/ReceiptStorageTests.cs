@@ -78,7 +78,7 @@ namespace Nethermind.Blockchain.Test.TxPools
             var transaction = GetSignedTransaction();
             var block = GetBlock(transaction);
             var receipt = GetReceipt(transaction, block);
-            storage.Insert(block, updateLowest, receipt);
+            storage.Insert(block, receipt);
             storage.LowestInsertedReceiptBlock.Should().Be(updateLowest ? (long?)0 : null);
         }
         
@@ -87,7 +87,7 @@ namespace Nethermind.Blockchain.Test.TxPools
             var transaction = GetSignedTransaction();
             var block = GetBlock(transaction);
             var receipt = GetReceipt(transaction, block);
-            storage.Insert(block, false, receipt);
+            storage.Insert(block, receipt);
             var blockHash = storage.FindBlockHash(transaction.Hash);
             blockHash.Should().Be(block.Hash);
             var fetchedReceipt = storage.Get(block).ForTransaction(transaction.Hash);
@@ -101,7 +101,7 @@ namespace Nethermind.Blockchain.Test.TxPools
             var transaction = GetSignedTransaction();
             var block = GetBlock(transaction);
             var receipt = GetReceipt(transaction, block);
-            storage.Insert(block, false, receipt);
+            storage.Insert(block, receipt);
             var blockHash = storage.FindBlockHash(transaction.Hash);
             blockHash.Should().Be(block.Hash);
             var fetchedReceipt = storage.Get(block).ForTransaction(transaction.Hash);

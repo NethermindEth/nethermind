@@ -24,7 +24,6 @@ namespace Nethermind.Synchronization.FastBlocks
         public bool IsFinal { get; set; }
         public BlockInfo[] Infos { get; set; }
         public TxReceipt[][] Response { get; set; }
-        public override bool IsResponseEmpty => Response == null;
 
         public override string ToString()
         {

@@ -1082,8 +1082,8 @@ namespace Nethermind.Blockchain.Test
 
             BlockTree loadedTree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
 
-            Assert.AreEqual(expectedResult, tree.LowestInsertedBody?.Number, "tree");
-            Assert.AreEqual(expectedResult, loadedTree.LowestInsertedBody?.Number, "loaded tree");
+            Assert.AreEqual(expectedResult, tree.LowestInsertedBodyNumber, "tree");
+            Assert.AreEqual(expectedResult, loadedTree.LowestInsertedBodyNumber, "loaded tree");
         }
         
         
@@ -1174,7 +1174,7 @@ namespace Nethermind.Blockchain.Test
 
             Assert.AreEqual(pivotNumber + 1, tree.BestKnownNumber, "tree");
             Assert.AreEqual(1, tree.LowestInsertedHeader?.Number, "loaded tree - lowest header");
-            Assert.AreEqual(null, tree.LowestInsertedBody?.Number, "loaded tree - lowest body");
+            Assert.AreEqual(null, tree.LowestInsertedBodyNumber, "loaded tree - lowest body");
             Assert.AreEqual(pivotNumber + 1, loadedTree.BestKnownNumber, "loaded tree");
         }
         

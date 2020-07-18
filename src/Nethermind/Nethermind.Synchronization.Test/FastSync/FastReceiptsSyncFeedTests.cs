@@ -301,7 +301,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                         : null);
 
             _receiptStorage.LowestInsertedReceiptBlock.Returns((long?) null);
-            _blockTree.LowestInsertedBody.Returns(scenario.LowestInsertedBody);
+            _blockTree.LowestInsertedBodyNumber.Returns(scenario.LowestInsertedBody.Number);
         }
 
         [Test]
@@ -418,12 +418,12 @@ namespace Nethermind.Synchronization.Test.FastSync
             _feed.HandleResponse(batch2).Should().Be(SyncResponseHandlingResult.OK);
             _feed.HandleResponse(batch).Should().Be(SyncResponseHandlingResult.OK);
 
-            _receiptStorage.Received().Insert(Arg.Is<Block>(b => b.Number == 897), true, Arg.Any<TxReceipt[]>());
-            _receiptStorage.DidNotReceive().Insert(Arg.Is<Block>(b => b.Number == 896), true, Arg.Any<TxReceipt[]>());
+            _receiptStorage.Received().Insert(Arg.Is<Block>(b => b.Number == 897), Arg.Any<TxReceipt[]>());
+            _receiptStorage.DidNotReceive().Insert(Arg.Is<Block>(b => b.Number == 896), Arg.Any<TxReceipt[]>());
             _receiptStorage.LowestInsertedReceiptBlock.Returns(897);
 
             _feed.PrepareRequest();
-            _receiptStorage.Received().Insert(Arg.Is<Block>(b => b.Number == 896), true, Arg.Any<TxReceipt[]>());
+            _receiptStorage.Received().Insert(Arg.Is<Block>(b => b.Number == 896), Arg.Any<TxReceipt[]>());
         }
         
         [Test]
@@ -444,7 +444,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             _receiptStorage.LowestInsertedReceiptBlock.Returns(897);
             
             _feed.PrepareRequest();
-            _receiptStorage.Received().Insert(Arg.Is<Block>(b => b.Number == 896), true, Arg.Any<TxReceipt[]>());
+            _receiptStorage.Received().Insert(Arg.Is<Block>(b => b.Number == 896), Arg.Any<TxReceipt[]>());
         }
 
         private static void FillBatchResponses(SimpleReceiptsSyncBatch batch)

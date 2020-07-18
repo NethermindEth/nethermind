@@ -132,6 +132,8 @@ namespace Nethermind.Synchronization.FastBlocks
                 Array.Reverse(infos);
             }
 
+            _receiptStorage.LowestInsertedReceiptBlock = _fastStatusList.LowestInsertWithoutGaps;
+
             return Task.FromResult(batch);
         }
 
@@ -191,7 +193,7 @@ namespace Nethermind.Synchronization.FastBlocks
                     {
                         validResponsesCount++;
                         Block block = _blockTree.FindBlock(blockInfo.BlockHash);
-                        _receiptStorage.Insert(block, false, prepared);
+                        _receiptStorage.Insert(block, prepared);
                         _fastStatusList.MarkInserted(block.Number);
                     }
                     else

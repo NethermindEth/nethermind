@@ -111,6 +111,8 @@ namespace Nethermind.Synchronization.FastBlocks
                 Array.Reverse(infos);
             }
 
+            _blockTree.LowestInsertedBodyNumber = _fastStatusList.LowestInsertWithoutGaps;
+
             return Task.FromResult(batch);
         }
 

@@ -23,6 +23,5 @@ namespace Nethermind.Synchronization.FastBlocks
     {
         public BlockInfo[] Infos { get; set; }
         public BlockBody[] Response { get; set; }
-        public override bool IsResponseEmpty => Response == null;
     }
 }

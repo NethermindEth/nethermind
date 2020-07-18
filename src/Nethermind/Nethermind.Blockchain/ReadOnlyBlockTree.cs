@@ -38,7 +38,13 @@ namespace Nethermind.Blockchain
         public BlockHeader Genesis => _wrapped.Genesis;
         public BlockHeader BestSuggestedHeader => _wrapped.BestSuggestedHeader;
         public BlockHeader LowestInsertedHeader => _wrapped.LowestInsertedHeader;
-        public Block LowestInsertedBody => _wrapped.LowestInsertedBody;
+
+        public long? LowestInsertedBodyNumber
+        {
+          get => _wrapped.LowestInsertedBodyNumber;
+          set => _wrapped.LowestInsertedBodyNumber = value;
+        }
+        
         public Block BestSuggestedBody => _wrapped.BestSuggestedBody;
         public long BestKnownNumber => _wrapped.BestKnownNumber;
         public Block Head => _wrapped.Head;

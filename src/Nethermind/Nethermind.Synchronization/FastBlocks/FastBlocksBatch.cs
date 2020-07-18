@@ -36,7 +36,6 @@ namespace Nethermind.Synchronization.FastBlocks
         /// </summary>
         public bool Prioritized { get; set; }
 
-        public abstract bool IsResponseEmpty { get; }
         public PeerInfo ResponseSourcePeer { get; set; }
 
         protected FastBlocksBatch()

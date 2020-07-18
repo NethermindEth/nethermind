@@ -408,7 +408,7 @@ namespace Nethermind.Synchronization.Peers
 
         private bool CanBeUsefulForFastBlocks(long blockNumber)
         {
-            long lowestInsertedBody = _blockTree.LowestInsertedBody?.Number ?? long.MaxValue;
+            long lowestInsertedBody = _blockTree.LowestInsertedBodyNumber ?? long.MaxValue;
             long lowestInsertedHeader = _blockTree.LowestInsertedHeader?.Number ?? long.MaxValue;
             return lowestInsertedBody > 1 && lowestInsertedBody < blockNumber ||
                    lowestInsertedHeader > 1 && lowestInsertedHeader < blockNumber;

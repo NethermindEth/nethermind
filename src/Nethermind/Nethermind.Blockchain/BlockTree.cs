@@ -31,7 +31,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
-using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
@@ -66,13 +65,29 @@ namespace Nethermind.Blockchain
 
         internal static Keccak DeletePointerAddressInDb = new Keccak(new BitArray(32 * 8, true).ToBytes());
         internal static Keccak HeadAddressInDb = Keccak.Zero;
+        internal static Address LowestInsertedHeaderAddressInDb = Address.FromNumber(0);
+        internal static Address LowestInsertedBodyAddressInDb = Address.FromNumber(0);
 
         public BlockHeader Genesis { get; private set; }
         public Block Head { get; private set; }
         public BlockHeader BestSuggestedHeader { get; private set; }
         public Block BestSuggestedBody { get; private set; }
         public BlockHeader LowestInsertedHeader { get; private set; }
-        public Block LowestInsertedBody { get; private set; }
+
+        private long? _lowestInsertedReceiptBlock;
+        public long? LowestInsertedBodyNumber
+        {
+            get => _lowestInsertedReceiptBlock;
+            set
+            {
+                _lowestInsertedReceiptBlock = value;
+                if (value.HasValue)
+                {
+                    _blockDb.Set(Keccak.Zero, Rlp.Encode(value.Value).Bytes);
+                }
+            }
+        }
+        
         public long BestKnownNumber { get; private set; }
         public int ChainId => _specProvider.ChainId;
 
@@ -146,7 +161,7 @@ namespace Nethermind.Blockchain
                              $"best queued is {BestSuggestedHeader?.Number.ToString() ?? "0"}, " +
                              $"best known is {BestKnownNumber}, " +
                              $"lowest inserted header {LowestInsertedHeader?.Number}, " +
-                             $"body {LowestInsertedBody?.Number}");
+                             $"body {LowestInsertedBodyNumber}");
             ThisNodeInfo.AddInfo("Chain ID     :", $"{Nethermind.Core.ChainId.GetChainName(ChainId)}");
             ThisNodeInfo.AddInfo("Chain head   :", $"{Head?.Header?.ToString(BlockHeader.Format.Short) ?? "0"}");
         }
@@ -160,9 +175,7 @@ namespace Nethermind.Blockchain
                 BestSuggestedHeader = Head.Header;
                 return;
             }
-            
-            LoadLowestInsertedHeader();
-            LoadLowestInsertedBody();
+
             LoadBestKnown();
         }
 
@@ -255,47 +268,6 @@ namespace Nethermind.Blockchain
             BestSuggestedHeader = FindHeader(bestSuggestedHeaderNumber, BlockTreeLookupOptions.None);
             var bestSuggestedBodyHeader = FindHeader(bestSuggestedBodyNumber, BlockTreeLookupOptions.None);
             BestSuggestedBody = bestSuggestedBodyHeader == null ? null : FindBlock(bestSuggestedBodyHeader.Hash, BlockTreeLookupOptions.None);
-        }
-
-        private void LoadLowestInsertedHeader()
-        {
-            long left = 1L;
-            long right = _syncConfig.PivotNumberParsed;
-
-            bool HasLevel(long blockNumber)
-            {
-                ChainLevelInfo level = LoadLevel(blockNumber);
-                return level != null;
-            }
-
-            long? lowestInsertedHeader = BinarySearchBlockNumber(left, right, HasLevel, BinarySearchDirection.Down);
-            if (lowestInsertedHeader != null)
-            {
-                ChainLevelInfo level = LoadLevel(lowestInsertedHeader.Value);
-                BlockInfo blockInfo = level.BlockInfos[0];
-                LowestInsertedHeader = FindHeader(blockInfo.BlockHash, BlockTreeLookupOptions.None);
-            }
-        }
-
-        private void LoadLowestInsertedBody()
-        {
-            long left = 1L;
-            long right = _syncConfig.PivotNumberParsed;
-
-            Block LoadBody(long blockNumber)
-            {
-                ChainLevelInfo level = LoadLevel(blockNumber, true);
-                return level == null ? null : FindBlock(level.BlockInfos[0].BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            }
-
-            bool HasBody(long blockNumber)
-            {
-                Block block = LoadBody(blockNumber);
-                return block != null;
-            }
-
-            long? lowestInsertedBody = BinarySearchBlockNumber(left, right, HasBody, BinarySearchDirection.Down);
-            if (lowestInsertedBody != null) LowestInsertedBody = LoadBody(lowestInsertedBody.Value);
         }
 
         private enum BinarySearchDirection
@@ -410,17 +382,6 @@ namespace Nethermind.Blockchain
             // by avoiding encoding back to RLP here (allocations measured on a sample 3M blocks Goerli fast sync
             Rlp newRlp = _blockDecoder.Encode(block);
             _blockDb.Set(block.Hash, newRlp.Bytes);
-
-            // long expectedNumber = (LowestInsertedBody?.Number - 1 ?? LongConverter.FromString(_syncConfig.PivotNumber ?? "0"));
-            // if (block.Number != expectedNumber)
-            // {
-            //     throw new InvalidOperationException($"Trying to insert out of order block {block.Number} when expected number was {expectedNumber}");
-            // }
-
-            if (block.Number < (LowestInsertedBody?.Number ?? long.MaxValue))
-            {
-                LowestInsertedBody = block;
-            }
 
             return AddBlockResult.Added;
         }

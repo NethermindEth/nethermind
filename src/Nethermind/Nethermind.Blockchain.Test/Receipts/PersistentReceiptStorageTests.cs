@@ -146,7 +146,7 @@ namespace Nethermind.Blockchain.Test.Receipts
                 .TestObject;
 
             var receipts = new TxReceipt[] {Build.A.Receipt.TestObject};
-            _storage.Insert(block, true, receipts);
+            _storage.Insert(block, receipts);
             return (block, receipts);
         }
     }

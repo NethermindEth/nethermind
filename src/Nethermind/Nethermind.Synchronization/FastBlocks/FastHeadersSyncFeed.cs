@@ -233,7 +233,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
         public override SyncResponseHandlingResult HandleResponse(HeadersSyncBatch batch)
         {
-            if (batch.IsResponseEmpty)
+            if ((batch.Response?.Length ?? 0) == 0)
             {
                 batch.MarkHandlingStart();
                 if (_logger.IsTrace) _logger.Trace($"{batch} - came back EMPTY");

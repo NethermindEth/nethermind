@@ -215,7 +215,7 @@ namespace Nethermind.Blockchain.Receipts
             return result;
         }
 
-        public void Insert(Block block, bool updateLowestInserted, params TxReceipt[] txReceipts)
+        public void Insert(Block block, params TxReceipt[] txReceipts)
         {
             txReceipts ??= Array.Empty<TxReceipt>();
             
@@ -235,11 +235,6 @@ namespace Nethermind.Blockchain.Receipts
             {
                 var txHash = block.Transactions[i].Hash;
                 _transactionDb.Set(txHash, block.Hash.Bytes);
-            }
-
-            if (updateLowestInserted && blockNumber < (LowestInsertedReceiptBlock ?? long.MaxValue))
-            {
-                LowestInsertedReceiptBlock = blockNumber;
             }
 
             if (blockNumber < MigratedBlockNumber)
