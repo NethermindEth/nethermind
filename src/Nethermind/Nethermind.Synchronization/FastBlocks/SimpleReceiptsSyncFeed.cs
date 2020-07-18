@@ -185,9 +185,16 @@ namespace Nethermind.Synchronization.FastBlocks
                 TxReceipt[] receipts = (batch.Response?.Length ?? 0) <= i
                     ? null
                     : (batch.Response![i] ?? Array.Empty<TxReceipt>());
+                
                 if (receipts != null)
                 {
                     TxReceipt[] prepared = null;
+                    // last batch
+                    if (blockInfo == null)
+                    {
+                        break;
+                    }
+                    
                     bool isValid = !hasBreachedProtocol && TryPrepareReceipts(blockInfo, receipts, out prepared);
                     if (isValid)
                     {

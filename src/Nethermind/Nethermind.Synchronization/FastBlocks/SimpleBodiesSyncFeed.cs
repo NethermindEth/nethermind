@@ -161,6 +161,12 @@ namespace Nethermind.Synchronization.FastBlocks
                     ? null
                     : batch.Response![i];
 
+                // last batch
+                if (blockInfo == null)
+                {
+                    break;
+                }
+
                 if (body != null)
                 {
                     Block block = null;
