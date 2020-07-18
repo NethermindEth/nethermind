@@ -42,4 +42,11 @@ namespace Nethermind.Synchronization.FastBlocks
             return $"BODIES {details} [{(Prioritized ? "HIGH" : "LOW")}] [times: S:{SchedulingTime:F0}ms|R:{RequestTime:F0}ms|V:{ValidationTime:F0}ms|W:{WaitingTime:F0}ms|H:{HandlingTime:F0}ms|A:{AgeInMs:F0}ms, retries {Retries}] min#: {MinNumber} {ResponseSourcePeer}";
         }
     }
+    
+    public class SimpleBodiesSyncBatch : FastBlocksBatch
+    {
+        public BlockInfo[] Infos { get; set; }
+        public BlockBody[] Response { get; set; }
+        public override bool IsResponseEmpty => Response == null;
+    }
 }

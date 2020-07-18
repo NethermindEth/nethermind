@@ -121,6 +121,8 @@ namespace Nethermind.Blockchain
         Task Accept(IBlockTreeVisitor blockTreeVisitor, CancellationToken cancellationToken);
 
         ChainLevelInfo FindLevel(long number);
+        
+        BlockInfo FindBlockInfo(long blockNumber);
 
         Keccak FindHash(long blockNumber);
 

@@ -300,9 +300,21 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private bool ShouldBeInFastBodiesMode(Snapshot best)
         {
+            bool fastBodiesNotFinished = !FastBlocksBodiesFinished;
+            bool fastHeadersFinished = FastBlocksHeadersFinished;
+            bool notInStateSync = !best.IsInStateSync;
+
+            if (_logger.IsTrace)
+            {
+                _logger.Trace("======================== BODIES");
+                _logger.Trace("fastBodiesNotFinished " + fastBodiesNotFinished);
+                _logger.Trace("fastHeadersFinished " + fastHeadersFinished);
+                _logger.Trace("notInStateSync " + notInStateSync);
+            }
+
             // fast blocks bodies can run if there are peers until it is done
             // fast blocks bodies can run in parallel with full sync when headers are finished
-            return !FastBlocksBodiesFinished && FastBlocksHeadersFinished && best.IsInFullSync;
+            return fastBodiesNotFinished && fastHeadersFinished && notInStateSync;
         }
 
         private bool ShouldBeInFastReceiptsMode(Snapshot best)

@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
@@ -45,6 +46,40 @@ namespace Nethermind.Synchronization.FastBlocks
                 (t, state) =>
                 {
                     BodiesSyncBatch batchLocal = (BodiesSyncBatch)state;
+                    if (t.IsCompletedSuccessfully)
+                    {
+                        if (batchLocal.RequestTime > 1000)
+                        {
+                            if (Logger.IsDebug) Logger.Debug($"{batchLocal} - peer is slow {batchLocal.RequestTime:F2}");
+                        }
+
+                        batchLocal.Response = t.Result;
+                    }
+                }, batch);
+        }
+    }
+    
+    public class SimpleBodiesSyncDispatcher : SyncDispatcher<SimpleBodiesSyncBatch>
+    {
+        public SimpleBodiesSyncDispatcher(
+            ISyncFeed<SimpleBodiesSyncBatch> syncFeed,
+            ISyncPeerPool syncPeerPool,
+            IPeerAllocationStrategyFactory<SimpleBodiesSyncBatch> peerAllocationStrategy,
+            ILogManager logManager)
+            : base(syncFeed, syncPeerPool, peerAllocationStrategy, logManager)
+        {
+        }
+
+        protected override async Task Dispatch(PeerInfo peerInfo, SimpleBodiesSyncBatch batch, CancellationToken cancellationToken)
+        {
+            ISyncPeer peer = peerInfo.SyncPeer;
+            batch.ResponseSourcePeer = peerInfo;
+            batch.MarkSent();
+            Task<BlockBody[]> getBodiesTask = peer.GetBlockBodies(batch.Infos.Select(i => i.BlockHash).ToArray(), cancellationToken);
+            await getBodiesTask.ContinueWith(
+                (t, state) =>
+                {
+                    SimpleBodiesSyncBatch batchLocal = (SimpleBodiesSyncBatch)state;
                     if (t.IsCompletedSuccessfully)
                     {
                         if (batchLocal.RequestTime > 1000)

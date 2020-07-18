@@ -63,7 +63,7 @@ namespace Nethermind.Synchronization
         private StateSyncFeed _stateSyncFeed;
         private FullSyncFeed _fullSyncFeed;
         private FastHeadersSyncFeed _headersFeed;
-        private FastBodiesSyncFeed _bodiesFeed;
+        private SimpleBodiesSyncFeed _bodiesFeed;
         private FastReceiptsSyncFeed _receiptsFeed;
         
 
@@ -203,8 +203,8 @@ namespace Nethermind.Synchronization
             {
                 if (_syncConfig.DownloadBodiesInFastSync)
                 {
-                    _bodiesFeed = new FastBodiesSyncFeed(_syncMode, _blockTree, _syncPeerPool, _syncConfig, _syncReport, _logManager);
-                    BodiesSyncDispatcher bodiesDispatcher = new BodiesSyncDispatcher(_bodiesFeed, _syncPeerPool, fastFactory, _logManager);
+                    _bodiesFeed = new SimpleBodiesSyncFeed(_syncMode, _blockTree, _syncPeerPool, _syncConfig, _syncReport, _logManager);
+                    SimpleBodiesSyncDispatcher bodiesDispatcher = new SimpleBodiesSyncDispatcher(_bodiesFeed, _syncPeerPool, fastFactory, _logManager);
                     Task bodiesTask = bodiesDispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
                     {
                         if (t.IsFaulted)

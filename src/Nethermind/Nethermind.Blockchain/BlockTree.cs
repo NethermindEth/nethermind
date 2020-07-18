@@ -410,12 +410,13 @@ namespace Nethermind.Blockchain
             // by avoiding encoding back to RLP here (allocations measured on a sample 3M blocks Goerli fast sync
             Rlp newRlp = _blockDecoder.Encode(block);
             _blockDb.Set(block.Hash, newRlp.Bytes);
+            Interlocked.Add(ref Transaction.TotalInserted, block.Transactions.Length);
 
-            long expectedNumber = (LowestInsertedBody?.Number - 1 ?? LongConverter.FromString(_syncConfig.PivotNumber ?? "0"));
-            if (block.Number != expectedNumber)
-            {
-                throw new InvalidOperationException($"Trying to insert out of order block {block.Number} when expected number was {expectedNumber}");
-            }
+            // long expectedNumber = (LowestInsertedBody?.Number - 1 ?? LongConverter.FromString(_syncConfig.PivotNumber ?? "0"));
+            // if (block.Number != expectedNumber)
+            // {
+            //     throw new InvalidOperationException($"Trying to insert out of order block {block.Number} when expected number was {expectedNumber}");
+            // }
 
             if (block.Number < (LowestInsertedBody?.Number ?? long.MaxValue))
             {
@@ -593,6 +594,24 @@ namespace Nethermind.Blockchain
             }
 
             return header;
+        }
+
+        public BlockInfo FindBlockInfo(long blockNumber)
+        {
+            ChainLevelInfo level = LoadLevel(blockNumber);
+            if (level == null)
+            {
+                return null;
+            }
+
+            if (level.HasBlockOnMainChain)
+            {
+                BlockInfo blockInfo = level.BlockInfos[0];
+                blockInfo.BlockNumber = blockNumber;
+                return blockInfo;
+            }
+
+            return null;
         }
 
         public Keccak FindHash(long number)

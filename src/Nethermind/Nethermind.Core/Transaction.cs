@@ -29,6 +29,8 @@ namespace Nethermind.Core
         public static int FromTransactionsMessage = 0;
         public static int FromRequestGeneration = 0;
         public static int FromBlockResponse = 0;
+        public static int TotalFromResponse = 0;
+        public static int TotalInserted = 0;
         public static int Other = 0;
 
         private int _type;
@@ -52,6 +54,7 @@ namespace Nethermind.Core
                 if (Type == 3)
                 {
                     Interlocked.Add(ref FromBlockResponse, 1);
+                    Interlocked.Add(ref TotalFromResponse, 1);
                 }
             }
 
