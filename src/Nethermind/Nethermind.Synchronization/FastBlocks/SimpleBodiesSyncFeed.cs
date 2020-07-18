@@ -58,7 +58,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
             // if (!_syncConfig.UseGethLimitsInFastBlocks)
             {
-                _requestSize = NethermindSyncLimits.MaxBodyFetch;
+                _requestSize = 32;
             }
 
             if (!_syncConfig.FastBlocks)

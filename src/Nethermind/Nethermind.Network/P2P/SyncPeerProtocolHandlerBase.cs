@@ -21,6 +21,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using DotNetty.Buffers;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
@@ -361,14 +362,16 @@ namespace Nethermind.Network.P2P
             return new BlockBodiesMessage(blocks);
         }
 
-        protected void Handle(BlockBodiesMessage message, long size)
+        protected void HandleBodies(IByteBuffer buffer, long size)
         {
             Metrics.Eth62BlockBodiesReceived++;
-            using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
-            cancellationTokenSource.CancelAfter(1000);
-            Request<GetBlockBodiesMessage, BlockBody[]> request = _bodiesRequests.Take(cancellationTokenSource.Token);
-            if (message.PacketType == Eth62MessageCode.BlockBodies)
+            if (_bodiesRequests.TryTake(
+                out Request<GetBlockBodiesMessage, BlockBody[]> request,
+                TimeSpan.FromSeconds(1)))
             {
+                BlockBodiesMessage message = Deserialize<BlockBodiesMessage>(buffer);
+                ReportIn(message);
+                Logger.Warn($"Bodies message of size {size} from {this}");
                 request.ResponseSize = size;
                 request.CompletionSource.SetResult(message.Bodies);
             }
