@@ -64,7 +64,7 @@ namespace Nethermind.Synchronization
         private FullSyncFeed _fullSyncFeed;
         private FastHeadersSyncFeed _headersFeed;
         private SimpleBodiesSyncFeed _bodiesFeed;
-        private FastReceiptsSyncFeed _receiptsFeed;
+        private SimpleReceiptsSyncFeed _receiptsFeed;
         
 
         public Synchronizer(
@@ -204,7 +204,7 @@ namespace Nethermind.Synchronization
                 if (_syncConfig.DownloadBodiesInFastSync)
                 {
                     _bodiesFeed = new SimpleBodiesSyncFeed(_syncMode, _blockTree, _syncPeerPool, _syncConfig, _syncReport, _logManager);
-                    SimpleBodiesSyncDispatcher bodiesDispatcher = new SimpleBodiesSyncDispatcher(_bodiesFeed, _syncPeerPool, fastFactory, _logManager);
+                    BodiesSyncDispatcher bodiesDispatcher = new BodiesSyncDispatcher(_bodiesFeed, _syncPeerPool, fastFactory, _logManager);
                     Task bodiesTask = bodiesDispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
                     {
                         if (t.IsFaulted)
@@ -220,7 +220,7 @@ namespace Nethermind.Synchronization
 
                 if (_syncConfig.DownloadReceiptsInFastSync)
                 {
-                    _receiptsFeed = new FastReceiptsSyncFeed(_syncMode, _specProvider, _blockTree, _receiptStorage, _syncPeerPool, _syncConfig, _syncReport, _logManager);
+                    _receiptsFeed = new SimpleReceiptsSyncFeed(_syncMode, _specProvider, _blockTree, _receiptStorage, _syncPeerPool, _syncConfig, _syncReport, _logManager);
                     ReceiptsSyncDispatcher receiptsDispatcher = new ReceiptsSyncDispatcher(_receiptsFeed, _syncPeerPool, fastFactory, _logManager);
                     Task receiptsTask = receiptsDispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
                     {

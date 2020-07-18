@@ -17,8 +17,11 @@
 using System;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.State.Proofs;
 using Nethermind.Synchronization.ParallelSync;
@@ -28,60 +31,71 @@ using Nethermind.Synchronization.SyncLimits;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
-    public class SimpleBodiesSyncFeed : ActivatedSyncFeed<SimpleBodiesSyncBatch>
+    public class SimpleReceiptsSyncFeed : ActivatedSyncFeed<SimpleReceiptsSyncBatch>
     {
-        private readonly int _requestSize = GethSyncLimits.MaxBodyFetch;
+        private readonly int _requestSize = GethSyncLimits.MaxReceiptFetch;
 
         private readonly ILogger _logger;
         private readonly IBlockTree _blockTree;
         private readonly ISyncConfig _syncConfig;
         private readonly ISyncReport _syncReport;
+        private readonly ISpecProvider _specProvider;
+        private readonly IReceiptStorage _receiptStorage;
         private readonly ISyncPeerPool _syncPeerPool;
-
+        
+        private FastStatusList _fastStatusList;
         private readonly long _pivotNumber;
 
-        private FastStatusList _fastStatusList;
+        private bool ShouldFinish => !_syncConfig.DownloadReceiptsInFastSync || _receiptStorage.LowestInsertedReceiptBlock == 1;
 
-        public SimpleBodiesSyncFeed(ISyncModeSelector syncModeSelector, IBlockTree blockTree, ISyncPeerPool syncPeerPool, ISyncConfig syncConfig, ISyncReport syncReport, ILogManager logManager)
+        public SimpleReceiptsSyncFeed(
+            ISyncModeSelector syncModeSelector,
+            ISpecProvider specProvider,
+            IBlockTree blockTree,
+            IReceiptStorage receiptStorage,
+            ISyncPeerPool syncPeerPool,
+            ISyncConfig syncConfig,
+            ISyncReport syncReport,
+            ILogManager logManager)
             : base(syncModeSelector, logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
+            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
-
-            if (!_syncConfig.UseGethLimitsInFastBlocks)
-            {
-                _requestSize = NethermindSyncLimits.MaxBodyFetch;
-            }
+            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
 
             if (!_syncConfig.FastBlocks)
             {
                 throw new InvalidOperationException("Entered fast blocks mode without fast blocks enabled in configuration.");
             }
 
+            if (!_syncConfig.UseGethLimitsInFastBlocks)
+            {
+                _requestSize = NethermindSyncLimits.MaxReceiptFetch;
+            }
+
             _pivotNumber = _syncConfig.PivotNumberParsed;
             _fastStatusList = new FastStatusList(_blockTree, _pivotNumber);
         }
 
-        protected override SyncMode ActivationSyncModes { get; } = SyncMode.FastBodies & ~SyncMode.FastBlocks;
-
-        private bool ShouldFinish => !_syncConfig.DownloadBodiesInFastSync || (_blockTree.LowestInsertedBody?.Number ?? 0) == 1;
+        protected override SyncMode ActivationSyncModes { get; }
+            = SyncMode.FastReceipts & ~SyncMode.FastBlocks;
 
         public override bool IsMultiFeed => true;
 
-        public override AllocationContexts Contexts => AllocationContexts.Bodies;
+        public override AllocationContexts Contexts => AllocationContexts.Receipts;
 
         private bool ShouldBuildANewBatch()
         {
-            bool shouldDownloadBodies = _syncConfig.DownloadBodiesInFastSync;
-            bool allBodiesDownloaded = (_blockTree.LowestInsertedBody?.Number ?? 0) == 1;
-            bool requestedGenesis = _fastStatusList.LowestInsertWithoutGaps == 0;
-
-            bool noBatchesLeft = !shouldDownloadBodies
-                                 || allBodiesDownloaded
-                                 || requestedGenesis;
+            bool shouldDownloadReceipts = _syncConfig.DownloadReceiptsInFastSync;
+            bool allReceiptsDownloaded = _receiptStorage.LowestInsertedReceiptBlock == 1;
+            bool isGenesisDownloaded = _fastStatusList.LowestInsertWithoutGaps == 0;
+            bool noBatchesLeft = !shouldDownloadReceipts
+                                 || allReceiptsDownloaded
+                                 || isGenesisDownloaded;
 
             if (noBatchesLeft)
             {
@@ -99,74 +113,84 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private void PostFinishCleanUp()
         {
-            _syncReport.FastBlocksBodies.Update(_pivotNumber);
-            _syncReport.FastBlocksBodies.MarkEnd();
+            _syncReport.FastBlocksReceipts.Update(_pivotNumber);
+            _syncReport.FastBlocksReceipts.MarkEnd();
+            _syncReport.ReceiptsInQueue.Update(0);
+            _syncReport.ReceiptsInQueue.MarkEnd();
         }
 
-        public override Task<SimpleBodiesSyncBatch> PrepareRequest()
+        public override Task<SimpleReceiptsSyncBatch> PrepareRequest()
         {
             if (!ShouldBuildANewBatch())
             {
-                return Task.FromResult((SimpleBodiesSyncBatch) null);
+                return Task.FromResult((SimpleReceiptsSyncBatch) null);
             }
 
-            SimpleBodiesSyncBatch simple = new SimpleBodiesSyncBatch();
+            SimpleReceiptsSyncBatch simple = new SimpleReceiptsSyncBatch();
             simple.Infos = _fastStatusList.GetInfosForBatch(_requestSize);
-
             return Task.FromResult(simple);
         }
 
-        public override SyncResponseHandlingResult HandleResponse(SimpleBodiesSyncBatch batch)
+        public override SyncResponseHandlingResult HandleResponse(SimpleReceiptsSyncBatch batch)
         {
             batch.MarkHandlingStart();
             try
             {
-                int added = InsertBodies(batch);
-                return added == 0 ? SyncResponseHandlingResult.NoProgress : SyncResponseHandlingResult.OK;
+                if (batch.IsResponseEmpty)
+                {
+                    if (_logger.IsTrace) _logger.Trace($"{batch} - came back EMPTY");
+                    return batch.ResponseSourcePeer == null
+                        ? SyncResponseHandlingResult.NotAssigned
+                        : SyncResponseHandlingResult.NoProgress;
+                }
+                else
+                {
+                    int added = InsertReceipts(batch);
+                    return added == 0 ? SyncResponseHandlingResult.NoProgress : SyncResponseHandlingResult.OK;    
+                }
             }
             finally
             {
                 batch.MarkHandlingEnd();
             }
         }
-
-        private bool TryPrepareBlock(BlockInfo blockInfo, BlockBody blockBody, out Block block)
+        
+        private bool TryPrepareReceipts(BlockInfo blockInfo, TxReceipt[] receipts, out TxReceipt[] preparedReceipts)
         {
             BlockHeader header = _blockTree.FindHeader(blockInfo.BlockHash);
-            bool txRootIsValid = new TxTrie(blockBody.Transactions).RootHash != header.TxRoot;
-            bool ommersHashIsValid = OmmersHash.Calculate(blockBody.Ommers) != header.OmmersHash;
-            if (txRootIsValid && ommersHashIsValid)
+            Keccak receiptsRoot = new ReceiptTrie(blockInfo.BlockNumber, _specProvider, receipts).RootHash;
+            if (receiptsRoot != header.ReceiptsRoot)
             {
-                block = null;
+                preparedReceipts = null;
             }
             else
             {
-                block = new Block(header, blockBody);
+                preparedReceipts = receipts;
             }
 
-            return block != null;
+            return preparedReceipts != null;
         }
-
-        private int InsertBodies(SimpleBodiesSyncBatch batch)
+        
+        private int InsertReceipts(SimpleReceiptsSyncBatch batch)
         {
             bool hasBreachedProtocol = false;
             int validResponsesCount = 0;
-
+            
             for (int i = 0; i < batch.Infos.Length; i++)
             {
                 BlockInfo blockInfo = batch.Infos[i];
-                BlockBody body = (batch.Response?.Length ?? 0) <= i
+                TxReceipt[] receipts = (batch.Response?.Length ?? 0) <= i
                     ? null
                     : batch.Response![i];
-                
-                if (body != null)
+                if (receipts != null)
                 {
-                    Block block = null;
-                    bool isValid = !hasBreachedProtocol && TryPrepareBlock(blockInfo, body, out block);
+                    TxReceipt[] prepared = null;
+                    bool isValid = !hasBreachedProtocol && TryPrepareReceipts(blockInfo, receipts, out prepared);
                     if (isValid)
                     {
                         validResponsesCount++;
-                        _blockTree.Insert(block);
+                        Block block = _blockTree.FindBlock(blockInfo.BlockHash);
+                        _receiptStorage.Insert(block, false, prepared);
                         _fastStatusList.MarkInserted(block.Number);
                     }
                     else
@@ -183,8 +207,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 }
             }
 
-            _syncReport.FastBlocksBodies.Update(_pivotNumber - _fastStatusList.LowestInsertWithoutGaps);
-            _syncReport.BodiesInQueue.Update(_fastStatusList.QueueSize);
+            _syncReport.FastBlocksReceipts.Update(_pivotNumber - _fastStatusList.LowestInsertWithoutGaps);
             return validResponsesCount;
         }
     }

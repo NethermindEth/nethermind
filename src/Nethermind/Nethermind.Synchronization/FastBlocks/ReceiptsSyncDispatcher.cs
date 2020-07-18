@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
@@ -24,23 +25,23 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
-    public class ReceiptsSyncDispatcher : SyncDispatcher<ReceiptsSyncBatch>
+    public class ReceiptsSyncDispatcher : SyncDispatcher<SimpleReceiptsSyncBatch>
     {
         public ReceiptsSyncDispatcher(
-            ISyncFeed<ReceiptsSyncBatch> syncFeed,
+            ISyncFeed<SimpleReceiptsSyncBatch> syncFeed,
             ISyncPeerPool syncPeerPool,
-            IPeerAllocationStrategyFactory<ReceiptsSyncBatch> peerAllocationStrategy,
+            IPeerAllocationStrategyFactory<SimpleReceiptsSyncBatch> peerAllocationStrategy,
             ILogManager logManager)
             : base(syncFeed, syncPeerPool, peerAllocationStrategy, logManager)
         {
         }
 
-        protected override async Task Dispatch(PeerInfo peerInfo, ReceiptsSyncBatch batch, CancellationToken cancellationToken)
+        protected override async Task Dispatch(PeerInfo peerInfo, SimpleReceiptsSyncBatch batch, CancellationToken cancellationToken)
         {
             ISyncPeer peer = peerInfo.SyncPeer;
             batch.ResponseSourcePeer = peerInfo;
             batch.MarkSent();
-            Task<TxReceipt[][]> getReceiptsTask = peer.GetReceipts(batch.Request, cancellationToken);
+            Task<TxReceipt[][]> getReceiptsTask = peer.GetReceipts(batch.Infos.Select(i => i.BlockHash).ToArray(), cancellationToken);
             await getReceiptsTask.ContinueWith(
                 (t, state) =>
                 {

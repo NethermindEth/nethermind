@@ -25,43 +25,9 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
-    public class BodiesSyncDispatcher : SyncDispatcher<BodiesSyncBatch>
+    public class BodiesSyncDispatcher : SyncDispatcher<SimpleBodiesSyncBatch>
     {
         public BodiesSyncDispatcher(
-            ISyncFeed<BodiesSyncBatch> syncFeed,
-            ISyncPeerPool syncPeerPool,
-            IPeerAllocationStrategyFactory<BodiesSyncBatch> peerAllocationStrategy,
-            ILogManager logManager)
-            : base(syncFeed, syncPeerPool, peerAllocationStrategy, logManager)
-        {
-        }
-
-        protected override async Task Dispatch(PeerInfo peerInfo, BodiesSyncBatch batch, CancellationToken cancellationToken)
-        {
-            ISyncPeer peer = peerInfo.SyncPeer;
-            batch.ResponseSourcePeer = peerInfo;
-            batch.MarkSent();
-            Task<BlockBody[]> getBodiesTask = peer.GetBlockBodies(batch.Request, cancellationToken);
-            await getBodiesTask.ContinueWith(
-                (t, state) =>
-                {
-                    BodiesSyncBatch batchLocal = (BodiesSyncBatch)state;
-                    if (t.IsCompletedSuccessfully)
-                    {
-                        if (batchLocal.RequestTime > 1000)
-                        {
-                            if (Logger.IsDebug) Logger.Debug($"{batchLocal} - peer is slow {batchLocal.RequestTime:F2}");
-                        }
-
-                        batchLocal.Response = t.Result;
-                    }
-                }, batch);
-        }
-    }
-    
-    public class SimpleBodiesSyncDispatcher : SyncDispatcher<SimpleBodiesSyncBatch>
-    {
-        public SimpleBodiesSyncDispatcher(
             ISyncFeed<SimpleBodiesSyncBatch> syncFeed,
             ISyncPeerPool syncPeerPool,
             IPeerAllocationStrategyFactory<SimpleBodiesSyncBatch> peerAllocationStrategy,

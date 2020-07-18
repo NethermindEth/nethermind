@@ -1201,7 +1201,7 @@ namespace Nethermind.Blockchain
             {
                 return null;
             }
-
+            
             Block block = _blockDb.Get(blockHash, _blockDecoder, _blockCache, false);
             if (block == null)
             {
