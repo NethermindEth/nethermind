@@ -176,7 +176,15 @@ namespace Nethermind.Blockchain
                 return;
             }
 
+            LoadLowestInsertedBodyNumber();
             LoadBestKnown();
+        }
+
+        private void LoadLowestInsertedBodyNumber()
+        {
+            LowestInsertedBodyNumber =
+                _blockDb.Get(Keccak.Zero)?
+                .AsRlpValueContext().DecodeLong(); 
         }
 
         private void LoadBestKnown()
