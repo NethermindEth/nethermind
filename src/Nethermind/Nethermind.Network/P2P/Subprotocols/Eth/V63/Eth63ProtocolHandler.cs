@@ -28,7 +28,6 @@ using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
-using Org.BouncyCastle.Ocsp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 {

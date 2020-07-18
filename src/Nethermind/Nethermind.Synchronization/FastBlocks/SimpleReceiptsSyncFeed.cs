@@ -128,6 +128,8 @@ namespace Nethermind.Synchronization.FastBlocks
                     batch.MinNumber = infos[0].BlockNumber;
                     batch.Prioritized = true;
                 }
+                
+                Array.Reverse(infos);
             }
 
             return Task.FromResult(batch);
@@ -202,7 +204,6 @@ namespace Nethermind.Synchronization.FastBlocks
                 }
                 else
                 {
-                    _logger.Warn($"Back again for {blockInfo.BlockNumber}");
                     _fastStatusList.MarkUnknown(blockInfo.BlockNumber);
                 }
             }
