@@ -186,6 +186,8 @@ namespace Nethermind.Synchronization.FastBlocks
 
             _syncReport.FastBlocksBodies.Update(_pivotNumber - _fastStatusList.LowestInsertWithoutGaps);
             _syncReport.BodiesInQueue.Update(_fastStatusList.QueueSize);
+            
+            _logger.Warn($"Response from {batch.ResponseSourcePeer} with {validResponsesCount}/{batch.Infos.Length}");
             return validResponsesCount;
         }
     }

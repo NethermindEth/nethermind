@@ -25,7 +25,7 @@ namespace Nethermind.Synchronization.FastBlocks
     internal class FastStatusList
     {
         private readonly IBlockTree _blockTree;
-        
+
         private FastBlockStatus[] Statuses { get; }
         public long LowestInsertWithoutGaps => _lowestInsertedWithoutGaps;
         public long QueueSize => _queueSize;
@@ -42,12 +42,13 @@ namespace Nethermind.Synchronization.FastBlocks
         public BlockInfo[] GetInfosForBatch(int requestSize)
         {
             BlockInfo[] infos = new BlockInfo[requestSize];
-            
+
             int collected = 0;
-            lock (Statuses)
+
+            long currentNumber = LowestInsertWithoutGaps;
+            while (collected < requestSize)
             {
-                long currentNumber = LowestInsertWithoutGaps;
-                while (collected < requestSize)
+                lock (Statuses)
                 {
                     switch (Statuses[currentNumber])
                     {
@@ -62,6 +63,7 @@ namespace Nethermind.Synchronization.FastBlocks
                                 _lowestInsertedWithoutGaps--;
                                 Interlocked.Decrement(ref _queueSize);
                             }
+
                             break;
                         case FastBlockStatus.Sent:
                             break;
@@ -84,7 +86,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 Statuses[blockNumber] = FastBlockStatus.Inserted;
             }
         }
-        
+
         public void MarkUnknown(in long blockNumber)
         {
             lock (Statuses)
