@@ -124,7 +124,6 @@ namespace Nethermind.Synchronization.ParallelSync
 
                             try
                             {
-                                Free(allocation);
                                 SyncResponseHandlingResult result = Feed.HandleResponse(request);
                                 ReactToHandlingResult(request, result, allocatedPeer);
                             }
@@ -138,11 +137,14 @@ namespace Nethermind.Synchronization.ParallelSync
                                 // this practically corrupts sync
                                 if (Logger.IsError) Logger.Error("Error when handling response", e);
                             }
+                            finally
+                            {
+                                Free(allocation);
+                            }
                         }, cancellationToken);
                     }
                     else
                     {
-                        Logger.Info($"NOT ALLOCATED {request}");
                         SyncResponseHandlingResult result = Feed.HandleResponse(request);
                         ReactToHandlingResult(request, result, null);
                     }

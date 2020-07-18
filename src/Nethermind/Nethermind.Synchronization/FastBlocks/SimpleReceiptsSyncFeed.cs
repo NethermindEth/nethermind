@@ -127,7 +127,9 @@ namespace Nethermind.Synchronization.FastBlocks
             }
 
             SimpleReceiptsSyncBatch simple = new SimpleReceiptsSyncBatch();
-            simple.Infos = _fastStatusList.GetInfosForBatch(_requestSize);
+            BlockInfo[] infos = new BlockInfo[_requestSize];
+            _fastStatusList.GetInfosForBatch(infos);
+            simple.Infos = infos;
             return Task.FromResult(simple);
         }
 

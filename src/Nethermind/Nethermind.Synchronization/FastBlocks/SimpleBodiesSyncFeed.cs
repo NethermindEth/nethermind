@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
@@ -101,11 +100,31 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 SimpleBodiesSyncBatch simple = new SimpleBodiesSyncBatch();
                 simple.Prioritized = true;
-                simple.Infos = _fastStatusList.GetInfosForBatch(_requestSize);
+                BlockInfo[] infos = new BlockInfo[_requestSize];
+                _fastStatusList.GetInfosForBatch(infos);
+                simple.Infos = infos;
                 if (simple.Infos[0] != null)
                 {
                     batch = simple;
                 }
+
+                // if (_blockTree.ChainId != ChainId.Mainnet)
+                // {
+                //     for (int i = 0; i < infos.Length; i++)
+                //     {
+                //         BlockHeader header
+                //             = _blockTree.FindHeader(infos[i].BlockHash,
+                //                 BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                //         if (!header.HasBody)
+                //         {
+                //             InsertOneBlock(new Block(header));
+                //             infos[i] = null;
+                //         }
+                //     }
+                //
+                //     // refill
+                //     _fastStatusList.GetInfosForBatch(infos);
+                // }
             }
 
             return Task.FromResult(batch);
@@ -163,8 +182,7 @@ namespace Nethermind.Synchronization.FastBlocks
                     if (isValid)
                     {
                         validResponsesCount++;
-                        _blockTree.Insert(block);
-                        _fastStatusList.MarkInserted(block.Number);
+                        InsertOneBlock(block);
                     }
                     else
                     {
@@ -183,13 +201,11 @@ namespace Nethermind.Synchronization.FastBlocks
             _syncReport.FastBlocksBodies.Update(_pivotNumber - _fastStatusList.LowestInsertWithoutGaps);
             _syncReport.BodiesInQueue.Update(_fastStatusList.QueueSize);
 
-            _logger.Warn($"Response from {batch.ResponseSourcePeer} with {validResponsesCount}/{batch.Infos.Length}");
-
             lock (_fastStatusList)
             {
                 if (validResponsesCount == batch.Infos.Length)
                 {
-                    _requestSize = Math.Min(1024, _requestSize * 2);
+                    _requestSize = Math.Min(256, _requestSize * 2);
                 }
 
                 if (validResponsesCount == 0)
@@ -199,6 +215,12 @@ namespace Nethermind.Synchronization.FastBlocks
             }
 
             return validResponsesCount;
+        }
+
+        private void InsertOneBlock(Block block)
+        {
+            _blockTree.Insert(block);
+            _fastStatusList.MarkInserted(block.Number);
         }
     }
 }

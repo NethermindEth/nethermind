@@ -39,21 +39,25 @@ namespace Nethermind.Synchronization.FastBlocks
             Statuses = new FastBlockStatus[pivotNumber + 1];
         }
 
-        public BlockInfo[] GetInfosForBatch(int requestSize)
+        public void GetInfosForBatch(BlockInfo[] blockInfos)
         {
-            BlockInfo[] infos = new BlockInfo[requestSize];
-
             int collected = 0;
 
             long currentNumber = LowestInsertWithoutGaps;
-            while (collected < requestSize)
+            lock (Statuses)
             {
-                lock (Statuses)
+                while (collected < blockInfos.Length && currentNumber != 0)
                 {
+                    if (blockInfos[collected] != null)
+                    {
+                        collected++;
+                        continue;
+                    }
+                    
                     switch (Statuses[currentNumber])
                     {
                         case FastBlockStatus.Unknown:
-                            infos[collected] = _blockTree.FindBlockInfo(currentNumber);
+                            blockInfos[collected] = _blockTree.FindBlockInfo(currentNumber);
                             Statuses[currentNumber] = FastBlockStatus.Sent;
                             collected++;
                             break;
@@ -74,8 +78,6 @@ namespace Nethermind.Synchronization.FastBlocks
                     currentNumber--;
                 }
             }
-
-            return infos;
         }
 
         public void MarkInserted(in long blockNumber)

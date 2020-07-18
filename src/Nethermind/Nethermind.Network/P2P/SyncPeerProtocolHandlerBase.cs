@@ -143,8 +143,6 @@ namespace Nethermind.Network.P2P
                 return task.Result;
             }
 
-            Logger.Warn($"Bodies request of length {request.Message.BlockHashes.Count} timed out with size {request.ResponseSize} from {this}");
-
             StatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.Bodies, 0L);
             throw new TimeoutException($"{Session} Request timeout in {nameof(GetBlockBodiesMessage)} with {message.BlockHashes.Count} block hashes");
         }
@@ -365,10 +363,6 @@ namespace Nethermind.Network.P2P
         protected void HandleBodies(IByteBuffer buffer, long size)
         {
             Metrics.Eth62BlockBodiesReceived++;
-            if (_bodiesRequests.Count > 1)
-            {
-                Logger.Warn($"Bodies requests queue is {_bodiesRequests.Count}");
-            }
 
             if (_bodiesRequests.TryTake(
                 out Request<GetBlockBodiesMessage, BlockBody[]> request,

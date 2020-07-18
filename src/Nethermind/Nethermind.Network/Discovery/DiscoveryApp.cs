@@ -307,7 +307,7 @@ namespace Nethermind.Network.Discovery
             {
                 try
                 {
-                    _logger.Warn($"Running discovery with interval {_discoveryTimer.Interval}");
+                    if(_logger.IsDebug) _logger.Debug($"Running discovery with interval {_discoveryTimer.Interval}");
                     _discoveryTimer.Enabled = false;
                     RunDiscoveryProcess();
                     int nodesCountAfterDiscovery = _nodeTable.Buckets.Sum(x => x.BondedItemsCount);
