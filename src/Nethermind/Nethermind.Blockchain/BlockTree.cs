@@ -65,8 +65,6 @@ namespace Nethermind.Blockchain
 
         internal static Keccak DeletePointerAddressInDb = new Keccak(new BitArray(32 * 8, true).ToBytes());
         internal static Keccak HeadAddressInDb = Keccak.Zero;
-        internal static Address LowestInsertedHeaderAddressInDb = Address.FromNumber(0);
-        internal static Address LowestInsertedBodyAddressInDb = Address.FromNumber(0);
 
         public BlockHeader Genesis { get; private set; }
         public Block Head { get; private set; }
@@ -177,6 +175,7 @@ namespace Nethermind.Blockchain
             }
 
             LoadLowestInsertedBodyNumber();
+            LoadLowestInsertedHeader();
             LoadBestKnown();
         }
 
@@ -185,6 +184,26 @@ namespace Nethermind.Blockchain
             LowestInsertedBodyNumber =
                 _blockDb.Get(Keccak.Zero)?
                 .AsRlpValueContext().DecodeLong(); 
+        }
+        
+        private void LoadLowestInsertedHeader()
+        {
+            long left = 1L;
+            long right = _syncConfig.PivotNumberParsed;
+
+            bool HasLevel(long blockNumber)
+            {
+                ChainLevelInfo level = LoadLevel(blockNumber);
+                return level != null;
+            }
+
+            long? lowestInsertedHeader = BinarySearchBlockNumber(left, right, HasLevel, BinarySearchDirection.Down);
+            if (lowestInsertedHeader != null)
+            {
+                ChainLevelInfo level = LoadLevel(lowestInsertedHeader.Value);
+                BlockInfo blockInfo = level.BlockInfos[0];
+                LowestInsertedHeader = FindHeader(blockInfo.BlockHash, BlockTreeLookupOptions.None);
+            }
         }
 
         private void LoadBestKnown()
