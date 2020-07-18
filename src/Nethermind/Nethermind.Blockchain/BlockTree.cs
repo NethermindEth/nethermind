@@ -410,7 +410,6 @@ namespace Nethermind.Blockchain
             // by avoiding encoding back to RLP here (allocations measured on a sample 3M blocks Goerli fast sync
             Rlp newRlp = _blockDecoder.Encode(block);
             _blockDb.Set(block.Hash, newRlp.Bytes);
-            Interlocked.Add(ref Transaction.TotalInserted, block.Transactions.Length);
 
             // long expectedNumber = (LowestInsertedBody?.Number - 1 ?? LongConverter.FromString(_syncConfig.PivotNumber ?? "0"));
             // if (block.Number != expectedNumber)

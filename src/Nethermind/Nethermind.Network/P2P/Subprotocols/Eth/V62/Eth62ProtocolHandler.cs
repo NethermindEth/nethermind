@@ -201,11 +201,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         protected void Handle(TransactionsMessage msg)
         {
             IList<Transaction> transactions = msg.Transactions;
-            foreach (Transaction transaction in transactions)
-            {
-                transaction.Type = 1;
-            }
-            
             for (int i = 0; i < transactions.Count; i++)
             {
                 Transaction tx = transactions[i];
