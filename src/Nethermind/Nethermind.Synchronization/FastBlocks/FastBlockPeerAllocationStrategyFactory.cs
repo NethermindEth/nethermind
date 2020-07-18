@@ -29,7 +29,7 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 speedType = TransferSpeedType.Headers;
             }
-            else if (request is BodiesSyncBatch)
+            else if (request is SimpleBodiesSyncBatch)
             {
                 speedType = TransferSpeedType.Bodies;
             }

@@ -97,10 +97,6 @@ namespace Nethermind.Network.P2P
             GetBlockBodiesMessage bodiesMsg = new GetBlockBodiesMessage(blockHashes);
 
             BlockBody[] blocks = await SendRequest(bodiesMsg, token);
-
-            long notNull = blocks?.Count(r => r != null) ?? 0;
-            // Logger.Info($"+WAITING {notNull}");
-            Interlocked.Add(ref BodyCounter.WaitingForHandling, notNull);
             return blocks;
         }
 

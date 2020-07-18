@@ -19,30 +19,6 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
-    public static class BodyCounter
-    {
-        public static long InHandler;
-        public static long WaitingForHandling;
-        public static long HeldInQueues;
-        public static long Inserting;
-    }
-    
-    public class BodiesSyncBatch : FastBlocksBatch
-    {
-        public long StartNumber => Headers[0].Number;
-        public long EndNumber => Headers[^1].Number;
-        public BlockHeader[] Headers { get; set; }
-        public Keccak[] Request { get; set; }
-        public BlockBody[] Response { get; set; }
-        public override bool IsResponseEmpty => Response == null;
-        
-        public override string ToString()
-        {
-            string details = $"[{StartNumber}, {EndNumber}]({Headers.Length})";
-            return $"BODIES {details} [{(Prioritized ? "HIGH" : "LOW")}] [times: S:{SchedulingTime:F0}ms|R:{RequestTime:F0}ms|V:{ValidationTime:F0}ms|W:{WaitingTime:F0}ms|H:{HandlingTime:F0}ms|A:{AgeInMs:F0}ms, retries {Retries}] min#: {MinNumber} {ResponseSourcePeer}";
-        }
-    }
-    
     public class SimpleBodiesSyncBatch : FastBlocksBatch
     {
         public BlockInfo[] Infos { get; set; }
