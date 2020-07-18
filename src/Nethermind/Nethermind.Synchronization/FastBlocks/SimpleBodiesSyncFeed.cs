@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
@@ -30,7 +31,7 @@ namespace Nethermind.Synchronization.FastBlocks
 {
     public class SimpleBodiesSyncFeed : ActivatedSyncFeed<SimpleBodiesSyncBatch>
     {
-        private readonly int _requestSize = GethSyncLimits.MaxBodyFetch;
+        private int _requestSize = GethSyncLimits.MaxBodyFetch;
 
         private readonly ILogger _logger;
         private readonly IBlockTree _blockTree;
@@ -55,11 +56,6 @@ namespace Nethermind.Synchronization.FastBlocks
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
-
-            // if (!_syncConfig.UseGethLimitsInFastBlocks)
-            {
-                _requestSize = 32;
-            }
 
             if (!_syncConfig.FastBlocks)
             {
@@ -186,8 +182,22 @@ namespace Nethermind.Synchronization.FastBlocks
 
             _syncReport.FastBlocksBodies.Update(_pivotNumber - _fastStatusList.LowestInsertWithoutGaps);
             _syncReport.BodiesInQueue.Update(_fastStatusList.QueueSize);
-            
+
             _logger.Warn($"Response from {batch.ResponseSourcePeer} with {validResponsesCount}/{batch.Infos.Length}");
+
+            lock (_fastStatusList)
+            {
+                if (validResponsesCount == batch.Infos.Length)
+                {
+                    _requestSize = Math.Min(1024, _requestSize * 2);
+                }
+
+                if (validResponsesCount == 0)
+                {
+                    _requestSize = Math.Max(4, _requestSize / 2);
+                }
+            }
+
             return validResponsesCount;
         }
     }
