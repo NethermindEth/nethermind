@@ -40,7 +40,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private readonly ISyncProgressResolver _syncProgressResolver;
         private readonly ISyncPeerPool _syncPeerPool;
         private readonly ISyncConfig _syncConfig;
-        private readonly ILogger _logger;
+        protected readonly ILogger _logger;
 
         private long PivotNumber;
         private bool BeamSyncEnabled => _syncConfig.BeamSync;
@@ -102,10 +102,10 @@ namespace Nethermind.Synchronization.ParallelSync
             }
 
             Keccak headerHash = _syncProgressResolver.FindBestHeaderHash();
-            (UInt256? peerDifficulty, long? peerBlock) = ReloadDataFromPeers(headerHash);
+            PeerInfo bestPeer = ReloadDataFromPeers(headerHash);
 
             // if there are no peers that we could use then we cannot sync
-            if (peerDifficulty == null || peerBlock == null || peerBlock == 0)
+            if (bestPeer == null || bestPeer.HeadNumber == 0)
             {
                 UpdateSyncModes(SyncMode.None);
                 return;
@@ -114,7 +114,7 @@ namespace Nethermind.Synchronization.ParallelSync
             // to avoid expensive checks we make this simple check at the beginning
             if (!FastSyncEnabled)
             {
-                bool anyPeers = peerBlock.Value > 0 && peerDifficulty.Value >= _syncProgressResolver.ChainDifficulty;
+                bool anyPeers = bestPeer.HeadNumber > 0 && bestPeer.TotalDifficulty >= _syncProgressResolver.ChainDifficulty;
                 UpdateSyncModes(anyPeers ? SyncMode.Full : SyncMode.None);
                 return;
             }
@@ -122,7 +122,7 @@ namespace Nethermind.Synchronization.ParallelSync
             Snapshot best;
             try
             {
-                best = TakeSnapshot(peerDifficulty.Value, peerBlock.Value);
+                best = TakeSnapshot(bestPeer);
             }
             catch (InvalidAsynchronousStateException)
             {
@@ -200,7 +200,7 @@ namespace Nethermind.Synchronization.ParallelSync
         /// <param name="best">Snapshot of the best known states</param>
         /// <returns>A string describing the state of sync</returns>
         private static string BuildStateString(Snapshot best) =>
-            $"processed:{best.Processed}|state:{best.State}|block:{best.Block}|header:{best.Header}|peer block:{best.PeerBlock}";
+            $"processed:{best.Processed}|state:{best.State}|block:{best.Block}|header:{best.Header}|peer block:{best.Peer?.HeadNumber}";
 
         private void TimerOnElapsed(object sender, ElapsedEventArgs e)
         {
@@ -221,7 +221,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private bool IsInAStickyFullSyncMode(Snapshot best)
         {
             bool hasEverBeenInFullSync = best.Processed > PivotNumber && best.State > PivotNumber;
-            long heightDelta = best.PeerBlock - best.Processed;
+            long heightDelta = best.Peer.HeadNumber - best.Processed;
             return hasEverBeenInFullSync && heightDelta < FastSyncCatchUpHeightDelta;
         }
 
@@ -239,9 +239,9 @@ namespace Nethermind.Synchronization.ParallelSync
                 return false;
             }
 
-            long heightDelta = best.PeerBlock - best.Header;
+            long heightDelta = best.Peer.HeadNumber - best.Header;
             bool heightDeltaGreaterThanLag = heightDelta > FastSyncLag;
-            bool postPivotPeerAvailable = AnyPostPivotPeerKnown(best.PeerBlock);
+            bool postPivotPeerAvailable = AnyPostPivotPeerKnown(best.Peer.HeadNumber);
             bool notInAStickyFullSync = !IsInAStickyFullSyncMode(best);
             bool notHasJustStartedFullSync = !HasJustStartedFullSync(best);
             
@@ -270,7 +270,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private bool ShouldBeInFullSyncMode(Snapshot best)
         {
             bool desiredPeerKnown = AnyDesiredPeerKnown(best);
-            bool postPivotPeerAvailable = AnyPostPivotPeerKnown(best.PeerBlock);
+            bool postPivotPeerAvailable = AnyPostPivotPeerKnown(best.Peer.HeadNumber);
             bool hasFastSyncBeenActive = best.Header >= PivotNumber;
             bool notInBeamSync = !best.IsInBeamSync;
             bool notInFastSync = !best.IsInFastSync;
@@ -323,10 +323,10 @@ namespace Nethermind.Synchronization.ParallelSync
         {
             bool fastSyncEnabled = FastSyncEnabled;
             bool fastFastSyncBeenActive = best.Header >= PivotNumber;
-            bool hasAnyPostPivotPeer = AnyPostPivotPeerKnown(best.PeerBlock);
+            bool hasAnyPostPivotPeer = AnyPostPivotPeerKnown(best.Peer.HeadNumber);
             bool notInFastSync = !best.IsInFastSync;
-            bool stickyStateNodes = best.PeerBlock - best.Header < (FastSyncLag + StickyStateNodesDelta);
-            bool stateNotDownloadedYet = (best.PeerBlock - best.State > FastSyncLag ||
+            bool stickyStateNodes = best.Peer.HeadNumber - best.Header < (FastSyncLag + StickyStateNodesDelta);
+            bool stateNotDownloadedYet = (best.Peer.HeadNumber - best.State > FastSyncLag ||
                                           best.Header > best.State && best.Header > best.Block);
             bool notInAStickyFullSync = !IsInAStickyFullSyncMode(best);
             bool notHasJustStartedFullSync = !HasJustStartedFullSync(best);
@@ -379,35 +379,27 @@ namespace Nethermind.Synchronization.ParallelSync
             && best.State == best.Header // and we do not need to catch up to headers anymore 
             && best.Processed < best.State; // not processed the block yet
 
-        private bool AnyDesiredPeerKnown(Snapshot best)
+        protected virtual bool AnyDesiredPeerKnown(Snapshot best)
         {
             UInt256 localChainDifficulty = _syncProgressResolver.ChainDifficulty;
-            bool anyDesiredPeerKnown = best.PeerDifficulty > localChainDifficulty 
-                                       || best.PeerDifficulty == localChainDifficulty && best.PeerBlock > best.Header;
+            bool anyDesiredPeerKnown = best.Peer.TotalDifficulty > localChainDifficulty 
+                                       || best.Peer.TotalDifficulty == localChainDifficulty && best.Peer.HeadNumber > best.Header;
             if (anyDesiredPeerKnown)
             {
                 if (_logger.IsInfo)
-                    _logger.Info($"Best peer [{best.PeerBlock},{best.PeerDifficulty}] " +
+                    _logger.Info($"Best peer [{best.Peer.HeadNumber},{best.Peer.TotalDifficulty}] " +
                                   $"> local [{best.Header},{localChainDifficulty}]");
             }
 
             return anyDesiredPeerKnown;
         }
 
-        private bool AnyPostPivotPeerKnown(long bestPeerBlock)
-        {
-            if (bestPeerBlock <= _syncConfig.PivotNumberParsed)
-            {
-                return false;
-            }
+        private bool AnyPostPivotPeerKnown(long bestPeerBlock) => bestPeerBlock > _syncConfig.PivotNumberParsed;
 
-            return true;
-        }
-
-        private (UInt256? maxPeerDifficulty, long? number) ReloadDataFromPeers(Keccak knownMostDifficultHash)
+        private PeerInfo ReloadDataFromPeers(Keccak knownMostDifficultHash)
         {
             UInt256? maxPeerDifficulty = null;
-            long? number = 0;
+            PeerInfo peerInfo = null;
 
             foreach (PeerInfo peer in _syncPeerPool.InitializedPeers)
             {
@@ -415,11 +407,11 @@ namespace Nethermind.Synchronization.ParallelSync
                     && peer.TotalDifficulty > (maxPeerDifficulty ?? UInt256.Zero))
                 {
                     maxPeerDifficulty = peer.TotalDifficulty;
-                    number = peer.HeadNumber;
+                    peerInfo = peer;
                 }
             }
 
-            return (maxPeerDifficulty, number);
+            return peerInfo;
         }
 
         public void Dispose()
@@ -427,7 +419,7 @@ namespace Nethermind.Synchronization.ParallelSync
             _timer?.Dispose();
         }
 
-        private Snapshot TakeSnapshot(UInt256 peerDifficulty, long peerBlock)
+        private Snapshot TakeSnapshot(PeerInfo bestPeer)
         {
             // need to find them in the reversed order otherwise we may fall behind the processing
             // and think that we have an invalid snapshot
@@ -436,7 +428,7 @@ namespace Nethermind.Synchronization.ParallelSync
             long block = _syncProgressResolver.FindBestFullBlock();
             long header = _syncProgressResolver.FindBestHeader();
 
-            Snapshot best = new Snapshot(processed, state, block, header, peerBlock, peerDifficulty);
+            Snapshot best = new Snapshot(processed, state, block, header, bestPeer);
             VerifySnapshot(best);
             return best;
         }
@@ -448,7 +440,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 || best.Header < 0
                 || best.State < 0
                 || best.Processed < 0
-                || best.PeerBlock < 0
+                || best.Peer.HeadNumber < 0
                 // best header is at least equal to the best full block
                 || best.Block > best.Header
                 // we cannot download state for an unknown header
@@ -473,17 +465,16 @@ namespace Nethermind.Synchronization.ParallelSync
         public event EventHandler<SyncModeChangedEventArgs> Changing;
         public event EventHandler<SyncModeChangedEventArgs> Changed;
 
-        private ref struct Snapshot
+        protected ref struct Snapshot
         {
-            public Snapshot(long processed, long state, long block, long header, long peerBlock, UInt256 peerDifficulty)
+            public Snapshot(long processed, long state, long block, long header, PeerInfo peer)
             {
                 Processed = processed;
                 State = state;
                 Block = block;
                 Header = header;
-                PeerBlock = peerBlock;
-                PeerDifficulty = peerDifficulty;
-                
+                Peer = peer;
+
                 IsInFastReceipts = IsInFastBodies = IsInFastHeaders = IsInFastSync = IsInBeamSync = IsInFullSync = IsInStateSync = false;
             }
 
@@ -516,11 +507,9 @@ namespace Nethermind.Synchronization.ParallelSync
             public long Header { get; }
 
             /// <summary>
-            /// Best peer block - this is what other peers are advertising - it may be lower than our best block if we get disconnected from best peers
+            /// Best peer block - this is what other peers are advertising
             /// </summary>
-            public long PeerBlock { get; }
-
-            public UInt256 PeerDifficulty { get; }
+            public PeerInfo Peer { get; }
         }
     }
 }

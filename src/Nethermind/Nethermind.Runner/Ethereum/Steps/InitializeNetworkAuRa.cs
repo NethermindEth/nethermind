@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,16 +13,20 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-namespace Nethermind.Synchronization.Peers
+using Nethermind.Consensus.AuRa;
+using Nethermind.Runner.Ethereum.Context;
+using Nethermind.Synchronization.ParallelSync;
+
+namespace Nethermind.Runner.Ethereum.Steps
 {
-    public enum PeerClientType
+    public class InitializeNetworkAuRa : InitializeNetwork
     {
-        BeSu,
-        Geth,
-        Nethermind,
-        Parity,
-        OpenEthereum,
-        Unknown
+        public InitializeNetworkAuRa(AuRaEthereumRunnerContext context) : base(context)
+        {
+        }
+
+        protected override MultiSyncModeSelector CreateMultiSyncModeSelector(SyncProgressResolver syncProgressResolver) => new AuRaMultiSyncModeSelector(syncProgressResolver, _ctx.SyncPeerPool, _syncConfig, _ctx.LogManager);
     }
 }

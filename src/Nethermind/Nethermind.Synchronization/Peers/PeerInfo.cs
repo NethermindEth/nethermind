@@ -208,6 +208,10 @@ namespace Nethermind.Synchronization.Peers
             {
                 PeerClientType = PeerClientType.Parity;
             }
+            else if (syncPeer.ClientId?.Contains("OpenEthereum", StringComparison.InvariantCultureIgnoreCase) ?? false)
+            {
+                PeerClientType = PeerClientType.OpenEthereum;
+            }
             else
             {
                 PeerClientType = PeerClientType.Unknown;
