@@ -41,7 +41,8 @@ namespace Nethermind.Synchronization.FastBlocks
             ISyncPeer peer = peerInfo.SyncPeer;
             batch.ResponseSourcePeer = peerInfo;
             batch.MarkSent();
-            Task<TxReceipt[][]> getReceiptsTask = peer.GetReceipts(batch.Infos.Select(i => i.BlockHash).ToArray(), cancellationToken);
+            var hashes = batch.Infos.Where(i => i != null).Select(i => i.BlockHash).ToArray();
+            Task<TxReceipt[][]> getReceiptsTask = peer.GetReceipts(hashes, cancellationToken);
             await getReceiptsTask.ContinueWith(
                 (t, state) =>
                 {

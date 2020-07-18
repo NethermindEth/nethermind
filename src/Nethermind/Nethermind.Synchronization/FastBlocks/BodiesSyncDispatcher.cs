@@ -41,7 +41,8 @@ namespace Nethermind.Synchronization.FastBlocks
             ISyncPeer peer = peerInfo.SyncPeer;
             batch.ResponseSourcePeer = peerInfo;
             batch.MarkSent();
-            Task<BlockBody[]> getBodiesTask = peer.GetBlockBodies(batch.Infos.Select(i => i.BlockHash).ToArray(), cancellationToken);
+            var hashes = batch.Infos.Where(i => i != null).Select(i => i.BlockHash).ToArray();
+            Task<BlockBody[]> getBodiesTask = peer.GetBlockBodies(hashes, cancellationToken);
             await getBodiesTask.ContinueWith(
                 (t, state) =>
                 {
