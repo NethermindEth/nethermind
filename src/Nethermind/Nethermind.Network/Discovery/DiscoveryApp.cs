@@ -311,7 +311,7 @@ namespace Nethermind.Network.Discovery
                     _discoveryTimer.Enabled = false;
                     RunDiscoveryProcess();
                     int nodesCountAfterDiscovery = _nodeTable.Buckets.Sum(x => x.BondedItemsCount);
-                    _discoveryTimer.Interval = nodesCountAfterDiscovery < 100 ? 10 : nodesCountAfterDiscovery < 1000 ? 100 : _discoveryConfig.DiscoveryInterval;
+                    _discoveryTimer.Interval = nodesCountAfterDiscovery < 10 ? 100 : nodesCountAfterDiscovery < 100 ? 1000 : _discoveryConfig.DiscoveryInterval;
                 }
                 catch (Exception exception)
                 {
