@@ -56,7 +56,7 @@ namespace Nethermind.Synchronization.FastBlocks
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
 
-            if (!_syncConfig.UseGethLimitsInFastBlocks)
+            // if (!_syncConfig.UseGethLimitsInFastBlocks)
             {
                 _requestSize = NethermindSyncLimits.MaxBodyFetch;
             }
