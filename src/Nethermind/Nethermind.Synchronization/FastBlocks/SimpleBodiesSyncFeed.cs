@@ -42,8 +42,13 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private FastStatusList _fastStatusList;
 
-        public SimpleBodiesSyncFeed(ISyncModeSelector syncModeSelector, IBlockTree blockTree, ISyncPeerPool syncPeerPool, ISyncConfig syncConfig, ISyncReport syncReport, ILogManager logManager)
-            : base(syncModeSelector, logManager)
+        public SimpleBodiesSyncFeed(
+            ISyncModeSelector syncModeSelector,
+            IBlockTree blockTree,
+            ISyncPeerPool syncPeerPool,
+            ISyncConfig syncConfig,
+            ISyncReport syncReport,
+            ILogManager logManager) : base(syncModeSelector, logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -67,8 +72,6 @@ namespace Nethermind.Synchronization.FastBlocks
 
         protected override SyncMode ActivationSyncModes { get; } = SyncMode.FastBodies & ~SyncMode.FastBlocks;
 
-        private bool ShouldFinish => !_syncConfig.DownloadBodiesInFastSync || (_blockTree.LowestInsertedBody?.Number ?? 0) == 1;
-
         public override bool IsMultiFeed => true;
 
         public override AllocationContexts Contexts => AllocationContexts.Bodies;
@@ -76,20 +79,12 @@ namespace Nethermind.Synchronization.FastBlocks
         private bool ShouldBuildANewBatch()
         {
             bool shouldDownloadBodies = _syncConfig.DownloadBodiesInFastSync;
-            bool allBodiesDownloaded = (_blockTree.LowestInsertedBody?.Number ?? 0) == 1;
-            bool requestedGenesis = _fastStatusList.LowestInsertWithoutGaps == 0;
-
-            bool noBatchesLeft = !shouldDownloadBodies
-                                 || allBodiesDownloaded
-                                 || requestedGenesis;
-
-            if (noBatchesLeft)
+            bool allBodiesDownloaded = _fastStatusList.LowestInsertWithoutGaps == 1;
+            bool shouldFinish = !shouldDownloadBodies || allBodiesDownloaded;
+            if (shouldFinish)
             {
-                if (ShouldFinish)
-                {
-                    Finish();
-                    PostFinishCleanUp();
-                }
+                Finish();
+                PostFinishCleanUp();
 
                 return false;
             }
@@ -105,15 +100,19 @@ namespace Nethermind.Synchronization.FastBlocks
 
         public override Task<SimpleBodiesSyncBatch> PrepareRequest()
         {
-            if (!ShouldBuildANewBatch())
+            SimpleBodiesSyncBatch batch = null;
+            if (ShouldBuildANewBatch())
             {
-                return Task.FromResult((SimpleBodiesSyncBatch) null);
+                SimpleBodiesSyncBatch simple = new SimpleBodiesSyncBatch();
+                simple.Prioritized = true;
+                simple.Infos = _fastStatusList.GetInfosForBatch(_requestSize);
+                if (simple.Infos[0] != null)
+                {
+                    batch = simple;
+                }
             }
 
-            SimpleBodiesSyncBatch simple = new SimpleBodiesSyncBatch();
-            simple.Infos = _fastStatusList.GetInfosForBatch(_requestSize);
-
-            return Task.FromResult(simple);
+            return Task.FromResult(batch);
         }
 
         public override SyncResponseHandlingResult HandleResponse(SimpleBodiesSyncBatch batch)
@@ -122,7 +121,9 @@ namespace Nethermind.Synchronization.FastBlocks
             try
             {
                 int added = InsertBodies(batch);
-                return added == 0 ? SyncResponseHandlingResult.NoProgress : SyncResponseHandlingResult.OK;
+                return added == 0
+                    ? SyncResponseHandlingResult.NoProgress
+                    : SyncResponseHandlingResult.OK;
             }
             finally
             {
@@ -158,7 +159,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 BlockBody body = (batch.Response?.Length ?? 0) <= i
                     ? null
                     : batch.Response![i];
-                
+
                 if (body != null)
                 {
                     Block block = null;
