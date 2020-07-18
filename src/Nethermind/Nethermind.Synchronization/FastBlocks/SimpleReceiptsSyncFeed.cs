@@ -33,7 +33,7 @@ namespace Nethermind.Synchronization.FastBlocks
 {
     public class SimpleReceiptsSyncFeed : ActivatedSyncFeed<SimpleReceiptsSyncBatch>
     {
-        private readonly int _requestSize = GethSyncLimits.MaxReceiptFetch;
+        private int _requestSize = GethSyncLimits.MaxReceiptFetch;
 
         private readonly ILogger _logger;
         private readonly IBlockTree _blockTree;
@@ -70,11 +70,6 @@ namespace Nethermind.Synchronization.FastBlocks
             if (!_syncConfig.FastBlocks)
             {
                 throw new InvalidOperationException("Entered fast blocks mode without fast blocks enabled in configuration.");
-            }
-
-            if (!_syncConfig.UseGethLimitsInFastBlocks)
-            {
-                _requestSize = NethermindSyncLimits.MaxReceiptFetch;
             }
 
             _pivotNumber = _syncConfig.PivotNumberParsed;
@@ -209,7 +204,21 @@ namespace Nethermind.Synchronization.FastBlocks
                 }
             }
 
+            lock (_fastStatusList)
+            {
+                if (validResponsesCount == batch.Infos.Length)
+                {
+                    _requestSize = Math.Min(256, _requestSize * 2);
+                }
+
+                if (validResponsesCount == 0)
+                {
+                    _requestSize = Math.Max(4, _requestSize / 2);
+                }
+            }
+            
             _syncReport.FastBlocksReceipts.Update(_pivotNumber - _fastStatusList.LowestInsertWithoutGaps);
+            _syncReport.ReceiptsInQueue.Update(_fastStatusList.QueueSize);
             return validResponsesCount;
         }
     }
