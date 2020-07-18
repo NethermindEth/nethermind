@@ -200,7 +200,6 @@ namespace Nethermind.Synchronization.Test.FastSync
             SimpleReceiptsSyncBatch request = _feed.PrepareRequest().Result;
             request.Should().NotBeNull();
             request.MinNumber.Should().Be(_pivotNumber - expectedBatchSize + 1);
-            request.Description.Should().NotBeNull();
             request.Prioritized.Should().Be(true);
         }
 
@@ -223,7 +222,6 @@ namespace Nethermind.Synchronization.Test.FastSync
             SimpleReceiptsSyncBatch request = _feed.PrepareRequest().Result;
             request.Should().NotBeNull();
             request.MinNumber.Should().Be(_pivotNumber - expectedBatchSize + 1);
-            request.Description.Should().NotBeNull();
             request.Prioritized.Should().Be(true);
         }
 
@@ -235,7 +233,6 @@ namespace Nethermind.Synchronization.Test.FastSync
             SimpleReceiptsSyncBatch request = _feed.PrepareRequest().Result;
             request.Should().NotBeNull();
             request.MinNumber.Should().Be(_pivotNumber - expectedBatchSize + 1);
-            request.Description.Should().NotBeNull();
             request.Prioritized.Should().Be(true);
         }
 
@@ -247,9 +244,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             SimpleReceiptsSyncBatch request = _feed.PrepareRequest().Result;
             request.Should().NotBeNull();
             request.MinNumber.Should().Be(961);
-            request.Description.Should().NotBeNull();
             request.Prioritized.Should().Be(true);
-            request.IsFinal.Should().BeTrue();
         }
 
         [Test]

@@ -44,7 +44,7 @@ namespace Nethermind.Synchronization.FastBlocks
             await getHeadersTask.ContinueWith(
                 (t, state) =>
                 {
-                    HeadersSyncBatch batchLocal = (HeadersSyncBatch)state;
+                    HeadersSyncBatch batchLocal = (HeadersSyncBatch)state!;
                     if (t.IsCompletedSuccessfully)
                     {
                         if (batchLocal.RequestTime > 1000)

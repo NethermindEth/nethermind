@@ -22,7 +22,7 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.Blocks
 {
-    public class FullSyncFeed : ActivatedSyncFeed<BlocksRequest>
+    public class FullSyncFeed : ActivatedSyncFeed<BlocksRequest?>
     {
         private readonly BlocksRequest _blocksRequest;
 
@@ -36,9 +36,9 @@ namespace Nethermind.Synchronization.Blocks
 
         private static DownloaderOptions BuildOptions() => DownloaderOptions.WithBodies | DownloaderOptions.Process;
 
-        public override Task<BlocksRequest> PrepareRequest() => Task.FromResult(ShouldBeActive() ? _blocksRequest : null);
+        public override Task<BlocksRequest?> PrepareRequest() => Task.FromResult<BlocksRequest?>(ShouldBeActive() ? _blocksRequest : null);
 
-        public override SyncResponseHandlingResult HandleResponse(BlocksRequest response)
+        public override SyncResponseHandlingResult HandleResponse(BlocksRequest? response)
         {
             FallAsleep();
             return SyncResponseHandlingResult.OK;

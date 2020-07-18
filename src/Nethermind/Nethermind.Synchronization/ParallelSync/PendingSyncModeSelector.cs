@@ -47,8 +47,8 @@ namespace Nethermind.Synchronization.ParallelSync
         }
 
         public SyncMode Current => _syncModeSelector?.Current ?? SyncMode.None;
-        public event EventHandler<SyncModeChangedEventArgs> Preparing;
-        public event EventHandler<SyncModeChangedEventArgs> Changing;
-        public event EventHandler<SyncModeChangedEventArgs> Changed;
+        public event EventHandler<SyncModeChangedEventArgs>? Preparing;
+        public event EventHandler<SyncModeChangedEventArgs>? Changing;
+        public event EventHandler<SyncModeChangedEventArgs>? Changed;
     }
 }

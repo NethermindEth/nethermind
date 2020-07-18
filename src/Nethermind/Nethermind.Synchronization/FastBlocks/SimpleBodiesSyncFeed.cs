@@ -28,7 +28,7 @@ using Nethermind.Synchronization.SyncLimits;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
-    public class SimpleBodiesSyncFeed : ActivatedSyncFeed<SimpleBodiesSyncBatch>
+    public class SimpleBodiesSyncFeed : ActivatedSyncFeed<SimpleBodiesSyncBatch?>
     {
         private int _requestSize = GethSyncLimits.MaxBodyFetch;
 
@@ -93,17 +93,16 @@ namespace Nethermind.Synchronization.FastBlocks
             _syncReport.FastBlocksBodies.MarkEnd();
         }
 
-        public override Task<SimpleBodiesSyncBatch> PrepareRequest()
+        public override Task<SimpleBodiesSyncBatch?> PrepareRequest()
         {
-            SimpleBodiesSyncBatch batch = null;
+            SimpleBodiesSyncBatch? batch = null;
             if (ShouldBuildANewBatch())
             {
                 BlockInfo[] infos = new BlockInfo[_requestSize];
                 _fastStatusList.GetInfosForBatch(infos);
                 if (infos[0] != null)
                 {
-                    batch = new SimpleBodiesSyncBatch();
-                    batch.Infos = infos;
+                    batch = new SimpleBodiesSyncBatch(infos);
                     batch.MinNumber = infos[0].BlockNumber;
                     batch.Prioritized = true;
                 }
@@ -116,7 +115,7 @@ namespace Nethermind.Synchronization.FastBlocks
             return Task.FromResult(batch);
         }
 
-        public override SyncResponseHandlingResult HandleResponse(SimpleBodiesSyncBatch batch)
+        public override SyncResponseHandlingResult HandleResponse(SimpleBodiesSyncBatch? batch)
         {
             batch.MarkHandlingStart();
             try
@@ -132,7 +131,7 @@ namespace Nethermind.Synchronization.FastBlocks
             }
         }
 
-        private bool TryPrepareBlock(BlockInfo blockInfo, BlockBody blockBody, out Block block)
+        private bool TryPrepareBlock(BlockInfo blockInfo, BlockBody blockBody, out Block? block)
         {
             BlockHeader header = _blockTree.FindHeader(blockInfo.BlockHash);
             bool txRootIsValid = new TxTrie(blockBody.Transactions).RootHash != header.TxRoot;
@@ -156,8 +155,8 @@ namespace Nethermind.Synchronization.FastBlocks
 
             for (int i = 0; i < batch.Infos.Length; i++)
             {
-                BlockInfo blockInfo = batch.Infos[i];
-                BlockBody body = (batch.Response?.Length ?? 0) <= i
+                BlockInfo? blockInfo = batch.Infos[i];
+                BlockBody? body = (batch.Response?.Length ?? 0) <= i
                     ? null
                     : batch.Response![i];
 
@@ -169,18 +168,23 @@ namespace Nethermind.Synchronization.FastBlocks
 
                 if (body != null)
                 {
-                    Block block = null;
+                    Block? block = null;
                     bool isValid = !hasBreachedProtocol && TryPrepareBlock(blockInfo, body, out block);
                     if (isValid)
                     {
                         validResponsesCount++;
-                        InsertOneBlock(block);
+                        InsertOneBlock(block!);
                     }
                     else
                     {
                         hasBreachedProtocol = true;
                         if (_logger.IsDebug) _logger.Debug($"{batch} - reporting INVALID - tx or ommers");
-                        _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, "invalid tx or ommers root");
+
+                        if (batch.ResponseSourcePeer != null)
+                        {
+                            _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, "invalid tx or ommers root");
+                        }
+
                         _fastStatusList.MarkUnknown(blockInfo.BlockNumber);
                     }
                 }

@@ -32,7 +32,7 @@ namespace Nethermind.Synchronization.ParallelSync
         public abstract AllocationContexts Contexts { get; }
         public int FeedId { get; } = FeedIdProvider.AssignId();
         public SyncFeedState CurrentState { get; private set; }
-        public event EventHandler<SyncFeedStateEventArgs> StateChanged;
+        public event EventHandler<SyncFeedStateEventArgs>? StateChanged;
 
         protected SyncFeed(ILogManager logManager)
         {

@@ -20,14 +20,12 @@ namespace Nethermind.Synchronization.FastBlocks
 {
     public class SimpleReceiptsSyncBatch : FastBlocksBatch
     {
-        public string Description { get; set; }
-        public bool IsFinal { get; set; }
-        public BlockInfo[] Infos { get; set; }
-        public TxReceipt[][] Response { get; set; }
+        public BlockInfo?[] Infos { get; }
+        public TxReceipt[]?[]? Response { get; set; }
 
-        public override string ToString()
+        public SimpleReceiptsSyncBatch(BlockInfo?[] infos)
         {
-            return $"RECEIPTS {Infos?.Length ?? 0}";
+            Infos = infos;
         }
     }
 }

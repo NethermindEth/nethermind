@@ -78,7 +78,13 @@ namespace Nethermind.Synchronization.FastSync
         private int _hintsToResetRoot;
         private long _blockNumber;
 
-        public StateSyncFeed(ISnapshotableDb codeDb, ISnapshotableDb stateDb, IDb tempDb, ISyncModeSelector syncModeSelector, IBlockTree blockTree, ILogManager logManager)
+        public StateSyncFeed(
+            ISnapshotableDb codeDb,
+            ISnapshotableDb stateDb,
+            IDb tempDb,
+            ISyncModeSelector syncModeSelector,
+            IBlockTree blockTree,
+            ILogManager logManager)
             : base(logManager)
         {
             _codeDb = codeDb?.Innermost ?? throw new ArgumentNullException(nameof(codeDb));
@@ -95,7 +101,7 @@ namespace Nethermind.Synchronization.FastSync
             _pendingItems = new PendingSyncItems();
         }
 
-        private void SyncModeSelectorOnChanged(object sender, SyncModeChangedEventArgs e)
+        private void SyncModeSelectorOnChanged(object? sender, SyncModeChangedEventArgs e)
         {
             if (CurrentState == SyncFeedState.Dormant)
             {
@@ -659,12 +665,12 @@ namespace Nethermind.Synchronization.FastSync
             {
                 VerifyPostSyncCleanUp();
                 FinishThisSyncRound();
-                return EmptyBatch;
+                return EmptyBatch!;
             }
             
             if ((_syncModeSelector.Current & SyncMode.StateNodes) != SyncMode.StateNodes)
             {
-                return null;
+                return EmptyBatch!;
             }
 
             try
@@ -673,14 +679,14 @@ namespace Nethermind.Synchronization.FastSync
                 {
                     if (_logger.IsDebug) _logger.Debug("Falling asleep - root is empty tree");
                     FinishThisSyncRound();
-                    return EmptyBatch;
+                    return EmptyBatch!;
                 }
                 
                 if (_hintsToResetRoot >= 32)
                 {
                     if (_logger.IsDebug) _logger.Debug("Falling asleep - many missing responses");
                     FinishThisSyncRound();
-                    return EmptyBatch;
+                    return EmptyBatch!;
                 }
 
                 lock (_stateDbLock)
@@ -692,12 +698,12 @@ namespace Nethermind.Synchronization.FastSync
                         {
                             VerifyPostSyncCleanUp();
                             FinishThisSyncRound();
-                            return EmptyBatch;
+                            return EmptyBatch!;
                         }
                     }
                     catch (ObjectDisposedException)
                     {
-                        return EmptyBatch;
+                        return EmptyBatch!;
                     }
                 }
 

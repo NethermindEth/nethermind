@@ -81,13 +81,13 @@ namespace Nethermind.Synchronization.LesSync
 
         private static long GetMaxSectionIndex(IKeyValueStore db)
         {
-            byte[] storeValue = null;
+            byte[]? storeValue = null;
             try
             {
                 storeValue = db[MaxSectionKey];
             }
             catch (KeyNotFoundException) { }
-            return storeValue == null ? -1L : storeValue.ToLongFromBigEndianByteArrayWithoutLeadingZeros();
+            return storeValue?.ToLongFromBigEndianByteArrayWithoutLeadingZeros() ?? -1L;
         }
 
         private void SetMaxSectionIndex(long sectionIndex)

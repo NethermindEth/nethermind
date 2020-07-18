@@ -54,10 +54,12 @@ namespace Nethermind.Synchronization
         private readonly ISnapshotableDb _stateDb;
         private readonly ISnapshotableDb _codeDb;
         private readonly ISyncConfig _syncConfig;
-        private readonly CanonicalHashTrie _cht;
+        private readonly CanonicalHashTrie? _cht;
         private object _dummyValue = new object();
         private ICache<Keccak, object> _recentlySuggested = new LruCacheWithRecycling<Keccak, object>(128, 128, "recently suggested blocks");
         private long _pivotNumber;
+        private Keccak _pivotHash;
+        private BlockHeader? _pivotHeader;
 
         public SyncServer(
             ISnapshotableDb stateDb,
@@ -70,7 +72,7 @@ namespace Nethermind.Synchronization
             ISyncModeSelector syncModeSelector,
             ISyncConfig syncConfig,
             ILogManager logManager,
-            CanonicalHashTrie cht = null)
+            CanonicalHashTrie? cht = null)
         {
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _pool = pool ?? throw new ArgumentNullException(nameof(pool));
@@ -89,14 +91,10 @@ namespace Nethermind.Synchronization
             _pivotHash = new Keccak(_syncConfig.PivotHash ?? Keccak.Zero.ToString());
         }
 
-        private Keccak _pivotHash;
-
-        private BlockHeader _pivotHeader;
-
         public int ChainId => _blockTree.ChainId;
         public BlockHeader Genesis => _blockTree.Genesis;
 
-        public BlockHeader Head
+        public BlockHeader? Head
         {
             get
             {
@@ -111,7 +109,9 @@ namespace Nethermind.Synchronization
                     _pivotHeader ??= _blockTree.FindHeader(_pivotHash, BlockTreeLookupOptions.None);
                 }
 
-                return headIsGenesis ? _pivotHeader ?? _blockTree.Genesis : _blockTree.Head?.Header;
+                return headIsGenesis
+                    ? _pivotHeader ?? _blockTree.Genesis
+                    : _blockTree.Head?.Header;
             }
         }
 
@@ -393,7 +393,7 @@ namespace Nethermind.Synchronization
         private Random _broadcastRandomizer = new Random();
 
         [Todo(Improve.Refactor, "This may not be desired if the other node is just syncing now too")]
-        private void OnNewHeadBlock(object sender, BlockEventArgs blockEventArgs)
+        private void OnNewHeadBlock(object? sender, BlockEventArgs blockEventArgs)
         {
             Block block = blockEventArgs.Block;
             if (_blockTree.BestKnownNumber > block.Number) return;

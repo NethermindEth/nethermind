@@ -31,7 +31,7 @@ using Nethermind.Synchronization.SyncLimits;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
-    public class SimpleReceiptsSyncFeed : ActivatedSyncFeed<SimpleReceiptsSyncBatch>
+    public class SimpleReceiptsSyncFeed : ActivatedSyncFeed<SimpleReceiptsSyncBatch?>
     {
         private int _requestSize = GethSyncLimits.MaxReceiptFetch;
 
@@ -87,7 +87,7 @@ namespace Nethermind.Synchronization.FastBlocks
         {
             bool shouldDownloadReceipts = _syncConfig.DownloadReceiptsInFastSync;
             bool allReceiptsDownloaded = _receiptStorage.LowestInsertedReceiptBlock == 1;
-            bool isGenesisDownloaded = _fastStatusList.LowestInsertWithoutGaps == 0;
+            bool isGenesisDownloaded = _fastStatusList.LowestInsertWithoutGaps == 1;
             bool noBatchesLeft = !shouldDownloadReceipts
                                  || allReceiptsDownloaded
                                  || isGenesisDownloaded;
@@ -114,17 +114,16 @@ namespace Nethermind.Synchronization.FastBlocks
             _syncReport.ReceiptsInQueue.MarkEnd();
         }
 
-        public override Task<SimpleReceiptsSyncBatch> PrepareRequest()
+        public override Task<SimpleReceiptsSyncBatch?> PrepareRequest()
         {
-            SimpleReceiptsSyncBatch batch = null;
+            SimpleReceiptsSyncBatch? batch = null;
             if (ShouldBuildANewBatch())
             {
                 BlockInfo[] infos = new BlockInfo[_requestSize];
                 _fastStatusList.GetInfosForBatch(infos);
                 if (infos[0] != null)
                 {
-                    batch = new SimpleReceiptsSyncBatch();
-                    batch.Infos = infos;
+                    batch = new SimpleReceiptsSyncBatch(infos);
                     batch.MinNumber = infos[0].BlockNumber;
                     batch.Prioritized = true;
                 }
@@ -137,17 +136,23 @@ namespace Nethermind.Synchronization.FastBlocks
             return Task.FromResult(batch);
         }
 
-        public override SyncResponseHandlingResult HandleResponse(SimpleReceiptsSyncBatch batch)
+        public override SyncResponseHandlingResult HandleResponse(SimpleReceiptsSyncBatch? batch)
         {
-            batch.MarkHandlingStart();
+            batch?.MarkHandlingStart();
             try
             {
+                if (batch == null)
+                {
+                    _logger.Debug("Received a NULL batch as a response");
+                    return SyncResponseHandlingResult.InternalError;
+                }
+                
                 int added = InsertReceipts(batch);
                 return added == 0 ? SyncResponseHandlingResult.NoProgress : SyncResponseHandlingResult.OK;
             }
             finally
             {
-                batch.MarkHandlingEnd();
+                batch?.MarkHandlingEnd();
             }
         }
 
@@ -181,14 +186,14 @@ namespace Nethermind.Synchronization.FastBlocks
 
             for (int i = 0; i < batch.Infos.Length; i++)
             {
-                BlockInfo blockInfo = batch.Infos[i];
-                TxReceipt[] receipts = (batch.Response?.Length ?? 0) <= i
+                BlockInfo? blockInfo = batch.Infos[i];
+                TxReceipt[]? receipts = (batch.Response?.Length ?? 0) <= i
                     ? null
                     : (batch.Response![i] ?? Array.Empty<TxReceipt>());
                 
                 if (receipts != null)
                 {
-                    TxReceipt[] prepared = null;
+                    TxReceipt[]? prepared = null;
                     // last batch
                     if (blockInfo == null)
                     {
@@ -206,14 +211,22 @@ namespace Nethermind.Synchronization.FastBlocks
                     else
                     {
                         hasBreachedProtocol = true;
-                        // if (_logger.IsWarn) _logger.Warn($"{batch} - reporting INVALID - tx or ommers");
-                        _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, "invalid tx or ommers root");
+                        if (_logger.IsDebug) _logger.Debug($"{batch} - reporting INVALID - tx or ommers");
+
+                        if (batch.ResponseSourcePeer != null)
+                        {
+                            _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, "invalid tx or ommers root");
+                        }
+
                         _fastStatusList.MarkUnknown(blockInfo.BlockNumber);
                     }
                 }
                 else
                 {
-                    _fastStatusList.MarkUnknown(blockInfo.BlockNumber);
+                    if (blockInfo != null)
+                    {
+                        _fastStatusList.MarkUnknown(blockInfo.BlockNumber);
+                    }
                 }
             }
 

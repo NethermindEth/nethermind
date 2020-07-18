@@ -21,7 +21,12 @@ namespace Nethermind.Synchronization.FastBlocks
 {
     public class SimpleBodiesSyncBatch : FastBlocksBatch
     {
-        public BlockInfo[] Infos { get; set; }
-        public BlockBody[] Response { get; set; }
+        public SimpleBodiesSyncBatch(BlockInfo[] infos)
+        {
+            Infos = infos;
+        }
+        
+        public BlockInfo?[] Infos { get; }
+        public BlockBody?[]? Response { get; set; }
     }
 }

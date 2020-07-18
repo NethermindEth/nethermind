@@ -88,7 +88,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 }
                 else if (currentStateLocal == SyncFeedState.Active)
                 {
-                    T request = await (Feed.PrepareRequest() ?? Task.FromResult<T>(default)); // just to avoid null refs
+                    T request = await (Feed.PrepareRequest() ?? Task.FromResult<T>(default!)); // just to avoid null refs
                     if (request == null)
                     {
                         if (!Feed.IsMultiFeed)

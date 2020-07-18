@@ -70,7 +70,7 @@ namespace Nethermind.Synchronization.BeamSync
 
         private readonly object _finishLock = new object();
 
-        private void SyncModeSelectorOnChanged(object sender, SyncModeChangedEventArgs e)
+        private void SyncModeSelectorOnChanged(object? sender, SyncModeChangedEventArgs e)
         {
             if ((e.Current & SyncMode.Full) == SyncMode.Full)
             {
@@ -88,12 +88,12 @@ namespace Nethermind.Synchronization.BeamSync
             }
         }
 
-        private void SyncModeSelectorOnPreparing(object sender, SyncModeChangedEventArgs e)
+        private void SyncModeSelectorOnPreparing(object? sender, SyncModeChangedEventArgs e)
         {
             // do nothing, the beam processor is cancelling beam executors now and they may be still writing
         }
 
-        private void SyncModeSelectorOnChanging(object sender, SyncModeChangedEventArgs e)
+        private void SyncModeSelectorOnChanging(object? sender, SyncModeChangedEventArgs e)
         {
             // at this stage beam executors are already cancelled and they no longer save to beam DB
             // standard processor is for sure not started yet - it is waiting for us to replace the target

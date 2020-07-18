@@ -78,7 +78,7 @@ namespace Nethermind.Synchronization.Blocks
             _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
         }
 
-        private void BlockTreeOnNewHeadBlock(object sender, BlockEventArgs e)
+        private void BlockTreeOnNewHeadBlock(object? sender, BlockEventArgs e)
         {
             _syncReport.FullSyncBlocksDownloaded.Update(_blockTree.BestSuggestedHeader?.Number ?? 0);
             _syncReport.FullSyncBlocksKnown = Math.Max(_syncReport.FullSyncBlocksKnown, e.Block.Number);
@@ -311,7 +311,7 @@ namespace Nethermind.Synchronization.Blocks
                     {
                         if (downloadReceipts)
                         {
-                            var contextReceiptsForBlock = context.ReceiptsForBlocks[blockIndex];
+                            var contextReceiptsForBlock = context.ReceiptsForBlocks![blockIndex];
                             if (contextReceiptsForBlock != null)
                             {
                                 _receiptStorage.Insert(currentBlock, contextReceiptsForBlock);
@@ -536,7 +536,7 @@ namespace Nethermind.Synchronization.Blocks
             }
         }
 
-        public event EventHandler<SyncEventArgs> SyncEvent;
+        public event EventHandler<SyncEventArgs>? SyncEvent;
 
         private void HandleSyncRequestResult(Task<long> task, PeerInfo peerInfo)
         {

@@ -174,7 +174,7 @@ namespace Nethermind.Synchronization.ParallelSync
                    (newModes != SyncMode.Full || Current != SyncMode.None);
         }
 
-        private void UpdateSyncModes(SyncMode newModes, string reason = null)
+        private void UpdateSyncModes(SyncMode newModes, string? reason = null)
         {
             if (_logger.IsTrace)
             {

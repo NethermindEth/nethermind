@@ -90,7 +90,7 @@ namespace Nethermind.Synchronization.BeamSync
 
         private void EnqueueForStandardProcessing(Block block)
         {
-            while (_shelvedBlocks.TryDequeue(out Block shelvedBlock))
+            while (_shelvedBlocks.TryDequeue(out Block? shelvedBlock))
             {
                 if(_logger.IsInfo) _logger.Info($"Enqueuing previously shelved block {shelvedBlock.ToString(Block.Format.Short)}");
                 _standardProcessorQueue.Enqueue(shelvedBlock, ProcessingOptions.StoreReceipts);
@@ -110,7 +110,7 @@ namespace Nethermind.Synchronization.BeamSync
 
         private bool _isAfterBeam;
 
-        private void SyncModeSelectorOnPreparing(object sender, SyncModeChangedEventArgs e)
+        private void SyncModeSelectorOnPreparing(object? sender, SyncModeChangedEventArgs e)
         {
             if ((e.Current & SyncMode.Full) == SyncMode.Full)
             {
@@ -132,11 +132,11 @@ namespace Nethermind.Synchronization.BeamSync
             }
         }
 
-        private void SyncModeSelectorOnChanging(object sender, SyncModeChangedEventArgs e)
+        private void SyncModeSelectorOnChanging(object? sender, SyncModeChangedEventArgs e)
         {
         }
 
-        private void SyncModeSelectorOnChanged(object sender, SyncModeChangedEventArgs e)
+        private void SyncModeSelectorOnChanged(object? sender, SyncModeChangedEventArgs e)
         {
             if ((e.Current & SyncMode.Full) == SyncMode.Full)
             {
@@ -176,7 +176,7 @@ namespace Nethermind.Synchronization.BeamSync
             {
                 for (int i = 64; i > 6; i--)
                 {
-                    if (_tokens.TryGetValue(number - i, out CancellationTokenSource token))
+                    if (_tokens.TryGetValue(number - i, out CancellationTokenSource? token))
                     {
                         token.Cancel();
                     }
@@ -213,7 +213,7 @@ namespace Nethermind.Synchronization.BeamSync
 
         private ConcurrentBag<Task> _beamProcessTasks = new ConcurrentBag<Task>();
 
-        private void OnNewBlock(object sender, BlockEventArgs e)
+        private void OnNewBlock(object? sender, BlockEventArgs e)
         {
             Block block = e.Block;
             if (block.IsGenesis)

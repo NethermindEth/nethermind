@@ -41,12 +41,12 @@ namespace Nethermind.Synchronization.FastBlocks
             ISyncPeer peer = peerInfo.SyncPeer;
             batch.ResponseSourcePeer = peerInfo;
             batch.MarkSent();
-            var hashes = batch.Infos.Where(i => i != null).Select(i => i.BlockHash).ToArray();
+            var hashes = batch.Infos.Where(i => i != null).Select(i => i!.BlockHash).ToArray();
             Task<BlockBody[]> getBodiesTask = peer.GetBlockBodies(hashes, cancellationToken);
             await getBodiesTask.ContinueWith(
                 (t, state) =>
                 {
-                    SimpleBodiesSyncBatch batchLocal = (SimpleBodiesSyncBatch)state;
+                    SimpleBodiesSyncBatch batchLocal = (SimpleBodiesSyncBatch)state!;
                     if (t.IsCompletedSuccessfully)
                     {
                         if (batchLocal.RequestTime > 1000)

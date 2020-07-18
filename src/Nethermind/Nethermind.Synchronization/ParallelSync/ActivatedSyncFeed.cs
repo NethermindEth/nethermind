@@ -31,7 +31,7 @@ namespace Nethermind.Synchronization.ParallelSync
             StateChanged += OnStateChanged;
         }
 
-        private void OnStateChanged(object sender, SyncFeedStateEventArgs e)
+        private void OnStateChanged(object? sender, SyncFeedStateEventArgs e)
         {
             if (e.NewState == SyncFeedState.Finished)
             {
@@ -39,7 +39,7 @@ namespace Nethermind.Synchronization.ParallelSync
             }
         }
 
-        private void SyncModeSelectorOnChanged(object sender, SyncModeChangedEventArgs e)
+        private void SyncModeSelectorOnChanged(object? sender, SyncModeChangedEventArgs e)
         {
             if (ShouldBeActive(e.Current))
             {

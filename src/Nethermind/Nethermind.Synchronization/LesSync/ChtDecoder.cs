@@ -14,17 +14,15 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Collections.Generic;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Synchronization.LesSync
 {
-    public class ChtDecoder : IRlpDecoder<(Keccak, UInt256)>
+    public class ChtDecoder : IRlpDecoder<(Keccak?, UInt256)>
     {
-        public (Keccak, UInt256) Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public (Keccak?, UInt256) Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (rlpStream.IsNextItemNull())
             {
@@ -38,22 +36,22 @@ namespace Nethermind.Synchronization.LesSync
             return (hash, totalDifficulty);
         }
 
-        public (Keccak, UInt256) Decode(byte[] bytes)
+        public (Keccak?, UInt256) Decode(byte[] bytes)
         {
             return Decode(new RlpStream(bytes));
         }
 
-        public Rlp Encode((Keccak, UInt256) item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Rlp Encode((Keccak?, UInt256) item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            (Keccak hash, UInt256 totalDifficulty) = item;
+            (Keccak? hash, UInt256 totalDifficulty) = item;
             return Rlp.Encode(
                 Rlp.Encode(hash),
                 Rlp.Encode(totalDifficulty));
         }
 
-        public int GetLength((Keccak, UInt256) item, RlpBehaviors rlpBehaviors)
+        public int GetLength((Keccak?, UInt256) item, RlpBehaviors rlpBehaviors)
         {
-            (Keccak hash, UInt256 totalDifficulty) = item;
+            (Keccak? hash, UInt256 totalDifficulty) = item;
             return Rlp.GetSequenceRlpLength(
                 Rlp.LengthOf(hash) + Rlp.LengthOf(totalDifficulty));
         }
