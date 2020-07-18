@@ -58,7 +58,7 @@ namespace Nethermind.Consensus.AuRa
             _auRaStepCalculator = auRaStepCalculator ?? throw new ArgumentNullException(nameof(auRaStepCalculator));
             _reportingValidator = reportingValidator ?? throw new ArgumentNullException(nameof(reportingValidator));
             _config = config ?? throw new ArgumentNullException(nameof(config));
-            CanProduce = _config.AllowAuRaPrivateChains;
+            _canProduce = _config.AllowAuRaPrivateChains ? 1 : 0;
             _gasLimitOverride = gasLimitOverride;
         }
         

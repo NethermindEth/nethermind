@@ -35,7 +35,7 @@ namespace Nethermind.Blockchain.Producers
         private Task _producerTask;
         
         protected CancellationTokenSource LoopCancellationTokenSource { get; } = new CancellationTokenSource();
-        protected bool CanProduce { get; set; }
+        protected int _canProduce = 0;
 
         protected BaseLoopBlockProducer(
             ITxSource txSource,
@@ -87,7 +87,7 @@ namespace Nethermind.Blockchain.Producers
         {
             while (!LoopCancellationTokenSource.IsCancellationRequested)
             {
-                if (CanProduce && BlockProcessingQueue.IsEmpty)
+                if (_canProduce == 1 && BlockProcessingQueue.IsEmpty)
                 {
                     try
                     {
@@ -116,13 +116,20 @@ namespace Nethermind.Blockchain.Producers
         
         private void BlockTreeOnNewBestSuggestedBlock(object sender, BlockEventArgs e)
         {
-            CanProduce = false;
-            if (Logger.IsDebug) Logger.Debug($"Can not produce a block new best suggested {BlockTree.BestSuggestedHeader?.ToString(BlockHeader.Format.FullHashAndNumber)}{Environment.NewLine}{new StackTrace()}");
+            if (BlockTree.Head?.Hash != e.Block?.Hash)
+            {
+                Interlocked.Exchange(ref _canProduce, 0);
+                if (Logger.IsDebug) Logger.Debug($"Can not produce a block new best suggested {BlockTree.BestSuggestedHeader?.ToString(BlockHeader.Format.FullHashAndNumber)}{Environment.NewLine}{new StackTrace()}");
+            }
+            else
+            {
+                if (Logger.IsDebug) Logger.Debug($"Can produce blocks, a block new best suggested {BlockTree.BestSuggestedHeader?.ToString(BlockHeader.Format.FullHashAndNumber)}{Environment.NewLine}{new StackTrace()} is already processed.");
+            }
         }
 
         private void OnBlockProcessorQueueEmpty(object sender, EventArgs e)
         {
-            CanProduce = true;
+            Interlocked.Exchange(ref _canProduce, 1);
             if (Logger.IsDebug) Logger.Debug($"Can produce blocks, current best suggested {BlockTree.BestSuggestedHeader}{Environment.NewLine}current head {BlockTree.Head}{Environment.NewLine}{new StackTrace()}");        
         }
     }
