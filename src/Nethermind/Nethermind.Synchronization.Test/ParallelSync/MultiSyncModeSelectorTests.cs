@@ -54,6 +54,16 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     return header;
                 }
             }
+            
+            public static BlockHeader ChainHeadParentWrongDifficulty
+            {
+                get
+                {
+                    BlockHeader header = Build.A.Block.WithTotalDifficulty(Pivot.TotalDifficulty + 2048 + 128).WithNumber(Pivot.Number + 2048).TestObject.Header;
+                    header.Hash = ChainHead.ParentHash;
+                    return header;
+                }
+            }
 
             public static BlockHeader FutureHead { get; set; } = Build.A.Block.WithTotalDifficulty(Pivot.TotalDifficulty + 2048 + 128).WithNumber(Pivot.Number + 2048 + 128).TestObject.Header;
 
@@ -156,7 +166,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                             SyncProgressResolver.FindBestFullBlock().Returns(ChainHead.Number);
                             SyncProgressResolver.FindBestFullState().Returns(ChainHead.Number);
                             SyncProgressResolver.FindBestProcessedBlock().Returns(ChainHead.Number);
-                            SyncProgressResolver.FindBestHeaderHash().Returns(ChainHead.Hash);
+                            SyncProgressResolver.FindBestHeaderHash().Returns((ChainHead.Hash, ChainHead.ParentHash));
                             SyncProgressResolver.IsFastBlocksFinished().Returns(FastBlocksState.FinishedReceipts);
                             SyncProgressResolver.ChainDifficulty.Returns(ChainHead.TotalDifficulty ?? 0);
                             return "fully synced node";
@@ -506,7 +516,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 
                 public ScenarioBuilder PeersWithWrongDifficultyAreKnown()
                 {
-                    AddPeeringSetup("wrong difficulty", AddPeer(ChainHeadWrongDifficulty));
+                    AddPeeringSetup("wrong difficulty", AddPeer(ChainHeadWrongDifficulty), AddPeer(ChainHeadParentWrongDifficulty));
                     return this;
                 }
 

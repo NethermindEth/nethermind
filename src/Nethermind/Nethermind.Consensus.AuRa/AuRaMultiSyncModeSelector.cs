@@ -33,12 +33,16 @@ namespace Nethermind.Consensus.AuRa
         {
             if (base.AnyDesiredPeerKnown(best))
             {
-                // we really, really don't trust parity when its saying it has same block level with higher difficulty in AuRa, its lying most of the times in AuRa
-                bool ignoreParitySameLevel = (best.Peer.HeadNumber == best.Header && (best.Peer.PeerClientType == PeerClientType.Parity || best.Peer.PeerClientType == PeerClientType.OpenEthereum));
-                if (ignoreParitySameLevel)
+                if (best.Peer.PeerClientType == PeerClientType.Parity || best.Peer.PeerClientType == PeerClientType.OpenEthereum)
                 {
-                    if (_logger.IsInfo) _logger.Info($"Ignoring best peer [{best.Peer.HeadNumber},{best.Peer.TotalDifficulty}], possible Parity/OpenEthereum outlier.");
-                    return false;
+                    // we really, really don't trust parity when its saying it has same block level with higher difficulty in AuRa, its lying most of the times in AuRa
+                    bool ignoreParitySameLevel = best.Peer.HeadNumber == best.Header;
+                    
+                    if (ignoreParitySameLevel)
+                    {
+                        if (_logger.IsInfo) _logger.Info($"Ignoring best peer [{best.Peer.HeadNumber},{best.Peer.TotalDifficulty}], possible Parity/OpenEthereum outlier.");
+                        return false;
+                    }
                 }
 
                 return true;

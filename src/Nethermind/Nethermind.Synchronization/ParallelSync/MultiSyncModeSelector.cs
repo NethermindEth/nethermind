@@ -101,8 +101,8 @@ namespace Nethermind.Synchronization.ParallelSync
                 return;
             }
 
-            Keccak headerHash = _syncProgressResolver.FindBestHeaderHash();
-            PeerInfo bestPeer = ReloadDataFromPeers(headerHash);
+            (Keccak headerHash, Keccak parentHash) = _syncProgressResolver.FindBestHeaderHash();
+            PeerInfo bestPeer = ReloadDataFromPeers(headerHash, parentHash);
 
             // if there are no peers that we could use then we cannot sync
             if (bestPeer == null || bestPeer.HeadNumber == 0)
@@ -396,14 +396,15 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private bool AnyPostPivotPeerKnown(long bestPeerBlock) => bestPeerBlock > _syncConfig.PivotNumberParsed;
 
-        private PeerInfo ReloadDataFromPeers(Keccak knownMostDifficultHash)
+        private PeerInfo ReloadDataFromPeers(Keccak knownMostDifficultHash, Keccak parentMostDifficultHash)
         {
             UInt256? maxPeerDifficulty = null;
             PeerInfo peerInfo = null;
 
             foreach (PeerInfo peer in _syncPeerPool.InitializedPeers)
             {
-                if (peer.SyncPeer.HeadHash != knownMostDifficultHash // we don't trust parity TotalDifficulty, so checking hash of known best block. 
+                if (peer.SyncPeer.HeadHash != knownMostDifficultHash     // we don't trust parity TotalDifficulty, so checking hash of known best block
+                    && peer.SyncPeer.HeadHash != parentMostDifficultHash // that much we check two block hashes
                     && peer.TotalDifficulty > (maxPeerDifficulty ?? UInt256.Zero))
                 {
                     maxPeerDifficulty = peer.TotalDifficulty;
