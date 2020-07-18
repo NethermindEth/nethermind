@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -116,11 +117,13 @@ namespace Nethermind.Blockchain.Producers
         private void BlockTreeOnNewBestSuggestedBlock(object sender, BlockEventArgs e)
         {
             CanProduce = false;
+            if (Logger.IsDebug) Logger.Debug($"Can not produce a block new best suggested {BlockTree.BestSuggestedHeader?.ToString(BlockHeader.Format.FullHashAndNumber)}{Environment.NewLine}{new StackTrace()}");
         }
 
         private void OnBlockProcessorQueueEmpty(object sender, EventArgs e)
         {
             CanProduce = true;
+            if (Logger.IsDebug) Logger.Debug($"Can produce blocks, current best suggested {BlockTree.BestSuggestedHeader}{Environment.NewLine}current head {BlockTree.Head}{Environment.NewLine}{new StackTrace()}");        
         }
     }
 }
