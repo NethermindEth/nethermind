@@ -179,7 +179,7 @@ namespace Nethermind.Synchronization.FastBlocks
                     else
                     {
                         hasBreachedProtocol = true;
-                        // if (_logger.IsWarn) _logger.Warn($"{batch} - reporting INVALID - tx or ommers");
+                        if (_logger.IsDebug) _logger.Debug($"{batch} - reporting INVALID - tx or ommers");
                         _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, "invalid tx or ommers root");
                         _fastStatusList.MarkUnknown(blockInfo.BlockNumber);
                     }

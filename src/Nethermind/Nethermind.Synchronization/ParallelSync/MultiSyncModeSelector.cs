@@ -97,7 +97,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
             if (!_syncConfig.SynchronizationEnabled)
             {
-                UpdateSyncModes(SyncMode.None);
+                UpdateSyncModes(SyncMode.None, "Synchronization Disabled");
                 return;
             }
 
@@ -107,7 +107,7 @@ namespace Nethermind.Synchronization.ParallelSync
             // if there are no peers that we could use then we cannot sync
             if (peerDifficulty == null || peerBlock == null || peerBlock == 0)
             {
-                UpdateSyncModes(SyncMode.None);
+                UpdateSyncModes(SyncMode.None, "No Useful Peers");
                 return;
             }
 
@@ -115,7 +115,7 @@ namespace Nethermind.Synchronization.ParallelSync
             if (!FastSyncEnabled)
             {
                 bool anyPeers = peerBlock.Value > 0 && peerDifficulty.Value >= _syncProgressResolver.ChainDifficulty;
-                UpdateSyncModes(anyPeers ? SyncMode.Full : SyncMode.None);
+                UpdateSyncModes(anyPeers ? SyncMode.Full : SyncMode.None, "No Useful Peers");
                 return;
             }
 
@@ -126,7 +126,7 @@ namespace Nethermind.Synchronization.ParallelSync
             }
             catch (InvalidAsynchronousStateException)
             {
-                UpdateSyncModes(SyncMode.None);
+                UpdateSyncModes(SyncMode.None, "Snapshot Misalignment");
                 return;
             }
 
@@ -174,11 +174,11 @@ namespace Nethermind.Synchronization.ParallelSync
                    (newModes != SyncMode.Full || Current != SyncMode.None);
         }
 
-        private void UpdateSyncModes(SyncMode newModes)
+        private void UpdateSyncModes(SyncMode newModes, string reason = null)
         {
             if (_logger.IsTrace)
             {
-                string message = $"Changing state to {newModes}";
+                string message = $"Changing state to {newModes} | {reason}";
                 if (_logger.IsTrace) _logger.Trace(message);
             }
 
