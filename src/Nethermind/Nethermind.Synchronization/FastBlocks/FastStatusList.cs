@@ -32,10 +32,10 @@ namespace Nethermind.Synchronization.FastBlocks
         private long _queueSize;
         private long _lowestInsertedWithoutGaps;
 
-        public FastStatusList(IBlockTree blockTree, long pivotNumber)
+        public FastStatusList(IBlockTree blockTree, long pivotNumber, long? lowestInserted)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _lowestInsertedWithoutGaps = pivotNumber;
+            _lowestInsertedWithoutGaps = lowestInserted ?? pivotNumber;
             Statuses = new FastBlockStatus[pivotNumber + 1];
         }
 
