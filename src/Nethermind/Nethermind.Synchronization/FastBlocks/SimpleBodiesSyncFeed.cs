@@ -103,9 +103,9 @@ namespace Nethermind.Synchronization.FastBlocks
                 if (infos[0] != null)
                 {
                     batch = new SimpleBodiesSyncBatch();
-                    batch.Prioritized = true;
                     batch.Infos = infos;
                     batch.MinNumber = infos[0].BlockNumber;
+                    batch.Prioritized = true;
                 }
 
                 // if (_blockTree.ChainId != ChainId.Mainnet)

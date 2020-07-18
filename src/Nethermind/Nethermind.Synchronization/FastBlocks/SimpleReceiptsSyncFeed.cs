@@ -124,8 +124,8 @@ namespace Nethermind.Synchronization.FastBlocks
                 if (infos[0] != null)
                 {
                     batch = new SimpleReceiptsSyncBatch();
-                    batch.MinNumber = batch.Infos[0].BlockNumber;
                     batch.Infos = infos;
+                    batch.MinNumber = infos[0].BlockNumber;
                     batch.Prioritized = true;
                 }
             }
