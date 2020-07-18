@@ -107,24 +107,6 @@ namespace Nethermind.Synchronization.FastBlocks
                     batch.MinNumber = infos[0].BlockNumber;
                     batch.Prioritized = true;
                 }
-
-                // if (_blockTree.ChainId != ChainId.Mainnet)
-                // {
-                //     for (int i = 0; i < infos.Length; i++)
-                //     {
-                //         BlockHeader header
-                //             = _blockTree.FindHeader(infos[i].BlockHash,
-                //                 BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                //         if (!header.HasBody)
-                //         {
-                //             InsertOneBlock(new Block(header));
-                //             infos[i] = null;
-                //         }
-                //     }
-                //
-                //     // refill
-                //     _fastStatusList.GetInfosForBatch(infos);
-                // }
             }
 
             return Task.FromResult(batch);
@@ -213,6 +195,9 @@ namespace Nethermind.Synchronization.FastBlocks
                     _requestSize = Math.Max(4, _requestSize / 2);
                 }
             }
+            
+            if(_logger.IsDebug) _logger.Debug(
+                $"Bodies sync batch back from {batch.ResponseSourcePeer} with {validResponsesCount}/{batch.Infos.Length}");
 
             return validResponsesCount;
         }

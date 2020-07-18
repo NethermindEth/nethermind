@@ -138,18 +138,8 @@ namespace Nethermind.Synchronization.FastBlocks
             batch.MarkHandlingStart();
             try
             {
-                if (batch.IsResponseEmpty)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"{batch} - came back EMPTY");
-                    return batch.ResponseSourcePeer == null
-                        ? SyncResponseHandlingResult.NotAssigned
-                        : SyncResponseHandlingResult.NoProgress;
-                }
-                else
-                {
-                    int added = InsertReceipts(batch);
-                    return added == 0 ? SyncResponseHandlingResult.NoProgress : SyncResponseHandlingResult.OK;
-                }
+                int added = InsertReceipts(batch);
+                return added == 0 ? SyncResponseHandlingResult.NoProgress : SyncResponseHandlingResult.OK;
             }
             finally
             {
@@ -212,6 +202,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 }
                 else
                 {
+                    _logger.Warn($"Back again for {blockInfo.BlockNumber}");
                     _fastStatusList.MarkUnknown(blockInfo.BlockNumber);
                 }
             }
@@ -220,7 +211,7 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 if (validResponsesCount == batch.Infos.Length)
                 {
-                    _requestSize = Math.Min(512, _requestSize * 2);
+                    _requestSize = Math.Min(256, _requestSize * 2);
                 }
 
                 if (validResponsesCount == 0)
@@ -229,7 +220,8 @@ namespace Nethermind.Synchronization.FastBlocks
                 }
             }
 
-            _logger.Warn($"Receipts sync batch back from {batch.ResponseSourcePeer} with {validResponsesCount}/{batch.Infos.Length}");
+            if(_logger.IsDebug) _logger.Debug(
+                $"Receipts sync batch back from {batch.ResponseSourcePeer} with {validResponsesCount}/{batch.Infos.Length}");
 
             _syncReport.FastBlocksReceipts.Update(_pivotNumber - _fastStatusList.LowestInsertWithoutGaps);
             _syncReport.ReceiptsInQueue.Update(_fastStatusList.QueueSize);
