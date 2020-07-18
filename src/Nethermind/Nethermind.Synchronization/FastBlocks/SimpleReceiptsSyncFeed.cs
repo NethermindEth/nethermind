@@ -116,16 +116,21 @@ namespace Nethermind.Synchronization.FastBlocks
 
         public override Task<SimpleReceiptsSyncBatch> PrepareRequest()
         {
-            if (!ShouldBuildANewBatch())
+            SimpleReceiptsSyncBatch batch = null;
+            if (ShouldBuildANewBatch())
             {
-                return Task.FromResult((SimpleReceiptsSyncBatch) null);
+                BlockInfo[] infos = new BlockInfo[_requestSize];
+                _fastStatusList.GetInfosForBatch(infos);
+                if (infos[0] != null)
+                {
+                    batch = new SimpleReceiptsSyncBatch();
+                    batch.MinNumber = batch.Infos[0].BlockNumber;
+                    batch.Infos = infos;
+                    batch.Prioritized = true;
+                }
             }
 
-            SimpleReceiptsSyncBatch simple = new SimpleReceiptsSyncBatch();
-            BlockInfo[] infos = new BlockInfo[_requestSize];
-            _fastStatusList.GetInfosForBatch(infos);
-            simple.Infos = infos;
-            return Task.FromResult(simple);
+            return Task.FromResult(batch);
         }
 
         public override SyncResponseHandlingResult HandleResponse(SimpleReceiptsSyncBatch batch)
@@ -216,6 +221,8 @@ namespace Nethermind.Synchronization.FastBlocks
                     _requestSize = Math.Max(4, _requestSize / 2);
                 }
             }
+            
+            _logger.Warn($"Receipts sync batch back from {batch.ResponseSourcePeer} with {validResponsesCount}/{batch.Infos.Length}");
             
             _syncReport.FastBlocksReceipts.Update(_pivotNumber - _fastStatusList.LowestInsertWithoutGaps);
             _syncReport.ReceiptsInQueue.Update(_fastStatusList.QueueSize);

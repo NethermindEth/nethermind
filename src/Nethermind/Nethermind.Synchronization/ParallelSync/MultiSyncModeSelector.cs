@@ -325,7 +325,7 @@ namespace Nethermind.Synchronization.ParallelSync
             
             if (_logger.IsTrace)
             {
-                _logger.Trace("======================== BODIES");
+                _logger.Trace("======================== RECEIPTS");
                 _logger.Trace("fastReceiptsNotFinished " + fastReceiptsNotFinished);
                 _logger.Trace("fastBodiesFinished " + fastBodiesFinished);
                 _logger.Trace("notInStateSync " + notInStateSync);

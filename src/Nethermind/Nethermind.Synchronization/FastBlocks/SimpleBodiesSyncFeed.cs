@@ -98,14 +98,14 @@ namespace Nethermind.Synchronization.FastBlocks
             SimpleBodiesSyncBatch batch = null;
             if (ShouldBuildANewBatch())
             {
-                SimpleBodiesSyncBatch simple = new SimpleBodiesSyncBatch();
-                simple.Prioritized = true;
                 BlockInfo[] infos = new BlockInfo[_requestSize];
                 _fastStatusList.GetInfosForBatch(infos);
-                simple.Infos = infos;
-                if (simple.Infos[0] != null)
+                if (infos[0] != null)
                 {
-                    batch = simple;
+                    batch = new SimpleBodiesSyncBatch();
+                    batch.Prioritized = true;
+                    batch.Infos = infos;
+                    batch.MinNumber = infos[0].BlockNumber;
                 }
 
                 // if (_blockTree.ChainId != ChainId.Mainnet)
