@@ -33,7 +33,7 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 speedType = TransferSpeedType.Bodies;
             }
-            else if (request is ReceiptsSyncBatch)
+            else if (request is SimpleReceiptsSyncBatch)
             {
                 speedType = TransferSpeedType.Receipts;
             }

@@ -46,7 +46,7 @@ namespace Nethermind.Synchronization.FastBlocks
             await getReceiptsTask.ContinueWith(
                 (t, state) =>
                 {
-                    ReceiptsSyncBatch batchLocal = (ReceiptsSyncBatch)state;
+                    SimpleReceiptsSyncBatch batchLocal = (SimpleReceiptsSyncBatch)state;
                     if (t.IsCompletedSuccessfully)
                     {
                         if (batchLocal.RequestTime > 1000)
