@@ -142,6 +142,7 @@ namespace Nethermind.Synchronization.ParallelSync
                     }
                     else
                     {
+                        Logger.Info($"NOT ALLOCATED {request}");
                         SyncResponseHandlingResult result = Feed.HandleResponse(request);
                         ReactToHandlingResult(request, result, null);
                     }

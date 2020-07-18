@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Linq;
-using System.Threading;
 using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Serialization.Rlp;
