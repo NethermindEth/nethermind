@@ -165,7 +165,7 @@ namespace Nethermind.Network.Test
                 }
             }
 
-            public void RemoveNodes(NetworkNode[] nodes)
+            public void RemoveNode(PublicKey nodeId)
             {
                 _pendingChanges = true;
             }

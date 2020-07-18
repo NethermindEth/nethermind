@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -90,7 +90,7 @@ namespace Nethermind.Network.Discovery
                 {
                     if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(message.FarAddress, "MANAGER disc v4", message.MessageType.ToString());
                 }
-                
+
                 switch (msgType)
                 {
                     case MessageType.Neighbors:
@@ -144,7 +144,7 @@ namespace Nethermind.Network.Discovery
                 INodeLifecycleManager manager = _nodeLifecycleManagerFactory.CreateNodeLifecycleManager(node);
                 if (!isPersisted)
                 {
-                    _discoveryStorage.UpdateNodes(new[] {new NetworkNode(manager.ManagedNode.Id, manager.ManagedNode.Host, manager.ManagedNode.Port, manager.NodeStats.NewPersistedNodeReputation)});
+                    _discoveryStorage.UpdateNodes(new[] { new NetworkNode(manager.ManagedNode.Id, manager.ManagedNode.Host, manager.ManagedNode.Port, manager.NodeStats.NewPersistedNodeReputation) });
                 }
 
                 OnNewNode(manager);
@@ -176,7 +176,7 @@ namespace Nethermind.Network.Discovery
 
         public async Task<bool> WasMessageReceived(Keccak senderIdHash, MessageType messageType, int timeout)
         {
-            TaskCompletionSource<DiscoveryMessage> completionSource = GetCompletionSource(senderIdHash, (int) messageType);
+            TaskCompletionSource<DiscoveryMessage> completionSource = GetCompletionSource(senderIdHash, (int)messageType);
             CancellationTokenSource delayCancellation = new CancellationTokenSource();
             Task firstTask = await Task.WhenAny(completionSource.Task, Task.Delay(timeout, delayCancellation.Token));
 
@@ -187,7 +187,7 @@ namespace Nethermind.Network.Discovery
             }
             else
             {
-                RemoveCompletionSource(senderIdHash, (int) messageType);
+                RemoveCompletionSource(senderIdHash, (int)messageType);
             }
 
             return result;
@@ -212,7 +212,7 @@ namespace Nethermind.Network.Discovery
                 if (_logger.IsDebug) _logger.Debug($"Received a ping message with empty address, message: {message}");
                 return false;
             }
-            
+
             #region 
             // port will be different as we dynamically open ports for each socket connection
             // if (_nodeTable.MasterNode.Port != message.DestinationAddress?.Port)
@@ -244,7 +244,7 @@ namespace Nethermind.Network.Discovery
 
         private void NotifySubscribersOnMsgReceived(MessageType msgType, Node node, DiscoveryMessage message)
         {
-            TaskCompletionSource<DiscoveryMessage> completionSource = RemoveCompletionSource(node.IdHash, (int) msgType);
+            TaskCompletionSource<DiscoveryMessage> completionSource = RemoveCompletionSource(node.IdHash, (int)msgType);
             completionSource?.TrySetResult(message);
         }
 
@@ -263,40 +263,60 @@ namespace Nethermind.Network.Discovery
 
         private void CleanUpLifecycleManagers()
         {
-            if (_nodeLifecycleManagers.Count <= _discoveryConfig.MaxNodeLifecycleManagersCount)
+            int toRemove = (_nodeLifecycleManagers.Count - _discoveryConfig.MaxNodeLifecycleManagersCount) + _discoveryConfig.NodeLifecycleManagersCleanupCount;
+            int remainingToRemove = toRemove;
+            foreach (var item in _nodeLifecycleManagers)
             {
-                return;
-            }
-
-            int cleanupCount = _discoveryConfig.NodeLifecycleManagersCleanupCount;
-            KeyValuePair<Keccak, INodeLifecycleManager>[] activeExcluded = _nodeLifecycleManagers.Where(x => x.Value.State == NodeLifecycleState.ActiveExcluded).Take(cleanupCount).ToArray();
-            if (activeExcluded.Length == cleanupCount)
-            {
-                int removeCounter = RemoveManagers(activeExcluded, activeExcluded.Length);
-                if (_logger.IsTrace) _logger.Trace($"Removed: {removeCounter} activeExcluded node lifecycle managers");
-                return;
-            }
-
-            KeyValuePair<Keccak, INodeLifecycleManager>[] unreachable = _nodeLifecycleManagers.Where(x => x.Value.State == NodeLifecycleState.Unreachable).Take(cleanupCount - activeExcluded.Length).ToArray();
-            int removeCount = RemoveManagers(activeExcluded, activeExcluded.Length);
-            removeCount = removeCount + RemoveManagers(unreachable, unreachable.Length);
-            if (_logger.IsTrace) _logger.Trace($"Removed: {removeCount} unreachable node lifecycle managers");
-        }
-
-        private int RemoveManagers(KeyValuePair<Keccak, INodeLifecycleManager>[] items, int count)
-        {
-            int removeCount = 0;
-            for (int i = 0; i < count; i++)
-            {
-                KeyValuePair<Keccak, INodeLifecycleManager> item = items[i];
-                if (_nodeLifecycleManagers.TryRemove(item.Key, out _))
+                if (item.Value.State == NodeLifecycleState.ActiveExcluded)
                 {
-                    _discoveryStorage.RemoveNodes(new[] {new NetworkNode(item.Value.ManagedNode.Id, item.Value.ManagedNode.Host, item.Value.ManagedNode.Port, item.Value.NodeStats.NewPersistedNodeReputation),});
-                    removeCount++;
+                    if (RemoveManager((item.Key, item.Value.ManagedNode.Id)))
+                    {
+                        remainingToRemove--;
+                        if (remainingToRemove <= 0)
+                        {
+                            return;
+                        }
+                    }
                 }
             }
 
-            return removeCount;
+            foreach (var item in _nodeLifecycleManagers)
+            {
+                if (item.Value.State == NodeLifecycleState.Unreachable)
+                {
+                    if (RemoveManager((item.Key, item.Value.ManagedNode.Id)))
+                    {
+                        remainingToRemove--;
+                        if (remainingToRemove <= 0)
+                        {
+                            return;
+                        }
+                    }
+                }
+            }
+
+            foreach (var item in _nodeLifecycleManagers.OrderBy(x => x.Value.NodeStats.CurrentNodeReputation))
+            {
+                if (RemoveManager((item.Key, item.Value.ManagedNode.Id)))
+                {
+                    remainingToRemove--;
+                    if (remainingToRemove <= 0)
+                    {
+                        return;
+                    }
+                }
+            }
+        }
+
+        private bool RemoveManager((Keccak Hash, PublicKey Key) item)
+        {
+            if (_nodeLifecycleManagers.TryRemove(item.Hash, out _))
+            {
+                _discoveryStorage.RemoveNode(item.Key);
+                return true;
+            }
+
+            return false;
         }
 
         private struct MessageTypeKey : IEquatable<MessageTypeKey>

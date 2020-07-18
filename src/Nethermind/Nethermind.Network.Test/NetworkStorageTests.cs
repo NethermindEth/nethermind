@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -104,7 +104,7 @@ namespace Nethermind.Network.Test
             }
 
             _storage.StartBatch();
-            _storage.RemoveNodes(new[] {networkNodes.First()});
+            _storage.RemoveNode(networkNodes.First().NodeId);
             _storage.Commit();
 
             persistedNodes = _storage.GetPersistedNodes();
@@ -156,7 +156,7 @@ namespace Nethermind.Network.Test
             }
 
             _storage.StartBatch();
-            _storage.RemoveNodes(peers.Take(1).ToArray());
+            _storage.RemoveNode(peers.First().NodeId);
             _storage.Commit();
 
             persistedPeers = _storage.GetPersistedNodes();
