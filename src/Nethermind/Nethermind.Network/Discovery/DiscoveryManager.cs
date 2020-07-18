@@ -264,6 +264,11 @@ namespace Nethermind.Network.Discovery
         private void CleanUpLifecycleManagers()
         {
             int toRemove = (_nodeLifecycleManagers.Count - _discoveryConfig.MaxNodeLifecycleManagersCount) + _discoveryConfig.NodeLifecycleManagersCleanupCount;
+            if(toRemove <= _discoveryConfig.NodeLifecycleManagersCleanupCount / 2)
+            {
+                return;
+            }
+
             int remainingToRemove = toRemove;
             foreach (var item in _nodeLifecycleManagers)
             {
@@ -274,6 +279,7 @@ namespace Nethermind.Network.Discovery
                         remainingToRemove--;
                         if (remainingToRemove <= 0)
                         {
+                            _logger.Warn($"Cleaned up {toRemove} discovery lifecycle managers.");
                             return;
                         }
                     }
@@ -289,23 +295,27 @@ namespace Nethermind.Network.Discovery
                         remainingToRemove--;
                         if (remainingToRemove <= 0)
                         {
+                            _logger.Warn($"Cleaned up {toRemove} discovery lifecycle managers.");
                             return;
                         }
                     }
                 }
             }
 
-            foreach (var item in _nodeLifecycleManagers.OrderBy(x => x.Value.NodeStats.CurrentNodeReputation))
+            foreach (var item in _nodeLifecycleManagers.ToArray().OrderBy(x => x.Value.NodeStats.CurrentNodeReputation))
             {
                 if (RemoveManager((item.Key, item.Value.ManagedNode.Id)))
                 {
                     remainingToRemove--;
                     if (remainingToRemove <= 0)
                     {
+                        _logger.Warn($"Cleaned up {toRemove} discovery lifecycle managers.");
                         return;
                     }
                 }
             }
+
+            _logger.Warn($"Cleaned up {toRemove - remainingToRemove} discovery lifecycle managers.");
         }
 
         private bool RemoveManager((Keccak Hash, PublicKey Key) item)
