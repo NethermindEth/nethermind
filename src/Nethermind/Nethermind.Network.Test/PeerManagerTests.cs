@@ -180,6 +180,8 @@ namespace Nethermind.Network.Test
 
             private bool _pendingChanges;
 
+            public int PersistedNodesCount => _nodes.Count;
+
             public bool AnyPendingChange()
             {
                 return _pendingChanges;
