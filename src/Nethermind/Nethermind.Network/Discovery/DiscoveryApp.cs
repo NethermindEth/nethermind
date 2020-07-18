@@ -307,11 +307,18 @@ namespace Nethermind.Network.Discovery
             {
                 try
                 {
-                    if(_logger.IsDebug) _logger.Debug($"Running discovery with interval {_discoveryTimer.Interval}");
+                    if (_logger.IsDebug) _logger.Debug($"Running discovery with interval {_discoveryTimer.Interval}");
                     _discoveryTimer.Enabled = false;
                     RunDiscoveryProcess();
                     int nodesCountAfterDiscovery = _nodeTable.Buckets.Sum(x => x.BondedItemsCount);
-                    _discoveryTimer.Interval = nodesCountAfterDiscovery < 10 ? 100 : nodesCountAfterDiscovery < 100 ? 1000 : _discoveryConfig.DiscoveryInterval;
+                    _discoveryTimer.Interval =
+                        nodesCountAfterDiscovery < 16
+                            ? 10
+                            : nodesCountAfterDiscovery < 128
+                                ? 100
+                                : nodesCountAfterDiscovery < 256
+                                    ? 1000
+                                    : _discoveryConfig.DiscoveryInterval;
                 }
                 catch (Exception exception)
                 {

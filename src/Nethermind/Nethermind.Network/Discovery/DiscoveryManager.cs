@@ -270,52 +270,53 @@ namespace Nethermind.Network.Discovery
             }
 
             int remainingToRemove = toRemove;
-            foreach (var item in _nodeLifecycleManagers)
+            foreach ((Keccak key, INodeLifecycleManager value) in _nodeLifecycleManagers)
             {
-                if (item.Value.State == NodeLifecycleState.ActiveExcluded)
+                if (value.State == NodeLifecycleState.ActiveExcluded)
                 {
-                    if (RemoveManager((item.Key, item.Value.ManagedNode.Id)))
+                    if (RemoveManager((key, value.ManagedNode.Id)))
                     {
                         remainingToRemove--;
                         if (remainingToRemove <= 0)
                         {
-                            _logger.Warn($"Cleaned up {toRemove} discovery lifecycle managers.");
+                            if(_logger.IsDebug) _logger.Debug($"Cleaned up {toRemove} discovery lifecycle managers.");
                             return;
                         }
                     }
                 }
             }
 
-            foreach (var item in _nodeLifecycleManagers)
+            foreach ((Keccak key, INodeLifecycleManager value) in _nodeLifecycleManagers)
             {
-                if (item.Value.State == NodeLifecycleState.Unreachable)
+                if (value.State == NodeLifecycleState.Unreachable)
                 {
-                    if (RemoveManager((item.Key, item.Value.ManagedNode.Id)))
+                    if (RemoveManager((key, value.ManagedNode.Id)))
                     {
                         remainingToRemove--;
                         if (remainingToRemove <= 0)
                         {
-                            _logger.Warn($"Cleaned up {toRemove} discovery lifecycle managers.");
+                            if(_logger.IsDebug) _logger.Debug($"Cleaned up {toRemove} discovery lifecycle managers.");
                             return;
                         }
                     }
                 }
             }
 
-            foreach (var item in _nodeLifecycleManagers.ToArray().OrderBy(x => x.Value.NodeStats.CurrentNodeReputation))
+            foreach ((Keccak key, INodeLifecycleManager value) in _nodeLifecycleManagers.ToArray()
+                .OrderBy(x => x.Value.NodeStats.CurrentNodeReputation))
             {
-                if (RemoveManager((item.Key, item.Value.ManagedNode.Id)))
+                if (RemoveManager((key, value.ManagedNode.Id)))
                 {
                     remainingToRemove--;
                     if (remainingToRemove <= 0)
                     {
-                        _logger.Warn($"Cleaned up {toRemove} discovery lifecycle managers.");
+                        if(_logger.IsDebug) _logger.Debug($"Cleaned up {toRemove} discovery lifecycle managers.");
                         return;
                     }
                 }
             }
 
-            _logger.Warn($"Cleaned up {toRemove - remainingToRemove} discovery lifecycle managers.");
+            if(_logger.IsDebug) _logger.Debug($"Cleaned up {toRemove - remainingToRemove} discovery lifecycle managers.");
         }
 
         private bool RemoveManager((Keccak Hash, PublicKey Key) item)
