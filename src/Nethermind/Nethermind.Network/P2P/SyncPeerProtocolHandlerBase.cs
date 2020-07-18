@@ -141,6 +141,8 @@ namespace Nethermind.Network.P2P
 
                 return task.Result;
             }
+            
+            Logger.Warn($"Bodies request of length {request.Message.BlockHashes.Count} timed out with size {request.ResponseSize} from {this}");
 
             StatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.Bodies, 0L);
             throw new TimeoutException($"{Session} Request timeout in {nameof(GetBlockBodiesMessage)} with {message.BlockHashes.Count} block hashes");
