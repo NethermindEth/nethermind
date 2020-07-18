@@ -160,6 +160,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 case Eth62MessageCode.BlockBodies:
                     BlockBodiesMessage bodiesMsg = Deserialize<BlockBodiesMessage>(message.Content);
                     ReportIn(bodiesMsg);
+                    Logger.Warn($"Bodies message of size {size} from {this}");
                     Handle(bodiesMsg, size);
                     break;
                 case Eth62MessageCode.NewBlock:
