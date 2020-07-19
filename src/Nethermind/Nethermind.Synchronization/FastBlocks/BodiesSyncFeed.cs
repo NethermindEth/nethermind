@@ -179,11 +179,22 @@ namespace Nethermind.Synchronization.FastBlocks
                     bool isValid = !hasBreachedProtocol && TryPrepareBlock(blockInfo, body, out block);
                     if (isValid)
                     {
-                        validResponsesCount++;
-                        InsertOneBlock(block!);
+                        try
+                        {
+                            InsertOneBlock(block!);
+                            validResponsesCount++;
+                        }
+                        catch (Exception e)
+                        {
+                            _syncStatusList.MarkUnknown(block!.Number);
+                            if(_logger.IsWarn)
+                                _logger.Warn(
+                                    $"Failed to insert block {block!.ToString(Block.Format.FullHashAndNumber)}: " + e);
+                        }
                     }
                     else
                     {
+                        _syncStatusList.MarkUnknown(blockInfo.BlockNumber);
                         hasBreachedProtocol = true;
                         if (_logger.IsDebug) _logger.Debug($"{batch} - reporting INVALID - tx or ommers");
 
@@ -191,8 +202,6 @@ namespace Nethermind.Synchronization.FastBlocks
                         {
                             _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, "invalid tx or ommers root");
                         }
-
-                        _syncStatusList.MarkUnknown(blockInfo.BlockNumber);
                     }
                 }
                 else
@@ -210,7 +219,12 @@ namespace Nethermind.Synchronization.FastBlocks
         
         private void InsertOneBlock(Block block)
         {
-            _blockTree.Insert(block);
+            AddBlockResult addBlockResult = _blockTree.Insert(block);
+            if (addBlockResult != AddBlockResult.Added)
+            {
+                throw new InvalidOperationException($"Failed to add block - {addBlockResult}");
+            }
+            
             _syncStatusList.MarkInserted(block.Number);
         }
 

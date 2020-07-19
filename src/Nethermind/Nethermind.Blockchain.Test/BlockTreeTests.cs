@@ -1240,33 +1240,6 @@ namespace Nethermind.Blockchain.Test
             tree.SuggestBlock(genesis);
             Assert.Throws<InvalidOperationException>(() => tree.Insert(genesis));
             Assert.Throws<InvalidOperationException>(() => tree.Insert(genesis.Header));
-            Assert.Throws<InvalidOperationException>(() => tree.Insert(new[] {genesis}));
-        }
-
-        [Test]
-        public void Can_batch_insert_blocks()
-        {
-            MemDb blocksDb = new MemDb();
-            MemDb blockInfosDb = new MemDb();
-            MemDb headersDb = new MemDb();
-
-            long pivotNumber = 5L;
-
-            SyncConfig syncConfig = new SyncConfig();
-            syncConfig.PivotNumber = pivotNumber.ToString();
-
-            BlockTree tree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
-            tree.SuggestBlock(Build.A.Block.Genesis.TestObject);
-
-            List<Block> blocks = new List<Block>();
-            for (long i = 5; i > 0; i--)
-            {
-                Block block = Build.A.Block.WithNumber(i).WithTotalDifficulty(1L).TestObject;
-                tree.Insert(block.Header);
-                blocks.Add(block);
-            }
-
-            tree.Insert(blocks);
         }
 
         [Test]

@@ -76,8 +76,6 @@ namespace Nethermind.Blockchain
         /// <returns>Result of the operation, eg. Added, AlreadyKnown, etc.</returns>
         AddBlockResult Insert(Block block);
         
-        void Insert(IEnumerable<Block> blocks);
-
         /// <summary>
         /// Suggests block for inclusion in the block tree.
         /// </summary>

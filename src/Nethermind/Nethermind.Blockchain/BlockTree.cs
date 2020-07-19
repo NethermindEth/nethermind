@@ -369,28 +369,7 @@ namespace Nethermind.Blockchain
             // validate hash here
             // using previously received header RLPs would allows us to save 2GB allocations on a sample
             // 3M Goerli blocks fast sync
-            IDbWithSpan dbWithSpan = _headerDb as IDbWithSpan;
-            if (dbWithSpan != null)
-            {
-                int length = _headerDecoder.GetLength(header, RlpBehaviors.None);
-                byte[] array = ArrayPool<byte>.Shared.Rent(length);
-                try
-                {
-                    RlpStream rlpStream = new RlpStream(array);
-                    _headerDecoder.Encode(rlpStream, header);
-                    dbWithSpan.SetSpan(header.Hash.Bytes, array.AsSpan(0, length));
-                    Array.Clear(array, 0, length);
-                }
-                finally
-                {
-                    ArrayPool<byte>.Shared.Return(array);
-                }
-            }
-            else
-            {
-                Rlp newRlp = _headerDecoder.Encode(header);
-                _headerDb.Set(header.Hash, newRlp.Bytes);  
-            }
+            StoreHeaderInDb(header);
 
             BlockInfo blockInfo = new BlockInfo(header.Hash, header.TotalDifficulty ?? 0);
             ChainLevelInfo chainLevel = new ChainLevelInfo(true, blockInfo);
@@ -415,6 +394,32 @@ namespace Nethermind.Blockchain
             return AddBlockResult.Added;
         }
 
+        private void StoreHeaderInDb(BlockHeader header)
+        {
+            IDbWithSpan dbWithSpan = _headerDb as IDbWithSpan;
+            if (dbWithSpan != null)
+            {
+                int length = _headerDecoder.GetLength(header, RlpBehaviors.None);
+                byte[] array = ArrayPool<byte>.Shared.Rent(length);
+                try
+                {
+                    RlpStream rlpStream = new RlpStream(array);
+                    _headerDecoder.Encode(rlpStream, header);
+                    dbWithSpan.SetSpan(header.Hash.Bytes, array.AsSpan(0, length));
+                    Array.Clear(array, 0, length);
+                }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(array);
+                }
+            }
+            else
+            {
+                Rlp newRlp = _headerDecoder.Encode(header);
+                _headerDb.Set(header.Hash, newRlp.Bytes);
+            }
+        }
+
         public AddBlockResult Insert(Block block)
         {
             if (!CanAcceptNewBlocks)
@@ -426,32 +431,10 @@ namespace Nethermind.Blockchain
             {
                 throw new InvalidOperationException("Genesis block should not be inserted.");
             }
-
-            // if we carry Rlp from the network message all the way here then we could solve 4GB of allocations and some processing
-            // by avoiding encoding back to RLP here (allocations measured on a sample 3M blocks Goerli fast sync
-            Rlp newRlp = _blockDecoder.Encode(block);
-            _blockDb.Set(block.Hash, newRlp.Bytes);
+            
+            StoreBlockInDb(block);
 
             return AddBlockResult.Added;
-        }
-
-        public void Insert(IEnumerable<Block> blocks)
-        {
-            lock (_batchInsertLock)
-            {
-                try
-                {
-                    // _blockDb.StartBatch();
-                    foreach (Block block in blocks)
-                    {
-                        Insert(block);
-                    }
-                }
-                finally
-                {
-                    // _blockDb.CommitBatch();
-                }
-            }
         }
 
         private AddBlockResult Suggest(Block block, BlockHeader header, bool shouldProcess = true)
@@ -500,28 +483,7 @@ namespace Nethermind.Blockchain
 
             if (block != null && !isKnown)
             {
-                IDbWithSpan dbWithSpan = _blockDb as IDbWithSpan;
-                if (dbWithSpan != null)
-                {
-                    int length = _blockDecoder.GetLength(block, RlpBehaviors.None);
-                    byte[] array = ArrayPool<byte>.Shared.Rent(length);
-                    try
-                    {
-                        RlpStream rlpStream = new RlpStream(array);
-                        _blockDecoder.Encode(rlpStream, block);
-                        dbWithSpan.SetSpan(block.Hash.Bytes, array.AsSpan(0, length));
-                        Array.Clear(array, 0, length);
-                    }
-                    finally
-                    {
-                        ArrayPool<byte>.Shared.Return(array);
-                    }
-                }
-                else
-                {
-                    Rlp newRlp = _blockDecoder.Encode(block);
-                    _blockDb.Set(block.Hash, newRlp.Bytes);   
-                }
+                StoreBlockInDb(block);
             }
 
             if (!isKnown)
@@ -550,6 +512,32 @@ namespace Nethermind.Blockchain
 
         
             return AddBlockResult.Added;
+        }
+
+        private void StoreBlockInDb(Block block)
+        {
+            IDbWithSpan dbWithSpan = _blockDb as IDbWithSpan;
+            if (dbWithSpan != null)
+            {
+                int length = _blockDecoder.GetLength(block, RlpBehaviors.None);
+                byte[] array = ArrayPool<byte>.Shared.Rent(length);
+                try
+                {
+                    RlpStream rlpStream = new RlpStream(array);
+                    _blockDecoder.Encode(rlpStream, block);
+                    dbWithSpan.SetSpan(block.Hash.Bytes, array.AsSpan(0, length));
+                    Array.Clear(array, 0, length);
+                }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(array);
+                }
+            }
+            else
+            {
+                Rlp newRlp = _blockDecoder.Encode(block);
+                _blockDb.Set(block.Hash, newRlp.Bytes);
+            }
         }
 
         public AddBlockResult SuggestHeader(BlockHeader header)
