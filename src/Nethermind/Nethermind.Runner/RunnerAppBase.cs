@@ -50,7 +50,6 @@ using Nethermind.Serialization.Json;
 using Nethermind.WebSockets;
 using ILogger = Nethermind.Logging.ILogger;
 using Nethermind.Seq.Config;
-using NLog;
 
 namespace Nethermind.Runner
 {
