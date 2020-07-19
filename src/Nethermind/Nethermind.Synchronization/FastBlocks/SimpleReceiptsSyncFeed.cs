@@ -73,7 +73,7 @@ namespace Nethermind.Synchronization.FastBlocks
             }
 
             _pivotNumber = _syncConfig.PivotNumberParsed;
-            _fastStatusList = new FastStatusList(_blockTree, _pivotNumber, _blockTree.LowestInsertedBodyNumber);
+            _fastStatusList = new FastStatusList(_blockTree, _pivotNumber, _receiptStorage.LowestInsertedReceiptBlock);
         }
 
         protected override SyncMode ActivationSyncModes { get; }
