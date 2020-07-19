@@ -41,6 +41,7 @@ namespace Nethermind.Blockchain
     [Todo(Improve.Refactor, "After the fast sync work there are some duplicated code parts for the 'by header' and 'by block' approaches.")]
     public partial class BlockTree : IBlockTree
     {
+        private const long LowestInsertedBodyNumberDbEntryAddress = 0; 
         private const int CacheSize = 64;
         private readonly ICache<Keccak, Block> _blockCache = new LruCacheWithRecycling<Keccak, Block>(CacheSize, CacheSize, "blocks");
         private readonly ICache<Keccak, BlockHeader> _headerCache = new LruCacheWithRecycling<Keccak, BlockHeader>(CacheSize, CacheSize, "headers");
@@ -81,7 +82,7 @@ namespace Nethermind.Blockchain
                 _lowestInsertedReceiptBlock = value;
                 if (value.HasValue)
                 {
-                    _blockDb.Set(Keccak.Zero, Rlp.Encode(value.Value).Bytes);
+                    _blockDb.Set(LowestInsertedBodyNumberDbEntryAddress, Rlp.Encode(value.Value).Bytes);
                 }
             }
         }
@@ -182,7 +183,7 @@ namespace Nethermind.Blockchain
         private void LoadLowestInsertedBodyNumber()
         {
             LowestInsertedBodyNumber =
-                _blockDb.Get(Keccak.Zero)?
+                _blockDb.Get(LowestInsertedBodyNumberDbEntryAddress)?
                 .AsRlpValueContext().DecodeLong(); 
         }
         

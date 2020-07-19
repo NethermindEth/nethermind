@@ -30,6 +30,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
+using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Network.Rlpx;
@@ -311,19 +312,6 @@ namespace Nethermind.Network.P2P
             return new BlockHeadersMessage(headers);
         }
 
-        protected void Handle(BlockHeadersMessage message, long size)
-        {
-            Metrics.Eth62BlockHeadersReceived++;
-            using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
-            cancellationTokenSource.CancelAfter(1000);
-            Request<GetBlockHeadersMessage, BlockHeader[]> request = _headersRequests.Take(cancellationTokenSource.Token);
-            if (message.PacketType == Eth62MessageCode.BlockHeaders)
-            {
-                request.ResponseSize = size;
-                request.CompletionSource.SetResult(message.BlockHeaders);
-            }
-        }
-
         protected void Handle(GetBlockBodiesMessage request)
         {
             Metrics.Eth62GetBlockBodiesReceived++;
@@ -359,6 +347,22 @@ namespace Nethermind.Network.P2P
 
             return new BlockBodiesMessage(blocks);
         }
+        
+        protected void Handle(BlockHeadersMessage message, long size)
+        {
+            Metrics.Eth62BlockHeadersReceived++;
+            if (_headersRequests.TryTake(
+                out Request<GetBlockHeadersMessage, BlockHeader[]> request,
+                TimeSpan.FromSeconds(1)))
+            {
+                request.ResponseSize = size;
+                request.CompletionSource.SetResult(message.BlockHeaders);
+            }
+            else
+            {
+                throw new SubprotocolException($"Received a {nameof(BlockHeadersMessage)} that has not been requested");
+            }
+        }
 
         protected void HandleBodies(IByteBuffer buffer, long size)
         {
@@ -373,6 +377,10 @@ namespace Nethermind.Network.P2P
                 // Logger.Warn($"Bodies message of size {size} from {this}");
                 request.ResponseSize = size;
                 request.CompletionSource.SetResult(message.Bodies);
+            }
+            else
+            {
+                throw new SubprotocolException($"Received a {nameof(BlockBodiesMessage)} that has not been requested");
             }
         }
 

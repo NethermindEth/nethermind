@@ -1498,7 +1498,7 @@ namespace Nethermind.Blockchain.Test
         }
         
         [Test]
-        public async Task Visitor_can_block_addind_blocks()
+        public async Task Visitor_can_block_adding_blocks()
         {
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
             var manualResetEvent = new ManualResetEvent(false);
