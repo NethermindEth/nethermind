@@ -19,30 +19,33 @@ using System;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Logging;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
     internal class SyncStatusList
     {
+        private ILogger _logger;
         private long _queueSize;
         private readonly IBlockTree _blockTree;
         private FastBlockStatus[] _statuses;
-        
+
         public long LowestInsertWithoutGaps { get; private set; }
         public long QueueSize => _queueSize;
 
-        public SyncStatusList(IBlockTree blockTree, long pivotNumber, long? lowestInserted)
+        public SyncStatusList(IBlockTree blockTree, long pivotNumber, long? lowestInserted, ILogManager logManager)
         {
-            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _logger = logManager.GetClassLogger();
+            _blockTree = blockTree;
             _statuses = new FastBlockStatus[pivotNumber + 1];
-            
+
             LowestInsertWithoutGaps = lowestInserted ?? pivotNumber;
         }
 
         public BlockInfo[] GetInfosForBatch(int maxRequestSize)
         {
             int collected = 0;
-            BlockInfo[] blockInfos = new BlockInfo[maxRequestSize]; 
+            BlockInfo[] blockInfos = new BlockInfo[maxRequestSize];
 
             long currentNumber = LowestInsertWithoutGaps;
             lock (_statuses)
@@ -54,13 +57,23 @@ namespace Nethermind.Synchronization.FastBlocks
                         collected++;
                         continue;
                     }
-                    
+
                     switch (_statuses[currentNumber])
                     {
                         case FastBlockStatus.Unknown:
-                            blockInfos[collected] = _blockTree.FindBlockInfo(currentNumber);
-                            _statuses[currentNumber] = FastBlockStatus.Sent;
-                            collected++;
+                            BlockInfo? blockInfo = _blockTree.FindBlockInfo(currentNumber);
+                            if (blockInfo == null)
+                            {
+                                if (_logger.IsWarn)
+                                    _logger.Warn($"Could not find {nameof(BlockInfo)} for {currentNumber}");
+                            }
+                            else
+                            {
+                                blockInfos[collected] = blockInfo;
+                                _statuses[currentNumber] = FastBlockStatus.Sent;
+                                collected++;
+                            }
+
                             break;
                         case FastBlockStatus.Inserted:
                             if (currentNumber == LowestInsertWithoutGaps)
@@ -104,7 +117,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 _statuses[blockNumber] = FastBlockStatus.Unknown;
             }
         }
-        
+
         private enum FastBlockStatus : byte
         {
             Unknown = 0,
