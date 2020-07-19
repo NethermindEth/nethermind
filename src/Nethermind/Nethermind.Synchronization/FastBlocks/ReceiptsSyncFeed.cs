@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.IO;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
@@ -127,7 +128,7 @@ namespace Nethermind.Synchronization.FastBlocks
                     batch.MinNumber = infos[0].BlockNumber;
                     batch.Prioritized = true;
                 }
-                
+
                 // Array.Reverse(infos);
             }
 
@@ -143,10 +144,10 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 if (batch == null)
                 {
-                    if(_logger.IsDebug) _logger.Debug("Received a NULL batch as a response");
+                    if (_logger.IsDebug) _logger.Debug("Received a NULL batch as a response");
                     return SyncResponseHandlingResult.InternalError;
                 }
-                
+
                 int added = InsertReceipts(batch);
                 return added == 0 ? SyncResponseHandlingResult.NoProgress : SyncResponseHandlingResult.OK;
             }
@@ -190,7 +191,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 TxReceipt[]? receipts = (batch.Response?.Length ?? 0) <= i
                     ? null
                     : (batch.Response![i] ?? Array.Empty<TxReceipt>());
-                
+
                 if (receipts != null)
                 {
                     TxReceipt[]? prepared = null;
@@ -199,14 +200,21 @@ namespace Nethermind.Synchronization.FastBlocks
                     {
                         break;
                     }
-                    
+
                     bool isValid = !hasBreachedProtocol && TryPrepareReceipts(blockInfo, receipts, out prepared);
                     if (isValid)
                     {
-                        validResponsesCount++;
                         Block block = _blockTree.FindBlock(blockInfo.BlockHash);
-                        _receiptStorage.Insert(block, prepared);
-                        _syncStatusList.MarkInserted(block.Number);
+                        try
+                        {
+                            _receiptStorage.Insert(block, prepared);
+                            _syncStatusList.MarkInserted(block.Number);
+                            validResponsesCount++;
+                        }
+                        catch (InvalidDataException)
+                        {
+                            _syncStatusList.MarkUnknown(blockInfo.BlockNumber);
+                        }
                     }
                     else
                     {

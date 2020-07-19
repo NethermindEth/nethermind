@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -221,7 +222,9 @@ namespace Nethermind.Blockchain.Receipts
             
             if (block.Transactions.Length != txReceipts.Length)
             {
-                throw new ArgumentException($"Block {block.ToString(Block.Format.FullHashAndNumber)} has different number of transactions than receipts.");
+                throw new InvalidDataException(
+                    $"Block {block.ToString(Block.Format.FullHashAndNumber)} has different numbers " +
+                    $"of transactions {block.Transactions.Length} and receipts {txReceipts.Length}.");
             }
 
             _receiptsRecovery.TryRecover(block, txReceipts);
