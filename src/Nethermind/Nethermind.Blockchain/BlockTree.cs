@@ -396,28 +396,28 @@ namespace Nethermind.Blockchain
 
         private void StoreHeaderInDb(BlockHeader header)
         {
-            IDbWithSpan dbWithSpan = _headerDb as IDbWithSpan;
-            if (dbWithSpan != null)
-            {
-                int length = _headerDecoder.GetLength(header, RlpBehaviors.None);
-                byte[] array = ArrayPool<byte>.Shared.Rent(length);
-                try
-                {
-                    RlpStream rlpStream = new RlpStream(array);
-                    _headerDecoder.Encode(rlpStream, header);
-                    dbWithSpan.SetSpan(header.Hash.Bytes, array.AsSpan(0, length));
-                    Array.Clear(array, 0, length);
-                }
-                finally
-                {
-                    ArrayPool<byte>.Shared.Return(array);
-                }
-            }
-            else
-            {
+            // IDbWithSpan dbWithSpan = _headerDb as IDbWithSpan;
+            // if (dbWithSpan != null)
+            // {
+            //     int length = _headerDecoder.GetLength(header, RlpBehaviors.None);
+            //     byte[] array = ArrayPool<byte>.Shared.Rent(length);
+            //     try
+            //     {
+            //         RlpStream rlpStream = new RlpStream(array);
+            //         _headerDecoder.Encode(rlpStream, header);
+            //         dbWithSpan.SetSpan(header.Hash.Bytes, array.AsSpan(0, length));
+            //         Array.Clear(array, 0, length);
+            //     }
+            //     finally
+            //     {
+            //         ArrayPool<byte>.Shared.Return(array);
+            //     }
+            // }
+            // else
+            // {
                 Rlp newRlp = _headerDecoder.Encode(header);
                 _headerDb.Set(header.Hash, newRlp.Bytes);
-            }
+            // }
         }
 
         public AddBlockResult Insert(Block block)
@@ -515,28 +515,28 @@ namespace Nethermind.Blockchain
 
         private void StoreBlockInDb(Block block)
         {
-            IDbWithSpan dbWithSpan = _blockDb as IDbWithSpan;
-            if (dbWithSpan != null)
-            {
-                int length = _blockDecoder.GetLength(block, RlpBehaviors.None);
-                byte[] array = ArrayPool<byte>.Shared.Rent(length);
-                try
-                {
-                    RlpStream rlpStream = new RlpStream(array);
-                    _blockDecoder.Encode(rlpStream, block);
-                    dbWithSpan.SetSpan(block.Hash.Bytes, array.AsSpan(0, length));
-                    Array.Clear(array, 0, length);
-                }
-                finally
-                {
-                    ArrayPool<byte>.Shared.Return(array);
-                }
-            }
-            else
-            {
+            // IDbWithSpan dbWithSpan = _blockDb as IDbWithSpan;
+            // if (dbWithSpan != null)
+            // {
+            //     int length = _blockDecoder.GetLength(block, RlpBehaviors.None);
+            //     byte[] array = ArrayPool<byte>.Shared.Rent(length);
+            //     try
+            //     {
+            //         RlpStream rlpStream = new RlpStream(array);
+            //         _blockDecoder.Encode(rlpStream, block);
+            //         dbWithSpan.SetSpan(block.Hash.Bytes, array.AsSpan(0, length));
+            //         Array.Clear(array, 0, length);
+            //     }
+            //     finally
+            //     {
+            //         ArrayPool<byte>.Shared.Return(array);
+            //     }
+            // }
+            // else
+            // {
                 Rlp newRlp = _blockDecoder.Encode(block);
                 _blockDb.Set(block.Hash, newRlp.Bytes);
-            }
+            // }
         }
 
         public AddBlockResult SuggestHeader(BlockHeader header)
