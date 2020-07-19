@@ -87,7 +87,11 @@ namespace Nethermind.Synchronization.ParallelSync
                 if (currentStateLocal == SyncFeedState.Dormant)
                 {
                     if(Logger.IsDebug) Logger.Debug($"{GetType().Name} is going to sleep.");
-                    if(Logger.IsWarn) Logger.Warn("Dormant task is NULL when trying to await it");
+                    if (dormantTaskLocal == null)
+                    {
+                        if (Logger.IsWarn) Logger.Warn("Dormant task is NULL when trying to await it");
+                    }
+
                     await (dormantTaskLocal?.Task ?? Task.CompletedTask);
                     if(Logger.IsDebug) Logger.Debug($"{GetType().Name} got activated.");
                 }
