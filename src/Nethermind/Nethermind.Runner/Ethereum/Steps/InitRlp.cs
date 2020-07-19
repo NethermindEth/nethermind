@@ -36,7 +36,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         [Todo(Improve.Refactor, "Automatically scan all the references solutions?")]
         public virtual Task Execute(CancellationToken _)
         {
-            Assembly? assembly = Assembly.GetAssembly(typeof(NetworkNodeDecoder))
+            Assembly? assembly = Assembly.GetAssembly(typeof(NetworkNodeDecoder));
             if (assembly != null)
             {
                 Rlp.RegisterDecoders(assembly);
