@@ -309,6 +309,7 @@ namespace Nethermind.Synchronization.ParallelSync
             bool fastBodiesNotFinished = !FastBlocksBodiesFinished;
             bool fastHeadersFinished = FastBlocksHeadersFinished;
             bool notInStateSync = !best.IsInStateSync;
+            bool stateSyncFinished = best.State > 0;
 
             if (_logger.IsTrace)
             {
@@ -316,11 +317,12 @@ namespace Nethermind.Synchronization.ParallelSync
                 _logger.Trace("fastBodiesNotFinished " + fastBodiesNotFinished);
                 _logger.Trace("fastHeadersFinished " + fastHeadersFinished);
                 _logger.Trace("notInStateSync " + notInStateSync);
+                _logger.Trace("stateSyncFinished " + stateSyncFinished);
             }
 
             // fast blocks bodies can run if there are peers until it is done
             // fast blocks bodies can run in parallel with full sync when headers are finished
-            return fastBodiesNotFinished && fastHeadersFinished && notInStateSync;
+            return fastBodiesNotFinished && fastHeadersFinished && notInStateSync && stateSyncFinished;
         }
 
         private bool ShouldBeInFastReceiptsMode(Snapshot best)
@@ -328,6 +330,7 @@ namespace Nethermind.Synchronization.ParallelSync
             bool fastReceiptsNotFinished = !FastBlocksReceiptsFinished;
             bool fastBodiesFinished = FastBlocksBodiesFinished;
             bool notInStateSync = !best.IsInStateSync;
+            bool stateSyncFinished = best.State > 0;
             
             if (_logger.IsTrace)
             {
@@ -335,11 +338,12 @@ namespace Nethermind.Synchronization.ParallelSync
                 _logger.Trace("fastReceiptsNotFinished " + fastReceiptsNotFinished);
                 _logger.Trace("fastBodiesFinished " + fastBodiesFinished);
                 _logger.Trace("notInStateSync " + notInStateSync);
+                _logger.Trace("stateSyncFinished " + stateSyncFinished);
             }
             
             // fast blocks receipts can run if there are peers until it is done
             // fast blocks receipts can run in parallel with full sync when bodies are finished
-            return fastReceiptsNotFinished && fastBodiesFinished && notInStateSync;
+            return fastReceiptsNotFinished && fastBodiesFinished && notInStateSync && stateSyncFinished;
         }
 
         private bool ShouldBeInStateNodesMode(Snapshot best)
