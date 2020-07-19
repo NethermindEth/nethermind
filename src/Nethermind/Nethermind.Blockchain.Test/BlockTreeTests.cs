@@ -1061,16 +1061,20 @@ namespace Nethermind.Blockchain.Test
         [Test, TestCaseSource("SourceOfBSearchTestCases")]
         public void Loads_lowest_inserted_body_correctly(long beginIndex, long insertedBlocks)
         {
-            long? expectedResult = insertedBlocks == 0L ? (long?) null : beginIndex - insertedBlocks + 1L;
-
+            // left old code to prove that it does not matter for the result nowadays
+            // we store and no longer binary search lowest body number
+            
             MemDb blocksDb = new MemDb();
             MemDb blockInfosDb = new MemDb();
             MemDb headersDb = new MemDb();
+            
+            blocksDb.Set(0, Rlp.Encode(1L).Bytes);
 
             SyncConfig syncConfig = new SyncConfig();
             syncConfig.PivotNumber = beginIndex.ToString();
 
-            BlockTree tree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
+            var repo = new ChainLevelInfoRepository(blockInfosDb);
+            BlockTree tree = new BlockTree(blocksDb, headersDb, blockInfosDb, repo, MainnetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
             tree.SuggestBlock(Build.A.Block.Genesis.TestObject);
 
             for (long i = beginIndex; i > beginIndex - insertedBlocks; i--)
@@ -1080,10 +1084,11 @@ namespace Nethermind.Blockchain.Test
                 tree.Insert(block);
             }
 
-            BlockTree loadedTree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
+            var loadedRepo = new ChainLevelInfoRepository(blockInfosDb);
+            BlockTree loadedTree = new BlockTree(blocksDb, headersDb, blockInfosDb, loadedRepo, MainnetSpecProvider.Instance, NullTxPool.Instance, NullBloomStorage.Instance, syncConfig, LimboLogs.Instance);
 
-            Assert.AreEqual(expectedResult, tree.LowestInsertedBodyNumber, "tree");
-            Assert.AreEqual(expectedResult, loadedTree.LowestInsertedBodyNumber, "loaded tree");
+            Assert.AreEqual(null, tree.LowestInsertedBodyNumber, "tree");
+            Assert.AreEqual(1, loadedTree.LowestInsertedBodyNumber, "loaded tree");
         }
         
         
