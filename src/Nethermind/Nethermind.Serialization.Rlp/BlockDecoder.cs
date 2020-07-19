@@ -19,12 +19,12 @@ using Nethermind.Core;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public class BlockDecoder : IRlpDecoder<Block>, IRlpValueDecoder<Block>
+    public class BlockDecoder : IRlpDecoder<Block?>, IRlpValueDecoder<Block?>
     {
         private HeaderDecoder _headerDecoder = new HeaderDecoder();
         private TransactionDecoder _txDecoder = new TransactionDecoder();
         
-        public Block Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Block? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (rlpStream.IsNextItemNull())
             {
@@ -100,7 +100,7 @@ namespace Nethermind.Serialization.Rlp
             return txLength;
         }
 
-        public int GetLength(Block item, RlpBehaviors rlpBehaviors)
+        public int GetLength(Block? item, RlpBehaviors rlpBehaviors)
         {
             if (item == null)
             {
@@ -110,7 +110,7 @@ namespace Nethermind.Serialization.Rlp
             return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors).Total);
         }
 
-        public Block Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Block? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (decoderContext.IsNextItemNull())
             {
@@ -151,7 +151,7 @@ namespace Nethermind.Serialization.Rlp
             return new Block(header, transactions, ommerHeaders);
         }
 
-        public Rlp Encode(Block item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Rlp Encode(Block? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item == null)
             {
@@ -163,7 +163,7 @@ namespace Nethermind.Serialization.Rlp
             return new Rlp(rlpStream.Data);
         }
         
-        public void Encode(RlpStream stream, Block item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public void Encode(RlpStream stream, Block? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item == null)
             {

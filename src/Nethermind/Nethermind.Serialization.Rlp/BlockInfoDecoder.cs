@@ -18,7 +18,7 @@ using Nethermind.Core;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public class BlockInfoDecoder : IRlpDecoder<BlockInfo>, IRlpValueDecoder<BlockInfo>
+    public class BlockInfoDecoder : IRlpDecoder<BlockInfo?>, IRlpValueDecoder<BlockInfo?>
     {
         private readonly bool _chainWithFinalization;
 
@@ -30,7 +30,7 @@ namespace Nethermind.Serialization.Rlp
         // ReSharper disable once UnusedMember.Global this is needed for auto-registration
         public BlockInfoDecoder() : this(false) { }
         
-        public BlockInfo Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public BlockInfo? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (rlpStream.IsNextItemNull())
             {
@@ -60,7 +60,7 @@ namespace Nethermind.Serialization.Rlp
             return blockInfo;
         }
 
-        public Rlp Encode(BlockInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Rlp Encode(BlockInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item == null)
             {
@@ -80,12 +80,12 @@ namespace Nethermind.Serialization.Rlp
             return Rlp.Encode(elements);
         }
 
-        public int GetLength(BlockInfo item, RlpBehaviors rlpBehaviors)
+        public int GetLength(BlockInfo? item, RlpBehaviors rlpBehaviors)
         {
             throw new System.NotImplementedException();
         }
 
-        public BlockInfo Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public BlockInfo? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (decoderContext.IsNextItemNull())
             {

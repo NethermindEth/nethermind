@@ -27,6 +27,7 @@ namespace Nethermind.Network.P2P
         private int _initialPosition;
 
         public NettyRlpStream(IByteBuffer buffer)
+            : base(Array.Empty<byte>())
         {
             _buffer = buffer;
             _initialPosition = buffer.ReaderIndex;

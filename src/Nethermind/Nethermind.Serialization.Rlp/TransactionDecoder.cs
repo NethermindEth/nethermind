@@ -21,9 +21,13 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public class TransactionDecoder : IRlpDecoder<Transaction>, IRlpValueDecoder<Transaction>, IRlpDecoder<SystemTransaction>, IRlpDecoder<GeneratedTransaction>
+    public class TransactionDecoder :
+        IRlpDecoder<Transaction?>,
+        IRlpValueDecoder<Transaction?>,
+        IRlpDecoder<SystemTransaction?>,
+        IRlpDecoder<GeneratedTransaction?>
     {
-        public Transaction Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Transaction? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (rlpStream.IsNextItemNull())
             {
@@ -58,7 +62,7 @@ namespace Nethermind.Serialization.Rlp
 
                 bool allowUnsigned = (rlpBehaviors & RlpBehaviors.AllowUnsigned) == RlpBehaviors.AllowUnsigned;
                 bool isSignatureOk = true;
-                string signatureError = null;
+                string? signatureError = null;
                 if (vBytes == null || rBytes == null || sBytes == null)
                 {
                     isSignatureOk = false;
@@ -109,7 +113,7 @@ namespace Nethermind.Serialization.Rlp
             return transaction;
         }
 
-        public Transaction Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Transaction? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (decoderContext.IsNextItemNull())
             {
@@ -144,7 +148,7 @@ namespace Nethermind.Serialization.Rlp
 
                 bool allowUnsigned = (rlpBehaviors & RlpBehaviors.AllowUnsigned) == RlpBehaviors.AllowUnsigned;
                 bool isSignatureOk = true;
-                string signatureError = null;
+                string? signatureError = null;
                 if (vBytes == null || rBytes == null || sBytes == null)
                 {
                     isSignatureOk = false;
@@ -195,15 +199,21 @@ namespace Nethermind.Serialization.Rlp
             return transaction;
         }
 
-        public Rlp Encode(Transaction item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Rlp Encode(Transaction? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             RlpStream rlpStream = new RlpStream(GetLength(item, rlpBehaviors));
             Encode(rlpStream, item, rlpBehaviors);
             return new Rlp(rlpStream.Data);
         }
 
-        public void Encode(RlpStream stream, Transaction item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public void Encode(RlpStream stream, Transaction? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
+            if (item == null)
+            {
+                stream.Encode(Rlp.OfEmptySequence);
+                return;
+            }
+            
             int contentLength = GetContentLength(item, false);
             stream.StartSequence(contentLength);
             stream.Encode(item.Nonce);
@@ -217,8 +227,13 @@ namespace Nethermind.Serialization.Rlp
             stream.Encode(item.Signature == null ? null : item.Signature.SAsSpan.WithoutLeadingZeros());
         }
 
-        private int GetContentLength(Transaction item, bool forSigning, bool isEip155Enabled = false, int chainId = 0)
+        private int GetContentLength(Transaction? item, bool forSigning, bool isEip155Enabled = false, int chainId = 0)
         {
+            if (item == null)
+            {
+                return 0;
+            }
+            
             int contentLength = Rlp.LengthOf(item.Nonce)
                                 + Rlp.LengthOf(item.GasPrice)
                                 + Rlp.LengthOf(item.GasLimit)
@@ -245,22 +260,27 @@ namespace Nethermind.Serialization.Rlp
             return contentLength;
         }
 
-        public int GetLength(Transaction item, RlpBehaviors rlpBehaviors) => Rlp.GetSequenceRlpLength(GetContentLength(item, false));
+        public int GetLength(Transaction? item, RlpBehaviors rlpBehaviors)
+            => Rlp.GetSequenceRlpLength(GetContentLength(item, false));
 
-        Rlp IRlpDecoder<GeneratedTransaction>.Encode(GeneratedTransaction item, RlpBehaviors rlpBehaviors) => Encode(item, rlpBehaviors);
+        Rlp IRlpDecoder<GeneratedTransaction?>.Encode(GeneratedTransaction? item, RlpBehaviors rlpBehaviors)
+            => Encode(item, rlpBehaviors);
 
-        int IRlpDecoder<GeneratedTransaction>.GetLength(GeneratedTransaction item, RlpBehaviors rlpBehaviors) => GetLength(item, rlpBehaviors);
+        int IRlpDecoder<GeneratedTransaction?>.GetLength(GeneratedTransaction? item, RlpBehaviors rlpBehaviors)
+            => GetLength(item, rlpBehaviors);
 
-        Rlp IRlpDecoder<SystemTransaction>.Encode(SystemTransaction item, RlpBehaviors rlpBehaviors) => Encode(item, rlpBehaviors);
+        Rlp IRlpDecoder<SystemTransaction?>.Encode(SystemTransaction? item, RlpBehaviors rlpBehaviors)
+            => Encode(item, rlpBehaviors);
 
-        int IRlpDecoder<SystemTransaction>.GetLength(SystemTransaction item, RlpBehaviors rlpBehaviors) => GetLength(item, rlpBehaviors);
+        int IRlpDecoder<SystemTransaction?>.GetLength(SystemTransaction? item, RlpBehaviors rlpBehaviors)
+            => GetLength(item, rlpBehaviors);
 
-        SystemTransaction IRlpDecoder<SystemTransaction>.Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors)
+        SystemTransaction IRlpDecoder<SystemTransaction?>.Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors)
         {
             throw new NotSupportedException();
         }
 
-        GeneratedTransaction IRlpDecoder<GeneratedTransaction>.Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors)
+        GeneratedTransaction IRlpDecoder<GeneratedTransaction?>.Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors)
         {
             throw new NotSupportedException();
         }

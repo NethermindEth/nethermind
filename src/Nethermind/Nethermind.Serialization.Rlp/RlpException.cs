@@ -25,7 +25,7 @@ namespace Nethermind.Serialization.Rlp
         {
         }
         
-        public RlpException(string message)
+        public RlpException(string? message)
             : base(message)
         {
         }

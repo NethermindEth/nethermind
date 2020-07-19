@@ -20,9 +20,9 @@ using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public class HeaderDecoder : IRlpValueDecoder<BlockHeader>, IRlpDecoder<BlockHeader>
+    public class HeaderDecoder : IRlpValueDecoder<BlockHeader?>, IRlpDecoder<BlockHeader?>
     {
-        public BlockHeader Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public BlockHeader? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (decoderContext.IsNextItemNull())
             {
@@ -33,13 +33,13 @@ namespace Nethermind.Serialization.Rlp
             int headerSequenceLength = decoderContext.ReadSequenceLength();
             int headerCheck = decoderContext.Position + headerSequenceLength;
 
-            Keccak parentHash = decoderContext.DecodeKeccak();
-            Keccak ommersHash = decoderContext.DecodeKeccak();
-            Address beneficiary = decoderContext.DecodeAddress();
-            Keccak stateRoot = decoderContext.DecodeKeccak();
-            Keccak transactionsRoot = decoderContext.DecodeKeccak();
-            Keccak receiptsRoot = decoderContext.DecodeKeccak();
-            Bloom bloom = decoderContext.DecodeBloom();
+            Keccak? parentHash = decoderContext.DecodeKeccak();
+            Keccak? ommersHash = decoderContext.DecodeKeccak();
+            Address? beneficiary = decoderContext.DecodeAddress();
+            Keccak? stateRoot = decoderContext.DecodeKeccak();
+            Keccak? transactionsRoot = decoderContext.DecodeKeccak();
+            Keccak? receiptsRoot = decoderContext.DecodeKeccak();
+            Bloom? bloom = decoderContext.DecodeBloom();
             UInt256 difficulty = decoderContext.DecodeUInt256();
             UInt256 number = decoderContext.DecodeUInt256();
             UInt256 gasLimit = decoderContext.DecodeUInt256();
@@ -84,7 +84,7 @@ namespace Nethermind.Serialization.Rlp
             return blockHeader;
         }
 
-        public BlockHeader Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public BlockHeader? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (rlpStream.IsNextItemNull())
             {
@@ -96,13 +96,13 @@ namespace Nethermind.Serialization.Rlp
             int headerSequenceLength = rlpStream.ReadSequenceLength();
             int headerCheck = rlpStream.Position + headerSequenceLength;
 
-            Keccak parentHash = rlpStream.DecodeKeccak();
-            Keccak ommersHash = rlpStream.DecodeKeccak();
-            Address beneficiary = rlpStream.DecodeAddress();
-            Keccak stateRoot = rlpStream.DecodeKeccak();
-            Keccak transactionsRoot = rlpStream.DecodeKeccak();
-            Keccak receiptsRoot = rlpStream.DecodeKeccak();
-            Bloom bloom = rlpStream.DecodeBloom();
+            Keccak? parentHash = rlpStream.DecodeKeccak();
+            Keccak? ommersHash = rlpStream.DecodeKeccak();
+            Address? beneficiary = rlpStream.DecodeAddress();
+            Keccak? stateRoot = rlpStream.DecodeKeccak();
+            Keccak? transactionsRoot = rlpStream.DecodeKeccak();
+            Keccak? receiptsRoot = rlpStream.DecodeKeccak();
+            Bloom? bloom = rlpStream.DecodeBloom();
             UInt256 difficulty = rlpStream.DecodeUInt256();
             UInt256 number = rlpStream.DecodeUInt256();
             UInt256 gasLimit = rlpStream.DecodeUInt256();
@@ -177,6 +177,11 @@ namespace Nethermind.Serialization.Rlp
                 
                 if (isAuRa)
                 {
+                    if (item.AuRaStep == null)
+                    {
+                        throw new RlpException("AuRa step is missing on an AuRa block");
+                    }
+                    
                     rlpStream.Encode(item.AuRaStep.Value);
                     rlpStream.Encode(item.AuRaSignature);
                 }
@@ -188,7 +193,7 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        public Rlp Encode(BlockHeader item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Rlp Encode(BlockHeader? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item == null)
             {
@@ -201,7 +206,7 @@ namespace Nethermind.Serialization.Rlp
             return new Rlp(rlpStream.Data);
         }
 
-        private int GetContentLength(BlockHeader item, RlpBehaviors rlpBehaviors)
+        private int GetContentLength(BlockHeader? item, RlpBehaviors rlpBehaviors)
         {
             if (item == null)
             {
@@ -226,10 +231,19 @@ namespace Nethermind.Serialization.Rlp
 
             if (notForSealing)
             {
-                var isAUra = item.AuRaSignature != null;
-                
-                if (isAUra)
+                bool isAuRa = item.AuRaSignature != null;
+                if (isAuRa)
                 {
+                    if (item.AuRaStep == null)
+                    {
+                        throw new RlpException($"{nameof(item.AuRaStep)} is missing on an AuRa block");
+                    }
+                    
+                    if (item.AuRaSignature == null)
+                    {
+                        throw new RlpException($"{nameof(item.AuRaSignature)} is missing on an AuRa block");
+                    }
+                    
                     contentLength += Rlp.LengthOf(item.AuRaStep.Value);
                     contentLength += Rlp.LengthOf(item.AuRaSignature);
                 }
@@ -243,7 +257,7 @@ namespace Nethermind.Serialization.Rlp
             return contentLength;
         }
 
-        public int GetLength(BlockHeader item, RlpBehaviors rlpBehaviors)
+        public int GetLength(BlockHeader? item, RlpBehaviors rlpBehaviors)
         {
             return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
         }

@@ -19,11 +19,11 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public class LogEntryDecoder : IRlpDecoder<LogEntry>, IRlpValueDecoder<LogEntry>
+    public class LogEntryDecoder : IRlpDecoder<LogEntry?>, IRlpValueDecoder<LogEntry?>
     {
         public static readonly LogEntryDecoder Instance = new LogEntryDecoder();
         
-        public LogEntry Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public LogEntry? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (rlpStream.IsNextItemNull())
             {
@@ -32,9 +32,9 @@ namespace Nethermind.Serialization.Rlp
             }
             
             rlpStream.ReadSequenceLength();
-            Address address = rlpStream.DecodeAddress();
+            Address? address = rlpStream.DecodeAddress();
             long sequenceLength = rlpStream.ReadSequenceLength();
-            Keccak[] topics = new Keccak[sequenceLength / 33];
+            Keccak?[] topics = new Keccak[sequenceLength / 33];
             for (int i = 0; i < topics.Length; i++)
             {
                 topics[i] = rlpStream.DecodeKeccak();
@@ -45,7 +45,7 @@ namespace Nethermind.Serialization.Rlp
             return new LogEntry(address, data, topics);
         }
 
-        public LogEntry Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public LogEntry? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (decoderContext.IsNextItemNull())
             {
@@ -54,9 +54,9 @@ namespace Nethermind.Serialization.Rlp
             }
             
             decoderContext.ReadSequenceLength();
-            Address address = decoderContext.DecodeAddress();
+            Address? address = decoderContext.DecodeAddress();
             long sequenceLength = decoderContext.ReadSequenceLength();
-            Keccak[] topics = new Keccak[sequenceLength / 33];
+            Keccak?[] topics = new Keccak[sequenceLength / 33];
             for (int i = 0; i < topics.Length; i++)
             {
                 topics[i] = decoderContext.DecodeKeccak();
@@ -67,7 +67,7 @@ namespace Nethermind.Serialization.Rlp
             return new LogEntry(address, data, topics);
         }
 
-        public Rlp Encode(LogEntry item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Rlp Encode(LogEntry? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item == null)
             {
@@ -101,7 +101,7 @@ namespace Nethermind.Serialization.Rlp
             rlpStream.Encode(item.Data);   
         }
         
-        public int GetLength(LogEntry item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public int GetLength(LogEntry? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item == null)
             {
@@ -113,13 +113,12 @@ namespace Nethermind.Serialization.Rlp
         
         private (int Total, int Topics) GetContentLength(LogEntry item)
         {
-            var contentLength = 0;
             if (item == null)
             {
-                return (contentLength, 0);
+                return (0, 0);
             }
 
-            contentLength += Rlp.LengthOf(item.LoggersAddress);
+            int contentLength = Rlp.LengthOf(item.LoggersAddress);
             
             int topicsLength = GetTopicsLength(item);
             contentLength += Rlp.GetSequenceRlpLength(topicsLength);

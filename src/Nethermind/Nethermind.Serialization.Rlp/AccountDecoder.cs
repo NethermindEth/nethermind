@@ -23,13 +23,20 @@ namespace Nethermind.Serialization.Rlp
 {
     public class AccountDecoder : IRlpDecoder<Account>
     {
-        public (Keccak CodeHash, Keccak StorageRoot) DecodeHashesOnly(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public (Keccak CodeHash, Keccak StorageRoot) DecodeHashesOnly(
+            RlpStream rlpStream,
+            RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             rlpStream.SkipLength();
             rlpStream.SkipItem();
             rlpStream.SkipItem();
-            Keccak storageRoot = rlpStream.DecodeKeccak();
-            Keccak codeHash = rlpStream.DecodeKeccak();
+            Keccak? storageRoot = rlpStream.DecodeKeccak();
+            Keccak? codeHash = rlpStream.DecodeKeccak();
+            if (codeHash == null || storageRoot == null)
+            {
+                throw new RlpException($"One of account hashes is null (code:{codeHash}, storage:{storageRoot})");
+            }
+            
             return (codeHash, storageRoot);
         }
         
@@ -38,8 +45,13 @@ namespace Nethermind.Serialization.Rlp
             rlpStream.ReadSequenceLength();
             UInt256 nonce = rlpStream.DecodeUInt256();
             UInt256 balance = rlpStream.DecodeUInt256();
-            Keccak storageRoot = rlpStream.DecodeKeccak();
-            Keccak codeHash = rlpStream.DecodeKeccak();
+            Keccak? storageRoot = rlpStream.DecodeKeccak();
+            Keccak? codeHash = rlpStream.DecodeKeccak();
+            if (codeHash == null || storageRoot == null)
+            {
+                throw new RlpException($"One of account hashes is null (code:{codeHash}, storage:{storageRoot})");
+            }
+            
             Account account = new Account(nonce, balance, storageRoot, codeHash);
             return account;
         }

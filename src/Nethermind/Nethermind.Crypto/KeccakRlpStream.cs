@@ -27,6 +27,7 @@ namespace Nethermind.Crypto
         private readonly KeccakHash _keccakHash;
 
         public KeccakRlpStream(KeccakHash keccakHash)
+            : base(Array.Empty<byte>())
         {
             _keccakHash = keccakHash;
         }
@@ -43,7 +44,7 @@ namespace Nethermind.Crypto
 
         protected override void WriteZero(int length)
         {
-            Span<byte> zeros = stackalloc byte[length]; 
+            Span<byte> zeros = stackalloc byte[length];
             Write(zeros);
         }
 

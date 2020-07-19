@@ -31,15 +31,11 @@ namespace Nethermind.Serialization.Rlp
         private static ReceiptMessageDecoder _receiptDecoder = new ReceiptMessageDecoder();
         private static LogEntryDecoder _logEntryDecoder = new LogEntryDecoder();
 
-        protected RlpStream()
-        {
-        }
-        
         public int MemorySize => MemorySizes.SmallObjectOverhead;
         
         public RlpStream(int length)
         {
-            Data = new byte[length]; ;
+            Data = new byte[length];
         }
 
         public RlpStream(byte[] data)
@@ -99,6 +95,7 @@ namespace Nethermind.Serialization.Rlp
             if (value < 1 << 16)
             {
                 WriteByte((byte) (value >> 8));
+                // ReSharper disable once IntVariableOverflowInUncheckedContext
                 WriteByte((byte) value);
                 return;
             }
@@ -107,6 +104,7 @@ namespace Nethermind.Serialization.Rlp
             {
                 WriteByte((byte) (value >> 16));
                 WriteByte((byte) (value >> 8));
+                // ReSharper disable once IntVariableOverflowInUncheckedContext
                 WriteByte((byte) value);
                 return;
             }
@@ -114,6 +112,7 @@ namespace Nethermind.Serialization.Rlp
             WriteByte((byte) (value >> 24));
             WriteByte((byte) (value >> 16));
             WriteByte((byte) (value >> 8));
+            // ReSharper disable once IntVariableOverflowInUncheckedContext
             WriteByte((byte) value);
         }
 
@@ -620,7 +619,7 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        public Keccak DecodeKeccak()
+        public Keccak? DecodeKeccak()
         {
             int prefix = ReadByte();
             if (prefix == 128)
@@ -647,7 +646,7 @@ namespace Nethermind.Serialization.Rlp
             return new Keccak(keccakSpan.ToArray());
         }
 
-        public Address DecodeAddress()
+        public Address? DecodeAddress()
         {
             int prefix = ReadByte();
             if (prefix == 128)
@@ -700,7 +699,7 @@ namespace Nethermind.Serialization.Rlp
             return bytes.ToUnsignedBigInteger();
         }
 
-        public Bloom DecodeBloom()
+        public Bloom? DecodeBloom()
         {
             ReadOnlySpan<byte> bloomBytes;
 

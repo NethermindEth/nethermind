@@ -20,9 +20,11 @@ using Nethermind.Core;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public class ChainLevelDecoder : IRlpDecoder<ChainLevelInfo>, IRlpValueDecoder<ChainLevelInfo>
+    // ReSharper disable once UnusedType.Global
+    // I think the type is used in registration of decoders and then resolved via reflection
+    public class ChainLevelDecoder : IRlpDecoder<ChainLevelInfo?>, IRlpValueDecoder<ChainLevelInfo?>
     {
-        public ChainLevelInfo Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public ChainLevelInfo? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (rlpStream.IsNextItemNull())
             {
@@ -49,7 +51,7 @@ namespace Nethermind.Serialization.Rlp
             return info;
         }
 
-        public ChainLevelInfo Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public ChainLevelInfo? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (decoderContext.IsNextItemNull())
             {
@@ -76,7 +78,7 @@ namespace Nethermind.Serialization.Rlp
             return info;
         }
 
-        public Rlp Encode(ChainLevelInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Rlp Encode(ChainLevelInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item == null)
             {
@@ -99,9 +101,9 @@ namespace Nethermind.Serialization.Rlp
             return rlp;
         }
 
-        public int GetLength(ChainLevelInfo item, RlpBehaviors rlpBehaviors)
+        public int GetLength(ChainLevelInfo? item, RlpBehaviors rlpBehaviors)
         {
-            throw new System.NotImplementedException();
+            throw new NotSupportedException();
         }
     }
 }
