@@ -33,7 +33,11 @@ namespace Nethermind.Synchronization.ParallelSync
         protected ISyncFeed<T> Feed { get; }
         protected ISyncPeerPool SyncPeerPool { get; }
 
-        protected SyncDispatcher(ISyncFeed<T> syncFeed, ISyncPeerPool syncPeerPool, IPeerAllocationStrategyFactory<T> peerAllocationStrategy, ILogManager logManager)
+        protected SyncDispatcher(
+            ISyncFeed<T> syncFeed,
+            ISyncPeerPool syncPeerPool,
+            IPeerAllocationStrategyFactory<T> peerAllocationStrategy,
+            ILogManager logManager)
         {
             Logger = logManager?.GetClassLogger<SyncDispatcher<T>>() ?? throw new ArgumentNullException(nameof(logManager));
             Feed = syncFeed ?? throw new ArgumentNullException(nameof(syncFeed));

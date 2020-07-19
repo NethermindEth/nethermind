@@ -84,10 +84,22 @@ namespace Nethermind.Synchronization.Blocks
             _syncReport.FullSyncBlocksKnown = Math.Max(_syncReport.FullSyncBlocksKnown, e.Block.Number);
         }
 
-        protected override async Task Dispatch(PeerInfo bestPeer, BlocksRequest blocksRequest, CancellationToken cancellation)
+        protected override async Task Dispatch(
+            PeerInfo bestPeer,
+            BlocksRequest? blocksRequest,
+            CancellationToken cancellation)
         {
+            if (blocksRequest == null)
+            {
+                if(Logger.IsWarn) Logger.Warn($"NULL received for dispatch in {nameof(BlockDownloader)}");
+                return;
+            }
+            
             if (!_blockTree.CanAcceptNewBlocks) return;
-            CancellationTokenSource linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellation, _allocationWithCancellation.Cancellation.Token);
+            CancellationTokenSource linkedCancellation =
+                CancellationTokenSource.CreateLinkedTokenSource(
+                    cancellation,
+                    _allocationWithCancellation.Cancellation.Token);
 
             try
             {
@@ -594,8 +606,13 @@ namespace Nethermind.Synchronization.Blocks
             }
         }
 
-        protected override async Task<SyncPeerAllocation> Allocate(BlocksRequest request)
+        protected override async Task<SyncPeerAllocation> Allocate(BlocksRequest? request)
         {
+            if (request == null)
+            {
+                throw new InvalidOperationException($"NULL received for dispatch in {nameof(BlockDownloader)}");
+            }
+
             SyncPeerAllocation allocation = await base.Allocate(request);
             CancellationTokenSource cancellation = new CancellationTokenSource();
             _allocationWithCancellation = new AllocationWithCancellation(allocation, cancellation);
