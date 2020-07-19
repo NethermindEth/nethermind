@@ -177,7 +177,6 @@ namespace Nethermind.Synchronization.Test.BeamSync
                 NullRecoveryStep.Instance,
                 NoBlockRewards.Instance,
                 _blockchainProcessingQueue,
-                _blockchainProcessor,
                 syncModeSelector ?? new StaticSelector(SyncMode.Beam)
             );
         }

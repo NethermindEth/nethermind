@@ -44,7 +44,7 @@ namespace Nethermind.Synchronization.StateSync
                         if(Logger.IsTrace) Logger.Error("DEBUG/ERROR Error after dispatching the state sync request", t.Exception);
                     }
                     
-                    StateSyncBatch batchLocal = (StateSyncBatch) state;
+                    StateSyncBatch batchLocal = (StateSyncBatch) state!;
                     if (t.IsCompletedSuccessfully)
                     {
                         batchLocal.Responses = t.Result;

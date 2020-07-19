@@ -52,8 +52,13 @@ namespace Nethermind.Synchronization.BeamSync
 
         private IDb _targetDbForSaves;
 
-        public BeamSyncDb(IDb stateDb, IDb tempDb, ISyncModeSelector syncModeSelector, ILogManager logManager, int contextTimeout = 4, int preProcessTimeout = 15)
-            : base(logManager)
+        public BeamSyncDb(
+            IDb stateDb,
+            IDb tempDb,
+            ISyncModeSelector syncModeSelector,
+            ILogManager logManager,
+            int contextTimeout = 4,
+            int preProcessTimeout = 15)
         {
             _logger = logManager.GetClassLogger<BeamSyncDb>();
             _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));

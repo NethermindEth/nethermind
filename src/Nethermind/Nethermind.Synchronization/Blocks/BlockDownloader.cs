@@ -35,7 +35,7 @@ using Nethermind.Synchronization.Reporting;
 
 namespace Nethermind.Synchronization.Blocks
 {
-    internal class BlockDownloader : SyncDispatcher<BlocksRequest>
+    internal class BlockDownloader : SyncDispatcher<BlocksRequest?>
     {
         public const int MaxReorganizationLength = SyncBatchSize.Max * 2;
 
@@ -55,7 +55,7 @@ namespace Nethermind.Synchronization.Blocks
         private int[] _ancestorJumps = {1, 2, 3, 8, 16, 32, 64, 128, 256, 384, 512, 640, 768, 896, 1024};
 
         public BlockDownloader(
-            ISyncFeed<BlocksRequest> feed,
+            ISyncFeed<BlocksRequest?> feed,
             ISyncPeerPool syncPeerPool,
             IBlockTree blockTree,
             IBlockValidator blockValidator,
@@ -140,7 +140,7 @@ namespace Nethermind.Synchronization.Blocks
                 if (_logger.IsDebug) _logger.Debug($"Headers request {currentNumber}+{headersToRequest} to peer {bestPeer} with {bestPeer.HeadNumber} blocks. Got {currentNumber} and asking for {headersToRequest} more.");
                 BlockHeader[] headers = await RequestHeaders(bestPeer, cancellation, currentNumber, headersToRequest);
 
-                BlockHeader startingPoint = headers[0] == null ? null : _blockTree.FindHeader(headers[0].Hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                BlockHeader? startingPoint = headers[0] == null ? null : _blockTree.FindHeader(headers[0].Hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                 if (startingPoint == null)
                 {
                     ancestorLookupLevel++;
@@ -532,7 +532,7 @@ namespace Nethermind.Synchronization.Blocks
                     if (_logger.IsTrace) _logger.Trace($"Block/header {block.Number} skipped - already known");
                     return false;
                 default:
-                    throw new NotImplementedException($"Unknown {nameof(AddBlockResult)} {addResult}");
+                    throw new NotSupportedException($"Unknown {nameof(AddBlockResult)} {addResult}");
             }
         }
 
@@ -640,9 +640,9 @@ namespace Nethermind.Synchronization.Blocks
                 _allocationWithCancellation.Cancel();
             }
 
-            PeerInfo newPeer = e.Current;
+            PeerInfo? newPeer = e.Current;
             BlockHeader bestSuggested = _blockTree.BestSuggestedHeader;
-            if (newPeer.TotalDifficulty > bestSuggested.TotalDifficulty)
+            if ((newPeer?.TotalDifficulty ?? 0) > bestSuggested.TotalDifficulty)
             {
                 Feed.Activate();
             }

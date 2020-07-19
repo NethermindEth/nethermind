@@ -22,7 +22,6 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -36,7 +35,7 @@ using Nethermind.Trie;
 
 namespace Nethermind.Synchronization.FastSync
 {
-    public partial class StateSyncFeed : SyncFeed<StateSyncBatch>, IDisposable
+    public partial class StateSyncFeed : SyncFeed<StateSyncBatch?>, IDisposable
     {
         private const int AlreadySavedCapacity = 1024 * 64;
         private const int MaxRequestSize = 384;
@@ -86,7 +85,6 @@ namespace Nethermind.Synchronization.FastSync
             ISyncModeSelector syncModeSelector,
             IBlockTree blockTree,
             ILogManager logManager)
-            : base(logManager)
         {
             _codeDb = codeDb?.Innermost ?? throw new ArgumentNullException(nameof(codeDb));
             _stateDb = stateDb?.Innermost ?? throw new ArgumentNullException(nameof(stateDb));
@@ -315,7 +313,7 @@ namespace Nethermind.Synchronization.FastSync
             }
         }
 
-        public override SyncResponseHandlingResult HandleResponse(StateSyncBatch batch)
+        public override SyncResponseHandlingResult HandleResponse(StateSyncBatch? batch)
         {
             if (batch == EmptyBatch)
             {
@@ -354,33 +352,29 @@ namespace Nethermind.Synchronization.FastSync
 
                     _handleWatch.Restart();
 
-                    bool requestWasMade = batch.Responses != null;
-                    if (!requestWasMade)
-                    {
-                        AddAgainAllItems();
-                        if (_logger.IsTrace) _logger.Trace($"Batch was not assigned to any peer.");
-                        Interlocked.Increment(ref _data.NotAssignedCount);
-                        return SyncResponseHandlingResult.NotAssigned;
-                    }
-
                     bool isMissingRequestData = batch.RequestedNodes == null;
-                    bool isMissingResponseData = batch.Responses == null;
-                    bool hasValidFormat = !isMissingRequestData && !isMissingResponseData;
-
-                    if (!hasValidFormat)
+                    if (isMissingRequestData)
                     {
                         _hintsToResetRoot++;
 
                         AddAgainAllItems();
-                        if (_logger.IsWarn) _logger.Warn($"Batch response had invalid format");
+                        if (_logger.IsWarn) _logger.Warn("Batch response had invalid format");
                         Interlocked.Increment(ref _data.InvalidFormatCount);
                         return isMissingRequestData ? SyncResponseHandlingResult.InternalError : SyncResponseHandlingResult.NotAssigned;
+                    }
+                    
+                    if (batch.Responses == null)
+                    {
+                        AddAgainAllItems();
+                        if (_logger.IsTrace) _logger.Trace("Batch was not assigned to any peer.");
+                        Interlocked.Increment(ref _data.NotAssignedCount);
+                        return SyncResponseHandlingResult.NotAssigned;
                     }
 
                     if (_logger.IsTrace) _logger.Trace($"Received node data - {responseLength} items in response to {requestLength}");
                     int nonEmptyResponses = 0;
                     int invalidNodes = 0;
-                    for (int i = 0; i < batch.RequestedNodes.Length; i++)
+                    for (int i = 0; i < batch.RequestedNodes!.Length; i++)
                     {
                         StateSyncItem currentStateSyncItem = batch.RequestedNodes[i];
 
@@ -521,10 +515,10 @@ namespace Nethermind.Synchronization.FastSync
                     DependentItem dependentBranch = new DependentItem(currentStateSyncItem, currentResponseItem, 0);
 
                     // children may have the same hashes (e.g. a set of accounts with the same code at different addresses)
-                    HashSet<Keccak> alreadyProcessedChildHashes = new HashSet<Keccak>();
+                    HashSet<Keccak?> alreadyProcessedChildHashes = new HashSet<Keccak?>();
                     for (int childIndex = 15; childIndex >= 0; childIndex--)
                     {
-                        Keccak childHash = trieNode.GetChildHash(childIndex);
+                        Keccak? childHash = trieNode.GetChildHash(childIndex);
                         if (childHash != null &&
                             alreadyProcessedChildHashes.Contains(childHash))
                         {
@@ -664,7 +658,7 @@ namespace Nethermind.Synchronization.FastSync
             }
         }
 
-        public override async Task<StateSyncBatch> PrepareRequest()
+        public override async Task<StateSyncBatch?> PrepareRequest()
         {
             if (_rootSaved == 1)
             {

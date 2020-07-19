@@ -29,7 +29,7 @@ namespace Nethermind.Synchronization.Blocks
         private readonly BlocksRequest _blocksRequest;
 
         public FastSyncFeed(ISyncModeSelector syncModeSelector, ISyncConfig syncConfig, ILogManager logManager)
-            : base(syncModeSelector, logManager)
+            : base(syncModeSelector)
         {
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _blocksRequest = new BlocksRequest(BuildOptions(), MultiSyncModeSelector.FastSyncLag);

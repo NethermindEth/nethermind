@@ -71,12 +71,18 @@ namespace Nethermind.Synchronization.FastBlocks
         private bool AnyHeaderDownloaded => _blockTree.LowestInsertedHeader != null;
 
         private long HeadersInQueue => _dependencies.Sum(hd => hd.Value.Response?.Length ?? 0);
+        
         private ulong MemoryInQueue => (ulong)_dependencies
             .Sum(d => d.Value.Response.Sum(h =>
+                // ReSharper disable once ConvertClosureToMethodGroup
                 MemorySizeEstimator.EstimateSize(h)));
 
-        public HeadersSyncFeed(IBlockTree blockTree, ISyncPeerPool syncPeerPool, ISyncConfig syncConfig, ISyncReport syncReport, ILogManager logManager)
-            : base(logManager)
+        public HeadersSyncFeed(
+            IBlockTree blockTree,
+            ISyncPeerPool syncPeerPool,
+            ISyncConfig syncConfig,
+            ISyncReport syncReport,
+            ILogManager logManager)
         {
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));

@@ -59,6 +59,7 @@ namespace Nethermind.Synchronization.FastBlocks
             _requestSentTime = _stopwatch.ElapsedMilliseconds;
             
         }
+        
         public void MarkValidation()
         {
             _validationStartTime = _stopwatch.ElapsedMilliseconds;

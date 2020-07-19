@@ -16,7 +16,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
 using Nethermind.Blockchain;
 using Nethermind.Stats;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
@@ -34,7 +33,7 @@ namespace Nethermind.Synchronization.Peers
 
         private IPeerAllocationStrategy _peerAllocationStrategy;
         public AllocationContexts Contexts { get; }
-        public PeerInfo Current { get; private set; }
+        public PeerInfo? Current { get; private set; }
 
         public bool HasPeer => Current != null;
 
@@ -49,22 +48,24 @@ namespace Nethermind.Synchronization.Peers
             Contexts = contexts;
         }
 
-        public void AllocateBestPeer(IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
+        public void AllocateBestPeer(
+            IEnumerable<PeerInfo> peers,
+            INodeStatsManager nodeStatsManager,
+            IBlockTree blockTree)
         {
-            PeerInfo current = Current;
-            PeerInfo selected = _peerAllocationStrategy.Allocate(Current, peers, nodeStatsManager, blockTree);
+            PeerInfo? current = Current;
+            PeerInfo? selected = _peerAllocationStrategy.Allocate(Current, peers, nodeStatsManager, blockTree);
             if (selected == current)
             {
                 return;
             }
 
-            AllocationChangeEventArgs args;
             lock (_allocationLock)
             {
                 if (selected != null && selected.TryAllocate(Contexts))
                 {
                     Current = selected;
-                    args = new AllocationChangeEventArgs(current, selected);
+                    AllocationChangeEventArgs args = new AllocationChangeEventArgs(current, selected);
                     current?.Free(Contexts);
                     Replaced?.Invoke(this, args);
                 }
@@ -73,7 +74,7 @@ namespace Nethermind.Synchronization.Peers
 
         public void Cancel()
         {
-            PeerInfo current = Current;
+            PeerInfo? current = Current;
             if (current == null)
             {
                 return;
@@ -89,9 +90,9 @@ namespace Nethermind.Synchronization.Peers
             Cancelled?.Invoke(this, args);
         }
 
-        public event EventHandler<AllocationChangeEventArgs> Replaced;
+        public event EventHandler<AllocationChangeEventArgs>? Replaced;
 
-        public event EventHandler<AllocationChangeEventArgs> Cancelled;
+        public event EventHandler<AllocationChangeEventArgs>? Cancelled;
 
         public override string ToString()
         {

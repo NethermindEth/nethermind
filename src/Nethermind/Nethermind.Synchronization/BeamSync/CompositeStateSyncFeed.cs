@@ -23,13 +23,12 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.BeamSync
 {
-    public class CompositeStateSyncFeed<T> : SyncFeed<T> where T : StateSyncBatch
+    public class CompositeStateSyncFeed<T> : SyncFeed<T> where T : StateSyncBatch?
     {
         private readonly ISyncFeed<T>[] _subFeeds;
         private ILogger _logger;
 
         public CompositeStateSyncFeed(ILogManager logManager, params ISyncFeed<T>[] subFeeds)
-            : base(logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _subFeeds = subFeeds;
@@ -93,7 +92,7 @@ namespace Nethermind.Synchronization.BeamSync
             for (int subFeedIndex = 0; subFeedIndex < _subFeeds.Length; subFeedIndex++)
             {
                 ISyncFeed<T> subFeed = _subFeeds[subFeedIndex];
-                if (subFeed.FeedId == batch.ConsumerId)
+                if (subFeed.FeedId == batch?.ConsumerId)
                 {
                     subFeed.HandleResponse(batch);
                 }

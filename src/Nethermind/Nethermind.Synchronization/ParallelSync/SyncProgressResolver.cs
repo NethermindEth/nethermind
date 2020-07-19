@@ -38,6 +38,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private readonly IDb _stateDb;
         private readonly IDb _beamStateDb;
         private readonly ISyncConfig _syncConfig;
+        // ReSharper disable once NotAccessedField.Local
         private ILogger _logger;
 
         public SyncProgressResolver(IBlockTree blockTree, IReceiptStorage receiptStorage, IDb stateDb, IDb beamStateDb, ISyncConfig syncConfig, ILogManager logManager)
@@ -60,6 +61,7 @@ namespace Nethermind.Synchronization.ParallelSync
             return _stateDb.Innermost.Get(stateRoot) != null;
         }
 
+        // ReSharper disable once UnusedMember.Local
         private bool IsBeamSynced(Keccak stateRoot)
         {
             if (stateRoot == Keccak.EmptyTreeHash)
@@ -127,7 +129,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         public long FindBestHeader() => _blockTree.BestSuggestedHeader?.Number ?? 0;
         
-        public Keccak FindBestHeaderHash() => _blockTree.BestSuggestedHeader?.Hash;
+        public Keccak? FindBestHeaderHash() => _blockTree.BestSuggestedHeader?.Hash;
 
         public long FindBestFullBlock() => Math.Min(FindBestHeader(), _blockTree.BestSuggestedBody?.Number ?? 0); // avoiding any potential concurrency issue
 

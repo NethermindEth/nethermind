@@ -16,7 +16,6 @@
 // 
 
 using System;
-using Nethermind.Logging;
 
 namespace Nethermind.Synchronization.ParallelSync
 {
@@ -24,7 +23,7 @@ namespace Nethermind.Synchronization.ParallelSync
     {
         private readonly ISyncModeSelector _syncModeSelector;
         
-        protected ActivatedSyncFeed(ISyncModeSelector syncModeSelector, ILogManager logManager) : base(logManager)
+        protected ActivatedSyncFeed(ISyncModeSelector syncModeSelector)
         {
             _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
             _syncModeSelector.Changed += SyncModeSelectorOnChanged;

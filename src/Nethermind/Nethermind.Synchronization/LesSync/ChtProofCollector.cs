@@ -16,10 +16,6 @@
 
 using Nethermind.State.Proofs;
 using Nethermind.Trie;
-using System;
-using System.Collections.Generic;
-using System.Text;
-using System.Threading;
 
 namespace Nethermind.Synchronization.LesSync
 {

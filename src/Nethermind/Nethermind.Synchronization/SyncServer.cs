@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.IO;
 using System.Text;
 using System.Threading.Tasks;
@@ -31,7 +32,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
-using Nethermind.Stats.Model;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.LesSync;
 using Nethermind.Synchronization.ParallelSync;
@@ -221,18 +221,9 @@ namespace Nethermind.Synchronization
                     throw new EthSyncException(message);
                 }
 
-                AddBlockResult result = _blockTree.SuggestBlock(block, true);
+                AddBlockResult result = _blockTree.SuggestBlock(block);
                 if (_logger.IsTrace) _logger.Trace($"{block.Hash} ({block.Number}) adding result is {result}");
             }
-
-            // TODO: now it should be done by sync peer pool?
-            // // do not change to if..else
-            // // there are some rare cases when it did not work...
-            // // do not remember why
-            // if (result == AddBlockResult.UnknownParent)
-            // {
-            //     _synchronizer.RequestSynchronization(SyncTriggerType.NewBlock);
-            // }
         }
 
         /// <summary>
@@ -295,8 +286,6 @@ namespace Nethermind.Synchronization
                 if (!_blockTree.IsKnownBlock(number, hash))
                 {
                     _pool.RefreshTotalDifficulty(syncPeer, hash);
-                    // TODO: now it should be done by sync peer pool?
-                    // _synchronizer.RequestSynchronization(SyncTriggerType.NewBlock);
                 }
             }
         }
@@ -311,9 +300,9 @@ namespace Nethermind.Synchronization
             return _blockTree.FindHeaders(hash, numberOfBlocks, skip, reverse);
         }
 
-        public byte[][] GetNodeData(IList<Keccak> keys, NodeDataType includedTypes = NodeDataType.State | NodeDataType.Code)
+        public byte[]?[] GetNodeData(IList<Keccak> keys, NodeDataType includedTypes = NodeDataType.State | NodeDataType.Code)
         {
-            var values = new byte[keys.Count][];
+            byte[]?[] values = new byte[keys.Count][];
             for (int i = 0; i < keys.Count; i++)
             {
                 IDb stateDb = _stateDb.Innermost;
@@ -349,6 +338,11 @@ namespace Nethermind.Synchronization
             {
                 lock (_chtLock)
                 {
+                    if (_cht == null)
+                    {
+                        throw new InvalidAsynchronousStateException("CHT reference is null when building CHT.");
+                    }
+                    
                     // Note: The spec says this should be 2048, but I don't think we'd ever want it to be higher than the max reorg depth we allow.
                     long maxSection = CanonicalHashTrie.GetSectionFromBlockNo(_blockTree.FindLatestHeader().Number - Sync.MaxReorgLength);
                     long maxKnownSection = _cht.GetMaxSectionIndex();
@@ -375,11 +369,11 @@ namespace Nethermind.Synchronization
         public Block Find(Keccak hash) => _blockTree.FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
 
 
-        public Keccak FindHash(long number)
+        public Keccak? FindHash(long number)
         {
             try
             {
-                Keccak hash = _blockTree.FindHash(number);
+                Keccak? hash = _blockTree.FindHash(number);
                 return hash;
             }
             catch (Exception)

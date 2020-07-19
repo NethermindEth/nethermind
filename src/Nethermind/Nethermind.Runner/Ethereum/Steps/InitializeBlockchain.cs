@@ -205,7 +205,6 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _context.RecoveryStep,
                     _context.RewardCalculatorSource!,
                     _context.BlockProcessingQueue,
-                    _context.BlockchainProcessor,
                     _context.SyncModeSelector!);
                 
                 _context.DisposeStack.Push(beamBlockchainProcessor);

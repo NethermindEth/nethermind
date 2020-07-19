@@ -57,7 +57,7 @@ namespace Nethermind.Synchronization.FastBlocks
             ISyncConfig syncConfig,
             ISyncReport syncReport,
             ILogManager logManager)
-            : base(syncModeSelector, logManager)
+            : base(syncModeSelector)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
