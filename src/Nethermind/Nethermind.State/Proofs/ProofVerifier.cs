@@ -24,11 +24,16 @@ namespace Nethermind.State.Proofs
 {
     public static class ProofVerifier
     {
-        public static byte[] Verify(byte[][] proof, Keccak root)
+        public static byte[] Verify(byte[][]? proof, Keccak root)
         {
+            if (proof == null)
+            {
+                return Rlp.OfEmptySequence.Bytes;
+            }
+            
             if (proof.Length == 0)
             {
-                return null;
+                return Rlp.OfEmptySequence.Bytes;
             }
 
             TrieNode trieNode = new TrieNode(NodeType.Unknown, proof.Last());

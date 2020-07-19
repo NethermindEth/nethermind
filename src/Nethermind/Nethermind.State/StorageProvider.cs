@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -45,7 +46,7 @@ namespace Nethermind.State
 
         private const int StartCapacity = Resettable.StartCapacity;
         private int _capacity = StartCapacity;
-        private Change[] _changes = new Change[StartCapacity];
+        private Change?[] _changes = new Change?[StartCapacity];
         private int _currentPosition = -1;
 
         public StorageProvider(ISnapshotableDb stateDb, IStateProvider stateProvider, ILogManager logManager)
@@ -106,10 +107,22 @@ namespace Nethermind.State
 
             for (int i = 0; i < _currentPosition - snapshot; i++)
             {
-                Change change = _changes[_currentPosition - i];
+                Change? change = _changes[_currentPosition - i];
+                if (change == null)
+                {
+                    throw new InvalidDataException($"{nameof(Change)} is null at [{nameof(_currentPosition)} - i]");
+                }
+                
                 if (_intraBlockCache[change.StorageCell].Count == 1)
                 {
-                    if (_changes[_intraBlockCache[change.StorageCell].Peek()].ChangeType == ChangeType.JustCache)
+                    int peekIndex = _intraBlockCache[change.StorageCell].Peek();
+                    Change? peekChange = _changes[peekIndex];
+                    if (peekChange == null)
+                    {
+                        throw new InvalidDataException($"{nameof(peekChange)} is null");    
+                    }
+                    
+                    if (peekChange.ChangeType == ChangeType.JustCache)
                     {
                         int actualPosition = _intraBlockCache[change.StorageCell].Pop();
                         if (actualPosition != _currentPosition - i)
@@ -171,7 +184,7 @@ namespace Nethermind.State
             public byte[] After { get; }
         }
 
-        public void Commit(IStorageTracer tracer)
+        public void Commit(IStorageTracer? tracer)
         {
             if (_currentPosition == -1)
             {
@@ -194,7 +207,7 @@ namespace Nethermind.State
             HashSet<Address> toUpdateRoots = new HashSet<Address>();
 
             bool isTracing = tracer != null;
-            Dictionary<StorageCell, ChangeTrace> trace = null;
+            Dictionary<StorageCell, ChangeTrace>? trace = null;
             if (isTracing)
             {
                 trace = new Dictionary<StorageCell, ChangeTrace>();
@@ -202,7 +215,12 @@ namespace Nethermind.State
 
             for (int i = 0; i <= _currentPosition; i++)
             {
-                Change change = _changes[_currentPosition - i];
+                Change? change = _changes[_currentPosition - i];
+                if (change == null)
+                {
+                    throw new InvalidDataException($"{nameof(Change)} is null at [{nameof(_currentPosition)} - i]");
+                }
+                
                 if (!isTracing && change.ChangeType == ChangeType.JustCache)
                 {
                     continue;
@@ -212,7 +230,7 @@ namespace Nethermind.State
                 {
                     if (isTracing && change.ChangeType == ChangeType.JustCache)
                     {
-                        trace[change.StorageCell] = new ChangeTrace(change.Value, trace[change.StorageCell].After);
+                        trace![change.StorageCell] = new ChangeTrace(change.Value, trace[change.StorageCell].After);
                     }
 
                     continue;
@@ -220,7 +238,7 @@ namespace Nethermind.State
 
                 if (isTracing && change.ChangeType == ChangeType.JustCache)
                 {
-                    tracer.ReportStorageRead(change.StorageCell);
+                    tracer!.ReportStorageRead(change.StorageCell);
                 }
 
                 _committedThisRound.Add(change.StorageCell);
@@ -254,7 +272,7 @@ namespace Nethermind.State
                         tree.Set(change.StorageCell.Index, change.Value);
                         if (isTracing)
                         {
-                            trace[change.StorageCell] = new ChangeTrace(change.Value);
+                            trace![change.StorageCell] = new ChangeTrace(change.Value);
                         }
 
                         break;
@@ -273,14 +291,14 @@ namespace Nethermind.State
                 }
             }
 
-            Resettable<Change>.Reset(ref _changes, ref _capacity, ref _currentPosition, StartCapacity);
+            Resettable<Change?>.Reset(ref _changes, ref _capacity, ref _currentPosition);
             _committedThisRound.Reset();
             _intraBlockCache.Reset();
             _originalValues.Reset();
 
             if (isTracing)
             {
-                ReportChanges(tracer, trace);
+                ReportChanges(tracer!, trace!);
             }
         }
 
@@ -325,7 +343,13 @@ namespace Nethermind.State
         {
             if (!_storages.ContainsKey(address))
             {
-                StorageTree storageTree = new StorageTree(_stateDb, _stateProvider.GetStorageRoot(address));
+                Keccak? storageRoot = _stateProvider.GetStorageRoot(address);
+                if (storageRoot == null)
+                {
+                    throw new StateException($"Cannot find storage root for {address} or account does nto exist.");
+                }
+                
+                StorageTree storageTree = new StorageTree(_stateDb, storageRoot);
                 return _storages[address] = storageTree;
             }
 
@@ -337,7 +361,13 @@ namespace Nethermind.State
             if (_intraBlockCache.ContainsKey(storageCell))
             {
                 int lastChangeIndex = _intraBlockCache[storageCell].Peek();
-                return _changes[lastChangeIndex].Value;
+                Change? change = _changes[lastChangeIndex];
+                if (change == null)
+                {
+                    throw new InvalidDataException($"{nameof(Change)} is null at {nameof(lastChangeIndex)}");
+                }
+
+                return change.Value;
             }
 
             return LoadFromTree(storageCell);
@@ -372,7 +402,7 @@ namespace Nethermind.State
 
         private void IncrementChangePosition()
         {
-            Resettable<Change>.IncrementPosition(ref _changes, ref _capacity, ref _currentPosition);
+            Resettable<Change?>.IncrementPosition(ref _changes, ref _capacity, ref _currentPosition);
         }
 
         private void SetupRegistry(StorageCell cell)

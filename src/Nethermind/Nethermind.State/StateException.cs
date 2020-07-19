@@ -20,7 +20,7 @@ namespace Nethermind.State
 {
     public class StateException : Exception
     {
-        public StateException() : base()
+        protected StateException()
         {
         }
         

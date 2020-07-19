@@ -36,7 +36,7 @@ namespace Nethermind.State.Repositories
             _blockInfoDb = blockInfoDb ?? throw new ArgumentNullException(nameof(blockInfoDb));
         }
 
-        public void Delete(long number, BatchWrite batch = null)
+        public void Delete(long number, BatchWrite? batch = null)
         {
             void Delete()
             {
@@ -58,7 +58,7 @@ namespace Nethermind.State.Repositories
             }
         }
 
-        public void PersistLevel(long number, ChainLevelInfo level, BatchWrite batch = null)
+        public void PersistLevel(long number, ChainLevelInfo level, BatchWrite? batch = null)
         {
             void PersistLevel()
             {

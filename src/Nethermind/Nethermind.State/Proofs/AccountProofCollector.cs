@@ -19,7 +19,6 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
@@ -74,9 +73,7 @@ namespace Nethermind.State.Proofs
 
             Keccak[] localStorageKeys = storageKeys.Select(ToKey).ToArray();
 
-            _accountProof = new AccountProof();
-            _accountProof.StorageProofs = new StorageProof[localStorageKeys.Length];
-            _accountProof.Address = _address;
+            _accountProof = new AccountProof(_address, new StorageProof[localStorageKeys.Length]);
 
             _fullStoragePaths = new Nibble[localStorageKeys.Length][];
             _storageProofItems = new List<byte[]>[localStorageKeys.Length];
@@ -89,9 +86,7 @@ namespace Nethermind.State.Proofs
             {
                 _fullStoragePaths[i] = Nibbles.FromBytes(localStorageKeys[i].Bytes);
 
-                _accountProof.StorageProofs[i] = new StorageProof();
-                _accountProof.StorageProofs[i].Key = storageKeys[i];
-                _accountProof.StorageProofs[i].Value = new byte[] {0};
+                _accountProof.StorageProofs[i] = new StorageProof(storageKeys[i], new byte[] {0});
             }
         }
 

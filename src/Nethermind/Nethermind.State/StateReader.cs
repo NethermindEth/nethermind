@@ -17,7 +17,6 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
@@ -29,20 +28,19 @@ namespace Nethermind.State
     public class StateReader : IStateReader
     {
         private readonly IDb _codeDb;
-        private readonly ILogger _logger;
         private readonly StateTree _state;
         private readonly StorageTree _storage;
 
+        // ReSharper disable once UnusedParameter.Local
         public StateReader(ISnapshotableDb stateDb, IDb codeDb, ILogManager logManager)
         {
             if (stateDb == null) throw new ArgumentNullException(nameof(stateDb));
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
             _state = new StateTree(stateDb);
             _storage = new StorageTree(stateDb);
         }
 
-        public Account GetAccount(Keccak stateRoot, Address address)
+        public Account? GetAccount(Keccak stateRoot, Address address)
         {
             return GetState(stateRoot, address);
         }
@@ -52,7 +50,7 @@ namespace Nethermind.State
             return GetState(stateRoot, address)?.Nonce ?? UInt256.Zero;
         }
 
-        public Keccak GetStorageRoot(Keccak stateRoot, Address address)
+        public Keccak? GetStorageRoot(Keccak stateRoot, Address address)
         {
             return GetState(stateRoot, address)?.StorageRoot;
         }
@@ -90,7 +88,7 @@ namespace Nethermind.State
 
         public byte[] GetCode(Keccak stateRoot, Address address)
         {
-            Account account = GetState(stateRoot, address);
+            Account? account = GetState(stateRoot, address);
             if (account == null)
             {
                 return Array.Empty<byte>();
@@ -99,7 +97,7 @@ namespace Nethermind.State
             return GetCode(account.CodeHash);
         }
 
-        private Account GetState(Keccak stateRoot, Address address)
+        private Account? GetState(Keccak stateRoot, Address address)
         {
             if (stateRoot == Keccak.EmptyTreeHash)
             {
@@ -107,7 +105,7 @@ namespace Nethermind.State
             }
 
             Metrics.StateTreeReads++;
-            Account account = _state.Get(address, stateRoot);
+            Account? account = _state.Get(address, stateRoot);
             return account;
         }
     }

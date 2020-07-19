@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.IO;
 using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -38,7 +37,6 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.State.Proofs;
-using Nethermind.Db.Blooms;
 using Nethermind.TxPool;
 using NUnit.Framework;
 
@@ -775,14 +773,17 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             // just the keys for debugging
             Span<byte> span = stackalloc byte[32];
             new UInt256(0).ToBigEndian(span);
+            // ReSharper disable once UnusedVariable
             Keccak k0 = Keccak.Compute(span);
 
             // just the keys for debugging
             new UInt256(1).ToBigEndian(span);
+            // ReSharper disable once UnusedVariable
             Keccak k1 = Keccak.Compute(span);
 
             // just the keys for debugging
             new UInt256(2).ToBigEndian(span);
+            // ReSharper disable once UnusedVariable
             Keccak k2 = Keccak.Compute(span);
 
             foreach (AccountProof accountProof in callResultWithProof.Accounts)
@@ -790,10 +791,10 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 // this is here for diagnostics - so you can read what happens in the test
                 // generally the account here should be consistent with the values inside the proof
                 // the exception will be thrown if the account did not exist before the call
-                Account account;
                 try
                 {
-                    account = new AccountDecoder().Decode(new RlpStream(ProofVerifier.Verify(accountProof.Proof, block.StateRoot)));
+                    RlpStream stream = new RlpStream(ProofVerifier.Verify(accountProof.Proof, block.StateRoot));
+                    _ = new AccountDecoder().Decode(stream);
                 }
                 catch (Exception)
                 {
@@ -803,6 +804,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 foreach (StorageProof storageProof in accountProof.StorageProofs)
                 {
                     // we read the values here just to allow easier debugging so you can confirm that the value is same as the one in the proof and in the trie
+                    // ReSharper disable once UnusedVariable
                     byte[] value = ProofVerifier.Verify(storageProof.Proof, accountProof.StorageRoot);
                 }
             }

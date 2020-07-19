@@ -38,15 +38,15 @@ namespace Nethermind.State
 
         bool IsEmptyAccount(Address address);
 
-        Account GetAccount(Address address);
+        Account? GetAccount(Address address);
         
         UInt256 GetNonce(Address address);
 
         UInt256 GetBalance(Address address);
         
-        Keccak GetStorageRoot(Address address);
+        Keccak? GetStorageRoot(Address address);
 
-        Keccak GetCodeHash(Address address);
+        Keccak? GetCodeHash(Address address);
         
         byte[] GetCode(Address address);
 

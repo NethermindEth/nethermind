@@ -25,9 +25,15 @@ namespace Nethermind.State.Proofs
     /// </summary>
     public class AccountProof
     {
+        public AccountProof(Address address, StorageProof[] storageProofs)
+        {
+            Address = address;
+            StorageProofs = storageProofs;
+        }
+        
         public Address Address { get; set; }
 
-        public byte[][] Proof { get; set; }
+        public byte[][]? Proof { get; set; }
 
         public UInt256 Balance { get; set; }
 
@@ -37,6 +43,6 @@ namespace Nethermind.State.Proofs
 
         public Keccak StorageRoot { get; set; } = Keccak.EmptyTreeHash;
 
-        public StorageProof[] StorageProofs { get; set; }
+        public StorageProof[] StorageProofs { get; }
     }
 }

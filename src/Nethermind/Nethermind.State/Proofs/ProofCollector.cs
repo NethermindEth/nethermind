@@ -41,7 +41,7 @@ namespace Nethermind.State.Proofs
             _key = key;
         }
 
-        private byte[][] _proof;
+        private byte[][]? _proof;
 
         public byte[][] BuildResult()
         {
