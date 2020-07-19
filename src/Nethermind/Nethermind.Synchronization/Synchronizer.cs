@@ -62,9 +62,9 @@ namespace Nethermind.Synchronization
         private FastSyncFeed _fastSyncFeed;
         private StateSyncFeed _stateSyncFeed;
         private FullSyncFeed _fullSyncFeed;
-        private FastHeadersSyncFeed _headersFeed;
-        private SimpleBodiesSyncFeed _bodiesFeed;
-        private SimpleReceiptsSyncFeed _receiptsFeed;
+        private HeadersSyncFeed _headersFeed;
+        private BodiesSyncFeed _bodiesFeed;
+        private ReceiptsSyncFeed _receiptsFeed;
         
 
         public Synchronizer(
@@ -185,7 +185,7 @@ namespace Nethermind.Synchronization
         {
             FastBlocksPeerAllocationStrategyFactory fastFactory = new FastBlocksPeerAllocationStrategyFactory();
 
-            _headersFeed = new FastHeadersSyncFeed(_blockTree, _syncPeerPool, _syncConfig, _syncReport, _logManager);
+            _headersFeed = new HeadersSyncFeed(_blockTree, _syncPeerPool, _syncConfig, _syncReport, _logManager);
             HeadersSyncDispatcher headersDispatcher = new HeadersSyncDispatcher(_headersFeed, _syncPeerPool, fastFactory, _logManager);
             Task headersTask = headersDispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
             {
@@ -203,7 +203,7 @@ namespace Nethermind.Synchronization
             {
                 if (_syncConfig.DownloadBodiesInFastSync)
                 {
-                    _bodiesFeed = new SimpleBodiesSyncFeed(_syncMode, _blockTree, _syncPeerPool, _syncConfig, _syncReport, _logManager);
+                    _bodiesFeed = new BodiesSyncFeed(_syncMode, _blockTree, _syncPeerPool, _syncConfig, _syncReport, _logManager);
                     BodiesSyncDispatcher bodiesDispatcher = new BodiesSyncDispatcher(_bodiesFeed, _syncPeerPool, fastFactory, _logManager);
                     Task bodiesTask = bodiesDispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
                     {
@@ -220,7 +220,7 @@ namespace Nethermind.Synchronization
 
                 if (_syncConfig.DownloadReceiptsInFastSync)
                 {
-                    _receiptsFeed = new SimpleReceiptsSyncFeed(_syncMode, _specProvider, _blockTree, _receiptStorage, _syncPeerPool, _syncConfig, _syncReport, _logManager);
+                    _receiptsFeed = new ReceiptsSyncFeed(_syncMode, _specProvider, _blockTree, _receiptStorage, _syncPeerPool, _syncConfig, _syncReport, _logManager);
                     ReceiptsSyncDispatcher receiptsDispatcher = new ReceiptsSyncDispatcher(_receiptsFeed, _syncPeerPool, fastFactory, _logManager);
                     Task receiptsTask = receiptsDispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
                     {

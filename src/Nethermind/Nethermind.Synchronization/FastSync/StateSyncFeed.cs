@@ -69,7 +69,8 @@ namespace Nethermind.Synchronization.FastSync
         private readonly ISyncModeSelector _syncModeSelector;
         private readonly IBlockTree _blockTree;
 
-        private readonly ConcurrentDictionary<StateSyncBatch, object> _pendingRequests = new ConcurrentDictionary<StateSyncBatch, object>();
+        private readonly ConcurrentDictionary<StateSyncBatch, object?> _pendingRequests
+            = new ConcurrentDictionary<StateSyncBatch, object?>();
         private Dictionary<Keccak, HashSet<DependentItem>> _dependencies = new Dictionary<Keccak, HashSet<DependentItem>>();
         private LruKeyCache<Keccak> _alreadySaved = new LruKeyCache<Keccak>(AlreadySavedCapacity, "saved nodes");
         private readonly HashSet<Keccak> _codesSameAsNodes = new HashSet<Keccak>();
@@ -99,6 +100,7 @@ namespace Nethermind.Synchronization.FastSync
             byte[] progress = _codeDb.Get(_fastSyncProgressKey);
             _data = new DetailedProgress(_blockTree.ChainId, progress);
             _pendingItems = new PendingSyncItems();
+            _syncProgress = new StateSyncProgress(0, _logger);
         }
 
         private void SyncModeSelectorOnChanged(object? sender, SyncModeChangedEventArgs e)
@@ -120,13 +122,18 @@ namespace Nethermind.Synchronization.FastSync
             }
         }
 
-        private AddNodeResult AddNodeToPending(StateSyncItem syncItem, DependentItem dependentItem, string reason, bool missing = false)
+        private AddNodeResult AddNodeToPending(StateSyncItem syncItem, DependentItem? dependentItem, string reason, bool missing = false)
         {
             if (!missing)
             {
                 if (syncItem.Level <= 2)
                 {
-                    _syncProgress.ReportSynced(syncItem.Level, syncItem.ParentBranchChildIndex, syncItem.BranchChildIndex, syncItem.NodeDataType, NodeProgressState.Requested);
+                    _syncProgress.ReportSynced(
+                        syncItem.Level,
+                        syncItem.ParentBranchChildIndex,
+                        syncItem.BranchChildIndex,
+                        syncItem.NodeDataType,
+                        NodeProgressState.Requested);
                 }
 
                 if (_alreadySaved.Get(syncItem.Hash))
@@ -312,17 +319,15 @@ namespace Nethermind.Synchronization.FastSync
         {
             if (batch == EmptyBatch)
             {
-                _logger.Error("Received empty batch as a response");
+                if(_logger.IsError) _logger.Error("Received empty batch as a response");
+                return SyncResponseHandlingResult.InternalError;
             }
             
+            if (_logger.IsTrace) _logger.Trace($"Removing pending request {batch}");
             if (!_pendingRequests.TryRemove(batch, out _))
             {
                 if (_logger.IsDebug) _logger.Debug($"Cannot remove pending request {batch}");
                 return SyncResponseHandlingResult.OK;
-            }
-            else
-            {
-                if (_logger.IsTrace) _logger.Trace($"Removing pending request {batch}");
             }
 
             int requestLength = batch.RequestedNodes?.Length ?? 0;
@@ -332,7 +337,7 @@ namespace Nethermind.Synchronization.FastSync
             {
                 for (int i = 0; i < requestLength; i++)
                 {
-                    AddNodeToPending(batch.RequestedNodes[i], null, "missing", true);
+                    AddNodeToPending(batch.RequestedNodes![i], null, "missing", true);
                 }
             }
 
@@ -721,8 +726,9 @@ namespace Nethermind.Synchronization.FastSync
 
                 if (requestHashes.Count > 0)
                 {
-                    StateSyncBatch result = new StateSyncBatch();
-                    result.RequestedNodes = requestHashes.ToArray();
+                    StateSyncItem[] requestedNodes = requestHashes.ToArray();
+                    StateSyncBatch result = new StateSyncBatch(requestedNodes);
+                    
                     Interlocked.Add(ref _data.RequestedNodesCount, result.RequestedNodes.Length);
                     Interlocked.Exchange(ref _data.SecondsInSync, _currentSyncStartSecondsInSync + (long) (DateTime.UtcNow - _currentSyncStart).TotalSeconds);
 
@@ -816,7 +822,7 @@ namespace Nethermind.Synchronization.FastSync
                 if (_pendingItems.Count == 1)
                 {
                     // state root can only be located on state stream
-                    StateSyncItem potentialRoot = _pendingItems.PeekState();
+                    StateSyncItem? potentialRoot = _pendingItems.PeekState();
                     if (potentialRoot?.Hash == _rootNode)
                     {
                         hasOnlyRootNode = true;

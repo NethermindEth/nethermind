@@ -25,18 +25,18 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
-    public class BodiesSyncDispatcher : SyncDispatcher<SimpleBodiesSyncBatch>
+    public class BodiesSyncDispatcher : SyncDispatcher<BodiesSyncBatch>
     {
         public BodiesSyncDispatcher(
-            ISyncFeed<SimpleBodiesSyncBatch> syncFeed,
+            ISyncFeed<BodiesSyncBatch> syncFeed,
             ISyncPeerPool syncPeerPool,
-            IPeerAllocationStrategyFactory<SimpleBodiesSyncBatch> peerAllocationStrategy,
+            IPeerAllocationStrategyFactory<BodiesSyncBatch> peerAllocationStrategy,
             ILogManager logManager)
             : base(syncFeed, syncPeerPool, peerAllocationStrategy, logManager)
         {
         }
 
-        protected override async Task Dispatch(PeerInfo peerInfo, SimpleBodiesSyncBatch batch, CancellationToken cancellationToken)
+        protected override async Task Dispatch(PeerInfo peerInfo, BodiesSyncBatch batch, CancellationToken cancellationToken)
         {
             ISyncPeer peer = peerInfo.SyncPeer;
             batch.ResponseSourcePeer = peerInfo;
@@ -46,7 +46,7 @@ namespace Nethermind.Synchronization.FastBlocks
             await getBodiesTask.ContinueWith(
                 (t, state) =>
                 {
-                    SimpleBodiesSyncBatch batchLocal = (SimpleBodiesSyncBatch)state!;
+                    BodiesSyncBatch batchLocal = (BodiesSyncBatch)state!;
                     if (t.IsCompletedSuccessfully)
                     {
                         if (batchLocal.RequestTime > 1000)

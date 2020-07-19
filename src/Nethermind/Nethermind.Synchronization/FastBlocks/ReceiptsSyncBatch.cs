@@ -18,12 +18,12 @@ using Nethermind.Core;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
-    public class SimpleReceiptsSyncBatch : FastBlocksBatch
+    public class ReceiptsSyncBatch : FastBlocksBatch
     {
         public BlockInfo?[] Infos { get; }
         public TxReceipt[]?[]? Response { get; set; }
 
-        public SimpleReceiptsSyncBatch(BlockInfo?[] infos)
+        public ReceiptsSyncBatch(BlockInfo?[] infos)
         {
             Infos = infos;
         }

@@ -28,7 +28,7 @@ using Nethermind.Synchronization.SyncLimits;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
-    public class SimpleBodiesSyncFeed : ActivatedSyncFeed<SimpleBodiesSyncBatch?>
+    public class BodiesSyncFeed : ActivatedSyncFeed<BodiesSyncBatch?>
     {
         private int _requestSize = GethSyncLimits.MaxBodyFetch;
 
@@ -40,9 +40,9 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private readonly long _pivotNumber;
 
-        private FastStatusList _fastStatusList;
+        private SyncStatusList _syncStatusList;
 
-        public SimpleBodiesSyncFeed(
+        public BodiesSyncFeed(
             ISyncModeSelector syncModeSelector,
             IBlockTree blockTree,
             ISyncPeerPool syncPeerPool,
@@ -58,11 +58,12 @@ namespace Nethermind.Synchronization.FastBlocks
 
             if (!_syncConfig.FastBlocks)
             {
-                throw new InvalidOperationException("Entered fast blocks mode without fast blocks enabled in configuration.");
+                throw new InvalidOperationException(
+                    "Entered fast blocks mode without fast blocks enabled in configuration.");
             }
 
             _pivotNumber = _syncConfig.PivotNumberParsed;
-            _fastStatusList = new FastStatusList(_blockTree, _pivotNumber, _blockTree.LowestInsertedBodyNumber);
+            _syncStatusList = new SyncStatusList(_blockTree, _pivotNumber, _blockTree.LowestInsertedBodyNumber);
         }
 
         protected override SyncMode ActivationSyncModes { get; } = SyncMode.FastBodies & ~SyncMode.FastBlocks;
@@ -74,7 +75,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private bool ShouldBuildANewBatch()
         {
             bool shouldDownloadBodies = _syncConfig.DownloadBodiesInFastSync;
-            bool allBodiesDownloaded = _fastStatusList.LowestInsertWithoutGaps == 1;
+            bool allBodiesDownloaded = _syncStatusList.LowestInsertWithoutGaps == 1;
             bool shouldFinish = !shouldDownloadBodies || allBodiesDownloaded;
             if (shouldFinish)
             {
@@ -91,35 +92,41 @@ namespace Nethermind.Synchronization.FastBlocks
         {
             _syncReport.FastBlocksBodies.Update(_pivotNumber);
             _syncReport.FastBlocksBodies.MarkEnd();
+            _syncReport.BodiesInQueue.Update(0);
+            _syncReport.BodiesInQueue.MarkEnd();
         }
 
-        public override Task<SimpleBodiesSyncBatch?> PrepareRequest()
+        public override Task<BodiesSyncBatch?> PrepareRequest()
         {
-            SimpleBodiesSyncBatch? batch = null;
+            BodiesSyncBatch? batch = null;
             if (ShouldBuildANewBatch())
             {
                 BlockInfo[] infos = new BlockInfo[_requestSize];
-                _fastStatusList.GetInfosForBatch(infos);
+                _syncStatusList.GetInfosForBatch(infos);
                 if (infos[0] != null)
                 {
-                    batch = new SimpleBodiesSyncBatch(infos);
+                    batch = new BodiesSyncBatch(infos);
                     batch.MinNumber = infos[0].BlockNumber;
                     batch.Prioritized = true;
                 }
-                
-                // Array.Reverse(infos);
             }
 
-            _blockTree.LowestInsertedBodyNumber = _fastStatusList.LowestInsertWithoutGaps;
+            _blockTree.LowestInsertedBodyNumber = _syncStatusList.LowestInsertWithoutGaps;
 
             return Task.FromResult(batch);
         }
 
-        public override SyncResponseHandlingResult HandleResponse(SimpleBodiesSyncBatch? batch)
+        public override SyncResponseHandlingResult HandleResponse(BodiesSyncBatch? batch)
         {
-            batch.MarkHandlingStart();
+            batch?.MarkHandlingStart();
             try
             {
+                if (batch == null)
+                {
+                    if(_logger.IsDebug) _logger.Debug("Received a NULL batch as a response");
+                    return SyncResponseHandlingResult.InternalError;
+                }
+                
                 int added = InsertBodies(batch);
                 return added == 0
                     ? SyncResponseHandlingResult.NoProgress
@@ -127,7 +134,7 @@ namespace Nethermind.Synchronization.FastBlocks
             }
             finally
             {
-                batch.MarkHandlingEnd();
+                batch?.MarkHandlingEnd();
             }
         }
 
@@ -148,7 +155,7 @@ namespace Nethermind.Synchronization.FastBlocks
             return block != null;
         }
 
-        private int InsertBodies(SimpleBodiesSyncBatch batch)
+        private int InsertBodies(BodiesSyncBatch batch)
         {
             bool hasBreachedProtocol = false;
             int validResponsesCount = 0;
@@ -185,19 +192,44 @@ namespace Nethermind.Synchronization.FastBlocks
                             _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, "invalid tx or ommers root");
                         }
 
-                        _fastStatusList.MarkUnknown(blockInfo.BlockNumber);
+                        _syncStatusList.MarkUnknown(blockInfo.BlockNumber);
                     }
                 }
                 else
                 {
-                    _fastStatusList.MarkUnknown(blockInfo.BlockNumber);
+                    _syncStatusList.MarkUnknown(blockInfo.BlockNumber);
                 }
             }
 
-            _syncReport.FastBlocksBodies.Update(_pivotNumber - _fastStatusList.LowestInsertWithoutGaps);
-            _syncReport.BodiesInQueue.Update(_fastStatusList.QueueSize);
+            UpdateSyncReport();
+            AdjustRequestSizes(batch, validResponsesCount);
+            LogPostProcessingBatchInfo(batch, validResponsesCount);
 
-            lock (_fastStatusList)
+            return validResponsesCount;
+        }
+        
+        private void InsertOneBlock(Block block)
+        {
+            _blockTree.Insert(block);
+            _syncStatusList.MarkInserted(block.Number);
+        }
+
+        private void LogPostProcessingBatchInfo(BodiesSyncBatch batch, int validResponsesCount)
+        {
+            if (_logger.IsDebug)
+                _logger.Debug(
+                    $"{nameof(BodiesSyncBatch)} back from {batch.ResponseSourcePeer} with {validResponsesCount}/{batch.Infos.Length}");
+        }
+
+        private void UpdateSyncReport()
+        {
+            _syncReport.FastBlocksBodies.Update(_pivotNumber - _syncStatusList.LowestInsertWithoutGaps);
+            _syncReport.BodiesInQueue.Update(_syncStatusList.QueueSize);
+        }
+
+        private void AdjustRequestSizes(BodiesSyncBatch batch, int validResponsesCount)
+        {
+            lock (_syncStatusList)
             {
                 if (validResponsesCount == batch.Infos.Length)
                 {
@@ -209,17 +241,6 @@ namespace Nethermind.Synchronization.FastBlocks
                     _requestSize = Math.Max(4, _requestSize / 2);
                 }
             }
-            
-            if(_logger.IsDebug) _logger.Debug(
-                $"Bodies sync batch back from {batch.ResponseSourcePeer} with {validResponsesCount}/{batch.Infos.Length}");
-
-            return validResponsesCount;
-        }
-
-        private void InsertOneBlock(Block block)
-        {
-            _blockTree.Insert(block);
-            _fastStatusList.MarkInserted(block.Number);
         }
     }
 }

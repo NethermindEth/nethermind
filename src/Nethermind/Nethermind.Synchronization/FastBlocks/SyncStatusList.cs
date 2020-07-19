@@ -22,21 +22,21 @@ using Nethermind.Core;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
-    internal class FastStatusList
+    internal class SyncStatusList
     {
-        private readonly IBlockTree _blockTree;
-
-        private FastBlockStatus[] Statuses { get; }
-        public long LowestInsertWithoutGaps => _lowestInsertedWithoutGaps;
-        public long QueueSize => _queueSize;
         private long _queueSize;
-        private long _lowestInsertedWithoutGaps;
+        private readonly IBlockTree _blockTree;
+        private FastBlockStatus[] _statuses;
+        
+        public long LowestInsertWithoutGaps { get; private set; }
+        public long QueueSize => _queueSize;
 
-        public FastStatusList(IBlockTree blockTree, long pivotNumber, long? lowestInserted)
+        public SyncStatusList(IBlockTree blockTree, long pivotNumber, long? lowestInserted)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _lowestInsertedWithoutGaps = lowestInserted ?? pivotNumber;
-            Statuses = new FastBlockStatus[pivotNumber + 1];
+            _statuses = new FastBlockStatus[pivotNumber + 1];
+            
+            LowestInsertWithoutGaps = lowestInserted ?? pivotNumber;
         }
 
         public void GetInfosForBatch(BlockInfo[] blockInfos)
@@ -44,7 +44,7 @@ namespace Nethermind.Synchronization.FastBlocks
             int collected = 0;
 
             long currentNumber = LowestInsertWithoutGaps;
-            lock (Statuses)
+            lock (_statuses)
             {
                 while (collected < blockInfos.Length && currentNumber != 0)
                 {
@@ -54,17 +54,17 @@ namespace Nethermind.Synchronization.FastBlocks
                         continue;
                     }
                     
-                    switch (Statuses[currentNumber])
+                    switch (_statuses[currentNumber])
                     {
                         case FastBlockStatus.Unknown:
                             blockInfos[collected] = _blockTree.FindBlockInfo(currentNumber);
-                            Statuses[currentNumber] = FastBlockStatus.Sent;
+                            _statuses[currentNumber] = FastBlockStatus.Sent;
                             collected++;
                             break;
                         case FastBlockStatus.Inserted:
                             if (currentNumber == LowestInsertWithoutGaps)
                             {
-                                _lowestInsertedWithoutGaps--;
+                                LowestInsertWithoutGaps--;
                                 Interlocked.Decrement(ref _queueSize);
                             }
 
@@ -83,18 +83,25 @@ namespace Nethermind.Synchronization.FastBlocks
         public void MarkInserted(in long blockNumber)
         {
             Interlocked.Increment(ref _queueSize);
-            lock (Statuses)
+            lock (_statuses)
             {
-                Statuses[blockNumber] = FastBlockStatus.Inserted;
+                _statuses[blockNumber] = FastBlockStatus.Inserted;
             }
         }
 
         public void MarkUnknown(in long blockNumber)
         {
-            lock (Statuses)
+            lock (_statuses)
             {
-                Statuses[blockNumber] = FastBlockStatus.Unknown;
+                _statuses[blockNumber] = FastBlockStatus.Unknown;
             }
+        }
+        
+        private enum FastBlockStatus : byte
+        {
+            Unknown = 0,
+            Sent = 1,
+            Inserted = 2,
         }
     }
 }

@@ -19,9 +19,9 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
-    public class SimpleBodiesSyncBatch : FastBlocksBatch
+    public class BodiesSyncBatch : FastBlocksBatch
     {
-        public SimpleBodiesSyncBatch(BlockInfo[] infos)
+        public BodiesSyncBatch(BlockInfo[] infos)
         {
             Infos = infos;
         }

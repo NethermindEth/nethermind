@@ -31,7 +31,7 @@ using Nethermind.Synchronization.SyncLimits;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
-    public class SimpleReceiptsSyncFeed : ActivatedSyncFeed<SimpleReceiptsSyncBatch?>
+    public class ReceiptsSyncFeed : ActivatedSyncFeed<ReceiptsSyncBatch?>
     {
         private int _requestSize = GethSyncLimits.MaxReceiptFetch;
 
@@ -43,12 +43,12 @@ namespace Nethermind.Synchronization.FastBlocks
         private readonly IReceiptStorage _receiptStorage;
         private readonly ISyncPeerPool _syncPeerPool;
 
-        private FastStatusList _fastStatusList;
+        private SyncStatusList _syncStatusList;
         private readonly long _pivotNumber;
 
         private bool ShouldFinish => !_syncConfig.DownloadReceiptsInFastSync || _receiptStorage.LowestInsertedReceiptBlock == 1;
 
-        public SimpleReceiptsSyncFeed(
+        public ReceiptsSyncFeed(
             ISyncModeSelector syncModeSelector,
             ISpecProvider specProvider,
             IBlockTree blockTree,
@@ -73,7 +73,7 @@ namespace Nethermind.Synchronization.FastBlocks
             }
 
             _pivotNumber = _syncConfig.PivotNumberParsed;
-            _fastStatusList = new FastStatusList(_blockTree, _pivotNumber, _receiptStorage.LowestInsertedReceiptBlock);
+            _syncStatusList = new SyncStatusList(_blockTree, _pivotNumber, _receiptStorage.LowestInsertedReceiptBlock);
         }
 
         protected override SyncMode ActivationSyncModes { get; }
@@ -87,7 +87,7 @@ namespace Nethermind.Synchronization.FastBlocks
         {
             bool shouldDownloadReceipts = _syncConfig.DownloadReceiptsInFastSync;
             bool allReceiptsDownloaded = _receiptStorage.LowestInsertedReceiptBlock == 1;
-            bool isGenesisDownloaded = _fastStatusList.LowestInsertWithoutGaps == 1;
+            bool isGenesisDownloaded = _syncStatusList.LowestInsertWithoutGaps == 1;
             bool noBatchesLeft = !shouldDownloadReceipts
                                  || allReceiptsDownloaded
                                  || isGenesisDownloaded;
@@ -114,16 +114,16 @@ namespace Nethermind.Synchronization.FastBlocks
             _syncReport.ReceiptsInQueue.MarkEnd();
         }
 
-        public override Task<SimpleReceiptsSyncBatch?> PrepareRequest()
+        public override Task<ReceiptsSyncBatch?> PrepareRequest()
         {
-            SimpleReceiptsSyncBatch? batch = null;
+            ReceiptsSyncBatch? batch = null;
             if (ShouldBuildANewBatch())
             {
                 BlockInfo[] infos = new BlockInfo[_requestSize];
-                _fastStatusList.GetInfosForBatch(infos);
+                _syncStatusList.GetInfosForBatch(infos);
                 if (infos[0] != null)
                 {
-                    batch = new SimpleReceiptsSyncBatch(infos);
+                    batch = new ReceiptsSyncBatch(infos);
                     batch.MinNumber = infos[0].BlockNumber;
                     batch.Prioritized = true;
                 }
@@ -131,19 +131,19 @@ namespace Nethermind.Synchronization.FastBlocks
                 // Array.Reverse(infos);
             }
 
-            _receiptStorage.LowestInsertedReceiptBlock = _fastStatusList.LowestInsertWithoutGaps;
+            _receiptStorage.LowestInsertedReceiptBlock = _syncStatusList.LowestInsertWithoutGaps;
 
             return Task.FromResult(batch);
         }
 
-        public override SyncResponseHandlingResult HandleResponse(SimpleReceiptsSyncBatch? batch)
+        public override SyncResponseHandlingResult HandleResponse(ReceiptsSyncBatch? batch)
         {
             batch?.MarkHandlingStart();
             try
             {
                 if (batch == null)
                 {
-                    _logger.Debug("Received a NULL batch as a response");
+                    if(_logger.IsDebug) _logger.Debug("Received a NULL batch as a response");
                     return SyncResponseHandlingResult.InternalError;
                 }
                 
@@ -156,7 +156,7 @@ namespace Nethermind.Synchronization.FastBlocks
             }
         }
 
-        private bool TryPrepareReceipts(BlockInfo blockInfo, TxReceipt[] receipts, out TxReceipt[] preparedReceipts)
+        private bool TryPrepareReceipts(BlockInfo blockInfo, TxReceipt[] receipts, out TxReceipt[]? preparedReceipts)
         {
             BlockHeader header = _blockTree.FindHeader(blockInfo.BlockHash);
             if (header.ReceiptsRoot == Keccak.EmptyTreeHash)
@@ -179,7 +179,7 @@ namespace Nethermind.Synchronization.FastBlocks
             return preparedReceipts != null;
         }
 
-        private int InsertReceipts(SimpleReceiptsSyncBatch batch)
+        private int InsertReceipts(ReceiptsSyncBatch batch)
         {
             bool hasBreachedProtocol = false;
             int validResponsesCount = 0;
@@ -206,7 +206,7 @@ namespace Nethermind.Synchronization.FastBlocks
                         validResponsesCount++;
                         Block block = _blockTree.FindBlock(blockInfo.BlockHash);
                         _receiptStorage.Insert(block, prepared);
-                        _fastStatusList.MarkInserted(block.Number);
+                        _syncStatusList.MarkInserted(block.Number);
                     }
                     else
                     {
@@ -218,19 +218,36 @@ namespace Nethermind.Synchronization.FastBlocks
                             _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, "invalid tx or ommers root");
                         }
 
-                        _fastStatusList.MarkUnknown(blockInfo.BlockNumber);
+                        _syncStatusList.MarkUnknown(blockInfo.BlockNumber);
                     }
                 }
                 else
                 {
                     if (blockInfo != null)
                     {
-                        _fastStatusList.MarkUnknown(blockInfo.BlockNumber);
+                        _syncStatusList.MarkUnknown(blockInfo.BlockNumber);
                     }
                 }
             }
 
-            lock (_fastStatusList)
+            AdjustRequestSize(batch, validResponsesCount);
+            LogPostProcessingBatchInfo(batch, validResponsesCount);
+
+            _syncReport.FastBlocksReceipts.Update(_pivotNumber - _syncStatusList.LowestInsertWithoutGaps);
+            _syncReport.ReceiptsInQueue.Update(_syncStatusList.QueueSize);
+            return validResponsesCount;
+        }
+
+        private void LogPostProcessingBatchInfo(ReceiptsSyncBatch batch, int validResponsesCount)
+        {
+            if (_logger.IsDebug)
+                _logger.Debug(
+                    $"{nameof(ReceiptsSyncBatch)} back from {batch.ResponseSourcePeer} with {validResponsesCount}/{batch.Infos.Length}");
+        }
+
+        private void AdjustRequestSize(ReceiptsSyncBatch batch, int validResponsesCount)
+        {
+            lock (_syncStatusList)
             {
                 if (validResponsesCount == batch.Infos.Length)
                 {
@@ -242,13 +259,6 @@ namespace Nethermind.Synchronization.FastBlocks
                     _requestSize = Math.Max(4, _requestSize / 2);
                 }
             }
-
-            if(_logger.IsDebug) _logger.Debug(
-                $"Receipts sync batch back from {batch.ResponseSourcePeer} with {validResponsesCount}/{batch.Infos.Length}");
-
-            _syncReport.FastBlocksReceipts.Update(_pivotNumber - _fastStatusList.LowestInsertWithoutGaps);
-            _syncReport.ReceiptsInQueue.Update(_fastStatusList.QueueSize);
-            return validResponsesCount;
         }
     }
 }

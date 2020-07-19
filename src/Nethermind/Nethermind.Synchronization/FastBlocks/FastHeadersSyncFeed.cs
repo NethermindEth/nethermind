@@ -33,7 +33,7 @@ using Nethermind.Synchronization.SyncLimits;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
-    public class FastHeadersSyncFeed : SyncFeed<HeadersSyncBatch>
+    public class HeadersSyncFeed : SyncFeed<HeadersSyncBatch?>
     {
         private readonly ILogger _logger;
         private readonly ISyncPeerPool _syncPeerPool;
@@ -75,14 +75,14 @@ namespace Nethermind.Synchronization.FastBlocks
             .Sum(d => d.Value.Response.Sum(h =>
                 MemorySizeEstimator.EstimateSize(h)));
 
-        public FastHeadersSyncFeed(IBlockTree blockTree, ISyncPeerPool syncPeerPool, ISyncConfig syncConfig, ISyncReport syncReport, ILogManager logManager)
+        public HeadersSyncFeed(IBlockTree blockTree, ISyncPeerPool syncPeerPool, ISyncConfig syncConfig, ISyncReport syncReport, ILogManager logManager)
             : base(logManager)
         {
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
-            _logger = logManager?.GetClassLogger<FastHeadersSyncFeed>() ?? throw new ArgumentNullException(nameof(FastHeadersSyncFeed));
+            _logger = logManager?.GetClassLogger<HeadersSyncFeed>() ?? throw new ArgumentNullException(nameof(HeadersSyncFeed));
 
             if (!_syncConfig.UseGethLimitsInFastBlocks)
             {
@@ -151,18 +151,18 @@ namespace Nethermind.Synchronization.FastBlocks
         private void HandleDependentBatches()
         {
             long? lowest = _blockTree.LowestInsertedHeader?.Number;
-            while (lowest.HasValue && _dependencies.TryRemove(lowest.Value - 1, out HeadersSyncBatch dependentBatch))
+            while (lowest.HasValue && _dependencies.TryRemove(lowest.Value - 1, out HeadersSyncBatch? dependentBatch))
             {
                 InsertHeaders(dependentBatch);
                 lowest = _blockTree.LowestInsertedHeader?.Number;
             }
         }
 
-        public override Task<HeadersSyncBatch> PrepareRequest()
+        public override Task<HeadersSyncBatch?> PrepareRequest()
         {
             HandleDependentBatches();
 
-            if (_pending.TryDequeue(out HeadersSyncBatch batch))
+            if (_pending.TryDequeue(out HeadersSyncBatch? batch))
             {
                 batch.MarkRetry();
             }
@@ -231,8 +231,14 @@ namespace Nethermind.Synchronization.FastBlocks
             }
         }
 
-        public override SyncResponseHandlingResult HandleResponse(HeadersSyncBatch batch)
+        public override SyncResponseHandlingResult HandleResponse(HeadersSyncBatch? batch)
         {
+            if (batch == null)
+            {
+                if(_logger.IsDebug) _logger.Debug("Received a NULL batch as a response");
+                return SyncResponseHandlingResult.InternalError;
+            }
+            
             if ((batch.Response?.Length ?? 0) == 0)
             {
                 batch.MarkHandlingStart();

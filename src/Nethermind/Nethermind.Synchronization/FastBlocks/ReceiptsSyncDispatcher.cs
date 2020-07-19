@@ -25,28 +25,28 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
-    public class ReceiptsSyncDispatcher : SyncDispatcher<SimpleReceiptsSyncBatch>
+    public class ReceiptsSyncDispatcher : SyncDispatcher<ReceiptsSyncBatch>
     {
         public ReceiptsSyncDispatcher(
-            ISyncFeed<SimpleReceiptsSyncBatch> syncFeed,
+            ISyncFeed<ReceiptsSyncBatch> syncFeed,
             ISyncPeerPool syncPeerPool,
-            IPeerAllocationStrategyFactory<SimpleReceiptsSyncBatch> peerAllocationStrategy,
+            IPeerAllocationStrategyFactory<ReceiptsSyncBatch> peerAllocationStrategy,
             ILogManager logManager)
             : base(syncFeed, syncPeerPool, peerAllocationStrategy, logManager)
         {
         }
 
-        protected override async Task Dispatch(PeerInfo peerInfo, SimpleReceiptsSyncBatch batch, CancellationToken cancellationToken)
+        protected override async Task Dispatch(PeerInfo peerInfo, ReceiptsSyncBatch batch, CancellationToken cancellationToken)
         {
             ISyncPeer peer = peerInfo.SyncPeer;
             batch.ResponseSourcePeer = peerInfo;
             batch.MarkSent();
-            var hashes = batch.Infos.Where(i => i != null).Select(i => i.BlockHash).ToArray();
+            var hashes = batch.Infos.Where(i => i != null).Select(i => i!.BlockHash).ToArray();
             Task<TxReceipt[][]> getReceiptsTask = peer.GetReceipts(hashes, cancellationToken);
             await getReceiptsTask.ContinueWith(
                 (t, state) =>
                 {
-                    SimpleReceiptsSyncBatch batchLocal = (SimpleReceiptsSyncBatch)state;
+                    ReceiptsSyncBatch batchLocal = (ReceiptsSyncBatch)state!;
                     if (t.IsCompletedSuccessfully)
                     {
                         if (batchLocal.RequestTime > 1000)
