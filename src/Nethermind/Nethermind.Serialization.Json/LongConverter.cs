@@ -35,7 +35,7 @@ namespace Nethermind.Serialization.Json
             _conversion = conversion;
         }
 
-        public override void WriteJson(JsonWriter writer, long value, Newtonsoft.Json.JsonSerializer serializer)
+        public override void WriteJson(JsonWriter writer, long value, JsonSerializer serializer)
         {
             switch (_conversion)
             {
@@ -53,14 +53,20 @@ namespace Nethermind.Serialization.Json
             }
         }
 
-        public override long ReadJson(JsonReader reader, Type objectType, long existingValue, bool hasExistingValue, Newtonsoft.Json.JsonSerializer serializer)
+        public override long ReadJson(
+            JsonReader reader, Type objectType, long existingValue, bool hasExistingValue, JsonSerializer serializer)
         {
             if (reader.Value is long || reader.Value is int)
             {
                 return (long)reader.Value;
             }
 
-            string s = (string) reader.Value;
+            string? s = (string?) reader.Value;
+            if (s == null)
+            {
+                throw new JsonException($"Unexpected NULL value when deserializing {nameof(Int64)}");
+            }
+            
             return FromString(s);
         }
 

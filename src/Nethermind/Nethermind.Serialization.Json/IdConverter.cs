@@ -22,7 +22,7 @@ namespace Nethermind.Serialization.Json
 {
     public class IdConverter : JsonConverter
     {
-        public override void WriteJson(JsonWriter writer, object value, JsonSerializer serializer)
+        public override void WriteJson(JsonWriter writer, object? value, JsonSerializer serializer)
         {
             switch (value)
             {
@@ -43,7 +43,7 @@ namespace Nethermind.Serialization.Json
             }
         }
 
-        public override object ReadJson(JsonReader reader, Type objectType, object existingValue, JsonSerializer serializer)
+        public override object? ReadJson(JsonReader reader, Type objectType, object? existingValue, JsonSerializer serializer)
         {
             switch (reader.TokenType)
             {

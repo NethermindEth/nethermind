@@ -36,7 +36,7 @@ namespace Nethermind.Serialization.Json
             _conversion = conversion;
         }
 
-        public override void WriteJson(JsonWriter writer, UInt256 value, Newtonsoft.Json.JsonSerializer serializer)
+        public override void WriteJson(JsonWriter writer, UInt256 value, JsonSerializer serializer)
         {
             if (value.IsZero)
             {
@@ -61,14 +61,15 @@ namespace Nethermind.Serialization.Json
             }
         }
 
-        public override UInt256 ReadJson(JsonReader reader, Type objectType, UInt256 existingValue, bool hasExistingValue, Newtonsoft.Json.JsonSerializer serializer)
+        public override UInt256 ReadJson(
+            JsonReader reader, Type objectType, UInt256 existingValue, bool hasExistingValue, JsonSerializer serializer)
         {
             if (reader.Value is long || reader.Value is int)
             {
                 return new UInt256((long) reader.Value);
             }
 
-            string s = (string) reader.Value;
+            string? s = (string?) reader.Value;
             if (s == null)
             {
                 throw new JsonException($"{nameof(UInt256)} cannot be deserialized from null");

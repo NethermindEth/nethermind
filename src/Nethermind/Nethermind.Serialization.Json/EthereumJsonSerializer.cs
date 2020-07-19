@@ -27,11 +27,11 @@ namespace Nethermind.Serialization.Json
 {
     public class EthereumJsonSerializer : IJsonSerializer
     {
-        private JsonSerializer _internalSerializer;
-        private JsonSerializer _internalReadableSerializer;
+        private JsonSerializer? _internalSerializer;
+        private JsonSerializer? _internalReadableSerializer;
 
-        private JsonSerializerSettings _settings;
-        private JsonSerializerSettings _readableSettings;
+        private JsonSerializerSettings? _settings;
+        private JsonSerializerSettings? _readableSettings;
 
         public EthereumJsonSerializer()
         {
@@ -75,7 +75,7 @@ namespace Nethermind.Serialization.Json
         {
             using StringReader reader = new StringReader(json);
             using JsonReader jsonReader = new JsonTextReader(reader);
-            return _internalSerializer.Deserialize<T>(jsonReader);
+            return _internalSerializer!.Deserialize<T>(jsonReader)!;
         }
 
         public string Serialize<T>(T value, bool indented = false)
@@ -84,12 +84,12 @@ namespace Nethermind.Serialization.Json
             using JsonTextWriter jsonTextWriter = new JsonTextWriter(stringWriter);
             if (indented)
             {
-                jsonTextWriter.Formatting = _internalReadableSerializer.Formatting;
+                jsonTextWriter.Formatting = _internalReadableSerializer!.Formatting;
                 _internalReadableSerializer.Serialize(jsonTextWriter, value, typeof(T));
             }
             else
             {
-                jsonTextWriter.Formatting = _internalSerializer.Formatting;
+                jsonTextWriter.Formatting = _internalSerializer!.Formatting;
                 _internalSerializer.Serialize(jsonTextWriter, value, typeof(T));
             }
 
@@ -102,12 +102,12 @@ namespace Nethermind.Serialization.Json
             using JsonTextWriter jsonTextWriter = new JsonTextWriter(streamWriter);
             if (indented)
             {
-                jsonTextWriter.Formatting = _internalReadableSerializer.Formatting;
+                jsonTextWriter.Formatting = _internalReadableSerializer!.Formatting;
                 _internalReadableSerializer.Serialize(jsonTextWriter, value, typeof(T));
             }
             else
             {
-                jsonTextWriter.Formatting = _internalSerializer.Formatting;
+                jsonTextWriter.Formatting = _internalSerializer!.Formatting;
                 _internalSerializer.Serialize(jsonTextWriter, value, typeof(T));
             }
         }

@@ -20,21 +20,22 @@ using Newtonsoft.Json;
 
 namespace Nethermind.Serialization.Json
 {
-    public class ByteArrayConverter : JsonConverter<byte[]>
+    public class ByteArrayConverter : JsonConverter<byte[]?>
     {
-        public override void WriteJson(JsonWriter writer, byte[] value, JsonSerializer serializer)
+        public override void WriteJson(JsonWriter writer, byte[]? value, JsonSerializer serializer)
         {
             writer.WriteValue(Bytes.ByteArrayToHexViaLookup32Safe(value, true));
         }
 
-        public override byte[] ReadJson(JsonReader reader, Type objectType, byte[] existingValue, bool hasExistingValue, Newtonsoft.Json.JsonSerializer serializer)
+        public override byte[]? ReadJson(
+            JsonReader reader, Type objectType, byte[]? existingValue, bool hasExistingValue, JsonSerializer serializer)
         {
             if (reader.TokenType == JsonToken.Null)
             {
                 return null;
             }
 
-            string s = (string) reader.Value;
+            string? s = (string?) reader.Value;
             return Bytes.FromHexString(s);
         }
     }

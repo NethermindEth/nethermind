@@ -20,16 +20,22 @@ using Newtonsoft.Json;
 
 namespace Nethermind.Serialization.Json
 {
-    public class PublicKeyConverter : JsonConverter<PublicKey>
+    public class PublicKeyConverter : JsonConverter<PublicKey?>
     {
-        public override void WriteJson(JsonWriter writer, PublicKey value, JsonSerializer serializer)
+        public override void WriteJson(JsonWriter writer, PublicKey? value, JsonSerializer serializer)
         {
+            if (value == null)
+            {
+                writer.WriteNull();
+                return;
+            }
+            
             writer.WriteValue(value.ToString());
         }
 
-        public override PublicKey ReadJson(JsonReader reader, Type objectType, PublicKey existingValue, bool hasExistingValue, JsonSerializer serializer)
+        public override PublicKey? ReadJson(JsonReader reader, Type objectType, PublicKey? existingValue, bool hasExistingValue, JsonSerializer serializer)
         {
-            string s = (string)reader.Value;
+            string? s = (string?)reader.Value;
             return s == null ? null : new PublicKey(s);
         }
     }
