@@ -30,6 +30,8 @@ namespace Nethermind.Core
     /// </summary>
     public static class NetworkDiagTracer
     {
+        public const string NetworkDiagTracerPath = @"network_diag.txt";
+        
         public static bool IsEnabled { get; set; }
 
         private static ConcurrentDictionary<string, List<string>> events = new ConcurrentDictionary<string, List<string>>();
@@ -54,7 +56,7 @@ namespace Nethermind.Core
                 }
             }
             
-            File.WriteAllText(@"C:\\Temp\\network_diag.txt", stringBuilder.ToString());
+            File.WriteAllText(NetworkDiagTracerPath, stringBuilder.ToString());
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
