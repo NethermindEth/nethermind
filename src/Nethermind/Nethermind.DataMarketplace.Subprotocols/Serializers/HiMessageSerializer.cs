@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.DataMarketplace.Subprotocols.Messages;
@@ -49,13 +50,16 @@ namespace Nethermind.DataMarketplace.Subprotocols.Serializers
         private static HiMessage Deserialize(RlpStream rlpStream)
         {
             rlpStream.ReadSequenceLength();
-            var protocolVersion = rlpStream.DecodeByte();
-            var providerAddress = rlpStream.DecodeAddress();
-            var consumerAddress = rlpStream.DecodeAddress();
-            var nodeId = new PublicKey(rlpStream.DecodeByteArray());
-            var signature = SignatureDecoder.DecodeSignature(rlpStream);
+            byte protocolVersion = rlpStream.DecodeByte();
+            Address? providerAddress = rlpStream.DecodeAddress();
+            Address? consumerAddress = rlpStream.DecodeAddress();
+            PublicKey nodeId = new PublicKey(rlpStream.DecodeByteArray());
+            Signature signature = SignatureDecoder.DecodeSignature(rlpStream);
 
-            return new HiMessage(protocolVersion, providerAddress, consumerAddress,
+            return new HiMessage(
+                protocolVersion,
+                providerAddress,
+                consumerAddress,
                 nodeId, signature);
         }
     }

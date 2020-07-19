@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
 using System.IO;
 using Nethermind.Core;
@@ -28,17 +29,17 @@ namespace Nethermind.Consensus.Clique
         public Snapshot Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             rlpStream.ReadSequenceLength();
-                       
-            // Block number
-            long number = (long)rlpStream.DecodeUInt256();
-            // Hash
-            Keccak hash = rlpStream.DecodeKeccak();
-            // Signers
+
+            long number = (long) rlpStream.DecodeUInt256();
+            Keccak? hash = rlpStream.DecodeKeccak();
             SortedList<Address, long> signers = DecodeSigners(rlpStream);
-            // Votes
             List<Vote> votes = DecodeVotes(rlpStream);
-            // Tally
             Dictionary<Address, Tally> tally = DecodeTally(rlpStream);
+            if (hash == null)
+            {
+                throw new RlpException($"Cannot deserialize {nameof(Snapshot)} - hash is null");
+            }
+            
             Snapshot snapshot = new Snapshot(number, hash, signers, tally);
             snapshot.Votes = votes;
 
@@ -48,7 +49,7 @@ namespace Nethermind.Consensus.Clique
         public Rlp Encode(Snapshot item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             return Rlp.Encode(
-                Rlp.Encode((UInt256)item.Number),
+                Rlp.Encode((UInt256) item.Number),
                 Rlp.Encode(item.Hash),
                 Rlp.Encode(EncodeSigners(item.Signers)),
                 Rlp.Encode(EncodeVotes(item.Votes)),
@@ -58,12 +59,12 @@ namespace Nethermind.Consensus.Clique
 
         public void Encode(MemoryStream stream, Snapshot item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            throw new System.NotImplementedException();
+            throw new NotSupportedException();
         }
 
         public int GetLength(Snapshot item, RlpBehaviors rlpBehaviors)
         {
-            throw new System.NotImplementedException();
+            throw new NotSupportedException();
         }
 
         private SortedList<Address, long> DecodeSigners(RlpStream rlpStream)
@@ -73,11 +74,16 @@ namespace Nethermind.Consensus.Clique
             int length = rlpStream.DecodeInt();
             for (int i = 0; i < length; i++)
             {
-                Address signer = rlpStream.DecodeAddress();
-                long signedAt = (long)rlpStream.DecodeUInt256();
+                Address? signer = rlpStream.DecodeAddress();
+                if (signer == null)
+                {
+                    throw new RlpException($"{nameof(Signer)} data was invalid - address is null");
+                }
+                
+                long signedAt = (long) rlpStream.DecodeUInt256();
                 signers.Add(signer, signedAt);
             }
-            
+
             return signers;
         }
 
@@ -88,13 +94,19 @@ namespace Nethermind.Consensus.Clique
             int length = rlpStream.DecodeInt();
             for (int i = 0; i < length; i++)
             {
-                Address signer = rlpStream.DecodeAddress();
-                long block = (long)rlpStream.DecodeUInt256();
-                Address address = rlpStream.DecodeAddress();
+                Address? signer = rlpStream.DecodeAddress();
+                long block = (long) rlpStream.DecodeUInt256();
+                Address? address = rlpStream.DecodeAddress();
                 bool authorize = rlpStream.DecodeBool();
+                if (signer == null || address == null)
+                {
+                    continue; // just ignore since there is no logger here
+                }
+
                 Vote vote = new Vote(signer, block, address, authorize);
                 votes.Add(vote);
             }
+
             return votes;
         }
 
@@ -105,13 +117,19 @@ namespace Nethermind.Consensus.Clique
             int length = rlpStream.DecodeInt();
             for (int i = 0; i < length; i++)
             {
-                Address address = rlpStream.DecodeAddress();
+                Address? address = rlpStream.DecodeAddress();
+                if (address == null)
+                {
+                    throw new RlpException($"{nameof(Tally)} RLP was invalid - address is null");
+                }
+                
                 int votes = rlpStream.DecodeInt();
                 bool authorize = rlpStream.DecodeBool();
                 Tally tallyItem = new Tally(authorize);
                 tallyItem.Votes = votes;
                 tally[address] = tallyItem;
             }
+
             return tally;
         }
 
@@ -124,9 +142,10 @@ namespace Nethermind.Consensus.Clique
             foreach ((Address address, long signedAt) in signers)
             {
                 rlp[i + 1] = Rlp.Encode(address);
-                rlp[i + 2] = Rlp.Encode((UInt256)signedAt);
+                rlp[i + 2] = Rlp.Encode((UInt256) signedAt);
                 i += 2;
             }
+
             return rlp;
         }
 
@@ -138,10 +157,11 @@ namespace Nethermind.Consensus.Clique
             for (int i = 0; i < voteCount; i++)
             {
                 rlp[4 * i + 1] = Rlp.Encode(votes[i].Signer);
-                rlp[4 * i + 2] = Rlp.Encode((UInt256)votes[i].Block);
+                rlp[4 * i + 2] = Rlp.Encode((UInt256) votes[i].Block);
                 rlp[4 * i + 3] = Rlp.Encode(votes[i].Address);
                 rlp[4 * i + 4] = Rlp.Encode(votes[i].Authorize);
             }
+
             return rlp;
         }
 
@@ -158,6 +178,7 @@ namespace Nethermind.Consensus.Clique
                 rlp[3 * i + 3] = Rlp.Encode(tallyItem.Value.Authorize);
                 i++;
             }
+
             return rlp;
         }
     }

@@ -14,6 +14,8 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Subprotocols.Messages;
 using Nethermind.Network;
 using Nethermind.Serialization.Rlp;
@@ -31,10 +33,16 @@ namespace Nethermind.DataMarketplace.Subprotocols.Serializers
         {
             var context = bytes.AsRlpStream();
             context.ReadSequenceLength();
-            var dataAssetId = context.DecodeKeccak();
-            var consumer = context.DecodeAddress();
+            Keccak? dataAssetId = context.DecodeKeccak();
+            Address? consumer = context.DecodeAddress();
             var kyc = context.DecodeString();
 
+            if (dataAssetId == null || consumer == null)
+            {
+                throw new RlpException(
+                    $"{nameof(RequestDepositApprovalMessage)} is invalid - dataAssetId:{dataAssetId}, consumer:{consumer}");
+            }
+            
             return new RequestDepositApprovalMessage(dataAssetId, consumer, kyc);
         }
     }
