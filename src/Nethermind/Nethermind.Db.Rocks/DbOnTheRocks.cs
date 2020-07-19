@@ -21,7 +21,6 @@ using System.IO;
 using System.Reflection;
 using System.Threading;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
 using RocksDbSharp;
@@ -222,7 +221,7 @@ namespace Nethermind.Db.Rocks
                     }
                     else
                     {
-                        Db.Put(key, value, null, WriteOptions);
+                        Db.Put(key.AsSpan(), value.AsSpan(), null, WriteOptions);
                     }
                 }
             }
@@ -239,6 +238,11 @@ namespace Nethermind.Db.Rocks
             
             UpdateReadMetrics();
             return Db.GetSpan(key);
+        }
+
+        public void SetSpan(Span<byte> key, Span<byte> value)
+        {
+            Db.Put(key, value);
         }
 
         public void DangerousReleaseMemory(in Span<byte> span)

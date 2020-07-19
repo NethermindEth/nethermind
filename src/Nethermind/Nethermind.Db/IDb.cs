@@ -49,6 +49,9 @@ namespace Nethermind.Db
         /// <param name="key"></param>
         /// <returns>Can return null or empty Span on missing key</returns>
         Span<byte> GetSpan(byte[] key);
+        
+        void SetSpan(Span<byte> key, Span<byte> value);
+        
         void DangerousReleaseMemory(in Span<byte> span);
     }
 }

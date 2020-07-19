@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Buffers;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -368,8 +369,28 @@ namespace Nethermind.Blockchain
             // validate hash here
             // using previously received header RLPs would allows us to save 2GB allocations on a sample
             // 3M Goerli blocks fast sync
-            Rlp newRlp = _headerDecoder.Encode(header);
-            _headerDb.Set(header.Hash, newRlp.Bytes);
+            IDbWithSpan dbWithSpan = _headerDb as IDbWithSpan;
+            if (dbWithSpan != null)
+            {
+                int length = _headerDecoder.GetLength(header, RlpBehaviors.None);
+                byte[] array = ArrayPool<byte>.Shared.Rent(length);
+                try
+                {
+                    RlpStream rlpStream = new RlpStream(array);
+                    _headerDecoder.Encode(rlpStream, header);
+                    dbWithSpan.SetSpan(header.Hash.Bytes, array.AsSpan(0, length));
+                    Array.Clear(array, 0, length);
+                }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(array);
+                }
+            }
+            else
+            {
+                Rlp newRlp = _headerDecoder.Encode(header);
+                _headerDb.Set(header.Hash, newRlp.Bytes);  
+            }
 
             BlockInfo blockInfo = new BlockInfo(header.Hash, header.TotalDifficulty ?? 0);
             ChainLevelInfo chainLevel = new ChainLevelInfo(true, blockInfo);
@@ -479,8 +500,28 @@ namespace Nethermind.Blockchain
 
             if (block != null && !isKnown)
             {
-                Rlp newRlp = _blockDecoder.Encode(block);
-                _blockDb.Set(block.Hash, newRlp.Bytes);
+                IDbWithSpan dbWithSpan = _blockDb as IDbWithSpan;
+                if (dbWithSpan != null)
+                {
+                    int length = _blockDecoder.GetLength(block, RlpBehaviors.None);
+                    byte[] array = ArrayPool<byte>.Shared.Rent(length);
+                    try
+                    {
+                        RlpStream rlpStream = new RlpStream(array);
+                        _blockDecoder.Encode(rlpStream, block);
+                        dbWithSpan.SetSpan(block.Hash.Bytes, array.AsSpan(0, length));
+                        Array.Clear(array, 0, length);
+                    }
+                    finally
+                    {
+                        ArrayPool<byte>.Shared.Return(array);
+                    }
+                }
+                else
+                {
+                    Rlp newRlp = _blockDecoder.Encode(block);
+                    _blockDb.Set(block.Hash, newRlp.Bytes);   
+                }
             }
 
             if (!isKnown)

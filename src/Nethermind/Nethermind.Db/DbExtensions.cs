@@ -28,28 +28,28 @@ namespace Nethermind.Db
     public static class DbExtensions
     {
         public static void Set(this IDb db, Keccak key, byte[] value)
-         {
-             db[key.Bytes] = value;
-         }
-        
+        {
+            db[key.Bytes] = value;
+        }
+
         public static byte[] Get(this IDb db, Keccak key)
         {
-            #if DEBUG
+#if DEBUG
             if (key == Keccak.OfAnEmptyString)
             {
                 throw new InvalidOperationException();
             }
-            #endif
-            
+#endif
+
             return db[key.Bytes];
         }
-        
+
         public static KeyValuePair<byte[], byte[]>[] MultiGet(this IDb db, IEnumerable<Keccak> keys)
         {
             var k = keys.Select(k => k.Bytes).ToArray();
             return db[k];
         }
-        
+
         /// <summary>
         /// 
         /// </summary>
@@ -65,10 +65,10 @@ namespace Nethermind.Db
                 throw new InvalidOperationException();
             }
 #endif
-            
+
             return db.GetSpan(key.Bytes);
         }
-        
+
         public static bool KeyExists(this IDb db, Keccak key)
         {
 #if DEBUG
@@ -77,22 +77,22 @@ namespace Nethermind.Db
                 throw new InvalidOperationException();
             }
 #endif
-            
+
             return db.KeyExists(key.Bytes);
         }
-        
+
         public static void Delete(this IDb db, Keccak key)
         {
             db.Remove(key.Bytes);
         }
-        
+
         public static void Set(this IDb db, long key, byte[] value)
         {
             db[key.ToBigEndianByteArrayWithoutLeadingZeros()] = value;
         }
-        
+
         public static byte[] Get(this IDb db, long key) => db[key.ToBigEndianByteArrayWithoutLeadingZeros()];
-        
+
         /// <summary>
         /// 
         /// </summary>
@@ -146,10 +146,10 @@ namespace Nethermind.Db
             {
                 cache.Set(key, item);
             }
-            
+
             return item;
         }
-        
+
         public static TItem Get<TItem>(this IDb db, long key, IRlpDecoder<TItem> decoder, ICache<long, TItem> cache = null, bool shouldCache = true) where TItem : class
         {
             TItem item = cache?.Get(key);
@@ -184,7 +184,7 @@ namespace Nethermind.Db
                     item = decoder.Decode(data.AsRlpStream(), RlpBehaviors.AllowExtraData);
                 }
             }
-            
+
             if (shouldCache && cache != null && item != null)
             {
                 cache.Set(key, item);

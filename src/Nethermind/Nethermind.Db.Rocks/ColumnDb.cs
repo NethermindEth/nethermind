@@ -68,7 +68,7 @@ namespace Nethermind.Db.Rocks
                     }
                     else
                     {
-                        _rocksDb.Put(key, value, _columnFamily, _mainDb.WriteOptions);
+                        _rocksDb.Put(key.AsSpan(), value.AsSpan(), _columnFamily, _mainDb.WriteOptions);
                     }
                 }
             }
@@ -122,6 +122,11 @@ namespace Nethermind.Db.Rocks
         private void UpdateReadMetrics() => _mainDb.UpdateReadMetrics();
         
         public Span<byte> GetSpan(byte[] key) => _rocksDb.GetSpan(key, _columnFamily);
+        
+        public void SetSpan(Span<byte> key, Span<byte> value)
+        {
+            _rocksDb.Put(key, value);
+        }
 
         public void DangerousReleaseMemory(in Span<byte> span)
         {
