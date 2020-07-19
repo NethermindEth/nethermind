@@ -250,7 +250,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             _blockTree.FindBlockInfo(Arg.Any<long>()).Returns(
                 ci =>
                 {
-                    Block block = scenario.Blocks.SingleOrDefault(b => (b?.Number ?? -1) == ci.Arg<long>());
+                    Block block = scenario.Blocks[ci.Arg<long>()];
                     if (block == null)
                     {
                         return null;
