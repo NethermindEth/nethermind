@@ -488,8 +488,7 @@ namespace Nethermind.Blockchain
 
             if (!isKnown)
             {
-                Rlp newRlp = _headerDecoder.Encode(header);
-                _headerDb.Set(header.Hash, newRlp.Bytes);
+                StoreHeaderInDb(header);
 
                 BlockInfo blockInfo = new BlockInfo(header.Hash, header.TotalDifficulty ?? 0);
                 UpdateOrCreateLevel(header.Number, blockInfo, !shouldProcess);
