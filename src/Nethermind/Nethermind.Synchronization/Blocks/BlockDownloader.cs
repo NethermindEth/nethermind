@@ -612,7 +612,7 @@ namespace Nethermind.Synchronization.Blocks
             base.Free(allocation);
         }
 
-        private void AllocationOnCancelled(object sender, AllocationChangeEventArgs e)
+        private void AllocationOnCancelled(object? sender, AllocationChangeEventArgs e)
         {
             AllocationWithCancellation allocationWithCancellation = _allocationWithCancellation;
             if (allocationWithCancellation.Allocation != sender)
@@ -623,7 +623,7 @@ namespace Nethermind.Synchronization.Blocks
             allocationWithCancellation.Cancel();
         }
         
-        private void AllocationOnReplaced(object sender, AllocationChangeEventArgs e)
+        private void AllocationOnReplaced(object? sender, AllocationChangeEventArgs e)
         {
             if (e.Previous == null)
             {

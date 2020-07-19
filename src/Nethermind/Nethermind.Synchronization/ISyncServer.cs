@@ -33,7 +33,7 @@ namespace Nethermind.Synchronization
         Block Find(Keccak hash);
         BlockHeader FindLowestCommonAncestor(BlockHeader firstDescendant, BlockHeader secondDescendant);
         public Task BuildCHT();
-        public CanonicalHashTrie GetCHT();
+        public CanonicalHashTrie? GetCHT();
         Keccak FindHash(long number);
         BlockHeader[] FindHeaders(Keccak hash, int numberOfBlocks, int skip, bool reverse);
         byte[][] GetNodeData(IList<Keccak> keys, NodeDataType includedTypes = NodeDataType.Code | NodeDataType.State);

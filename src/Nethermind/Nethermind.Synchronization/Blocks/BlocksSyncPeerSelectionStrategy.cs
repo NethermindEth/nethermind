@@ -50,7 +50,7 @@ namespace Nethermind.Synchronization.Blocks
             return (headersSpeed ?? 0) + (bodiesSpeed ?? 0);
         }
 
-        public PeerInfo? Allocate(PeerInfo currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
+        public PeerInfo? Allocate(PeerInfo? currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
         {
             int nullSpeed = -1;
             decimal averageSpeed = 0M;

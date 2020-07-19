@@ -367,7 +367,7 @@ namespace Nethermind.Synchronization
             });
         }
 
-        public CanonicalHashTrie GetCHT()
+        public CanonicalHashTrie? GetCHT()
         {
             return _cht;
         }

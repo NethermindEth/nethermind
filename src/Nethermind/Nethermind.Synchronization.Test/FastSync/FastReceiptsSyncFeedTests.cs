@@ -199,7 +199,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             LoadScenario(_256BodiesWithOneTxEach);
             ReceiptsSyncBatch request = _feed.PrepareRequest().Result;
             request.Should().NotBeNull();
-            request.MinNumber.Should().Be(_pivotNumber - expectedBatchSize + 1);
+            request!.MinNumber.Should().Be(_pivotNumber - expectedBatchSize + 1);
             request.Prioritized.Should().Be(true);
         }
 
@@ -221,7 +221,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             LoadScenario(_256BodiesWithOneTxEach, _syncConfig);
             ReceiptsSyncBatch request = _feed.PrepareRequest().Result;
             request.Should().NotBeNull();
-            request.MinNumber.Should().Be(_pivotNumber - expectedBatchSize + 1);
+            request!.MinNumber.Should().Be(_pivotNumber - expectedBatchSize + 1);
             request.Prioritized.Should().Be(true);
         }
 
@@ -232,18 +232,17 @@ namespace Nethermind.Synchronization.Test.FastSync
             LoadScenario(_64BodiesWithOneTxEach);
             ReceiptsSyncBatch request = _feed.PrepareRequest().Result;
             request.Should().NotBeNull();
-            request.MinNumber.Should().Be(_pivotNumber - expectedBatchSize + 1);
+            request!.MinNumber.Should().Be(_pivotNumber - expectedBatchSize + 1);
             request.Prioritized.Should().Be(true);
         }
 
         [Test]
         public void Can_create_a_final_batch()
         {
-            int expectedBatchSize = 64;
             LoadScenario(_64BodiesWithOneTxEachFollowedByEmpty);
             ReceiptsSyncBatch request = _feed.PrepareRequest().Result;
             request.Should().NotBeNull();
-            request.MinNumber.Should().Be(961);
+            request!.MinNumber.Should().Be(961);
             request.Prioritized.Should().Be(true);
         }
 
@@ -334,7 +333,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             handlingResult.Should().Be(SyncResponseHandlingResult.NotAssigned);
             ReceiptsSyncBatch batch2 = _feed.PrepareRequest().Result;
             batch2.Should().BeSameAs(batch);
-            batch2.Retries.Should().Be(1);
+            batch2!.Retries.Should().Be(1);
         }
         
         [Test]
@@ -342,12 +341,12 @@ namespace Nethermind.Synchronization.Test.FastSync
         {
             LoadScenario(_1024BodiesWithOneTxEach);
             ReceiptsSyncBatch batch = _feed.PrepareRequest().Result;
-            batch.Response = new TxReceipt[batch.Infos.Length][];
+            batch!.Response = new TxReceipt[batch.Infos.Length][];
             SyncResponseHandlingResult handlingResult = _feed.HandleResponse(batch);
             handlingResult.Should().Be(SyncResponseHandlingResult.NoProgress);
             ReceiptsSyncBatch batch2 = _feed.PrepareRequest().Result;
             batch2.Should().BeSameAs(batch);
-            batch2.Retries.Should().Be(1);
+            batch2!.Retries.Should().Be(1);
         }
         
         [Test]
@@ -355,14 +354,14 @@ namespace Nethermind.Synchronization.Test.FastSync
         {
             LoadScenario(_1024BodiesWithOneTxEach);
             ReceiptsSyncBatch batch = _feed.PrepareRequest().Result;
-            batch.Response = new TxReceipt[batch.Infos.Length][];
+            batch!.Response = new TxReceipt[batch.Infos.Length][];
             batch.Response[0] = new TxReceipt[1];
             
             SyncResponseHandlingResult handlingResult = _feed.HandleResponse(batch);
             handlingResult.Should().Be(SyncResponseHandlingResult.NoProgress);
             ReceiptsSyncBatch batch2 = _feed.PrepareRequest().Result;
             batch2.Should().BeSameAs(batch);
-            batch2.Retries.Should().Be(1);
+            batch2!.Retries.Should().Be(1);
         }
         
         [Test]
@@ -370,7 +369,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         {
             LoadScenario(_1024BodiesWithOneTxEach);
             ReceiptsSyncBatch batch = _feed.PrepareRequest().Result;
-            batch.Response = new TxReceipt[batch.Infos.Length][];
+            batch!.Response = new TxReceipt[batch.Infos.Length][];
             
             // default receipts that we use when constructing receipt root for tests have stats code 0
             // so by using 1 here we create a different tx root
@@ -390,14 +389,14 @@ namespace Nethermind.Synchronization.Test.FastSync
         {
             LoadScenario(_1024BodiesWithOneTxEach);
             ReceiptsSyncBatch batch = _feed.PrepareRequest().Result;
-            batch.Response = new TxReceipt[batch.Infos.Length][];
+            batch!.Response = new TxReceipt[batch.Infos.Length][];
             batch.Response[0] = new [] {Build.A.Receipt.TestObject};
 
             SyncResponseHandlingResult handlingResult = _feed.HandleResponse(batch);
             handlingResult.Should().Be(SyncResponseHandlingResult.OK);
             
             ReceiptsSyncBatch batch2 = _feed.PrepareRequest().Result;
-            batch2.Infos.Length.Should().Be(batch.Infos.Length - 1);
+            batch2!.Infos.Length.Should().Be(batch.Infos.Length - 1);
         }
         
         [Test]

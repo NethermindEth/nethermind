@@ -45,16 +45,21 @@ namespace Nethermind.Synchronization.Peers
     /// </summary>
     public class SyncPeerPool : ISyncPeerPool
     {
-        private const int InitTimeout = 3000; // the Eth.Timeout hits us at 5000
+        private const int InitTimeout = 3000; // the Eth.Timeout hits us at 5000 (or whatever it is configured to)
 
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
-        private readonly BlockingCollection<RefreshTotalDiffTask> _peerRefreshQueue = new BlockingCollection<RefreshTotalDiffTask>();
+        private readonly BlockingCollection<RefreshTotalDiffTask> _peerRefreshQueue
+            = new BlockingCollection<RefreshTotalDiffTask>();
 
-        private readonly ConcurrentDictionary<PublicKey, PeerInfo> _peers = new ConcurrentDictionary<PublicKey, PeerInfo>();
+        private readonly ConcurrentDictionary<PublicKey, PeerInfo> _peers
+            = new ConcurrentDictionary<PublicKey, PeerInfo>();
 
-        private readonly ConcurrentDictionary<PublicKey, CancellationTokenSource> _refreshCancelTokens = new ConcurrentDictionary<PublicKey, CancellationTokenSource>();
-        private readonly ConcurrentDictionary<SyncPeerAllocation, object> _replaceableAllocations = new ConcurrentDictionary<SyncPeerAllocation, object>();
+        private readonly ConcurrentDictionary<PublicKey, CancellationTokenSource> _refreshCancelTokens
+            = new ConcurrentDictionary<PublicKey, CancellationTokenSource>();
+        private readonly ConcurrentDictionary<SyncPeerAllocation, object?> _replaceableAllocations
+            = new ConcurrentDictionary<SyncPeerAllocation, object?>();
+        
         private readonly INodeStatsManager _stats;
         private int _allocationsUpgradeIntervalInMs;
 
@@ -63,11 +68,11 @@ namespace Nethermind.Synchronization.Peers
         private DateTime _lastUselessPeersDropTime = DateTime.UtcNow;
 
         private CancellationTokenSource _refreshLoopCancellation = new CancellationTokenSource();
-        private Task _refreshLoopTask;
+        private Task? _refreshLoopTask;
 
         private ManualResetEvent _signals = new ManualResetEvent(true);
         private TimeSpan _timeBeforeWakingShallowSleepingPeerUp = TimeSpan.FromMilliseconds(1000);
-        private Timer _upgradeTimer;
+        private Timer? _upgradeTimer;
 
         public SyncPeerPool(IBlockTree blockTree,
             INodeStatsManager nodeStatsManager,
@@ -206,7 +211,8 @@ namespace Nethermind.Synchronization.Peers
 
         public void RefreshTotalDifficulty(ISyncPeer syncPeer, Keccak blockHash)
         {
-            _peerRefreshQueue.Add(new RefreshTotalDiffTask {SyncPeer = syncPeer, BlockHash = blockHash});
+            RefreshTotalDiffTask task = new RefreshTotalDiffTask(blockHash, syncPeer);
+            _peerRefreshQueue.Add(task);
         }
 
         public void AddPeer(ISyncPeer syncPeer)
@@ -230,7 +236,7 @@ namespace Nethermind.Synchronization.Peers
 
             if (_logger.IsDebug) _logger.Debug($"Adding {syncPeer.Node:c} to refresh queue");
             if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportInterestingEvent(syncPeer.Node.Address, "adding node to refresh queue");
-            _peerRefreshQueue.Add(new RefreshTotalDiffTask {SyncPeer = syncPeer});
+            _peerRefreshQueue.Add(new RefreshTotalDiffTask(syncPeer));
         }
 
         public void RemovePeer(ISyncPeer syncPeer)
@@ -267,7 +273,10 @@ namespace Nethermind.Synchronization.Peers
                 }
             }
 
-            if (_refreshCancelTokens.TryGetValue(id, out CancellationTokenSource initCancelTokenSource)) initCancelTokenSource?.Cancel();
+            if (_refreshCancelTokens.TryGetValue(id, out CancellationTokenSource? initCancelTokenSource))
+            {
+                initCancelTokenSource?.Cancel();
+            }
         }
 
         private object _isAllocatedChecks = new object();
@@ -358,11 +367,11 @@ namespace Nethermind.Synchronization.Peers
                     }
                     else
                     {
-                        UpgradeAllocations("REFRESH");
+                        UpgradeAllocations();
                         // cases when we want other nodes to resolve the impasse (check Goerli discussion on 5 out of 9 validators)
                         if (syncPeer.TotalDifficulty == _blockTree.BestSuggestedHeader?.TotalDifficulty && syncPeer.HeadHash != _blockTree.BestSuggestedHeader?.Hash)
                         {
-                            Block block = _blockTree.FindBlock(_blockTree.BestSuggestedHeader.Hash, BlockTreeLookupOptions.None);
+                            Block block = _blockTree.FindBlock(_blockTree.BestSuggestedHeader?.Hash, BlockTreeLookupOptions.None);
                             if (block != null) // can be null if fast syncing headers only
                             {
                                 syncPeer.NotifyOfNewBlock(block, SendBlockPriority.High);
@@ -391,7 +400,7 @@ namespace Nethermind.Synchronization.Peers
                 try
                 {
                     _upgradeTimer.Enabled = false;
-                    UpgradeAllocations("TIMER");
+                    UpgradeAllocations();
                 }
                 catch (Exception exception)
                 {
@@ -473,7 +482,7 @@ namespace Nethermind.Synchronization.Peers
             if (PeerCount == PeerMaxCount)
             {
                 long lowestBlockNumber = long.MaxValue;
-                PeerInfo worstPeer = null;
+                PeerInfo? worstPeer = null;
                 foreach (PeerInfo peerInfo in AllPeers)
                 {
                     if (peerInfo.HeadNumber < lowestBlockNumber)
@@ -586,16 +595,17 @@ namespace Nethermind.Synchronization.Peers
         ///     which may not be controlled from inside here, hence we decide to monitor the potential upgrades in a loop.
         /// </summary>
         /// <exception cref="InvalidOperationException">Thrown if an irreplaceable allocation is being replaced by this method (internal implementation error).</exception>
-        private void UpgradeAllocations(string reason)
+        private void UpgradeAllocations()
         {
             DropUselessPeers();
             WakeUpPeerThatSleptEnough();
             foreach ((SyncPeerAllocation allocation, _) in _replaceableAllocations)
             {
+                INodeStatsManager stats = _stats;
                 lock (_isAllocatedChecks)
                 {
                     var unallocatedPeers = InitializedPeers.Where(p => p.CanBeAllocated(allocation.Contexts));
-                    allocation.AllocateBestPeer(unallocatedPeers, _stats, _blockTree);
+                    allocation.AllocateBestPeer(unallocatedPeers, stats, _blockTree);
                 }
             }
         }
@@ -610,9 +620,20 @@ namespace Nethermind.Synchronization.Peers
 
         private class RefreshTotalDiffTask
         {
-            public Keccak BlockHash { get; set; }
+            public RefreshTotalDiffTask(ISyncPeer syncPeer)
+            {
+                SyncPeer = syncPeer;
+            }
+            
+            public RefreshTotalDiffTask(Keccak blockHash, ISyncPeer syncPeer)
+            {
+                BlockHash = blockHash;
+                SyncPeer = syncPeer;
+            }
+            
+            public Keccak? BlockHash { get; }
 
-            public ISyncPeer SyncPeer { get; set; }
+            public ISyncPeer SyncPeer { get; }
         }
 
         public void Dispose()
