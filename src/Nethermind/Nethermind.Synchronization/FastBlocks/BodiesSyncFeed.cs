@@ -147,6 +147,9 @@ namespace Nethermind.Synchronization.FastBlocks
             bool ommersHashIsValid = OmmersHash.Calculate(blockBody.Ommers) == header.OmmersHash;
             bool isValid = txRootIsValid && ommersHashIsValid;
             block = isValid ? new Block(header, blockBody) : null;
+            
+            if(_logger.IsTrace)
+                _logger.Trace($"Found block {block?.ToString(Block.Format.FullHashAndNumber)} for block info {blockInfo.BlockHash} {blockInfo.BlockNumber}");
             return isValid;
         }
 
