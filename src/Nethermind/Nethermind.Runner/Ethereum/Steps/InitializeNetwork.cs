@@ -88,7 +88,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         private async Task Initialize(CancellationToken cancellationToken)
         {
-            // if (_networkConfig.DiagTracerEnabled)
+            if (_networkConfig.DiagTracerEnabled)
             {
                 NetworkDiagTracer.IsEnabled = true;
                 NetworkDiagTracer.Start();
