@@ -20,10 +20,10 @@ namespace Nethermind.Synchronization.FastBlocks
 {
     public class ReceiptsSyncBatch : FastBlocksBatch
     {
-        public BlockInfo?[] Infos { get; }
+        public BlockInfo[] Infos { get; }
         public TxReceipt[]?[]? Response { get; set; }
 
-        public ReceiptsSyncBatch(BlockInfo?[] infos)
+        public ReceiptsSyncBatch(BlockInfo[] infos)
         {
             Infos = infos;
         }

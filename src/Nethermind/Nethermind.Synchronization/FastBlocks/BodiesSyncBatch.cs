@@ -25,7 +25,7 @@ namespace Nethermind.Synchronization.FastBlocks
             Infos = infos;
         }
         
-        public BlockInfo?[] Infos { get; }
+        public BlockInfo[] Infos { get; }
         public BlockBody?[]? Response { get; set; }
     }
 }

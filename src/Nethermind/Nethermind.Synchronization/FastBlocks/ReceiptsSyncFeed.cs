@@ -120,16 +120,13 @@ namespace Nethermind.Synchronization.FastBlocks
             ReceiptsSyncBatch? batch = null;
             if (ShouldBuildANewBatch())
             {
-                BlockInfo[] infos = new BlockInfo[_requestSize];
-                _syncStatusList.GetInfosForBatch(infos);
-                if (infos[0] != null)
+                BlockInfo[] infos = _syncStatusList.GetInfosForBatch(_requestSize);
+                if (infos.Length > 0)
                 {
                     batch = new ReceiptsSyncBatch(infos);
                     batch.MinNumber = infos[0].BlockNumber;
                     batch.Prioritized = true;
                 }
-
-                // Array.Reverse(infos);
             }
 
             _receiptStorage.LowestInsertedReceiptBlock = _syncStatusList.LowestInsertWithoutGaps;
@@ -167,22 +164,10 @@ namespace Nethermind.Synchronization.FastBlocks
             }
             else
             {
-                if (header.ReceiptsRoot == Keccak.EmptyTreeHash)
-                {
-                    preparedReceipts = receipts.Length == 0 ? receipts : null;
-                }
-                else
-                {
-                    Keccak receiptsRoot = new ReceiptTrie(blockInfo.BlockNumber, _specProvider, receipts).RootHash;
-                    if (receiptsRoot != header.ReceiptsRoot)
-                    {
-                        preparedReceipts = null;
-                    }
-                    else
-                    {
-                        preparedReceipts = receipts;
-                    }
-                }
+                Keccak receiptsRoot = receipts.Length == 0
+                    ? Keccak.EmptyTreeHash
+                    : new ReceiptTrie(blockInfo.BlockNumber, _specProvider, receipts).RootHash;
+                preparedReceipts = receiptsRoot != header.ReceiptsRoot ? null : receipts;
             }
 
             return preparedReceipts != null;
@@ -195,21 +180,14 @@ namespace Nethermind.Synchronization.FastBlocks
 
             for (int i = 0; i < batch.Infos.Length; i++)
             {
-                BlockInfo? blockInfo = batch.Infos[i];
+                BlockInfo blockInfo = batch.Infos[i];
                 TxReceipt[]? receipts = (batch.Response?.Length ?? 0) <= i
                     ? null
-                    : (batch.Response![i] ?? Array.Empty<TxReceipt>());
+                    : batch.Response![i] ?? Array.Empty<TxReceipt>();
 
-                if (receipts != null)
+                if (!hasBreachedProtocol && receipts != null)
                 {
-                    TxReceipt[]? prepared = null;
-                    // last batch
-                    if (blockInfo == null)
-                    {
-                        break;
-                    }
-
-                    bool isValid = !hasBreachedProtocol && TryPrepareReceipts(blockInfo, receipts, out prepared);
+                    bool isValid = TryPrepareReceipts(blockInfo, receipts, out var prepared);
                     if (isValid)
                     {
                         Block? block = _blockTree.FindBlock(blockInfo.BlockHash);
@@ -236,7 +214,6 @@ namespace Nethermind.Synchronization.FastBlocks
                     {
                         hasBreachedProtocol = true;
                         if (_logger.IsDebug) _logger.Debug($"{batch} - reporting INVALID - tx or ommers");
-
                         if (batch.ResponseSourcePeer != null)
                         {
                             _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, "invalid tx or ommers root");
@@ -247,10 +224,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 }
                 else
                 {
-                    if (blockInfo != null)
-                    {
-                        _syncStatusList.MarkUnknown(blockInfo.BlockNumber);
-                    }
+                    _syncStatusList.MarkUnknown(blockInfo.BlockNumber);
                 }
             }
 

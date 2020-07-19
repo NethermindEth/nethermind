@@ -39,9 +39,10 @@ namespace Nethermind.Synchronization.FastBlocks
             LowestInsertWithoutGaps = lowestInserted ?? pivotNumber;
         }
 
-        public void GetInfosForBatch(BlockInfo[] blockInfos)
+        public BlockInfo[] GetInfosForBatch(int maxRequestSize)
         {
             int collected = 0;
+            BlockInfo[] blockInfos = new BlockInfo[maxRequestSize]; 
 
             long currentNumber = LowestInsertWithoutGaps;
             lock (_statuses)
@@ -78,6 +79,13 @@ namespace Nethermind.Synchronization.FastBlocks
                     currentNumber--;
                 }
             }
+
+            if (collected < maxRequestSize)
+            {
+                Array.Resize(ref blockInfos, collected);
+            }
+
+            return blockInfos;
         }
 
         public void MarkInserted(in long blockNumber)

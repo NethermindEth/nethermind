@@ -101,9 +101,8 @@ namespace Nethermind.Synchronization.FastBlocks
             BodiesSyncBatch? batch = null;
             if (ShouldBuildANewBatch())
             {
-                BlockInfo[] infos = new BlockInfo[_requestSize];
-                _syncStatusList.GetInfosForBatch(infos);
-                if (infos[0] != null)
+                BlockInfo[] infos = _syncStatusList.GetInfosForBatch(_requestSize);
+                if (infos.Length > 0)
                 {
                     batch = new BodiesSyncBatch(infos);
                     batch.MinNumber = infos[0].BlockNumber;
@@ -112,7 +111,6 @@ namespace Nethermind.Synchronization.FastBlocks
             }
 
             _blockTree.LowestInsertedBodyNumber = _syncStatusList.LowestInsertWithoutGaps;
-
             return Task.FromResult(batch);
         }
 
@@ -123,10 +121,10 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 if (batch == null)
                 {
-                    if(_logger.IsDebug) _logger.Debug("Received a NULL batch as a response");
+                    if (_logger.IsDebug) _logger.Debug("Received a NULL batch as a response");
                     return SyncResponseHandlingResult.InternalError;
                 }
-                
+
                 int added = InsertBodies(batch);
                 return added == 0
                     ? SyncResponseHandlingResult.NoProgress
@@ -143,16 +141,9 @@ namespace Nethermind.Synchronization.FastBlocks
             BlockHeader header = _blockTree.FindHeader(blockInfo.BlockHash);
             bool txRootIsValid = new TxTrie(blockBody.Transactions).RootHash == header.TxRoot;
             bool ommersHashIsValid = OmmersHash.Calculate(blockBody.Ommers) == header.OmmersHash;
-            if (txRootIsValid && ommersHashIsValid)
-            {
-                block = new Block(header, blockBody);
-            }
-            else
-            {
-                block = null;
-            }
-
-            return block != null;
+            bool isValid = txRootIsValid && ommersHashIsValid;
+            block = isValid ? new Block(header, blockBody) : null;
+            return isValid;
         }
 
         private int InsertBodies(BodiesSyncBatch batch)
@@ -162,51 +153,43 @@ namespace Nethermind.Synchronization.FastBlocks
 
             for (int i = 0; i < batch.Infos.Length; i++)
             {
-                BlockInfo? blockInfo = batch.Infos[i];
-                BlockBody? body = (batch.Response?.Length ?? 0) <= i
-                    ? null
-                    : batch.Response![i];
-
-                // last batch
-                if (blockInfo == null)
+                bool success = false;
+                BlockInfo blockInfo = batch.Infos[i];
+                try
                 {
-                    break;
-                }
+                    BlockBody? body = (batch.Response?.Length ?? 0) <= i
+                        ? null
+                        : batch.Response![i];
 
-                if (body != null)
-                {
-                    Block? block = null;
-                    bool isValid = !hasBreachedProtocol && TryPrepareBlock(blockInfo, body, out block);
-                    if (isValid)
+                    if (!hasBreachedProtocol && body != null)
                     {
-                        try
+                        bool isValid = TryPrepareBlock(blockInfo, body, out Block? block);
+                        if (isValid)
                         {
-                            InsertOneBlock(block!);
-                            validResponsesCount++;
+                            success = TryInsert(block!);
                         }
-                        catch (Exception e)
+                        else
                         {
-                            _syncStatusList.MarkUnknown(block!.Number);
-                            if(_logger.IsWarn)
-                                _logger.Warn(
-                                    $"Failed to insert block {block!.ToString(Block.Format.FullHashAndNumber)}: " + e);
+                            hasBreachedProtocol = true;
+                            if (_logger.IsDebug) _logger.Debug($"{batch} - reporting INVALID - tx or ommers");
+                            if (batch.ResponseSourcePeer != null)
+                            {
+                                _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, "invalid tx or ommers root");
+                            }
                         }
+                    }
+                }
+                finally
+                {
+                    if (success)
+                    {
+                        validResponsesCount++;
+                        _syncStatusList.MarkInserted(blockInfo.BlockNumber);
                     }
                     else
                     {
                         _syncStatusList.MarkUnknown(blockInfo.BlockNumber);
-                        hasBreachedProtocol = true;
-                        if (_logger.IsDebug) _logger.Debug($"{batch} - reporting INVALID - tx or ommers");
-
-                        if (batch.ResponseSourcePeer != null)
-                        {
-                            _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, "invalid tx or ommers root");
-                        }
                     }
-                }
-                else
-                {
-                    _syncStatusList.MarkUnknown(blockInfo.BlockNumber);
                 }
             }
 
@@ -216,16 +199,36 @@ namespace Nethermind.Synchronization.FastBlocks
 
             return validResponsesCount;
         }
-        
-        private void InsertOneBlock(Block block)
+
+        private bool TryInsert(Block block)
         {
-            AddBlockResult addBlockResult = _blockTree.Insert(block);
-            if (addBlockResult != AddBlockResult.Added)
+            bool success;
+            AddBlockResult addBlockResult = AddBlockResult.CannotAccept;
+            try
             {
-                throw new InvalidOperationException($"Failed to add block - {addBlockResult}");
+                addBlockResult = _blockTree.Insert(block);
             }
-            
-            _syncStatusList.MarkInserted(block.Number);
+            catch (Exception e)
+            {
+                if (_logger.IsWarn)
+                    _logger.Warn(
+                        $"Failed to insert block {block!.ToString(Block.Format.FullHashAndNumber)}: " + e);
+            }
+
+            if (_logger.IsTrace)
+                _logger.Trace(
+                    $"Inserting block {block.ToString(Block.Format.FullHashAndNumber)} - {addBlockResult}");
+
+            if (addBlockResult == AddBlockResult.Added)
+            {
+                success = true;
+            }
+            else
+            {
+                success = false;
+            }
+
+            return success;
         }
 
         private void LogPostProcessingBatchInfo(BodiesSyncBatch batch, int validResponsesCount)

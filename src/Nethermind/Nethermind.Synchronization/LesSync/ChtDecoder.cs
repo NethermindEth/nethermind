@@ -31,7 +31,7 @@ namespace Nethermind.Synchronization.LesSync
             }
 
             rlpStream.ReadSequenceLength();
-            Keccak hash = rlpStream.DecodeKeccak();
+            Keccak? hash = rlpStream.DecodeKeccak();
             UInt256 totalDifficulty = rlpStream.DecodeUInt256();
             return (hash, totalDifficulty);
         }
