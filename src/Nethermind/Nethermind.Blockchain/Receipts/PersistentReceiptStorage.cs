@@ -15,18 +15,14 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
-using Nethermind.Specs;
 using Nethermind.Serialization.Rlp;
-using Nethermind.State;
 #pragma warning disable 618
 
 namespace Nethermind.Blockchain.Receipts

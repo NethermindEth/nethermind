@@ -21,8 +21,6 @@ namespace Nethermind.Core
 {
     public class BlockBody
     {
-        public static int Number = 0;
-        
         public BlockBody()
         {
             // Interlocked.Increment(ref Number);

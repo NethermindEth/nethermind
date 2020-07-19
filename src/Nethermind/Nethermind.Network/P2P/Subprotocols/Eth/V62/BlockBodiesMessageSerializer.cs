@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Linq;
 using DotNetty.Buffers;
 using Nethermind.Core;
@@ -44,7 +45,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             NettyRlpStream rlpStream = new NettyRlpStream(byteBuffer);
             return Deserialize(rlpStream);
         }
-        
+
         public static BlockBodiesMessage Deserialize(RlpStream rlpStream)
         {
             BlockBodiesMessage message = new BlockBodiesMessage();
@@ -58,8 +59,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
                 // quite significant allocations (>0.5%) here based on a sample 3M blocks sync
                 // (just on these delegates)
-                Transaction[] transactions = rlpStream.DecodeArray(txCtx => Rlp.Decode<Transaction>(ctx));
-                BlockHeader[] ommers = rlpStream.DecodeArray(txCtx => Rlp.Decode<BlockHeader>(ctx));
+                Transaction[] transactions = rlpStream.DecodeArray(txCtx => Rlp.Decode<Transaction>(ctx))
+                                             ?? Array.Empty<Transaction>();
+                BlockHeader[] ommers = rlpStream.DecodeArray(txCtx => Rlp.Decode<BlockHeader>(ctx))
+                                       ?? Array.Empty<BlockHeader>();
                 return new BlockBody(transactions, ommers);
             }, false);
 
