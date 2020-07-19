@@ -146,6 +146,14 @@ namespace Nethermind.Synchronization.Test
 
         private BlockingCollection<Action> _sendQueue = new BlockingCollection<Action>();
         
+        public void NotifyOfNewBlock(Block block, SendBlockPriority priority)
+        {
+            if (priority == SendBlockPriority.High)
+                SendNewBlock(block);
+            else
+                HintNewBlock(block.Hash, block.Number);
+        }
+
         public void SendNewBlock(Block block)
         {
             _sendQueue.Add(() => _remoteSyncServer?.AddNewBlock(block, this));
@@ -164,7 +172,13 @@ namespace Nethermind.Synchronization.Test
 
         public Task<TxReceipt[][]> GetReceipts(IList<Keccak> blockHash, CancellationToken token)
         {
-            return Task.FromResult(_remoteSyncServer.GetReceipts(blockHash));
+            TxReceipt[][] result = new TxReceipt[blockHash.Count][];
+            for (int i = 0; i < blockHash.Count; i++)
+            {
+                result[i] = _remoteSyncServer.GetReceipts(blockHash[i]);
+            }
+            
+            return Task.FromResult(result);
         }
 
         public Task<byte[][]> GetNodeData(IList<Keccak> hashes, CancellationToken token)

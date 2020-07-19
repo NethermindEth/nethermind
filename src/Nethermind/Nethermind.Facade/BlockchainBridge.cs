@@ -35,6 +35,7 @@ using Nethermind.Trie;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Block = Nethermind.Core.Block;
+using System.Threading;
 
 namespace Nethermind.Facade
 {
@@ -70,7 +71,8 @@ namespace Nethermind.Facade
             ITimestamper timestamper,
             ILogManager logManager,
             bool isMining,
-            int findLogBlockDepthLimit = 1000)
+            int findLogBlockDepthLimit = 1000,
+            CancellationToken cancellationToken = default(CancellationToken))
         {
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
@@ -85,7 +87,6 @@ namespace Nethermind.Facade
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
             IsMining = isMining;
-
             _logFinder = new LogFinder(_blockTree, _receiptFinder, bloomStorage, logManager, new ReceiptsRecovery(), findLogBlockDepthLimit);
         }
 
@@ -176,9 +177,9 @@ namespace Nethermind.Facade
             return new CallOutput {Error = callOutputTracer.Error, GasSpent = callOutputTracer.GasSpent, OutputData = callOutputTracer.ReturnValue};
         }
 
-        public CallOutput EstimateGas(BlockHeader header, Transaction tx)
+        public CallOutput EstimateGas(BlockHeader header, Transaction tx, CancellationToken cancellationToken)
         {
-            EstimateGasTracer estimateGasTracer = new EstimateGasTracer();
+            EstimateGasTracer estimateGasTracer = new EstimateGasTracer(cancellationToken);
             CallAndRestore(header, tx, UInt256.Max(header.Timestamp + 1, _timestamper.EpochSeconds), estimateGasTracer);
             long estimate = estimateGasTracer.CalculateEstimate(tx);
             return new CallOutput {Error = estimateGasTracer.Error, GasSpent = estimate};

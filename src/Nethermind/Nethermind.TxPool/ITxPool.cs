@@ -26,7 +26,6 @@ namespace Nethermind.TxPool
     {
         Transaction[] GetPendingTransactions();
         Transaction[] GetOwnPendingTransactions();
-        void AddFilter<T>(T filter) where T : ITxFilter;
         void AddPeer(ITxPoolPeer peer);
         void RemovePeer(PublicKey nodeId);
         AddTxResult AddTransaction(Transaction tx, TxHandlingOptions handlingOptions);

@@ -180,6 +180,11 @@ namespace Nethermind.JsonRpc
             {
                 return GetErrorResponse(methodName, ErrorCodes.InvalidParams, e.Message, e.Data, request.Id);
             }
+            catch (TargetInvocationException e) when (e.InnerException is OperationCanceledException operationCanceled)
+            {
+                string errorMessage = $"{methodName} request was canceled due to enabled timeout on tracers.";
+                return GetErrorResponse(methodName, ErrorCodes.TracerTimeout, errorMessage, null, request.Id);
+            }
             catch (TargetInvocationException invocationException) when (invocationException.InnerException is BeamSyncException beamSyncException)
             {
                 return GetErrorResponse(methodName, ErrorCodes.ResourceUnavailable, beamSyncException.Message, invocationException.Data, request.Id);

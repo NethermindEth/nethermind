@@ -159,9 +159,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
             throw new NotSupportedException();
         }
 
-        public ResultWrapper<UInt256?> eth_estimateGas(TransactionForRpc transactionCall)
+        public ResultWrapper<UInt256?> eth_estimateGas(
+            TransactionForRpc transactionCall,
+            BlockParameter blockParameter = null)
         {
-            throw new NotSupportedException();
+            throw new NotImplementedException();
         }
 
         public ResultWrapper<BlockForRpc> eth_getBlockByHash(Keccak blockHash, bool returnFullTransactionObjects)

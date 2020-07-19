@@ -37,6 +37,7 @@ namespace Nethermind.JsonRpc.Modules
         TxPool,
         Web3,
         Baseline,
+        Vault,
         Deposit
     }
 

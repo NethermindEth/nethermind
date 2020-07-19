@@ -84,5 +84,12 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             Assert.Throws<RlpException>(() => serializer.Deserialize(rlp1.Bytes));
             Assert.Throws<RlpException>(() => serializer.Deserialize(rlp2.Bytes));
         }
+        
+        [Test]
+        public void To_string()
+        {
+            BlockHeadersMessage newBlockMessage = new BlockHeadersMessage();
+            _ = newBlockMessage.ToString();
+        }
     }
 }

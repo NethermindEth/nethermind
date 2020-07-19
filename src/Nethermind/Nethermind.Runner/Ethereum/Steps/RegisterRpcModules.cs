@@ -14,12 +14,10 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Cli.Modules;
 using Nethermind.DataMarketplace.Core.Configs;
-using Nethermind.Db.Rocks.Config;
 using Nethermind.Facade;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -39,6 +37,11 @@ using Nethermind.Baseline.Config;
 using Nethermind.Baseline.JsonRpc;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Db;
+using Nethermind.State;
+using Nethermind.Vault.JsonRpc;
+using Nethermind.Vault.Config;
+using Nethermind.Runner.Ethereum.Steps.Migrations;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
@@ -59,7 +62,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
             if (_context.Wallet == null) throw new StepDependencyException(nameof(_context.Wallet));
             if (_context.SpecProvider == null) throw new StepDependencyException(nameof(_context.SpecProvider));
-            
+
             ILogger logger = _context.LogManager.GetClassLogger();
             IJsonRpcConfig jsonRpcConfig = _context.Config<IJsonRpcConfig>();
             if (!jsonRpcConfig.Enabled)
@@ -74,6 +77,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             INdmConfig ndmConfig = _context.Config<INdmConfig>();
             IJsonRpcConfig rpcConfig = _context.Config<IJsonRpcConfig>();
             IBaselineConfig baselineConfig = _context.Config<IBaselineConfig>();
+            IVaultConfig vaultConfig = _context.Config<IVaultConfig>();
             INetworkConfig networkConfig = _context.Config<INetworkConfig>();
             if (ndmConfig.Enabled && !(_context.NdmInitializer is null) && ndmConfig.ProxyEnabled)
             {
@@ -83,18 +87,29 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
             else
             {
-                EthModuleFactory ethModuleFactory = new EthModuleFactory(_context.DbProvider, _context.TxPool, _context.Wallet, _context.BlockTree,
+                EthModuleFactory ethModuleFactory = new EthModuleFactory(_context.DbProvider, _context.TxPool, _context.Wallet, rpcConfig, _context.BlockTree,
                     _context.EthereumEcdsa, _context.MainBlockProcessor, _context.ReceiptFinder, _context.SpecProvider, rpcConfig, _context.BloomStorage, _context.LogManager, initConfig.IsMining);
                 _context.RpcModuleProvider.Register(new BoundedModulePool<IEthModule>(8, ethModuleFactory));
             }
 
-            ProofModuleFactory proofModuleFactory = new ProofModuleFactory(_context.DbProvider, _context.BlockTree, _context.RecoveryStep, _context.ReceiptFinder, _context.SpecProvider,  _context.LogManager);
+            ProofModuleFactory proofModuleFactory = new ProofModuleFactory(_context.DbProvider, _context.BlockTree, _context.RecoveryStep, _context.ReceiptFinder, _context.SpecProvider, _context.LogManager);
             _context.RpcModuleProvider.Register(new BoundedModulePool<IProofModule>(2, proofModuleFactory));
 
-            DebugModuleFactory debugModuleFactory = new DebugModuleFactory(_context.DbProvider, _context.BlockTree, _context.BlockValidator, _context.RecoveryStep, _context.RewardCalculatorSource, _context.ReceiptStorage, _context.ConfigProvider, _context.SpecProvider, _context.LogManager);
+            DebugModuleFactory debugModuleFactory = new DebugModuleFactory(
+                _context.DbProvider, 
+                _context.BlockTree,
+				rpcConfig, 
+                _context.BlockValidator, 
+                _context.RecoveryStep, 
+                _context.RewardCalculatorSource, 
+                _context.ReceiptStorage,
+                new ReceiptMigration(_context), 
+                _context.ConfigProvider, 
+                _context.SpecProvider, 
+                _context.LogManager);
             _context.RpcModuleProvider.Register(new BoundedModulePool<IDebugModule>(8, debugModuleFactory));
 
-            TraceModuleFactory traceModuleFactory = new TraceModuleFactory(_context.DbProvider, _context.BlockTree, _context.RecoveryStep, _context.RewardCalculatorSource, _context.ReceiptStorage, _context.SpecProvider, _context.LogManager);
+            TraceModuleFactory traceModuleFactory = new TraceModuleFactory(_context.DbProvider, _context.BlockTree, rpcConfig, _context.RecoveryStep, _context.RewardCalculatorSource, _context.ReceiptStorage, _context.SpecProvider, _context.LogManager);
             _context.RpcModuleProvider.Register(new BoundedModulePool<ITraceModule>(8, traceModuleFactory));
 
             PersonalBridge personalBridge = new PersonalBridge(_context.EthereumEcdsa, _context.Wallet);
@@ -110,11 +125,15 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.BloomStorage,
                 _context.LogManager,
                 new ReceiptsRecovery(), 1024);
-            
+
             if (baselineConfig.Enabled)
             {
+                IDbProvider dbProvider = _context.DbProvider!;
+                IStateReader stateReader = new StateReader(dbProvider.StateDb, dbProvider.CodeDb, _context.LogManager);
+
                 BaselineModuleFactory baselineModuleFactory = new BaselineModuleFactory(
                     _context.TxPool,
+                    stateReader,
                     logFinder,
                     _context.BlockTree,
                     _context.AbiEncoder,
@@ -122,11 +141,11 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _context.SpecProvider,
                     _context.FileSystem,
                     _context.LogManager);
-                
+
                 _context.RpcModuleProvider.Register(new SingletonModulePool<IBaselineModule>(baselineModuleFactory, true));
                 if (logger?.IsInfo ?? false) logger!.Info($"Baseline RPC Module has been enabled");
             }
-            
+
             // commented out because of temporary strange build issues on the build server
             // IDepositConfig depositConfig = _context.Config<IDepositConfig>();
             // if (depositConfig.DepositContractAddress != null)
@@ -135,24 +154,30 @@ namespace Nethermind.Runner.Ethereum.Steps
             //         _context.TxPool, new WalletTxSigner(_context.Wallet, _context.SpecProvider.ChainId), _context.Timestamper);
             //     DepositModule depositModule = new DepositModule(txPoolBridge, logFinder, depositConfig, _context.LogManager);
             //     _context.RpcModuleProvider.Register(new SingletonModulePool<IDepositModule>(depositModule, true));
-            // }
 
             TxPoolModule txPoolModule = new TxPoolModule(_context.BlockTree, _context.TxPoolInfoProvider, _context.LogManager);
             _context.RpcModuleProvider.Register(new SingletonModulePool<ITxPoolModule>(txPoolModule, true));
+
+            if (vaultConfig.Enabled)
+            {
+                VaultModule vaultModule = new VaultModule(vaultConfig, _context.LogManager);
+                _context.RpcModuleProvider.Register(new SingletonModulePool<IVaultModule>(vaultModule, true));
+                if (logger?.IsInfo ?? false) logger!.Info($"Vault RPC Module has been enabled");
+            }
 
             NetModule netModule = new NetModule(_context.LogManager, new NetBridge(_context.Enode, _context.SyncServer));
             _context.RpcModuleProvider.Register(new SingletonModulePool<INetModule>(netModule, true));
 
             ParityModule parityModule = new ParityModule(
-                _context.EthereumEcdsa, 
-                _context.TxPool, 
-                _context.BlockTree, 
-                _context.ReceiptFinder, 
-                _context.Enode, 
-                _context.Signer, 
-                _context.KeyStore, 
+                _context.EthereumEcdsa,
+                _context.TxPool,
+                _context.BlockTree,
+                _context.ReceiptFinder,
+                _context.Enode,
+                _context.Signer,
+                _context.KeyStore,
                 _context.LogManager);
-            
+
             _context.RpcModuleProvider.Register(new SingletonModulePool<IParityModule>(parityModule, true));
             
             return Task.CompletedTask;

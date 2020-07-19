@@ -49,7 +49,7 @@ namespace Nethermind.Serialization.Json
                     writer.WriteValue(value);
                     break;
                 default:
-                    throw new ArgumentOutOfRangeException();
+                    throw new NotSupportedException();
             }
         }
 
@@ -66,6 +66,11 @@ namespace Nethermind.Serialization.Json
 
         public static long FromString(string s)
         {
+            if (s == null)
+            {
+                throw new JsonException("null cannot be assigned to long");
+            }
+            
             if (s == "0x0")
             {
                 return 0L;

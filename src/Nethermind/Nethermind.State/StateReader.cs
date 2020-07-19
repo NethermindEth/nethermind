@@ -28,9 +28,10 @@ namespace Nethermind.State
 {
     public class StateReader : IStateReader
     {
-        private readonly ILogger _logger;
-
         private readonly IDb _codeDb;
+        private readonly ILogger _logger;
+        private readonly StateTree _state;
+        private readonly StorageTree _storage;
 
         public StateReader(ISnapshotableDb stateDb, IDb codeDb, ILogManager logManager)
         {
@@ -41,27 +42,9 @@ namespace Nethermind.State
             _storage = new StorageTree(stateDb);
         }
 
-        private readonly StateTree _state;
-        private readonly StorageTree _storage;
-
-        public bool AccountExists(Keccak stateRoot, Address address)
-        {
-            return GetState(stateRoot, address) != null;
-        }
-
-        public bool IsEmptyAccount(Keccak stateRoot, Address address)
-        {
-            return GetState(stateRoot, address).IsEmpty;
-        }
-
         public Account GetAccount(Keccak stateRoot, Address address)
         {
             return GetState(stateRoot, address);
-        }
-
-        public bool IsDeadAccount(Keccak stateRoot, Address address)
-        {
-            return GetState(stateRoot, address)?.IsEmpty ?? true;
         }
 
         public UInt256 GetNonce(Keccak stateRoot, Address address)
@@ -88,11 +71,6 @@ namespace Nethermind.State
         public UInt256 GetBalance(Keccak stateRoot, Address address)
         {
             return GetState(stateRoot, address)?.Balance ?? UInt256.Zero;
-        }
-
-        public Keccak GetCodeHash(Keccak stateRoot, Address address)
-        {
-            return GetState(stateRoot, address)?.CodeHash ?? Keccak.OfAnEmptyString;
         }
 
         public byte[] GetCode(Keccak codeHash)

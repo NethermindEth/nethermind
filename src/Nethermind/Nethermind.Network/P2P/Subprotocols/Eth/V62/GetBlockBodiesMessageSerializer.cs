@@ -48,7 +48,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             return Deserialize(rlpStream);
         }
         
-        private static GetBlockBodiesMessage Deserialize(RlpStream rlpStream)
+        public static GetBlockBodiesMessage Deserialize(RlpStream rlpStream)
         {
             Keccak[] hashes = rlpStream.DecodeArray(ctx => rlpStream.DecodeKeccak(), false);
             return new GetBlockBodiesMessage(hashes);

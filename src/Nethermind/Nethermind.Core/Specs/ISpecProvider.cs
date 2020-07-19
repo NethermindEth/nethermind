@@ -26,6 +26,6 @@ namespace Nethermind.Core.Specs
 
         int ChainId { get; }
 
-        public long[] TransitionBlocks { get; }
+        long[] TransitionBlocks { get; }
     }
 }

@@ -21,11 +21,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 {
     public class PooledTransactionsMessageSerializer : IZeroMessageSerializer<PooledTransactionsMessage>
     {
-        public PooledTransactionsMessageSerializer()
-        {
-            
-        }
-        
         private TransactionsMessageSerializer _txsMessageDeserializer
             = new TransactionsMessageSerializer();
         

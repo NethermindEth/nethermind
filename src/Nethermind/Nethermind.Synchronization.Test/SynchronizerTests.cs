@@ -214,13 +214,10 @@ namespace Nethermind.Synchronization.Test
                 return header;
             }
 
-            public void SendNewBlock(Block block)
+            public void NotifyOfNewBlock(Block block, SendBlockPriority priority)
             {
-                ReceivedBlocks.Push(block);
-            }
-
-            public void HintNewBlock(Keccak blockHash, long number)
-            {
+                if (priority == SendBlockPriority.High)
+                    ReceivedBlocks.Push(block);
             }
 
             public ConcurrentStack<Block> ReceivedBlocks { get; set; } = new ConcurrentStack<Block>();

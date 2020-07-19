@@ -21,6 +21,9 @@ using System.Threading.Tasks;
 
 namespace Nethermind.Logging
 {
+    /// <summary>
+    /// Use this class in tests only (for quick setup so there is no need to introduce NLog or other dependencies)
+    /// </summary>
     public class ConsoleAsyncLogger : ILogger
     {
         private readonly LogLevel _logLevel;

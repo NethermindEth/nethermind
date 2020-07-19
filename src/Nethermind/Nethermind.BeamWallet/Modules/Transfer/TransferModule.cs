@@ -251,7 +251,6 @@ namespace Nethermind.BeamWallet.Modules.Transfer
                 $"Gas price: {_averageGasPriceNumber}" +
                 $"{Environment.NewLine}" +
                 $"Transaction fee: {WeiToEth(txFee)}", "Yes", "No");
-
             if (confirmed == 0)
             {
                 DeleteLabels();
@@ -275,7 +274,6 @@ namespace Nethermind.BeamWallet.Modules.Transfer
                     MessageBox.ErrorQuery(40, 7, "Error", "Unlocking account failed.");
                     Application.Run(_transferWindow);
                 }
-
                 _unlockedLabel = new Label(1, 11, "Account unlocked.");
                 _transferWindow.Add(_unlockedLabel);
                 if (unlockAccountResult.Result)

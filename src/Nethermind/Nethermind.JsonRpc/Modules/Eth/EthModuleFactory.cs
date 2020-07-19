@@ -32,6 +32,7 @@ using Nethermind.Facade.Transactions;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Newtonsoft.Json;
+using System.Threading;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
@@ -39,6 +40,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
     {
         private readonly IBlockTree _blockTree;
         private readonly IDbProvider _dbProvider;
+        private readonly IJsonRpcConfig _jsonRpcConfig; 
         private readonly IEthereumEcdsa _ethereumEcdsa;
         private readonly IReceiptFinder _receiptFinder;
         private readonly ISpecProvider _specProvider;
@@ -54,6 +56,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         public EthModuleFactory(IDbProvider dbProvider,
             ITxPool txPool,
             IWallet wallet,
+            IJsonRpcConfig jsonRpcConfig,
             IBlockTree blockTree,
             IEthereumEcdsa ethereumEcdsa,
             IBlockProcessor blockProcessor,
@@ -67,6 +70,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
+            _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(wallet));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _ethereumEcdsa = ethereumEcdsa ?? throw new ArgumentNullException(nameof(ethereumEcdsa));
             _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
@@ -85,7 +89,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             ReadOnlyBlockTree readOnlyTree = new ReadOnlyBlockTree(_blockTree);
             IReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
             ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, readOnlyTree, _specProvider, _logManager);
-
+            
             var blockchainBridge = new BlockchainBridge(
                 readOnlyTxProcessingEnv.StateReader,
                 readOnlyTxProcessingEnv.StateProvider,
@@ -102,7 +106,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 Timestamper.Default,
                 _logManager,
                 _isMining,
-                _rpcConfig.FindLogBlockDepthLimit);
+                _rpcConfig.FindLogBlockDepthLimit
+                );
             
             TxPoolBridge txPoolBridge = new TxPoolBridge(_txPool, new WalletTxSigner(_wallet, _specProvider.ChainId), Timestamper.Default);
             

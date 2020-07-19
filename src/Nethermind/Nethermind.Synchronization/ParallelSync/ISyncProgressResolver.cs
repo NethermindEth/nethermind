@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Runtime.CompilerServices;
+using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 
 [assembly: InternalsVisibleTo("DynamicProxyGenAssembly2")]
@@ -25,6 +26,8 @@ namespace Nethermind.Synchronization.ParallelSync
         long FindBestFullState();
 
         long FindBestHeader();
+        
+        Keccak FindBestHeaderHash();
         
         long FindBestFullBlock();
         

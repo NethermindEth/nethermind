@@ -17,6 +17,8 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -30,6 +32,8 @@ using Nethermind.Db;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Stats.Model;
+using Nethermind.Synchronization.FastSync;
+using Nethermind.Synchronization.LesSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 
@@ -50,6 +54,7 @@ namespace Nethermind.Synchronization
         private readonly ISnapshotableDb _stateDb;
         private readonly ISnapshotableDb _codeDb;
         private readonly ISyncConfig _syncConfig;
+        private readonly CanonicalHashTrie _cht;
         private object _dummyValue = new object();
         private ICache<Keccak, object> _recentlySuggested = new LruCacheWithRecycling<Keccak, object>(128, 128, "recently suggested blocks");
         private long _pivotNumber;
@@ -64,7 +69,8 @@ namespace Nethermind.Synchronization
             ISyncPeerPool pool,
             ISyncModeSelector syncModeSelector,
             ISyncConfig syncConfig,
-            ILogManager logManager)
+            ILogManager logManager,
+            CanonicalHashTrie cht = null)
         {
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _pool = pool ?? throw new ArgumentNullException(nameof(pool));
@@ -76,6 +82,7 @@ namespace Nethermind.Synchronization
             _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _cht = cht;
             _pivotNumber = _syncConfig.PivotNumberParsed;
 
             _blockTree.NewHeadBlock += OnNewHeadBlock;
@@ -155,7 +162,7 @@ namespace Nethermind.Synchronization
             }
 
             ValidateSeal(block, nodeWhoSentTheBlock);
-            if ((_syncModeSelector.Current & (SyncMode.FastSync | SyncMode.StateNodes)) == SyncMode.None 
+            if ((_syncModeSelector.Current & (SyncMode.FastSync | SyncMode.StateNodes)) == SyncMode.None
                 || (_syncModeSelector.Current & (SyncMode.Full | SyncMode.Beam)) != SyncMode.None)
             {
                 LogBlockAuthorNicely(block, nodeWhoSentTheBlock);
@@ -228,14 +235,46 @@ namespace Nethermind.Synchronization
             // }
         }
 
+        /// <summary>
+        /// Code from AndreaLanfranchi - https://github.com/NethermindEth/nethermind/pull/2078
+        /// Generally it tries to find the sealer / miner name.
+        /// </summary>
         private void LogBlockAuthorNicely(Block block, ISyncPeer syncPeer)
         {
-            // This line is not particularly important (just for logging)
-            // and somehow it got refactored by ReSharper into some nightmare line.
-            // It would be worth to split it back into something readable.
-            // Generally it tries to find the sealer / miner name.
-            string authorString = (block.Author == null ? null : "sealed by " + (KnownAddresses.GoerliValidators.ContainsKey(block.Author) ? KnownAddresses.GoerliValidators[block.Author] : block.Author?.ToString())) ?? (block.Beneficiary == null ? string.Empty : "mined by " + (KnownAddresses.KnownMiners.ContainsKey(block.Beneficiary) ? KnownAddresses.KnownMiners[block.Beneficiary] : block.Beneficiary?.ToString()));
-            if (_logger.IsInfo) _logger.Info($"Discovered a new block {string.Empty.PadLeft(9 - block.Number.ToString().Length, ' ')}{block.ToString(Block.Format.HashNumberAndTx)} {authorString}, sent by {syncPeer:s}");
+            StringBuilder sb = new StringBuilder();
+            sb.Append($"Discovered new block {block.ToString(Block.Format.HashNumberAndTx)}");
+
+            if (block.Author != null)
+            {
+                sb.Append(" sealer ");
+                if (KnownAddresses.GoerliValidators.ContainsKey(block.Author))
+                {
+                    sb.Append(KnownAddresses.GoerliValidators[block.Author]);
+                }
+                else if (KnownAddresses.RinkebyValidators.ContainsKey(block.Author))
+                {
+                    sb.Append(KnownAddresses.GoerliValidators[block.Author]);
+                }
+                else
+                {
+                    sb.Append(block.Author);
+                }
+            }
+            else if (block.Beneficiary != null)
+            {
+                sb.Append(" miner ");
+                if (KnownAddresses.KnownMiners.ContainsKey(block.Beneficiary))
+                {
+                    sb.Append(KnownAddresses.KnownMiners[block.Beneficiary]);
+                }
+                else
+                {
+                    sb.Append(block.Beneficiary);
+                }
+            }
+
+            sb.Append($", sent by {syncPeer:s}");
+            _logger.Info(sb.ToString());
         }
 
         public void HintBlock(Keccak hash, long number, ISyncPeer syncPeer)
@@ -262,16 +301,9 @@ namespace Nethermind.Synchronization
             }
         }
 
-        public TxReceipt[][] GetReceipts(IList<Keccak> blockHashes)
+        public TxReceipt[] GetReceipts(Keccak blockHash)
         {
-            var receipts = new TxReceipt[blockHashes.Count][];
-            for (int blockIndex = 0; blockIndex < blockHashes.Count; blockIndex++)
-            {
-                Keccak blockHash = blockHashes[blockIndex];
-                receipts[blockIndex] = blockHash != null ? _receiptFinder.Get(blockHash) : Array.Empty<TxReceipt>();
-            }
-
-            return receipts;
+            return blockHash != null ? _receiptFinder.Get(blockHash) : Array.Empty<TxReceipt>();
         }
 
         public BlockHeader[] FindHeaders(Keccak hash, int numberOfBlocks, int skip, bool reverse)
@@ -279,20 +311,69 @@ namespace Nethermind.Synchronization
             return _blockTree.FindHeaders(hash, numberOfBlocks, skip, reverse);
         }
 
-        public byte[][] GetNodeData(IList<Keccak> keys)
+        public byte[][] GetNodeData(IList<Keccak> keys, NodeDataType includedTypes = NodeDataType.State | NodeDataType.Code)
         {
             var values = new byte[keys.Count][];
             for (int i = 0; i < keys.Count; i++)
             {
                 IDb stateDb = _stateDb.Innermost;
                 IDb codeDb = _codeDb.Innermost;
-                values[i] = stateDb.Get(keys[i]) ?? codeDb.Get(keys[i]);
+
+                values[i] = null;
+                if ((includedTypes & NodeDataType.State) == NodeDataType.State)
+                {
+                    values[i] = stateDb.Get(keys[i]);
+                }
+
+                if (values[i] == null && (includedTypes & NodeDataType.Code) == NodeDataType.Code)
+                {
+                    values[i] = codeDb.Get(keys[i]);
+                }
             }
 
             return values;
         }
 
+        public BlockHeader FindLowestCommonAncestor(BlockHeader firstDescendant, BlockHeader secondDescendant)
+        {
+            return _blockTree.FindLowestCommonAncestor(firstDescendant, secondDescendant, Sync.MaxReorgLength);
+        }
+
+        private object _chtLock = new object();
+
+        // TODO - Cancellation token?
+        // TODO - not a fan of this function name - CatchUpCHT, AddMissingCHTBlocks, ...?
+        public Task BuildCHT()
+        {
+            return Task.Run(() =>
+            {
+                lock (_chtLock)
+                {
+                    // Note: The spec says this should be 2048, but I don't think we'd ever want it to be higher than the max reorg depth we allow.
+                    long maxSection = CanonicalHashTrie.GetSectionFromBlockNo(_blockTree.FindLatestHeader().Number - Sync.MaxReorgLength);
+                    long maxKnownSection = _cht.GetMaxSectionIndex();
+
+                    for (long section = (maxKnownSection + 1); section <= maxSection; section++)
+                    {
+                        long sectionStart = section * CanonicalHashTrie.SectionSize;
+                        for (int blockOffset = 0; blockOffset < CanonicalHashTrie.SectionSize; blockOffset++)
+                        {
+                            _cht.Set(_blockTree.FindHeader(sectionStart + blockOffset));
+                        }
+
+                        _cht.Commit(section);
+                    }
+                }
+            });
+        }
+
+        public CanonicalHashTrie GetCHT()
+        {
+            return _cht;
+        }
+
         public Block Find(Keccak hash) => _blockTree.FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+
 
         public Keccak FindHash(long number)
         {
@@ -327,12 +408,12 @@ namespace Nethermind.Synchronization
                 {
                     if (_broadcastRandomizer.NextDouble() < broadcastRatio)
                     {
-                        peerInfo.SyncPeer.SendNewBlock(block);
+                        peerInfo.SyncPeer.NotifyOfNewBlock(block, SendBlockPriority.High);
                         counter++;
                     }
                     else
                     {
-                        peerInfo.SyncPeer.HintNewBlock(block.Hash, block.Number);
+                        peerInfo.SyncPeer.NotifyOfNewBlock(block, SendBlockPriority.Low);
                     }
                 }
             }
@@ -340,6 +421,11 @@ namespace Nethermind.Synchronization
             if (counter > 0)
             {
                 if (_logger.IsDebug) _logger.Debug($"Broadcasting block {block.ToString(Block.Format.Short)} to {counter} peers.");
+            }
+
+            if ((block.Number - Sync.MaxReorgLength) % CanonicalHashTrie.SectionSize == 0)
+            {
+                _ = BuildCHT();
             }
         }
 

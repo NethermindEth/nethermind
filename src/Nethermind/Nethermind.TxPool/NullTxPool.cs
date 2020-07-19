@@ -39,10 +39,6 @@ namespace Nethermind.TxPool
         
         public Transaction[] GetOwnPendingTransactions() => Array.Empty<Transaction>();
 
-        public void AddFilter<T>(T filter) where T : ITxFilter
-        {
-        }
-
         public void AddPeer(ITxPoolPeer peer)
         {
         }

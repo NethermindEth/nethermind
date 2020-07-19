@@ -29,5 +29,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             : base(transactions)
         {
         }
+        
+        public override string ToString() => $"{nameof(PooledTransactionsMessage)}({Transactions?.Count})";
     }
 }

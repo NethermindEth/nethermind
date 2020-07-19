@@ -77,5 +77,15 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
 
             SerializerTester.TestZero(serializer, message);
         }
+        
+        [Test]
+        public void Empty_to_string()
+        {
+            PooledTransactionsMessage message = new PooledTransactionsMessage(new Transaction[] { });
+            PooledTransactionsMessage message2 = new PooledTransactionsMessage(null);
+
+            _ = message.ToString();
+            _ = message2.ToString();
+        }
     }
 }

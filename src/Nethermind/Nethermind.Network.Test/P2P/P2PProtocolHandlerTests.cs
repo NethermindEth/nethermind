@@ -19,6 +19,7 @@ using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
+using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -48,6 +49,8 @@ namespace Nethermind.Network.Test.P2P
         private P2PProtocolHandler CreateSession()
         {
             _session.LocalPort.Returns(ListenPort);
+            Node node = new Node("127.0.0.1", 30303, false);
+            _session.Node.Returns(node);
             return new P2PProtocolHandler(
                 _session,
                 TestItem.PublicKeyA,

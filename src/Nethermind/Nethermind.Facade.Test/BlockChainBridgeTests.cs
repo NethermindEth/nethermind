@@ -38,6 +38,7 @@ using Nethermind.TxPool;
 using Nethermind.Wallet;
 using NSubstitute;
 using NUnit.Framework;
+using System.Threading;
 
 namespace Nethermind.Facade.Test
 {
@@ -134,7 +135,7 @@ namespace Nethermind.Facade.Test
             Transaction tx = new Transaction();
             tx.GasLimit = Transaction.BaseTxGasCost;
             
-            var gas = _blockchainBridge.EstimateGas(header, tx);
+            var gas = _blockchainBridge.EstimateGas(header, tx, default(CancellationToken));
             gas.GasSpent.Should().Be(Transaction.BaseTxGasCost);
 
             _transactionProcessor.Received().CallAndRestore(

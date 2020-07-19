@@ -89,6 +89,11 @@ namespace Nethermind.Db.Rocks.Config
         uint BloomDbWriteBufferNumber { get; set; }
         ulong BloomDbBlockCacheSize { get; set; }
         bool BloomDbCacheIndexAndFilterBlocks { get; set; }
+
+        ulong CanonicalHashTrieDbWriteBufferSize { get; set; }
+        uint CanonicalHashTrieDbWriteBufferNumber { get; set; }
+        ulong CanonicalHashTrieDbBlockCacheSize { get; set; }
+        bool CanonicalHashTrieDbCacheIndexAndFilterBlocks { get; set; }
         
         uint RecycleLogFileNum { get; set; }
         bool WriteAheadLogSync { get; set; }

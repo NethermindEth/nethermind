@@ -188,7 +188,11 @@ namespace Nethermind.Synchronization.Peers
 
         private void RecognizeClientType(ISyncPeer syncPeer)
         {
-            if (syncPeer.ClientId?.Contains("BeSu", StringComparison.InvariantCultureIgnoreCase) ?? false)
+            if (syncPeer == null)
+            {
+                PeerClientType = PeerClientType.Unknown;
+            }
+            else if (syncPeer.ClientId?.Contains("BeSu", StringComparison.InvariantCultureIgnoreCase) ?? false)
             {
                 PeerClientType = PeerClientType.BeSu;
             }

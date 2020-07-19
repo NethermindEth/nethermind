@@ -39,14 +39,15 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
 {
     public class ReceiptMigrationTests
     {
-        [Test]
-        public void RunMigration()
+        [TestCase(null)]
+        [TestCase(5)]
+        public void RunMigration(int? migratedBlockNumber)
         {
             var chainLength = 10;
             var configProvider = Substitute.For<IConfigProvider>();
             var blockTreeBuilder = Core.Test.Builders.Build.A.BlockTree().OfChainLength(chainLength);
-            var inMemoryReceiptStorage = new InMemoryReceiptStorage() {MigratedBlockNumber = long.MaxValue};
-            var outMemoryReceiptStorage = new InMemoryReceiptStorage() {MigratedBlockNumber = long.MaxValue};
+            var inMemoryReceiptStorage = new InMemoryReceiptStorage() {MigratedBlockNumber = migratedBlockNumber != null ? 0 : long.MaxValue};
+            var outMemoryReceiptStorage = new InMemoryReceiptStorage() {MigratedBlockNumber = migratedBlockNumber != null ? 0 : long.MaxValue};
             var context = new EthereumRunnerContext(configProvider, LimboLogs.Instance)
             {
                 ReceiptStorage = new TestReceiptStorage(inMemoryReceiptStorage, outMemoryReceiptStorage),
@@ -75,10 +76,17 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             Keccak lastTransaction = TestItem.Keccaks[txIndex - 1];
             context.DbProvider.ReceiptsDb.When(x => x.Remove(lastTransaction.Bytes)).Do(c => guard.Set());
             var migration = new ReceiptMigration(context);
-            migration.Run();
-            
+            if (migratedBlockNumber.HasValue)
+            {
+                migration.Run(migratedBlockNumber.Value);
+            }
+            else
+            {
+                migration.Run();
+            }
+
             guard.WaitOne(TimeSpan.FromSeconds(5));
-            var txCount = (chainLength - 1 - 1) * 2;
+            var txCount = ((migratedBlockNumber ?? chainLength) - 1 - 1) * 2;
             context.DbProvider.ReceiptsDb.Received(Quantity.Exactly(txCount)).Remove(Arg.Any<byte[]>());
             outMemoryReceiptStorage.Count.Should().Be(txCount);
         }

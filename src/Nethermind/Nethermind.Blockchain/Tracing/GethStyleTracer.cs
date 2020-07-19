@@ -16,6 +16,7 @@
 
 using System;
 using System.Linq;
+using System.Threading;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
@@ -39,22 +40,22 @@ namespace Nethermind.Blockchain.Tracing
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
         }
 
-        public GethLikeTxTrace Trace(Keccak blockHash, int txIndex, GethTraceOptions options)
+        public GethLikeTxTrace Trace(Keccak blockHash, int txIndex, GethTraceOptions options, CancellationToken cancellationToken)
         {
             Block block = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.None);
             if (block == null) throw new InvalidOperationException("Only historical blocks");
 
             if (txIndex > block.Transactions.Length - 1) throw new InvalidOperationException($"Block {blockHash} has only {block.Transactions.Length} transactions and the requested tx index was {txIndex}");
 
-            return Trace(block, block.Transactions[txIndex].Hash, options);
+            return Trace(block, block.Transactions[txIndex].Hash, cancellationToken, options);
         }
 
-        public GethLikeTxTrace Trace(Rlp block, Keccak txHash, GethTraceOptions options)
+        public GethLikeTxTrace Trace(Rlp block, Keccak txHash, GethTraceOptions options, CancellationToken cancellationToken)
         {
-            return TraceBlock(GetBlockToTrace(block), options, txHash).FirstOrDefault();
+            return TraceBlock(GetBlockToTrace(block), options, cancellationToken, txHash).FirstOrDefault();
         }
 
-        public GethLikeTxTrace Trace(Keccak txHash, GethTraceOptions traceOptions)
+        public GethLikeTxTrace Trace(Keccak txHash, GethTraceOptions traceOptions, CancellationToken cancellationToken)
         {
             Keccak blockHash = _receiptStorage.FindBlockHash(txHash);
             if (blockHash == null)
@@ -68,54 +69,55 @@ namespace Nethermind.Blockchain.Tracing
                 return null;
             }
 
-            return Trace(block, txHash, traceOptions);
+            return Trace(block, txHash, cancellationToken, traceOptions);
         }
 
-        public GethLikeTxTrace Trace(long blockNumber, int txIndex, GethTraceOptions options)
+        public GethLikeTxTrace Trace(long blockNumber, int txIndex, GethTraceOptions options, CancellationToken cancellationToken)
         {
             Block block = _blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.RequireCanonical);
             if (block == null) throw new InvalidOperationException("Only historical blocks");
 
             if (txIndex > block.Transactions.Length - 1) throw new InvalidOperationException($"Block {blockNumber} has only {block.Transactions.Length} transactions and the requested tx index was {txIndex}");
 
-            return Trace(block, block.Transactions[txIndex].Hash, options);
+            return Trace(block, block.Transactions[txIndex].Hash, cancellationToken, options);
         }
 
-        public GethLikeTxTrace Trace(long blockNumber, Transaction tx, GethTraceOptions options)
+        public GethLikeTxTrace Trace(long blockNumber, Transaction tx, GethTraceOptions options, CancellationToken cancellationToken)
         {
             Block block = _blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.RequireCanonical);
             if (block == null) throw new InvalidOperationException("Only historical blocks");
+            
             block.Body = new BlockBody(new[] {tx}, new BlockHeader[] { });
-            GethLikeBlockTracer blockTracer = new GethLikeBlockTracer(tx.Hash, options);
+            GethLikeBlockTracer blockTracer = new GethLikeBlockTracer(tx.Hash, options, cancellationToken);
             _processor.Process(block, ProcessingOptions.Trace, blockTracer);
             return blockTracer.BuildResult().SingleOrDefault();
         }
 
-        public GethLikeTxTrace[] TraceBlock(Keccak blockHash, GethTraceOptions options)
+        public GethLikeTxTrace[] TraceBlock(Keccak blockHash, GethTraceOptions options, CancellationToken cancellationToken)
         {
             Block block = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.None);
-            return TraceBlock(block, options);
+            return TraceBlock(block, options, cancellationToken);
         }
 
-        public GethLikeTxTrace[] TraceBlock(long blockNumber, GethTraceOptions options)
+        public GethLikeTxTrace[] TraceBlock(long blockNumber, GethTraceOptions options, CancellationToken cancellationToken)
         {
             Block block = _blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.RequireCanonical);
-            return TraceBlock(block, options);
+            return TraceBlock(block, options, cancellationToken);
         }
 
-        public GethLikeTxTrace[] TraceBlock(Rlp blockRlp, GethTraceOptions options)
+        public GethLikeTxTrace[] TraceBlock(Rlp blockRlp, GethTraceOptions options, CancellationToken cancellationToken)
         {
-            return TraceBlock(GetBlockToTrace(blockRlp), options);
+            return TraceBlock(GetBlockToTrace(blockRlp), options, cancellationToken);
         }
 
-        private GethLikeTxTrace Trace(Block block, Keccak txHash, GethTraceOptions options)
+        private GethLikeTxTrace Trace(Block block, Keccak txHash, CancellationToken cancellationToken, GethTraceOptions options)
         {
-            GethLikeBlockTracer listener = new GethLikeBlockTracer(txHash, options);
+            GethLikeBlockTracer listener = new GethLikeBlockTracer(txHash, options, cancellationToken);
             _processor.Process(block, ProcessingOptions.Trace, listener);
             return listener.BuildResult().SingleOrDefault();
         }
 
-        private GethLikeTxTrace[] TraceBlock(Block block, GethTraceOptions options, Keccak txHash = null)
+        private GethLikeTxTrace[] TraceBlock(Block block, GethTraceOptions options, CancellationToken cancellationToken, Keccak txHash = null)
         {
             if (block == null) throw new InvalidOperationException("Only canonical, historical blocks supported");
 
@@ -125,7 +127,7 @@ namespace Nethermind.Blockchain.Tracing
                 if (!_blockTree.IsMainChain(parent.Hash)) throw new InvalidOperationException("Cannot trace orphaned blocks");
             }
 
-            GethLikeBlockTracer listener = txHash == null ? new GethLikeBlockTracer(options) : new GethLikeBlockTracer(txHash, options);
+            GethLikeBlockTracer listener = txHash == null ? new GethLikeBlockTracer(options, cancellationToken) : new GethLikeBlockTracer(txHash, options, cancellationToken);
             _processor.Process(block, ProcessingOptions.Trace, listener);
             return listener.BuildResult().ToArray();
         }
