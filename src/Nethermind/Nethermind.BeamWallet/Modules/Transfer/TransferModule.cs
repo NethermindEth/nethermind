@@ -55,6 +55,14 @@ namespace Nethermind.BeamWallet.Modules.Transfer
         private Label _accountLockedLabel;
         private Label _balanceLabel;
         private TransactionModel _transaction;
+        private Label _unlockInfoLbl;
+        private Label _blockNumberLabel;
+        private Label _nonceLabel;
+        private Label _estimateGasLabel;
+        private Label _sendingTransactionLabel;
+        private Label _sentTransactionLabel;
+        private Label _lockInfoLabel;
+        private UInt256 _averageGasPrice;
 
         public TransferModule(IEthJsonRpcClientProxy ethJsonRpcClientProxy, IJsonRpcWalletClientProxy
             jsonRpcWalletClientProxy, Address address, decimal balanceEth)
@@ -102,10 +110,10 @@ namespace Nethermind.BeamWallet.Modules.Transfer
             return WeiToEth(decimal.Parse(result.Result.ToString()));
         }
         
-        private async Task<UInt256?> GetAverageGasPriceAsync()
+        private async Task GetAverageGasPriceAsync()
         {
-            var infoLbl = new Label(1, 16, "eth_getBlockByNumberWithTransactionDetails: calling...");
-            _transferWindow.Add(infoLbl);
+            _blockNumberLabel = new Label(1, 11, "eth_getBlockByNumber: calling...");
+            _transferWindow.Add(_blockNumberLabel);
             RpcResult<BlockModel<TransactionModel>> result;
             do
             {
@@ -114,20 +122,19 @@ namespace Nethermind.BeamWallet.Modules.Transfer
                     true);
                 await Task.Delay(2000);
             } while (!result.IsValid);
-
-            if (!result.IsValid)
-            {
-                return null;
-            }
             
             _latestBlock = result.Result;
             UInt256 sum = 0;
-            int transactionCount = 0;
             if (_latestBlock.Transactions.Count == 0)
             {
-                return _gasPrice;
+                _averageGasPrice = _gasPrice;
+                _transferWindow.Remove(_blockNumberLabel);
+                _blockNumberLabel = new Label(1, 11, $"eth_getBlockByNumber: {_latestBlock.Number}, average gas price: " +
+                                                     $"{_averageGasPrice} WEI");
+                _transferWindow.Add(_blockNumberLabel);
             }
-
+            
+            int transactionCount = 0;
             foreach (var transaction in _latestBlock.Transactions)
             {
                 if (transaction.GasPrice > 100)
@@ -137,22 +144,18 @@ namespace Nethermind.BeamWallet.Modules.Transfer
                 }
             }
 
-            if (transactionCount == 0)
-            {
-                return _gasPrice;
-            }
-
             _averageGasPriceNumber = transactionCount > 0 ? (long)sum / transactionCount : (long)sum;
-            _transferWindow.Remove(infoLbl);
-            infoLbl = new Label(1, 16, $"eth_getBlockByNumberWithTransactionDetails: {_averageGasPriceNumber}");
-            _transferWindow.Add(infoLbl);
-            return UInt256.Parse(_averageGasPriceNumber.ToString());
+            _transferWindow.Remove(_blockNumberLabel);
+            _blockNumberLabel = new Label(1, 11, $"eth_getBlockByNumber: {_latestBlock.Number}, average gas price: " +
+                                                $"{_averageGasPriceNumber} WEI");
+            _transferWindow.Add(_blockNumberLabel);
+            _averageGasPrice = UInt256.Parse(_averageGasPriceNumber.ToString());
         }
 
         private async Task GetTransactionCountAsync()
         {
-            var infoLbl = new Label(1, 17, "eth_getTransactionCount: calling...");
-            _transferWindow.Add(infoLbl);
+            _nonceLabel = new Label(1, 13, "eth_getTransactionCount: calling...");
+            _transferWindow.Add(_nonceLabel);
             RpcResult<UInt256?> result;
             do
             {
@@ -160,26 +163,26 @@ namespace Nethermind.BeamWallet.Modules.Transfer
                 await Task.Delay(3000);
             } while (!result.IsValid || !result.Result.HasValue);
             _currentNonce = result.Result.Value;
-            _transferWindow.Remove(infoLbl);
-            infoLbl = new Label(1, 17, $"eth_getTransactionCount: {_currentNonce}");
-            _transferWindow.Add(infoLbl);
+            _transferWindow.Remove(_nonceLabel);
+            _nonceLabel = new Label(1, 13, $"nonce: {_currentNonce}");
+            _transferWindow.Add(_nonceLabel);
         }
 
         private async Task GetEstimateGasAsync()
         {
-            var infoLbl = new Label(1, 18, "eth_estimateGas: calling...");
-            _transferWindow.Add(infoLbl);
+            _estimateGasLabel = new Label(1, 15, "eth_estimateGas: calling...");
+            _transferWindow.Add(_estimateGasLabel);
             
             RpcResult<byte[]> result;
             do
             {
-                result = await _ethJsonRpcClientProxy.eth_estimateGas(_transaction);
+                result = await _ethJsonRpcClientProxy.eth_estimateGas(_transaction, BlockParameterModel.FromNumber(_latestBlock.Number));
                 await Task.Delay(3000);
             } while (!result.IsValid);
             _estimateGas = result.Result.ToHexString();
-            _transferWindow.Remove(infoLbl);
-            infoLbl = new Label(1, 18, $"eth_estimateGas: {_estimateGas}");
-            _transferWindow.Add(infoLbl);
+            _transferWindow.Remove(_estimateGasLabel);
+            _estimateGasLabel = new Label(1, 15, $"eth_estimateGas: {_estimateGas} WEI");
+            _transferWindow.Add(_estimateGasLabel);
         }
 
         public Task<Window> InitAsync()
@@ -223,40 +226,47 @@ namespace Nethermind.BeamWallet.Modules.Transfer
         }
         private async Task MakeTransferAsync()
         {
-            if (!CorrectData(_toAddress, _value, _passphrase))
+            DeleteButtons();
+            DeleteLabels();
+            
+            // personal_unlockAccount here 
+            
+            if (IncorrectData(_toAddress, _value, _passphrase))
             {
                 Application.Run(_transferWindow);
                 return;
             }
 
-            var averageGasPrice = await GetAverageGasPriceAsync();
-            if (!averageGasPrice.HasValue)
-            {
-                return;
-            }
-            
+            await GetAverageGasPriceAsync();
             await GetTransactionCountAsync();
             Address from = _address;
             Address to = new Address(_toAddress);
             UInt256 value = EthToWei(_value);
-            _transaction = CreateTransaction(from, to, value, _gasLimit, averageGasPrice.Value, _currentNonce);
+            _transaction = CreateTransaction(from, to, value, _gasLimit, _averageGasPrice, _currentNonce);
             await GetEstimateGasAsync();
             decimal txFee = decimal.Parse(_estimateGas) * _averageGasPriceNumber;
 
-            var confirmed = MessageBox.Query(40, 10, "Confirmation",
-                $"Do you confirm the transaction?" +
+            var confirmed = MessageBox.Query(80, 15, "Confirmation",
                 $"{Environment.NewLine}" +
-                $"Gas limit: {_estimateGas}" +
+                "Do you confirm the transaction?" +
                 $"{Environment.NewLine}" +
-                $"Gas price: {_averageGasPriceNumber}" +
+                $"{Environment.NewLine}" +
+                $"From: {_address}" + 
+                $"{Environment.NewLine}" +
+                $"To: {_toAddress}" + 
+                $"{Environment.NewLine}" +
+                $"Value: {_transaction.Value} WEI" +
+                $"{Environment.NewLine}" +
+                $"Gas limit: {_estimateGas} WEI" +
+                $"{Environment.NewLine}" +
+                $"Gas price: {_averageGasPriceNumber} WEI" +
                 $"{Environment.NewLine}" +
                 $"Transaction fee: {WeiToEth(txFee)}", "Yes", "No");
+            
             if (confirmed == 0)
             {
-                DeleteLabels();
-
-                var unlockInfoLbl = new Label(1, 18, "personal_unlockAccount: calling...");
-                _transferWindow.Add(unlockInfoLbl);
+                _unlockInfoLbl = new Label(1, 17, "personal_unlockAccount: calling...");
+                _transferWindow.Add(_unlockInfoLbl);
             
                 RpcResult<bool> unlockAccountResult;
                 do
@@ -264,24 +274,24 @@ namespace Nethermind.BeamWallet.Modules.Transfer
                     unlockAccountResult = await _jsonRpcWalletClientProxy.personal_unlockAccount(_address, _passphrase);
                     await Task.Delay(3000);
                 } while (!unlockAccountResult.IsValid);
-                _transferWindow.Remove(unlockInfoLbl);
+                _transferWindow.Remove(_unlockInfoLbl);
                 
-                unlockInfoLbl = new Label(1, 18, $"personal_unlockAccount: {unlockAccountResult.Result}");
-                _transferWindow.Add(unlockInfoLbl);
+                _unlockInfoLbl = new Label(1, 17, $"personal_unlockAccount: {unlockAccountResult.Result}");
+                _transferWindow.Add(_unlockInfoLbl);
 
                 if (!unlockAccountResult.Result)
                 {
                     MessageBox.ErrorQuery(40, 7, "Error", "Unlocking account failed.");
+                    DeleteLabels();
+                    AddButtons();
                     Application.Run(_transferWindow);
                 }
-                _unlockedLabel = new Label(1, 11, "Account unlocked.");
-                _transferWindow.Add(_unlockedLabel);
+                
                 if (unlockAccountResult.Result)
                 {
-                    var sendingTransactionLabel =
-                        new Label(1, 12, $"Sending transaction with nonce: {_transaction.Nonce}.");
-                    _transferWindow.Add(sendingTransactionLabel);
-
+                    _sendingTransactionLabel =
+                        new Label(1, 19, $"Sending transaction with nonce: {_transaction.Nonce}.");
+                    _transferWindow.Add(_sendingTransactionLabel);
 
                     RpcResult<Keccak> sendTransactionResult;
                     do
@@ -289,10 +299,6 @@ namespace Nethermind.BeamWallet.Modules.Transfer
                         sendTransactionResult = await _ethJsonRpcClientProxy.eth_sendTransaction(_transaction);
                         await Task.Delay(3000);
                     } while (!sendTransactionResult.IsValid);
-
-                    _transferWindow.Remove(unlockInfoLbl);
-                    _transferWindow.Remove(_backButton);
-                    _transferWindow.Remove(_transferButton);
 
                     do
                     {
@@ -303,40 +309,59 @@ namespace Nethermind.BeamWallet.Modules.Transfer
                     } while (_newNonce == _currentNonce);
 
                     _transferWindow.Add(_backButton, _transferButton);
-                    _transferWindow.Remove(sendingTransactionLabel);
+                    _transferWindow.Remove(_sendingTransactionLabel);
 
-                    var sentLbl = new Label(1, 12, $"Transaction sent with nonce {_transaction.Nonce}.");
-                    _transferWindow.Add(sentLbl);
+                    _sentTransactionLabel = new Label(1, 19, $"Transaction sent with nonce {_transaction.Nonce}.");
+                    _transferWindow.Add(_sentTransactionLabel);
                     if (sendTransactionResult.IsValid)
                     {
-                        _txHashLabel = new Label(1, 13, $"Transaction hash: {sendTransactionResult.Result}");
+                        _txHashLabel = new Label(1, 21, $"Transaction hash: {sendTransactionResult.Result}");
                         _transferWindow.Add(_txHashLabel);
                     }
-
-
-                    var lockInfoLbl = new Label(1, 18, "personal_lockAccount: calling...");
-                    _transferWindow.Add(lockInfoLbl);
+                    
+                    _lockInfoLabel = new Label(1, 23, "personal_lockAccount: calling...");
+                    _transferWindow.Add(_lockInfoLabel);
 
                     RpcResult<bool> lockAccountResult;
                     do
                     {
-                        unlockAccountResult = await _jsonRpcWalletClientProxy.personal_lockAccount(_address);
+                        lockAccountResult = await _jsonRpcWalletClientProxy.personal_lockAccount(_address);
                         await Task.Delay(3000);
-                    } while (!unlockAccountResult.IsValid);
-
-                    _transferWindow.Remove(unlockInfoLbl);
-
-                    unlockInfoLbl = new Label(1, 18, "Account locked.");
-                    _transferWindow.Add(unlockInfoLbl);
+                    } while (!lockAccountResult.IsValid);
+                    _transferWindow.Remove(_lockInfoLabel);
+                    _lockInfoLabel = new Label(1, 23, $"personal_lockAccount: {lockAccountResult.Result}");
+                    _transferWindow.Add(_lockInfoLabel);
                 }
             }
+            else
+            {
+                DeleteLabels();
+                AddButtons();
+            }
+        }
+        private void AddButtons()
+        {
+            _transferWindow.Add(_backButton);
+            _transferWindow.Add(_transferButton);
+        }
+
+        private void DeleteButtons()
+        {
+            _transferWindow.Remove(_backButton);
+            _transferWindow.Remove(_transferButton);
         }
 
         private void DeleteLabels()
         {
+            _transferWindow.Remove(_blockNumberLabel);
+            _transferWindow.Remove(_nonceLabel);
+            _transferWindow.Remove(_estimateGasLabel);
+            _transferWindow.Remove(_unlockInfoLbl);
             _transferWindow.Remove(_unlockedLabel);
+            _transferWindow.Remove(_sendingTransactionLabel);
+            _transferWindow.Remove(_sentTransactionLabel);
             _transferWindow.Remove(_txHashLabel);
-            _transferWindow.Remove(_accountLockedLabel);
+            _transferWindow.Remove(_lockInfoLabel);
         }
 
         private static TransactionModel CreateTransaction(Address fromAddress, Address toAddress, UInt256 value, UInt256 gas,
@@ -350,15 +375,14 @@ namespace Nethermind.BeamWallet.Modules.Transfer
             Nonce = nonce
         };
 
-        private bool CorrectData(string address, string value, string passphrase)
+        private bool IncorrectData(string address, string value, string passphrase)
         {
-            if (!string.IsNullOrEmpty(address) && !string.IsNullOrEmpty(value) &&
-                !string.IsNullOrEmpty(passphrase) && decimal.TryParse(value, out _) && decimal.Parse(value) < _balanceEth)
+            if (string.IsNullOrEmpty(address) || string.IsNullOrEmpty(value) || string.IsNullOrEmpty(passphrase) ||
+                !decimal.TryParse(value, out _) || decimal.Parse(value) > _balanceEth)
             {
+                MessageBox.ErrorQuery(40, 7, "Error", "Incorrect data.");
                 return true;
             }
-
-            MessageBox.ErrorQuery(40, 7, "Error", "Incorrect data.");
             return false;
         }
 

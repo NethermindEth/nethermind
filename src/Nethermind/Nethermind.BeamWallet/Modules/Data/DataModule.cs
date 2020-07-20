@@ -71,7 +71,7 @@ namespace Nethermind.BeamWallet.Modules.Data
         private void Update(object state)
         {
             _ = UpdateBalanceAsync();
-            _ = UpdateTokenBalanceAsync();
+            // _ = UpdateTokenBalanceAsync();
         }
 
         private async Task UpdateBalanceAsync()
@@ -89,7 +89,7 @@ namespace Nethermind.BeamWallet.Modules.Data
 
             _balance = balance.Value;
             _window.Remove(_balanceValueLabel);
-            _balanceValueLabel = new Label(70, 1, $"{_balance} ETH");
+            _balanceValueLabel = new Label(70, 1, $"{_balance} ETH (refreshing every 5s)");
             
             _window.Remove(_syncingInfoLabel);
             _window.Add(_balanceValueLabel);
@@ -159,7 +159,7 @@ namespace Nethermind.BeamWallet.Modules.Data
             } while (!balance.HasValue);
                 
             _balance = balance.Value;
-            _balanceValueLabel = new Label(70, 1, $"{_balance} ETH");   
+            _balanceValueLabel = new Label(70, 1, $"{_balance} ETH (refreshing every 5s)");   
             
             _window.Remove(_syncingInfoLabel);
             _window.Add(_balanceValueLabel);
