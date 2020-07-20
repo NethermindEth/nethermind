@@ -224,7 +224,9 @@ namespace Nethermind.Runner.Test
             Test<IMetricsConfig, string>(configWildcard, c => c.PushGatewayUrl, "http://localhost:9091/metrics");
         }
 
-        [TestCase("^mainnet", 50)]
+        [TestCase("^mainnet ^spaceneth ^volta", 50)]
+        [TestCase("spaceneth", 4)]
+        [TestCase("volta", 25)]
         [TestCase("mainnet", 100)]
         public void Network_defaults_are_correct(string configWildcard, int activePeers = 50)
         {
@@ -241,7 +243,11 @@ namespace Nethermind.Runner.Test
             Test<INetworkConfig, bool>(configWildcard, c => c.DiagTracerEnabled, false);
         }
 
-        [TestCase("^spaceneth", 2048)]
+        [TestCase("mainnet", 2048)]
+        [TestCase("^mainnet ^spaceneth ^volta ^sokol ^poacore", 1024)]
+        [TestCase("volta", 512)]
+        [TestCase("sokol", 512)]
+        [TestCase("poacore", 512)]
         [TestCase("spaceneth", 128)]
         public void Tx_pool_defaults_are_correct(string configWildcard, int poolSize)
         {
