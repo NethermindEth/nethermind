@@ -52,29 +52,32 @@ namespace Nethermind.Runner
             TotalMemory = (ulong) (initConfig.MemoryHint ?? (long) 2.GB());
             ValidateCpuCount(cpuCount);
 
-            if (_logger.IsInfo) _logger.Info("Setting up memory allowances");
-            if (_logger.IsInfo) _logger.Info($"  memory hint:        {TotalMemory / 1000 / 1000}MB");
-            _remainingMemory = (ulong) (initConfig.MemoryHint ?? (long) 2.GB());
-            _remainingMemory -= GeneralMemory;
-            if (_logger.IsInfo) _logger.Info($"  general memory:     {GeneralMemory / 1000 / 1000}MB");
-            AssignPeersMemory(networkConfig);
-            _remainingMemory -= PeersMemory;
-            if (_logger.IsInfo) _logger.Info($"  peers memory:       {PeersMemory / 1000 / 1000}MB");
-            AssignNettyMemory(networkConfig, cpuCount);
-            _remainingMemory -= NettyMemory;
-            if (_logger.IsInfo) _logger.Info($"  Netty memory:       {NettyMemory / 1000 / 1000}MB");
-            AssignTxPoolMemory(txPoolConfig);
-            _remainingMemory -= TxPoolMemory;
-            if (_logger.IsInfo) _logger.Info($"  mempool memory:     {TxPoolMemory / 1000 / 1000}MB");
-            AssignFastBlocksMemory(syncConfig);
-            _remainingMemory -= FastBlocksMemory;
-            if (_logger.IsInfo) _logger.Info($"  fast blocks memory: {FastBlocksMemory / 1000 / 1000}MB");
-            AssignTrieCacheMemory();
-            _remainingMemory -= TrieCacheMemory;
-            if (_logger.IsInfo) _logger.Info($"  trie memory:        {TrieCacheMemory / 1000 / 1000}MB");
-            UpdateDbConfig(cpuCount, syncConfig, dbConfig, initConfig);
-            _remainingMemory -= DbMemory;
-            if (_logger.IsInfo) _logger.Info($"  DB memory:          {DbMemory / 1000 / 1000}MB");
+            checked
+            {
+                if (_logger.IsInfo) _logger.Info("Setting up memory allowances");
+                if (_logger.IsInfo) _logger.Info($"  memory hint:        {TotalMemory / 1000 / 1000}MB");
+                _remainingMemory = (ulong) (initConfig.MemoryHint ?? (long) 2.GB());
+                _remainingMemory -= GeneralMemory;
+                if (_logger.IsInfo) _logger.Info($"  general memory:     {GeneralMemory / 1000 / 1000}MB");
+                AssignPeersMemory(networkConfig);
+                _remainingMemory -= PeersMemory;
+                if (_logger.IsInfo) _logger.Info($"  peers memory:       {PeersMemory / 1000 / 1000}MB");
+                AssignNettyMemory(networkConfig, cpuCount);
+                _remainingMemory -= NettyMemory;
+                if (_logger.IsInfo) _logger.Info($"  Netty memory:       {NettyMemory / 1000 / 1000}MB");
+                AssignTxPoolMemory(txPoolConfig);
+                _remainingMemory -= TxPoolMemory;
+                if (_logger.IsInfo) _logger.Info($"  mempool memory:     {TxPoolMemory / 1000 / 1000}MB");
+                AssignFastBlocksMemory(syncConfig);
+                _remainingMemory -= FastBlocksMemory;
+                if (_logger.IsInfo) _logger.Info($"  fast blocks memory: {FastBlocksMemory / 1000 / 1000}MB");
+                AssignTrieCacheMemory();
+                _remainingMemory -= TrieCacheMemory;
+                if (_logger.IsInfo) _logger.Info($"  trie memory:        {TrieCacheMemory / 1000 / 1000}MB");
+                UpdateDbConfig(cpuCount, syncConfig, dbConfig, initConfig);
+                _remainingMemory -= DbMemory;
+                if (_logger.IsInfo) _logger.Info($"  DB memory:          {DbMemory / 1000 / 1000}MB");
+            }
         }
 
         private ulong _remainingMemory;
@@ -97,11 +100,17 @@ namespace Nethermind.Runner
         private void AssignPeersMemory(INetworkConfig networkConfig)
         {
             PeersMemory = (ulong) networkConfig.ActivePeersMaxCount * 1.MB();
+            if (PeersMemory > _remainingMemory * 0.75)
+            {
+                throw new InvalidDataException(
+                    $"Memory hint is not enough to satisfy the {nameof(NetworkConfig)}.{nameof(INetworkConfig.ActivePeersMaxCount)}. " +
+                    $"Assign at least MaxActivePeers * ~1MB * ~1.25 of memory.");
+            }
         }
 
         private void AssignTxPoolMemory(ITxPoolConfig txPoolConfig)
         {
-            ulong hashCacheMemory = (ulong)txPoolConfig.Size / 4UL * 1024UL * 128UL;
+            ulong hashCacheMemory = (ulong) txPoolConfig.Size / 4UL * 1024UL * 128UL;
             if ((_remainingMemory * 0.05) < hashCacheMemory)
             {
                 hashCacheMemory = (ulong) Math.Min((long) (_remainingMemory * 0.05), (long) (hashCacheMemory));
