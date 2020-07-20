@@ -158,7 +158,6 @@ namespace Nethermind.Runner.Test
 
         [TestCase(0 * GB, 16u)]
         [TestCase(4 * GB, 0u)]
-        [TestCase(MemoryHintMan.MinMemoryHint - 1, 0u)]
         public void Incorrect_input_throws(ulong memoryHint, uint cpuCount)
         {
             _initConfig.MemoryHint = (long) memoryHint;

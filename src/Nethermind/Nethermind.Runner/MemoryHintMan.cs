@@ -18,7 +18,6 @@
 using System;
 using System.Diagnostics;
 using System.IO;
-using System.Text;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Extensions;
 using Nethermind.Db.Rocks.Config;
@@ -26,7 +25,6 @@ using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Runner.Ethereum.Steps;
 using Nethermind.TxPool;
-using MemoryAllowance = Nethermind.Evm.MemoryAllowance;
 
 namespace Nethermind.Runner
 {
@@ -36,8 +34,6 @@ namespace Nethermind.Runner
     public class MemoryHintMan
     {
         private ILogger _logger;
-
-        public const ulong MinMemoryHint = 64_000_000;
 
         public MemoryHintMan(ILogManager logManager)
         {
@@ -54,32 +50,31 @@ namespace Nethermind.Runner
             uint cpuCount)
         {
             TotalMemory = (ulong) (initConfig.MemoryHint ?? (long) 2.GB());
-            ValidateMemoryHint(TotalMemory);
             ValidateCpuCount(cpuCount);
-            
-            if(_logger.IsInfo) _logger.Info("Setting up memory allowances");
-            if(_logger.IsInfo) _logger.Info($"  memory hint:        {TotalMemory / 1000 / 1000}MB");
+
+            if (_logger.IsInfo) _logger.Info("Setting up memory allowances");
+            if (_logger.IsInfo) _logger.Info($"  memory hint:        {TotalMemory / 1000 / 1000}MB");
             _remainingMemory = (ulong) (initConfig.MemoryHint ?? (long) 2.GB());
             _remainingMemory -= GeneralMemory;
-            if(_logger.IsInfo) _logger.Info($"  general memory:     {GeneralMemory / 1000 / 1000}MB");
+            if (_logger.IsInfo) _logger.Info($"  general memory:     {GeneralMemory / 1000 / 1000}MB");
             AssignPeersMemory(networkConfig);
             _remainingMemory -= PeersMemory;
-            if(_logger.IsInfo) _logger.Info($"  peers memory:       {PeersMemory / 1000 / 1000}MB");
+            if (_logger.IsInfo) _logger.Info($"  peers memory:       {PeersMemory / 1000 / 1000}MB");
             AssignNettyMemory(networkConfig, cpuCount);
             _remainingMemory -= NettyMemory;
-            if(_logger.IsInfo) _logger.Info($"  Netty memory:       {NettyMemory / 1000 / 1000}MB");
+            if (_logger.IsInfo) _logger.Info($"  Netty memory:       {NettyMemory / 1000 / 1000}MB");
             AssignTxPoolMemory(txPoolConfig);
             _remainingMemory -= TxPoolMemory;
-            if(_logger.IsInfo) _logger.Info($"  mempool memory:     {TxPoolMemory / 1000 / 1000}MB");
+            if (_logger.IsInfo) _logger.Info($"  mempool memory:     {TxPoolMemory / 1000 / 1000}MB");
             AssignFastBlocksMemory(syncConfig);
             _remainingMemory -= FastBlocksMemory;
-            if(_logger.IsInfo) _logger.Info($"  fast blocks memory: {FastBlocksMemory / 1000 / 1000}MB");
+            if (_logger.IsInfo) _logger.Info($"  fast blocks memory: {FastBlocksMemory / 1000 / 1000}MB");
             AssignTrieCacheMemory();
             _remainingMemory -= TrieCacheMemory;
-            if(_logger.IsInfo) _logger.Info($"  trie memory:        {TrieCacheMemory / 1000 / 1000}MB");
+            if (_logger.IsInfo) _logger.Info($"  trie memory:        {TrieCacheMemory / 1000 / 1000}MB");
             UpdateDbConfig(cpuCount, syncConfig, dbConfig, initConfig);
             _remainingMemory -= DbMemory;
-            if(_logger.IsInfo) _logger.Info($"  DB memory:          {DbMemory / 1000 / 1000}MB");
+            if (_logger.IsInfo) _logger.Info($"  DB memory:          {DbMemory / 1000 / 1000}MB");
         }
 
         private ulong _remainingMemory;
@@ -96,7 +91,7 @@ namespace Nethermind.Runner
         private void AssignTrieCacheMemory()
         {
             TrieCacheMemory = (ulong) (0.2 * _remainingMemory);
-            Trie.MemoryAllowance.TrieNodeCacheMemory = (ulong)TrieCacheMemory;
+            Trie.MemoryAllowance.TrieNodeCacheMemory = (ulong) TrieCacheMemory;
         }
 
         private void AssignPeersMemory(INetworkConfig networkConfig)
@@ -106,15 +101,15 @@ namespace Nethermind.Runner
 
         private void AssignTxPoolMemory(ITxPoolConfig txPoolConfig)
         {
-            ulong hashCacheMemory = 512 * 1024 * 128;
+            ulong hashCacheMemory = (ulong)txPoolConfig.Size / 4UL * 1024UL * 128UL;
             if ((_remainingMemory * 0.05) < hashCacheMemory)
             {
-                hashCacheMemory = (ulong)Math.Min((long)(_remainingMemory * 0.05), (long)(hashCacheMemory));
+                hashCacheMemory = (ulong) Math.Min((long) (_remainingMemory * 0.05), (long) (hashCacheMemory));
             }
 
-            Nethermind.TxPool.MemoryAllowance.TxHashCacheSize = (int)(hashCacheMemory / 128);
-            hashCacheMemory = (ulong)(Nethermind.TxPool.MemoryAllowance.TxHashCacheSize * 128);
-            
+            MemoryAllowance.TxHashCacheSize = (int) (hashCacheMemory / 128);
+            hashCacheMemory = (ulong) (MemoryAllowance.TxHashCacheSize * 128);
+
             ulong txPoolMemory = (ulong) txPoolConfig.Size * 40.KB() + hashCacheMemory;
             if (txPoolMemory > _remainingMemory * 0.5)
             {
@@ -137,7 +132,7 @@ namespace Nethermind.Runner
                 {
                     FastBlocksMemory = (ulong) Math.Min((long) 1.GB(), (long) (0.1 * _remainingMemory));
                 }
-                
+
                 Synchronization.MemoryAllowance.FastBlocksMemory = FastBlocksMemory;
             }
         }
@@ -149,7 +144,7 @@ namespace Nethermind.Runner
                 DbMemory = _remainingMemory;
                 return;
             }
-            
+
             DbMemory = _remainingMemory;
             ulong remaining = DbMemory;
             DbNeeds dbNeeds = GetHeaderNeeds(cpuCount, syncConfig);
@@ -278,9 +273,9 @@ namespace Nethermind.Runner
             // remove optimize for point lookup here?
             return new DbNeeds(
                 preferredBuffers,
-                16.MB(), // min buffer size
-                32.MB(), // max buffer size
-                16.MB(), // min block cache
+                1.MB(), // min buffer size
+                64.MB(), // max buffer size
+                4.MB(), // min block cache
                 128.GB(), // max block cache
                 1m); // db memory %
         }
@@ -293,7 +288,7 @@ namespace Nethermind.Runner
                 preferredBuffers,
                 1.MB(), // min buffer size
                 8.MB(), // max buffer size
-                4.MB(), // min block cache
+                1.MB(), // min block cache
                 512.MB(), // max block cache
                 0.02m); // db memory %
         }
@@ -303,9 +298,9 @@ namespace Nethermind.Runner
             uint preferredBuffers = Math.Min(cpuCount, syncConfig.FastBlocks ? 4u : 2u);
             return new DbNeeds(
                 preferredBuffers,
-                4.MB(), // min buffer size
-                16.MB(), // max buffer size
-                4.MB(), // min block cache
+                1.MB(), // min buffer size
+                8.MB(), // max buffer size
+                1.MB(), // min block cache
                 1.GB(), // max block cache
                 0.02m); // db memory %
         }
@@ -317,7 +312,7 @@ namespace Nethermind.Runner
                 preferredBuffers,
                 4.MB(), // min buffer size
                 64.MB(), // max buffer size
-                16.MB(), // min block cache
+                8.MB(), // min block cache
                 2.GB(), // max block cache
                 0.04m); // db memory %
         }
@@ -327,9 +322,9 @@ namespace Nethermind.Runner
             uint preferredBuffers = Math.Min(cpuCount, syncConfig.FastBlocks ? 4u : 2u);
             return new DbNeeds(
                 preferredBuffers,
-                4.MB(), // min buffer size
+                2.MB(), // min buffer size
                 64.MB(), // max buffer size
-                16.MB(), // min block cache
+                8.MB(), // min block cache
                 2.GB(), // max block cache
                 0.01m); // db memory %
         }
@@ -338,9 +333,9 @@ namespace Nethermind.Runner
         {
             return new DbNeeds(
                 4,
-                4.MB(), // min buffer size
+                1.MB(), // min buffer size
                 16.MB(), // max buffer size
-                8.MB(), // min block cache
+                2.MB(), // min block cache
                 128.MB(), // max block cache
                 0.01m); // db memory %
         }
@@ -351,8 +346,8 @@ namespace Nethermind.Runner
             return new DbNeeds(
                 preferredBuffers,
                 1.MB(), // min buffer size
-                8.MB(), // max buffer size
-                16.MB(), // min block cache
+                4.MB(), // max buffer size
+                2.MB(), // min block cache
                 32.MB(), // max block cache
                 0); // db memory %
         }
@@ -361,6 +356,7 @@ namespace Nethermind.Runner
         {
             NettyMemory = (ulong) Math.Min((long) 512.MB(), (long) (0.2 * _remainingMemory));
             ulong estimate = NettyMemoryEstimator.Estimate(cpuCount, networkConfig.NettyArenaOrder);
+            ValidateCpuCount(cpuCount);
 
             /* first of all we assume that the mainnet will be heavier than any other chain on the side */
             /* we will leave the arena order as in config if it is set to a non-default value */
@@ -388,14 +384,6 @@ namespace Nethermind.Runner
             }
 
             NettyMemory = estimate;
-        }
-
-        private static void ValidateMemoryHint(ulong memoryHint)
-        {
-            if (memoryHint < 64.MB())
-            {
-                throw new ArgumentOutOfRangeException(nameof(memoryHint), $"Memory hint has to be >= {MinMemoryHint}.");
-            }
         }
 
         private static void ValidateCpuCount(uint cpuCount)
