@@ -21,11 +21,11 @@ namespace Nethermind.Vault.Test.JsonRpc
         private IVaultConfig _config;
         private string _vaultId;
         private string _keyId;
-        private string _secretId;
+        // private string _secretId;
         private KeyArgs _keyArgs;
         private VaultArgs _vaultArgs;
         private SecretArgs _secretArgs;
-        private VaultManager _vaultManager;
+        // private VaultManager _vaultManager;
 
         [OneTimeSetUp]
         public async Task SetUp()

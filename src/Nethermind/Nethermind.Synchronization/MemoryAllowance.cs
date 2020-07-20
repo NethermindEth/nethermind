@@ -13,14 +13,14 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System.Threading;
-using System.Threading.Tasks;
+using Nethermind.Core.Extensions;
 
-namespace Nethermind.Synchronization.ParallelSync
+namespace Nethermind.Synchronization
 {
-    public interface ISyncDispatcher<T>
+    public static class MemoryAllowance
     {
-        Task Start(CancellationToken cancellationToken);
+        public static ulong FastBlocksMemory = 128.MB();
     }
 }

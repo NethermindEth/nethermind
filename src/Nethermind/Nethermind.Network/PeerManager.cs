@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -965,12 +965,16 @@ namespace Nethermind.Network
             NetworkNode[] nonActiveNodes = storedNodes.Where(x => !activeNodeIds.Contains(x.NodeId))
                 .OrderBy(x => x.Reputation).ToArray();
             int countToRemove = storedNodes.Length - _networkConfig.MaxPersistedPeerCount;
-            NetworkNode[] nodesToRemove = nonActiveNodes.Take(countToRemove).ToArray();
-            if (nodesToRemove.Length > 0)
+            var nodesToRemove = nonActiveNodes.Take(countToRemove);
+
+            int removedNodes = 0;
+            foreach (var item in nodesToRemove)
             {
-                _peerStorage.RemoveNodes(nodesToRemove);
-                if (_logger.IsDebug) _logger.Debug($"Removing persisted peers: {nodesToRemove.Length}, prevPersistedCount: {storedNodes.Length}, newPersistedCount: {_peerStorage.GetPersistedNodes().Length}, PersistedPeerCountCleanupThreshold: {_networkConfig.PersistedPeerCountCleanupThreshold}, MaxPersistedPeerCount: {_networkConfig.MaxPersistedPeerCount}");
+                _peerStorage.RemoveNode(item.NodeId);
+                removedNodes++;
             }
+
+            if (_logger.IsDebug) _logger.Debug($"Removing persisted peers: {removedNodes}, prevPersistedCount: {storedNodes.Length}, newPersistedCount: {_peerStorage.PersistedNodesCount}, PersistedPeerCountCleanupThreshold: {_networkConfig.PersistedPeerCountCleanupThreshold}, MaxPersistedPeerCount: {_networkConfig.MaxPersistedPeerCount}");
         }
 
         private void CleanupCandidatePeers()

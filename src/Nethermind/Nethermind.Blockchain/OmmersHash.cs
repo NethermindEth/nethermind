@@ -28,5 +28,12 @@ namespace Nethermind.Blockchain
                 ? Keccak.OfAnEmptySequenceRlp
                 : Keccak.Compute(Rlp.Encode(block.Ommers).Bytes);
         }
+        
+        public static Keccak Calculate(BlockHeader[] ommers)
+        {
+            return ommers.Length == 0
+                ? Keccak.OfAnEmptySequenceRlp
+                : Keccak.Compute(Rlp.Encode(ommers).Bytes);
+        }
     }
 }

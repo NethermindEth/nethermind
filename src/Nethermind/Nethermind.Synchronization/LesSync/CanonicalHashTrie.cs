@@ -16,15 +16,13 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
+using System.IO;
 using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Db;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Serialization.Rlp;
-using Nethermind.State.Proofs;
 using Nethermind.Trie;
 
 namespace Nethermind.Synchronization.LesSync
@@ -81,13 +79,13 @@ namespace Nethermind.Synchronization.LesSync
 
         private static long GetMaxSectionIndex(IKeyValueStore db)
         {
-            byte[] storeValue = null;
+            byte[]? storeValue = null;
             try
             {
                 storeValue = db[MaxSectionKey];
             }
             catch (KeyNotFoundException) { }
-            return storeValue == null ? -1L : storeValue.ToLongFromBigEndianByteArrayWithoutLeadingZeros();
+            return storeValue?.ToLongFromBigEndianByteArrayWithoutLeadingZeros() ?? -1L;
         }
 
         private void SetMaxSectionIndex(long sectionIndex)
@@ -116,14 +114,19 @@ namespace Nethermind.Synchronization.LesSync
             Set(GetKey(header), GetValue(header));
         }
 
-        public (Keccak, UInt256) Get(long key)
+        public (Keccak?, UInt256) Get(long key)
         {
             return Get(GetKey(key));
         }
         
-        public (Keccak, UInt256) Get(Span<byte> key)
+        public (Keccak?, UInt256) Get(Span<byte> key)
         {
-            var val = base.Get(key);
+            byte[]? val = base.Get(key);
+            if (val == null)
+            {
+                throw new InvalidDataException("Missing CHT data");
+            }
+            
             return _decoder.Decode(val);
         }
 

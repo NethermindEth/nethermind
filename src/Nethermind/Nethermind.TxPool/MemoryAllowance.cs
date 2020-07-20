@@ -19,6 +19,6 @@ namespace Nethermind.TxPool
     public static class MemoryAllowance
     {
         public static int MemPoolSize { get; set; } = 1 << 11;
-        public static int TxHashCacheSize { get; } = 1 << 19;
+        public static int TxHashCacheSize { get; set; } = 1 << 19;
     }
 }

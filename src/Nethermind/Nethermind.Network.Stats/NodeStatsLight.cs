@@ -351,6 +351,7 @@ namespace Nethermind.Stats
                 return false;
             }
 
+
             if (_lastLocalDisconnect.HasValue)
             {               
                 if (_statsConfig.PenalizedReputationLocalDisconnectReasons.Contains(_lastLocalDisconnect.Value))

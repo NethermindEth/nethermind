@@ -21,34 +21,34 @@ namespace Nethermind.Synchronization.ParallelSync
 {
     public class PendingSyncModeSelector : ISyncModeSelector
     {
-        private ISyncModeSelector _syncModeSelector;
+        private ISyncModeSelector? _syncModeSelector;
 
         public void SetActual(ISyncModeSelector syncModeSelector)
         {
             _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
-            _syncModeSelector.Preparing +=SyncModeSelectorOnPreparing;
+            _syncModeSelector.Preparing += SyncModeSelectorOnPreparing;
             _syncModeSelector.Changing += SyncModeSelectorOnChanging;
             _syncModeSelector.Changed += SyncModeSelectorOnChanged;
         }
 
-        private void SyncModeSelectorOnPreparing(object sender, SyncModeChangedEventArgs e)
+        private void SyncModeSelectorOnPreparing(object? sender, SyncModeChangedEventArgs e)
         {
             Preparing?.Invoke(this, e);
         }
 
-        private void SyncModeSelectorOnChanging(object sender, SyncModeChangedEventArgs e)
+        private void SyncModeSelectorOnChanging(object? sender, SyncModeChangedEventArgs e)
         {
             Changing?.Invoke(this, e);
         }
 
-        private void SyncModeSelectorOnChanged(object sender, SyncModeChangedEventArgs e)
+        private void SyncModeSelectorOnChanged(object? sender, SyncModeChangedEventArgs e)
         {
             Changed?.Invoke(this, e);
         }
 
         public SyncMode Current => _syncModeSelector?.Current ?? SyncMode.None;
-        public event EventHandler<SyncModeChangedEventArgs> Preparing;
-        public event EventHandler<SyncModeChangedEventArgs> Changing;
-        public event EventHandler<SyncModeChangedEventArgs> Changed;
+        public event EventHandler<SyncModeChangedEventArgs>? Preparing;
+        public event EventHandler<SyncModeChangedEventArgs>? Changing;
+        public event EventHandler<SyncModeChangedEventArgs>? Changed;
     }
 }

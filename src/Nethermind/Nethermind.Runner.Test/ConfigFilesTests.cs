@@ -194,22 +194,24 @@ namespace Nethermind.Runner.Test
             Test<IDbConfig, bool>(configWildcard, c => c.CacheIndexAndFilterBlocks, expectedValue);
         }
         
-        [TestCase("mainnet archive", 8000000000)]
-        [TestCase("mainnet ^archive", 4000000000)]
-        [TestCase("goerli archive", 3000000000)]
-        [TestCase("goerli ^archive", 1500000000)]
-        [TestCase("rinkeby archive", 6000000000)]
-        [TestCase("rinkeby ^archive", 3000000000)]
-        [TestCase("ropsten archive", 6000000000)]
-        [TestCase("ropsten ^archive", 3000000000)]
-        [TestCase("xdai archive", 6000000000)]
-        [TestCase("xdai ^archive", 3000000000)]
-        [TestCase("poacore archive", 6000000000)]
-        [TestCase("poacore ^archive", 3000000000)]
-        [TestCase("sokol archive", 6000000000)]
-        [TestCase("sokol ^archive", 3000000000)]
-        [TestCase("spaceneth.cfg", 128000000)]
-        [TestCase("spaceneth_persistent.cfg", 512000000)]
+        [TestCase("mainnet archive", 4096000000)]
+        [TestCase("mainnet ^archive", 2048000000)]
+        [TestCase("volta archive", 256000000)]
+        [TestCase("volta ^archive", 256000000)]
+        [TestCase("goerli archive", 768000000)]
+        [TestCase("goerli ^archive", 384000000)]
+        [TestCase("rinkeby archive", 1536000000)]
+        [TestCase("rinkeby ^archive", 1024000000)]
+        [TestCase("ropsten archive", 1536000000)]
+        [TestCase("ropsten ^archive", 1024000000)]
+        [TestCase("xdai archive", 1024000000)]
+        [TestCase("xdai ^archive", 768000000)]
+        [TestCase("poacore archive", 1024000000)]
+        [TestCase("poacore ^archive", 768000000)]
+        [TestCase("sokol archive", 768000000)]
+        [TestCase("sokol ^archive", 512000000)]
+        [TestCase("spaceneth.cfg", 64000000)]
+        [TestCase("spaceneth_persistent.cfg", 128000000)]
         public void Memory_hint_values_are_correct(string configWildcard, long expectedValue)
         {
             Test<IInitConfig, long?>(configWildcard, c => c.MemoryHint, expectedValue);
@@ -224,7 +226,10 @@ namespace Nethermind.Runner.Test
             Test<IMetricsConfig, string>(configWildcard, c => c.PushGatewayUrl, "http://localhost:9091/metrics");
         }
 
-        [TestCase("^mainnet", 50)]
+        [TestCase("^mainnet ^spaceneth ^volta ^baseline", 50)]
+        [TestCase("spaceneth", 4)]
+        [TestCase("baseline", 25)]
+        [TestCase("volta", 25)]
         [TestCase("mainnet", 100)]
         public void Network_defaults_are_correct(string configWildcard, int activePeers = 50)
         {
@@ -241,7 +246,13 @@ namespace Nethermind.Runner.Test
             Test<INetworkConfig, bool>(configWildcard, c => c.DiagTracerEnabled, false);
         }
 
-        [TestCase("*", 2048)]
+        [TestCase("mainnet", 2048)]
+        [TestCase("^baseline ^mainnet ^spaceneth ^volta ^sokol ^poacore", 1024)]
+        [TestCase("baseline", 512)]
+        [TestCase("volta", 512)]
+        [TestCase("sokol", 512)]
+        [TestCase("poacore", 512)]
+        [TestCase("spaceneth", 128)]
         public void Tx_pool_defaults_are_correct(string configWildcard, int poolSize)
         {
             Test<ITxPoolConfig, int>(configWildcard, c => c.Size, poolSize);

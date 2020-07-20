@@ -55,7 +55,7 @@ namespace Nethermind.Blockchain
         /// <summary>
         /// Lowest body added in reverse insert
         /// </summary>
-        Block LowestInsertedBody { get; }
+        long? LowestInsertedBodyNumber { get; set; }
         
         /// <summary>
         /// Best downloaded block number (highest number of chain level on the chain)
@@ -121,6 +121,8 @@ namespace Nethermind.Blockchain
         Task Accept(IBlockTreeVisitor blockTreeVisitor, CancellationToken cancellationToken);
 
         ChainLevelInfo FindLevel(long number);
+        
+        BlockInfo FindBlockInfo(long blockNumber);
 
         Keccak FindHash(long blockNumber);
 

@@ -165,7 +165,7 @@ namespace Nethermind.Network.Test
                 }
             }
 
-            public void RemoveNodes(NetworkNode[] nodes)
+            public void RemoveNode(PublicKey nodeId)
             {
                 _pendingChanges = true;
             }
@@ -179,6 +179,8 @@ namespace Nethermind.Network.Test
             }
 
             private bool _pendingChanges;
+
+            public int PersistedNodesCount => _nodes.Count;
 
             public bool AnyPendingChange()
             {

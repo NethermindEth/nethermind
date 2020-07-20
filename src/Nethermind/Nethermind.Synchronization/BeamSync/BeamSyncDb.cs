@@ -30,7 +30,7 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.BeamSync
 {
-    public class BeamSyncDb : SyncFeed<StateSyncBatch>, IDb
+    public class BeamSyncDb : SyncFeed<StateSyncBatch?>, IDb
     {
         public UInt256 RequiredPeerDifficulty { get; private set; } = UInt256.Zero;
 
@@ -52,8 +52,13 @@ namespace Nethermind.Synchronization.BeamSync
 
         private IDb _targetDbForSaves;
 
-        public BeamSyncDb(IDb stateDb, IDb tempDb, ISyncModeSelector syncModeSelector, ILogManager logManager, int contextTimeout = 4, int preProcessTimeout = 15)
-            : base(logManager)
+        public BeamSyncDb(
+            IDb stateDb,
+            IDb tempDb,
+            ISyncModeSelector syncModeSelector,
+            ILogManager logManager,
+            int contextTimeout = 4,
+            int preProcessTimeout = 15)
         {
             _logger = logManager.GetClassLogger<BeamSyncDb>();
             _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
@@ -70,7 +75,7 @@ namespace Nethermind.Synchronization.BeamSync
 
         private readonly object _finishLock = new object();
 
-        private void SyncModeSelectorOnChanged(object sender, SyncModeChangedEventArgs e)
+        private void SyncModeSelectorOnChanged(object? sender, SyncModeChangedEventArgs e)
         {
             if ((e.Current & SyncMode.Full) == SyncMode.Full)
             {
@@ -88,12 +93,12 @@ namespace Nethermind.Synchronization.BeamSync
             }
         }
 
-        private void SyncModeSelectorOnPreparing(object sender, SyncModeChangedEventArgs e)
+        private void SyncModeSelectorOnPreparing(object? sender, SyncModeChangedEventArgs e)
         {
             // do nothing, the beam processor is cancelling beam executors now and they may be still writing
         }
 
-        private void SyncModeSelectorOnChanging(object sender, SyncModeChangedEventArgs e)
+        private void SyncModeSelectorOnChanging(object? sender, SyncModeChangedEventArgs e)
         {
             // at this stage beam executors are already cancelled and they no longer save to beam DB
             // standard processor is for sure not started yet - it is waiting for us to replace the target
@@ -129,7 +134,7 @@ namespace Nethermind.Synchronization.BeamSync
         private readonly TimeSpan _contextExpiryTimeSpan;
         private readonly TimeSpan _preProcessExpiryTimeSpan;
 
-        public byte[] this[byte[] key]
+        public byte[]? this[byte[] key]
         {
             get
             {
@@ -236,7 +241,8 @@ namespace Nethermind.Synchronization.BeamSync
             }
         }
 
-        public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => keys.Select(k => new KeyValuePair<byte[], byte[]>(k, this[k])).ToArray();
+        public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] =>
+            keys.Select(k => new KeyValuePair<byte[], byte[]?>(k, this[k])).ToArray();
 
         public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false)
         {
@@ -279,36 +285,34 @@ namespace Nethermind.Synchronization.BeamSync
             _stateDb.Clear();
         }
 
-        public override Task<StateSyncBatch> PrepareRequest()
+        public override Task<StateSyncBatch?> PrepareRequest()
         {
-            StateSyncBatch request;
+            StateSyncBatch? request;
             lock (_requestedNodes)
             {
                 if (_requestedNodes.Count == 0)
                 {
-                    return Task.FromResult((StateSyncBatch) null);
+                    return Task.FromResult((StateSyncBatch?) null);
                 }
 
-                request = new StateSyncBatch();
-                request.ConsumerId = FeedId;
-
+                StateSyncItem[] requestedNodes;
                 if (_requestedNodes.Count < 256)
                 {
                     // do not make it state sync item :)
-                    request.RequestedNodes = _requestedNodes.Select(n => new StateSyncItem(n, NodeDataType.State, 0, 0)).ToArray();
+                    requestedNodes = _requestedNodes.Select(n => new StateSyncItem(n, NodeDataType.State, 0, 0)).ToArray();
                     _requestedNodes.Clear();
                 }
                 else
                 {
                     Keccak[] source = _requestedNodes.ToArray();
-                    request.RequestedNodes = new StateSyncItem[256];
+                    requestedNodes = new StateSyncItem[256];
                     _requestedNodes.Clear();
                     for (int i = 0; i < source.Length; i++)
                     {
                         if (i < 256)
                         {
                             // not state sync item
-                            request.RequestedNodes[i] = new StateSyncItem(source[i], NodeDataType.State, 0, 0);
+                            requestedNodes[i] = new StateSyncItem(source[i], NodeDataType.State, 0, 0);
                         }
                         else
                         {
@@ -316,14 +320,23 @@ namespace Nethermind.Synchronization.BeamSync
                         }
                     }
                 }
+                
+                request = new StateSyncBatch(requestedNodes);
+                request.ConsumerId = FeedId;
             }
 
             Interlocked.Increment(ref Metrics.BeamedRequests);
-            return Task.FromResult(request);
+            return Task.FromResult<StateSyncBatch?>(request);
         }
 
-        public override SyncResponseHandlingResult HandleResponse(StateSyncBatch stateSyncBatch)
+        public override SyncResponseHandlingResult HandleResponse(StateSyncBatch? stateSyncBatch)
         {
+            if (stateSyncBatch == null)
+            {
+                if(_logger.IsWarn) _logger.Warn($"{nameof(BeamSyncDb)} received a NULL batch as a response.");
+                return SyncResponseHandlingResult.InternalError;
+            }
+            
             if (stateSyncBatch.ConsumerId != FeedId)
             {
                 if(_logger.IsWarn) _logger.Warn($"Beam sync response sent by feed {stateSyncBatch.ConsumerId} came back to feed {FeedId}");
@@ -333,7 +346,7 @@ namespace Nethermind.Synchronization.BeamSync
             bool wasDataInvalid = false;
             int consumed = 0;
 
-            byte[][] data = stateSyncBatch.Responses;
+            byte[][]? data = stateSyncBatch.Responses;
             if (data != null)
             {
                 for (int i = 0; i < Math.Min(data.Length, stateSyncBatch.RequestedNodes.Length); i++)

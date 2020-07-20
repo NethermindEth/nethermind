@@ -23,7 +23,7 @@
     },
     "Goerli": {
       "commandName": "Project",
-      "commandLineArgs": "--config configs\\goerli.cfg --baseDbPath C:\\ --JsonRpc.Enabled true"
+      "commandLineArgs": "--config configs\\goerli.cfg --baseDbPath C:\\goerli_mem_fast --JsonRpc.Enabled true"
     },
     "Sokol": {
       "commandName": "Project",
@@ -69,4 +69,3 @@
     }
   }
 }
-

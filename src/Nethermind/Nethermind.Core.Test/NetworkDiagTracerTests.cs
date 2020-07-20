@@ -15,25 +15,18 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Diagnostics;
+using FluentAssertions;
+using NUnit.Framework;
 
-namespace Nethermind.Synchronization.FastSync
+namespace Nethermind.Core.Test
 {
-    [DebuggerDisplay("{SyncItem.Hash} {Counter}")]
-    internal class DependentItem
+    [TestFixture]
+    public class NetworkDiagTracerTests
     {
-        public StateSyncItem SyncItem { get; }
-        public byte[] Value { get; }
-        public int Counter { get; set; }
-
-        public bool IsAccount { get; }
-
-        public DependentItem(StateSyncItem syncItem, byte[] value, int counter, bool isAccount = false)
+        [Test]
+        public void Test()
         {
-            SyncItem = syncItem;
-            Value = value;
-            Counter = counter;
-            IsAccount = isAccount;
+            NetworkDiagTracer.NetworkDiagTracerPath.Should().NotStartWith("C:");
         }
     }
 }
