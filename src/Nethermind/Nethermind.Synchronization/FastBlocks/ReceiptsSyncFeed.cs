@@ -77,8 +77,7 @@ namespace Nethermind.Synchronization.FastBlocks
             _syncStatusList = new SyncStatusList(
                 _blockTree,
                 _pivotNumber,
-                _receiptStorage.LowestInsertedReceiptBlock,
-                logManager);
+                _receiptStorage.LowestInsertedReceiptBlock);
         }
 
         protected override SyncMode ActivationSyncModes { get; }

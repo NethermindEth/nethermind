@@ -66,8 +66,7 @@ namespace Nethermind.Synchronization.FastBlocks
             _syncStatusList = new SyncStatusList(
                 _blockTree,
                 _pivotNumber,
-                _blockTree.LowestInsertedBodyNumber,
-                logManager);
+                _blockTree.LowestInsertedBodyNumber);
         }
 
         protected override SyncMode ActivationSyncModes { get; } = SyncMode.FastBodies & ~SyncMode.FastBlocks;
