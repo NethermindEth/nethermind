@@ -145,8 +145,8 @@ namespace Nethermind.Runner.Test
 
         [TestCase(100 * GB, 16u, -1)]
         [TestCase(100 * GB, 16u, 1)]
-        [TestCase(256 * MB, 1u, -1)]
-        [TestCase(256 * MB, 1u, 1)]
+        [TestCase(384 * MB, 1u, -1)]
+        [TestCase(384 * MB, 1u, 1)]
         public void Will_not_change_non_default_arena_order(ulong memoryHint, uint cpuCount, int differenceFromDefault)
         {
             _initConfig.MemoryHint = (long) memoryHint;
@@ -156,7 +156,6 @@ namespace Nethermind.Runner.Test
             _networkConfig.NettyArenaOrder.Should().Be(manuallyConfiguredArenaOrder);
         }
 
-        [TestCase(0 * GB, 16u)]
         [TestCase(4 * GB, 0u)]
         public void Incorrect_input_throws(ulong memoryHint, uint cpuCount)
         {
