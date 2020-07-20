@@ -235,45 +235,46 @@ namespace Nethermind.Synchronization
             // }
         }
 
+        /// <summary>
+        /// Code from AndreaLanfranchi - https://github.com/NethermindEth/nethermind/pull/2078
+        /// Generally it tries to find the sealer / miner name.
+        /// </summary>
         private void LogBlockAuthorNicely(Block block, ISyncPeer syncPeer)
         {
-            if (_logger.IsInfo)
+            StringBuilder sb = new StringBuilder();
+            sb.Append($"Discovered new block {block.ToString(Block.Format.HashNumberAndTx)}");
+
+            if (block.Author != null)
             {
-                // Generally it tries to find the sealer / miner name.
-                StringBuilder sb = new StringBuilder();
-
-                sb.Append(string.Format("Discovered new block {0}", block.ToString(Block.Format.HashNumberAndTx)));
-
-                if (block.Author != null)
+                sb.Append(" sealer ");
+                if (KnownAddresses.GoerliValidators.ContainsKey(block.Author))
                 {
-                    sb.Append(" sealer ");
-                    if (KnownAddresses.GoerliValidators.ContainsKey(block.Author))
-                    {
-                        sb.Append(KnownAddresses.GoerliValidators[block.Author]);
-                    }
-                    else
-                    {
-                        sb.Append(block.Author.ToString());
-                    }
+                    sb.Append(KnownAddresses.GoerliValidators[block.Author]);
                 }
-                else if (block.Beneficiary != null)
+                else if (KnownAddresses.RinkebyValidators.ContainsKey(block.Author))
                 {
-                    sb.Append(" miner ");
-                    if (KnownAddresses.KnownMiners.ContainsKey(block.Beneficiary))
-                    {
-                        sb.Append(KnownAddresses.KnownMiners[block.Beneficiary]);
-                    }
-                    else
-                    {
-                        sb.Append(block.Beneficiary.ToString());
-                    }
+                    sb.Append(KnownAddresses.GoerliValidators[block.Author]);
                 }
-
-                sb.Append($", sent by {syncPeer:s}");
-                _logger.Info(sb.ToString());
+                else
+                {
+                    sb.Append(block.Author);
+                }
+            }
+            else if (block.Beneficiary != null)
+            {
+                sb.Append(" miner ");
+                if (KnownAddresses.KnownMiners.ContainsKey(block.Beneficiary))
+                {
+                    sb.Append(KnownAddresses.KnownMiners[block.Beneficiary]);
+                }
+                else
+                {
+                    sb.Append(block.Beneficiary);
+                }
             }
 
-
+            sb.Append($", sent by {syncPeer:s}");
+            _logger.Info(sb.ToString());
         }
 
         public void HintBlock(Keccak hash, long number, ISyncPeer syncPeer)
@@ -359,6 +360,7 @@ namespace Nethermind.Synchronization
                         {
                             _cht.Set(_blockTree.FindHeader(sectionStart + blockOffset));
                         }
+
                         _cht.Commit(section);
                     }
                 }

@@ -1,0 +1,35 @@
+name: Vault Integration Test
+
+on: push
+
+jobs:
+  vault-tests:
+    name: Vault Integration Tests
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Clone docker-compose 
+      run: git submodule update --init src/Dirichlet src/rocksdb-sharp
+    - name: Installing Linux packages
+      run: |
+        sudo apt-get update
+        sudo apt-get install libsnappy-dev libc6-dev libc6
+    - name: Running docker stack with Vault
+      run: |
+        cd src/Nethermind/Nethermind.Vault.Test
+        docker-compose up -d
+    - name: Sleep for 20 seconds
+      uses: jakejarvis/wait-action@v0.1.0
+      with:
+        time: '20s'
+    - name: Check running containers
+      run: docker ps -a
+    - name: Running Vault Wallet Tests
+      run: |
+        curl -XPOST -H 'content-type: application/json' http://localhost:8081/api/v1/users -d '{"email": "hello@localhost", "password": "hello12345", "first_name": "A", "last_name": "User"}' -v
+        ACCESS_TOKEN=$(curl -XPOST -H 'content-type: application/json' http://localhost:8081/api/v1/authenticate -d '{"email": "hello@localhost", "password": "hello12345"}' -v | jq ".token.access_token" | tr -d '"') 
+        export TOKEN="bearer ${ACCESS_TOKEN}"
+        cd src/Nethermind/Nethermind.Vault.Test
+        sed -i '5s/.*/    <Parameter name="token" value="'"$TOKEN"'" \/>/' vault.runsettings
+        dotnet test -s vault.runsettings
+        

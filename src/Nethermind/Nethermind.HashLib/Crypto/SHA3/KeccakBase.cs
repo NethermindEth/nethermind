@@ -2736,6 +2736,15 @@ namespace Nethermind.HashLib.Crypto.SHA3
 
             return result;
         }
+        
+        protected override void GetResultUInts(Span<uint> output)
+        {
+            for (int i = 0; i < output.Length / 2; i = i + 1)
+            {
+                output[i * 2] = (uint)m_state[i];
+                output[i * 2 + 1] = (uint)(m_state[i] >> 32);
+            }
+        }
 
         public override void Initialize()
         {

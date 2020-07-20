@@ -57,7 +57,7 @@ namespace Nethermind.Evm.Precompiles.Snarks.Shamatar
             }
             else
             {
-                result = (Bytes.Empty, false);
+                result = (Array.Empty<byte>(), false);
             }
 
             return result;

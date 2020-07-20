@@ -400,8 +400,8 @@ namespace Nethermind.Evm.Test.Tracing
         {
             var timeout = TimeSpan.FromSeconds(1);
             CancellationToken cancellationToken = new CancellationTokenSource(timeout).Token;
-            GethTraceOptions options = Substitute.For<GethTraceOptions>();
-            var tracer = new GethLikeTxTracer(options, cancellationToken);
+            GethTraceOptions optionsMock = Substitute.For<GethTraceOptions>();
+            var tracer = new GethLikeTxTracer(optionsMock, cancellationToken);
 
             Thread.Sleep(TimeSpan.FromSeconds(2));
 
@@ -410,6 +410,43 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.Throws<OperationCanceledException>(() => tracer.SetOperationMemorySize(0));
 
             Assert.Throws<OperationCanceledException>(() => tracer.StartOperation(0, 0, Instruction.ADD, 0));
+        }
+
+        [Test]
+        public void Tracers_cancellation_tokens_does_not_affect_each_other()
+        {
+            GethTraceOptions optionsMock = Substitute.For<GethTraceOptions>();
+            CancellationToken cancellationToken = new CancellationTokenSource(TimeSpan.FromMilliseconds(1)).Token;
+            var tracer = new GethLikeTxTracer(optionsMock, cancellationToken);
+
+            CancellationToken cancellationToken2 = new CancellationTokenSource().Token;
+            var tracer2 = new GethLikeTxTracer(optionsMock, cancellationToken2);;
+
+            Thread.Sleep(5);
+
+            Assert.AreNotEqual(cancellationToken, cancellationToken2); 
+        }
+
+        [Test]
+        public void Does_not_throw_operation_canceled_if_cancellation_token_is_default()
+        {
+            GethTraceOptions optionsMock = Substitute.For<GethTraceOptions>();
+            CancellationToken cancellationToken = default(CancellationToken);
+            var tracer = new GethLikeTxTracer(optionsMock, cancellationToken);
+
+            Thread.Sleep(TimeSpan.FromSeconds(2));
+
+            try 
+            {
+               tracer.StartOperation(0, 0, Instruction.ADD, 0); 
+            }
+            catch(Exception ex)
+            {
+                if(ex is OperationCanceledException)
+                    Assert.Fail("Tracer throw OperationCanceledException even when cancellation token is set to default.");
+                else
+                    Assert.Pass();
+            }
         }
     }
 }

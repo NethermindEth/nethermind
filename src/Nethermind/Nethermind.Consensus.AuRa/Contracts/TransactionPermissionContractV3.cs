@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts.Json;
 using Nethermind.Core;
@@ -46,7 +47,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
                 parentHeader,
                 nameof(AllowedTxTypes),
                 Address.Zero,
-                tx.SenderAddress, tx.To ?? Address.Zero, tx.Value, tx.GasPrice, tx.Data ?? tx.Init ?? Bytes.Empty);
+                tx.SenderAddress, tx.To ?? Address.Zero, tx.Value, tx.GasPrice, tx.Data ?? tx.Init ?? Array.Empty<byte>());
 
         public override UInt256 Version => Three;
     }

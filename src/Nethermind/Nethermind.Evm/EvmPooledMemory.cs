@@ -117,7 +117,7 @@ namespace Nethermind.Evm
         {
             if (length.IsZero)
             {
-                return new byte[0];
+                return Array.Empty<byte>();
             }
 
             CheckMemoryAccessViolation(ref location, length);
@@ -130,7 +130,7 @@ namespace Nethermind.Evm
         {
             if (length.IsZero)
             {
-                return new byte[0];
+                return Array.Empty<byte>();
             }
 
             if (location > long.MaxValue)

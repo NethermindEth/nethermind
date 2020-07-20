@@ -40,7 +40,7 @@ namespace Nethermind.Blockchain.Test.Receipts
         {
             _receiptsDb = new MemColumnsDb<ReceiptsColumns>();
             _storage = new PersistentReceiptStorage(_receiptsDb, MainnetSpecProvider.Instance, new ReceiptsRecovery()) {MigratedBlockNumber = 0};
-            _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks).Set(Keccak.Zero, Bytes.Empty);
+            _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks).Set(Keccak.Zero, Array.Empty<byte>());
         }
 
         [Test]

@@ -60,13 +60,15 @@ namespace Nethermind.Consensus.Ethash
             return (uint)(blockNumber / EpochLength);
         }
 
+        /// Improvement from @AndreaLanfranchi
         public static ulong GetDataSize(uint epoch)
         {
             uint upperBound = (DataSetBytesInit / MixBytes) + (DataSetBytesGrowth / MixBytes) * epoch;
             uint dataItems = FindLargestPrime(upperBound);
-            return dataItems * (ulong)MixBytes;
+            return dataItems * (ulong) MixBytes;
         }
 
+        /// Improvement from @AndreaLanfranchi
         public static uint GetCacheSize(uint epoch)
         {
             uint upperBound = (CacheBytesInit / HashBytes) + (CacheBytesGrowth / HashBytes) * epoch;
@@ -75,14 +77,14 @@ namespace Nethermind.Consensus.Ethash
         }
 
         /// <summary>
+        /// Improvement from @AndreaLanfranchi
         /// Finds the largest prime number given an upper limit
         /// </summary>
         /// <param name="upper">The upper boundary for prime search</param>
-        /// <returns>A prima rumber</returns>
+        /// <returns>A prime number</returns>
         /// <exception cref="ArgumentException">Thrown if boundary < 2</exception>
         public static uint FindLargestPrime(uint upper)
         {
-
             if (upper < 2U) throw new ArgumentException("There are no prime numbers below 2");
 
             // Only case for an even number
@@ -101,6 +103,11 @@ namespace Nethermind.Consensus.Ethash
             return number;
         }
 
+        /// <summary>
+        /// Improvement from @AndreaLanfranchi
+        /// </summary>
+        /// <param name="number"></param>
+        /// <returns></returns>
         public static bool IsPrime(uint number)
         {
             if (number <= 1U) return false;
@@ -111,9 +118,10 @@ namespace Nethermind.Consensus.Ethash
                To avoid computing sqrt, compare d*d <= number with 64-bit
                precision. Use only odd divisors as even ones are yet divisible
                by 2 */
-            for (uint d = 3; d * (ulong) d <= number; d += 2) {
-              if (number % d == 0)
-                return false;
+            for (uint d = 3; d * (ulong) d <= number; d += 2)
+            {
+                if (number % d == 0)
+                    return false;
             }
 
             // No other divisors

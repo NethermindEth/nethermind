@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.IO;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
@@ -46,7 +47,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence.R
         {
             try
             {
-                db.Set(Keccak.Zero, Bytes.Empty);
+                db.Set(Keccak.Zero, Array.Empty<byte>());
                 db.Get(Keccak.Zero);
                 db.Name.Should().Be(typeof(T).Name.Replace("RocksDb", string.Empty));
             }

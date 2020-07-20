@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Security;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
@@ -170,7 +171,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             Account account = _blockchainBridge.GetAccount(address, header.StateRoot);
             if (account == null)
             {
-                return ResultWrapper<byte[]>.Success(Bytes.Empty);
+                return ResultWrapper<byte[]>.Success(Array.Empty<byte>());
             }
 
             var storage = _blockchainBridge.GetStorage(address, positionIndex, header.StateRoot);
@@ -256,7 +257,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             Account account = _blockchainBridge.GetAccount(address, header.StateRoot);
             if (account == null)
             {
-                return ResultWrapper<byte[]>.Success(Bytes.Empty);
+                return ResultWrapper<byte[]>.Success(Array.Empty<byte>());
             }
 
             var code = _blockchainBridge.GetCode(account.CodeHash);
@@ -370,7 +371,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
             
             FixCallTx(transactionCall, head);
 
-            BlockchainBridge.CallOutput result = _blockchainBridge.EstimateGas(head, transactionCall.ToTransaction());
+            var tokenTimeout = TimeSpan.FromMilliseconds(_rpcConfig.TracerTimeout);
+            CancellationToken cancellationToken = new CancellationTokenSource(tokenTimeout).Token;
+            BlockchainBridge.CallOutput result = _blockchainBridge.EstimateGas(head, transactionCall.ToTransaction(), cancellationToken);
 
             if (result.Error == null)
             {

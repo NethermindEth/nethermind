@@ -929,7 +929,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (prefix == 128)
             {
-                return Bytes.Empty;
+                return Array.Empty<byte>();
             }
 
             if (prefix <= 183)

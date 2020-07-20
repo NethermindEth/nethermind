@@ -23,17 +23,17 @@ namespace Nethermind.Serialization.Rlp
     {
         public static RlpStream AsRlpStream(this byte[] bytes)
         {
-            return bytes == null ? new RlpStream(Bytes.Empty) : new RlpStream(bytes);
+            return bytes == null ? new RlpStream(Array.Empty<byte>()) : new RlpStream(bytes);
         }
 
         public static Rlp.ValueDecoderContext AsRlpValueContext(this byte[] bytes)
         {
-            return bytes == null ? new Rlp.ValueDecoderContext(Bytes.Empty) : new Rlp.ValueDecoderContext(bytes);
+            return bytes == null ? new Rlp.ValueDecoderContext(Array.Empty<byte>()) : new Rlp.ValueDecoderContext(bytes);
         }
 
         public static Rlp.ValueDecoderContext AsRlpValueContext(this Span<byte> span)
         {
-            return span.IsEmpty ? new Rlp.ValueDecoderContext(Bytes.Empty) : new Rlp.ValueDecoderContext(span);
+            return span.IsEmpty ? new Rlp.ValueDecoderContext(Array.Empty<byte>()) : new Rlp.ValueDecoderContext(span);
         }
     }
 }

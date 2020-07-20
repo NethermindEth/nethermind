@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -24,6 +25,7 @@ namespace Nethermind.Crypto
         void Sign(PrivateKey privateKey, Transaction tx, bool isEip155Enabled = true);
         Address RecoverAddress(Transaction tx);
         Address RecoverAddress(Signature signature, Keccak message);
+        Address RecoverAddress(Span<byte> signatureBytes, Keccak message);
         bool Verify(Address sender, Transaction tx);
     }
 }

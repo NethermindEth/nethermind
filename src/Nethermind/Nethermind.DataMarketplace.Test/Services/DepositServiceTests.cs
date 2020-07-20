@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.IO;
 using System.Text;
 using System.Threading.Tasks;
@@ -102,7 +103,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             _ndmBridge = new NdmBlockchainBridge(Substitute.For<ITxPoolBridge>(), bridge, _txPool);
             DepositService depositService = new DepositService(_ndmBridge, _abiEncoder, _wallet, _contractAddress);
             Address contractAddress = new Address(_ndmConfig.ContractAddress);
-            bridge.GetCode(contractAddress).Returns(Bytes.Empty);
+            bridge.GetCode(contractAddress).Returns(Array.Empty<byte>());
             Assert.ThrowsAsync<InvalidDataException>(async () => await depositService.ValidateContractAddressAsync(contractAddress));
         }
         

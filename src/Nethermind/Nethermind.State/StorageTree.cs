@@ -83,7 +83,7 @@ namespace Nethermind.State
         {
             if (value.IsZero())
             {
-                Set(GetKey(index), Bytes.Empty);
+                Set(GetKey(index), Array.Empty<byte>());
             }
             else
             {
