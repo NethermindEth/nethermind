@@ -87,10 +87,10 @@ namespace Nethermind.Synchronization.FastSync
                     // _lastHandledNodesCount = HandledNodesCount;
                     // if (_logger.IsInfo) _logger.Info($"Time {TimeSpan.FromSeconds(_secondsInSync):dd\\.hh\\:mm\\:ss} | {(decimal) _dataSize / 1000 / 1000,6:F2}MB | kBps: {savedKBytesPerSecond,5:F0} | P: {_pendingRequests.Count} | acc {_savedAccounts} | queues {StreamsDescription} | db {_averageTimeInHandler:f2}ms");
 
+                    Metrics.StateSynced = DataSize;
                     string dataSizeInfo = $"{(decimal) DataSize / 1000 / 1000,6:F2}MB";
                     if (_chainSizeInfo != null)
                     {
-                        Metrics.StateSynced = DataSize;
                         decimal percentage = Math.Min(1, (decimal) DataSize / _chainSizeInfo.Value.Current);
                         dataSizeInfo = string.Concat(
                             $"~{percentage:P2} | ", dataSizeInfo,

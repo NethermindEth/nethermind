@@ -74,7 +74,11 @@ namespace Nethermind.Synchronization.FastBlocks
             }
 
             _pivotNumber = _syncConfig.PivotNumberParsed;
-            _syncStatusList = new SyncStatusList(_blockTree, _pivotNumber, _receiptStorage.LowestInsertedReceiptBlock);
+            _syncStatusList = new SyncStatusList(
+                _blockTree,
+                _pivotNumber,
+                _receiptStorage.LowestInsertedReceiptBlock,
+                logManager);
         }
 
         protected override SyncMode ActivationSyncModes { get; }
@@ -159,21 +163,29 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private bool TryPrepareReceipts(BlockInfo blockInfo, TxReceipt[] receipts, out TxReceipt[]? preparedReceipts)
         {
-            BlockHeader header = _blockTree.FindHeader(blockInfo.BlockHash);
-            if (header.ReceiptsRoot == Keccak.EmptyTreeHash)
+            BlockHeader? header = _blockTree.FindHeader(blockInfo.BlockHash);
+            if (header == null)
             {
-                preparedReceipts = receipts.Length == 0 ? receipts : null;
+                if (_logger.IsWarn) _logger.Warn("Could not find header for requested blockhash.");
+                preparedReceipts = null;
             }
             else
             {
-                Keccak receiptsRoot = new ReceiptTrie(blockInfo.BlockNumber, _specProvider, receipts).RootHash;
-                if (receiptsRoot != header.ReceiptsRoot)
+                if (header.ReceiptsRoot == Keccak.EmptyTreeHash)
                 {
-                    preparedReceipts = null;
+                    preparedReceipts = receipts.Length == 0 ? receipts : null;
                 }
                 else
                 {
-                    preparedReceipts = receipts;
+                    Keccak receiptsRoot = new ReceiptTrie(blockInfo.BlockNumber, _specProvider, receipts).RootHash;
+                    if (receiptsRoot != header.ReceiptsRoot)
+                    {
+                        preparedReceipts = null;
+                    }
+                    else
+                    {
+                        preparedReceipts = receipts;
+                    }
                 }
             }
 
@@ -205,15 +217,24 @@ namespace Nethermind.Synchronization.FastBlocks
                     if (isValid)
                     {
                         Block block = _blockTree.FindBlock(blockInfo.BlockHash);
-                        try
+                        if (block == null)
                         {
-                            _receiptStorage.Insert(block, prepared);
-                            _syncStatusList.MarkInserted(block.Number);
-                            validResponsesCount++;
-                        }
-                        catch (InvalidDataException)
-                        {
+                            if(_logger.IsWarn) _logger.Warn($"Could not find block {blockInfo.BlockHash}");
+                            if (_logger.IsWarn) _logger.Warn($"Could not find block {blockInfo.BlockHash}");
                             _syncStatusList.MarkUnknown(blockInfo.BlockNumber);
+                        }
+                        else
+                        {
+                            try
+                            {
+                                _receiptStorage.Insert(block, prepared);
+                                _syncStatusList.MarkInserted(block.Number);
+                                validResponsesCount++;
+                            }
+                            catch (InvalidDataException)
+                            {
+                                _syncStatusList.MarkUnknown(blockInfo.BlockNumber);
+                            }
                         }
                     }
                     else
