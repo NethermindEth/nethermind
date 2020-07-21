@@ -26,16 +26,24 @@ namespace Nethermind.Synchronization.BeamSync
     public class BeamSyncDbProvider : IDbProvider
     {
         private readonly IDbProvider _otherProvider;
+        private BeamSyncDb _stateDb;
+        private BeamSyncDb _codeDb;
         public ISyncFeed<StateSyncBatch?> BeamSyncFeed { get; }
         
         public BeamSyncDbProvider(ISyncModeSelector syncModeSelector, IDbProvider otherProvider, ISyncConfig syncConfig, ILogManager logManager)
         {
             _otherProvider = otherProvider ?? throw new ArgumentNullException(nameof(otherProvider));
-            BeamSyncDb codeDb = new BeamSyncDb(otherProvider.CodeDb.Innermost, otherProvider.BeamStateDb, syncModeSelector, logManager, syncConfig.BeamSyncContextTimeout, syncConfig.BeamSyncPreProcessorTimeout);
-            BeamSyncDb stateDb = new BeamSyncDb(otherProvider.StateDb.Innermost, otherProvider.BeamStateDb, syncModeSelector, logManager, syncConfig.BeamSyncContextTimeout, syncConfig.BeamSyncPreProcessorTimeout);
-            BeamSyncFeed = new CompositeStateSyncFeed<StateSyncBatch?>(logManager, codeDb, stateDb);
-            StateDb = new StateDb(stateDb);
-            CodeDb = new StateDb(codeDb);
+            _codeDb = new BeamSyncDb(otherProvider.CodeDb.Innermost, otherProvider.BeamStateDb, syncModeSelector, logManager, syncConfig.BeamSyncContextTimeout, syncConfig.BeamSyncPreProcessorTimeout);
+            _stateDb = new BeamSyncDb(otherProvider.StateDb.Innermost, otherProvider.BeamStateDb, syncModeSelector, logManager, syncConfig.BeamSyncContextTimeout, syncConfig.BeamSyncPreProcessorTimeout);
+            BeamSyncFeed = new CompositeStateSyncFeed<StateSyncBatch?>(logManager, _codeDb, _stateDb);
+            StateDb = new StateDb(_stateDb);
+            CodeDb = new StateDb(_codeDb);
+        }
+
+        public void EnableVerifiedMode()
+        {
+            _stateDb.VerifiedModeEnabled = true;
+            _codeDb.VerifiedModeEnabled = true;
         }
         
         public ISnapshotableDb StateDb { get; }

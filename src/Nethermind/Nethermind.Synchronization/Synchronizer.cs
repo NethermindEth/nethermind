@@ -65,7 +65,7 @@ namespace Nethermind.Synchronization
         private HeadersSyncFeed? _headersFeed;
         private BodiesSyncFeed? _bodiesFeed;
         private ReceiptsSyncFeed? _receiptsFeed;
-        
+
 
         public Synchronizer(
             IDbProvider dbProvider,
@@ -102,7 +102,7 @@ namespace Nethermind.Synchronization
             {
                 return;
             }
-            
+
             StartFullSyncComponents();
             if (_syncConfig.FastSync)
             {
@@ -126,12 +126,17 @@ namespace Nethermind.Synchronization
             // so bad
             BeamSyncDbProvider? beamSyncDbProvider = _dbProvider as BeamSyncDbProvider;
             ISyncFeed<StateSyncBatch?>? beamSyncFeed = beamSyncDbProvider?.BeamSyncFeed;
-            if (beamSyncFeed == null)
+            if (beamSyncDbProvider == null || beamSyncFeed == null)
             {
                 throw new InvalidOperationException("Corrupted types when initializing beam sync components " +
                                                     $"received {_dbProvider.GetType().FullName}");
             }
-            
+
+            if (_syncConfig.BeamSyncVerifiedMode)
+            {
+                beamSyncDbProvider.EnableVerifiedMode();
+            }
+
             StateSyncDispatcher dispatcher = new StateSyncDispatcher(
                 beamSyncFeed!, _syncPeerPool, new StateSyncAllocationStrategyFactory(), _logManager);
             dispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
@@ -286,7 +291,7 @@ namespace Nethermind.Synchronization
             _syncCancellation?.Cancel();
             _syncCancellation?.Dispose();
             _syncReport?.Dispose();
-            
+
             _fastSyncFeed?.Dispose();
             _stateSyncFeed?.Dispose();
             _fullSyncFeed?.Dispose();
