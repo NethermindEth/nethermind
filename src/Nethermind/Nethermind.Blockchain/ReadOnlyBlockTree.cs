@@ -56,7 +56,7 @@ namespace Nethermind.Blockchain
         }
 
         public ChainLevelInfo FindLevel(long number) => _wrapped.FindLevel(number);
-        public BlockInfo FindBlockInfo(long blockNumber) => _wrapped.FindBlockInfo(blockNumber);
+        public BlockInfo FindCanonicalBlockInfo(long blockNumber) => _wrapped.FindCanonicalBlockInfo(blockNumber);
 
         public AddBlockResult Insert(Block block) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(Insert)} calls");
 

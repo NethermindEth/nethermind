@@ -57,7 +57,7 @@ namespace Nethermind.Synchronization.FastBlocks
                     switch (_statuses[currentNumber])
                     {
                         case FastBlockStatus.Unknown:
-                            blockInfos[collected] = _blockTree.FindBlockInfo(currentNumber);
+                            blockInfos[collected] = _blockTree.FindCanonicalBlockInfo(currentNumber);
                             _statuses[currentNumber] = FastBlockStatus.Sent;
                             collected++;
                             break;

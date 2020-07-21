@@ -47,7 +47,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private SyncStatusList _syncStatusList;
         private readonly long _pivotNumber;
 
-        private bool ShouldFinish => !_syncConfig.DownloadReceiptsInFastSync || _receiptStorage.LowestInsertedReceiptBlock == 1;
+        private bool ShouldFinish => !_syncConfig.DownloadReceiptsInFastSync || _receiptStorage.LowestInsertedReceiptBlockNumber == 1;
 
         public ReceiptsSyncFeed(
             ISyncModeSelector syncModeSelector,
@@ -77,7 +77,7 @@ namespace Nethermind.Synchronization.FastBlocks
             _syncStatusList = new SyncStatusList(
                 _blockTree,
                 _pivotNumber,
-                _receiptStorage.LowestInsertedReceiptBlock);
+                _receiptStorage.LowestInsertedReceiptBlockNumber);
         }
 
         protected override SyncMode ActivationSyncModes { get; }
@@ -90,7 +90,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private bool ShouldBuildANewBatch()
         {
             bool shouldDownloadReceipts = _syncConfig.DownloadReceiptsInFastSync;
-            bool allReceiptsDownloaded = _receiptStorage.LowestInsertedReceiptBlock == 1;
+            bool allReceiptsDownloaded = _receiptStorage.LowestInsertedReceiptBlockNumber == 1;
             bool isGenesisDownloaded = _syncStatusList.LowestInsertWithoutGaps == 1;
             bool noBatchesLeft = !shouldDownloadReceipts
                                  || allReceiptsDownloaded
@@ -135,7 +135,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 // Array.Reverse(infos);
             }
 
-            _receiptStorage.LowestInsertedReceiptBlock = _syncStatusList.LowestInsertWithoutGaps;
+            _receiptStorage.LowestInsertedReceiptBlockNumber = _syncStatusList.LowestInsertWithoutGaps;
 
             return Task.FromResult(batch);
         }

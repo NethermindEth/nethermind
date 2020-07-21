@@ -124,7 +124,7 @@ namespace Nethermind.Blockchain
 
         ChainLevelInfo FindLevel(long number);
         
-        BlockInfo FindBlockInfo(long blockNumber);
+        BlockInfo FindCanonicalBlockInfo(long blockNumber);
 
         Keccak FindHash(long blockNumber);
 

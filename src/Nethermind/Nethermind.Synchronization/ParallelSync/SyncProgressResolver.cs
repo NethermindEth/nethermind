@@ -146,7 +146,7 @@ namespace Nethermind.Synchronization.ParallelSync
         
         public bool IsFastBlocksBodiesFinished() => !IsFastBlocks() || (!_syncConfig.DownloadBodiesInFastSync || (_blockTree.LowestInsertedBodyNumber ?? long.MaxValue) <= 1);
 
-        public bool IsFastBlocksReceiptsFinished() => !IsFastBlocks() || (!_syncConfig.DownloadReceiptsInFastSync || (_receiptStorage.LowestInsertedReceiptBlock ?? long.MaxValue) <= 1);
+        public bool IsFastBlocksReceiptsFinished() => !IsFastBlocks() || (!_syncConfig.DownloadReceiptsInFastSync || (_receiptStorage.LowestInsertedReceiptBlockNumber ?? long.MaxValue) <= 1);
 
         private bool IsFastBlocks()
         {

@@ -583,8 +583,11 @@ namespace Nethermind.Blockchain
 
             return header;
         }
-
-        public BlockInfo FindBlockInfo(long blockNumber)
+        
+        /// <returns>
+        /// If level has a block on the main chain then returns the block info,otherwise <value>null</value>
+        /// </returns>
+        public BlockInfo FindCanonicalBlockInfo(long blockNumber)
         {
             ChainLevelInfo level = LoadLevel(blockNumber);
             if (level == null)

@@ -81,10 +81,10 @@ namespace Nethermind.Blockchain.Test.TxPools
             storage.Insert(block, receipt);
             if (updateLowest)
             {
-                storage.LowestInsertedReceiptBlock = block.Number;
+                storage.LowestInsertedReceiptBlockNumber = block.Number;
             }
 
-            storage.LowestInsertedReceiptBlock.Should().Be(updateLowest ? (long?)0 : null);
+            storage.LowestInsertedReceiptBlockNumber.Should().Be(updateLowest ? (long?)0 : null);
         }
         
         private void TestAddAndGetReceipt(IReceiptStorage storage)

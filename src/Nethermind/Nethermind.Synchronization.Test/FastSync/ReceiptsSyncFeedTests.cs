@@ -247,7 +247,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 LimboLogs.Instance);
 
             _blockTree.Genesis.Returns(scenario.Blocks[0].Header);
-            _blockTree.FindBlockInfo(Arg.Any<long>()).Returns(
+            _blockTree.FindCanonicalBlockInfo(Arg.Any<long>()).Returns(
                 ci =>
                 {
                     Block block = scenario.Blocks[ci.Arg<long>()];
@@ -273,7 +273,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                         ? scenario.BlocksByHash[ci.Arg<Keccak>()].Header
                         : null);
 
-            _receiptStorage.LowestInsertedReceiptBlock.Returns((long?) null);
+            _receiptStorage.LowestInsertedReceiptBlockNumber.Returns((long?) null);
             _blockTree.LowestInsertedBodyNumber.Returns(scenario.LowestInsertedBody.Number);
         }
 
@@ -340,7 +340,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             
             FillBatchResponses(batch);
             _feed.HandleResponse(batch);
-            _receiptStorage.LowestInsertedReceiptBlock.Returns(1);
+            _receiptStorage.LowestInsertedReceiptBlockNumber.Returns(1);
             _feed.PrepareRequest().Result.Should().Be(null);
 
             _feed.CurrentState.Should().Be(SyncFeedState.Finished);

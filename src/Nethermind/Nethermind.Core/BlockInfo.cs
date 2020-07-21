@@ -34,7 +34,11 @@ namespace Nethermind.Core
         public UInt256 TotalDifficulty { get; set; }
         public bool WasProcessed { get; set; }
         public Keccak BlockHash { get; set; }
-        public long BlockNumber { get; set; }
         public bool IsFinalized { get; set; }
+        
+        /// <summary>
+        /// This property is not serialized
+        /// </summary>
+        public long BlockNumber { get; set; }
     }
 }
