@@ -39,7 +39,7 @@ namespace Nethermind.Consensus.AuRa
                 // we can ignore reorg for one round, if we accepted previous block fine, this reorg is malicious
                 if (ignoreParitySameLevel)
                 {
-                    if (_logger.IsInfo) _logger.Info($"Ignoring best peer [{best.PeerBlock},{best.PeerDifficulty}], possible Parity/OpenEthereum outlier.");
+                    if (_logger.IsDebug) _logger.Debug($"Ignoring best peer [{best.PeerBlock},{best.PeerDifficulty}], possible Parity/OpenEthereum outlier.");
                     return false;
                 }
 

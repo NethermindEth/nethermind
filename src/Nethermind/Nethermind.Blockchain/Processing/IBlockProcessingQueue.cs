@@ -29,7 +29,5 @@ namespace Nethermind.Blockchain.Processing
         bool IsEmpty { get; }
         
         int Count { get; }
-        
-        IEnumerable<Block> Blocks { get; }
     }
 }

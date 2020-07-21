@@ -158,7 +158,7 @@ namespace Nethermind.Blockchain.Producers
                     if (_logger.IsDebug) _logger.Debug($"Rejecting (sender balance too low) {tx.ToShortString()}");
                     continue;
                 }
-                
+
                 selected.Add(tx);
                 nonces[tx.SenderAddress] = tx.Nonce + 1;
                 gasRemaining -= tx.GasLimit;

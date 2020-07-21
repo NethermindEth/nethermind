@@ -23,10 +23,7 @@ namespace Nethermind.Consensus.AuRa
     {
         [Description("Current AuRa step")]
         public static long AuRaStep { get; set; }
-        
-        [Description("Skipped steps")]
-        public static long SkippedAuRaSteps { get; set; }
-        
+
         [Description("Reported benign misbehaviour validators")]
         public static long ReportedBenignMisbehaviour { get; set; }
         

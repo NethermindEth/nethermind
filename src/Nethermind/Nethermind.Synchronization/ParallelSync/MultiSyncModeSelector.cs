@@ -155,7 +155,7 @@ namespace Nethermind.Synchronization.ParallelSync
             if (IsTheModeSwitchWorthMentioning(newModes))
             {
                 string stateString = BuildStateString(best);
-                if (_logger.IsWarn) _logger.Warn($"Changing state {Current} to {newModes} at {stateString}");
+                if (_logger.IsInfo) _logger.Info($"Changing state {Current} to {newModes} at {stateString}");
             }
 
             UpdateSyncModes(newModes);
@@ -287,9 +287,9 @@ namespace Nethermind.Synchronization.ParallelSync
                           notInFastSync &&
                           notInStateSync;
 
-            if (_logger.IsInfo)
+            if (_logger.IsTrace)
             {
-                _logger.Info("FULL: " +
+                _logger.Trace("FULL: " +
                               $"{GetBoolFlagString(desiredPeerKnown)}{nameof(desiredPeerKnown)} && " +
                               $"{GetBoolFlagString(postPivotPeerAvailable)}{nameof(postPivotPeerAvailable)} && " +
                               $"{GetBoolFlagString(hasFastSyncBeenActive)}{nameof(hasFastSyncBeenActive)} && " +
