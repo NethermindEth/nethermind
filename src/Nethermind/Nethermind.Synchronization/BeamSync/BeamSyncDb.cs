@@ -170,12 +170,12 @@ namespace Nethermind.Synchronization.BeamSync
                             throw new Exception();
                         }
                     }
-                    
+
                     byte[] fromMem = _tempDb[key] ?? _stateDb[key];
                     if (fromMem == null)
                     {
                         if (_logger.IsTrace) _logger.Trace($"Beam sync miss - {key.ToHexString()} - retrieving");
-                        
+
                         if (BeamSyncContext.Cancelled.Value.IsCancellationRequested)
                         {
                             throw new BeamCanceledException("Beam cancellation requested");
@@ -219,16 +219,23 @@ namespace Nethermind.Synchronization.BeamSync
                         {
                             BeamSyncContext.ResolvedInContext.Value++;
                             Interlocked.Increment(ref Metrics.BeamedTrieNodes);
-                            if (_logger.IsWarn) _logger.Warn($"Resolved key {key.ToHexString()} of context {BeamSyncContext.Description.Value} - resolved ctx {BeamSyncContext.ResolvedInContext.Value} | total {Metrics.BeamedTrieNodes}");
+                            if (_logger.IsDebug)
+                                _logger.Debug(
+                                    $"Resolved key {key.ToHexString()} of context {BeamSyncContext.Description.Value} - resolved ctx {BeamSyncContext.ResolvedInContext.Value} | total {Metrics.BeamedTrieNodes}");
+                        }
+                        else
+                        {
+                            if (VerifiedModeEnabled
+                                && !Bytes.AreEqual(Keccak.Compute(fromMem).Bytes, key))
+                            {
+                                if (_logger.IsWarn) _logger.Warn($"DB had an entry with a hash mismatch {key.ToHexString()} vs {Keccak.Compute(fromMem).Bytes.ToHexString()}");
+                                _tempDb[key] = null;
+                                _stateDb[key] = null;
+                                continue;
+                            }
                         }
 
                         BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
-                        
-                        // if (!Bytes.AreEqual(Keccak.Compute(fromMem).Bytes, key))
-                        // {
-                        //     throw new Exception("DB had an entry with a hash mismatch {key}");
-                        // }
-
                         return fromMem;
                     }
                 }
@@ -320,7 +327,7 @@ namespace Nethermind.Synchronization.BeamSync
                         }
                     }
                 }
-                
+
                 request = new StateSyncBatch(requestedNodes);
                 request.ConsumerId = FeedId;
             }
@@ -333,13 +340,13 @@ namespace Nethermind.Synchronization.BeamSync
         {
             if (stateSyncBatch == null)
             {
-                if(_logger.IsWarn) _logger.Warn($"{nameof(BeamSyncDb)} received a NULL batch as a response.");
+                if (_logger.IsWarn) _logger.Warn($"{nameof(BeamSyncDb)} received a NULL batch as a response.");
                 return SyncResponseHandlingResult.InternalError;
             }
-            
+
             if (stateSyncBatch.ConsumerId != FeedId)
             {
-                if(_logger.IsWarn) _logger.Warn($"Beam sync response sent by feed {stateSyncBatch.ConsumerId} came back to feed {FeedId}");
+                if (_logger.IsWarn) _logger.Warn($"Beam sync response sent by feed {stateSyncBatch.ConsumerId} came back to feed {FeedId}");
                 return SyncResponseHandlingResult.InternalError;
             }
 
@@ -363,7 +370,7 @@ namespace Nethermind.Synchronization.BeamSync
                         else
                         {
                             wasDataInvalid = true;
-                            if (_logger.IsDebug) _logger.Debug("Received node data which does not match hash.");
+                            if (_logger.IsDebug) _logger.Debug("Received node data which does not match the hash.");
                         }
                     }
                     else
@@ -395,5 +402,6 @@ namespace Nethermind.Synchronization.BeamSync
 
         public override bool IsMultiFeed => false;
         public override AllocationContexts Contexts => AllocationContexts.State;
+        public bool VerifiedModeEnabled { get; set; }
     }
 }
