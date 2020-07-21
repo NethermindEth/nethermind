@@ -39,17 +39,17 @@ namespace Nethermind.Synchronization.Test.ParallelSync
         {
             public const long FastSyncCatchUpHeightDelta = 64;
 
-            public static BlockHeader Pivot { get; set; } = Build.A.Block.WithTotalDifficulty((UInt256) 1024).WithNumber(1024).TestObject.Header;
+            public static BlockHeader Pivot { get; set; } = Build.A.Block.WithDifficulty(1).WithTotalDifficulty((UInt256) 1024).WithNumber(1024).TestObject.Header;
 
-            public static BlockHeader MidWayToPivot { get; set; } = Build.A.Block.WithTotalDifficulty((UInt256) 512).WithNumber(512).TestObject.Header;
+            public static BlockHeader MidWayToPivot { get; set; } = Build.A.Block.WithDifficulty(1).WithTotalDifficulty((UInt256) 512).WithNumber(512).TestObject.Header;
 
-            public static BlockHeader ChainHead { get; set; } = Build.A.Block.WithTotalDifficulty(Pivot.TotalDifficulty + 2048).WithNumber(Pivot.Number + 2048).TestObject.Header;
+            public static BlockHeader ChainHead { get; set; } = Build.A.Block.WithDifficulty(1).WithTotalDifficulty(Pivot.TotalDifficulty + 2048).WithNumber(Pivot.Number + 2048).TestObject.Header;
             
             public static BlockHeader ChainHeadWrongDifficulty
             {
                 get
                 {
-                    BlockHeader header = Build.A.Block.WithTotalDifficulty(Pivot.TotalDifficulty + 2048 + 128).WithNumber(Pivot.Number + 2048).TestObject.Header;
+                    BlockHeader header = Build.A.Block.WithDifficulty(1).WithTotalDifficulty(Pivot.TotalDifficulty + 2048 + 128).WithNumber(Pivot.Number + 2048).TestObject.Header;
                     header.Hash = ChainHead.Hash;
                     return header;
                 }
@@ -59,25 +59,44 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             {
                 get
                 {
-                    BlockHeader header = Build.A.Block.WithTotalDifficulty(Pivot.TotalDifficulty + 2048 + 128).WithNumber(Pivot.Number + 2048).TestObject.Header;
+                    BlockHeader header = Build.A.Block.WithDifficulty(1).WithTotalDifficulty(Pivot.TotalDifficulty + 2048 + 128).WithNumber(Pivot.Number + 2048).TestObject.Header;
                     header.Hash = ChainHead.ParentHash;
                     return header;
                 }
             }
 
-            public static BlockHeader FutureHead { get; set; } = Build.A.Block.WithTotalDifficulty(Pivot.TotalDifficulty + 2048 + 128).WithNumber(Pivot.Number + 2048 + 128).TestObject.Header;
+            public static BlockHeader FutureHead { get; set; } = Build.A.Block.WithDifficulty(1).WithTotalDifficulty(Pivot.TotalDifficulty + 2048 + 128).WithNumber(Pivot.Number + 2048 + 128).TestObject.Header;
 
-            public static BlockHeader SlightlyFutureHead { get; set; } = Build.A.Block.WithTotalDifficulty(Pivot.TotalDifficulty + 2048 + 4).WithNumber(Pivot.Number + 2048 + 4).TestObject.Header;
+            public static BlockHeader SlightlyFutureHead { get; set; } = Build.A.Block.WithDifficulty(1).WithTotalDifficulty(Pivot.TotalDifficulty + 2048 + 4).WithNumber(Pivot.Number + 2048 + 4).TestObject.Header;
 
-            public static BlockHeader MaliciousPrePivot { get; set; } = Build.A.Block.WithTotalDifficulty((UInt256) 1000000).WithNumber(512).TestObject.Header;
+            public static BlockHeader MaliciousPrePivot { get; set; } = Build.A.Block.WithDifficulty(1).WithTotalDifficulty((UInt256) 1000000).WithNumber(512).TestObject.Header;
 
-            public static BlockHeader NewBetterBranchWithLowerNumber { get; set; } = Build.A.Block.WithTotalDifficulty((UInt256) 1000000).WithNumber(ChainHead.Number - 16).TestObject.Header;
+            public static BlockHeader NewBetterBranchWithLowerNumber { get; set; } = Build.A.Block.WithDifficulty(1).WithTotalDifficulty((UInt256) 1000000).WithNumber(ChainHead.Number - 16).TestObject.Header;
 
             public static BlockHeader ValidGenesis { get; set; } = Build.A.Block.WithDifficulty(1).WithTotalDifficulty(UInt256.One).Genesis.TestObject.Header;
 
             public static BlockHeader InvalidGenesis { get; set; } = Build.A.Block.WithDifficulty(1).WithTotalDifficulty(UInt256.One).Genesis.TestObject.Header;
 
             public static BlockHeader InvalidGenesisWithHighTotalDifficulty { get; set; } = Build.A.Block.Genesis.WithDifficulty((UInt256) 1000000).WithTotalDifficulty((UInt256) 1000000).TestObject.Header;
+
+            public static IEnumerable<BlockHeader> ScenarioHeaders
+            {
+                get
+                {
+                    yield return Pivot;
+                    yield return MidWayToPivot;
+                    yield return ChainHead;
+                    yield return ChainHeadWrongDifficulty;
+                    yield return ChainHeadParentWrongDifficulty;
+                    yield return FutureHead;
+                    yield return SlightlyFutureHead;
+                    yield return MaliciousPrePivot;
+                    yield return NewBetterBranchWithLowerNumber;
+                    yield return ValidGenesis;
+                    yield return InvalidGenesis;
+                    yield return InvalidGenesisWithHighTotalDifficulty;
+                }
+            }
 
             public class ScenarioBuilder
             {
@@ -166,7 +185,24 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                             SyncProgressResolver.FindBestFullBlock().Returns(ChainHead.Number);
                             SyncProgressResolver.FindBestFullState().Returns(ChainHead.Number);
                             SyncProgressResolver.FindBestProcessedBlock().Returns(ChainHead.Number);
-                            SyncProgressResolver.FindBestHeaderHash().Returns((ChainHead.Hash, ChainHead.ParentHash));
+                            SyncProgressResolver.GetDifficulty(Arg.Any<Keccak>()).Returns(info =>
+                            {
+                                var hash = info.Arg<Keccak>();
+
+                                foreach (BlockHeader scenarioHeader in ScenarioHeaders)
+                                {
+                                    if (scenarioHeader.Hash == hash)
+                                    {
+                                        return scenarioHeader.TotalDifficulty;
+                                    }
+                                    else if (scenarioHeader.ParentHash == hash)
+                                    {
+                                        return scenarioHeader.TotalDifficulty - scenarioHeader.Difficulty;
+                                    }
+                                }
+
+                                return null;
+                            });
                             SyncProgressResolver.IsFastBlocksFinished().Returns(FastBlocksState.FinishedReceipts);
                             SyncProgressResolver.ChainDifficulty.Returns(ChainHead.TotalDifficulty ?? 0);
                             return "fully synced node";

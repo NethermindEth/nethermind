@@ -27,8 +27,6 @@ namespace Nethermind.Synchronization.ParallelSync
 
         long FindBestHeader();
         
-        (Keccak? Hash, Keccak? ParentHash) FindBestHeaderHash();
-
         long FindBestFullBlock();
         
         bool IsFastBlocksHeadersFinished();
@@ -42,5 +40,7 @@ namespace Nethermind.Synchronization.ParallelSync
         long FindBestProcessedBlock();
         
         UInt256 ChainDifficulty { get; }
+
+        UInt256? GetDifficulty(Keccak blockHash);
     }
 }
