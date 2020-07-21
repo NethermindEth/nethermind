@@ -37,5 +37,14 @@ namespace Nethermind.Blockchain
         
         [Description("Number of blocks awaiting for processing.")]
         public static long ProcessingQueueSize { get; set; }
+
+        [Description("Total number of sealed blocks")]
+        public static long BlocksSealed { get; set; }
+        
+        [Description("Total number of failed block seals")]
+        public static long FailedBlockSeals { get; set; }
+        
+        [Description("Indicator if blocks can be produced")]
+        public static long CanProduceBlocks { get; set; }
     }
 }

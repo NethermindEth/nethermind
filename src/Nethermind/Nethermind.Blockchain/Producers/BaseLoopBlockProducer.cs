@@ -97,6 +97,7 @@ namespace Nethermind.Blockchain.Producers
                     {
                         if (Logger.IsError) { Logger.Error("Failed to produce block.", e); }
 
+                        Metrics.FailedBlockSeals++;
                         throw;
                     }
                 }
@@ -119,10 +120,12 @@ namespace Nethermind.Blockchain.Producers
             if (BlockTree.Head?.Hash != e.Block?.Hash)
             {
                 Interlocked.Exchange(ref _canProduce, 0);
+                Metrics.CanProduceBlocks = 0;
                 if (Logger.IsDebug) Logger.Debug($"Can not produce a block new best suggested {BlockTree.BestSuggestedHeader?.ToString(BlockHeader.Format.FullHashAndNumber)}{Environment.NewLine}{new StackTrace()}");
             }
             else
             {
+                Metrics.CanProduceBlocks = 1;
                 if (Logger.IsDebug) Logger.Debug($"Can produce blocks, a block new best suggested {BlockTree.BestSuggestedHeader?.ToString(BlockHeader.Format.FullHashAndNumber)}{Environment.NewLine}{new StackTrace()} is already processed.");
             }
         }
@@ -130,6 +133,7 @@ namespace Nethermind.Blockchain.Producers
         private void OnBlockProcessorQueueEmpty(object sender, EventArgs e)
         {
             Interlocked.Exchange(ref _canProduce, 1);
+            Metrics.CanProduceBlocks = 1;
             if (Logger.IsDebug) Logger.Debug($"Can produce blocks, current best suggested {BlockTree.BestSuggestedHeader}{Environment.NewLine}current head {BlockTree.Head}{Environment.NewLine}{new StackTrace()}");        
         }
     }

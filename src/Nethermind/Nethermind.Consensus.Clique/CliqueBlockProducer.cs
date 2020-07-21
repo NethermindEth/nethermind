@@ -232,6 +232,7 @@ namespace Nethermind.Consensus.Clique
                     if (block is null)
                     {
                         if (_logger.IsTrace) _logger.Trace("Skipping block production or block production failed");
+                        Metrics.FailedBlockSeals++;
                         continue;
                     }
 
@@ -240,6 +241,7 @@ namespace Nethermind.Consensus.Clique
                     if (processedBlock == null)
                     {
                         if (_logger.IsInfo) _logger.Info($"Prepared block has lost the race");
+                        Metrics.FailedBlockSeals++;
                         continue;
                     }
 
@@ -253,25 +255,30 @@ namespace Nethermind.Consensus.Clique
                             {
                                 if (_logger.IsInfo) _logger.Info($"Sealed block {t.Result.ToString(Block.Format.HashNumberDiffAndTx)}");
                                 _scheduledBlock = t.Result;
+                                Metrics.BlocksSealed++;
                             }
                             else
                             {
                                 if (_logger.IsInfo) _logger.Info($"Failed to seal block {processedBlock.ToString(Block.Format.HashNumberDiffAndTx)} (null seal)");
+                                Metrics.FailedBlockSeals++;
                             }
                         }
                         else if (t.IsFaulted)
                         {
                             if (_logger.IsError) _logger.Error("Mining failed", t.Exception);
+                            Metrics.FailedBlockSeals++;
                         }
                         else if (t.IsCanceled)
                         {
                             if (_logger.IsInfo) _logger.Info($"Sealing block {processedBlock.Number} cancelled");
+                            Metrics.FailedBlockSeals++;
                         }
                     }, _cancellationTokenSource.Token);
                 }
                 catch (Exception e)
                 {
                     if (_logger.IsError) _logger.Error($"Block producer could not produce block on top of {parentBlock.ToString(Block.Format.Short)}", e);
+                    Metrics.FailedBlockSeals++;
                 }
             }
         }
