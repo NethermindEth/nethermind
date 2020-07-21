@@ -58,6 +58,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
                     {
                         tx.Nonce = CalculateNonce(tx.SenderAddress, parent.StateRoot, _nonces);
                         _txSealer.Seal(tx);
+                        Metrics.SealedTransactions++;
                         if (_logger.IsDebug) _logger.Debug($"Sealed node generated transaction {tx.Hash} from {tx.SenderAddress} to {tx.To} with nonce {tx.Nonce}.");
                     }
 

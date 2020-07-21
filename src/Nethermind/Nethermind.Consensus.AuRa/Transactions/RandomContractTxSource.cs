@@ -79,6 +79,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
                     _random.GenerateRandomBytes(bytes);
                     var hash = Keccak.Compute(bytes);
                     var cipher = _eciesCipher.Encrypt(_cryptoKey.PublicKey, bytes);
+                    Metrics.CommitHashTransaction++;
                     return contract.CommitHash(hash, cipher);
                 }
                 case IRandomContract.Phase.Reveal:
@@ -100,6 +101,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
                     
                     UInt256.CreateFromBigEndian(out var number, bytes);
                     
+                    Metrics.RevealNumber++;
                     return contract.RevealNumber(number);
                 }
             }

@@ -140,6 +140,14 @@ namespace Nethermind.Consensus.AuRa.Validators
                             var txSender = posdao ? _posdaoTxSender : _nonPosdaoTxSender;
                             SendTransaction(malicious, txSender, transaction);
                             if (_logger.IsWarn) _logger.Warn($"Reported {type} validator {validator} misbehaviour (cause: {cause}) at block {blockNumber}");
+                            if (malicious)
+                            {
+                                Metrics.ReportedMaliciousMisbehaviour++;
+                            }
+                            else
+                            {
+                                Metrics.ReportedBenignMisbehaviour++;
+                            }
                         }
                     }
                 }
@@ -189,6 +197,8 @@ namespace Nethermind.Consensus.AuRa.Validators
                     {
                         if (_logger.IsDebug) _logger.Debug($"Found skipped step {step} by self {skippedValidator}, actual author {header.Beneficiary} at block {header.Number}. Not self-reporting.");
                     }
+                    
+                    Metrics.SkippedAuRaSteps++;
                 }
             }
         }
