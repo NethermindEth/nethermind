@@ -171,7 +171,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             Account account = _blockchainBridge.GetAccount(address, header.StateRoot);
             if (account == null)
             {
-                return ResultWrapper<byte[]>.Success(Bytes.Empty);
+                return ResultWrapper<byte[]>.Success(Array.Empty<byte>());
             }
 
             var storage = _blockchainBridge.GetStorage(address, positionIndex, header.StateRoot);
@@ -257,7 +257,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             Account account = _blockchainBridge.GetAccount(address, header.StateRoot);
             if (account == null)
             {
-                return ResultWrapper<byte[]>.Success(Bytes.Empty);
+                return ResultWrapper<byte[]>.Success(Array.Empty<byte>());
             }
 
             var code = _blockchainBridge.GetCode(account.CodeHash);

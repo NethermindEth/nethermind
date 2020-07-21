@@ -41,7 +41,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
 {
     public class ReceiptMigration : IDatabaseMigration, IReceiptsMigration
     {
-        private static readonly Block EmptyBlock = new Block(new BlockHeader(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.Zero, 0L, 0L, UInt256.Zero, Bytes.Empty));
+        private static readonly Block EmptyBlock = new Block(new BlockHeader(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.Zero, 0L, 0L, UInt256.Zero, Array.Empty<byte>()));
 
         //private readonly EthereumRunnerContext _context;
         private readonly ILogger _logger;
@@ -188,7 +188,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
 
                         if (receipts.Length == 0 || notNullReceipts.Length != 0) // if notNullReceipts.Length is 0 and receipts are not 0 - we are missing all receipts, they are not processed yet.
                         {
-                            _receiptStorage.Insert(block, false, notNullReceipts);
+                            _receiptStorage.Insert(block, notNullReceipts);
                             _receiptStorage.MigratedBlockNumber = block.Number;
                             
                             for (int i = 0; i < notNullReceipts.Length; i++)

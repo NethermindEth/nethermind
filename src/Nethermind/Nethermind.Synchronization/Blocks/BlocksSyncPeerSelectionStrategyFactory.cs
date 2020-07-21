@@ -14,15 +14,23 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
 
 namespace Nethermind.Synchronization.Blocks
 {
-    internal class BlocksSyncPeerAllocationStrategyFactory : IPeerAllocationStrategyFactory<BlocksRequest>
+    internal class BlocksSyncPeerAllocationStrategyFactory : IPeerAllocationStrategyFactory<BlocksRequest?>
     {
-        public IPeerAllocationStrategy Create(BlocksRequest request)
+        public IPeerAllocationStrategy Create(BlocksRequest? request)
         {
+            // because of the way the generics cannot handle T / T?
+            if (request == null)
+            {
+                throw new ArgumentNullException(
+                    $"NULL received for allocation in {nameof(BlocksSyncPeerAllocationStrategyFactory)}");
+            }
+            
             IPeerAllocationStrategy baseStrategy = new BlocksSyncPeerAllocationStrategy(request.NumberOfLatestBlocksToBeIgnored);
             TotalDiffStrategy totalDiffStrategy = new TotalDiffStrategy(baseStrategy);
             return totalDiffStrategy;

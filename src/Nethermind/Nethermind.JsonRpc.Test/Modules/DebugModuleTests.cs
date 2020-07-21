@@ -73,10 +73,10 @@ namespace Nethermind.JsonRpc.Test.Modules
                 new ChainLevelInfo(
                     true,
                     new[]
-                {
-                    new BlockInfo(TestItem.KeccakA, 1000),
-                    new BlockInfo(TestItem.KeccakB, 1001),
-                }));
+                    {
+                        new BlockInfo(TestItem.KeccakA, 1000),
+                        new BlockInfo(TestItem.KeccakB, 1001),
+                    }));
 
             DebugModule module = new DebugModule(LimboLogs.Instance, debugBridge, jsonRpcConfig);
             JsonRpcSuccessResponse response = RpcTest.TestRequest<IDebugModule>(module, "debug_getChainLevel", parameter) as JsonRpcSuccessResponse;
@@ -211,7 +211,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":{\"gas\":\"0x0\",\"failed\":false,\"returnValue\":\"0xa2\",\"structLogs\":[{\"pc\":0,\"op\":\"STOP\",\"gas\":22000,\"gasCost\":1,\"depth\":1,\"error\":null,\"stack\":[],\"memory\":[\"0000000000000000000000000000000000000000000000000000000000000005\",\"0000000000000000000000000000000000000000000000000000000000000006\"],\"storage\":{\"0000000000000000000000000000000000000000000000000000000000000001\":\"0000000000000000000000000000000000000000000000000000000000000002\",\"0000000000000000000000000000000000000000000000000000000000000003\":\"0000000000000000000000000000000000000000000000000000000000000004\"}}]},\"id\":67}", response);
         }
-        
+
         [Test]
         public void Migrate_receipts()
         {
@@ -219,6 +219,15 @@ namespace Nethermind.JsonRpc.Test.Modules
             IDebugModule module = new DebugModule(LimboLogs.Instance, debugBridge, jsonRpcConfig);
             string response = RpcTest.TestSerializedRequest(module, "debug_migrateReceipts", "100");
             Assert.NotNull(response);
+        }
+
+        [Test]
+        public void Update_head_block()
+        {
+            debugBridge.UpdateHeadBlock(Arg.Any<Keccak>());
+            IDebugModule module = new DebugModule(LimboLogs.Instance, debugBridge, jsonRpcConfig);
+            RpcTest.TestSerializedRequest(module, "debug_resetHead", TestItem.KeccakA.ToString());
+            debugBridge.Received().UpdateHeadBlock(TestItem.KeccakA);
         }
     }
 }

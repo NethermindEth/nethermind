@@ -454,7 +454,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
 
         public void ReportActionEnd(long gas, byte[] output)
         {
-            _currentAction.Result.Output = output ?? Bytes.Empty;
+            _currentAction.Result.Output = output ?? Array.Empty<byte>();
             _currentAction.Result.GasUsed = _currentAction.Gas - gas;
             PopAction();
         }

@@ -64,8 +64,9 @@ namespace Nethermind.Crypto
 
         public PublicKey RecoverPublicKey(Signature signature, Keccak message)
         {
-            byte[] publicKey = Proxy.RecoverKeyFromCompact(message.Bytes, signature.Bytes, signature.RecoveryId, false);
-            if (publicKey == null)
+            Span<byte> publicKey = stackalloc byte[65];
+            bool success = Proxy.RecoverKeyFromCompact(publicKey, message.Bytes, signature.Bytes, signature.RecoveryId, false);
+            if (!success)
             {
                 return null;
             }

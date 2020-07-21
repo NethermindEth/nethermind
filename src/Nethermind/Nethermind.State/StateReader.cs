@@ -77,7 +77,7 @@ namespace Nethermind.State
         {
             if (codeHash == Keccak.OfAnEmptyString)
             {
-                return new byte[0];
+                return Array.Empty<byte>();
             }
 
             return _codeDb[codeHash.Bytes];
@@ -93,7 +93,7 @@ namespace Nethermind.State
             Account account = GetState(stateRoot, address);
             if (account == null)
             {
-                return new byte[0];
+                return Array.Empty<byte>();
             }
 
             return GetCode(account.CodeHash);

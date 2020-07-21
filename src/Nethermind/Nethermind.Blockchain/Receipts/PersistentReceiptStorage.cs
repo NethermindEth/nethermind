@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -215,13 +216,15 @@ namespace Nethermind.Blockchain.Receipts
             return result;
         }
 
-        public void Insert(Block block, bool updateLowestInserted, params TxReceipt[] txReceipts)
+        public void Insert(Block block, params TxReceipt[] txReceipts)
         {
             txReceipts ??= Array.Empty<TxReceipt>();
             
             if (block.Transactions.Length != txReceipts.Length)
             {
-                throw new ArgumentException($"Block {block.ToString(Block.Format.FullHashAndNumber)} has different number of transactions than receipts.");
+                throw new InvalidDataException(
+                    $"Block {block.ToString(Block.Format.FullHashAndNumber)} has different numbers " +
+                    $"of transactions {block.Transactions.Length} and receipts {txReceipts.Length}.");
             }
 
             _receiptsRecovery.TryRecover(block, txReceipts);
@@ -235,11 +238,6 @@ namespace Nethermind.Blockchain.Receipts
             {
                 var txHash = block.Transactions[i].Hash;
                 _transactionDb.Set(txHash, block.Hash.Bytes);
-            }
-
-            if (updateLowestInserted && blockNumber < (LowestInsertedReceiptBlock ?? long.MaxValue))
-            {
-                LowestInsertedReceiptBlock = blockNumber;
             }
 
             if (blockNumber < MigratedBlockNumber)

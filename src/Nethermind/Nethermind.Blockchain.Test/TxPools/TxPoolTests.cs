@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -358,7 +359,7 @@ namespace Nethermind.Blockchain.Test.TxPools
         }
 
         private Transaction GetTransaction(PrivateKey privateKey, Address to = null, UInt256? nonce = null)
-            => GetTransaction(nonce ?? UInt256.Zero, 1, 1000, to, new byte[0], privateKey);
+            => GetTransaction(nonce ?? UInt256.Zero, 1, 1000, to, Array.Empty<byte>(), privateKey);
 
         private Transaction GetTransaction(UInt256 nonce, long gasLimit, UInt256 gasPrice, Address to, byte[] data,
             PrivateKey privateKey)

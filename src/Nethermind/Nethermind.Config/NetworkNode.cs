@@ -18,7 +18,6 @@ using System;
 using System.Collections.Generic;
 using System.Net;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 
 namespace Nethermind.Config
@@ -41,7 +40,7 @@ namespace Nethermind.Config
             string[] nodeStrings = enodesString?.Split(",", StringSplitOptions.RemoveEmptyEntries);
             if (nodeStrings == null)
             {
-                return new NetworkNode[0];
+                return Array.Empty<NetworkNode>();
             }
 
             List<NetworkNode> nodes = new List<NetworkNode>();
@@ -61,12 +60,7 @@ namespace Nethermind.Config
         }
 
         public override string ToString() => _enode.ToString();
-
-        public NetworkNode(string publicKey, string ip, int port, long reputation = 0)
-            : this(new PublicKey(publicKey), ip, port, reputation)
-        {
-        }
-
+        
         public NetworkNode(PublicKey publicKey, string ip, int port, long reputation = 0)
         {
             _enode = new Enode(publicKey, IPAddress.Parse(ip), port);

@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -219,7 +220,7 @@ namespace Nethermind.Evm.Test
         public void Newly_created_empty_account_returns_empty_data_hash()
         {
             byte[] code = Prepare.EvmCode
-                .Create(Bytes.Empty, 0)
+                .Create(Array.Empty<byte>(), 0)
                 .PushData(ContractAddress.From(Recipient, 0))
                 .Op(Instruction.EXTCODEHASH)
                 .PushData(0)

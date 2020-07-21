@@ -14,18 +14,25 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+using System.Threading;
+
 namespace Nethermind.Core
 {
     public class BlockBody
     {
+        public static int Number = 0;
+        
         public BlockBody()
         {
-            Transactions = new Transaction[0];
-            Ommers = new BlockHeader[0];
+            // Interlocked.Increment(ref Number);
+            Transactions = Array.Empty<Transaction>();
+            Ommers = Array.Empty<BlockHeader>();
         }
         
         public BlockBody(Transaction[] transactions, BlockHeader[] ommers)
         {
+            // Interlocked.Increment(ref Number);
             Transactions = transactions;
             Ommers = ommers;
         }
@@ -43,6 +50,11 @@ namespace Nethermind.Core
         public Transaction[] Transactions { get; }
         public BlockHeader[] Ommers { get; }
         
-        public static BlockBody Empty = new BlockBody(); 
+        public static BlockBody Empty = new BlockBody();
+
+        // ~BlockBody()
+        // {
+        //     Interlocked.Add(ref Number, -1);
+        // }
     }
 }

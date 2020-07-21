@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -18,6 +18,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using Nethermind.Config;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -36,6 +37,14 @@ namespace Nethermind.Network
         {
             _fullDb = fullDb ?? throw new ArgumentNullException(nameof(fullDb));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        }
+
+        public int PersistedNodesCount
+        {
+            get
+            {
+                return _fullDb.Values.Count;
+            }
         }
 
         public NetworkNode[] GetPersistedNodes()
@@ -70,13 +79,10 @@ namespace Nethermind.Network
             }
         }
 
-        public void RemoveNodes(NetworkNode[] nodes)
+        public void RemoveNode(PublicKey nodeId)
         {
-            for (int i = 0; i < nodes.Length; i++)
-            {
-                _fullDb.Remove(nodes[i].NodeId.Bytes);
-                _removeCounter++;
-            }
+            _fullDb.Remove(nodeId.Bytes);
+            _removeCounter++;
         }
 
         public void StartBatch()

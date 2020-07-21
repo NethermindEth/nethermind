@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
@@ -40,11 +41,12 @@ namespace Nethermind.Synchronization.FastBlocks
             ISyncPeer peer = peerInfo.SyncPeer;
             batch.ResponseSourcePeer = peerInfo;
             batch.MarkSent();
-            Task<TxReceipt[][]> getReceiptsTask = peer.GetReceipts(batch.Request, cancellationToken);
+            var hashes = batch.Infos.Where(i => i != null).Select(i => i!.BlockHash).ToArray();
+            Task<TxReceipt[][]> getReceiptsTask = peer.GetReceipts(hashes, cancellationToken);
             await getReceiptsTask.ContinueWith(
                 (t, state) =>
                 {
-                    ReceiptsSyncBatch batchLocal = (ReceiptsSyncBatch)state;
+                    ReceiptsSyncBatch batchLocal = (ReceiptsSyncBatch)state!;
                     if (t.IsCompletedSuccessfully)
                     {
                         if (batchLocal.RequestTime > 1000)

@@ -45,14 +45,15 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
 
         public bool CanBeReplaced => _strategy.CanBeReplaced;
 
-        public PeerInfo Allocate(PeerInfo currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
+        public PeerInfo? Allocate(PeerInfo? currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
         {
-            UInt256? currentDiff = blockTree.BestSuggestedHeader?.TotalDifficulty;
-            if (currentDiff == null)
+            UInt256? currentDiffOrNull = blockTree.BestSuggestedHeader?.TotalDifficulty;
+            if (currentDiffOrNull == null)
             {
                 return _strategy.Allocate(currentPeer, peers, nodeStatsManager, blockTree);    
             }
 
+            UInt256 currentDiff = currentDiffOrNull.Value;
             switch (_selectionType)
             {
                 case TotalDiffSelectionType.Better:
@@ -61,8 +62,8 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
                 case TotalDiffSelectionType.AtLeastTheSame:
                     break;
                 case TotalDiffSelectionType.CanBeSlightlyWorse:
-                    var lastBlockDiff = blockTree.BestSuggestedHeader?.Difficulty;
-                    if (currentDiff.Value >= lastBlockDiff)
+                    UInt256 lastBlockDiff = blockTree.BestSuggestedHeader?.Difficulty ?? 0;
+                    if (currentDiff >= lastBlockDiff)
                     {
                         currentDiff -= lastBlockDiff;
                     }

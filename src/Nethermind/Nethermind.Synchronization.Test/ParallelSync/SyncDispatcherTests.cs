@@ -20,10 +20,12 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
+using Nethermind.Stats;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
@@ -42,18 +44,16 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             {
             }
 
-            public bool TryFind(PublicKey nodeId, out PeerInfo peerInfo)
-            {
-                throw new NotImplementedException();
-            }
-
             public Task<SyncPeerAllocation> Allocate(IPeerAllocationStrategy peerAllocationStrategy, AllocationContexts contexts, int timeoutMilliseconds = 0)
             {
                 ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
                 syncPeer.ClientId.Returns("Nethermind");
                 syncPeer.TotalDifficulty.Returns(UInt256.One);
                 SyncPeerAllocation allocation = new SyncPeerAllocation(new PeerInfo(syncPeer), contexts);
-                allocation.AllocateBestPeer(null, null, null);
+                allocation.AllocateBestPeer(
+                    Substitute.For<IEnumerable<PeerInfo>>(),
+                    Substitute.For<INodeStatsManager>(),
+                    Substitute.For<IBlockTree>());
                 return Task.FromResult(allocation);
             }
 
@@ -78,12 +78,11 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 throw new NotImplementedException();
             }
 
-            public IEnumerable<PeerInfo> AllPeers { get; }
-            public IEnumerable<PeerInfo> InitializedPeers { get; }
-            public IEnumerable<PeerInfo> UsefulPeersWhateverDiff { get; }
-            public int PeerCount { get; }
-            public int InitializedPeersCount { get; }
-            public int PeerMaxCount { get; }
+            public IEnumerable<PeerInfo> AllPeers { get; } = Array.Empty<PeerInfo>();
+            public IEnumerable<PeerInfo> InitializedPeers { get; } = Array.Empty<PeerInfo>();
+            public int PeerCount { get; } = 0;
+            public int InitializedPeersCount { get; } = 0;
+            public int PeerMaxCount { get; } = 0;
 
             public void AddPeer(ISyncPeer syncPeer)
             {
@@ -152,7 +151,6 @@ namespace Nethermind.Synchronization.Test.ParallelSync
         private class TestSyncFeed : SyncFeed<TestBatch>
         {
             public TestSyncFeed(bool isMultiFeed = true)
-                : base(LimboLogs.Instance)
             {
                 IsMultiFeed = isMultiFeed;
             }

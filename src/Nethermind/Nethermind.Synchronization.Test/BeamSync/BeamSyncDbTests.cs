@@ -61,12 +61,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
         {
             BeamSyncContext.LastFetchUtc.Value = DateTime.MaxValue;
         }
-
-        private void MakeRequestsImmediatelyExpire()
-        {
-            BeamSyncContext.LastFetchUtc.Value = DateTime.MinValue;
-        }
-
+        
         [Test]
         public void Beam_db_provider_smoke_test()
         {
@@ -124,7 +119,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
 
             RunRounds(1);
             StateSyncBatch request = await _stateBeamLocal.PrepareRequest();
-            request.Responses = new byte[request.RequestedNodes.Length][];
+            request!.Responses = new byte[request.RequestedNodes.Length][];
             _stateBeamLocal.HandleResponse(request);
             RunRounds(3);
 
@@ -149,7 +144,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
 
             RunRounds(1);
             StateSyncBatch request = await _stateBeamLocal.PrepareRequest();
-            request.Responses = new byte[][] {_remoteState.Get(request.RequestedNodes[0].Hash)};
+            request!.Responses = new [] {_remoteState.Get(request.RequestedNodes[0].Hash)};
             _stateBeamLocal.HandleResponse(request);
             RunRounds(3);
 
@@ -165,18 +160,18 @@ namespace Nethermind.Synchronization.Test.BeamSync
 #pragma warning disable 4014
             Task.Run(() => RunRounds(100));
 #pragma warning restore 4014
-            StateSyncBatch request = new StateSyncBatch();
+            StateSyncBatch request = null;
             for (int i = 0; i < 1000; i++)
             {
                 Thread.Sleep(1);
                 request = await _stateBeamLocal.PrepareRequest();
-                if (request.RequestedNodes.Length > 0)
+                if (request!.RequestedNodes.Length > 0)
                 {
                     break;
                 }
             }
 
-            request.Responses = new byte[][] {_remoteState.Get(request.RequestedNodes[0].Hash)};
+            request!.Responses = new [] {_remoteState.Get(request.RequestedNodes[0].Hash)};
             _stateBeamLocal.HandleResponse(request);
 
             Assert.Less(_needMoreDataInvocations, 1000);
@@ -190,7 +185,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
 
             RunRounds(1);
             StateSyncBatch request = await _stateBeamLocal.PrepareRequest();
-            request.Responses = new byte[][] {_remoteState.Get(request.RequestedNodes[0].Hash)};
+            request!.Responses = new [] {_remoteState.Get(request.RequestedNodes[0].Hash)};
             _stateBeamLocal.HandleResponse(request);
             PatriciaTree.NodeCache.Clear();
             RunRounds(1);
@@ -217,7 +212,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
 
             RunRounds(1);
             StateSyncBatch request = await _stateBeamLocal.PrepareRequest();
-            request.Responses = new[] {new byte[] {1, 2, 3}};
+            request!.Responses = new[] {new byte[] {1, 2, 3}};
             _stateBeamLocal.HandleResponse(request);
             RunRounds(3);
 

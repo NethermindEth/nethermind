@@ -20,6 +20,7 @@ using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.Secp256k1;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Crypto
@@ -55,7 +56,6 @@ namespace Nethermind.Crypto
             if(_logger.IsDebug) _logger.Debug($"Transaction {tx.SenderAddress} -> {tx.To} ({tx.Value}) signed");
         }
 
-        
         /// <summary>
         /// 
         /// </summary>
@@ -82,7 +82,19 @@ namespace Nethermind.Crypto
 
         public Address RecoverAddress(Signature signature, Keccak message)
         {
-            return RecoverPublicKey(signature, message)?.Address;
+            return RecoverAddress(signature.BytesWithRecovery, message);
+        }
+        
+        public Address RecoverAddress(Span<byte> signatureBytes, Keccak message)
+        {
+            Span<byte> publicKey = stackalloc byte[65];
+            bool success = Proxy.RecoverKeyFromCompact(publicKey, message.Bytes, signatureBytes.Slice(0, 64), signatureBytes[64], false);
+            if (!success)
+            {
+                return null;
+            }
+            
+            return PublicKey.ComputeAddress(publicKey.Slice(1, 64));
         }
     }
 }

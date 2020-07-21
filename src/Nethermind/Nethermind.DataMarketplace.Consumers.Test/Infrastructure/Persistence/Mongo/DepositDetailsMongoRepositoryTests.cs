@@ -50,7 +50,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence.M
                 deposit,
                 dataAsset,
                 TestItem.AddressA,
-                Bytes.Empty,
+                Array.Empty<byte>(),
                 10,
                 Array.Empty<TransactionInfo>(),
                 9,

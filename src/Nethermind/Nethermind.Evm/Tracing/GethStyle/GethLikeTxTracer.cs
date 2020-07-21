@@ -62,7 +62,7 @@ namespace Nethermind.Evm.Tracing.GethStyle
         public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak stateRoot = null)
         {
             _trace.Failed = true;
-            _trace.ReturnValue = output ?? Bytes.Empty;
+            _trace.ReturnValue = output ?? Array.Empty<byte>();
         }
 
         public void StartOperation(int depth, long gas, Instruction opcode, int pc)

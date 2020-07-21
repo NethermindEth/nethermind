@@ -32,6 +32,12 @@ namespace Nethermind.Cli.Modules
         // {
         //     return NodeManager.PostJint("debug_deleteChainSlice", startNumber).Result;
         // }
+        
+        // [CliFunction("debug", "resetHead")]
+        // public JsValue ResetHead(string blockHash)
+        // {
+        //     return NodeManager.PostJint("debug_resetHead", CliParseHash(blockHash)).Result;
+        // }
 
         [CliFunction("debug", "traceBlock")]
         public JsValue TraceBlock(string rlp, object options)

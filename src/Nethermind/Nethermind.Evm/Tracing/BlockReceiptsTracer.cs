@@ -74,7 +74,7 @@ namespace Nethermind.Evm.Tracing
 
         private TxReceipt BuildFailedReceipt(Address recipient, long gasSpent, string error, Keccak stateRoot = null)
         {
-            TxReceipt receipt = BuildReceipt(recipient, gasSpent, StatusCode.Failure, LogEntry.EmptyLogs, stateRoot);
+            TxReceipt receipt = BuildReceipt(recipient, gasSpent, StatusCode.Failure, Array.Empty<LogEntry>(), stateRoot);
             receipt.Error = error;
             return receipt;
         }

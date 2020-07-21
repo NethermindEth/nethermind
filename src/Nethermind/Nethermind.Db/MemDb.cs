@@ -125,6 +125,8 @@ namespace Nethermind.Db
         public ICollection<byte[]> Keys => _db.Keys;
         public ICollection<byte[]> Values => _db.Values;
 
+        public int Count => _db.Count;
+
         public void Dispose()
         {
         }

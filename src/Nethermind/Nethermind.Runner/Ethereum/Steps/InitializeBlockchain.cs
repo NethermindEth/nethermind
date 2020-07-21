@@ -203,15 +203,12 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _context.LogManager,
                     _context.BlockValidator,
                     _context.RecoveryStep,
-                    _context.RewardCalculatorSource,
+                    _context.RewardCalculatorSource!,
                     _context.BlockProcessingQueue,
-                    _context.BlockchainProcessor,
-                    _context.SyncModeSelector);
+                    _context.SyncModeSelector!);
                 
                 _context.DisposeStack.Push(beamBlockchainProcessor);
             }
-
-            ThisNodeInfo.AddInfo("Mem est trie :", $"{LruCache<Keccak, byte[]>.CalculateMemorySize(52 + 320, Trie.MemoryAllowance.TrieNodeCacheSize) / 1024 / 1024}MB".PadLeft(8));
 
             return Task.CompletedTask;
         }

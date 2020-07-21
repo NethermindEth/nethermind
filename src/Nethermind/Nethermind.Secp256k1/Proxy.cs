@@ -18,6 +18,7 @@
 
 using System;
 using System.Runtime.InteropServices;
+using System.Runtime.InteropServices.WindowsRuntime;
 using System.Security;
 using Nethermind.Native;
 
@@ -36,7 +37,7 @@ namespace Nethermind.Secp256k1
         /*****************************************************************************************/
         /*****************************************************************************************/
         /*****************************************************************************************/
-        
+
         [SuppressUnmanagedCodeSecurity]
         [DllImport(Secp256k1)]
         public static extern /* secp256k1_context */ IntPtr secp256k1_context_create(uint flags);
@@ -51,11 +52,11 @@ namespace Nethermind.Secp256k1
 
         [SuppressUnmanagedCodeSecurity]
         [DllImport(Secp256k1)]
-        public static extern bool secp256k1_ec_pubkey_create( /* secp256k1_context */ IntPtr context, byte[] pubkey, byte[] seckey);
+        public static extern unsafe bool secp256k1_ec_pubkey_create( /* secp256k1_context */ IntPtr context, void* pubkey, byte[] seckey);
 
         [SuppressUnmanagedCodeSecurity]
         [DllImport(Secp256k1)]
-        public static extern bool secp256k1_ec_pubkey_serialize( /* secp256k1_context */ IntPtr context, byte[] serializedPublicKey, ref uint outputSize, byte[] publicKey, uint flags);
+        public static extern unsafe bool secp256k1_ec_pubkey_serialize( /* secp256k1_context */ IntPtr context, void* serializedPublicKey, ref uint outputSize, void* publicKey, uint flags);
 
         [SuppressUnmanagedCodeSecurity]
         [DllImport(Secp256k1)]
@@ -67,11 +68,11 @@ namespace Nethermind.Secp256k1
 
         [SuppressUnmanagedCodeSecurity]
         [DllImport(Secp256k1)]
-        public static extern bool secp256k1_ecdsa_recoverable_signature_parse_compact( /* secp256k1_context */ IntPtr context, byte[] signature, byte[] compactSignature, int recoveryId);
+        public static extern unsafe bool secp256k1_ecdsa_recoverable_signature_parse_compact( /* secp256k1_context */ IntPtr context, void* signature, void* compactSignature, int recoveryId);
 
         [SuppressUnmanagedCodeSecurity]
         [DllImport(Secp256k1)]
-        public static extern bool secp256k1_ecdsa_recover( /* secp256k1_context */ IntPtr context, byte[] publicKey, byte[] signature, byte[] message);
+        public static extern unsafe bool secp256k1_ecdsa_recover( /* secp256k1_context */ IntPtr context, void* publicKey, void* signature, byte[] message);
 
         [SuppressUnmanagedCodeSecurity]
         [DllImport(Secp256k1)]
@@ -81,14 +82,11 @@ namespace Nethermind.Secp256k1
         [DllImport(Secp256k1)]
         public static extern unsafe int secp256k1_ec_pubkey_parse(IntPtr ctx, void* pubkey, void* input, uint inputlen);
 
-        [SuppressUnmanagedCodeSecurity]
-        [DllImport(Secp256k1)]
-        public static extern unsafe int secp256k1_ec_pubkey_serialize(IntPtr ctx, void* output, ref uint outputlen, void* pubkey, uint flags);
 
         /*****************************************************************************************/
         /*****************************************************************************************/
         /*****************************************************************************************/
-        
+
         /* constants from pycoin (https://github.com/richardkiss/pycoin)*/
         private const uint Secp256K1FlagsTypeMask = (1 << 8) - 1;
 
@@ -123,28 +121,32 @@ namespace Nethermind.Secp256k1
             return secp256k1_ec_seckey_verify(Context, privateKey);
         }
 
-        public static byte[] GetPublicKey(byte[] privateKey, bool compressed)
+        public static unsafe byte[] GetPublicKey(byte[] privateKey, bool compressed)
         {
-            byte[] publicKey = new byte[64];
-
-            bool keyDerivationFailed =
-                !secp256k1_ec_pubkey_create(Context, publicKey, privateKey);
-            if (keyDerivationFailed)
+            Span<byte> publicKey = stackalloc byte[64];
+            Span<byte> serializedPublicKey = stackalloc byte[compressed ? 33 : 65];
+            
+            fixed (byte* serializedPtr = &MemoryMarshal.GetReference(serializedPublicKey), pubKeyPtr = &MemoryMarshal.GetReference(publicKey))
             {
-                return null;
+                bool keyDerivationFailed =
+                    !secp256k1_ec_pubkey_create(Context, pubKeyPtr, privateKey);
+                if (keyDerivationFailed)
+                {
+                    return null;
+                }
+
+                uint outputSize = (uint) serializedPublicKey.Length;
+                uint flags = compressed ? Secp256K1EcCompressed : Secp256K1EcUncompressed;
+                
+                bool serializationFailed =
+                    !secp256k1_ec_pubkey_serialize(Context, serializedPtr, ref outputSize, pubKeyPtr, flags);
+                if (serializationFailed)
+                {
+                    return null;
+                }
             }
 
-            byte[] serializedPublicKey = new byte[compressed ? 33 : 65];
-            uint outputSize = (uint) serializedPublicKey.Length;
-            uint flags = compressed ? Secp256K1EcCompressed : Secp256K1EcUncompressed;
-            bool serializationFailed =
-                !secp256k1_ec_pubkey_serialize(Context, serializedPublicKey, ref outputSize, publicKey, flags);
-            if (serializationFailed)
-            {
-                return null;
-            }
-
-            return serializedPublicKey;
+            return serializedPublicKey.ToArray();
         }
 
         public static byte[] SignCompact(byte[] messageHash, byte[] privateKey, out int recoveryId)
@@ -168,32 +170,76 @@ namespace Nethermind.Secp256k1
             return compactSignature;
         }
 
-        public static byte[] RecoverKeyFromCompact(byte[] messageHash, byte[] compactSignature, int recoveryId, bool compressed)
+        // public static unsafe bool RecoverKeyFromCompact(Span<byte> output, byte[] messageHash, Span<byte> recoverableSignature, bool compressed)
+        // {
+        //     Span<byte> publicKey = stackalloc byte[64];
+        //     int expectedLength = compressed ? 33 : 65;
+        //     if (output.Length != expectedLength)
+        //     {
+        //         throw new ArgumentException($"{nameof(output)} length should be {expectedLength}");
+        //     }
+        //
+        //     fixed (byte*
+        //         pubKeyPtr = &MemoryMarshal.GetReference(publicKey),
+        //         recoverableSignaturePtr = &MemoryMarshal.GetReference(recoverableSignature),
+        //         serializedPublicKeyPtr = &MemoryMarshal.GetReference(output))
+        //     {
+        //         if (!secp256k1_ecdsa_recover(Context, pubKeyPtr, recoverableSignaturePtr, messageHash))
+        //         {
+        //             return false;
+        //         }
+        //         
+        //         uint flags = compressed ? Secp256K1EcCompressed : Secp256K1EcUncompressed;
+        //         
+        //         uint outputSize = (uint) output.Length;
+        //         if (!secp256k1_ec_pubkey_serialize(
+        //             Context, serializedPublicKeyPtr, ref outputSize, pubKeyPtr, flags))
+        //         {
+        //             return false;
+        //         }
+        //
+        //         return true;
+        //     }
+        // }
+        
+        public static unsafe bool RecoverKeyFromCompact(Span<byte> output, byte[] messageHash, Span<byte> compactSignature, int recoveryId, bool compressed)
         {
-            byte[] recoverableSignature = new byte[65];
-
-            if (!secp256k1_ecdsa_recoverable_signature_parse_compact(
-                Context, recoverableSignature, compactSignature, recoveryId))
+            Span<byte> recoverableSignature = stackalloc byte[65];
+            Span<byte> publicKey = stackalloc byte[64];
+            int expectedLength = compressed ? 33 : 65;
+            if (output.Length != expectedLength)
             {
-                return null;
+                throw new ArgumentException($"{nameof(output)} length should be {expectedLength}");
             }
 
-            byte[] publicKey = new byte[64];
-            if (!secp256k1_ecdsa_recover(Context, publicKey, recoverableSignature, messageHash))
+            fixed (byte*
+                compactSigPtr = &MemoryMarshal.GetReference(compactSignature),
+                pubKeyPtr = &MemoryMarshal.GetReference(publicKey),
+                recoverableSignaturePtr = &MemoryMarshal.GetReference(recoverableSignature),
+                serializedPublicKeyPtr = &MemoryMarshal.GetReference(output))
             {
-                return null;
-            }
+                if (!secp256k1_ecdsa_recoverable_signature_parse_compact(
+                    Context, recoverableSignaturePtr, compactSigPtr, recoveryId))
+                {
+                    return false;
+                }
 
-            uint flags = compressed ? Secp256K1EcCompressed : Secp256K1EcUncompressed;
-            byte[] serializedPublicKey = new byte[compressed ? 33 : 65];
-            uint outputSize = (uint) serializedPublicKey.Length;
-            if (!secp256k1_ec_pubkey_serialize(
-                Context, serializedPublicKey, ref outputSize, publicKey, flags))
-            {
-                return null;
-            }
+                if (!secp256k1_ecdsa_recover(Context, pubKeyPtr, recoverableSignaturePtr, messageHash))
+                {
+                    return false;
+                }
+                
+                uint flags = compressed ? Secp256K1EcCompressed : Secp256K1EcUncompressed;
+                
+                uint outputSize = (uint) output.Length;
+                if (!secp256k1_ec_pubkey_serialize(
+                    Context, serializedPublicKeyPtr, ref outputSize, pubKeyPtr, flags))
+                {
+                    return false;
+                }
 
-            return serializedPublicKey;
+                return true;
+            }
         }
 
         unsafe delegate int secp256k1_ecdh_hash_function(void* output, void* x, void* y, IntPtr data);
@@ -295,10 +341,10 @@ namespace Nethermind.Secp256k1
 
             fixed (byte* serializedPtr = &MemoryMarshal.GetReference(serializedPublicKeyOutput), pubKeyPtr = &MemoryMarshal.GetReference(publicKey))
             {
-                int result = secp256k1_ec_pubkey_serialize(
+                bool success = secp256k1_ec_pubkey_serialize(
                     Context, serializedPtr, ref newLength, pubKeyPtr, flags);
-                
-                return result == 1 && newLength == serializedPubKeyLength;
+
+                return success && newLength == serializedPubKeyLength;
             }
         }
 
