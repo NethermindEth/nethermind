@@ -34,7 +34,7 @@ namespace Nethermind.Vault
         private readonly ILogger _logger;
         private readonly provide.Vault _initVault;
         private ConcurrentDictionary<Address, string> accounts;
-        private string vault;
+        // private string vault;
 
 
         public VaultWallet(IVaultManager vaultManager, IVaultConfig vaultConfig, ILogManager logManager)

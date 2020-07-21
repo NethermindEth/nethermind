@@ -15,18 +15,18 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-namespace Nethermind.Synchronization.FastBlocks
-{
-    internal static class FastBlocksLags
-    {
-        /// <summary>
-        /// That many headers will be downloaded before we start downloading bodies
-        /// </summary>
-        public const long ForBodies = 32 * 1024;
+using FluentAssertions;
+using NUnit.Framework;
 
-        /// <summary>
-        /// That many bodies will be downloaded before we start downloading receipts
-        /// </summary>
-        public const long ForReceipts = 32 * 1024;
+namespace Nethermind.Core.Test
+{
+    [TestFixture]
+    public class NetworkDiagTracerTests
+    {
+        [Test]
+        public void Test()
+        {
+            NetworkDiagTracer.NetworkDiagTracerPath.Should().NotStartWith("C:");
+        }
     }
 }

@@ -22,7 +22,7 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.ParallelSync
 {
-    public abstract class SyncDispatcher<T> : ISyncDispatcher<T>
+    public abstract class SyncDispatcher<T>
     {
         private object _feedStateManipulation = new object();
         private SyncFeedState _currentFeedState = SyncFeedState.Dormant;
@@ -33,7 +33,11 @@ namespace Nethermind.Synchronization.ParallelSync
         protected ISyncFeed<T> Feed { get; }
         protected ISyncPeerPool SyncPeerPool { get; }
 
-        protected SyncDispatcher(ISyncFeed<T> syncFeed, ISyncPeerPool syncPeerPool, IPeerAllocationStrategyFactory<T> peerAllocationStrategy, ILogManager logManager)
+        protected SyncDispatcher(
+            ISyncFeed<T> syncFeed,
+            ISyncPeerPool syncPeerPool,
+            IPeerAllocationStrategyFactory<T> peerAllocationStrategy,
+            ILogManager logManager)
         {
             Logger = logManager?.GetClassLogger<SyncDispatcher<T>>() ?? throw new ArgumentNullException(nameof(logManager));
             Feed = syncFeed ?? throw new ArgumentNullException(nameof(syncFeed));
@@ -43,7 +47,7 @@ namespace Nethermind.Synchronization.ParallelSync
             syncFeed.StateChanged += SyncFeedOnStateChanged;
         }
 
-        private TaskCompletionSource<object> _dormantStateTask = new TaskCompletionSource<object>();
+        private TaskCompletionSource<object?>? _dormantStateTask = new TaskCompletionSource<object?>();
 
         protected abstract Task Dispatch(PeerInfo peerInfo, T request, CancellationToken cancellationToken);
 
@@ -69,7 +73,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 }
 
                 SyncFeedState currentStateLocal;
-                TaskCompletionSource<object> dormantTaskLocal;
+                TaskCompletionSource<object?>? dormantTaskLocal;
                 lock (_feedStateManipulation)
                 {
                     currentStateLocal = _currentFeedState;
@@ -83,12 +87,17 @@ namespace Nethermind.Synchronization.ParallelSync
                 if (currentStateLocal == SyncFeedState.Dormant)
                 {
                     if(Logger.IsDebug) Logger.Debug($"{GetType().Name} is going to sleep.");
-                    await dormantTaskLocal.Task;
+                    if (dormantTaskLocal == null)
+                    {
+                        if (Logger.IsWarn) Logger.Warn("Dormant task is NULL when trying to await it");
+                    }
+
+                    await (dormantTaskLocal?.Task ?? Task.CompletedTask);
                     if(Logger.IsDebug) Logger.Debug($"{GetType().Name} got activated.");
                 }
                 else if (currentStateLocal == SyncFeedState.Active)
                 {
-                    T request = await (Feed.PrepareRequest() ?? Task.FromResult<T>(default)); // just to avoid null refs
+                    T request = await (Feed.PrepareRequest() ?? Task.FromResult<T>(default!)); // just to avoid null refs
                     if (request == null)
                     {
                         if (!Feed.IsMultiFeed)
@@ -101,8 +110,7 @@ namespace Nethermind.Synchronization.ParallelSync
                     }
 
                     SyncPeerAllocation allocation = await Allocate(request);
-                    PeerInfo allocatedPeer = allocation.Current; // TryGetCurrent?
-
+                    PeerInfo? allocatedPeer = allocation.Current;
                     if (allocatedPeer != null)
                     {
                         Task task = Dispatch(allocatedPeer, request, cancellationToken);
@@ -125,7 +133,6 @@ namespace Nethermind.Synchronization.ParallelSync
                             try
                             {
                                 SyncResponseHandlingResult result = Feed.HandleResponse(request);
-                                Free(allocation);
                                 ReactToHandlingResult(request, result, allocatedPeer);
                             }
                             catch (ObjectDisposedException)
@@ -137,6 +144,10 @@ namespace Nethermind.Synchronization.ParallelSync
                                 // possibly clear the response and handle empty response batch here (to avoid missing parts)
                                 // this practically corrupts sync
                                 if (Logger.IsError) Logger.Error("Error when handling response", e);
+                            }
+                            finally
+                            {
+                                Free(allocation);
                             }
                         }, cancellationToken);
                     }
@@ -165,45 +176,37 @@ namespace Nethermind.Synchronization.ParallelSync
             return allocation;
         }
 
-        protected virtual void ReactToHandlingResult(T request, SyncResponseHandlingResult result, PeerInfo peer)
+        private void ReactToHandlingResult(T request, SyncResponseHandlingResult result, PeerInfo? peer)
         {
-            if (peer == null)
+            if (peer != null)
             {
-                // unassigned
-                return;
-            }
-
-            // if (result != SyncResponseHandlingResult.OK)
-            // {
-            //     Logger.Warn($"Result of processing {request} by {peer} is {result}");
-            // }
-
-            switch (result)
-            {
-                case SyncResponseHandlingResult.Emptish:
-                    break;
-                case SyncResponseHandlingResult.Ignored:
-                    Logger.Error($"Feed response was ignored.");
-                    break;
-                case SyncResponseHandlingResult.LesserQuality:
-                    SyncPeerPool.ReportWeakPeer(peer, Feed.Contexts);
-                    break;
-                case SyncResponseHandlingResult.NoProgress:
-                    SyncPeerPool.ReportNoSyncProgress(peer, Feed.Contexts);
-                    break;
-                case SyncResponseHandlingResult.NotAssigned:
-                    break;
-                case SyncResponseHandlingResult.InternalError:
-                    Logger.Error($"Feed {Feed} has reported an internal error when handling {request}");
-                    break;
-                case SyncResponseHandlingResult.OK:
-                    break;
-                default:
-                    throw new ArgumentOutOfRangeException(nameof(result), result, null);
+                switch (result)
+                {
+                    case SyncResponseHandlingResult.Emptish:
+                        break;
+                    case SyncResponseHandlingResult.Ignored:
+                        Logger.Error($"Feed response was ignored.");
+                        break;
+                    case SyncResponseHandlingResult.LesserQuality:
+                        SyncPeerPool.ReportWeakPeer(peer, Feed.Contexts);
+                        break;
+                    case SyncResponseHandlingResult.NoProgress:
+                        SyncPeerPool.ReportNoSyncProgress(peer, Feed.Contexts);
+                        break;
+                    case SyncResponseHandlingResult.NotAssigned:
+                        break;
+                    case SyncResponseHandlingResult.InternalError:
+                        Logger.Error($"Feed {Feed} has reported an internal error when handling {request}");
+                        break;
+                    case SyncResponseHandlingResult.OK:
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException(nameof(result), result, null);
+                }
             }
         }
 
-        private void SyncFeedOnStateChanged(object sender, SyncFeedStateEventArgs e)
+        private void SyncFeedOnStateChanged(object? sender, SyncFeedStateEventArgs e)
         {
             SyncFeedState state = e.NewState;
             UpdateState(state);
@@ -218,10 +221,10 @@ namespace Nethermind.Synchronization.ParallelSync
                     if(Logger.IsDebug) Logger.Debug($"{Feed.GetType().Name} state changed to {state}");
 
                     _currentFeedState = state;
-                    TaskCompletionSource<object> newDormantStateTask = null;
+                    TaskCompletionSource<object?>? newDormantStateTask = null;
                     if (state == SyncFeedState.Dormant)
                     {
-                        newDormantStateTask = new TaskCompletionSource<object>();
+                        newDormantStateTask = new TaskCompletionSource<object?>();
                     }
 
                     var previous = Interlocked.Exchange(ref _dormantStateTask, newDormantStateTask);

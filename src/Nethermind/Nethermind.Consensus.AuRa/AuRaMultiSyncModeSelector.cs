@@ -24,8 +24,8 @@ namespace Nethermind.Consensus.AuRa
 {
     public class AuRaMultiSyncModeSelector : MultiSyncModeSelector
     {
-        public AuRaMultiSyncModeSelector(ISyncProgressResolver syncProgressResolver, ISyncPeerPool syncPeerPool, ISyncConfig syncConfig, ILogManager logManager, bool withAutoUpdates = true) 
-            : base(syncProgressResolver, syncPeerPool, syncConfig, logManager, withAutoUpdates)
+        public AuRaMultiSyncModeSelector(ISyncProgressResolver syncProgressResolver, ISyncPeerPool syncPeerPool, ISyncConfig syncConfig, ILogManager logManager) 
+            : base(syncProgressResolver, syncPeerPool, syncConfig, logManager)
         {
         }
         

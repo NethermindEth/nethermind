@@ -13,27 +13,13 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
 
-using System.Diagnostics;
-
-namespace Nethermind.Synchronization.FastSync
+namespace Nethermind.Seq.Config
 {
-    [DebuggerDisplay("{SyncItem.Hash} {Counter}")]
-    internal class DependentItem
+    public class SeqConfig : ISeqConfig
     {
-        public StateSyncItem SyncItem { get; }
-        public byte[] Value { get; }
-        public int Counter { get; set; }
-
-        public bool IsAccount { get; }
-
-        public DependentItem(StateSyncItem syncItem, byte[] value, int counter, bool isAccount = false)
-        {
-            SyncItem = syncItem;
-            Value = value;
-            Counter = counter;
-            IsAccount = isAccount;
-        }
+        public string MinLevel { get; set; } = "Off";
+        public string ServerUrl {get; set; } =  "http://localhost:5341";
+        public string ApiKey {get; set; } = "";
     }
 }

@@ -102,7 +102,7 @@ namespace Nethermind.Evm.Test
 
             TestState.GetAccount(expectedAddress).Should().NotBeNull();
             TestState.GetAccount(expectedAddress).Balance.Should().Be(1.Ether());
-            AssertEip1014(expectedAddress, Bytes.Empty);
+            AssertEip1014(expectedAddress, Array.Empty<byte>());
         }
 
         [Test]
@@ -143,7 +143,7 @@ namespace Nethermind.Evm.Test
             TestState.GetAccount(expectedAddress).Should().NotBeNull();
             TestState.GetAccount(expectedAddress).Balance.Should().Be(1.Ether());
             TestState.GetAccount(expectedAddress).StorageRoot.Should().Be(storageRoot);
-            AssertEip1014(expectedAddress, Bytes.Empty);
+            AssertEip1014(expectedAddress, Array.Empty<byte>());
         }
 
         [Test]
@@ -189,7 +189,7 @@ namespace Nethermind.Evm.Test
         {
             byte[] salt = Bytes.FromHexString(saltHex);
 
-            byte[] deployedCode = Bytes.Empty;
+            byte[] deployedCode = Array.Empty<byte>();
 
             byte[] initCode = Bytes.FromHexString(initCodeHex);
 

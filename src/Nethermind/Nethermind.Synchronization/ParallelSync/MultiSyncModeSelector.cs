@@ -53,9 +53,13 @@ namespace Nethermind.Synchronization.ParallelSync
         private bool FastBlocksReceiptsFinished => !FastReceiptsEnabled || _syncProgressResolver.IsFastBlocksReceiptsFinished();
         private long FastSyncCatchUpHeightDelta => _syncConfig.FastSyncCatchUpHeightDelta ?? FastSyncLag;
 
-        private System.Timers.Timer _timer;
+        private Timer _timer;
 
-        public MultiSyncModeSelector(ISyncProgressResolver syncProgressResolver, ISyncPeerPool syncPeerPool, ISyncConfig syncConfig, ILogManager logManager, bool withAutoUpdates = true)
+        public MultiSyncModeSelector(
+            ISyncProgressResolver syncProgressResolver,
+            ISyncPeerPool syncPeerPool,
+            ISyncConfig syncConfig,
+            ILogManager logManager)
         {
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
@@ -69,16 +73,17 @@ namespace Nethermind.Synchronization.ParallelSync
 
             PivotNumber = _syncConfig.PivotNumberParsed;
 
-            StartUpdateTimer();
+            _timer = StartUpdateTimer();
         }
 
-        private void StartUpdateTimer()
+        private Timer StartUpdateTimer()
         {
-            _timer = new System.Timers.Timer();
-            _timer.Interval = 1000;
-            _timer.AutoReset = false;
-            _timer.Elapsed += TimerOnElapsed;
-            _timer.Enabled = true;
+            Timer timer = new Timer();
+            timer.Interval = 1000;
+            timer.AutoReset = false;
+            timer.Elapsed += TimerOnElapsed;
+            timer.Enabled = true;
+            return timer;
         }
 
         public void DisableTimer()
@@ -97,17 +102,17 @@ namespace Nethermind.Synchronization.ParallelSync
 
             if (!_syncConfig.SynchronizationEnabled)
             {
-                UpdateSyncModes(SyncMode.None);
+                UpdateSyncModes(SyncMode.None, "Synchronization Disabled");
                 return;
             }
 
-            (Keccak headerHash, Keccak parentHash) = _syncProgressResolver.FindBestHeaderHash();
-            PeerInfo bestPeer = ReloadDataFromPeers(headerHash, parentHash);
+            (Keccak? headerHash, Keccak? parentHash) = _syncProgressResolver.FindBestHeaderHash();
+            PeerInfo? bestPeer = ReloadDataFromPeers(headerHash, parentHash);
 
             // if there are no peers that we could use then we cannot sync
             if (bestPeer == null || bestPeer.HeadNumber == 0)
             {
-                UpdateSyncModes(SyncMode.None);
+                UpdateSyncModes(SyncMode.None, "No Useful Peers");
                 return;
             }
 
@@ -115,7 +120,7 @@ namespace Nethermind.Synchronization.ParallelSync
             if (!FastSyncEnabled)
             {
                 bool anyPeers = bestPeer.HeadNumber > 0 && bestPeer.TotalDifficulty >= _syncProgressResolver.ChainDifficulty;
-                UpdateSyncModes(anyPeers ? SyncMode.Full : SyncMode.None);
+                UpdateSyncModes(anyPeers ? SyncMode.Full : SyncMode.None, "No Useful Peers");
                 return;
             }
 
@@ -126,7 +131,7 @@ namespace Nethermind.Synchronization.ParallelSync
             }
             catch (InvalidAsynchronousStateException)
             {
-                UpdateSyncModes(SyncMode.None);
+                UpdateSyncModes(SyncMode.None, "Snapshot Misalignment");
                 return;
             }
 
@@ -173,11 +178,11 @@ namespace Nethermind.Synchronization.ParallelSync
                    (newModes != SyncMode.Full || Current != SyncMode.None);
         }
 
-        private void UpdateSyncModes(SyncMode newModes)
+        private void UpdateSyncModes(SyncMode newModes, string? reason = null)
         {
             if (_logger.IsTrace)
             {
-                string message = $"Changing state to {newModes}";
+                string message = $"Changing state to {newModes} | {reason}";
                 if (_logger.IsTrace) _logger.Trace(message);
             }
 
@@ -202,7 +207,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private static string BuildStateString(Snapshot best) =>
             $"processed:{best.Processed}|state:{best.State}|block:{best.Block}|header:{best.Header}|peer block:{best.Peer?.HeadNumber}";
 
-        private void TimerOnElapsed(object sender, ElapsedEventArgs e)
+        private void TimerOnElapsed(object? sender, ElapsedEventArgs e)
         {
             try
             {
@@ -298,6 +303,7 @@ namespace Nethermind.Synchronization.ParallelSync
             return result;
         }
 
+        // ReSharper disable once UnusedParameter.Local
         private bool ShouldBeInFastHeadersMode(Snapshot best)
         {
             // this is really the only condition - fast blocks headers can always run if there are peers until it is done
@@ -307,16 +313,44 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private bool ShouldBeInFastBodiesMode(Snapshot best)
         {
+            bool fastBodiesNotFinished = !FastBlocksBodiesFinished;
+            bool fastHeadersFinished = FastBlocksHeadersFinished;
+            bool notInStateSync = !best.IsInStateSync;
+            bool stateSyncFinished = best.State > 0;
+
+            if (_logger.IsTrace)
+            {
+                _logger.Trace("======================== BODIES");
+                _logger.Trace("fastBodiesNotFinished " + fastBodiesNotFinished);
+                _logger.Trace("fastHeadersFinished " + fastHeadersFinished);
+                _logger.Trace("notInStateSync " + notInStateSync);
+                _logger.Trace("stateSyncFinished " + stateSyncFinished);
+            }
+
             // fast blocks bodies can run if there are peers until it is done
             // fast blocks bodies can run in parallel with full sync when headers are finished
-            return !FastBlocksBodiesFinished && FastBlocksHeadersFinished && best.IsInFullSync;
+            return fastBodiesNotFinished && fastHeadersFinished && notInStateSync && stateSyncFinished;
         }
 
         private bool ShouldBeInFastReceiptsMode(Snapshot best)
         {
+            bool fastReceiptsNotFinished = !FastBlocksReceiptsFinished;
+            bool fastBodiesFinished = FastBlocksBodiesFinished;
+            bool notInStateSync = !best.IsInStateSync;
+            bool stateSyncFinished = best.State > 0;
+            
+            if (_logger.IsTrace)
+            {
+                _logger.Trace("======================== RECEIPTS");
+                _logger.Trace("fastReceiptsNotFinished " + fastReceiptsNotFinished);
+                _logger.Trace("fastBodiesFinished " + fastBodiesFinished);
+                _logger.Trace("notInStateSync " + notInStateSync);
+                _logger.Trace("stateSyncFinished " + stateSyncFinished);
+            }
+            
             // fast blocks receipts can run if there are peers until it is done
             // fast blocks receipts can run in parallel with full sync when bodies are finished
-            return !FastBlocksReceiptsFinished && FastBlocksBodiesFinished && best.IsInFullSync;
+            return fastReceiptsNotFinished && fastBodiesFinished && notInStateSync && stateSyncFinished;
         }
 
         private bool ShouldBeInStateNodesMode(Snapshot best)
@@ -396,10 +430,10 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private bool AnyPostPivotPeerKnown(long bestPeerBlock) => bestPeerBlock > _syncConfig.PivotNumberParsed;
 
-        private PeerInfo ReloadDataFromPeers(Keccak knownMostDifficultHash, Keccak parentMostDifficultHash)
+        private PeerInfo? ReloadDataFromPeers(Keccak? knownMostDifficultHash, Keccak? parentMostDifficultHash)
         {
             UInt256? maxPeerDifficulty = null;
-            PeerInfo peerInfo = null;
+            PeerInfo? peerInfo = null;
 
             foreach (PeerInfo peer in _syncPeerPool.InitializedPeers)
             {
@@ -462,9 +496,9 @@ namespace Nethermind.Synchronization.ParallelSync
         
         private string GetBoolFlagString(in bool flag) => flag ? string.Empty : "!";
 
-        public event EventHandler<SyncModeChangedEventArgs> Preparing;
-        public event EventHandler<SyncModeChangedEventArgs> Changing;
-        public event EventHandler<SyncModeChangedEventArgs> Changed;
+        public event EventHandler<SyncModeChangedEventArgs>? Preparing;
+        public event EventHandler<SyncModeChangedEventArgs>? Changing;
+        public event EventHandler<SyncModeChangedEventArgs>? Changed;
 
         protected ref struct Snapshot
         {

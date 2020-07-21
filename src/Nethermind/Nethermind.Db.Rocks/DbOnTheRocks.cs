@@ -82,7 +82,7 @@ namespace Nethermind.Db.Rocks
                 InitCache(dbConfig);
 
                 // ReSharper disable once VirtualMemberCallInConstructor
-                if (_logger.IsDebug) _logger.Debug($"Loading DB {Name.PadRight(13)} from {_fullPath} with max memory footprint of {_maxThisDbSize / 1024 / 1024}MB");
+                if (_logger.IsDebug) _logger.Debug($"Loading DB {Name.PadRight(13)} from {_fullPath} with max memory footprint of {_maxThisDbSize / 1000 / 1000}MB");
                 Db = DbsByPath.GetOrAdd(_fullPath, Open, (options, columnFamilies));
             }
             catch (DllNotFoundException e) when (e.Message.Contains("libdl"))
@@ -165,9 +165,9 @@ namespace Nethermind.Db.Rocks
             {
                 _maxThisDbSize += (long) writeBufferSize * writeBufferNumber;
                 Interlocked.Add(ref _maxRocksSize, _maxThisDbSize);
-                if (_logger.IsDebug) _logger.Debug($"Expected max memory footprint of {Name} DB is {_maxThisDbSize / 1024 / 1024}MB ({writeBufferNumber} * {writeBufferSize / 1024 / 1024}MB + {blockCacheSize / 1024 / 1024}MB)");
-                if (_logger.IsDebug) _logger.Debug($"Total max DB footprint so far is {_maxRocksSize / 1024 / 1024}MB");
-                ThisNodeInfo.AddInfo("Mem est DB   :", $"{_maxRocksSize / 1024 / 1024}MB".PadLeft(8));
+                if (_logger.IsDebug) _logger.Debug($"Expected max memory footprint of {Name} DB is {_maxThisDbSize / 1000 / 1000}MB ({writeBufferNumber} * {writeBufferSize / 1000 / 1000}MB + {blockCacheSize / 1000 / 1000}MB)");
+                if (_logger.IsDebug) _logger.Debug($"Total max DB footprint so far is {_maxRocksSize / 1000 / 1000}MB");
+                ThisNodeInfo.AddInfo("Mem est DB   :", $"{_maxRocksSize / 1000 / 1000}MB".PadLeft(8));
             }
 
             options.SetBlockBasedTableFactory(tableOptions);

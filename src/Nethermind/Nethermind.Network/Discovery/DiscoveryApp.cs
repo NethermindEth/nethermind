@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -307,10 +307,18 @@ namespace Nethermind.Network.Discovery
             {
                 try
                 {
+                    if (_logger.IsDebug) _logger.Debug($"Running discovery with interval {_discoveryTimer.Interval}");
                     _discoveryTimer.Enabled = false;
                     RunDiscoveryProcess();
                     int nodesCountAfterDiscovery = _nodeTable.Buckets.Sum(x => x.BondedItemsCount);
-                    _discoveryTimer.Interval = nodesCountAfterDiscovery < 100 ? 10 : nodesCountAfterDiscovery < 1000 ? 100 : _discoveryConfig.DiscoveryInterval;
+                    _discoveryTimer.Interval =
+                        nodesCountAfterDiscovery < 16
+                            ? 10
+                            : nodesCountAfterDiscovery < 128
+                                ? 100
+                                : nodesCountAfterDiscovery < 256
+                                    ? 1000
+                                    : _discoveryConfig.DiscoveryInterval;
                 }
                 catch (Exception exception)
                 {

@@ -14,13 +14,20 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Threading;
-using System.Threading.Tasks;
+using Nethermind.Config;
 
-namespace Nethermind.Synchronization.ParallelSync
+namespace Nethermind.Seq.Config
 {
-    public interface ISyncDispatcher<T>
+    [ConfigCategory(Description = "Configuration of the Prometheus + Grafana metrics publication. Documentation of the required setup is not yet ready (but the metrics do work and are used by the dev team)")]
+    public interface ISeqConfig : IConfig
     {
-        Task Start(CancellationToken cancellationToken);
+        [ConfigItem(Description = "Minimal level of log events which will be sent to Seq instance.", DefaultValue = "Off")]
+        string MinLevel { get; }
+        
+        [ConfigItem(Description = "Seq instance URL.", DefaultValue = "\"http://localhost:5341/\"")]
+        string ServerUrl {get; }
+        
+        [ConfigItem(Description = "Api Key used for log events ingestion to Seq instance", DefaultValue = "")]
+        string ApiKey {get; }
     }
 }

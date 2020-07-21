@@ -51,13 +51,13 @@ namespace Nethermind.Evm.Precompiles.Snarks.Shamatar
         public (byte[], bool) Run(byte[] inputData)
         {
             Metrics.Bn256PairingPrecompile++;
-            inputData ??= Bytes.Empty;
+            inputData ??= Array.Empty<byte>();
 
             (byte[], bool) result;
             if (inputData.Length % PairSize > 0)
             {
                 // note that it will not happen in case of null / 0 length
-                result = (Bytes.Empty, false);
+                result = (Array.Empty<byte>(), false);
             }
             else
             {
@@ -84,7 +84,7 @@ namespace Nethermind.Evm.Precompiles.Snarks.Shamatar
                 }
                 else
                 {
-                    result = (Bytes.Empty, false);
+                    result = (Array.Empty<byte>(), false);
                 }
             }
 

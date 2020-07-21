@@ -82,7 +82,7 @@ namespace Nethermind.AuRa.Test.Validators
                 Addresses = new[] {_contractAddress},
                 ValidatorType = AuRaParameters.ValidatorType.Contract
             };
-            _block = new Block( Build.A.BlockHeader.WithNumber(1).WithAura(1, Bytes.Empty).TestObject, new BlockBody());
+            _block = new Block( Build.A.BlockHeader.WithNumber(1).WithAura(1, Array.Empty<byte>()).TestObject, new BlockBody());
 
             _transactionProcessor = Substitute.For<IReadOnlyTransactionProcessor>();
             _readOnlyTransactionProcessorSource = Substitute.For<IReadOnlyTransactionProcessorSource>();
@@ -169,7 +169,7 @@ namespace Nethermind.AuRa.Test.Validators
         public void loads_initial_validators_from_contract(long blockNumber)
         {
             var initialValidator = TestItem.AddressA;
-            var block = Build.A.Block.WithParent(_parentHeader).WithNumber(blockNumber).WithBeneficiary(initialValidator).WithAura(1, Bytes.Empty).TestObject;
+            var block = Build.A.Block.WithParent(_parentHeader).WithNumber(blockNumber).WithBeneficiary(initialValidator).WithAura(1, Array.Empty<byte>()).TestObject;
             SetupInitialValidators(block.Header, initialValidator);
             var startBlockNumber = 1;
             ContractBasedValidator validator = new ContractBasedValidator(_validatorContract, _blockTree, _receiptsStorage, _validatorStore, _validSealerStrategy, _blockFinalizationManager, _parentHeader, _logManager, startBlockNumber);

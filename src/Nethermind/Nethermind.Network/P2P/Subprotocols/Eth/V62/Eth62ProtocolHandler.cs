@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -133,7 +134,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     break;
                 case Eth62MessageCode.Transactions:
                     Metrics.Eth62TransactionsReceived++;
-                    if (!_floodController.IsAllowed())
+                    if (_floodController.IsAllowed())
                     {
                         TransactionsMessage txMsg = Deserialize<TransactionsMessage>(message.Content);
                         ReportIn(txMsg);
@@ -157,9 +158,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     Handle(getBodiesMsg);
                     break;
                 case Eth62MessageCode.BlockBodies:
-                    BlockBodiesMessage bodiesMsg = Deserialize<BlockBodiesMessage>(message.Content);
-                    ReportIn(bodiesMsg);
-                    Handle(bodiesMsg, size);
+                    HandleBodies(message.Content, size);
                     break;
                 case Eth62MessageCode.NewBlock:
                     NewBlockMessage newBlockMsg = Deserialize<NewBlockMessage>(message.Content);
@@ -199,7 +198,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         protected void Handle(TransactionsMessage msg)
         {
-            IList<Transaction> transactions = msg.Transactions; 
+            IList<Transaction> transactions = msg.Transactions;
             for (int i = 0; i < transactions.Count; i++)
             {
                 Transaction tx = transactions[i];

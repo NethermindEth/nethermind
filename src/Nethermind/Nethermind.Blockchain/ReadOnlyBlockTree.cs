@@ -38,7 +38,13 @@ namespace Nethermind.Blockchain
         public BlockHeader Genesis => _wrapped.Genesis;
         public BlockHeader BestSuggestedHeader => _wrapped.BestSuggestedHeader;
         public BlockHeader LowestInsertedHeader => _wrapped.LowestInsertedHeader;
-        public Block LowestInsertedBody => _wrapped.LowestInsertedBody;
+
+        public long? LowestInsertedBodyNumber
+        {
+          get => _wrapped.LowestInsertedBodyNumber;
+          set => _wrapped.LowestInsertedBodyNumber = value;
+        }
+        
         public Block BestSuggestedBody => _wrapped.BestSuggestedBody;
         public long BestKnownNumber => _wrapped.BestKnownNumber;
         public Block Head => _wrapped.Head;
@@ -50,10 +56,16 @@ namespace Nethermind.Blockchain
         }
 
         public ChainLevelInfo FindLevel(long number) => _wrapped.FindLevel(number);
+        public BlockInfo FindBlockInfo(long blockNumber) => _wrapped.FindBlockInfo(blockNumber);
 
         public AddBlockResult Insert(Block block) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(Insert)} calls");
 
         public void Insert(IEnumerable<Block> blocks) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(Insert)} calls");
+        public void UpdateHeadBlock(Keccak blockHash)
+        {
+            // hacky while there is not special tree for RPC 
+            _wrapped.UpdateHeadBlock(blockHash);
+        }
 
         public AddBlockResult SuggestBlock(Block block, bool shouldProcess = true) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(SuggestBlock)} calls");
 

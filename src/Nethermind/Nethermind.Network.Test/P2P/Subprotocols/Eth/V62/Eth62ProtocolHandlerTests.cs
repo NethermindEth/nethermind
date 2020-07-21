@@ -322,12 +322,12 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         }
 
         [Test]
-        public void Throws_on_unordered_bodies()
+        public void Throws_when_receiving_a_bodies_message_that_has_not_been_requested()
         {
             BlockBodiesMessage msg = new BlockBodiesMessage(Build.A.Block.TestObjectNTimes(3));
 
             HandleIncomingStatusMessage();
-            Assert.Throws<OperationCanceledException>(() => HandleZeroMessage(msg, Eth62MessageCode.BlockBodies));
+            Assert.Throws<SubprotocolException>(() => HandleZeroMessage(msg, Eth62MessageCode.BlockBodies));
         }
 
         [Test]
@@ -341,12 +341,12 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         }
 
         [Test]
-        public void Throws_on_unordered_headers()
+        public void Throws_when_receiving_a_headers_message_that_has_not_been_requested()
         {
             BlockHeadersMessage msg = new BlockHeadersMessage(Build.A.BlockHeader.TestObjectNTimes(3));
 
             HandleIncomingStatusMessage();
-            Assert.Throws<OperationCanceledException>(() => HandleZeroMessage(msg, Eth62MessageCode.BlockHeaders));
+            Assert.Throws<SubprotocolException>(() => HandleZeroMessage(msg, Eth62MessageCode.BlockHeaders));
         }
         
         [Test]

@@ -233,5 +233,11 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             var configValue = _debugBridge.GetConfigValue(category, name);
             return ResultWrapper<object>.Success(configValue);
         }
+        
+        public ResultWrapper<bool> debug_resetHead(Keccak blockHash)
+        {
+            _debugBridge.UpdateHeadBlock(blockHash);
+            return ResultWrapper<bool>.Success(true);
+        }
     }
 }

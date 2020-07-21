@@ -50,7 +50,7 @@ namespace Nethermind.Synchronization.Blocks
             return (headersSpeed ?? 0) + (bodiesSpeed ?? 0);
         }
 
-        public PeerInfo Allocate(PeerInfo currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
+        public PeerInfo? Allocate(PeerInfo? currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
         {
             int nullSpeed = -1;
             decimal averageSpeed = 0M;
@@ -58,9 +58,11 @@ namespace Nethermind.Synchronization.Blocks
 
             bool wasNull = currentPeer == null;
 
-            long currentSpeed = wasNull ? nullSpeed : GetSpeed(nodeStatsManager, currentPeer) ?? nullSpeed;
-            (PeerInfo Info, long TransferSpeed) fastestPeer = (currentPeer, currentSpeed);
-            (PeerInfo Info, long TransferSpeed) bestDiffPeer = (currentPeer, currentSpeed);
+            long currentSpeed = wasNull
+                ? nullSpeed :
+                GetSpeed(nodeStatsManager, currentPeer!) ?? nullSpeed;
+            (PeerInfo? Info, long TransferSpeed) fastestPeer = (currentPeer, currentSpeed);
+            (PeerInfo? Info, long TransferSpeed) bestDiffPeer = (currentPeer, currentSpeed);
 
             UInt256 localTotalDiff = blockTree.BestSuggestedHeader?.TotalDifficulty ?? UInt256.Zero;
 

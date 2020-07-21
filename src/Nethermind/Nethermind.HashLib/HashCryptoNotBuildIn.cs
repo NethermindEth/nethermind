@@ -105,16 +105,22 @@ namespace Nethermind.HashLib
 
         public override uint[] TransformFinalUInts()
         {
+            uint[] result = new uint[HashSize / 4];
+            TransformFinalUInts(result);
+            return result;
+        }
+        
+        public override void TransformFinalUInts(Span<uint> output)
+        {
             Finish();
 
             Debug.Assert(m_buffer.IsEmpty);
 
-            uint[] result = GetResultUInts();
+            GetResultUInts(output);
 
-            Debug.Assert(result.Length == HashSize / 4);
+            Debug.Assert(output.Length == HashSize / 4);
 
             Initialize();
-            return result;
         }
 
         protected void TransformBuffer()
@@ -137,7 +143,11 @@ namespace Nethermind.HashLib
         protected virtual uint[] GetResultUInts()
         {
             throw new NotSupportedException();
-
+        }
+        
+        protected virtual void GetResultUInts(Span<uint> result)
+        {
+            throw new NotSupportedException();
         }
     }
 }

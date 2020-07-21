@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections;
 using NUnit.Framework;
 using System.Collections.Generic;
@@ -53,7 +54,7 @@ namespace Nethermind.AuRa.Test
         {
             _blockTree = Substitute.For<IBlockTree>();
             _headStep = 10;
-            _blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithHash(Keccak.Compute("hash")).WithAura(_headStep, Bytes.Empty).TestObject).TestObject);
+            _blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithHash(Keccak.Compute("hash")).WithAura(_headStep, Array.Empty<byte>()).TestObject).TestObject);
 
             _auRaStepCalculator = Substitute.For<IAuRaStepCalculator>();
             _validatorStore = Substitute.For<IValidatorStore>();

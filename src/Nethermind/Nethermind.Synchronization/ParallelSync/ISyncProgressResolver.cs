@@ -27,7 +27,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         long FindBestHeader();
         
-        (Keccak Hash, Keccak ParentHash) FindBestHeaderHash();
+        (Keccak? Hash, Keccak? ParentHash) FindBestHeaderHash();
 
         long FindBestFullBlock();
         

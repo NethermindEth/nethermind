@@ -38,6 +38,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private readonly IDb _stateDb;
         private readonly IDb _beamStateDb;
         private readonly ISyncConfig _syncConfig;
+        // ReSharper disable once NotAccessedField.Local
         private ILogger _logger;
 
         public SyncProgressResolver(IBlockTree blockTree, IReceiptStorage receiptStorage, IDb stateDb, IDb beamStateDb, ISyncConfig syncConfig, ILogManager logManager)
@@ -60,6 +61,7 @@ namespace Nethermind.Synchronization.ParallelSync
             return _stateDb.Innermost.Get(stateRoot) != null;
         }
 
+        // ReSharper disable once UnusedMember.Local
         private bool IsBeamSynced(Keccak stateRoot)
         {
             if (stateRoot == Keccak.EmptyTreeHash)
@@ -146,7 +148,7 @@ namespace Nethermind.Synchronization.ParallelSync
         
         public bool IsFastBlocksHeadersFinished() => !IsFastBlocks() || (_blockTree.LowestInsertedHeader?.Number ?? long.MaxValue) <= 1;
         
-        public bool IsFastBlocksBodiesFinished() => !IsFastBlocks() || (!_syncConfig.DownloadBodiesInFastSync || (_blockTree.LowestInsertedBody?.Number ?? long.MaxValue) <= 1);
+        public bool IsFastBlocksBodiesFinished() => !IsFastBlocks() || (!_syncConfig.DownloadBodiesInFastSync || (_blockTree.LowestInsertedBodyNumber ?? long.MaxValue) <= 1);
 
         public bool IsFastBlocksReceiptsFinished() => !IsFastBlocks() || (!_syncConfig.DownloadReceiptsInFastSync || (_receiptStorage.LowestInsertedReceiptBlock ?? long.MaxValue) <= 1);
 

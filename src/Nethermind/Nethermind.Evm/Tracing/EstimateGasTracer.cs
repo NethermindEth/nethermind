@@ -71,7 +71,7 @@ namespace Nethermind.Evm.Tracing
         {
             GasSpent = gasSpent;
             Error = error;
-            ReturnValue = output ?? Bytes.Empty;
+            ReturnValue = output ?? Array.Empty<byte>();
             StatusCode = Evm.StatusCode.Failure;
         }
 

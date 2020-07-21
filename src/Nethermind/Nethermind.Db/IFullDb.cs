@@ -23,5 +23,7 @@ namespace Nethermind.Db
         ICollection<byte[]> Keys { get; }
 
         ICollection<byte[]> Values { get; }
+
+        int Count { get; }
     }
 }
