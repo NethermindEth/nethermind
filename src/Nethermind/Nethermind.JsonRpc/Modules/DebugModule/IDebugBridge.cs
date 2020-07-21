@@ -38,6 +38,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         object GetConfigValue(string category, string name);
         public ChainLevelInfo GetLevelInfo(long number);
         public int DeleteChainSlice(long startNumber);
+        public void UpdateHeadBlock(Keccak blockHash);
         Task<bool> MigrateReceipts(long blockNumber);
     }
 }

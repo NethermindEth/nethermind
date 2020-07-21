@@ -80,6 +80,11 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             return _blockTree.DeleteChainSlice(startNumber);
         }
 
+        public void UpdateHeadBlock(Keccak blockHash)
+        {
+            _blockTree.UpdateHeadBlock(blockHash);
+        }
+
         public Task<bool> MigrateReceipts(long blockNumber) => _receiptsMigration.Run(blockNumber + 1); // add 1 to make go from inclusive (better for API) to exclusive (better for internal)
 
         public GethLikeTxTrace GetTransactionTrace(Keccak transactionHash, CancellationToken cancellationToken, GethTraceOptions gethTraceOptions = null)
