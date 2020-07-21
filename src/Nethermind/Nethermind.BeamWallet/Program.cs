@@ -18,6 +18,10 @@ namespace Nethermind.BeamWallet
     {
         static async Task Main(string[] args)
         {
+            AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+            {
+                Console.WriteLine($"There was an error.{Environment.NewLine}{e.ExceptionObject}");
+            };
             Application.Init();
             var addressesModule = new AddressesModule();
 
@@ -50,7 +54,7 @@ namespace Nethermind.BeamWallet
             Application.Top.Add(await addressesModule.InitAsync());
             Application.Run();
         }
-
+        
         private static void AddAuthorizationHeader(HttpClient httpClient, string url)
         {
             if (!url.Contains("@"))
