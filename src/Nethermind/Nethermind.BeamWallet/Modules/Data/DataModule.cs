@@ -103,7 +103,7 @@ namespace Nethermind.BeamWallet.Modules.Data
                 return null;
             }
 
-            return WeiToEth(result.Result.ToString());
+            return WeiToEth(result.Result);
         }
         
         private async Task UpdateTokenBalanceAsync()
@@ -125,7 +125,7 @@ namespace Nethermind.BeamWallet.Modules.Data
                 }
                 token.Balance = tokenBalance.Value;
                 _window.Remove(_tokenBalanceLabel);
-                _tokenBalanceLabel = new Label(1, y, $"{token.Name}: {WeiToEth(token.Balance.ToString())}");
+                _tokenBalanceLabel = new Label(1, y, $"{token.Name}: {WeiToEth(token.Balance)}");
                 _window.Add(_tokenBalanceLabel);
             }
         }
@@ -179,7 +179,10 @@ namespace Nethermind.BeamWallet.Modules.Data
             };
             
             _window.Add(quitButton, transferButton);
+        }
 
+        private async Task DisplayTokensBalance()
+        {
             var tokenTransaction = new CallTransactionModel();
             var tokenSignature = "0x70a08231";
             var tokenData = tokenSignature + "000000000000000000000000" + _address.ToString().Substring(2);
@@ -197,12 +200,13 @@ namespace Nethermind.BeamWallet.Modules.Data
                     return;
                 }
                 token.Balance = tokenBalance.Value;
-                _tokenBalanceLabel = new Label(1, y, $"{token.Name}: {WeiToEth(token.Balance.ToString())}");
+                _tokenBalanceLabel = new Label(1, y, $"{token.Name}: {WeiToEth(token.Balance)}");
                 _window.Add(_tokenBalanceLabel);
             }
         }
 
-        private static decimal WeiToEth(string result) => (decimal.Parse(result) / 1000000000000000000);
+        private static decimal WeiToEth(UInt256? result) => (decimal.Parse(result.ToString()) / 1000000000000000000);
+
 
         private static IEnumerable<Token> InitTokens()
             => new[]

@@ -207,6 +207,14 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Cryptography.Bls
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Native", "Nethermind.Native\Nethermind.Native.csproj", "{77C56006-3DE8-4B3B-A0BB-CFD2E28CF8A9}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Vault", "Nethermind.Vault\Nethermind.Vault.csproj", "{69FC5271-88BE-4A0A-9F86-3AEE4F63906E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Vault.Test", "Nethermind.Vault.Test\Nethermind.Vault.Test.csproj", "{4EC78EFC-3661-430A-8A88-CBF7F7BA707C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Baseline", "Nethermind.Baseline\Nethermind.Baseline.csproj", "{569B6D79-322A-46D1-B38E-94E38B2721EE}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Baseline.Test", "Nethermind.Baseline.Test\Nethermind.Baseline.Test.csproj", "{8D67DAEA-E76B-40B4-AD62-44548D178AF5}"
+EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.BeamWallet", "Nethermind.BeamWallet\Nethermind.BeamWallet.csproj", "{ED66305A-00AC-467B-BC53-A591C9E54284}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Seq", "Nethermind.Seq\Nethermind.Seq.csproj", "{99ABC9F6-C0DE-4579-8AFB-B42CDE0E840F}"
@@ -577,6 +585,14 @@ Global
 		{77C56006-3DE8-4B3B-A0BB-CFD2E28CF8A9}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{77C56006-3DE8-4B3B-A0BB-CFD2E28CF8A9}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{77C56006-3DE8-4B3B-A0BB-CFD2E28CF8A9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{569B6D79-322A-46D1-B38E-94E38B2721EE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{569B6D79-322A-46D1-B38E-94E38B2721EE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{569B6D79-322A-46D1-B38E-94E38B2721EE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{569B6D79-322A-46D1-B38E-94E38B2721EE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8D67DAEA-E76B-40B4-AD62-44548D178AF5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8D67DAEA-E76B-40B4-AD62-44548D178AF5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8D67DAEA-E76B-40B4-AD62-44548D178AF5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8D67DAEA-E76B-40B4-AD62-44548D178AF5}.Release|Any CPU.Build.0 = Release|Any CPU
 		{ED66305A-00AC-467B-BC53-A591C9E54284}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{ED66305A-00AC-467B-BC53-A591C9E54284}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{ED66305A-00AC-467B-BC53-A591C9E54284}.Release|Any CPU.ActiveCfg = Release|Any CPU
