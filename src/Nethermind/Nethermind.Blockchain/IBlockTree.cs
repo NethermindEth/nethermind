@@ -77,6 +77,8 @@ namespace Nethermind.Blockchain
         AddBlockResult Insert(Block block);
         
         void Insert(IEnumerable<Block> blocks);
+        
+        void UpdateHeadBlock(Keccak blockHash);
 
         /// <summary>
         /// Suggests block for inclusion in the block tree.

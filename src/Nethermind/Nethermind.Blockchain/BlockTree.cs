@@ -1076,6 +1076,11 @@ namespace Nethermind.Blockchain
             }
         }
 
+        public void UpdateHeadBlock(Keccak blockHash)
+        {
+            _blockInfoDb.Set(HeadAddressInDb, Head.Hash.Bytes);
+        }
+        
         private void UpdateHeadBlock(Block block)
         {
             if (block.IsGenesis)

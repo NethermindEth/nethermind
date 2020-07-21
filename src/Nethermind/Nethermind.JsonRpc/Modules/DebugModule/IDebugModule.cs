@@ -32,6 +32,11 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         [JsonRpcMethod(Description = "Deletes a slice of a chain from the tree on all branches (Nethermind specific).", IsReadOnly = true)]
         ResultWrapper<int> debug_deleteChainSlice(in long startNumber);
         
+        [JsonRpcMethod(
+            Description = "Updates / resets head block - use only when the node got stuck due to DB / memory corruption (Nethermind specific).",
+            IsReadOnly = true)]
+        ResultWrapper<bool> debug_resetHead(Keccak blockHash);
+        
         [JsonRpcMethod(Description = "", IsReadOnly = true)]
         ResultWrapper<GethLikeTxTrace> debug_traceTransaction(Keccak transactionHash, GethTraceOptions options = null);
         
