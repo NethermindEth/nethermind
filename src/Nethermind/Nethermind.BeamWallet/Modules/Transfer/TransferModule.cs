@@ -205,6 +205,7 @@ namespace Nethermind.BeamWallet.Modules.Transfer
             var valueTextField = new TextField(20, 5, 80, "");
             var passphraseLabel = new Label(1, 7, "Passphrase:");
             var passphraseTextField = new TextField(20, 7, 80, "");
+            passphraseTextField.Secret = true;
 
             _transferButton = new Button(30, 9, "Transfer");
             _transferButton.Clicked = async () =>
@@ -358,6 +359,7 @@ namespace Nethermind.BeamWallet.Modules.Transfer
                 AddButtons();
             }
         }
+        
         private void AddButtons()
         {
             _transferWindow.Add(_backButton);
