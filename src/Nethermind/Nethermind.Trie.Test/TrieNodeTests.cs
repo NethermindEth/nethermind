@@ -15,14 +15,14 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Linq;
+using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Trie;
 using NSubstitute;
 using NUnit.Framework;
 
-namespace Nethermind.Store.Test
+namespace Nethermind.Trie.Test
 {
     [TestFixture]
     public class TrieNodeTests
@@ -517,12 +517,6 @@ namespace Nethermind.Store.Test
         {
             Assert.AreEqual(168, _heavyLeaf.MemorySize);
         }
-        
-        [Test]
-        public void Size_of_a_tiny_leaf_is_correct()
-        {
-            Assert.AreEqual(152, _tiniestLeaf.MemorySize);
-        }
 
         [Test]
         public void Size_of_a_branch_is_correct()
@@ -555,6 +549,34 @@ namespace Nethermind.Store.Test
             trieNode.SetChild(0, _tiniestLeaf);
             
             Assert.AreEqual(152, trieNode.MemorySize);
+        }
+
+        [Test]
+        public void Size_of_an_unknown_empty_node_is_correct()
+        {
+            TrieNode trieNode = new TrieNode(NodeType.Unknown);
+            trieNode.MemorySize.Should().Be(56);
+        }
+        
+        [Test]
+        public void Size_of_an_unknown_node_with_keccak_is_correct()
+        {
+            TrieNode trieNode = new TrieNode(NodeType.Unknown);
+            trieNode.Keccak = Keccak.Zero;
+            trieNode.MemorySize.Should().Be(136);
+        }
+        
+        [Test]
+        public void Size_of_an_unknown_node_with_full_rlp_is_correct()
+        {
+            TrieNode trieNode = new TrieNode(NodeType.Unknown, new byte[7]);
+            trieNode.MemorySize.Should().Be(120);
+        }
+                
+        [Test]
+        public void Size_of_keccak_is_correct()
+        {
+            Keccak.MemorySize.Should().Be(80);
         }
     }
 }

@@ -35,7 +35,11 @@ namespace Nethermind.Serialization.Rlp
         {
         }
         
-        public int MemorySize => MemorySizes.SmallObjectOverhead;
+        public int MemorySize => MemorySizes.SmallObjectOverhead
+                                 + MemorySizes.Align(
+                                     MemorySizes.ArrayOverhead
+                                     + sizeof(int)
+                                     + Data.Length);
         
         public RlpStream(int length)
         {

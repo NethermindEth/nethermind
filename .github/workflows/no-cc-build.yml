@@ -147,6 +147,9 @@ jobs:
     - name: Nethermind.State.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.State.Test
+    - name: Nethermind.Trie.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.Trie.Test
     - name: Nethermind.Synchronization.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Synchronization.Test

@@ -22,38 +22,32 @@ using Nethermind.Serialization.Rlp;
 
 [assembly: InternalsVisibleTo("Ethereum.Trie.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Trie.Test")]
 
 namespace Nethermind.Trie
 {
-    public class TrieNode
+    public partial class TrieNode
     {
-        public static bool AllowBranchValues { private get; set; }
-        private static object _nullNode = new object();
-        private static TrieNodeDecoder _nodeDecoder = new TrieNodeDecoder();
-        private static AccountDecoder _accountDecoder = new AccountDecoder();
-        private RlpStream _rlpStream;
-        private object[] _data;
-        private bool _isDirty;
-
         /// <summary>
-        /// This code is not used in production and has some issues (as pointed out in the article)
-        /// It is left here as an incentive to do some more detailed real-time memory analysis of the trie in memory
+        /// Ethereum Patricia Trie specification allows for branch values,
+        /// although branched never have values as all the keys are of equal length.
+        /// Keys are of length 64 for TxTrie and ReceiptsTrie and StateTrie.
+        ///
+        /// We leave this switch for testing purposes.
         /// </summary>
-        public int MemorySize
-        {
-            get
-            {
-                int unaligned = (Keccak == null ? MemorySizes.RefSize : MemorySizes.RefSize + Keccak.MemorySize) +
-                                (MemorySizes.RefSize + FullRlp?.Length ?? MemorySizes.ArrayOverhead) +
-                                (MemorySizes.RefSize + _rlpStream?.MemorySize ?? MemorySizes.RefSize) +
-                                MemorySizes.RefSize + (MemorySizes.ArrayOverhead + _data?.Length * MemorySizes.RefSize ?? MemorySizes.ArrayOverhead) /* _data */ +
-                                MemorySizes.SmallObjectOverhead
-                                /* _isDirty + NodeType aligned to 4 (is it 8?) and end up in object overhead*/
-                                + (Key?.MemorySize ?? 0);
-
-                return MemorySizes.Align(unaligned);
-            }
-        }
+        public static bool AllowBranchValues { private get; set; }
+        
+        private static object _nullNode = new object();
+        
+        private static TrieNodeDecoder _nodeDecoder = new TrieNodeDecoder();
+        
+        private static AccountDecoder _accountDecoder = new AccountDecoder();
+        
+        private RlpStream _rlpStream;
+        
+        private object[] _data;
+        
+        private bool _isDirty;
 
         public TrieNode(NodeType nodeType)
         {
@@ -72,6 +66,12 @@ namespace Nethermind.Trie
             FullRlp = rlp;
             _rlpStream = rlp.AsRlpStream();
         }
+        
+        public Keccak Keccak { get; set; }
+        
+        public byte[] FullRlp { get; private set; }
+        
+        public NodeType NodeType { get; private set; }
 
         public bool IsValidWithOneNodeLess
         {
@@ -114,10 +114,6 @@ namespace Nethermind.Trie
             }
         }
 
-        public Keccak Keccak { get; set; }
-        public byte[] FullRlp { get; private set; }
-        public NodeType NodeType { get; private set; }
-
         public bool IsLeaf => NodeType == NodeType.Leaf;
         public bool IsBranch => NodeType == NodeType.Branch;
         public bool IsExtension => NodeType == NodeType.Extension;
@@ -126,7 +122,7 @@ namespace Nethermind.Trie
 
         internal HexPrefix Key
         {
-            get => _data[0] as HexPrefix;
+            get => _data?[0] as HexPrefix;
             set
             {
                 InitData();
@@ -134,6 +130,9 @@ namespace Nethermind.Trie
             }
         }
 
+        /// <summary>
+        /// Highly optimized
+        /// </summary>
         public byte[] Value
         {
             get
@@ -180,12 +179,9 @@ namespace Nethermind.Trie
             }
         }
 
-        public TrieNode this[int i]
-        {
-            get => GetChild(i);
-            set => SetChild(i, value);
-        }
-
+        /// <summary>
+        /// Highly optimized
+        /// </summary>
         internal void ResolveNode(PatriciaTree tree, bool allowCaching)
         {
             try
@@ -413,6 +409,12 @@ namespace Nethermind.Trie
 
             return ((TrieNode) _data[i]).IsDirty;
         }
+        
+        public TrieNode this[int i]
+        {
+            get => GetChild(i);
+            set => SetChild(i, value);
+        }
 
         public TrieNode GetChild(int childIndex)
         {
@@ -431,247 +433,39 @@ namespace Nethermind.Trie
             _data[index] = node ?? _nullNode;
         }
 
-        internal void Accept(ITreeVisitor visitor, PatriciaTree tree, TrieVisitContext trieVisitContext)
+        public int MemorySize
         {
-            try
+            get
             {
-                ResolveNode(tree, false);
-            }
-            catch (TrieException)
-            {
-                visitor.VisitMissingNode(Keccak, trieVisitContext);
-                return;
-            }
+                int keccakSize =
+                    Keccak == null
+                        ? MemorySizes.RefSize
+                        : MemorySizes.RefSize + Keccak.MemorySize;
+                int fullRlpSize =
+                    MemorySizes.RefSize +
+                    (FullRlp is null ? 0 : MemorySizes.Align(FullRlp.Length + MemorySizes.ArrayOverhead));
+                int rlpStreamSize =
+                    MemorySizes.RefSize + (_rlpStream?.MemorySize ?? 0)
+                    - (FullRlp is null ? 0 : MemorySizes.Align(FullRlp.Length + MemorySizes.ArrayOverhead));
+                int dataSize =
+                    MemorySizes.RefSize +
+                    (_data is null
+                        ? 0
+                        : MemorySizes.Align(_data.Length * MemorySizes.RefSize + MemorySizes.ArrayOverhead));
+                int objectOverhead = MemorySizes.SmallObjectOverhead - MemorySizes.SmallObjectFreeDataSize;
+                int isDirtySize = 1;
+                int nodeTypeSize = 1;
+                /* _isDirty + NodeType aligned to 4 (is it 8?) and end up in object overhead*/
 
-            switch (NodeType)
-            {
-                case NodeType.Branch:
-                {
-                    visitor.VisitBranch(this, trieVisitContext);
-                    trieVisitContext.Level++;
-                    for (int i = 0; i < 16; i++)
-                    {
-                        TrieNode child = GetChild(i);
-                        if (child != null && visitor.ShouldVisit(child.Keccak))
-                        {
-                            trieVisitContext.BranchChildIndex = i;
-                            child.Accept(visitor, tree, trieVisitContext);
-                        }
-                    }
+                int unaligned = keccakSize +
+                                fullRlpSize +
+                                rlpStreamSize +
+                                dataSize +
+                                isDirtySize +
+                                nodeTypeSize +
+                                objectOverhead;
 
-                    trieVisitContext.Level--;
-                    trieVisitContext.BranchChildIndex = null;
-                    break;
-                }
-
-                case NodeType.Extension:
-                {
-                    visitor.VisitExtension(this, trieVisitContext);
-                    TrieNode child = GetChild(0);
-                    if (child != null && visitor.ShouldVisit(child.Keccak))
-                    {
-                        trieVisitContext.Level++;
-                        trieVisitContext.BranchChildIndex = null;
-                        child.Accept(visitor, tree, trieVisitContext);
-                        trieVisitContext.Level--;
-                    }
-
-                    break;
-                }
-
-                case NodeType.Leaf:
-                {
-                    visitor.VisitLeaf(this, trieVisitContext, Value);
-                    if (!trieVisitContext.IsStorage && trieVisitContext.ExpectAccounts) // can combine these conditions
-                    {
-                        Account account = _accountDecoder.Decode(Value.AsRlpStream());
-                        if (account.HasCode && visitor.ShouldVisit(account.CodeHash))
-                        {
-                            trieVisitContext.Level++;
-                            trieVisitContext.BranchChildIndex = null;
-                            visitor.VisitCode(account.CodeHash, trieVisitContext);
-                            trieVisitContext.Level--;
-                        }
-
-                        if (account.HasStorage && visitor.ShouldVisit(account.StorageRoot))
-                        {
-                            trieVisitContext.IsStorage = true;
-                            TrieNode storageRoot = new TrieNode(NodeType.Unknown, account.StorageRoot);
-                            trieVisitContext.Level++;
-                            trieVisitContext.BranchChildIndex = null;
-                            storageRoot.Accept(visitor, tree, trieVisitContext);
-                            trieVisitContext.Level--;
-                            trieVisitContext.IsStorage = false;
-                        }
-                    }
-
-                    break;
-                }
-
-                default:
-                    throw new TrieException($"An attempt was made to visit a node {Keccak} of type {NodeType}");
-            }
-        }
-
-        private class TrieNodeDecoder
-        {
-            private byte[] RlpEncodeBranch(TrieNode item)
-            {
-                int valueRlpLength = AllowBranchValues ? Rlp.LengthOf(item.Value) : 1;
-                int contentLength = valueRlpLength + GetChildrenRlpLength(item);
-                int sequenceLength = Rlp.GetSequenceRlpLength(contentLength);
-                byte[] result = new byte[sequenceLength];
-                Span<byte> resultSpan = result.AsSpan();
-                int position = Rlp.StartSequence(result, 0, contentLength);
-                WriteChildrenRlp(item, resultSpan.Slice(position, contentLength - valueRlpLength));
-                position = sequenceLength - valueRlpLength;
-                if (AllowBranchValues)
-                {
-                    Rlp.Encode(result, position, item.Value);
-                }
-                else
-                {
-                    result[position] = 128;
-                }
-
-                return result;
-            }
-
-            public byte[] Encode(TrieNode item)
-            {
-                Metrics.TreeNodeRlpEncodings++;
-
-                if (item == null)
-                {
-                    throw new TrieException("An attempt was made to RLP encode a null node.");
-                }
-
-                return item.NodeType switch
-                {
-                    NodeType.Branch => RlpEncodeBranch(item),
-                    NodeType.Extension => EncodeExtension(item),
-                    NodeType.Leaf => EncodeLeaf(item),
-                    _ => throw new TrieException($"An attempt was made to encode a trie node of type {item.NodeType}")
-                };
-            }
-
-            private static byte[] EncodeExtension(TrieNode item)
-            {
-                byte[] keyBytes = item.Key.ToBytes();
-                TrieNode nodeRef = item.GetChild(0);
-                nodeRef.ResolveKey(false);
-                int contentLength = Rlp.LengthOf(keyBytes) + (nodeRef.Keccak == null ? nodeRef.FullRlp.Length : Rlp.LengthOfKeccakRlp);
-                int totalLength = Rlp.LengthOfSequence(contentLength);
-                RlpStream rlpStream = new RlpStream(totalLength);
-                rlpStream.StartSequence(contentLength);
-                rlpStream.Encode(keyBytes);
-                if (nodeRef.Keccak == null)
-                {
-                    // I think it can only happen if we have a short extension to a branch with a short extension as the only child?
-                    // so |
-                    // so |
-                    // so E - - - - - - - - - - - - - - - 
-                    // so |
-                    // so |
-                    rlpStream.Write(nodeRef.FullRlp);
-                }
-                else
-                {
-                    rlpStream.Encode(nodeRef.Keccak);
-                }
-
-                return rlpStream.Data;
-            }
-
-            private static byte[] EncodeLeaf(TrieNode node)
-            {
-                if (node.Key == null)
-                {
-                    throw new TrieException($"Key of a leaf node is null at node {node.Keccak}");
-                }
-
-                byte[] keyBytes = node.Key.ToBytes();
-                int contentLength = Rlp.LengthOf(keyBytes) + Rlp.LengthOf(node.Value);
-                int totalLength = Rlp.LengthOfSequence(contentLength);
-                RlpStream rlpStream = new RlpStream(totalLength);
-                rlpStream.StartSequence(contentLength);
-                rlpStream.Encode(keyBytes);
-                rlpStream.Encode(node.Value);
-                return rlpStream.Data;
-            }
-
-            private int GetChildrenRlpLength(TrieNode item)
-            {
-                int totalLength = 0;
-                item.InitData();
-                item.SeekChild(0);
-                for (int i = 0; i < 16; i++)
-                {
-                    if (item._rlpStream != null && item._data[i] == null)
-                    {
-                        (int prefixLength, int contentLength) = item._rlpStream.PeekPrefixAndContentLength();
-                        totalLength += prefixLength + contentLength;
-                    }
-                    else
-                    {
-                        if (ReferenceEquals(item._data[i], _nullNode) || item._data[i] == null)
-                        {
-                            totalLength++;
-                        }
-                        else
-                        {
-                            TrieNode childNode = (TrieNode) item._data[i];
-                            childNode.ResolveKey(false);
-                            totalLength += childNode.Keccak == null ? childNode.FullRlp.Length : Rlp.LengthOfKeccakRlp;
-                        }
-                    }
-
-                    item._rlpStream?.SkipItem();
-                }
-
-                return totalLength;
-            }
-
-            private void WriteChildrenRlp(TrieNode item, Span<byte> destination)
-            {
-                int position = 0;
-                var rlpStream = item._rlpStream;
-                item.InitData();
-                item.SeekChild(0);
-                for (int i = 0; i < 16; i++)
-                {
-                    if (rlpStream != null && item._data[i] == null)
-                    {
-                        int length = rlpStream.PeekNextRlpLength();
-                        Span<byte> nextItem = rlpStream.Data.AsSpan().Slice(rlpStream.Position, length);
-                        nextItem.CopyTo(destination.Slice(position, nextItem.Length));
-                        position += nextItem.Length;
-                        rlpStream.SkipItem();
-                    }
-                    else
-                    {
-                        rlpStream?.SkipItem();
-                        if (ReferenceEquals(item._data[i], _nullNode) || item._data[i] == null)
-                        {
-                            destination[position++] = 128;
-                        }
-                        else
-                        {
-                            TrieNode childNode = (TrieNode) item._data[i];
-                            childNode.ResolveKey(false);
-                            if (childNode.Keccak == null)
-                            {
-                                Span<byte> fullRlp = childNode.FullRlp.AsSpan();
-                                fullRlp.CopyTo(destination.Slice(position, fullRlp.Length));
-                                position += fullRlp.Length;
-                            }
-                            else
-                            {
-                                position = Rlp.Encode(destination, position, childNode.Keccak.Bytes);
-                            }
-                        }
-                    }
-                }
+                return MemorySizes.Align(unaligned);
             }
         }
     }

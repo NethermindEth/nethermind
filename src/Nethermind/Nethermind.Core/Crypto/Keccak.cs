@@ -64,7 +64,12 @@ namespace Nethermind.Core.Crypto
     {
         public const int Size = 32;
 
-        public int MemorySize => MemorySizes.ArrayOverhead + Size;
+        public static int MemorySize =>
+            MemorySizes.SmallObjectOverhead +
+            MemorySizes.RefSize +
+            MemorySizes.ArrayOverhead +
+            Size - 
+            MemorySizes.SmallObjectFreeDataSize;
 
         public Keccak(string hexString)
             : this(Core.Extensions.Bytes.FromHexString(hexString))

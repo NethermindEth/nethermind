@@ -34,9 +34,11 @@ namespace Nethermind.Core
         public const int RefSize = 8;
 
         public const int SmallObjectOverhead = 24;
+        
+        public const int SmallObjectFreeDataSize = 8;
 
         // public const int LargeObjectOverhead = 32; // just guessing, 20 on 32bit
-        public const int ArrayOverhead = 20;
+        public const int ArrayOverhead = 24;
 
         private static BitArray _isPrime = ESieve(1024 * 1024); // 1MB in memory
 
