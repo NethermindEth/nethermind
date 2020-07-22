@@ -30,6 +30,8 @@ namespace Nethermind.Vault
         Task DeleteAccount(Address address);
         Task<Signature> Sign(Address address, Keccak message);
 
+        Task<bool> Verify(Address address, Keccak message, Signature signature);
+
         Task<string> SetWalletVault();
 
         public Task<Address> NewAccount(KeyArgs args) 

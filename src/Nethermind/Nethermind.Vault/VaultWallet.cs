@@ -88,6 +88,16 @@ namespace Nethermind.Vault
             return new Signature(signature);
         }
 
+        public async Task<bool> Verify(Address address, Keccak message, Signature signature)
+        {
+            var vault = await SetWalletVault();
+            string keyId = await GetKeyIdByAddress(address);
+            string sig = Convert.ToString(signature).Remove(0,2);
+            var result = await _initVault.VerifySignature(_vaultConfig.Token, vault, keyId, message.ToString(), sig);   
+            dynamic isVerified  = JsonConvert.DeserializeObject(result.Item2);
+            return isVerified.verified;
+        }
+
         public async Task<Address> NewAccount(Dictionary<string, object> parameters)
         {
             KeyArgs keyArgs = parameters["keyArgs"] as KeyArgs;
