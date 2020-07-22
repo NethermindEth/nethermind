@@ -23,9 +23,5 @@ namespace Nethermind.Consensus.Transactions
     public interface ITxSource
     {
         IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit);
-
-        // TODO: All below for hunting bug
-        private static int _idCounter = 0;
-        public static int IdCounter => Interlocked.Increment(ref _idCounter);
     }
 }

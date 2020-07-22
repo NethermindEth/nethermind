@@ -86,7 +86,7 @@ namespace Nethermind.Synchronization.Blocks
                     continue;
                 }
 
-                if (info.TotalDifficulty - localTotalDiff <= 2 && info.PeerClientType == PeerClientType.Parity)
+                if (info.TotalDifficulty - localTotalDiff <= 2 && (info.PeerClientType == PeerClientType.Parity || info.PeerClientType == PeerClientType.OpenEthereum))
                 {
                     // Parity advertises a better block but never sends it back and then it disconnects after a few conversations like this
                     // Geth responds all fine here

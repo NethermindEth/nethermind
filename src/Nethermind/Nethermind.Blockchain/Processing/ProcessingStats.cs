@@ -61,7 +61,7 @@ namespace Nethermind.Blockchain.Processing
 
             Metrics.Mgas += block.GasUsed / 1_000_000m;
             Metrics.Transactions += block.Transactions.Length;
-            Metrics.Blocks = (long)block.Number;
+            Metrics.Blocks = block.Number;
             Metrics.RecoveryQueueSize = recoveryQueueSize;
             Metrics.ProcessingQueueSize = blockQueueSize;
 

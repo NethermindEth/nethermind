@@ -50,6 +50,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                     if (emitInitChangeCallable)
                     {
                         if (_logger.IsTrace) _logger.Trace($"New block #{newBlockNumber} issued ― calling emitInitiateChange()");
+                        Metrics.EmitInitiateChange++;
                         yield return ValidatorContract.EmitInitiateChange();
                     }
                     else

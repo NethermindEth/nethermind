@@ -79,6 +79,7 @@ namespace Nethermind.Consensus.AuRa
             AuRaValidator.OnBlockProcessingStart(block, options);
             var receipts = base.ProcessBlock(block, blockTracer, options);
             AuRaValidator.OnBlockProcessingEnd(block, receipts, options);
+            Metrics.AuRaStep = block.Header?.AuRaStep ?? 0;
             return receipts;
         }
 

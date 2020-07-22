@@ -36,8 +36,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit) => 
             _innerSource.GetTransactions(parent, gasLimit).Where(tx => _txPermissionFilter.IsAllowed(tx, parent));
         
-        private readonly int _id = ITxSource.IdCounter;
-        public override string ToString() => $"{GetType().Name}_{_id} [ {_innerSource} ]";
+        public override string ToString() => $"{nameof(TxFilterTxSource)} [ {_innerSource} ]";
 
     }
 }

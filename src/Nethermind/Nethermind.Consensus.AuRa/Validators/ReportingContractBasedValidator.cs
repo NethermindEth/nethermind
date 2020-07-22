@@ -15,13 +15,17 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
+using System.Threading;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Config;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.Transactions;
@@ -45,6 +49,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         private readonly long _posdaoTransition;
         private readonly ITxSender _posdaoTxSender;
         private readonly IStateProvider _stateProvider;
+        private readonly Cache _cache;
         private readonly ITxSender _nonPosdaoTxSender;
         private readonly ILogger _logger;
         
@@ -63,8 +68,9 @@ namespace Nethermind.Consensus.AuRa.Validators
             _posdaoTransition = posdaoTransition;
             _posdaoTxSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
+            _cache = cache ?? throw new ArgumentNullException(nameof(cache));
             _nonPosdaoTxSender = new TxGasPriceSender(txSender, txPool);
-            _persistentReports = cache?.PersistentReports ?? throw new ArgumentNullException(nameof(cache));
+            _persistentReports = cache.PersistentReports ?? throw new ArgumentNullException(nameof(cache));
             _logger = logManager?.GetClassLogger<ReportingContractBasedValidator>() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
@@ -72,7 +78,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         
         public void ReportMalicious(Address validator, long blockNumber, byte[] proof, IReportingValidator.MaliciousCause cause)
         {
-            Report("malicious", validator, blockNumber, proof, cause.ToString(), CreateReportMaliciousTransaction);
+            Report(ReportType.Malicious, validator, blockNumber, proof, cause, CreateReportMaliciousTransaction);
         }
 
         private Transaction CreateReportMaliciousTransaction(Address validator, long blockNumber, byte[] proof)
@@ -102,30 +108,45 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         public void ReportBenign(Address validator, long blockNumber, IReportingValidator.BenignCause cause)
         {
-            Report("benign", validator, blockNumber, Array.Empty<byte>(), cause.ToString(), CreateReportBenignTransaction);
+            Report(ReportType.Benign, validator, blockNumber, Array.Empty<byte>(), cause.ToString(), CreateReportBenignTransaction);
         }
 
         private Transaction CreateReportBenignTransaction(Address validator, long blockNumber, byte[] proof) => ValidatorContract.ReportBenign(validator, (UInt256) blockNumber);
 
-        private void Report(string type, Address validator, long blockNumber, byte[] proof, string cause, CreateReportTransactionDelegate createReportTransactionDelegate)
+        private void Report(ReportType reportType, Address validator, long blockNumber, byte[] proof, object cause, CreateReportTransactionDelegate createReportTransactionDelegate)
         {
             try
             {
-                if (!Validators.Contains(ValidatorContract.NodeAddress))
+                if (_cache.AlreadyReported(reportType, validator, blockNumber, cause))
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Skipping reporting {type} misbehaviour (cause: {cause}) at block #{blockNumber} from {validator} as we are not validator");
+                    if (_logger.IsDebug) _logger.Debug($"Skipping report of {validator} at {blockNumber} with {cause} as its already reported.");
                 }
                 else
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Reporting {type} misbehaviour (cause: {cause}) at block #{blockNumber} from {validator}");
-
-                    var transaction = createReportTransactionDelegate(validator, blockNumber, proof);
-                    if (transaction != null)
+                    if (!Validators.Contains(ValidatorContract.NodeAddress))
                     {
-                        var posdao = IsPosdao(blockNumber);
-                        var txSender = posdao ? _posdaoTxSender : _nonPosdaoTxSender;
-                        SendTransaction(txSender, transaction);
-                        if (_logger.IsWarn) _logger.Warn($"Reported {type} validator {validator} misbehaviour (cause: {cause}) at block {blockNumber}");
+                        if (_logger.IsTrace) _logger.Trace($"Skipping reporting {reportType} misbehaviour (cause: {cause}) at block #{blockNumber} from {validator} as we are not validator");
+                    }
+                    else
+                    {
+                        if (_logger.IsTrace) _logger.Trace($"Reporting {reportType} misbehaviour (cause: {cause}) at block #{blockNumber} from {validator}");
+
+                        var transaction = createReportTransactionDelegate(validator, blockNumber, proof);
+                        if (transaction != null)
+                        {
+                            var posdao = IsPosdao(blockNumber);
+                            var txSender = posdao ? _posdaoTxSender : _nonPosdaoTxSender;
+                            SendTransaction(reportType, txSender, transaction);
+                            if (_logger.IsWarn) _logger.Warn($"Reported {reportType} validator {validator} misbehaviour (cause: {cause}) at block {blockNumber}");
+                            if (reportType == ReportType.Malicious)
+                            {
+                                Metrics.ReportedMaliciousMisbehaviour++;
+                            }
+                            else
+                            {
+                                Metrics.ReportedBenignMisbehaviour++;
+                            }
+                        }
                     }
                 }
             }
@@ -133,11 +154,19 @@ namespace Nethermind.Consensus.AuRa.Validators
             {
                 if (_logger.IsError) _logger.Error($"Validator {validator} could not be reported on block {blockNumber} with cause {cause}", e);
             }
+
         }
 
-        private static void SendTransaction(ITxSender txSender, Transaction transaction)
+        private static void SendTransaction(ReportType reportType, ITxSender txSender, Transaction transaction)
         {
-            txSender.SendTransaction(transaction, TxHandlingOptions.ManagedNonce | TxHandlingOptions.PersistentBroadcast);
+            TxHandlingOptions handlingOptions = reportType switch
+            {
+                ReportType.Benign     => TxHandlingOptions.ManagedNonce,
+                ReportType.Malicious  => TxHandlingOptions.ManagedNonce | TxHandlingOptions.PersistentBroadcast,
+                _                     => TxHandlingOptions.ManagedNonce
+            };
+            
+            txSender.SendTransaction(transaction, handlingOptions);
         }
 
         private bool IsPosdao(long blockNumber) => _posdaoTransition <= blockNumber;
@@ -148,11 +177,16 @@ namespace Nethermind.Consensus.AuRa.Validators
             var firstBlock = header.Number == 1;
             if (areThereSkipped && !firstBlock)
             {
-                if (_logger.IsDebug) _logger.Debug($"Author {header.Beneficiary} built block with step gap. current step: {header.AuRaStep}, parent step: {parent.AuRaStep}");
+                Address[] validators = Validators;
+                
+                if (_logger.IsDebug) _logger.Debug($"Author {header.Beneficiary} built block with step gap indicating skipped steps. " +
+                                                   $"Current step: {header.AuRaStep} at block {header.Number}, parent step: {parent.AuRaStep} at block {parent.Number}. " +
+                                                   $"CurrentValidators [{(string.Join(", ", validators.AsEnumerable()))}");
+                
                 ISet<Address> reported = new HashSet<Address>();
                 for (long step = parent.AuRaStep.Value + 1; step < header.AuRaStep.Value; step++)
                 {
-                    var skippedValidator = Validators.GetItemRoundRobin(step);
+                    var skippedValidator = validators.GetItemRoundRobin(step);
                     if (skippedValidator != ValidatorContract.NodeAddress)
                     {
                         if (reported.Contains(skippedValidator))
@@ -162,10 +196,11 @@ namespace Nethermind.Consensus.AuRa.Validators
                         
                         ReportBenign(skippedValidator, header.Number, IReportingValidator.BenignCause.SkippedStep);
                         reported.Add(skippedValidator);
+                        if (_logger.IsDebug) _logger.Debug($"Found skipped step {step} by author {skippedValidator}, actual author {header.Beneficiary} at block {header.Number}.");
                     }
                     else
                     {
-                        if (_logger.IsTrace) _logger.Trace("Primary that skipped is self, not self-reporting.");
+                        if (_logger.IsDebug) _logger.Debug($"Found skipped step {step} by self {skippedValidator}, actual author {header.Beneficiary} at block {header.Number}. Not self-reporting.");
                     }
                 }
             }
