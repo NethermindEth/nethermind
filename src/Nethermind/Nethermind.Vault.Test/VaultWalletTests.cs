@@ -1,8 +1,11 @@
 using FluentAssertions;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Vault.Config;
 using Nethermind.Vault.Styles;
 using NUnit.Framework;
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
@@ -152,16 +155,41 @@ namespace Nethermind.Vault.Test
             result.Should().NotBeNull();
         }
 
-        // [TestCase("0x3aa19B7Ee674f32F956F8cD25bFAacB416A2Feca")]
-        // [TestCase("0x6Dc0d33830d48F4a07b76Bb8DB09f3ED76801E7D")]
-        // public async Task can_sign_a_message_with_vault_key(string testAddress)
-        // {
-        //     Address address = new Address(testAddress);
-        //     Keccak message = new Keccak("0x4d46fa23b8c33e29753e4738abd05148ffc8b346b34780b92435ad392325c45f");
-        //     var result = await _wallet.Sign(address, message);
-        //     Console.WriteLine(result);
-        //     // result.Should().NotBeNull();
-        //     // result.Should().BeOfType<Address>();
-        // }
+        [Test]
+        public async Task can_sign_a_message_with_vault_key()
+        {
+            KeyArgs args = null;
+            Dictionary<string, object> parameters = new Dictionary<string,object>
+            {
+                {
+                    "keyArgs", args
+                }
+            };
+            var acc = await _wallet.NewAccount(parameters);
+
+            Keccak message = new Keccak("0x4d46fa23b8c33e29753e4738abd05148ffc8b346b34780b92435ad392325c45f");
+            var result = await _wallet.Sign(acc, message);
+            result.Should().NotBeNull();
+        }
+
+        [Test]
+        public async Task can_verify_a_message_with_vault_key()
+        {
+            KeyArgs args = null;
+            Dictionary<string, object> parameters = new Dictionary<string,object>
+            {
+                {
+                    "keyArgs", args
+                }
+            };
+            var acc = await _wallet.NewAccount(parameters);
+
+            Keccak message = new Keccak("0x4d46fa23b8c33e29753e4738abd05148ffc8b346b34780b92435ad392325c45f");
+
+            var signature = await _wallet.Sign(acc, message);
+
+            var result = await _wallet.Verify(acc, message, signature);
+            result.Should().BeTrue();
+        }
     }
 }
