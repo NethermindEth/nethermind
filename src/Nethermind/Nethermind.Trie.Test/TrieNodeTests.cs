@@ -567,6 +567,30 @@ namespace Nethermind.Trie.Test
         }
         
         [Test]
+        public void Size_of_extension_with_child()
+        {
+            TrieNode trieNode = new TrieNode(NodeType.Extension);
+            trieNode.SetChild(0, null);
+            trieNode.MemorySize.Should().Be(96);
+        }
+        
+        [Test]
+        public void Size_of_branch_with_data()
+        {
+            TrieNode trieNode = new TrieNode(NodeType.Branch);
+            trieNode.SetChild(0, null);
+            trieNode.MemorySize.Should().Be(208);
+        }
+        
+        [Test]
+        public void Size_of_leaf_with_value()
+        {
+            TrieNode trieNode = new TrieNode(NodeType.Leaf);
+            trieNode.Value = new byte[7];
+            trieNode.MemorySize.Should().Be(128);
+        }
+        
+        [Test]
         public void Size_of_an_unknown_node_with_full_rlp_is_correct()
         {
             TrieNode trieNode = new TrieNode(NodeType.Unknown, new byte[7]);

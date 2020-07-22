@@ -78,5 +78,29 @@ namespace Nethermind.Trie.Benchmark
         {
             return new RlpStream(new byte[7]);
         }
+        
+        [Benchmark] // 96B
+        public TrieNode Just_extension_with_child()
+        {
+            TrieNode trieNode = new TrieNode(NodeType.Extension);
+            trieNode.SetChild(0, null);
+            return trieNode;
+        }
+        
+        [Benchmark] // 208B
+        public TrieNode Just_branch_with_child()
+        {
+            TrieNode trieNode = new TrieNode(NodeType.Branch);
+            trieNode.SetChild(0, null);
+            return trieNode;
+        }
+        
+        [Benchmark] // 208B
+        public TrieNode Just_leaf_with_value()
+        {
+            TrieNode trieNode = new TrieNode(NodeType.Leaf);
+            trieNode.Value = new byte[7];
+            return trieNode;
+        }
     }
 }

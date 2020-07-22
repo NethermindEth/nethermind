@@ -457,6 +457,29 @@ namespace Nethermind.Trie
                 int nodeTypeSize = 1;
                 /* _isDirty + NodeType aligned to 4 (is it 8?) and end up in object overhead*/
 
+                for (int i = 0; i < (_data?.Length ?? 0); i++)
+                {
+                    if (_data![i] == null)
+                    {
+                        continue;;
+                    }
+
+                    if (_data![i] is Keccak)
+                    {
+                        dataSize += Keccak.MemorySize;
+                    }
+                    
+                    if (_data![i] is byte[] array)
+                    {
+                        dataSize += MemorySizes.ArrayOverhead + array.Length;
+                    }
+
+                    if (_data![i] is TrieNode node)
+                    {
+                        dataSize += node.MemorySize;
+                    }
+                }
+                
                 int unaligned = keccakSize +
                                 fullRlpSize +
                                 rlpStreamSize +
