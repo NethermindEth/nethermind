@@ -7,9 +7,9 @@ using Nethermind.Logging;
 using Nethermind.Vault.Config;
 using Nethermind.Vault.JsonRpc;
 using Nethermind.Vault.Styles;
-using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
+using System.Linq;
 
 namespace Nethermind.Vault.Test.JsonRpc
 {
@@ -26,9 +26,6 @@ namespace Nethermind.Vault.Test.JsonRpc
         private VaultArgs _vaultArgs;
         private SecretArgs _secretArgs;
         private VaultManager _vaultManager;
-        private KeyArgs _keyArgs;
-        private VaultArgs _vaultArgs;
-        private SecretArgs _secretArgs;
 
         [OneTimeSetUp]
         public async Task SetUp()
@@ -155,6 +152,7 @@ namespace Nethermind.Vault.Test.JsonRpc
         [Test]
         public async Task list_keys_can_display_list_of_keys_within_a_given_vault()
         {
+
             _keyArgs.Name = "Test Key";
             _keyArgs.Description = "Test Key used for test purposes";
             _keyArgs.Type = "asymmetric";
@@ -209,7 +207,7 @@ namespace Nethermind.Vault.Test.JsonRpc
                     Assert.AreEqual(s["id"].ToString(), _secretId);
                 }
             }
-  
+
             result.ErrorCode.Should().Be(0);
             result.Result.Error.Should().Be(null);
             result.Data.Should().NotBeNull();
@@ -261,7 +259,7 @@ namespace Nethermind.Vault.Test.JsonRpc
             _keyId = key.id;
 
             var result = await _vaultModule.vault_signMessage(_vaultId, _keyId, _message);
-          
+
             result.ErrorCode.Should().Be(0);
             result.Result.Error.Should().Be(null);
             result.Data.Should().NotBeNull();
