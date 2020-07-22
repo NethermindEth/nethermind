@@ -82,12 +82,12 @@ namespace Nethermind.Blockchain.Producers
                 {
                     if (_sealer.CanSeal(parentHeader.Number + 1, parentHeader.Hash))
                     {
-                        Metrics.CanProduceBlocks = 1;
+                        Interlocked.Exchange(ref Metrics.CanProduceBlocks, 1);
                         return ProduceNewBlock(parentHeader, token);
                     }
                     else
                     {
-                        Metrics.CanProduceBlocks = 0;
+                        Interlocked.Exchange(ref Metrics.CanProduceBlocks, 0);
                     }
                 }
 

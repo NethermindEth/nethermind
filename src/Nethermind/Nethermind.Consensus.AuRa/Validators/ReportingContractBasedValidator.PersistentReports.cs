@@ -89,7 +89,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                     {
                         try
                         {
-                            SendTransaction(true, _posdaoTxSender, CreateReportMaliciousTransactionCore(persistentReport));
+                            SendTransaction(ReportType.Malicious, _posdaoTxSender, CreateReportMaliciousTransactionCore(persistentReport));
                         }
                         catch (AuRaException e)
                         {

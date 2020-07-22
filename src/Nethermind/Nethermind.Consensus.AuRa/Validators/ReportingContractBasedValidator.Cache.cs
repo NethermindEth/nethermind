@@ -29,23 +29,20 @@ namespace Nethermind.Consensus.AuRa.Validators
             internal LinkedList<PersistentReport> PersistentReports { get; } = new LinkedList<PersistentReport>();
             
             private long _lastReportedBlockNumber;
-            private readonly ConcurrentDictionary<(Address Validator, bool Malicious, long BlockNumber, object Cause), bool> _lastBlockReports = 
-                new ConcurrentDictionary<(Address Validator, bool Type, long BlockNumber, object cause), bool>(); 
+            private readonly ConcurrentDictionary<(Address Validator, ReportType ReportType, long BlockNumber, object Cause), bool> _lastBlockReports = 
+                new ConcurrentDictionary<(Address Validator, ReportType ReportType, long BlockNumber, object cause), bool>(); 
         
-            internal bool AlreadyReported(bool malicious, Address validator, in long blockNumber, object cause)
+            internal bool AlreadyReported(ReportType reportType, Address validator, in long blockNumber, object cause)
             {
                 var lastReportedBlockNumber = Interlocked.Exchange(ref _lastReportedBlockNumber, blockNumber);
-                (Address Validator, bool Malicious, long BlockNumber, object Cause) key = (validator, malicious, blockNumber, cause);
-                if (lastReportedBlockNumber == blockNumber)
-                {
-                    return !_lastBlockReports.TryAdd(key, true);
-                }
-                else
+                (Address Validator, ReportType ReportType, long BlockNumber, object Cause) key = (validator, reportType, blockNumber, cause);
+                
+                if (lastReportedBlockNumber != blockNumber)
                 {
                     _lastBlockReports.Clear();
-                    _lastBlockReports.TryAdd(key, true);
-                    return false;
                 }
+                
+                return !_lastBlockReports.TryAdd(key, true);
             }
         }
     }

@@ -436,11 +436,16 @@ namespace Nethermind.Synchronization.ParallelSync
             
             foreach (PeerInfo peer in _syncPeerPool.InitializedPeers)
             {
-                var realDifficulty = _syncProgressResolver.GetDifficulty(peer.HeadHash) ?? peer.TotalDifficulty; // we don't trust parity TotalDifficulty, so we are checking if we know the hash and get our total difficulty  
-                if (realDifficulty > (maxPeerDifficulty  ?? UInt256.Zero))
+                UInt256 currentMax = maxPeerDifficulty  ?? UInt256.Zero;
+                if (peer.TotalDifficulty > currentMax)
                 {
-                    maxPeerDifficulty = realDifficulty;
-                    number = peer.HeadNumber;
+                    // we don't trust parity TotalDifficulty, so we are checking if we know the hash and get our total difficulty
+                    var realTotalDifficulty = _syncProgressResolver.GetTotalDifficulty(peer.HeadHash) ?? peer.TotalDifficulty;   
+                    if (realTotalDifficulty > currentMax)
+                    {
+                        maxPeerDifficulty = realTotalDifficulty;
+                        number = peer.HeadNumber;
+                    }
                 }
             }
 

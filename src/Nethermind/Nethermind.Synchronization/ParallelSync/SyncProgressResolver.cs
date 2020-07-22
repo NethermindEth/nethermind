@@ -139,7 +139,7 @@ namespace Nethermind.Synchronization.ParallelSync
         public long FindBestProcessedBlock() => _blockTree.Head?.Number ?? -1;
 
         public UInt256 ChainDifficulty => _blockTree.BestSuggestedBody?.TotalDifficulty ?? UInt256.Zero;
-        public UInt256? GetDifficulty(Keccak blockHash)
+        public UInt256? GetTotalDifficulty(Keccak blockHash)
         {
             BlockHeader best = _blockTree.BestSuggestedHeader;
 

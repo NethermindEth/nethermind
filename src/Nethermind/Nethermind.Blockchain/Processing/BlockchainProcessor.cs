@@ -295,7 +295,7 @@ namespace Nethermind.Blockchain.Processing
 
         private void FireProcessingQueueEmpty()
         {
-            if (IsEmpty)
+            if (((IBlockProcessingQueue)this).IsEmpty)
             {
                 ProcessingQueueEmpty?.Invoke(this, EventArgs.Empty);
             }
@@ -303,9 +303,7 @@ namespace Nethermind.Blockchain.Processing
 
         public event EventHandler ProcessingQueueEmpty;
 
-        public bool IsEmpty => _blockQueue.Count == 0 && _recoveryQueue.Count == 0;
-        
-        public int Count => _blockQueue.Count + _recoveryQueue.Count;
+        int IBlockProcessingQueue.Count => _blockQueue.Count + _recoveryQueue.Count;
 
         [Todo("Introduce priority queue and create a SuggestWithPriority that waits for block execution to return a block, then make this private")]
         public Block Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer tracer)

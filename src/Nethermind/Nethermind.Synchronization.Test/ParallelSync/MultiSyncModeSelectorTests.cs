@@ -185,7 +185,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                             SyncProgressResolver.FindBestFullBlock().Returns(ChainHead.Number);
                             SyncProgressResolver.FindBestFullState().Returns(ChainHead.Number);
                             SyncProgressResolver.FindBestProcessedBlock().Returns(ChainHead.Number);
-                            SyncProgressResolver.GetDifficulty(Arg.Any<Keccak>()).Returns(info =>
+                            SyncProgressResolver.GetTotalDifficulty(Arg.Any<Keccak>()).Returns(info =>
                             {
                                 var hash = info.Arg<Keccak>();
 

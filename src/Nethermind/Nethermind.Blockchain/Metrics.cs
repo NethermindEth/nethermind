@@ -43,8 +43,8 @@ namespace Nethermind.Blockchain
         
         [Description("Total number of failed block seals")]
         public static long FailedBlockSeals { get; set; }
-        
+
         [Description("Indicator if blocks can be produced")]
-        public static long CanProduceBlocks { get; set; }
+        public static long CanProduceBlocks;
     }
 }

@@ -78,7 +78,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         
         public void ReportMalicious(Address validator, long blockNumber, byte[] proof, IReportingValidator.MaliciousCause cause)
         {
-            Report(true, validator, blockNumber, proof, cause, CreateReportMaliciousTransaction);
+            Report(ReportType.Malicious, validator, blockNumber, proof, cause, CreateReportMaliciousTransaction);
         }
 
         private Transaction CreateReportMaliciousTransaction(Address validator, long blockNumber, byte[] proof)
@@ -108,39 +108,37 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         public void ReportBenign(Address validator, long blockNumber, IReportingValidator.BenignCause cause)
         {
-            Report(false, validator, blockNumber, Array.Empty<byte>(), cause.ToString(), CreateReportBenignTransaction);
+            Report(ReportType.Benign, validator, blockNumber, Array.Empty<byte>(), cause.ToString(), CreateReportBenignTransaction);
         }
 
         private Transaction CreateReportBenignTransaction(Address validator, long blockNumber, byte[] proof) => ValidatorContract.ReportBenign(validator, (UInt256) blockNumber);
 
-        private void Report(bool malicious, Address validator, long blockNumber, byte[] proof, object cause, CreateReportTransactionDelegate createReportTransactionDelegate)
+        private void Report(ReportType reportType, Address validator, long blockNumber, byte[] proof, object cause, CreateReportTransactionDelegate createReportTransactionDelegate)
         {
             try
             {
-                if (_cache.AlreadyReported(malicious, validator, blockNumber, cause))
+                if (_cache.AlreadyReported(reportType, validator, blockNumber, cause))
                 {
                     if (_logger.IsDebug) _logger.Debug($"Skipping report of {validator} at {blockNumber} with {cause} as its already reported.");
                 }
                 else
                 {
-                    string type = malicious ? "malicious" : "benign";
-
                     if (!Validators.Contains(ValidatorContract.NodeAddress))
                     {
-                        if (_logger.IsTrace) _logger.Trace($"Skipping reporting {type} misbehaviour (cause: {cause}) at block #{blockNumber} from {validator} as we are not validator");
+                        if (_logger.IsTrace) _logger.Trace($"Skipping reporting {reportType} misbehaviour (cause: {cause}) at block #{blockNumber} from {validator} as we are not validator");
                     }
                     else
                     {
-                        if (_logger.IsTrace) _logger.Trace($"Reporting {type} misbehaviour (cause: {cause}) at block #{blockNumber} from {validator}");
+                        if (_logger.IsTrace) _logger.Trace($"Reporting {reportType} misbehaviour (cause: {cause}) at block #{blockNumber} from {validator}");
 
                         var transaction = createReportTransactionDelegate(validator, blockNumber, proof);
                         if (transaction != null)
                         {
                             var posdao = IsPosdao(blockNumber);
                             var txSender = posdao ? _posdaoTxSender : _nonPosdaoTxSender;
-                            SendTransaction(malicious, txSender, transaction);
-                            if (_logger.IsWarn) _logger.Warn($"Reported {type} validator {validator} misbehaviour (cause: {cause}) at block {blockNumber}");
-                            if (malicious)
+                            SendTransaction(reportType, txSender, transaction);
+                            if (_logger.IsWarn) _logger.Warn($"Reported {reportType} validator {validator} misbehaviour (cause: {cause}) at block {blockNumber}");
+                            if (reportType == ReportType.Malicious)
                             {
                                 Metrics.ReportedMaliciousMisbehaviour++;
                             }
@@ -159,9 +157,16 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         }
 
-        private static void SendTransaction(bool malicious, ITxSender txSender, Transaction transaction)
+        private static void SendTransaction(ReportType reportType, ITxSender txSender, Transaction transaction)
         {
-            txSender.SendTransaction(transaction, malicious ? TxHandlingOptions.ManagedNonce | TxHandlingOptions.PersistentBroadcast : TxHandlingOptions.ManagedNonce);
+            TxHandlingOptions handlingOptions = reportType switch
+            {
+                ReportType.Benign     => TxHandlingOptions.ManagedNonce,
+                ReportType.Malicious  => TxHandlingOptions.ManagedNonce | TxHandlingOptions.PersistentBroadcast,
+                _                     => TxHandlingOptions.ManagedNonce
+            };
+            
+            txSender.SendTransaction(transaction, handlingOptions);
         }
 
         private bool IsPosdao(long blockNumber) => _posdaoTransition <= blockNumber;

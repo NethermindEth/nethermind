@@ -33,10 +33,12 @@ namespace Nethermind.Consensus.AuRa
         {
             if (base.AnyDesiredPeerKnown(best))
             {
-                // we really, really don't trust parity when its saying it has same block level with higher difficulty in AuRa, its lying most of the times in AuRa
+                // We really, really don't trust parity when its saying it has same block level with higher difficulty in AuRa, its lying most of the times in AuRa.
+                // This is because if its different block we already imported, but on same level, it will have lower difficulty (AuRa specific).
+                // If we imported the previous one than we probably shouldn't import this one.
                 bool ignoreParitySameLevel = best.PeerBlock == best.Header;
 
-                // we can ignore reorg for one round, if we accepted previous block fine, this reorg is malicious
+                // We can ignore reorg for one round, if we accepted previous block fine, this reorg is malicious
                 if (ignoreParitySameLevel)
                 {
                     if (_logger.IsDebug) _logger.Debug($"Ignoring best peer [{best.PeerBlock},{best.PeerDifficulty}], possible Parity/OpenEthereum outlier.");
