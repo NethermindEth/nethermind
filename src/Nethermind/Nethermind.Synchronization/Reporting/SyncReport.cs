@@ -75,7 +75,7 @@ namespace Nethermind.Synchronization.Reporting
             _syncModeSelector.Changed += SyncModeSelectorOnChanged;
         }
 
-        private void SyncModeSelectorOnChanged(object sender, SyncModeChangedEventArgs e)
+        private void SyncModeSelectorOnChanged(object? sender, SyncModeChangedEventArgs e)
         {
             if (e.Previous == SyncMode.None && e.Current == SyncMode.Full ||
                 e.Previous == SyncMode.Full && e.Current == SyncMode.None)
@@ -91,7 +91,7 @@ namespace Nethermind.Synchronization.Reporting
 
         private DateTime StartTime { get; }
 
-        private void TimerOnElapsed(object sender, ElapsedEventArgs e)
+        private void TimerOnElapsed(object? sender, ElapsedEventArgs e)
         {
             if (_reportId % SyncReportFrequency == 0)
             {
@@ -242,11 +242,11 @@ namespace Nethermind.Synchronization.Reporting
             }
             else if (isFastSync)
             {
-                builder.Append($"Sync config - fast sync without fast blocks");
+                builder.Append("Sync config - fast sync without fast blocks");
             }
             else
             {
-                builder.Append($"Sync config - full archive sync");
+                builder.Append("Sync config - full archive sync");
             }
 
             if (_logger.IsTrace) _logger.Trace(builder.ToString());
@@ -254,12 +254,12 @@ namespace Nethermind.Synchronization.Reporting
 
         private void WriteStateNodesReport()
         {
-            _logger.Info($"Syncing state nodes");
+            _logger.Info("Syncing state nodes");
         }
 
         private void WriteDbSyncReport()
         {
-            _logger.Info($"Syncing previously downloaded blocks from DB (partial offline mode until it finishes)");
+            _logger.Info("Syncing previously downloaded blocks from DB (partial offline mode until it finishes)");
         }
 
         private void WriteNotStartedReport()

@@ -20,14 +20,14 @@ namespace Nethermind.Synchronization
 {
     public class AllocationChangeEventArgs
     {
-        public AllocationChangeEventArgs(PeerInfo previous, PeerInfo current)
+        public AllocationChangeEventArgs(PeerInfo? previous, PeerInfo? current)
         {
             Previous = previous;
             Current = current;
         }
 
-        public PeerInfo Previous { get; }
+        public PeerInfo? Previous { get; }
         
-        public PeerInfo Current { get; }
+        public PeerInfo? Current { get; }
     }
 }

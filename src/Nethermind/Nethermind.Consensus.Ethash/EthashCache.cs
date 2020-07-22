@@ -16,13 +16,67 @@
 
 using System;
 using System.Buffers;
+using System.ComponentModel;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+using System.Xml.XPath;
+using Nethermind.Core;
 using Nethermind.Crypto;
 
 namespace Nethermind.Consensus.Ethash
 {
     public class EthashCache : IEthashDataSet
     {
-        private uint[][] Data { get; set; }
+        private struct Bucket
+        {
+            public uint Item0;
+            private uint Item1;
+            private uint Item2;
+            private uint Item3;
+            private uint Item4;
+            private uint Item5;
+            private uint Item6;
+            private uint Item7;
+            private uint Item8;
+            private uint Item9;
+            private uint Item10;
+            private uint Item11;
+            private uint Item12;
+            private uint Item13;
+            private uint Item14;
+            private uint Item15;
+
+            public Span<uint> AsUInts()
+            {
+                return MemoryMarshal.Cast<Bucket, uint>(MemoryMarshal.CreateSpan(ref this, 1));
+            }
+
+            public static Bucket Xor(Bucket a, Bucket b)
+            {
+                Bucket result = new Bucket();
+                result.Item0 = a.Item0 ^ b.Item0;
+                result.Item1 = a.Item1 ^ b.Item1;
+                result.Item2 = a.Item2 ^ b.Item2;
+                result.Item3 = a.Item3 ^ b.Item3;
+                result.Item4 = a.Item4 ^ b.Item4;
+                result.Item5 = a.Item5 ^ b.Item5;
+                result.Item6 = a.Item6 ^ b.Item6;
+                result.Item7 = a.Item7 ^ b.Item7;
+                result.Item8 = a.Item8 ^ b.Item8;
+                result.Item9 = a.Item9 ^ b.Item9;
+                result.Item10 = a.Item10 ^ b.Item10;
+                result.Item11 = a.Item11 ^ b.Item11;
+                result.Item12 = a.Item12 ^ b.Item12;
+                result.Item13 = a.Item13 ^ b.Item13;
+                result.Item14 = a.Item14 ^ b.Item14;
+                result.Item15 = a.Item15 ^ b.Item15;
+                return result;
+            }
+        }
+
+        private ArrayPool<Bucket> _arrayPool = ArrayPool<Bucket>.Create(1024 * 1024 * 2, 50);
+
+        private Bucket[] Data { get; set; }
 
         public uint Size { get; set; }
 
@@ -30,12 +84,13 @@ namespace Nethermind.Consensus.Ethash
         {
             uint cachePageCount = cacheSize / Ethash.HashBytes;
             Size = cachePageCount * Ethash.HashBytes;
-                
-            Data = ArrayPool<uint[]>.Shared.Rent((int)cachePageCount);
-            Data[0] = Keccak512.ComputeToUInts(seed);
+
+            Data = _arrayPool.Rent((int) cachePageCount);
+            Data[0] = MemoryMarshal.Cast<uint, Bucket>(Keccak512.ComputeToUInts(seed))[0];
+
             for (uint i = 1; i < cachePageCount; i++)
             {
-                Data[i] = Keccak512.ComputeUIntsToUInts(Data[i - 1]);
+                Keccak512.ComputeUIntsToUInts(Data[i - 1].AsUInts(), Data[i].AsUInts());
             }
 
             // http://www.hashcash.org/papers/memohash.pdf
@@ -43,15 +98,12 @@ namespace Nethermind.Consensus.Ethash
             for (int _ = 0; _ < Ethash.CacheRounds; _++)
             {
                 for (int i = 0; i < cachePageCount; i++)
-                {      
-                    uint v = Data[i][0] % cachePageCount;
+                {
+                    uint v = Data[i].Item0 % cachePageCount;
                     long page = (i - 1 + cachePageCount) % cachePageCount;
-                    for (int j = 0; j < Data[i].Length; j++)
-                    {
-                        Data[i][j] = Data[page][j] ^ Data[v][j];
-                    }
-
-                    Data[i] = Keccak512.ComputeUIntsToUInts(Data[i]);
+                    Data[i] = Bucket.Xor(Data[page], Data[v]);
+                    Span<uint> bucketAsUInts = Data[i].AsUInts();
+                    Keccak512.ComputeUIntsToUInts(bucketAsUInts, bucketAsUInts);
                 }
             }
         }
@@ -62,7 +114,7 @@ namespace Nethermind.Consensus.Ethash
             int r = Ethash.HashBytes / Ethash.WordBytes;
 
             uint[] mixInts = new uint[Ethash.HashBytes / Ethash.WordBytes];
-            Buffer.BlockCopy(Data[i % n], 0, mixInts, 0, Ethash.HashBytes);
+            Data[i % n].AsUInts().CopyTo(mixInts);
 
             mixInts[0] = i ^ mixInts[0];
             mixInts = Keccak512.ComputeUIntsToUInts(mixInts);
@@ -70,7 +122,7 @@ namespace Nethermind.Consensus.Ethash
             for (uint j = 0; j < Ethash.DataSetParents; j++)
             {
                 ulong cacheIndex = Ethash.Fnv(i ^ j, mixInts[j % r]);
-                Ethash.Fnv(mixInts, Data[cacheIndex % n]);
+                Ethash.Fnv(mixInts, MemoryMarshal.Cast<Bucket, uint>(MemoryMarshal.CreateSpan(ref Data[cacheIndex % n], 1)));
             }
 
             mixInts = Keccak512.ComputeUIntsToUInts(mixInts);
@@ -78,27 +130,27 @@ namespace Nethermind.Consensus.Ethash
         }
 
         private bool isDisposed;
-        
+
         public void Dispose()
         {
             Dispose(true);
         }
-        
+
         private void Dispose(bool isDisposing)
         {
             if (isDisposed)
             {
                 return;
             }
-            
+
             isDisposed = true;
-            
+
             if (isDisposing)
             {
                 GC.SuppressFinalize(this);
             }
             
-            ArrayPool<uint[]>.Shared.Return(Data);
+            _arrayPool.Return(Data);
         }
 
         ~EthashCache()

@@ -48,6 +48,8 @@ namespace Nethermind.AuRa.Test
         private IEthereumEcdsa _ethereumEcdsa;
         private static int _currentStep;
         private IReportingValidator _reportingValidator;
+        private IBlockTree _blockTree;
+        private IValidSealerStrategy _validSealerStrategy;
 
         [SetUp]
         public void SetUp()
@@ -63,9 +65,13 @@ namespace Nethermind.AuRa.Test
             _auRaStepCalculator.CurrentStep.Returns(_currentStep);
 
             _reportingValidator = Substitute.For<IReportingValidator>();
+            _blockTree = Substitute.For<IBlockTree>();
+            _validSealerStrategy = Substitute.For<IValidSealerStrategy>();
             _sealValidator = new AuRaSealValidator(_auRaParameters,
                 _auRaStepCalculator,
+                _blockTree,
                 Substitute.For<IValidatorStore>(),
+                _validSealerStrategy,
                 _ethereumEcdsa,
                 _logManager)
             {
@@ -88,34 +94,40 @@ namespace Nethermind.AuRa.Test
                 long parentStep = 9;
                 
                 BlockHeaderBuilder GetBlock() => Build.A.BlockHeader
-                        .WithAura(10, Bytes.Empty)
+                        .WithAura(10, Array.Empty<byte>())
                         .WithBeneficiary(TestItem.AddressA)
                         .WithDifficulty(AuraDifficultyCalculator.CalculateDifficulty(parentStep, step));
 
                 BlockHeaderBuilder GetParentBlock() => Build.A.BlockHeader
-                    .WithAura(parentStep, Bytes.Empty)
+                    .WithAura(parentStep, Array.Empty<byte>())
                     .WithBeneficiary(TestItem.AddressB);
 
-                TestCaseData GetTestCaseData(BlockHeaderBuilder parent, BlockHeaderBuilder block, Action<AuRaParameters> paramAction = null, Repeat repeat = Repeat.No) =>
-                    new TestCaseData(parent.TestObject, block.TestObject, paramAction, repeat);
+                TestCaseData GetTestCaseData(
+                    BlockHeaderBuilder parent,
+                    BlockHeaderBuilder block,
+                    Action<AuRaParameters> paramAction = null,
+                    Repeat repeat = Repeat.No,
+                    bool parentIsHead = true,
+                    bool isValidSealer = true) =>
+                    new TestCaseData(parent.TestObject, block.TestObject, paramAction, repeat, parentIsHead, isValidSealer);
                 
 
                 yield return GetTestCaseData(GetParentBlock(), GetBlock())
-                    .Returns((true, (object) null)).SetName("General valid.");
+                    .Returns((true, (object) null)).SetName("General valid.").SetCategory("ValidParams");
                 
                 yield return GetTestCaseData(GetParentBlock(), GetBlock().WithAura(step, null))
                     .Returns((false, (object) null)).SetName("Missing AuRaSignature").SetCategory("ValidParams");
                 
-                yield return GetTestCaseData(GetParentBlock(), GetBlock().WithAura(parentStep, Bytes.Empty))
+                yield return GetTestCaseData(GetParentBlock(), GetBlock().WithAura(parentStep, Array.Empty<byte>()))
                     .Returns((false, IReportingValidator.MaliciousCause.DuplicateStep)).SetName("Duplicate block.").SetCategory("ValidParams");
                 
-                yield return GetTestCaseData(GetParentBlock(), GetBlock().WithAura(parentStep - 1, Bytes.Empty))
+                yield return GetTestCaseData(GetParentBlock(), GetBlock().WithAura(parentStep - 1, Array.Empty<byte>()))
                     .Returns((false, IReportingValidator.MaliciousCause.DuplicateStep)).SetName("Past block.").SetCategory("ValidParams");
                 
-                yield return GetTestCaseData(GetParentBlock(), GetBlock().WithAura(parentStep + 7, Bytes.Empty))
+                yield return GetTestCaseData(GetParentBlock(), GetBlock().WithAura(parentStep + 7, Array.Empty<byte>()))
                     .Returns((false, IReportingValidator.BenignCause.FutureBlock)).SetName("Future block.").SetCategory("ValidParams");
                 
-                yield return GetTestCaseData(GetParentBlock(), GetBlock().WithAura(parentStep + 3, Bytes.Empty))
+                yield return GetTestCaseData(GetParentBlock(), GetBlock().WithAura(parentStep + 3, Array.Empty<byte>()))
                     .Returns((false, IReportingValidator.BenignCause.SkippedStep)).SetName("Skipped steps.").SetCategory("ValidParams");
                 
                 yield return GetTestCaseData(GetParentBlock(), GetBlock().WithDifficulty(AuraDifficultyCalculator.MaxDifficulty))
@@ -127,20 +139,29 @@ namespace Nethermind.AuRa.Test
                 yield return GetTestCaseData(GetParentBlock(), GetBlock().WithDifficulty(1000), a => a.ValidateScoreTransition = 100)
                     .Returns((true, (object) null)).SetName("Skip difficulty validation due to ValidateScoreTransition.").SetCategory("ValidParams");
                 
-                yield return GetTestCaseData(GetParentBlock(), GetBlock().WithAura(parentStep - 1, Bytes.Empty), a => a.ValidateScoreTransition = a.ValidateStepTransition = 100)
+                yield return GetTestCaseData(GetParentBlock(), GetBlock().WithAura(parentStep - 1, Array.Empty<byte>()), a => a.ValidateScoreTransition = a.ValidateStepTransition = 100)
                     .Returns((true, (object) null)).SetName("Skip step validation due to ValidateStepTransition.").SetCategory("ValidParams");
                 
                 yield return GetTestCaseData(GetParentBlock(), GetBlock(), repeat: Repeat.Yes)
-                    .Returns((true, (object) null)).SetName("Same block twice.");
+                    .Returns((true, (object) null)).SetName("Same block twice.").SetCategory("ValidParams");
                 
                 yield return GetTestCaseData(GetParentBlock(), GetBlock(), repeat: Repeat.YesChangeHash)
-                    .Returns((true, IReportingValidator.MaliciousCause.SiblingBlocksInSameStep)).SetName("Sibling in same step.");
+                    .Returns((true, IReportingValidator.MaliciousCause.SiblingBlocksInSameStep)).SetName("Sibling in same step.").SetCategory("ValidParams");
+                
+                yield return GetTestCaseData(GetParentBlock(), GetBlock(), parentIsHead:false, isValidSealer:false)
+                    .Returns((true, (object) null)).SetName("Cannot validate sealer").SetCategory("ValidParams");
+                
+                yield return GetTestCaseData(GetParentBlock(), GetBlock(), parentIsHead:true, isValidSealer:false)
+                    .Returns((false, (object) null)).SetName("Wrong sealer").SetCategory("ValidParams");
             }
         }
 
         [TestCaseSource(nameof(ValidateParamsTests))]
-        public (bool, object) validate_params(BlockHeader parentBlock, BlockHeader block, Action<AuRaParameters> modifyParameters, Repeat repeat)
+        public (bool, object) validate_params(BlockHeader parentBlock, BlockHeader block, Action<AuRaParameters> modifyParameters, Repeat repeat, bool parentIsHead, bool isValidSealer)
         {
+            _blockTree.Head.Returns(parentIsHead ? new Block(parentBlock) : new Block(Build.A.BlockHeader.WithNumber(parentBlock.Number - 1).TestObject));
+            _validSealerStrategy.IsValidSealer(Arg.Any<IList<Address>>(), block.Beneficiary, block.AuRaStep.Value).Returns(isValidSealer);
+            
             object cause = null;
             
             _reportingValidator.ReportBenign(Arg.Any<Address>(), Arg.Any<long>(), Arg.Do<IReportingValidator.BenignCause>(c => cause ??= c));
@@ -186,7 +207,7 @@ namespace Nethermind.AuRa.Test
             recoveredAddress ??= _address;
             
             var block = Build.A.BlockHeader
-                .WithAura(10, Bytes.Empty)
+                .WithAura(10, Array.Empty<byte>())
                 .WithBeneficiary(_address)
                 .WithNumber(blockNumber)
                 .TestObject;

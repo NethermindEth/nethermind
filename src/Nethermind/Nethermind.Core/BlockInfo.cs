@@ -35,5 +35,10 @@ namespace Nethermind.Core
         public bool WasProcessed { get; set; }
         public Keccak BlockHash { get; set; }
         public bool IsFinalized { get; set; }
+        
+        /// <summary>
+        /// This property is not serialized
+        /// </summary>
+        public long BlockNumber { get; set; }
     }
 }

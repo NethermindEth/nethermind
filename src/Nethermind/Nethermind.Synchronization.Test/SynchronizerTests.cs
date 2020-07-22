@@ -244,7 +244,7 @@ namespace Nethermind.Synchronization.Test
                 Block block = Blocks.Last();
                 for (long j = block.Number; j < i; j++)
                 {
-                    block = Build.A.Block.WithDifficulty(1000000).WithParent(block).WithTotalDifficulty(block.TotalDifficulty + 1000000).WithExtraData(j < branchStart ? Bytes.Empty : new byte[] {branchIndex}).TestObject;
+                    block = Build.A.Block.WithDifficulty(1000000).WithParent(block).WithTotalDifficulty(block.TotalDifficulty + 1000000).WithExtraData(j < branchStart ? Array.Empty<byte>() : new byte[] {branchIndex}).TestObject;
                     Blocks.Add(block);
                 }
                 
@@ -256,7 +256,7 @@ namespace Nethermind.Synchronization.Test
                 Block block = Blocks.Last();
                 for (long j = block.Number; j < i; j++)
                 {
-                    block = Build.A.Block.WithParent(block).WithDifficulty(2000000).WithTotalDifficulty(block.TotalDifficulty + 2000000).WithExtraData(j < branchStart ? Bytes.Empty : new byte[] {branchIndex}).TestObject;
+                    block = Build.A.Block.WithParent(block).WithDifficulty(2000000).WithTotalDifficulty(block.TotalDifficulty + 2000000).WithExtraData(j < branchStart ? Array.Empty<byte>() : new byte[] {branchIndex}).TestObject;
                     Blocks.Add(block);
                 }
                 

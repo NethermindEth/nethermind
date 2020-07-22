@@ -22,6 +22,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Network.Config;
 using Nethermind.Runner.Ethereum.Context;
+using Nethermind.TxPool;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
@@ -33,6 +34,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         private IDbConfig _dbConfig;
         private INetworkConfig _networkConfig;
         private ISyncConfig _syncConfig;
+        private ITxPoolConfig _txPoolConfig;
 
         public ApplyMemoryHint(EthereumRunnerContext context)
         {
@@ -41,6 +43,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             _dbConfig = context.Config<IDbConfig>();
             _networkConfig = context.Config<INetworkConfig>();
             _syncConfig = context.Config<ISyncConfig>();
+            _txPoolConfig = context.Config<ITxPoolConfig>();
         }
 
         public Task Execute(CancellationToken _)
@@ -49,12 +52,13 @@ namespace Nethermind.Runner.Ethereum.Steps
             uint cpuCount = (uint) Environment.ProcessorCount;
             if (_initConfig.MemoryHint.HasValue)
             {
-                if (_initConfig.DiagnosticMode != DiagnosticMode.MemDb)
-                {
-                    memoryHintMan.UpdateDbConfig((ulong) _initConfig.MemoryHint.Value, cpuCount, _syncConfig, _dbConfig);
-                }
-
-                memoryHintMan.UpdateNetworkConfig((ulong) _initConfig.MemoryHint.Value, cpuCount, _networkConfig);
+                memoryHintMan.SetMemoryAllowances(
+                    _dbConfig,
+                    _initConfig,
+                    _networkConfig,
+                    _syncConfig,
+                    _txPoolConfig,
+                    cpuCount);
             }
 
             return Task.CompletedTask;

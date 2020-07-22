@@ -13,25 +13,13 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
 
-namespace Nethermind.Synchronization.FastBlocks
+namespace Nethermind.Seq.Config
 {
-    internal static class FastBlocksQueueLimits
+    public class SeqConfig : ISeqConfig
     {
-        /// <summary>
-        /// Max queued headers
-        /// </summary>
-        public const long ForHeaders = 128 * 1024;
-        
-        /// <summary>
-        /// Max queued bodies
-        /// </summary>
-        public const long ForBodies = 16 * 1024;
-        
-        /// <summary>
-        /// Max queued receipts
-        /// </summary>
-        public const long ForReceipts = 16 * 1024;
+        public string MinLevel { get; set; } = "Off";
+        public string ServerUrl {get; set; } =  "http://localhost:5341";
+        public string ApiKey {get; set; } = "";
     }
 }

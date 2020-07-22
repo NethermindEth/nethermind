@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -6,6 +7,7 @@ using Nethermind.Logging;
 using Nethermind.Vault.Config;
 using Nethermind.Vault.JsonRpc;
 using Nethermind.Vault.Styles;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 
@@ -24,6 +26,9 @@ namespace Nethermind.Vault.Test.JsonRpc
         private VaultArgs _vaultArgs;
         private SecretArgs _secretArgs;
         private VaultManager _vaultManager;
+        private KeyArgs _keyArgs;
+        private VaultArgs _vaultArgs;
+        private SecretArgs _secretArgs;
 
         [OneTimeSetUp]
         public async Task SetUp()
@@ -32,9 +37,7 @@ namespace Nethermind.Vault.Test.JsonRpc
             _config.Host = "localhost:8082";
             _config.Scheme = "http";
             _config.Path = "api/v1";
-            // _config.Token = $"bearer  {TestContext.Parameters["token"]}";
-
-            _config.Token = "bearer eyJhbGciOiJSUzI1NiIsImtpZCI6IjEwOjJlOmQ5OmUxOmI4OmEyOjM0OjM3Ojk5OjNhOjI0OmZjOmFhOmQxOmM4OjU5IiwidHlwIjoiSldUIn0.eyJhdWQiOiJodHRwczovL3Byb3ZpZGUuc2VydmljZXMvYXBpL3YxIiwiZXhwIjoxNTk1NDk3MzQxLCJpYXQiOjE1OTU0MTA5NDEsImlzcyI6Imh0dHBzOi8vaWRlbnQucHJvdmlkZS5zZXJ2aWNlcyIsImp0aSI6IjAyM2ViNjNkLTA3ZDEtNGZhYS1hZmYzLTIxZTNhZDA0YjdiMiIsIm5hdHMiOnsicGVybWlzc2lvbnMiOnsic3Vic2NyaWJlIjp7ImFsbG93IjpbInVzZXIuNzlkNGZmN2EtYzhlZi00MWNjLTgyMjMtYTRmZDM0N2JhYTVjIiwibmV0d29yay4qLmNvbm5lY3Rvci4qIiwibmV0d29yay4qLnN0YXR1cyIsInBsYXRmb3JtLlx1MDAzZSJdfX19LCJwcnZkIjp7InBlcm1pc3Npb25zIjo3NTUzLCJ1c2VyX2lkIjoiNzlkNGZmN2EtYzhlZi00MWNjLTgyMjMtYTRmZDM0N2JhYTVjIn0sInN1YiI6InVzZXI6NzlkNGZmN2EtYzhlZi00MWNjLTgyMjMtYTRmZDM0N2JhYTVjIn0.dO7rmx_KkpBCIiNYQIy18BKhX3YjSaA_fk7yKVClIZClzR7_GDlW1-vVwrkuV9hsWok0hYcr5Ms2I0xd5z3F-yvsVZ7h34Um3cIGIPDoG81zGuLSZVmENfLPO-XgvgSqn2NtQ8NNtMXzR4VtFywd3l5plV6BcDjkYLkbV6XqeJVFfPs60PTcvpP0aebIsNPVH26heGrDLESt6WRLLxgGAJpq7nGzPqs4NqT342GWKyB4-7sgnl4Nfgifkq4IV9t9DMgkdFxTYZI8xDaQkHExIJYfqB1mgXKHYclR3I-nEX-JUMkuZc4gtDUkHZExphbZ0pkb8GFHHKQeV_8vK8mv_50MU-z21wW9CfsvR2_DipYqBKxAQx8hSzYRSsxIJkm4o-0Rl_TFLehZG2x-dkqpCk9soSyCRjQ5SsnxWtUL8M0k4UZt3z5YgeUaIM0xA1Sx7vsV-uuKEsotWdDHModJYM3LMGXgehFpucdMbydKpdOKQVLJ9bF21WASkdI2BjElwz3eEWY-rMHnmcPYY0994gcs0CJRxoJmKs66yH4KipMfc2uYASmFhfIduSzdMW6fSL1HGnr-CHBM16_KcFbYaCLk1R194V3yG-dhhHXN1KIftrsX-mWFo5QWVq4hbUKo2BiWG0rWNkv5CnS7u_WYsW0grozy793aw_lfpirhOw8";
+            _config.Token = $"bearer  {TestContext.Parameters["token"]}";
 
             _initVault = new provide.Vault(_config.Host, _config.Path, _config.Scheme, _config.Token);
             _keyArgs = KeyArgs.Default;
@@ -152,7 +155,6 @@ namespace Nethermind.Vault.Test.JsonRpc
         [Test]
         public async Task list_keys_can_display_list_of_keys_within_a_given_vault()
         {
-
             _keyArgs.Name = "Test Key";
             _keyArgs.Description = "Test Key used for test purposes";
             _keyArgs.Type = "asymmetric";
@@ -207,7 +209,7 @@ namespace Nethermind.Vault.Test.JsonRpc
                     Assert.AreEqual(s["id"].ToString(), _secretId);
                 }
             }
-
+  
             result.ErrorCode.Should().Be(0);
             result.Result.Error.Should().Be(null);
             result.Data.Should().NotBeNull();
@@ -259,7 +261,7 @@ namespace Nethermind.Vault.Test.JsonRpc
             _keyId = key.id;
 
             var result = await _vaultModule.vault_signMessage(_vaultId, _keyId, _message);
-
+          
             result.ErrorCode.Should().Be(0);
             result.Result.Error.Should().Be(null);
             result.Data.Should().NotBeNull();

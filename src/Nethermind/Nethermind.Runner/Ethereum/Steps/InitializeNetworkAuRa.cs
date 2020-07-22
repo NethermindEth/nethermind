@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,18 +15,18 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-namespace Nethermind.Synchronization.FastBlocks
-{
-    internal static class FastBlocksLags
-    {
-        /// <summary>
-        /// That many headers will be downloaded before we start downloading bodies
-        /// </summary>
-        public const long ForBodies = 32 * 1024;
+using Nethermind.Consensus.AuRa;
+using Nethermind.Runner.Ethereum.Context;
+using Nethermind.Synchronization.ParallelSync;
 
-        /// <summary>
-        /// That many bodies will be downloaded before we start downloading receipts
-        /// </summary>
-        public const long ForReceipts = 32 * 1024;
+namespace Nethermind.Runner.Ethereum.Steps
+{
+    public class InitializeNetworkAuRa : InitializeNetwork
+    {
+        public InitializeNetworkAuRa(AuRaEthereumRunnerContext context) : base(context)
+        {
+        }
+
+        protected override MultiSyncModeSelector CreateMultiSyncModeSelector(SyncProgressResolver syncProgressResolver) => new AuRaMultiSyncModeSelector(syncProgressResolver, _ctx.SyncPeerPool, _syncConfig, _ctx.LogManager);
     }
 }

@@ -24,7 +24,7 @@ namespace Nethermind.Evm.Precompiles
     {
         public static void PrepareEthInput(this byte[] inputData, Span<byte> inputDataSpan)
         {
-            inputData ??= Bytes.Empty;
+            inputData ??= Array.Empty<byte>();
             inputData.AsSpan(0, Math.Min(inputDataSpan.Length, inputData.Length))
                 .CopyTo(inputDataSpan.Slice(0, Math.Min(inputDataSpan.Length, inputData.Length)));
         }

@@ -75,5 +75,8 @@ namespace Nethermind.Blockchain.Synchronization
         
         [ConfigItem(Description = "Should use beam sync to fix corrupted state DB (dev use).", DefaultValue = "false")]
         public bool BeamSyncFixMode { get; set; }
+        
+        [ConfigItem(Description = "When beam syncing should verify each state item loaded from DB (dev use).", DefaultValue = "false")]
+        public bool BeamSyncVerifiedMode { get; set; }
     }
 }

@@ -68,10 +68,10 @@ namespace Nethermind.Runner.Ethereum.Steps
         private const string PeersDbPath = "peers";
         private const string ChtDbPath = "canonicalHashTrie";
 
-        private readonly EthereumRunnerContext _ctx;
+        protected readonly EthereumRunnerContext _ctx;
         private readonly ILogger _logger;
         private readonly INetworkConfig _networkConfig;
-        private readonly ISyncConfig _syncConfig;
+        protected readonly ISyncConfig _syncConfig;
 
         public InitializeNetwork(EthereumRunnerContext context)
         {
@@ -88,31 +88,22 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         private async Task Initialize(CancellationToken cancellationToken)
         {
-            if (_ctx.DbProvider == null) throw new StepDependencyException(nameof(_ctx.DbProvider));
-            if (_ctx.BlockTree == null) throw new StepDependencyException(nameof(_ctx.BlockTree));
-            if (_ctx.ReceiptStorage == null) throw new StepDependencyException(nameof(_ctx.ReceiptStorage));
-            if (_ctx.BlockValidator == null) throw new StepDependencyException(nameof(_ctx.BlockValidator));
-            if (_ctx.SealValidator == null) throw new StepDependencyException(nameof(_ctx.SealValidator));
-            if (_ctx.Enode == null) throw new StepDependencyException(nameof(_ctx.Enode));
-
             if (_networkConfig.DiagTracerEnabled)
             {
                 NetworkDiagTracer.IsEnabled = true;
                 NetworkDiagTracer.Start();
             }
             
-            ThisNodeInfo.AddInfo("Mem est netty:", $"{NettyMemoryEstimator.Estimate((uint)Environment.ProcessorCount, _networkConfig.NettyArenaOrder) / 1000 / 1000}MB".PadLeft(8));
-            ThisNodeInfo.AddInfo("Mem est peers:", $"{_networkConfig.ActivePeersMaxCount}MB".PadLeft(8));
             Environment.SetEnvironmentVariable("io.netty.allocator.maxOrder", _networkConfig.NettyArenaOrder.ToString());
 
-            var cht = new CanonicalHashTrie(_ctx.DbProvider.ChtDb);
+            var cht = new CanonicalHashTrie(_ctx.DbProvider!.ChtDb);
 
             int maxPeersCount = _networkConfig.ActivePeersMaxCount;
-            _ctx.SyncPeerPool = new SyncPeerPool(_ctx.BlockTree, _ctx.NodeStatsManager, maxPeersCount, _ctx.LogManager);
+            _ctx.SyncPeerPool = new SyncPeerPool(_ctx.BlockTree!, _ctx.NodeStatsManager!, maxPeersCount, _ctx.LogManager);
             _ctx.DisposeStack.Push(_ctx.SyncPeerPool);
 
-            SyncProgressResolver syncProgressResolver = new SyncProgressResolver(_ctx.BlockTree, _ctx.ReceiptStorage, _ctx.DbProvider.StateDb, _ctx.DbProvider.BeamStateDb, _syncConfig, _ctx.LogManager);
-            MultiSyncModeSelector syncModeSelector = new MultiSyncModeSelector(syncProgressResolver, _ctx.SyncPeerPool, _syncConfig, _ctx.LogManager);
+            SyncProgressResolver syncProgressResolver = new SyncProgressResolver(_ctx.BlockTree!, _ctx.ReceiptStorage!, _ctx.DbProvider.StateDb, _ctx.DbProvider.BeamStateDb, _syncConfig, _ctx.LogManager);
+            MultiSyncModeSelector syncModeSelector = CreateMultiSyncModeSelector(syncProgressResolver);
             if (_ctx.SyncModeSelector != null)
             {
                 // this is really bad and is a result of lack of proper dependency management
@@ -125,13 +116,13 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             _ctx.Synchronizer = new Synchronizer(
                 _ctx.DbProvider,
-                _ctx.SpecProvider,
-                _ctx.BlockTree,
-                _ctx.ReceiptStorage,
-                _ctx.BlockValidator,
-                _ctx.SealValidator,
+                _ctx.SpecProvider!,
+                _ctx.BlockTree!,
+                _ctx.ReceiptStorage!,
+                _ctx.BlockValidator!,
+                _ctx.SealValidator!,
                 _ctx.SyncPeerPool,
-                _ctx.NodeStatsManager,
+                _ctx.NodeStatsManager!,
                 _ctx.SyncModeSelector,
                 _syncConfig,
                 _ctx.LogManager);
@@ -140,10 +131,10 @@ namespace Nethermind.Runner.Ethereum.Steps
             _ctx.SyncServer = new SyncServer(
                 _ctx.DbProvider.StateDb,
                 _ctx.DbProvider.CodeDb,
-                _ctx.BlockTree,
-                _ctx.ReceiptStorage,
-                _ctx.BlockValidator,
-                _ctx.SealValidator,
+                _ctx.BlockTree!,
+                _ctx.ReceiptStorage!,
+                _ctx.BlockValidator!,
+                _ctx.SealValidator!,
                 _ctx.SyncPeerPool,
                 _ctx.SyncModeSelector,
                 _ctx.Config<ISyncConfig>(),
@@ -208,11 +199,18 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _logger.Error("Unable to start the peer manager.", e);
             }
 
+            if (_ctx.Enode == null)
+            {
+                throw new InvalidOperationException("Cannot initialize network without knowing own enode");
+            }
+            
             ThisNodeInfo.AddInfo("Ethereum     :", $"tcp://{_ctx.Enode.HostIp}:{_ctx.Enode.Port}");
             ThisNodeInfo.AddInfo("Version      :", $"{ClientVersion.Description.Replace("Nethermind/v", string.Empty)}");
             ThisNodeInfo.AddInfo("This node    :", $"{_ctx.Enode.Info}");
             ThisNodeInfo.AddInfo("Node address :", $"{_ctx.Enode.Address} (do not use as an account)");
         }
+
+        protected virtual MultiSyncModeSelector CreateMultiSyncModeSelector(SyncProgressResolver syncProgressResolver) => new MultiSyncModeSelector(syncProgressResolver, _ctx.SyncPeerPool, _syncConfig, _ctx.LogManager);
 
         private Task StartDiscovery()
         {

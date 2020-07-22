@@ -166,7 +166,7 @@ namespace Nethermind.Synchronization.Test
             syncConfig.PivotNumber = "1";
 
             blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject);
-            blockTree.LowestInsertedBody.Returns(Build.A.Block.WithNumber(2).WithStateRoot(TestItem.KeccakB).TestObject);
+            blockTree.LowestInsertedBodyNumber.Returns(2);
 
             SyncProgressResolver syncProgressResolver = new SyncProgressResolver(blockTree, receiptStorage, stateDb, new MemDb(), syncConfig, LimboLogs.Instance);
             Assert.False(syncProgressResolver.IsFastBlocksBodiesFinished());
@@ -185,8 +185,8 @@ namespace Nethermind.Synchronization.Test
             syncConfig.PivotNumber = "1";
 
             blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject);
-            blockTree.LowestInsertedBody.Returns(Build.A.Block.WithNumber(1).WithStateRoot(TestItem.KeccakB).TestObject);
-            receiptStorage.LowestInsertedReceiptBlock.Returns(2);
+            blockTree.LowestInsertedBodyNumber.Returns(1);
+            receiptStorage.LowestInsertedReceiptBlockNumber.Returns(2);
 
             SyncProgressResolver syncProgressResolver = new SyncProgressResolver(blockTree, receiptStorage, stateDb, new MemDb(), syncConfig, LimboLogs.Instance);
             Assert.False(syncProgressResolver.IsFastBlocksReceiptsFinished());
@@ -205,8 +205,8 @@ namespace Nethermind.Synchronization.Test
             syncConfig.PivotNumber = "1";
 
             blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject);
-            blockTree.LowestInsertedBody.Returns(Build.A.Block.WithNumber(2).WithStateRoot(TestItem.KeccakB).TestObject);
-            receiptStorage.LowestInsertedReceiptBlock.Returns(1);
+            blockTree.LowestInsertedBodyNumber.Returns(2);
+            receiptStorage.LowestInsertedReceiptBlockNumber.Returns(1);
 
             SyncProgressResolver syncProgressResolver = new SyncProgressResolver(blockTree, receiptStorage, stateDb, new MemDb(), syncConfig, LimboLogs.Instance);
             Assert.True(syncProgressResolver.IsFastBlocksBodiesFinished());
@@ -225,8 +225,8 @@ namespace Nethermind.Synchronization.Test
             syncConfig.PivotNumber = "1";
 
             blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject);
-            blockTree.LowestInsertedBody.Returns(Build.A.Block.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject);
-            receiptStorage.LowestInsertedReceiptBlock.Returns(2);
+            blockTree.LowestInsertedBodyNumber.Returns(1);
+            receiptStorage.LowestInsertedReceiptBlockNumber.Returns(2);
 
             SyncProgressResolver syncProgressResolver = new SyncProgressResolver(blockTree, receiptStorage, stateDb, new MemDb(), syncConfig, LimboLogs.Instance);
             Assert.True(syncProgressResolver.IsFastBlocksReceiptsFinished());

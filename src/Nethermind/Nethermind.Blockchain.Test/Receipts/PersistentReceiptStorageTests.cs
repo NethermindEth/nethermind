@@ -40,7 +40,7 @@ namespace Nethermind.Blockchain.Test.Receipts
         {
             _receiptsDb = new MemColumnsDb<ReceiptsColumns>();
             _storage = new PersistentReceiptStorage(_receiptsDb, MainnetSpecProvider.Instance, new ReceiptsRecovery()) {MigratedBlockNumber = 0};
-            _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks).Set(Keccak.Zero, Bytes.Empty);
+            _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks).Set(Keccak.Zero, Array.Empty<byte>());
         }
 
         [Test]
@@ -146,7 +146,7 @@ namespace Nethermind.Blockchain.Test.Receipts
                 .TestObject;
 
             var receipts = new TxReceipt[] {Build.A.Receipt.TestObject};
-            _storage.Insert(block, true, receipts);
+            _storage.Insert(block, receipts);
             return (block, receipts);
         }
     }

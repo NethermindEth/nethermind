@@ -171,7 +171,7 @@ namespace Nethermind.Core.Test.Builders
                     txReceipt.BlockHash = currentBlock.Hash;
                 }
 
-                _receiptStorage.Insert(currentBlock, false, txReceipts);
+                _receiptStorage.Insert(currentBlock, txReceipts);
             }
             else
             {

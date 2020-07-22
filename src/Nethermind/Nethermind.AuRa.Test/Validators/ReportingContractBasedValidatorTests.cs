@@ -23,6 +23,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
@@ -57,7 +58,7 @@ namespace Nethermind.AuRa.Test.Validators
             var transaction = Build.A.Transaction.TestObject;
             context.ReportingValidatorContract.ReportBenign(MaliciousMinerAddress, (UInt256) blockNumber).Returns(transaction);
             context.Validator.ReportBenign(MaliciousMinerAddress, blockNumber, IReportingValidator.BenignCause.FutureBlock);
-            context.TxSender.Received(1).SendTransaction(transaction, TxHandlingOptions.ManagedNonce | TxHandlingOptions.PersistentBroadcast);            
+            context.TxSender.Received(1).SendTransaction(transaction, TxHandlingOptions.ManagedNonce);            
         }
         
         [Test]
@@ -136,6 +137,7 @@ namespace Nethermind.AuRa.Test.Validators
         public void Reports_skipped_blocks()
         {
             var context = new TestContext(false, initialValidators: new[] {TestItem.AddressA, NodeAddress, TestItem.AddressC, TestItem.AddressD});
+            context.ReportingValidatorContract.ReportBenign(Arg.Any<Address>(), Arg.Any<UInt256>()).Returns(new GeneratedTransaction());
             var parent = Build.A.BlockHeader.WithNumber(10).WithAura(10).TestObject;
             var header = Build.A.BlockHeader.WithParent(parent).WithAura(20).TestObject;
             context.Validator.TryReportSkipped(header, parent);
@@ -143,6 +145,33 @@ namespace Nethermind.AuRa.Test.Validators
             context.ReportingValidatorContract.Received(1).ReportBenign(TestItem.AddressC, (UInt256) header.Number);
             context.ReportingValidatorContract.Received(1).ReportBenign(TestItem.AddressD, (UInt256) header.Number);
             context.ReportingValidatorContract.Received(0).ReportBenign(NodeAddress, (UInt256) header.Number);
+            context.TxSender.Received(3).SendTransaction(Arg.Is<Transaction>(t => t is GeneratedTransaction), TxHandlingOptions.ManagedNonce);
+        }
+        
+        [Test]
+        public void Report_ignores_duplicates_in_same_block()
+        {
+            var context = new TestContext(true, initialValidators: new[] {TestItem.AddressA, NodeAddress, TestItem.AddressC});
+            var transaction = Build.A.Transaction.TestObject;
+            context.ReportingValidatorContract.ReportBenign(Arg.Any<Address>(), Arg.Any<UInt256>()).Returns(transaction); 
+            context.ReportingValidatorContract.ReportMalicious(Arg.Any<Address>(), Arg.Any<UInt256>(), Arg.Any<byte[]>()).Returns(transaction);
+            
+            context.Validator.ReportBenign(MaliciousMinerAddress, 100, IReportingValidator.BenignCause.FutureBlock); // sent
+            context.Validator.ReportBenign(MaliciousMinerAddress, 100, IReportingValidator.BenignCause.IncorrectProposer); // sent
+            context.Validator.ReportBenign(MaliciousMinerAddress, 100, IReportingValidator.BenignCause.FutureBlock); // ignored
+            context.Validator.ReportBenign(MaliciousMinerAddress, 100, IReportingValidator.BenignCause.IncorrectProposer); // ignored
+            context.Validator.ReportMalicious(MaliciousMinerAddress, 100, Bytes.Empty, IReportingValidator.MaliciousCause.DuplicateStep); // sent
+            context.Validator.ReportMalicious(MaliciousMinerAddress, 100, Bytes.Empty, IReportingValidator.MaliciousCause.DuplicateStep); // ignored
+            context.Validator.ReportMalicious(MaliciousMinerAddress, 100, Bytes.Empty, IReportingValidator.MaliciousCause.SiblingBlocksInSameStep); // sent
+            context.Validator.ReportMalicious(MaliciousMinerAddress, 100, Bytes.Empty, IReportingValidator.MaliciousCause.SiblingBlocksInSameStep); // ignored
+            context.Validator.ReportBenign(TestItem.AddressC, 100, IReportingValidator.BenignCause.FutureBlock); // sent 
+            context.Validator.ReportBenign(TestItem.AddressC, 100, IReportingValidator.BenignCause.FutureBlock); // ignored
+            context.Validator.ReportBenign(MaliciousMinerAddress, 101, IReportingValidator.BenignCause.FutureBlock); //sent
+            context.Validator.ReportBenign(MaliciousMinerAddress, 101, IReportingValidator.BenignCause.IncorrectProposer); //sent
+            context.Validator.ReportBenign(MaliciousMinerAddress, 101, IReportingValidator.BenignCause.FutureBlock); //ignored
+            context.Validator.ReportBenign(MaliciousMinerAddress, 101, IReportingValidator.BenignCause.IncorrectProposer); //ignored
+            
+            context.TxSender.Received(7).SendTransaction(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());            
         }
         
         public class TestContext

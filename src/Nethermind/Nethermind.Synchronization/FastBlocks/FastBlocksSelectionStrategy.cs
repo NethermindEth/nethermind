@@ -14,7 +14,6 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain;
@@ -26,18 +25,16 @@ namespace Nethermind.Synchronization.FastBlocks
 {
     public class FastBlocksAllocationStrategy : IPeerAllocationStrategy
     {
-        private readonly TransferSpeedType _speedType;
         private readonly long? _minNumber;
         private readonly bool _priority;
 
         public FastBlocksAllocationStrategy(TransferSpeedType speedType, long? minNumber, bool priority)
         {
-            _speedType = speedType;
             _minNumber = minNumber;
             _priority = priority;
 
-            _slowest = new BySpeedStrategy(_speedType, false);
-            _fastest = new BySpeedStrategy(_speedType, true);
+            _slowest = new BySpeedStrategy(speedType, false);
+            _fastest = new BySpeedStrategy(speedType, true);
         }
 
         private IPeerAllocationStrategy _slowest;
@@ -45,11 +42,15 @@ namespace Nethermind.Synchronization.FastBlocks
 
         public bool CanBeReplaced => false;
 
-        public PeerInfo Allocate(PeerInfo currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
+        public PeerInfo? Allocate(
+            PeerInfo? currentPeer,
+            IEnumerable<PeerInfo> peers,
+            INodeStatsManager nodeStatsManager,
+            IBlockTree blockTree)
         {
             IPeerAllocationStrategy strategy = _priority ? _fastest : _slowest;
             peers = _minNumber == null ? peers : peers.Where(p => p.HeadNumber > _minNumber);
-            PeerInfo allocated = strategy.Allocate(currentPeer, peers, nodeStatsManager, blockTree);
+            PeerInfo? allocated = strategy.Allocate(currentPeer, peers, nodeStatsManager, blockTree);
             return allocated;
         }
     }

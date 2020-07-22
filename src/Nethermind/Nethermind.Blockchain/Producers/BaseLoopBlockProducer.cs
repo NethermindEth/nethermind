@@ -15,6 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Diagnostics;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Processing;
@@ -33,7 +35,7 @@ namespace Nethermind.Blockchain.Producers
         private Task _producerTask;
         
         protected CancellationTokenSource LoopCancellationTokenSource { get; } = new CancellationTokenSource();
-        protected bool CanProduce { get; set; }
+        protected int _canProduce = 0;
 
         protected BaseLoopBlockProducer(
             ITxSource txSource,
@@ -85,7 +87,7 @@ namespace Nethermind.Blockchain.Producers
         {
             while (!LoopCancellationTokenSource.IsCancellationRequested)
             {
-                if (CanProduce && BlockProcessingQueue.IsEmpty)
+                if (_canProduce == 1 && BlockProcessingQueue.IsEmpty)
                 {
                     try
                     {
@@ -95,12 +97,13 @@ namespace Nethermind.Blockchain.Producers
                     {
                         if (Logger.IsError) { Logger.Error("Failed to produce block.", e); }
 
+                        Metrics.FailedBlockSeals++;
                         throw;
                     }
                 }
                 else
                 {
-                    if (Logger.IsDebug) Logger.Debug("Delaying producing block, chain not processed yet.");
+                    if (Logger.IsDebug) Logger.Debug($"Delaying producing block, chain not processed yet. BlockProcessingQueue count {BlockProcessingQueue.Count}.");
                     await Task.Delay(ChainNotYetProcessedMillisecondsDelay, LoopCancellationTokenSource.Token);
                 }
             }
@@ -113,12 +116,24 @@ namespace Nethermind.Blockchain.Producers
         
         private void BlockTreeOnNewBestSuggestedBlock(object sender, BlockEventArgs e)
         {
-            CanProduce = false;
+            if (BlockTree.Head?.Hash != e.Block?.Hash)
+            {
+                Interlocked.Exchange(ref _canProduce, 0);
+                Interlocked.Exchange(ref Metrics.CanProduceBlocks, 0);
+                if (Logger.IsTrace) Logger.Trace($"Can not produce a block new best suggested {BlockTree.BestSuggestedHeader?.ToString(BlockHeader.Format.FullHashAndNumber)}{Environment.NewLine}{new StackTrace()}");
+            }
+            else
+            {
+                Interlocked.Exchange(ref Metrics.CanProduceBlocks, 1);
+                if (Logger.IsTrace) Logger.Trace($"Can produce blocks, a block new best suggested {BlockTree.BestSuggestedHeader?.ToString(BlockHeader.Format.FullHashAndNumber)}{Environment.NewLine}{new StackTrace()} is already processed.");
+            }
         }
 
         private void OnBlockProcessorQueueEmpty(object sender, EventArgs e)
         {
-            CanProduce = true;
+            Interlocked.Exchange(ref _canProduce, 1);
+            Interlocked.Exchange(ref Metrics.CanProduceBlocks, 1);
+            if (Logger.IsTrace) Logger.Trace($"Can produce blocks, current best suggested {BlockTree.BestSuggestedHeader}{Environment.NewLine}current head {BlockTree.Head}{Environment.NewLine}{new StackTrace()}");        
         }
     }
 }

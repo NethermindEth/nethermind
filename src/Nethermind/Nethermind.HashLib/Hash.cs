@@ -17,6 +17,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 using Nethermind.HashLib.Extensions;
@@ -244,13 +245,21 @@ namespace Nethermind.HashLib
             return result;
         }
 
-        public virtual uint[] ComputeUIntsToUint(uint[] a_data)
+        public virtual uint[] ComputeUIntsToUint(Span<uint> a_data)
         {
             Initialize();
             TransformUInts(a_data);
             uint[] result = TransformFinalUInts();
             Initialize();
             return result;
+        }
+        
+        public virtual void ComputeUIntsToUint(Span<uint> a_data, Span<uint> output)
+        {
+            Initialize();
+            TransformUInts(a_data);
+            TransformFinalUInts(output);
+            Initialize();
         }
 
         public void TransformObject(object a_data)
@@ -381,9 +390,10 @@ namespace Nethermind.HashLib
             TransformBytes(Converters.ConvertIntsToBytes(a_data));
         }
 
-        public void TransformUInts(uint[] a_data)
+        public void TransformUInts(Span<uint> a_data)
         {
-            TransformBytes(Converters.ConvertUIntsToBytes(a_data));
+            TransformBytes(MemoryMarshal.Cast<uint, byte>(a_data));
+            // TransformBytes(Converters.ConvertUIntsToBytes(a_data));
         }
 
         public void TransformLongs(long[] a_data)
@@ -566,6 +576,11 @@ namespace Nethermind.HashLib
         public abstract HashResult TransformFinal();
 
         public virtual uint[] TransformFinalUInts()
+        {
+            throw new NotSupportedException();
+        }
+        
+        public virtual void TransformFinalUInts(Span<uint> output)
         {
             throw new NotSupportedException();
         }

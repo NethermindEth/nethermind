@@ -40,7 +40,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private readonly ISyncProgressResolver _syncProgressResolver;
         private readonly ISyncPeerPool _syncPeerPool;
         private readonly ISyncConfig _syncConfig;
-        private readonly ILogger _logger;
+        protected readonly ILogger _logger;
 
         private long PivotNumber;
         private bool BeamSyncEnabled => _syncConfig.BeamSync;
@@ -53,9 +53,13 @@ namespace Nethermind.Synchronization.ParallelSync
         private bool FastBlocksReceiptsFinished => !FastReceiptsEnabled || _syncProgressResolver.IsFastBlocksReceiptsFinished();
         private long FastSyncCatchUpHeightDelta => _syncConfig.FastSyncCatchUpHeightDelta ?? FastSyncLag;
 
-        private System.Timers.Timer _timer;
+        private Timer _timer;
 
-        public MultiSyncModeSelector(ISyncProgressResolver syncProgressResolver, ISyncPeerPool syncPeerPool, ISyncConfig syncConfig, ILogManager logManager, bool withAutoUpdates = true)
+        public MultiSyncModeSelector(
+            ISyncProgressResolver syncProgressResolver,
+            ISyncPeerPool syncPeerPool,
+            ISyncConfig syncConfig,
+            ILogManager logManager)
         {
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
@@ -69,16 +73,17 @@ namespace Nethermind.Synchronization.ParallelSync
 
             PivotNumber = _syncConfig.PivotNumberParsed;
 
-            StartUpdateTimer();
+            _timer = StartUpdateTimer();
         }
 
-        private void StartUpdateTimer()
+        private Timer StartUpdateTimer()
         {
-            _timer = new System.Timers.Timer();
-            _timer.Interval = 1000;
-            _timer.AutoReset = false;
-            _timer.Elapsed += TimerOnElapsed;
-            _timer.Enabled = true;
+            Timer timer = new Timer();
+            timer.Interval = 1000;
+            timer.AutoReset = false;
+            timer.Elapsed += TimerOnElapsed;
+            timer.Enabled = true;
+            return timer;
         }
 
         public void DisableTimer()
@@ -97,16 +102,16 @@ namespace Nethermind.Synchronization.ParallelSync
 
             if (!_syncConfig.SynchronizationEnabled)
             {
-                UpdateSyncModes(SyncMode.None);
+                UpdateSyncModes(SyncMode.None, "Synchronization Disabled");
                 return;
             }
 
-            (UInt256? peerDifficulty, long? peerBlock, Keccak peerHeadHash) = ReloadDataFromPeers();
+            (UInt256? peerDifficulty, long? peerBlock) = ReloadDataFromPeers();
 
             // if there are no peers that we could use then we cannot sync
             if (peerDifficulty == null || peerBlock == null || peerBlock == 0)
             {
-                UpdateSyncModes(SyncMode.None);
+                UpdateSyncModes(SyncMode.None, "No Useful Peers");
                 return;
             }
 
@@ -114,18 +119,18 @@ namespace Nethermind.Synchronization.ParallelSync
             if (!FastSyncEnabled)
             {
                 bool anyPeers = peerBlock.Value > 0 && peerDifficulty.Value >= _syncProgressResolver.ChainDifficulty;
-                UpdateSyncModes(anyPeers ? SyncMode.Full : SyncMode.None);
+                UpdateSyncModes(anyPeers ? SyncMode.Full : SyncMode.None, "No Useful Peers");
                 return;
             }
 
             Snapshot best;
             try
             {
-                best = TakeSnapshot(peerDifficulty.Value, peerBlock.Value, peerHeadHash);
+                best = TakeSnapshot(peerDifficulty.Value, peerBlock.Value);
             }
             catch (InvalidAsynchronousStateException)
             {
-                UpdateSyncModes(SyncMode.None);
+                UpdateSyncModes(SyncMode.None, "Snapshot Misalignment");
                 return;
             }
 
@@ -150,8 +155,7 @@ namespace Nethermind.Synchronization.ParallelSync
             if (IsTheModeSwitchWorthMentioning(newModes))
             {
                 string stateString = BuildStateString(best);
-                string message = $"Changing state to {newModes} at {stateString}";
-                if (_logger.IsInfo) _logger.Info(message);
+                if (_logger.IsInfo) _logger.Info($"Changing state {Current} to {newModes} at {stateString}");
             }
 
             UpdateSyncModes(newModes);
@@ -173,11 +177,11 @@ namespace Nethermind.Synchronization.ParallelSync
                    (newModes != SyncMode.Full || Current != SyncMode.None);
         }
 
-        private void UpdateSyncModes(SyncMode newModes)
+        private void UpdateSyncModes(SyncMode newModes, string? reason = null)
         {
             if (_logger.IsTrace)
             {
-                string message = $"Changing state to {newModes}";
+                string message = $"Changing state to {newModes} | {reason}";
                 if (_logger.IsTrace) _logger.Trace(message);
             }
 
@@ -202,7 +206,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private static string BuildStateString(Snapshot best) =>
             $"processed:{best.Processed}|state:{best.State}|block:{best.Block}|header:{best.Header}|peer block:{best.PeerBlock}";
 
-        private void TimerOnElapsed(object sender, ElapsedEventArgs e)
+        private void TimerOnElapsed(object? sender, ElapsedEventArgs e)
         {
             try
             {
@@ -244,22 +248,27 @@ namespace Nethermind.Synchronization.ParallelSync
             bool postPivotPeerAvailable = AnyPostPivotPeerKnown(best.PeerBlock);
             bool notInAStickyFullSync = !IsInAStickyFullSyncMode(best);
             bool notHasJustStartedFullSync = !HasJustStartedFullSync(best);
-
-            if (_logger.IsTrace)
-            {
-                _logger.Trace("======================== FAST");
-                _logger.Trace("postPivotPeerAvailable " + postPivotPeerAvailable);
-                _logger.Trace("heightDeltaGreaterThanLag " + heightDeltaGreaterThanLag);
-                _logger.Trace("notInAStickyFullSync " + notInAStickyFullSync);
-            }
-
-            return
+            
+            bool result = 
                 postPivotPeerAvailable &&
                 // (catch up after node is off for a while
                 // OR standard fast sync)
                 notInAStickyFullSync &&
                 heightDeltaGreaterThanLag &&
                 notHasJustStartedFullSync;
+
+            if (_logger.IsTrace)
+            {
+                _logger.Trace("FAST: " +
+                              $"{GetBoolFlagString(postPivotPeerAvailable)}{nameof(postPivotPeerAvailable)} && " +
+                              $"{GetBoolFlagString(heightDeltaGreaterThanLag)}{nameof(heightDeltaGreaterThanLag)} && " +
+                              $"{GetBoolFlagString(notInAStickyFullSync)}{nameof(notInAStickyFullSync)} && " +
+                              $"{GetBoolFlagString(notHasJustStartedFullSync)}{nameof(notHasJustStartedFullSync)} " +
+                              $"== {result}");
+
+            }
+
+            return result;
         }
 
         private bool ShouldBeInFullSyncMode(Snapshot best)
@@ -270,26 +279,30 @@ namespace Nethermind.Synchronization.ParallelSync
             bool notInBeamSync = !best.IsInBeamSync;
             bool notInFastSync = !best.IsInFastSync;
             bool notInStateSync = !best.IsInStateSync;
+            
+            bool result = desiredPeerKnown &&
+                          postPivotPeerAvailable &&
+                          hasFastSyncBeenActive &&
+                          notInBeamSync &&
+                          notInFastSync &&
+                          notInStateSync;
 
             if (_logger.IsTrace)
             {
-                _logger.Trace("======================== FULL");
-                _logger.Trace("higherDiffPeerKnown " + desiredPeerKnown);
-                _logger.Trace("postPivotPeerAvailable " + postPivotPeerAvailable);
-                _logger.Trace("hasFastSyncBeenActive " + hasFastSyncBeenActive);
-                _logger.Trace("notInBeamSync " + notInBeamSync);
-                _logger.Trace("notInFastSync " + notInFastSync);
-                _logger.Trace("notInStateSync " + notInStateSync);
+                _logger.Trace("FULL: " +
+                              $"{GetBoolFlagString(desiredPeerKnown)}{nameof(desiredPeerKnown)} && " +
+                              $"{GetBoolFlagString(postPivotPeerAvailable)}{nameof(postPivotPeerAvailable)} && " +
+                              $"{GetBoolFlagString(hasFastSyncBeenActive)}{nameof(hasFastSyncBeenActive)} && " +
+                              $"{GetBoolFlagString(notInBeamSync)}{nameof(notInBeamSync)} && " +
+                              $"{GetBoolFlagString(notInFastSync)}{nameof(notInFastSync)} && " +
+                              $"{GetBoolFlagString(notInStateSync)}{nameof(notInStateSync)} " +
+                              $"== {result}");
             }
 
-            return desiredPeerKnown &&
-                   postPivotPeerAvailable &&
-                   hasFastSyncBeenActive &&
-                   notInBeamSync &&
-                   notInFastSync &&
-                   notInStateSync;
+            return result;
         }
 
+        // ReSharper disable once UnusedParameter.Local
         private bool ShouldBeInFastHeadersMode(Snapshot best)
         {
             // this is really the only condition - fast blocks headers can always run if there are peers until it is done
@@ -299,16 +312,44 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private bool ShouldBeInFastBodiesMode(Snapshot best)
         {
+            bool fastBodiesNotFinished = !FastBlocksBodiesFinished;
+            bool fastHeadersFinished = FastBlocksHeadersFinished;
+            bool notInStateSync = !best.IsInStateSync;
+            bool stateSyncFinished = best.State > 0;
+
+            if (_logger.IsTrace)
+            {
+                _logger.Trace("======================== BODIES");
+                _logger.Trace("fastBodiesNotFinished " + fastBodiesNotFinished);
+                _logger.Trace("fastHeadersFinished " + fastHeadersFinished);
+                _logger.Trace("notInStateSync " + notInStateSync);
+                _logger.Trace("stateSyncFinished " + stateSyncFinished);
+            }
+
             // fast blocks bodies can run if there are peers until it is done
             // fast blocks bodies can run in parallel with full sync when headers are finished
-            return !FastBlocksBodiesFinished && FastBlocksHeadersFinished && best.IsInFullSync;
+            return fastBodiesNotFinished && fastHeadersFinished && notInStateSync && stateSyncFinished;
         }
 
         private bool ShouldBeInFastReceiptsMode(Snapshot best)
         {
+            bool fastReceiptsNotFinished = !FastBlocksReceiptsFinished;
+            bool fastBodiesFinished = FastBlocksBodiesFinished;
+            bool notInStateSync = !best.IsInStateSync;
+            bool stateSyncFinished = best.State > 0;
+            
+            if (_logger.IsTrace)
+            {
+                _logger.Trace("======================== RECEIPTS");
+                _logger.Trace("fastReceiptsNotFinished " + fastReceiptsNotFinished);
+                _logger.Trace("fastBodiesFinished " + fastBodiesFinished);
+                _logger.Trace("notInStateSync " + notInStateSync);
+                _logger.Trace("stateSyncFinished " + stateSyncFinished);
+            }
+            
             // fast blocks receipts can run if there are peers until it is done
             // fast blocks receipts can run in parallel with full sync when bodies are finished
-            return !FastBlocksReceiptsFinished && FastBlocksBodiesFinished && best.IsInFullSync;
+            return fastReceiptsNotFinished && fastBodiesFinished && notInStateSync && stateSyncFinished;
         }
 
         private bool ShouldBeInStateNodesMode(Snapshot best)
@@ -322,93 +363,93 @@ namespace Nethermind.Synchronization.ParallelSync
                                           best.Header > best.State && best.Header > best.Block);
             bool notInAStickyFullSync = !IsInAStickyFullSyncMode(best);
             bool notHasJustStartedFullSync = !HasJustStartedFullSync(best);
+            
+            bool result = fastSyncEnabled &&
+                          fastFastSyncBeenActive &&
+                          hasAnyPostPivotPeer &&
+                          (notInFastSync || stickyStateNodes) &&
+                          stateNotDownloadedYet &&
+                          notHasJustStartedFullSync &&
+                          notInAStickyFullSync;
 
             if (_logger.IsTrace)
             {
-                _logger.Trace("======================== STATE");
-                _logger.Trace("fastSyncEnabled " + fastSyncEnabled);
-                _logger.Trace("fastFastSyncBeenActive " + fastFastSyncBeenActive);
-                _logger.Trace("hasAnyPostPivotPeer " + hasAnyPostPivotPeer);
-                _logger.Trace("notInFastSync " + notInFastSync);
-                _logger.Trace("stateNotDownloadedYet " + stateNotDownloadedYet);
-                _logger.Trace("notInAStickyFullSync " + notInAStickyFullSync);
-                _logger.Trace("notHasJustStartedFullSync " + notHasJustStartedFullSync);
+                _logger.Trace("STATE: " +
+                              $"{GetBoolFlagString(fastSyncEnabled)}{nameof(fastSyncEnabled)} && " +
+                              $"{GetBoolFlagString(fastFastSyncBeenActive)}{nameof(fastFastSyncBeenActive)} && " +
+                              $"{GetBoolFlagString(hasAnyPostPivotPeer)}{nameof(hasAnyPostPivotPeer)} && " +
+                              $"{GetBoolFlagString(notInFastSync)}{nameof(notInFastSync)} && " +
+                              $"{GetBoolFlagString(stateNotDownloadedYet)}{nameof(stateNotDownloadedYet)} && " +
+                              $"{GetBoolFlagString(notInAStickyFullSync)}{nameof(notInAStickyFullSync)} && " +
+                              $"{GetBoolFlagString(notHasJustStartedFullSync)}{nameof(notHasJustStartedFullSync)} " +
+                              $"== {result}");
             }
 
-            return fastSyncEnabled &&
-                   fastFastSyncBeenActive &&
-                   hasAnyPostPivotPeer &&
-                   (notInFastSync || stickyStateNodes) &&
-                   stateNotDownloadedYet &&
-                   notHasJustStartedFullSync &&
-                   notInAStickyFullSync;
+            return result;
         }
 
         private bool ShouldBeInBeamSyncMode(Snapshot best)
         {
             bool beamSyncEnabled = BeamSyncEnabled;
             bool isInStateSync = best.IsInStateSync;
+            
+            bool result = beamSyncEnabled &&
+                          isInStateSync;
 
             if (_logger.IsTrace)
             {
-                _logger.Trace("======================== BEAM");
-                _logger.Trace("beamSyncEnabled " + beamSyncEnabled);
-                _logger.Trace("isInStateSync " + isInStateSync);
+                _logger.Trace("BEAM: " +
+                              $"{GetBoolFlagString(beamSyncEnabled)}{nameof(beamSyncEnabled)} && " +
+                              $"{GetBoolFlagString(isInStateSync)}{nameof(isInStateSync)} " +
+                              $"== {result}");
             }
 
-            return beamSyncEnabled &&
-                   isInStateSync;
+            return result;
         }
 
-        private bool HasJustStartedFullSync(Snapshot best)
-        {
-            return best.State > PivotNumber // we have saved some root
-                   && best.State == best.Header // and we do not need to catch up to headers anymore 
-                   && best.Processed < best.State; // not processed the block yet
-        }
+        private bool HasJustStartedFullSync(Snapshot best) =>     
+            best.State > PivotNumber // we have saved some root
+            && best.State == best.Header // and we do not need to catch up to headers anymore 
+            && best.Processed < best.State; // not processed the block yet
 
-        private bool AnyDesiredPeerKnown(Snapshot best)
+        protected virtual bool AnyDesiredPeerKnown(Snapshot best)
         {
             UInt256 localChainDifficulty = _syncProgressResolver.ChainDifficulty;
-            bool anyDesiredPeerKnown = best.PeerDifficulty > localChainDifficulty && best.PeerHeadHash != best.HeaderHash // we don't trust parity TotalDifficulty, so checking peerHeadHash. 
+            bool anyDesiredPeerKnown = best.PeerDifficulty > localChainDifficulty 
                                        || best.PeerDifficulty == localChainDifficulty && best.PeerBlock > best.Header;
             if (anyDesiredPeerKnown)
             {
-                if (_logger.IsTrace)
-                    _logger.Trace($"Best peer [{best.PeerBlock},{best.PeerDifficulty},{best.PeerHeadHash}] " +
-                                  $"> local [{best.Header},{localChainDifficulty},{best.HeaderHash}]");
+                if (_logger.IsInfo)
+                    _logger.Info($"Best peer [{best.PeerBlock},{best.PeerDifficulty}] " +
+                                  $"> local [{best.Header},{localChainDifficulty}]");
             }
 
             return anyDesiredPeerKnown;
         }
 
-        private bool AnyPostPivotPeerKnown(long bestPeerBlock)
-        {
-            if (bestPeerBlock <= _syncConfig.PivotNumberParsed)
-            {
-                return false;
-            }
-
-            return true;
-        }
-
-        private (UInt256? maxPeerDifficulty, long? number, Keccak headHash) ReloadDataFromPeers()
+        private bool AnyPostPivotPeerKnown(long bestPeerBlock) => bestPeerBlock > _syncConfig.PivotNumberParsed;
+        
+        private (UInt256? maxPeerDifficulty, long? number) ReloadDataFromPeers()
         {
             UInt256? maxPeerDifficulty = null;
             long? number = 0;
-            Keccak headHash = Keccak.Zero;
-
+            
             foreach (PeerInfo peer in _syncPeerPool.InitializedPeers)
             {
-                if (peer.TotalDifficulty > (maxPeerDifficulty ?? UInt256.Zero))
+                UInt256 currentMax = maxPeerDifficulty  ?? UInt256.Zero;
+                if (peer.TotalDifficulty > currentMax)
                 {
-                    maxPeerDifficulty = peer.TotalDifficulty;
-                    number = peer.HeadNumber;
-                    headHash = peer.SyncPeer.HeadHash;
+                    // we don't trust parity TotalDifficulty, so we are checking if we know the hash and get our total difficulty
+                    var realTotalDifficulty = _syncProgressResolver.GetTotalDifficulty(peer.HeadHash) ?? peer.TotalDifficulty;   
+                    if (realTotalDifficulty > currentMax)
+                    {
+                        maxPeerDifficulty = realTotalDifficulty;
+                        number = peer.HeadNumber;
+                    }
                 }
             }
 
-            return (maxPeerDifficulty, number, headHash);
+            return (maxPeerDifficulty, number);
         }
 
         public void Dispose()
@@ -416,7 +457,7 @@ namespace Nethermind.Synchronization.ParallelSync
             _timer?.Dispose();
         }
 
-        private Snapshot TakeSnapshot(UInt256 peerDifficulty, long peerBlock, Keccak peerHeadHash)
+        private Snapshot TakeSnapshot(UInt256 peerDifficulty, long peerBlock)
         {
             // need to find them in the reversed order otherwise we may fall behind the processing
             // and think that we have an invalid snapshot
@@ -424,9 +465,8 @@ namespace Nethermind.Synchronization.ParallelSync
             long state = _syncProgressResolver.FindBestFullState();
             long block = _syncProgressResolver.FindBestFullBlock();
             long header = _syncProgressResolver.FindBestHeader();
-            Keccak headerHash = _syncProgressResolver.FindBestHeaderHash();
 
-            Snapshot best = new Snapshot(processed, state, block, header, headerHash, peerBlock, peerDifficulty, peerHeadHash);
+            Snapshot best = new Snapshot(processed, state, block, header, peerBlock, peerDifficulty);
             VerifySnapshot(best);
             return best;
         }
@@ -456,23 +496,23 @@ namespace Nethermind.Synchronization.ParallelSync
                 throw new InvalidAsynchronousStateException(errorMessage);
             }
         }
+        
+        private string GetBoolFlagString(in bool flag) => flag ? string.Empty : "!";
 
-        public event EventHandler<SyncModeChangedEventArgs> Preparing;
-        public event EventHandler<SyncModeChangedEventArgs> Changing;
-        public event EventHandler<SyncModeChangedEventArgs> Changed;
+        public event EventHandler<SyncModeChangedEventArgs>? Preparing;
+        public event EventHandler<SyncModeChangedEventArgs>? Changing;
+        public event EventHandler<SyncModeChangedEventArgs>? Changed;
 
-        private ref struct Snapshot
+        protected ref struct Snapshot
         {
-            public Snapshot(long processed, long state, long block, long header, Keccak headerHash, long peerBlock, UInt256 peerDifficulty, Keccak peerHeadHash)
+            public Snapshot(long processed, long state, long block, long header, long peerBlock, UInt256 peerDifficulty)
             {
                 Processed = processed;
                 State = state;
                 Block = block;
                 Header = header;
-                HeaderHash = headerHash;
                 PeerBlock = peerBlock;
                 PeerDifficulty = peerDifficulty;
-                PeerHeadHash = peerHeadHash;
 
                 IsInFastReceipts = IsInFastBodies = IsInFastHeaders = IsInFastSync = IsInBeamSync = IsInFullSync = IsInStateSync = false;
             }
@@ -505,15 +545,12 @@ namespace Nethermind.Synchronization.ParallelSync
             /// </summary>
             public long Header { get; }
 
-            public Keccak HeaderHash { get; }
-
             /// <summary>
             /// Best peer block - this is what other peers are advertising - it may be lower than our best block if we get disconnected from best peers
             /// </summary>
             public long PeerBlock { get; }
 
             public UInt256 PeerDifficulty { get; }
-            public Keccak PeerHeadHash { get; }
         }
     }
 }

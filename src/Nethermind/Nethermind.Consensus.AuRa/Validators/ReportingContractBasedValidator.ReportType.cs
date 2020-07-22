@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,25 +15,14 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Diagnostics;
-
-namespace Nethermind.Synchronization.FastSync
+namespace Nethermind.Consensus.AuRa.Validators
 {
-    [DebuggerDisplay("{SyncItem.Hash} {Counter}")]
-    internal class DependentItem
+    public partial class ReportingContractBasedValidator
     {
-        public StateSyncItem SyncItem { get; }
-        public byte[] Value { get; }
-        public int Counter { get; set; }
-
-        public bool IsAccount { get; }
-
-        public DependentItem(StateSyncItem syncItem, byte[] value, int counter, bool isAccount = false)
+        internal enum ReportType
         {
-            SyncItem = syncItem;
-            Value = value;
-            Counter = counter;
-            IsAccount = isAccount;
+            Benign,
+            Malicious
         }
     }
 }

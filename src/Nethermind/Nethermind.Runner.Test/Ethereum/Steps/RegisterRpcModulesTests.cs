@@ -31,6 +31,8 @@ using Nethermind.Logging;
 using Nethermind.Runner.Ethereum;
 using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Runner.Ethereum.Steps;
+using Nethermind.State.Repositories;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using NSubstitute;
@@ -58,6 +60,8 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             context.RpcModuleProvider = rpcModuleProvider;
             context.Signer = new Signer(ChainId.Mainnet, TestItem.PrivateKeyA, LimboLogs.Instance);
             context.KeyStore = Substitute.For<IKeyStore>();
+            context.SyncModeSelector = Substitute.For<ISyncModeSelector>();
+            context.ChainLevelInfoRepository = Substitute.For<IChainLevelInfoRepository>();
             
             RegisterRpcModules registerRpcModules = new RegisterRpcModules(context);
             registerRpcModules.Execute(CancellationToken.None);

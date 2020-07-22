@@ -58,10 +58,10 @@ namespace Nethermind.Consensus.AuRa
             _auRaStepCalculator = auRaStepCalculator ?? throw new ArgumentNullException(nameof(auRaStepCalculator));
             _reportingValidator = reportingValidator ?? throw new ArgumentNullException(nameof(reportingValidator));
             _config = config ?? throw new ArgumentNullException(nameof(config));
-            CanProduce = _config.AllowAuRaPrivateChains;
+            _canProduce = _config.AllowAuRaPrivateChains ? 1 : 0;
             _gasLimitOverride = gasLimitOverride;
         }
-
+        
         protected override async ValueTask ProducerLoopStep(CancellationToken cancellationToken)
         {
             await base.ProducerLoopStep(cancellationToken);
@@ -113,7 +113,7 @@ namespace Nethermind.Consensus.AuRa
             // We need to check if we are within gas limit. We cannot calculate this in advance because:
             // a) GasLimit can come from contract
             // b) Some transactions that call contracts can be added to block and we don't know how much gas they will use.
-            if (processedBlock.GasUsed > processedBlock.GasLimit)
+            if (processedBlock != null && processedBlock.GasUsed > processedBlock.GasLimit)
             {
                 if (Logger.IsError) Logger.Error($"Block produced used {processedBlock.GasUsed} gas and exceeded gas limit {processedBlock.GasLimit}.");
                 return null;
@@ -129,40 +129,47 @@ namespace Nethermind.Consensus.AuRa
             return base.SealBlock(block, parent, token);
         }
         
+        // This is for debugging.
         private class ValidatedTxSource : ITxSource
         {
             private readonly ITxSource _innerSource;
             private readonly ILogger _logger;
-            private readonly Dictionary<(Address, UInt256), Keccak> _senderNonces = new Dictionary<(Address, UInt256), Keccak>(250);
+            private readonly Dictionary<(Address, UInt256), Transaction> _senderNonces = new Dictionary<(Address, UInt256), Transaction>(250);
 
             public ValidatedTxSource(ITxSource innerSource, ILogManager logManager)
             {
                 _innerSource = innerSource;
                 _logger = logManager.GetClassLogger();
-                if (_logger.IsInfo) _logger.Info($"Transaction sources used when building blocks: {this}");
+                if (_logger.IsDebug) _logger.Debug($"Transaction sources used when building blocks: {this}");
             }
 
             public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
             {
+                int index = 0;
                 _senderNonces.Clear();
                 
                 foreach (var tx in _innerSource.GetTransactions(parent, gasLimit))
                 {
                     var senderNonce = (tx.SenderAddress, tx.Nonce);
-                    if (_senderNonces.TryGetValue(senderNonce, out var txHash))
+                    if (_senderNonces.TryGetValue(senderNonce, out var prevTx))
                     {
-                        if (_logger.IsError) _logger.Error($"Found transactions with same Sender and Nonce when producing block {parent.Number + 1}. Tx1: {txHash}, Tx2: {tx.Hash}. Skipping second one.");
+                        if (_logger.IsError) _logger.Error($"Found transactions with same Sender and Nonce when producing block {parent.Number + 1}. " +
+                                                           $"Tx1: {prevTx.Hash}, from {prevTx.SenderAddress} to {prevTx.To} with nonce {prevTx.Nonce}. " +
+                                                           $"Tx2: {tx.Hash}, from {tx.SenderAddress} to {tx.To} with nonce {tx.Nonce}. " +
+                                                           "Skipping second one.");
                     }
                     else
                     {
-                        _senderNonces.Add(senderNonce, tx.Hash);
+                        _senderNonces.Add(senderNonce, tx);
+                        if (_logger.IsDebug) _logger.Debug($"Adding transaction {index++}: {tx.ToShortString()} to block {parent.Number + 1}.");
                         yield return tx;
                     }
                 }
+                
+                _senderNonces.Clear();
             }
             
-            private readonly int _id = ITxSource.IdCounter;
-            public override string ToString() => $"{GetType().Name}_{_id} [ {_innerSource} ]";
+            public override string ToString() => $"{nameof(ValidatedTxSource)} [ {_innerSource} ]";
         }
     }
 }

@@ -60,7 +60,7 @@ namespace Nethermind.Synchronization.Blocks
 
                 if (headers[i].HasBody)
                 {
-                    Blocks[i - 1] = new Block(headers[i], (BlockBody) null);
+                    Blocks[i - 1] = new Block(headers[i]);
                     _indexMapping.Add(currentBodyIndex, i - 1);
                     currentBodyIndex++;
                     NonEmptyBlockHashes.Add(headers[i].Hash);
@@ -74,11 +74,11 @@ namespace Nethermind.Synchronization.Blocks
 
         public int FullBlocksCount => Blocks.Length;
 
-        public Block[] Blocks { get; set; }
+        public Block[] Blocks { get; }
 
-        public TxReceipt[][] ReceiptsForBlocks { get; private set; }
+        public TxReceipt[]?[]? ReceiptsForBlocks { get; }
 
-        public List<Keccak> NonEmptyBlockHashes { get; set; }
+        public List<Keccak> NonEmptyBlockHashes { get; }
 
         public IList<Keccak> GetHashesByOffset(int offset, int maxLength)
         {
@@ -115,15 +115,12 @@ namespace Nethermind.Synchronization.Blocks
 
             int mappedIndex = _indexMapping[index];
             Block block = Blocks[_indexMapping[index]];
-            if (receipts == null)
-            {
-                receipts = Array.Empty<TxReceipt>();
-            }
+            receipts ??= Array.Empty<TxReceipt>();
 
             if (_receiptsRecovery.TryRecover(block, receipts))
             {
                 ValidateReceipts(block, receipts);
-                ReceiptsForBlocks[mappedIndex] = receipts;
+                ReceiptsForBlocks![mappedIndex] = receipts;
             }
             else
             {

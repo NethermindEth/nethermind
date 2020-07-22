@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -16,16 +16,18 @@
 
 using System.Collections.Generic;
 using Nethermind.Config;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Network
 {
     public interface INetworkStorage
     {
         NetworkNode[] GetPersistedNodes();
-        
+        int PersistedNodesCount { get; }
+
         void UpdateNode(NetworkNode node);
         void UpdateNodes(IEnumerable<NetworkNode> nodes);
-        void RemoveNodes(NetworkNode[] nodes);
+        void RemoveNode(PublicKey nodeId);
         void StartBatch();
         void Commit();
         bool AnyPendingChange();
