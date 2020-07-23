@@ -125,7 +125,7 @@ namespace Nethermind.Blockchain.Processing
 
                 return processedBlocks;
             }
-            catch (InvalidBlockException)
+            catch (Exception) // try to restore for all cost
             {
                 RestoreBranch(previousBranchStateRoot);
                 throw;
