@@ -29,9 +29,8 @@ namespace Nethermind.Blockchain.Processing
         IgnoreParentNotOnMainChain = 16,
         DoNotVerifyNonce = 32,
         DoNotUpdateHead = 64,
-        DumpParityTraces = 128,
-        DumpGetTraces = 256,
-        All = 511,
+        RerunWithTraceOnFailure = 128,
+        All = 255,
         ProducingBlock = NoValidation | ReadOnlyChain,
         Trace = ForceProcessing | ReadOnlyChain | DoNotVerifyNonce | NoValidation,
         Beam = IgnoreParentNotOnMainChain | DoNotUpdateHead
