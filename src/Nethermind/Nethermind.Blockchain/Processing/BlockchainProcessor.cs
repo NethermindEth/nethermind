@@ -343,16 +343,14 @@ namespace Nethermind.Blockchain.Processing
             }
             catch (InvalidBlockException ex)
             {
-                if ((options & ProcessingOptions.RerunWithTraceOnFailure)
-                    == ProcessingOptions.RerunWithTraceOnFailure)
-                {
-                    TraceFailingBranch(
-                        processingBranch,
-                        options, new GethLikeBlockTracer(GethTraceOptions.Default));
-                    TraceFailingBranch(
-                        processingBranch,
-                        options, new ParityLikeBlockTracer(ParityTraceTypes.StateDiff | ParityTraceTypes.Trace));
-                }
+                TraceFailingBranch(
+                    processingBranch,
+                    options,
+                    new GethLikeBlockTracer(GethTraceOptions.Default));
+                TraceFailingBranch(
+                    processingBranch,
+                    options,
+                    new ParityLikeBlockTracer(ParityTraceTypes.StateDiff | ParityTraceTypes.Trace));
 
                 Keccak invalidBlockHash = ex.InvalidBlockHash;
                 for (int i = 0; i < processingBranch.BlocksToProcess.Count; i++)
