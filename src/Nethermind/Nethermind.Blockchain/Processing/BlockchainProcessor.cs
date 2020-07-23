@@ -281,10 +281,7 @@ namespace Nethermind.Blockchain.Processing
 
             ProcessingBranch processingBranch = PrepareProcessingBranch(suggestedBlock, options);
             PrepareBlocksToProcess(suggestedBlock, options, processingBranch);
-            Block[] processedBlocks = ProcessBranch(
-                options | ProcessingOptions.RerunWithTraceOnFailure,
-                tracer,
-                processingBranch);
+            Block[] processedBlocks = ProcessBranch(processingBranch, options | ProcessingOptions.RerunWithTraceOnFailure, tracer);
             if (processedBlocks == null)
             {
                 return null;
@@ -315,7 +312,7 @@ namespace Nethermind.Blockchain.Processing
             return lastProcessed;
         }
 
-        private void TraceFailingBranch(ProcessingBranch processingBranch, IBlockTracer blockTracer, ProcessingOptions options)
+        private void TraceFailingBranch(ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer blockTracer)
         {
             try
             {
@@ -331,10 +328,9 @@ namespace Nethermind.Blockchain.Processing
             }
         }
 
-        private Block[] ProcessBranch(
+        private Block[] ProcessBranch(ProcessingBranch processingBranch,
             ProcessingOptions options,
-            IBlockTracer tracer,
-            ProcessingBranch processingBranch)
+            IBlockTracer tracer)
         {
             Block[] processedBlocks;
             try
@@ -352,12 +348,10 @@ namespace Nethermind.Blockchain.Processing
                 {
                     TraceFailingBranch(
                         processingBranch,
-                        new GethLikeBlockTracer(GethTraceOptions.Default),
-                        options);
+                        options, new GethLikeBlockTracer(GethTraceOptions.Default));
                     TraceFailingBranch(
                         processingBranch,
-                        new ParityLikeBlockTracer(ParityTraceTypes.StateDiff | ParityTraceTypes.Trace),
-                        options);
+                        options, new ParityLikeBlockTracer(ParityTraceTypes.StateDiff | ParityTraceTypes.Trace));
                 }
 
                 Keccak invalidBlockHash = ex.InvalidBlockHash;
