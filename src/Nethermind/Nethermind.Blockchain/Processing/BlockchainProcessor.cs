@@ -224,7 +224,7 @@ namespace Nethermind.Blockchain.Processing
                 Block block = blockRef.Block;
 
                 if (_logger.IsTrace) _logger.Trace($"Processing block {block.ToString(Block.Format.Short)}).");
-                
+
                 Block processedBlock = Process(block, blockRef.ProcessingOptions, NullBlockTracer.Instance);
                 if (processedBlock == null)
                 {
@@ -245,18 +245,16 @@ namespace Nethermind.Blockchain.Processing
 
         private void FireProcessingQueueEmpty()
         {
-            if (((IBlockProcessingQueue)this).IsEmpty)
+            if (((IBlockProcessingQueue) this).IsEmpty)
             {
                 ProcessingQueueEmpty?.Invoke(this, EventArgs.Empty);
             }
         }
 
         public event EventHandler ProcessingQueueEmpty;
-        
+
         int IBlockProcessingQueue.Count => _blockQueue.Count + _recoveryQueue.Count;
-        
-        public bool IsEmpty => _blockQueue.Count == 0 && _recoveryQueue.Count == 0;
-        
+
         public Block Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer tracer)
         {
             if (!RunSimpleChecksAheadOfProcessing(suggestedBlock, options))
@@ -266,7 +264,7 @@ namespace Nethermind.Blockchain.Processing
 
             UInt256 totalDifficulty = suggestedBlock.TotalDifficulty ?? 0;
             if (_logger.IsTrace) _logger.Trace($"Total difficulty of block {suggestedBlock.ToString(Block.Format.Short)} is {totalDifficulty}");
-            
+
             bool shouldProcess = suggestedBlock.IsGenesis
                                  || totalDifficulty > (_blockTree.Head?.TotalDifficulty ?? 0)
                                  // so above is better and more correct but creates an impression of the node staying behind on stats page
@@ -317,12 +315,28 @@ namespace Nethermind.Blockchain.Processing
             return lastProcessed;
         }
 
+        private void TraceFailingBranch(ProcessingBranch processingBranch, IBlockTracer blockTracer, ProcessingOptions options)
+        {
+            try
+            {
+                _blockProcessor.Process(
+                    processingBranch.Root,
+                    processingBranch.BlocksToProcess,
+                    options,
+                    blockTracer);
+            }
+            catch (InvalidBlockException ex)
+            {
+                BlockTraceDumper.LogDiagnosticTrace(blockTracer, ex.InvalidBlockHash, _logger);
+            }
+        }
+
         private Block[] ProcessBranch(
             ProcessingOptions options,
             IBlockTracer tracer,
             ProcessingBranch processingBranch)
         {
-            Block[] processedBlocks = null;
+            Block[] processedBlocks;
             try
             {
                 processedBlocks = _blockProcessor.Process(
@@ -333,37 +347,31 @@ namespace Nethermind.Blockchain.Processing
             }
             catch (InvalidBlockException ex)
             {
-                // only run it for the first processing
                 if ((options & ProcessingOptions.RerunWithTraceOnFailure)
                     == ProcessingOptions.RerunWithTraceOnFailure)
                 {
-                    GethLikeBlockTracer gethTracer
-                        = new GethLikeBlockTracer(GethTraceOptions.Default);
-                    ProcessBranch(
-                        options & ~ProcessingOptions.RerunWithTraceOnFailure,
-                        gethTracer, processingBranch);
-
-                    ParityLikeBlockTracer parityLikeBlockTracer =
-                        new ParityLikeBlockTracer(ParityTraceTypes.StateDiff | ParityTraceTypes.Trace);
-                    ProcessBranch(
-                        options & ~ProcessingOptions.RerunWithTraceOnFailure,
-                        parityLikeBlockTracer, processingBranch);
-
-                    for (int i = 0; i < processingBranch.BlocksToProcess.Count; i++)
-                    {
-                        if (processingBranch.BlocksToProcess[i].Hash == ex.InvalidBlockHash)
-                        {
-                            _blockTree.DeleteInvalidBlock(processingBranch.BlocksToProcess[i]);
-                            if (_logger.IsDebug)
-                                _logger.Debug($"Skipped processing of {processingBranch.BlocksToProcess[^1].ToString(Block.Format.FullHashAndNumber)} because of {processingBranch.BlocksToProcess[i].ToString(Block.Format.FullHashAndNumber)} is invalid");
-                            processedBlocks = null;
-                        }
-                    }   
+                    TraceFailingBranch(
+                        processingBranch,
+                        new GethLikeBlockTracer(GethTraceOptions.Default),
+                        options);
+                    TraceFailingBranch(
+                        processingBranch,
+                        new ParityLikeBlockTracer(ParityTraceTypes.StateDiff | ParityTraceTypes.Trace),
+                        options);
                 }
-                else
+
+                Keccak invalidBlockHash = ex.InvalidBlockHash;
+                for (int i = 0; i < processingBranch.BlocksToProcess.Count; i++)
                 {
-                    BlockTraceDumper.LogDiagnosticTrace(tracer, ex.InvalidBlockHash, _logger);
+                    if (processingBranch.BlocksToProcess[i].Hash == invalidBlockHash)
+                    {
+                        _blockTree.DeleteInvalidBlock(processingBranch.BlocksToProcess[i]);
+                        if (_logger.IsDebug)
+                            _logger.Debug($"Skipped processing of {processingBranch.BlocksToProcess[^1].ToString(Block.Format.FullHashAndNumber)} because of {processingBranch.BlocksToProcess[i].ToString(Block.Format.FullHashAndNumber)} is invalid");
+                    }
                 }
+
+                processedBlocks = null;
             }
 
             return processedBlocks;
