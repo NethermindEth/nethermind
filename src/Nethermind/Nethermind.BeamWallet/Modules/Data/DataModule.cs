@@ -35,19 +35,22 @@ namespace Nethermind.BeamWallet.Modules.Data
         private readonly IEthJsonRpcClientProxy _ethJsonRpcClientProxy;
         private readonly Address _address;
         private readonly Timer _timer;
-        private readonly TimeSpan _interval;
         private decimal _balance;
         private Window _window;
         private Label _syncingInfoLabel;
         private Label _balanceValueLabel;
+        private CallTransactionModel _tokenTransaction;
+        private Label _tokenBalanceLabel;
+        private readonly IEnumerable<Token> _tokens = InitTokens();
+
         public event EventHandler<TransferClickedEventArgs> TransferClicked;
         
         public DataModule(IEthJsonRpcClientProxy ethJsonRpcClientProxy, string address)
         {
             _ethJsonRpcClientProxy = ethJsonRpcClientProxy;
             _address = new Address(address);
-            _interval = TimeSpan.FromSeconds(5);
-            _timer = new Timer(Update, null, TimeSpan.Zero, _interval);
+            TimeSpan interval = TimeSpan.FromSeconds(5);
+            _timer = new Timer(Update, null, TimeSpan.Zero, interval);
         }
 
         public async Task<Window> InitAsync()
@@ -56,7 +59,7 @@ namespace Nethermind.BeamWallet.Modules.Data
             {
                 X = 0,
                 Y = 0,
-                Width = Dim.Fill(),
+                Width = Dim.Fill(),    
                 Height = Dim.Fill()
             };
             Application.Top.Add(_window);
@@ -68,37 +71,95 @@ namespace Nethermind.BeamWallet.Modules.Data
         private void Update(object state)
         {
             _ = UpdateBalanceAsync();
+            // _ = UpdateTokenBalanceAsync();
         }
 
         private async Task UpdateBalanceAsync()
         {
-            if (_syncingInfoLabel is null || _balanceValueLabel is null)
+            if (_syncingInfoLabel is null || _balanceValueLabel is null || _address is null)
             {
                 return;
             }
-            
-            var balanceResult = await _ethJsonRpcClientProxy.eth_getBalance(_address);
-            
-            _balance = WeiToEth(balanceResult.Result.ToString());
+
+            var balance = await GetBalanceAsync();
+            if (!balance.HasValue)    
+            {
+                return;
+            }
+
+            _balance = balance.Value;
             _window.Remove(_balanceValueLabel);
-            _balanceValueLabel = new Label(70, 1, $"{_balance} ETH");
+            _balanceValueLabel = new Label(70, 1, $"{_balance} ETH (refreshing every 5s)");
             
             _window.Remove(_syncingInfoLabel);
             _window.Add(_balanceValueLabel);
         }
 
+        private async Task<decimal?> GetBalanceAsync()
+        {
+            var result = await _ethJsonRpcClientProxy.eth_getBalance(_address);
+            if (!result.IsValid || !result.Result.HasValue)
+            {
+                return null;
+            }
+
+            return WeiToEth(result.Result);
+        }
+        
+        private async Task UpdateTokenBalanceAsync()
+        {
+            if (_tokenBalanceLabel is null)
+            {
+                return;
+            }
+        
+            var y = 1;
+            foreach (var token in _tokens)
+            {
+                y += 2;
+                _tokenTransaction.To = token.Address;
+                var tokenBalance = await GetTokenBalanceAsync();
+                if (!tokenBalance.HasValue)
+                {
+                    return;
+                }
+                token.Balance = tokenBalance.Value;
+                _window.Remove(_tokenBalanceLabel);
+                _tokenBalanceLabel = new Label(1, y, $"{token.Name}: {WeiToEth(token.Balance)}");
+                _window.Add(_tokenBalanceLabel);
+            }
+        }
+        
+        private async Task<UInt256?> GetTokenBalanceAsync()
+        {
+            var counter = 0;
+            RpcResult<byte[]> result;
+            do
+            {
+                counter++;
+                result = await _ethJsonRpcClientProxy.eth_call(_tokenTransaction, BlockParameterModel.Latest);
+
+            } while (!result.IsValid && counter < 10);
+          
+            return UInt256.Parse(result.Result.ToHexString(), NumberStyles.HexNumber);
+        }
+        
         private async Task RenderBalanceAsync()
         {
             var addressLabel = new Label(1, 1, $"Address: {_address}");
             var balanceLabel = new Label(60, 1, "Balance:");
             _syncingInfoLabel = new Label(70, 1, "Syncing...");
-            
             _window.Add(addressLabel, balanceLabel, _syncingInfoLabel);
-            
-            var balanceResult = await _ethJsonRpcClientProxy.eth_getBalance(_address);
-            
-            _balance = WeiToEth(balanceResult.Result.ToString());
-            _balanceValueLabel = new Label(70, 1, $"{_balance} ETH");
+
+            decimal? balance;
+            do
+            {
+                balance = await GetBalanceAsync();
+                await Task.Delay(1000);
+            } while (!balance.HasValue);
+                
+            _balance = balance.Value;
+            _balanceValueLabel = new Label(70, 1, $"{_balance} ETH (refreshing every 5s)");   
             
             _window.Remove(_syncingInfoLabel);
             _window.Add(_balanceValueLabel);
@@ -118,39 +179,43 @@ namespace Nethermind.BeamWallet.Modules.Data
             };
             
             _window.Add(quitButton, transferButton);
+        }
 
+        private async Task DisplayTokensBalance()
+        {
             var tokenTransaction = new CallTransactionModel();
             var tokenSignature = "0x70a08231";
             var tokenData = tokenSignature + "000000000000000000000000" + _address.ToString().Substring(2);
             tokenTransaction.Data = Bytes.FromHexString(tokenData);
+            _tokenTransaction = tokenTransaction;
             
-            var tokens = InitTokens();
             var y = 1;
-            foreach (var token in tokens)
+            foreach (var token in _tokens)
             {
                 y += 2;
-                tokenTransaction.To = token.Address;
-                var call = await _ethJsonRpcClientProxy.eth_call(tokenTransaction, BlockParameterModel.Latest);
-                var resultHex = call.Result.ToHexString();
-                token.Balance = UInt256.Parse(resultHex, NumberStyles.HexNumber);
-                var tokenBalanceLabel = new Label(1, y, $"{token.Name}: {WeiToEth(token.Balance.ToString())}");
-                _window.Add(tokenBalanceLabel);
+                _tokenTransaction.To = token.Address;
+                var tokenBalance = await GetTokenBalanceAsync();
+                if (!tokenBalance.HasValue)
+                {
+                    return;
+                }
+                token.Balance = tokenBalance.Value;
+                _tokenBalanceLabel = new Label(1, y, $"{token.Name}: {WeiToEth(token.Balance)}");
+                _window.Add(_tokenBalanceLabel);
             }
         }
 
-        private static decimal WeiToEth(string result) => (decimal.Parse(result) / 1000000000000000000);
+        private static decimal WeiToEth(UInt256? result) => (decimal.Parse(result.ToString()) / 1000000000000000000);
+
 
         private static IEnumerable<Token> InitTokens()
-        {
-            var list = new[]
+            => new[]
             {
                 new Token("DAI", "0x6b175474e89094c44da98b954eedeac495271d0f"),
                 new Token("USDT", "0xdAC17F958D2ee523a2206206994597C13D831ec7"),
                 new Token("USDC", "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"),
                 new Token("BAT", "0x0D8775F648430679A709E98d2b0Cb6250d2887EF"),
             };
-            return list;
-        }
 
         private class Token
         {

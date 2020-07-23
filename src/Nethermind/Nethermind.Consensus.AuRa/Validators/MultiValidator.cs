@@ -237,8 +237,7 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit) => _currentValidator is ITxSource txSource ? txSource.GetTransactions(parent, gasLimit) : Enumerable.Empty<Transaction>();
         
-        private readonly int _id = ITxSource.IdCounter;
-        public override string ToString() => $"{GetType().Name}_{_id} [ {(_currentValidator is ITxSource txSource ? txSource.ToString() : string.Empty)} ]";
+        public override string ToString() => $"{nameof(MultiValidator)} [ {(_currentValidator is ITxSource txSource ? txSource.ToString() : string.Empty)} ]";
 
     }
 }

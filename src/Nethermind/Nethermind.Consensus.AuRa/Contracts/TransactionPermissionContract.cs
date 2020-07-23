@@ -84,7 +84,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             }
             catch (Exception)
             {
-                return UInt256.One;;
+                return UInt256.One;
             }
         }
 

@@ -125,7 +125,7 @@ namespace Nethermind.Blockchain.Processing
 
                 return processedBlocks;
             }
-            catch (InvalidBlockException)
+            catch (Exception) // try to restore for all cost
             {
                 RestoreBranch(previousBranchStateRoot);
                 throw;
@@ -176,7 +176,7 @@ namespace Nethermind.Blockchain.Processing
 
         private void RestoreBranch(Keccak branchingPointStateRoot)
         {
-            if (_logger.IsTrace) _logger.Trace($"Restoring the branch checkpoint - {branchingPointStateRoot} | {_stateProvider.StateRoot}");
+            if (_logger.IsTrace) _logger.Trace($"Restoring the branch checkpoint - {branchingPointStateRoot}");
             _stateDb.Restore(ISnapshotableDb.NoChangesCheckpoint);
             _codeDb.Restore(ISnapshotableDb.NoChangesCheckpoint);
             _storageProvider.Reset();

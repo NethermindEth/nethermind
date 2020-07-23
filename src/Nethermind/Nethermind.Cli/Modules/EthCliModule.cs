@@ -87,9 +87,9 @@ namespace Nethermind.Cli.Modules
         }
 
         [CliFunction("eth", "estimateGas")]
-        public string EstimateGas(object json)
+        public string EstimateGas(object json, string blockParameter = null)
         {
-            return NodeManager.Post<string>("eth_estimateGas", json).Result;
+            return NodeManager.Post<string>("eth_estimateGas", json, blockParameter ?? "latest").Result;
         }
 
         [CliFunction("eth", "sendWei")]

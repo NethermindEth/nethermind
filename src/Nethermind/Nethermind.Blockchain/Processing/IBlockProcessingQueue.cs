@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Core;
 
 namespace Nethermind.Blockchain.Processing
@@ -24,7 +25,10 @@ namespace Nethermind.Blockchain.Processing
         void Enqueue(Block block, ProcessingOptions processingOptions);
         
         event EventHandler ProcessingQueueEmpty;
+
+        int Count { get; }
         
-        bool IsEmpty { get; }
+        public bool IsEmpty => Count == 0;
+        
     }
 }

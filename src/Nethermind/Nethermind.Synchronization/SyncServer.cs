@@ -265,6 +265,17 @@ namespace Nethermind.Synchronization
             }
 
             sb.Append($", sent by {syncPeer:s}");
+
+            if (block.Header?.AuRaStep != null)
+            {
+                sb.Append($", with AuRa step {block.Header.AuRaStep.Value}");
+            }
+
+            if (_logger.IsDebug)
+            {
+                sb.Append($", with difficulty {block.Difficulty}/{block.TotalDifficulty}");
+            }
+            
             _logger.Info(sb.ToString());
         }
 

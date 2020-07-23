@@ -112,7 +112,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             return _tracer.TraceBlock(blockHash, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken); 
         }
 
-        public GethLikeTxTrace[] GetBlockTrace(long blockNumber, CancellationToken cancellationToken,GethTraceOptions gethTraceOptions = null)
+        public GethLikeTxTrace[] GetBlockTrace(long blockNumber, CancellationToken cancellationToken, GethTraceOptions gethTraceOptions = null)
         {
             return _tracer.TraceBlock(blockNumber, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken); 
         }

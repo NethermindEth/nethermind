@@ -129,8 +129,6 @@ namespace Nethermind.Synchronization.ParallelSync
 
         public long FindBestHeader() => _blockTree.BestSuggestedHeader?.Number ?? 0;
         
-        public Keccak? FindBestHeaderHash() => _blockTree.BestSuggestedHeader?.Hash;
-
         public long FindBestFullBlock() => Math.Min(FindBestHeader(), _blockTree.BestSuggestedBody?.Number ?? 0); // avoiding any potential concurrency issue
 
         public bool IsLoadingBlocksFromDb()
@@ -141,7 +139,26 @@ namespace Nethermind.Synchronization.ParallelSync
         public long FindBestProcessedBlock() => _blockTree.Head?.Number ?? -1;
 
         public UInt256 ChainDifficulty => _blockTree.BestSuggestedBody?.TotalDifficulty ?? UInt256.Zero;
-        
+        public UInt256? GetTotalDifficulty(Keccak blockHash)
+        {
+            BlockHeader best = _blockTree.BestSuggestedHeader;
+
+            if (best != null)
+            {
+                if (best.Hash == blockHash)
+                {
+                    return best.TotalDifficulty;
+                }
+
+                if (best.ParentHash == blockHash)
+                {
+                    return best.TotalDifficulty - best.Difficulty;
+                }
+            }
+
+            return _blockTree.FindHeader(blockHash)?.TotalDifficulty;
+        }
+
         public bool IsFastBlocksHeadersFinished() => !IsFastBlocks() || (_blockTree.LowestInsertedHeader?.Number ?? long.MaxValue) <= 1;
         
         public bool IsFastBlocksBodiesFinished() => !IsFastBlocks() || (!_syncConfig.DownloadBodiesInFastSync || (_blockTree.LowestInsertedBodyNumber ?? long.MaxValue) <= 1);

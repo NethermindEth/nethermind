@@ -36,6 +36,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
         private readonly ITxSealer _txSealer;
         private readonly IStateReader _stateReader;
         private readonly ILogger _logger;
+        private readonly IDictionary<Address, UInt256> _nonces = new Dictionary<Address, UInt256>(1);
 
         public GeneratedTxSourceSealer(ITxSource innerSource, ITxSealer txSealer, IStateReader stateReader, ILogManager logManager)
         {
@@ -47,19 +48,27 @@ namespace Nethermind.Consensus.AuRa.Transactions
         
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
         {
-            IDictionary<Address, UInt256> nonces = new Dictionary<Address, UInt256>();
-            
-            return _innerSource.GetTransactions(parent, gasLimit).Select(tx =>
-            {
-                if (tx is GeneratedTransaction)
-                {
-                    tx.Nonce = CalculateNonce(tx.SenderAddress, parent.StateRoot, nonces);
-                    _txSealer.Seal(tx);
-                    if (_logger.IsDebug) _logger.Debug($"Sealed node generated transaction {tx.Hash} from {tx.SenderAddress} to {tx.To} with nonce {tx.Nonce}.");
-                }
+            _nonces.Clear();
 
-                return tx;
-            });
+            try
+            {
+                return _innerSource.GetTransactions(parent, gasLimit).Select(tx =>
+                {
+                    if (tx is GeneratedTransaction)
+                    {
+                        tx.Nonce = CalculateNonce(tx.SenderAddress, parent.StateRoot, _nonces);
+                        _txSealer.Seal(tx);
+                        Metrics.SealedTransactions++;
+                        if (_logger.IsDebug) _logger.Debug($"Sealed node generated transaction {tx.Hash} from {tx.SenderAddress} to {tx.To} with nonce {tx.Nonce}.");
+                    }
+
+                    return tx;
+                });
+            }
+            finally
+            {
+                _nonces.Clear();
+            }
         }
 
         private UInt256 CalculateNonce(Address address, Keccak stateRoot, IDictionary<Address, UInt256> nonces)
@@ -68,11 +77,11 @@ namespace Nethermind.Consensus.AuRa.Transactions
             {
                 nonce = _stateReader.GetNonce(stateRoot, address);
             }
-             
-            return nonces[address] = nonce;
+            
+            nonces[address] = nonce + 1;
+            return nonce;
         }
         
-        private readonly int _id = ITxSource.IdCounter;
-        public override string ToString() => $"{GetType().Name}_{_id} [ {_innerSource} ]";
+        public override string ToString() => $"{nameof(GeneratedTxSourceSealer)} [ {_innerSource} ]";
     }
 }

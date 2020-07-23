@@ -26,6 +26,12 @@ namespace Nethermind.Vault.Styles
         
         [JsonProperty("description")]
         public string Description { get; set; }
+
+        [JsonProperty("secret")]
+        public string Secret { get; set; }
+
+        [JsonProperty("type")]
+        public string Type { get; set; }
         
         public static SecretArgs Default = new SecretArgs();
 
@@ -34,7 +40,9 @@ namespace Nethermind.Vault.Styles
             return new Dictionary<string, object> 
             {
                 { nameof(Name), Name },
-                { nameof(Description), Description }
+                { nameof(Description), Description },
+                { nameof(Secret), Secret },
+                { nameof(Type), Type }
             };
         }
     }

@@ -30,6 +30,7 @@ namespace Nethermind.Synchronization.Blocks
                 PeerClientType.Geth => GethSyncLimits.MaxBodyFetch,
                 PeerClientType.Nethermind => NethermindSyncLimits.MaxBodyFetch,
                 PeerClientType.Parity => ParitySyncLimits.MaxBodyFetch,
+                PeerClientType.OpenEthereum => ParitySyncLimits.MaxBodyFetch,
                 PeerClientType.Unknown => 32,
                 _ => throw new ArgumentOutOfRangeException()
             };
@@ -43,6 +44,7 @@ namespace Nethermind.Synchronization.Blocks
                 PeerClientType.Geth => GethSyncLimits.MaxReceiptFetch,
                 PeerClientType.Nethermind => NethermindSyncLimits.MaxReceiptFetch,
                 PeerClientType.Parity => ParitySyncLimits.MaxReceiptFetch,
+                PeerClientType.OpenEthereum => ParitySyncLimits.MaxReceiptFetch,
                 PeerClientType.Unknown => 128,
                 _ => throw new ArgumentOutOfRangeException()
             };
@@ -56,6 +58,7 @@ namespace Nethermind.Synchronization.Blocks
                 PeerClientType.Geth => GethSyncLimits.MaxHeaderFetch,
                 PeerClientType.Nethermind => NethermindSyncLimits.MaxHeaderFetch,
                 PeerClientType.Parity => ParitySyncLimits.MaxHeaderFetch,
+                PeerClientType.OpenEthereum => ParitySyncLimits.MaxHeaderFetch,
                 PeerClientType.Unknown => 192,
                 _ => throw new ArgumentOutOfRangeException()
             };
