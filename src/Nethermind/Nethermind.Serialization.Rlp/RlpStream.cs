@@ -34,16 +34,17 @@ namespace Nethermind.Serialization.Rlp
         protected RlpStream()
         {
         }
-        
+
         public int MemorySize => MemorySizes.SmallObjectOverhead
                                  + MemorySizes.Align(
                                      MemorySizes.ArrayOverhead
-                                     + sizeof(int)
-                                     + Data.Length);
-        
+                                     + Data.Length)
+                                 + MemorySizes.Align(sizeof(int));
+
         public RlpStream(int length)
         {
-            Data = new byte[length]; ;
+            Data = new byte[length];
+            ;
         }
 
         public RlpStream(byte[] data)
@@ -131,7 +132,7 @@ namespace Nethermind.Serialization.Rlp
             bytesToWrite.CopyTo(Data.AsSpan(Position, bytesToWrite.Length));
             Position += bytesToWrite.Length;
         }
-        
+
         protected virtual string Description => Data.Slice(0, Math.Min(Rlp.DebugMessageContentLength, Length)).ToHexString();
 
         public byte[] Data { get; }
@@ -299,7 +300,7 @@ namespace Nethermind.Serialization.Rlp
                                         WriteByte((byte) value);
                                         return;
                                     }
-                                    
+
                                     WriteByte(131);
                                     WriteByte(byte5);
                                     WriteByte(byte6);
@@ -572,7 +573,7 @@ namespace Nethermind.Serialization.Rlp
             }
             else if (lengthOfLength == 3)
             {
-                result = PeekByte(2) | (PeekByte(1) << 8) | (PeekByte()<< 16);
+                result = PeekByte(2) | (PeekByte(1) << 8) | (PeekByte() << 16);
             }
             else if (lengthOfLength == 4)
             {
@@ -593,17 +594,17 @@ namespace Nethermind.Serialization.Rlp
         {
             return Data[Position++];
         }
-        
+
         public virtual byte PeekByte()
         {
             return Data[Position];
         }
-        
+
         protected virtual byte PeekByte(int offset)
         {
             return Data[Position + offset];
         }
-        
+
         protected virtual void SkipBytes(int length)
         {
             Position += length;
@@ -792,7 +793,7 @@ namespace Nethermind.Serialization.Rlp
         public T[] DecodeArray<T>(Func<RlpStream, T> decodeItem, bool checkPositions = true, T defaultElement = default(T))
         {
             int positionCheck = ReadSequenceLength() + Position;
-            int count = ReadNumberOfItemsRemaining(checkPositions ? positionCheck : (int?)null);
+            int count = ReadNumberOfItemsRemaining(checkPositions ? positionCheck : (int?) null);
             T[] result = new T[count];
             for (int i = 0; i < result.Length; i++)
             {
@@ -824,7 +825,7 @@ namespace Nethermind.Serialization.Rlp
                 SkipBytes(1);
                 return byteValue;
             }
-            
+
             ReadOnlySpan<byte> bytes = DecodeByteArraySpan();
             return bytes.Length == 0 ? (byte) 0
                 : bytes.Length == 1 ? bytes[0] == (byte) 128
@@ -984,14 +985,14 @@ namespace Nethermind.Serialization.Rlp
         {
             WriteByte(EmptySequenceByte);
         }
-        
+
         public void EncodeEmptyArray()
         {
             WriteByte(EmptyArrayByte);
         }
 
         private const byte EmptyArrayByte = 128;
-        
+
         private const byte EmptySequenceByte = 192;
     }
 }

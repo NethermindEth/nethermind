@@ -33,6 +33,7 @@ namespace Nethermind.Serialization.Rlp
     public class Rlp
     {
         public const int LengthOfKeccakRlp = 33;
+        
         public const int LengthOfAddressRlp = 21;
 
         internal const int DebugMessageContentLength = 2048;
@@ -65,7 +66,8 @@ namespace Nethermind.Serialization.Rlp
             Bytes = bytes ?? throw new RlpException("RLP cannot be initialized with null bytes");
         }
 
-        public int MemorySize => /* this */ MemorySizes.SmallObjectOverhead + MemorySizes.ArrayOverhead + Bytes.Length;
+        public int MemorySize => /* this */ MemorySizes.SmallObjectOverhead +
+                                            MemorySizes.Align(MemorySizes.ArrayOverhead + Bytes.Length);
 
         public byte[] Bytes { get; }
 

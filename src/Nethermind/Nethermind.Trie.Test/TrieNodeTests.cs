@@ -602,5 +602,40 @@ namespace Nethermind.Trie.Test
         {
             Keccak.MemorySize.Should().Be(80);
         }
+        
+        [Test]
+        public void Size_of_rlp_stream_is_correct()
+        {
+            RlpStream rlpStream = new RlpStream(100);
+            rlpStream.MemorySize.Should().Be(160);
+        }
+
+        [Test]
+        public void Size_of_rlp_stream_7_is_correct()
+        {
+            RlpStream rlpStream = new RlpStream(7);
+            rlpStream.MemorySize.Should().Be(64);
+        }
+
+        [Test]
+        public void Size_of_rlp_unaligned_is_correct()
+        {
+            Rlp rlp = new Rlp(new byte[1]);
+            rlp.MemorySize.Should().Be(56);
+        }
+        
+        [Test]
+        public void Size_of_rlp_aligned_is_correct()
+        {
+            Rlp rlp = new Rlp(new byte[8]);
+            rlp.MemorySize.Should().Be(56);
+        }
+        
+        [Test]
+        public void Size_of_hex_prefix_is_correct()
+        {
+            HexPrefix hexPrefix = new HexPrefix(true, new byte[5]);
+            hexPrefix.MemorySize.Should().Be(64);
+        }
     }
 }
