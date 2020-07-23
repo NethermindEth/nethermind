@@ -656,7 +656,6 @@ namespace Nethermind.Evm
                     }
                     case Instruction.ADD:
                     {
-                        continue;
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
                         {
                             EndInstructionTraceError(EvmExceptionType.OutOfGas);
