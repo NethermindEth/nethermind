@@ -71,6 +71,12 @@ namespace Nethermind.Blockchain.Test
 
                 public Block[] Process(Keccak newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer)
                 {
+                    if (blockTracer != NullBlockTracer.Instance)
+                    {
+                        // this is for block reruns on failure for diag tracing
+                        throw new InvalidBlockException(Keccak.Zero);
+                    }
+                    
                     _logger.Info($"Processing {suggestedBlocks.Last().ToString(Block.Format.Short)}");
                     while (true)
                     {

@@ -187,8 +187,6 @@ namespace Nethermind.Runner.Ethereum.Steps
                 {
                     AutoProcess = !syncConfig.BeamSync,
                     StoreReceiptsByDefault = initConfig.StoreReceipts,
-                    RunGethTracer = initConfig.DiagnosticMode == DiagnosticMode.GethTrace,
-                    RunParityTracer = initConfig.DiagnosticMode == DiagnosticMode.ParityTrace,
                 });
 
             _context.BlockProcessingQueue = blockchainProcessor;

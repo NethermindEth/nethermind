@@ -89,10 +89,6 @@ namespace Nethermind.Runner
         [ConfigItem(Description = "Diagnostics mode which uses a remote DB")]
         RpcDb,
         [ConfigItem(Description = "Diagnostics mode which uses a read-only DB")]
-        ReadOnlyDb,
-        [ConfigItem(Description = "Diagnostics mode which logs the Parity style traces")]
-        ParityTrace,
-        [ConfigItem(Description = "Diagnostics mode which logs the Geth style traces")]
-        GethTrace
+        ReadOnlyDb
     }
 }
