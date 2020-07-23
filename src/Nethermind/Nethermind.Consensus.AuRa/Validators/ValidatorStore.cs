@@ -51,6 +51,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                 _db.Set(LatestFinalizedValidatorsBlockNumberKey, finalizingBlockNumber.ToBigEndianByteArrayWithoutLeadingZeros());
                 _latestFinalizedValidatorsBlockNumber = finalizingBlockNumber;
                 _latestValidatorInfo = validatorInfo;
+                Metrics.ValidatorsCount = validators.Length;
             }
         }
 
@@ -82,7 +83,12 @@ namespace Nethermind.Consensus.AuRa.Validators
             return currentValidatorInfo.Validators;
         }
 
-        private ValidatorInfo GetLatestValidatorInfo() => _latestValidatorInfo ??= LoadValidatorInfo(_latestFinalizedValidatorsBlockNumber);
+        private ValidatorInfo GetLatestValidatorInfo()
+        {
+            var info = _latestValidatorInfo ??= LoadValidatorInfo(_latestFinalizedValidatorsBlockNumber);
+            Metrics.ValidatorsCount = info.Validators.Length;
+            return info;
+        }
 
         private ValidatorInfo LoadValidatorInfo(in long blockNumber)
         {

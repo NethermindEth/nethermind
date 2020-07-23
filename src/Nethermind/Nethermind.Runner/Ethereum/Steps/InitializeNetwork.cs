@@ -68,10 +68,10 @@ namespace Nethermind.Runner.Ethereum.Steps
         private const string PeersDbPath = "peers";
         private const string ChtDbPath = "canonicalHashTrie";
 
-        private readonly EthereumRunnerContext _ctx;
+        protected readonly EthereumRunnerContext _ctx;
         private readonly ILogger _logger;
         private readonly INetworkConfig _networkConfig;
-        private readonly ISyncConfig _syncConfig;
+        protected readonly ISyncConfig _syncConfig;
 
         public InitializeNetwork(EthereumRunnerContext context)
         {
@@ -103,7 +103,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             _ctx.DisposeStack.Push(_ctx.SyncPeerPool);
 
             SyncProgressResolver syncProgressResolver = new SyncProgressResolver(_ctx.BlockTree!, _ctx.ReceiptStorage!, _ctx.DbProvider.StateDb, _ctx.DbProvider.BeamStateDb, _syncConfig, _ctx.LogManager);
-            MultiSyncModeSelector syncModeSelector = new MultiSyncModeSelector(syncProgressResolver, _ctx.SyncPeerPool, _syncConfig, _ctx.LogManager);
+            MultiSyncModeSelector syncModeSelector = CreateMultiSyncModeSelector(syncProgressResolver);
             if (_ctx.SyncModeSelector != null)
             {
                 // this is really bad and is a result of lack of proper dependency management
@@ -209,6 +209,8 @@ namespace Nethermind.Runner.Ethereum.Steps
             ThisNodeInfo.AddInfo("This node    :", $"{_ctx.Enode.Info}");
             ThisNodeInfo.AddInfo("Node address :", $"{_ctx.Enode.Address} (do not use as an account)");
         }
+
+        protected virtual MultiSyncModeSelector CreateMultiSyncModeSelector(SyncProgressResolver syncProgressResolver) => new MultiSyncModeSelector(syncProgressResolver, _ctx.SyncPeerPool, _syncConfig, _ctx.LogManager);
 
         private Task StartDiscovery()
         {

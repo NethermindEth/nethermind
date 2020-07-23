@@ -115,10 +115,10 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
                 _outStorage.Insert(block, txReceipts);
             }
 
-            public long? LowestInsertedReceiptBlock
+            public long? LowestInsertedReceiptBlockNumber
             {
-                get => _outStorage.LowestInsertedReceiptBlock;
-                set => _outStorage.LowestInsertedReceiptBlock = value;
+                get => _outStorage.LowestInsertedReceiptBlockNumber;
+                set => _outStorage.LowestInsertedReceiptBlockNumber = value;
             }
             public long MigratedBlockNumber
             {

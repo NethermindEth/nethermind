@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 
 [assembly: InternalsVisibleTo("Nethermind.Synchronization.Test")]
@@ -49,6 +50,8 @@ namespace Nethermind.Synchronization.Peers
         public UInt256 TotalDifficulty => SyncPeer.TotalDifficulty;
 
         public long HeadNumber => SyncPeer.HeadNumber;
+        
+        public Keccak HeadHash => SyncPeer.HeadHash;
 
         [MethodImpl(MethodImplOptions.Synchronized)]
         public bool CanBeAllocated(AllocationContexts contexts)
@@ -207,6 +210,10 @@ namespace Nethermind.Synchronization.Peers
             else if (syncPeer.ClientId?.Contains("Parity", StringComparison.InvariantCultureIgnoreCase) ?? false)
             {
                 PeerClientType = PeerClientType.Parity;
+            }
+            else if (syncPeer.ClientId?.Contains("OpenEthereum", StringComparison.InvariantCultureIgnoreCase) ?? false)
+            {
+                PeerClientType = PeerClientType.OpenEthereum;
             }
             else
             {

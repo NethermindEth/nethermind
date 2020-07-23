@@ -53,7 +53,7 @@ namespace Nethermind.BeamWallet.Modules.Data
             _timer = new Timer(Update, null, TimeSpan.Zero, interval);
         }
 
-        public Task<Window> InitAsync()
+        public async Task<Window> InitAsync()
         {
             _window = new Window("Data")
             {
@@ -63,9 +63,9 @@ namespace Nethermind.BeamWallet.Modules.Data
                 Height = Dim.Fill()
             };
             Application.Top.Add(_window);
-            RenderBalanceAsync();
+            await RenderBalanceAsync();
 
-            return Task.FromResult(_window);
+            return _window;
         }
 
         private void Update(object state)

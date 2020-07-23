@@ -36,11 +36,12 @@ namespace Nethermind.AuRa.Test.Transactions
     public class GeneratedTxSourceSealerTests
     {
         [Test]
-        public void transaction_is_addable_to_block_after_fill()
+        public void transactions_are_addable_to_block_after_sealing()
         {
             int chainId = 5;
             var blockHeader = Build.A.BlockHeader.TestObject;
-            var tx = Build.A.GeneratedTransaction.WithSenderAddress(TestItem.AddressA).TestObject;
+            var tx1 = Build.A.GeneratedTransaction.WithSenderAddress(TestItem.AddressA).TestObject;
+            var tx2 = Build.A.GeneratedTransaction.WithSenderAddress(TestItem.AddressA).TestObject;
             var timestamper = Substitute.For<ITimestamper>();
             var stateReader = Substitute.For<IStateReader>();
             var nodeAddress = TestItem.AddressA;
@@ -53,17 +54,25 @@ namespace Nethermind.AuRa.Test.Transactions
 
             var gasLimit = 200;
             var innerTxSource = Substitute.For<ITxSource>();
-            innerTxSource.GetTransactions(blockHeader, gasLimit).Returns(new[] {tx});
+            innerTxSource.GetTransactions(blockHeader, gasLimit).Returns(new[] {tx1, tx2});
             
             TxSealer txSealer = new TxSealer(new Signer(chainId, Build.A.PrivateKey.TestObject, LimboLogs.Instance), timestamper);
             var transactionFiller = new GeneratedTxSourceSealer(innerTxSource, txSealer, stateReader, LimboLogs.Instance);
-            
-            var txResult= transactionFiller.GetTransactions(blockHeader, gasLimit).First();
 
-            txResult.IsSigned.Should().BeTrue();
-            txResult.Nonce.Should().Be(expectedNonce);
-            txResult.Hash.Should().Be(tx.CalculateHash());
-            txResult.Timestamp.Should().Be(expectedTimeStamp);
+            var sealedTxs = transactionFiller.GetTransactions(blockHeader, gasLimit).ToArray();
+            var sealedTx1 = sealedTxs.First();
+            var sealedTx2 = sealedTxs.Skip(1).First();
+            
+            sealedTx1.IsSigned.Should().BeTrue();
+            sealedTx1.Nonce.Should().Be(expectedNonce);
+            sealedTx1.Hash.Should().Be(tx1.CalculateHash());
+            sealedTx1.Timestamp.Should().Be(expectedTimeStamp);
+            
+            sealedTx2.IsSigned.Should().BeTrue();
+            sealedTx2.Nonce.Should().Be(expectedNonce + 1);
+            sealedTx2.Hash.Should().NotBe(tx1.CalculateHash());
+            sealedTx2.Timestamp.Should().Be(expectedTimeStamp);
+
         }
     }
 }

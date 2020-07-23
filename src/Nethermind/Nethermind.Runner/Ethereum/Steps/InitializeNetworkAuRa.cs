@@ -13,30 +13,20 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using Nethermind.Core;
+using Nethermind.Consensus.AuRa;
+using Nethermind.Runner.Ethereum.Context;
+using Nethermind.Synchronization.ParallelSync;
 
-namespace Nethermind.Consensus.Transactions
+namespace Nethermind.Runner.Ethereum.Steps
 {
-    public class SinglePendingTxSelector : ITxSource
+    public class InitializeNetworkAuRa : InitializeNetwork
     {
-        private readonly ITxSource _innerSource;
-
-        public SinglePendingTxSelector(ITxSource innerSource)
+        public InitializeNetworkAuRa(AuRaEthereumRunnerContext context) : base(context)
         {
-            _innerSource = innerSource ?? throw new ArgumentNullException(nameof(innerSource));
         }
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit) => 
-            _innerSource.GetTransactions(parent, gasLimit)
-                .OrderBy(t => t.Nonce)
-                .ThenByDescending(t => t.Timestamp)
-                .Take(1);
-        
-        public override string ToString() => $"{nameof(SinglePendingTxSelector)} [ {_innerSource} ]";
-
+        protected override MultiSyncModeSelector CreateMultiSyncModeSelector(SyncProgressResolver syncProgressResolver) => new AuRaMultiSyncModeSelector(syncProgressResolver, _ctx.SyncPeerPool, _syncConfig, _ctx.LogManager);
     }
 }

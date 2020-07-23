@@ -173,8 +173,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                             signer),
                         new EciesCipher(_context.CryptoRandom),
                         _context.NodeKey,
-                        _context.CryptoRandom, 
-                        _context.LogManager);
+                        _context.CryptoRandom);
 
                     list.Insert(0, randomContractTxSource);
                     return true;

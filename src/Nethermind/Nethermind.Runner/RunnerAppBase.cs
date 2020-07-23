@@ -176,11 +176,12 @@ namespace Nethermind.Runner
                 _monitoringService.RegisterMetrics(typeof(Nethermind.Synchronization.Metrics));
                 _monitoringService.RegisterMetrics(typeof(Nethermind.TxPool.Metrics));
                 _monitoringService.RegisterMetrics(typeof(Metrics));
+                _monitoringService.RegisterMetrics(typeof(Nethermind.Consensus.AuRa.Metrics));
 
                 await _monitoringService.StartAsync().ContinueWith(x =>
                 {
                     if (x.IsFaulted && (_logger?.IsError ?? false)) _logger!.Error("Error during starting a monitoring.", x.Exception);
-                });
+                }, cancellationToken);
             }
             else
             {

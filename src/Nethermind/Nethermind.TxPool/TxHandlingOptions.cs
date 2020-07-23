@@ -34,7 +34,7 @@ namespace Nethermind.TxPool
         PersistentBroadcast = 2,
         
         /// <summary>
-        /// old style signature without replay attack protection (before the ETC and ETH split
+        /// old style signature without replay attack protection (before the ETC and ETH split)
         /// </summary>
         PreEip155Signing = 4,
         All = 7

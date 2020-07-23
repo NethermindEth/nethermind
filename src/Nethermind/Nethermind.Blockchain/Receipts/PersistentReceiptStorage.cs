@@ -24,9 +24,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
-using Nethermind.Specs;
 using Nethermind.Serialization.Rlp;
-using Nethermind.State;
 #pragma warning disable 618
 
 namespace Nethermind.Blockchain.Receipts
@@ -248,7 +246,7 @@ namespace Nethermind.Blockchain.Receipts
             _receiptsCache.Set(block.Hash, txReceipts);
         }
 
-        public long? LowestInsertedReceiptBlock
+        public long? LowestInsertedReceiptBlockNumber
         {
             get => _lowestInsertedReceiptBlock;
             set

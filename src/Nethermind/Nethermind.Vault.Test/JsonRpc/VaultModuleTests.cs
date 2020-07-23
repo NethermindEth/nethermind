@@ -7,9 +7,9 @@ using Nethermind.Logging;
 using Nethermind.Vault.Config;
 using Nethermind.Vault.JsonRpc;
 using Nethermind.Vault.Styles;
-using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
+using System.Linq;
 
 namespace Nethermind.Vault.Test.JsonRpc
 {
@@ -21,11 +21,11 @@ namespace Nethermind.Vault.Test.JsonRpc
         private IVaultConfig _config;
         private string _vaultId;
         private string _keyId;
-        // private string _secretId;
+        private string _secretId;
         private KeyArgs _keyArgs;
         private VaultArgs _vaultArgs;
         private SecretArgs _secretArgs;
-        // private VaultManager _vaultManager;
+        private VaultManager _vaultManager;
 
         [OneTimeSetUp]
         public async Task SetUp()
@@ -35,6 +35,7 @@ namespace Nethermind.Vault.Test.JsonRpc
             _config.Scheme = "http";
             _config.Path = "api/v1";
             _config.Token = $"bearer  {TestContext.Parameters["token"]}";
+
             _initVault = new provide.Vault(_config.Host, _config.Path, _config.Scheme, _config.Token);
             _keyArgs = KeyArgs.Default;
             _vaultArgs = VaultArgs.Default;
@@ -85,15 +86,14 @@ namespace Nethermind.Vault.Test.JsonRpc
         }
 
         [Test]
-        [Ignore("Secrets not available in Vault at the moment")]
         public async Task can_create_a_new_secret()
         {
             _secretArgs.Name = "Test Secret";
             _secretArgs.Description = "Test Secret used for test purposes";
+            _secretArgs.Type = "Sample secret";
+            _secretArgs.Secret = "Secret to be stored";
 
             var result = await _vaultModule.vault_createSecret(_vaultId, _secretArgs);
-
-            Console.WriteLine(result.Result.Error);
 
             result.ErrorCode.Should().Be(0);
             result.Result.Error.Should().Be(null);
@@ -116,21 +116,66 @@ namespace Nethermind.Vault.Test.JsonRpc
         }
 
         [Test]
-        [Ignore("Secrets not available in Vault at the moment")]
         public async Task can_delete_a_secret_within_a_given_vault_by_its_secret_id()
         {
-            var result = await _vaultModule.vault_deleteSecret(_vaultId, _keyId);
+            // Create some secrets for testing
+            List<string> names = new List<string> {"Name 1", "Name 2", "Name 3"};
+            
+            foreach (var name in names)
+            {
+                _secretArgs.Name = name;
+                _secretArgs.Description = "Test Secret used for test purposes";
+                _secretArgs.Type = "Sample secret";
+                _secretArgs.Secret = "Secret to be stored";
+                var res = await _vaultModule.vault_createSecret(_vaultId, _secretArgs);
+                dynamic secret = JObject.Parse(res.Data.ToString());
+                _secretId = secret.id; // Last key will be removed later
+            }
 
-            result.ErrorCode.Should().Be(0);
-            result.Result.Error.Should().Be(null);
-            result.Data.Should().NotBeNull();
-            result.Result.ResultType.Should().Be(ResultType.Success);
+            var result = await _vaultModule.vault_deleteSecret(_vaultId, _secretId);
+            
+            var secretsAfterDelete = await _vaultModule.vault_listSecrets(_vaultId);
+            JArray secrets = JArray.Parse(secretsAfterDelete.Data.ToString());
+            foreach (var s in secrets)
+            {
+                dynamic secret = JObject.Parse(s.ToString());
+                string secretId = secret.id;
+                // Check whether the last secret generated in above loop was correctly removed from Vault
+                Assert.AreNotEqual(secretId, _secretId);
+            }
+            
+            result.Result.Error.Should().BeEmpty();
+            result.Data.Should().BeNull();
+            result.Result.ResultType.Should().Be(ResultType.Failure);
         }
 
         [Test]
         public async Task list_keys_can_display_list_of_keys_within_a_given_vault()
         {
+
+            _keyArgs.Name = "Test Key";
+            _keyArgs.Description = "Test Key used for test purposes";
+            _keyArgs.Type = "asymmetric";
+            _keyArgs.Spec = "secp256k1";
+            _keyArgs.Usage = "sign/verify";
+
+            var key = await _vaultModule.vault_createKey(_vaultId, _keyArgs);
+            dynamic keyObject = JObject.Parse(key.Data.ToString());
+            _keyId = keyObject.id;
+
             var result = await _vaultModule.vault_listKeys(_vaultId);
+            JArray keys = JArray.Parse(result.Data.ToString());
+
+            foreach(JObject k in keys) {
+                if (!k["id"].ToString().Equals(_secretId)) 
+                {
+                    Assert.AreNotEqual(k["id"].ToString(), _secretId);
+                } 
+                else 
+                {
+                    Assert.AreEqual(k["id"].ToString(), _secretId);
+                }
+            }
 
             result.ErrorCode.Should().Be(0);
             result.Result.Error.Should().Be(null);
@@ -139,10 +184,29 @@ namespace Nethermind.Vault.Test.JsonRpc
         }
 
         [Test]
-        [Ignore("Secrets not available in Vault at the moment")]
         public async Task list_secrets_can_display_list_of_secrets_within_a_given_vault()
         {
+            _secretArgs.Name = "Sample secret name";
+            _secretArgs.Description = "Test Secret used for test purposes";
+            _secretArgs.Type = "Sample secret";
+            _secretArgs.Secret = "Secret to be stored";
+
+            var secret = await _vaultModule.vault_createSecret(_vaultId, _secretArgs);
+            dynamic secretObject = JObject.Parse(secret.Data.ToString());
+            _secretId = secretObject.id;
             var result = await _vaultModule.vault_listSecrets(_vaultId);
+            JArray secrets = JArray.Parse(result.Data.ToString());
+
+            foreach(JObject s in secrets) {
+                if (!s["id"].ToString().Equals(_secretId)) 
+                {
+                    Assert.AreNotEqual(s["id"].ToString(), _secretId);
+                } 
+                else 
+                {
+                    Assert.AreEqual(s["id"].ToString(), _secretId);
+                }
+            }
 
             result.ErrorCode.Should().Be(0);
             result.Result.Error.Should().Be(null);
@@ -153,7 +217,25 @@ namespace Nethermind.Vault.Test.JsonRpc
         [Test]
         public async Task list_vaults_can_display_a_list_of_owned_vaults()
         {
+            _vaultArgs.Name = "Test Vault";
+            _vaultArgs.Description = "Test Vault used for test purposes";
+
+            var vault = await _vaultModule.vault_createVault(_vaultArgs);
+            dynamic vaultObject = JObject.Parse(vault.Data.ToString());
+            _vaultId = vaultObject.id;
             var result = await _vaultModule.vault_listVaults();
+            JArray vaults = JArray.Parse(result.Data.ToString());
+
+            foreach(JObject v in vaults) {
+                if (!v["id"].ToString().Equals(_secretId)) 
+                {
+                    Assert.AreNotEqual(v["id"].ToString(), _secretId);
+                } 
+                else 
+                {
+                    Assert.AreEqual(v["id"].ToString(), _secretId);
+                }
+            }
 
             result.ErrorCode.Should().Be(0);
             result.Result.Error.Should().Be(null);
@@ -177,6 +259,7 @@ namespace Nethermind.Vault.Test.JsonRpc
             _keyId = key.id;
 
             var result = await _vaultModule.vault_signMessage(_vaultId, _keyId, _message);
+
             result.ErrorCode.Should().Be(0);
             result.Result.Error.Should().Be(null);
             result.Data.Should().NotBeNull();

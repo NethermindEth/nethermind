@@ -76,13 +76,22 @@ namespace Nethermind.Blockchain.Producers
                 BlockHeader parentHeader = BlockTree.Head?.Header;
                 if (parentHeader == null)
                 {
-                    if (Logger.IsWarn) Logger.Warn($"Preparing new block - parent header is null");
+                    if (Logger.IsWarn) Logger.Warn("Preparing new block - parent header is null");
                 }
-                else if (_sealer.CanSeal(parentHeader.Number + 1, parentHeader.Hash))
+                else
                 {
-                    return ProduceNewBlock(parentHeader, token);
+                    if (_sealer.CanSeal(parentHeader.Number + 1, parentHeader.Hash))
+                    {
+                        Interlocked.Exchange(ref Metrics.CanProduceBlocks, 1);
+                        return ProduceNewBlock(parentHeader, token);
+                    }
+                    else
+                    {
+                        Interlocked.Exchange(ref Metrics.CanProduceBlocks, 0);
+                    }
                 }
 
+                Metrics.FailedBlockSeals++;
                 return Task.FromResult(false);
             }
         }
@@ -97,6 +106,7 @@ namespace Nethermind.Blockchain.Producers
                 if (processedBlock == null)
                 {
                     if (Logger.IsError) Logger.Error("Block prepared by block producer was rejected by processor.");
+                    Metrics.FailedBlockSeals++;
                 }
                 else
                 {
@@ -108,20 +118,24 @@ namespace Nethermind.Blockchain.Producers
                             {
                                 if (Logger.IsInfo) Logger.Info($"Sealed block {t.Result.ToString(Block.Format.HashNumberDiffAndTx)}");
                                 BlockTree.SuggestBlock(t.Result);
+                                Metrics.BlocksSealed++;
                                 return true;
                             }
                             else
                             {
                                 if (Logger.IsInfo) Logger.Info($"Failed to seal block {processedBlock.ToString(Block.Format.HashNumberDiffAndTx)} (null seal)");
+                                Metrics.FailedBlockSeals++;
                             }
                         }
                         else if (t.IsFaulted)
                         {
                             if (Logger.IsError) Logger.Error("Mining failed", t.Exception);
+                            Metrics.FailedBlockSeals++;
                         }
                         else if (t.IsCanceled)
                         {
                             if (Logger.IsInfo) Logger.Info($"Sealing block {processedBlock.Number} cancelled");
+                            Metrics.FailedBlockSeals++;
                         }
 
                         return false;

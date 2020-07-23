@@ -359,7 +359,7 @@ namespace Nethermind.BeamWallet.Modules.Transfer
                 AddButtons();
             }
         }
-        
+
         private void AddButtons()
         {
             _transferWindow.Add(_backButton);
