@@ -281,7 +281,7 @@ namespace Nethermind.Blockchain.Processing
 
             ProcessingBranch processingBranch = PrepareProcessingBranch(suggestedBlock, options);
             PrepareBlocksToProcess(suggestedBlock, options, processingBranch);
-            Block[] processedBlocks = ProcessBranch(processingBranch, options | ProcessingOptions.RerunWithTraceOnFailure, tracer);
+            Block[] processedBlocks = ProcessBranch(processingBranch, options, tracer);
             if (processedBlocks == null)
             {
                 return null;
