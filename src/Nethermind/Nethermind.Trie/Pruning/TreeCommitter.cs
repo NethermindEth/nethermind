@@ -51,10 +51,17 @@ namespace Nethermind.Trie.Pruning
 
             Debug.Assert(CurrentPackage != null, "Current package is null when enqueing a trie node.");
 
-            long previousPackageMemory = CurrentPackage.MemorySize;
-            CurrentPackage.Enqueue(trieNode);
-            _inMemNodes[trieNode.Keccak] = trieNode;
-            AddToMemory(CurrentPackage.MemorySize - previousPackageMemory);
+            if (_inMemNodes.ContainsKey(trieNode.Keccak))
+            {
+                _inMemNodes[trieNode.Keccak].Refs += trieNode.Refs;
+            }
+            else
+            {
+                long previousPackageMemory = CurrentPackage.MemorySize;
+                CurrentPackage.Enqueue(trieNode);
+                _inMemNodes[trieNode.Keccak] = trieNode;
+                AddToMemory(CurrentPackage.MemorySize - previousPackageMemory);    
+            }
         }
 
         public void Uncommit()
