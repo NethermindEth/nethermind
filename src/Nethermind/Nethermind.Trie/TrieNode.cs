@@ -561,8 +561,14 @@ namespace Nethermind.Trie
 
         public TrieNode CloneWithChangedKey(HexPrefix key)
         {
-            TrieNode trieNode = new TrieNode(NodeType);
+            TrieNode trieNode = Clone();
             trieNode.Key = key;
+            return trieNode;
+        }
+        
+        public TrieNode Clone()
+        {
+            TrieNode trieNode = new TrieNode(NodeType);
             if (_data != null)
             {
                 trieNode.InitData();
@@ -577,23 +583,16 @@ namespace Nethermind.Trie
         
         public TrieNode CloneWithChangedValue(byte[] changedValue)
         {
-            return CloneWithChangedKeyAndValue(Key, changedValue);
+            TrieNode trieNode = Clone();
+            trieNode.Value = changedValue;
+            return trieNode;
         }
 
         public TrieNode CloneWithChangedKeyAndValue(HexPrefix key, byte[] changedValue)
         {
-            TrieNode trieNode = new TrieNode(NodeType);
-            trieNode.Value = changedValue;
+            TrieNode trieNode = Clone();
             trieNode.Key = key;
-            if (_data != null)
-            {
-                trieNode.InitData();
-                for (int i = 0; i < 16; i++)
-                {
-                    trieNode._data![i] = _data[i];
-                }
-            }
-
+            trieNode.Value = changedValue;
             return trieNode;
         }
 

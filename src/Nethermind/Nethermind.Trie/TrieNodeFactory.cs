@@ -20,7 +20,8 @@ namespace Nethermind.Trie
     {
         public static TrieNode CreateBranch()
         {
-            return new TrieNode(NodeType.Branch);
+            TrieNode node = new TrieNode(NodeType.Branch);
+            return node;
         }
 
         public static TrieNode CreateLeaf(HexPrefix key, byte[] value)
@@ -43,6 +44,7 @@ namespace Nethermind.Trie
             TrieNode node = new TrieNode(NodeType.Extension);
             node.SetChild(0, child);
             node.Key = key;
+            node.Refs++;
             return node;
         }
     }

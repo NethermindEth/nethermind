@@ -63,7 +63,7 @@ namespace Nethermind.Trie
             : this(new NullTreeCommitter(), EmptyTreeHash, false, true)
         {
         }
-        
+
         public PatriciaTree(IKeyValueStore keyValueStore)
             : this(keyValueStore, EmptyTreeHash, false, true)
         {
@@ -360,6 +360,8 @@ namespace Nethermind.Trie
             bool isRoot = _nodeStack.Count == 0;
             TrieNode nextNode = node;
 
+            previousHere.Refs--;
+
             while (!isRoot)
             {
                 StackedNode parentOnStack = _nodeStack.Pop();
@@ -376,15 +378,21 @@ namespace Nethermind.Trie
                 {
                     if (!(nextNode == null && !node.IsValidWithOneNodeLess))
                     {
-                        node.SetChild(parentOnStack.PathIndex, nextNode);
-                        node.IsDirty = true;
-                        nextNode = node;
+                        TrieNode changedParent = node.Clone();
+                        changedParent.SetChild(parentOnStack.PathIndex, nextNode);
+                        nextNode!.Refs++;
+                        node.Refs--;
+                        nextNode = changedParent;
+                        // node.SetChild(parentOnStack.PathIndex, nextNode);
+                        // node.IsDirty = true;
+                        // nextNode = node;
                     }
                     else
                     {
                         if (node.Value.Length != 0)
                         {
                             TrieNode leafFromBranch = TrieNodeFactory.CreateLeaf(new HexPrefix(true), node.Value);
+                            node.Refs--;
                             nextNode = leafFromBranch;
                         }
                         else
@@ -408,20 +416,35 @@ namespace Nethermind.Trie
                             childNode.ResolveNode(this);
                             if (childNode.IsBranch)
                             {
-                                TrieNode extensionFromBranch = TrieNodeFactory.CreateExtension(new HexPrefix(false, (byte) childNodeIndex), childNode);
-                                nextNode = extensionFromBranch;
+                                TrieNode extensionFromBranch =
+                                    TrieNodeFactory.CreateExtension(new HexPrefix(false, (byte) childNodeIndex), childNode); // new line
+                                childNode.Refs--;
+                                node.Refs--;
+                                nextNode = extensionFromBranch; // new line
                             }
                             else if (childNode.IsExtension)
                             {
-                                childNode.Key = new HexPrefix(false, Bytes.Concat((byte) childNodeIndex, childNode.Path));
-                                childNode.IsDirty = true;
-                                nextNode = childNode;
+                                HexPrefix newKey
+                                    = new HexPrefix(false, Bytes.Concat((byte) childNodeIndex, childNode.Path));
+                                TrieNode extendedExtension = childNode.CloneWithChangedKey(newKey); // new line
+                                childNode.Refs--;
+                                node.Refs--;
+                                // childNode.Key = newKey;
+                                // childNode.IsDirty = true;
+                                // nextNode = childNode;
+                                nextNode = extendedExtension; // new line
                             }
                             else if (childNode.IsLeaf)
                             {
-                                childNode.Key = new HexPrefix(true, Bytes.Concat((byte) childNodeIndex, childNode.Path));
-                                childNode.IsDirty = true;
-                                nextNode = childNode;
+                                HexPrefix newKey
+                                    = new HexPrefix(true, Bytes.Concat((byte) childNodeIndex, childNode.Path));
+                                TrieNode extendedLeaf = childNode.CloneWithChangedKey(newKey); // new line
+                                childNode.Refs--;
+                                node.Refs--;
+                                // childNode.Key = new HexPrefix(true, Bytes.Concat((byte) childNodeIndex, childNode.Path));
+                                // childNode.IsDirty = true;
+                                // nextNode = childNode;
+                                nextNode = extendedLeaf; // new line
                             }
                             else
                             {
@@ -434,18 +457,34 @@ namespace Nethermind.Trie
                 {
                     if (nextNode.IsLeaf)
                     {
-                        nextNode.Key = new HexPrefix(true, Bytes.Concat(node.Path, nextNode.Path));
+                        HexPrefix newKey
+                            = new HexPrefix(true, Bytes.Concat(node.Path, nextNode.Path));
+                        TrieNode extendedLeaf = nextNode.CloneWithChangedKey(newKey); // new line
+                        // nextNode.Key = new HexPrefix(true, Bytes.Concat(node.Path, nextNode.Path));
+                        node.Refs--;
+                        nextNode.Refs--;
+                        nextNode = extendedLeaf; // new line
                     }
                     else if (nextNode.IsExtension)
                     {
-                        nextNode.IsDirty = true;
-                        nextNode.Key = new HexPrefix(false, Bytes.Concat(node.Path, nextNode.Path));
+                        // nextNode.IsDirty = true;
+                        // nextNode.Key = new HexPrefix(false, Bytes.Concat(node.Path, nextNode.Path));
+                        HexPrefix newKey
+                            = new HexPrefix(false, Bytes.Concat(node.Path, nextNode.Path));
+                        TrieNode extendedExtension = nextNode.CloneWithChangedKey(newKey); // new line
+                        node.Refs--;
+                        nextNode.Refs--;
+                        nextNode = extendedExtension; // new line
                     }
                     else if (nextNode.IsBranch)
                     {
-                        node.IsDirty = true;
-                        node.SetChild(0, nextNode);
-                        nextNode = node;
+                        TrieNode branchWithChangedChild = node.Clone(); // new line
+                        branchWithChangedChild.SetChild(0, nextNode); // new line
+                        node.Refs--;
+                        // node.IsDirty = true;
+                        // node.SetChild(0, nextNode);
+                        // nextNode = node;
+                        nextNode = branchWithChangedChild;
                     }
                     else
                     {
@@ -703,7 +742,7 @@ namespace Nethermind.Trie
             {
                 branch.SetChild(pathBeforeUpdate[extensionLength], node.GetChild(0));
             }
-            
+
             ConnectNodes(branch, node.GetChild(0));
             return traverseContext.UpdateValue;
         }
