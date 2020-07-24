@@ -64,7 +64,7 @@ namespace Nethermind.Core.Crypto
     {
         public const int Size = 32;
 
-        public static int MemorySize =>
+        public const int MemorySize =
             MemorySizes.SmallObjectOverhead +
             MemorySizes.RefSize +
             MemorySizes.ArrayOverhead +

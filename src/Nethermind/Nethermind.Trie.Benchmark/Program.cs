@@ -28,7 +28,8 @@ namespace Nethermind.Trie.Benchmark
                 .Run(args, new DebugInProcessConfig());
 #else
         {
-            BenchmarkRunner.Run<TrieNodeBenchmark>();
+            BenchmarkRunner.Run<CacheBenchmark>();
+            // BenchmarkRunner.Run<TrieNodeBenchmark>();
             Console.ReadLine();
         }
 #endif

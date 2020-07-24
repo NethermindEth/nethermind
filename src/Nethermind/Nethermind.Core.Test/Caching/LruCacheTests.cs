@@ -35,7 +35,9 @@ namespace Nethermind.Core.Test.Caching
         
         private ICache<Address, Account> Create()
         {
-            return _allowRecycling ? (ICache<Address, Account>)new LruCacheWithRecycling<Address, Account>(Capacity, "test") : new LruCache<Address, Account>(Capacity, "test");
+            return _allowRecycling
+                ? (ICache<Address, Account>)new LruCacheWithRecycling<Address, Account>(Capacity, "test")
+                : new LruCache<Address, Account>(Capacity, "test");
         }
         
         private const int Capacity = 16;
