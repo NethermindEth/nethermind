@@ -387,13 +387,16 @@ namespace Nethermind.Trie
                 {
                     if (!(nextNode == null && !node.IsValidWithOneNodeLess))
                     {
-                        TrieNode changedParent = node.Clone();
-                        changedParent.SetChild(parentOnStack.PathIndex, nextNode);
-                        node.Refs--;
-                        nextNode = changedParent;
-                        // node.SetChild(parentOnStack.PathIndex, nextNode);
-                        // node.IsDirty = true;
-                        // nextNode = node;
+                        nextNode.Refs++;
+                        if (node.Refs != 0) // newly created node
+                        {
+                            node.Refs--;
+                            node = node.Clone();
+                        }
+
+                        node.SetChild(parentOnStack.PathIndex, nextNode);
+
+                        nextNode = node;
                     }
                     else
                     {
@@ -486,14 +489,16 @@ namespace Nethermind.Trie
                     }
                     else if (nextNode.IsBranch)
                     {
-                        TrieNode extensionWithChangedChild = node.Clone(); // new line
-                        extensionWithChangedChild.SetChild(0, nextNode); // new line
+                        if (node.Refs != 0)
+                        {
+                            node.Refs--;
+                            node = node.Clone(); // new line    
+                        }
+
+                        node.SetChild(0, nextNode); // new line
                         nextNode.Refs++;
-                        node.Refs--;
-                        // node.IsDirty = true;
-                        // node.SetChild(0, nextNode);
-                        // nextNode = node;
-                        nextNode = extensionWithChangedChild;
+
+                        nextNode = node;
                     }
                     else
                     {
@@ -506,7 +511,11 @@ namespace Nethermind.Trie
                 }
             }
 
-            nextNode.Refs++;
+            if (nextNode != null)
+            {
+                nextNode.Refs++;
+            }
+
             RootRef = nextNode;
         }
 
@@ -631,7 +640,6 @@ namespace Nethermind.Trie
                 if (!Bytes.AreEqual(node.Value, traverseContext.UpdateValue))
                 {
                     TrieNode withUpdatedValue = node.CloneWithChangedValue(traverseContext.UpdateValue);
-                    withUpdatedValue.Refs++;
                     ConnectNodes(withUpdatedValue, node);
                     return traverseContext.UpdateValue;
                 }
@@ -658,12 +666,10 @@ namespace Nethermind.Trie
             {
                 Span<byte> extensionPath = longerPath.Slice(0, extensionLength);
                 TrieNode extension = TrieNodeFactory.CreateExtension(new HexPrefix(false, extensionPath.ToArray()));
-                extension.Refs++;
                 _nodeStack.Push(new StackedNode(extension, 0));
             }
 
             TrieNode branch = TrieNodeFactory.CreateBranch();
-            branch.Refs++;
             if (extensionLength == shorterPath.Length)
             {
                 branch.Value = shorterPathValue;
@@ -681,7 +687,6 @@ namespace Nethermind.Trie
 
             TrieNode withUpdatedKeyAndValue = node.CloneWithChangedKeyAndValue(
                 new HexPrefix(true, leafPath.ToArray()), longerPathValue);
-            withUpdatedKeyAndValue.Refs++;
 
             _nodeStack.Push(new StackedNode(branch, longerPath[extensionLength]));
             ConnectNodes(withUpdatedKeyAndValue, node);
@@ -691,6 +696,7 @@ namespace Nethermind.Trie
 
         private byte[] TraverseExtension(TrieNode node, TraverseContext traverseContext)
         {
+            TrieNode originalNode = node;
             Span<byte> remaining = traverseContext.GetRemainingUpdatePath();
             int extensionLength = 0;
             for (int i = 0; i < Math.Min(remaining.Length, node.Path.Length) && remaining[i] == node.Path[i]; i++, extensionLength++)
@@ -744,6 +750,7 @@ namespace Nethermind.Trie
             {
                 byte[] path = remaining.Slice(extensionLength + 1, remaining.Length - extensionLength - 1).ToArray();
                 TrieNode shortLeaf = TrieNodeFactory.CreateLeaf(new HexPrefix(true, path), traverseContext.UpdateValue);
+                shortLeaf.Refs++;
                 branch.SetChild(remaining[extensionLength], shortLeaf);
             }
 
@@ -752,14 +759,17 @@ namespace Nethermind.Trie
                 byte[] extensionPath = pathBeforeUpdate.Slice(extensionLength + 1, pathBeforeUpdate.Length - extensionLength - 1);
                 TrieNode secondExtension
                     = TrieNodeFactory.CreateExtension(new HexPrefix(false, extensionPath), node.GetChild(this, 0));
+                secondExtension.Refs++;
                 branch.SetChild(pathBeforeUpdate[extensionLength], secondExtension);
             }
             else
             {
-                branch.SetChild(pathBeforeUpdate[extensionLength], node.GetChild(this, 0));
+                TrieNode childNode = originalNode.GetChild(this, 0);
+                childNode!.Refs++;
+                branch.SetChild(pathBeforeUpdate[extensionLength], childNode);
             }
 
-            ConnectNodes(branch, node.GetChild(this, 0));
+            ConnectNodes(branch, originalNode.GetChild(this, 0));
             return traverseContext.UpdateValue;
         }
 
