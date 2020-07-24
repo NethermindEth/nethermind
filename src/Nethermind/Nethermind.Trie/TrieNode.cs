@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -37,15 +38,17 @@ namespace Nethermind.Trie
         /// </summary>
         public static bool AllowBranchValues { private get; set; }
         
+        public int Refs { get; set; }
+        
         private static object _nullNode = new object();
         
         private static TrieNodeDecoder _nodeDecoder = new TrieNodeDecoder();
         
         private static AccountDecoder _accountDecoder = new AccountDecoder();
         
-        private RlpStream _rlpStream;
+        private RlpStream? _rlpStream;
         
-        private object[] _data;
+        private object?[]? _data;
         
         private bool _isDirty;
 
@@ -67,9 +70,9 @@ namespace Nethermind.Trie
             _rlpStream = rlp.AsRlpStream();
         }
         
-        public Keccak Keccak { get; set; }
+        public Keccak? Keccak { get; set; }
         
-        public byte[] FullRlp { get; private set; }
+        public byte[]? FullRlp { get; private set; }
         
         public NodeType NodeType { get; private set; }
 
@@ -118,29 +121,29 @@ namespace Nethermind.Trie
         public bool IsBranch => NodeType == NodeType.Branch;
         public bool IsExtension => NodeType == NodeType.Extension;
 
-        public byte[] Path => Key.Path;
+        public byte[]? Path => Key?.Path;
 
-        internal HexPrefix Key
+        internal HexPrefix? Key
         {
             get => _data?[0] as HexPrefix;
             set
             {
                 InitData();
-                _data[0] = value;
+                _data![0] = value;
             }
         }
 
         /// <summary>
         /// Highly optimized
         /// </summary>
-        public byte[] Value
+        public byte[]? Value
         {
             get
             {
                 InitData();
                 if (IsLeaf)
                 {
-                    return (byte[]) _data[1];
+                    return (byte[]?) _data![1];
                 }
 
                 if (!AllowBranchValues)
@@ -149,7 +152,7 @@ namespace Nethermind.Trie
                     return Array.Empty<byte>();
                 }
 
-                if (_data[16] == null)
+                if (_data![16] == null)
                 {
                     if (_rlpStream == null)
                     {
@@ -158,7 +161,7 @@ namespace Nethermind.Trie
                     else
                     {
                         SeekChild(16);
-                        _data[16] = _rlpStream.DecodeByteArray();
+                        _data![16] = _rlpStream!.DecodeByteArray();
                     }
                 }
 
@@ -175,7 +178,7 @@ namespace Nethermind.Trie
                     throw new TrieException("Optimized Patricia Trie does not support setting values on branches.");
                 }
 
-                _data[IsLeaf ? 1 : 16] = value;
+                _data![IsLeaf ? 1 : 16] = value;
             }
         }
 
@@ -207,6 +210,12 @@ namespace Nethermind.Trie
                 else
                 {
                     return;
+                }
+
+                if (_rlpStream == null)
+                {
+                    throw new InvalidAsynchronousStateException(
+                        $"{nameof(_rlpStream)} is null when {nameof(NodeType)} is {NodeType}");
                 }
 
                 Metrics.TreeNodeRlpDecodings++;
@@ -336,33 +345,33 @@ namespace Nethermind.Trie
             }
 
             InitData();
-            if (_data[i] == null)
+            if (_data![i] == null)
             {
                 SeekChild(i);
-                int prefix = _rlpStream.ReadByte();
+                int prefix = _rlpStream!.ReadByte();
                 switch (prefix)
                 {
                     case 0:
                     case 128:
-                        _data[i] = _nullNode;
+                        _data![i] = _nullNode;
                         break;
                     case 160:
                         _rlpStream.Position--;
-                        _data[i] = new TrieNode(NodeType.Unknown, _rlpStream.DecodeKeccak());
+                        _data![i] = new TrieNode(NodeType.Unknown, _rlpStream.DecodeKeccak());
                         break;
                     default:
                     {
                         _rlpStream.Position--;
                         Span<byte> fullRlp = _rlpStream.PeekNextItem();
                         TrieNode child = new TrieNode(NodeType.Unknown, fullRlp.ToArray());
-                        _data[i] = child;
+                        _data![i] = child;
                         break;
                     }
                 }
             }
         }
 
-        public Keccak GetChildHash(int i)
+        public Keccak? GetChildHash(int i)
         {
             if (_rlpStream == null)
             {
@@ -370,7 +379,7 @@ namespace Nethermind.Trie
             }
 
             SeekChild(i);
-            (int _, int length) = _rlpStream.PeekPrefixAndContentLength();
+            (int _, int length) = _rlpStream!.PeekPrefixAndContentLength();
             return length == 32 ? _rlpStream.DecodeKeccak() : null;
         }
 
@@ -490,6 +499,11 @@ namespace Nethermind.Trie
 
                 return MemorySizes.Align(unaligned);
             }
+        }
+
+        public override string ToString()
+        {
+            return $"{NodeType}({FullRlp?.Length}) {Keccak}, refs {Refs}";
         }
     }
 }

@@ -637,5 +637,6 @@ namespace Nethermind.Trie.Test
             HexPrefix hexPrefix = new HexPrefix(true, new byte[5]);
             hexPrefix.MemorySize.Should().Be(64);
         }
+        
     }
 }

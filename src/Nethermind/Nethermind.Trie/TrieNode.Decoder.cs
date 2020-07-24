@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -50,9 +51,16 @@ namespace Nethermind.Trie
 
             private static byte[] EncodeExtension(TrieNode item)
             {
+                Debug.Assert(item.NodeType == NodeType.Extension,
+                    $"Node passed to {nameof(EncodeExtension)} is {item.NodeType}");
+                Debug.Assert(item.Key != null, "Extension key is null when encoding");
+                
                 byte[] keyBytes = item.Key.ToBytes();
                 TrieNode nodeRef = item.GetChild(0);
                 nodeRef.ResolveKey(false);
+                Debug.Assert(nodeRef.FullRlp != null,
+                    $"{nameof(nodeRef.FullRlp)} is null after a call to {nameof(nodeRef.ResolveKey)}");
+                
                 int contentLength = Rlp.LengthOf(keyBytes) + (nodeRef.Keccak == null ? nodeRef.FullRlp.Length : Rlp.LengthOfKeccakRlp);
                 int totalLength = Rlp.LengthOfSequence(contentLength);
                 RlpStream rlpStream = new RlpStream(totalLength);
@@ -122,22 +130,22 @@ namespace Nethermind.Trie
                 item.SeekChild(0);
                 for (int i = 0; i < 16; i++)
                 {
-                    if (item._rlpStream != null && item._data[i] == null)
+                    if (item._rlpStream != null && item._data![i] == null)
                     {
                         (int prefixLength, int contentLength) = item._rlpStream.PeekPrefixAndContentLength();
                         totalLength += prefixLength + contentLength;
                     }
                     else
                     {
-                        if (ReferenceEquals(item._data[i], _nullNode) || item._data[i] == null)
+                        if (ReferenceEquals(item._data![i], _nullNode) || item._data[i] == null)
                         {
                             totalLength++;
                         }
                         else
                         {
                             TrieNode childNode = (TrieNode) item._data[i];
-                            childNode.ResolveKey(false);
-                            totalLength += childNode.Keccak == null ? childNode.FullRlp.Length : Rlp.LengthOfKeccakRlp;
+                            childNode!.ResolveKey(false);
+                            totalLength += childNode.Keccak == null ? childNode.FullRlp!.Length : Rlp.LengthOfKeccakRlp;
                         }
                     }
 
@@ -155,7 +163,7 @@ namespace Nethermind.Trie
                 item.SeekChild(0);
                 for (int i = 0; i < 16; i++)
                 {
-                    if (rlpStream != null && item._data[i] == null)
+                    if (rlpStream != null && item._data![i] == null)
                     {
                         int length = rlpStream.PeekNextRlpLength();
                         Span<byte> nextItem = rlpStream.Data.AsSpan().Slice(rlpStream.Position, length);
@@ -166,14 +174,14 @@ namespace Nethermind.Trie
                     else
                     {
                         rlpStream?.SkipItem();
-                        if (ReferenceEquals(item._data[i], _nullNode) || item._data[i] == null)
+                        if (ReferenceEquals(item._data![i], _nullNode) || item._data[i] == null)
                         {
                             destination[position++] = 128;
                         }
                         else
                         {
                             TrieNode childNode = (TrieNode) item._data[i];
-                            childNode.ResolveKey(false);
+                            childNode!.ResolveKey(false);
                             if (childNode.Keccak == null)
                             {
                                 Span<byte> fullRlp = childNode.FullRlp.AsSpan();

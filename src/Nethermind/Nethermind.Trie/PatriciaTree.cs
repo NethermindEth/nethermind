@@ -99,6 +99,8 @@ namespace Nethermind.Trie
             set => SetRootHash(value, true);
         }
 
+        public long MemorySize { get; private set; }
+
         public void Commit()
         {
             if (!_allowCommits)
