@@ -16,7 +16,7 @@ namespace Nethermind.Trie.Test
             PatriciaTree tree = new PatriciaTree(memDb);
             tree.Set(TestItem.KeccakA.Bytes, new byte[100]);
             tree.Root.NodeType.Should().Be(NodeType.Leaf);
-            tree.Commit();
+            tree.Commit(1);
             tree.Root.NodeType.Should().Be(NodeType.Leaf);
             // tree.MemorySize
         }

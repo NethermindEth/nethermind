@@ -99,7 +99,7 @@ namespace Nethermind.Core.Test.Blockchain
             Storage.Commit();
 
             State.Commit(SpecProvider.GenesisSpec);
-            State.CommitTree();
+            State.CommitTree(0);
 
             TxPool = new TxPool.TxPool(txStorage, Timestamper, EthereumEcdsa, SpecProvider, new TxPoolConfig(), State, LimboLogs.Instance);
 

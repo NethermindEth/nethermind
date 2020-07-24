@@ -50,7 +50,7 @@ namespace Nethermind.Store.Test
             StateProvider frontierProvider = new StateProvider(stateDb, Substitute.For<IDb>(), Logger);
             frontierProvider.CreateAccount(_address1, 0);
             frontierProvider.Commit(Frontier.Instance);
-            frontierProvider.CommitTree();
+            frontierProvider.CommitTree(0);
             
             StateProvider provider = new StateProvider(stateDb, Substitute.For<IDb>(), Logger);
             provider.StateRoot = frontierProvider.StateRoot;
@@ -82,7 +82,7 @@ namespace Nethermind.Store.Test
             StateProvider provider = new StateProvider(new StateDb(new MemDb()), Substitute.For<IDb>(), Logger);
             provider.CreateAccount(TestItem.AddressA, 1.Ether());
             provider.Commit(MuirGlacier.Instance);
-            provider.CommitTree();
+            provider.CommitTree(0);
 
             string state = provider.DumpState();
             state.Should().NotBeEmpty();
@@ -94,7 +94,7 @@ namespace Nethermind.Store.Test
             StateProvider provider = new StateProvider(new StateDb(new MemDb()), Substitute.For<IDb>(), Logger);
             provider.CreateAccount(TestItem.AddressA, 1.Ether());
             provider.Commit(MuirGlacier.Instance);
-            provider.CommitTree();
+            provider.CommitTree(0);
 
             var stats = provider.CollectStats();
             stats.AccountCount.Should().Be(1);
@@ -138,7 +138,7 @@ namespace Nethermind.Store.Test
             StateProvider provider = new StateProvider(new StateDb(new MemDb()), Substitute.For<IDb>(), Logger);
             provider.CreateAccount(TestItem.AddressA, 1.Ether());
             provider.Commit(MuirGlacier.Instance);
-            provider.CommitTree();
+            provider.CommitTree(0);
 
             TrieStatsCollector visitor = new TrieStatsCollector(new MemDb(), LimboLogs.Instance);
             provider.Accept(visitor, provider.StateRoot);

@@ -6,6 +6,27 @@ using Nethermind.Logging;
 
 namespace Nethermind.Trie.Pruning
 {
+    public class PassThroughTreeCommitter : ITreeCommitter
+    {
+        private readonly IKeyValueStore _keyValueStore;
+
+        public PassThroughTreeCommitter(IKeyValueStore keyValueStore)
+        {
+            _keyValueStore = keyValueStore ?? throw new ArgumentNullException(nameof(keyValueStore));
+        }
+        
+        public void Commit(long blockNumber, TrieNode trieNode)
+        {
+            _keyValueStore[trieNode.Keccak!.Bytes] = trieNode.FullRlp;
+        }
+
+        public void Uncommit()
+        {
+        }
+
+        public byte[] this[byte[] key] => _keyValueStore[key];
+    }
+    
     public class TreeCommitter : ITreeCommitter
     {
         public TreeCommitter(IKeyValueStore keyValueStore, ILogManager logManager, long memoryLimit)
@@ -59,20 +80,9 @@ namespace Nethermind.Trie.Pruning
             _queue.RemoveLast();
         }
 
-        public long MemorySize
-        {
-            get => _memorySize;
-            private set
-            {
-                // if (value > _memoryLimit)
-                // {
-                //     throw new InvalidOperationException(
-                //         $"{nameof(TreeCommitter)} exceeded memory limit of {_memoryLimit} with a value of {value}.");
-                // }
+        public byte[] this[byte[] key] => _keyValueStore[key];
 
-                _memorySize = value;
-            }
-        }
+        public long MemorySize { get; private set; }
 
         #region Private
 
@@ -81,8 +91,6 @@ namespace Nethermind.Trie.Pruning
         private readonly IKeyValueStore _keyValueStore;
 
         private readonly ILogger _logger;
-
-        private long _memorySize;
 
         private readonly long _memoryLimit;
 
@@ -151,7 +159,7 @@ namespace Nethermind.Trie.Pruning
         {
             if (_logger.IsDebug)
                 _logger.Debug(
-                    $"Start dispatching {nameof(BlockCommitPackage)} - {commitPackage.BlockNumber} | memory {_memorySize}");
+                    $"Start dispatching {nameof(BlockCommitPackage)} - {commitPackage.BlockNumber} | memory {MemorySize}");
 
             Debug.Assert(commitPackage != null && commitPackage.IsSealed,
                 $"Invalid {nameof(commitPackage)} - {commitPackage} received for dispatch.");
@@ -179,7 +187,7 @@ namespace Nethermind.Trie.Pruning
             MemorySize -= memoryToDrop;
             if (_logger.IsDebug)
                 _logger.Debug(
-                    $"End dispatching {nameof(BlockCommitPackage)} - {commitPackage.BlockNumber} | memory {_memorySize}");
+                    $"End dispatching {nameof(BlockCommitPackage)} - {commitPackage.BlockNumber} | memory {MemorySize}");
         }
 
         #endregion

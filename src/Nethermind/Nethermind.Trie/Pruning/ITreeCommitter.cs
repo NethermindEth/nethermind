@@ -5,5 +5,7 @@ namespace Nethermind.Trie.Pruning
         void Commit(long blockNumber, TrieNode trieNode);
 
         void Uncommit();
+        
+        byte[] this[byte[] key] { get; }
     }
 }

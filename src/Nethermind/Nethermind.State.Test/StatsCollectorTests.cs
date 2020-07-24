@@ -58,8 +58,8 @@ namespace Nethermind.Store.Test
             storageProvider.Commit();
             stateProvider.Commit(Istanbul.Instance);
 
-            storageProvider.CommitTrees();
-            stateProvider.CommitTree();
+            storageProvider.CommitTrees(0);
+            stateProvider.CommitTree(0);
             
             stateDb.Commit();
             

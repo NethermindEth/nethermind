@@ -24,6 +24,7 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Trie
 {
@@ -31,9 +32,10 @@ namespace Nethermind.Trie
     public class PatriciaTree
     {
         private const int OneNodeAvgMemoryEstimate = 384;
+
         public static readonly ICache<Keccak, byte[]> NodeCache =
             new LruCacheWithRecycling<Keccak, byte[]>(
-                (int)(MemoryAllowance.TrieNodeCacheMemory / OneNodeAvgMemoryEstimate), "trie nodes");
+                (int) (MemoryAllowance.TrieNodeCacheMemory / OneNodeAvgMemoryEstimate), "trie nodes");
 
         /// <summary>
         ///     0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421
@@ -46,10 +48,10 @@ namespace Nethermind.Trie
         private readonly Stack<StackedNode> _nodeStack = new Stack<StackedNode>();
 
         private readonly ConcurrentQueue<Exception> _commitExceptions;
-        
+
         private readonly ConcurrentQueue<TrieNode> _currentCommit;
 
-        protected readonly IKeyValueStore _keyValueStore;
+        protected readonly ITreeCommitter _keyValueStore;
         private readonly bool _parallelBranches;
         private readonly bool _allowCommits;
 
@@ -58,7 +60,7 @@ namespace Nethermind.Trie
         internal TrieNode RootRef;
 
         public PatriciaTree()
-            : this(NullKeyValueStore.Instance, EmptyTreeHash, false, true)
+            : this(new NullTreeCommitter(), EmptyTreeHash, false, true)
         {
         }
         
@@ -67,7 +69,17 @@ namespace Nethermind.Trie
         {
         }
 
+        public PatriciaTree(ITreeCommitter keyValueStore)
+            : this(keyValueStore, EmptyTreeHash, false, true)
+        {
+        }
+
         public PatriciaTree(IKeyValueStore keyValueStore, Keccak rootHash, bool parallelBranches, bool allowCommits)
+            : this(new PassThroughTreeCommitter(keyValueStore), rootHash, parallelBranches, allowCommits)
+        {
+        }
+
+        public PatriciaTree(ITreeCommitter keyValueStore, Keccak rootHash, bool parallelBranches, bool allowCommits)
         {
             _keyValueStore = keyValueStore ?? throw new ArgumentNullException(nameof(keyValueStore));
             _parallelBranches = parallelBranches;
@@ -101,13 +113,13 @@ namespace Nethermind.Trie
 
         public long MemorySize { get; private set; }
 
-        public void Commit()
+        public void Commit(long blockNumber)
         {
             if (!_allowCommits)
             {
                 throw new TrieException("Commits are not allowed on this trie.");
             }
-            
+
             if (RootRef == null)
             {
                 return;
@@ -123,7 +135,7 @@ namespace Nethermind.Trie
                         throw new ArgumentNullException($"Threading issue at {nameof(_currentCommit)} - should not happen unless we use static objects somewhere here.");
                     }
 
-                    _keyValueStore[node.Keccak.Bytes] = node.FullRlp;
+                    _keyValueStore.Commit(blockNumber, node);
                 }
 
                 // reset objects
@@ -273,7 +285,7 @@ namespace Nethermind.Trie
                 {
                     throw new TrieException($"Node {keccak} is missing from the DB");
                 }
-                
+
                 NodeCache.Set(keccak, dbValue);
                 return dbValue;
             }
@@ -745,14 +757,14 @@ namespace Nethermind.Trie
         {
             if (visitor == null) throw new ArgumentNullException(nameof(visitor));
             if (rootHash == null) throw new ArgumentNullException(nameof(rootHash));
-            
+
             TrieVisitContext trieVisitContext = new TrieVisitContext();
-            
+
             // hacky but other solutions are not much better, something nicer would require a bit of thinking
             // we introduced a notion of an account on the visit context level which should have no knowledge of account really
             // but we know that we have multiple optimizations and assumptions on trees
             trieVisitContext.ExpectAccounts = expectAccounts;
-            
+
             TrieNode rootRef = null;
             if (!rootHash.Equals(Keccak.EmptyTreeHash))
             {
@@ -768,7 +780,7 @@ namespace Nethermind.Trie
                     return;
                 }
             }
-            
+
             visitor.VisitTree(rootHash, trieVisitContext);
             rootRef?.Accept(visitor, this, trieVisitContext);
         }

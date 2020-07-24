@@ -20,6 +20,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State
 {

@@ -47,25 +47,25 @@ namespace Nethermind.Store.Test
             provider.CreateAccount(_address1, 0);
             provider.AddToBalance(_address1, 1, spec);
             provider.Commit(spec);
-            provider.CommitTree();
+            provider.CommitTree(0);
             Keccak stateRoot0 = provider.StateRoot;
 
             provider.AddToBalance(_address1, 1, spec);
             provider.Commit(spec);
-            provider.CommitTree();
+            provider.CommitTree(0);
             Keccak stateRoot1 = provider.StateRoot;
 
             provider.AddToBalance(_address1, 1, spec);
             provider.Commit(spec);
-            provider.CommitTree();
+            provider.CommitTree(0);
             Keccak stateRoot2 = provider.StateRoot;
 
             provider.AddToBalance(_address1, 1, spec);
             provider.Commit(spec);
-            provider.CommitTree();
+            provider.CommitTree(0);
             Keccak stateRoot3 = provider.StateRoot;
 
-            provider.CommitTree();
+            provider.CommitTree(0);
             stateDb.Commit();
 
             StateReader reader = new StateReader(stateDb, Substitute.For<IDb>(), Logger);
@@ -100,9 +100,9 @@ namespace Nethermind.Store.Test
             void CommitEverything()
             {
                 storageProvider.Commit();
-                storageProvider.CommitTrees();
+                storageProvider.CommitTrees(0);
                 provider.Commit(spec);
-                provider.CommitTree();
+                provider.CommitTree(0);
             }
 
             provider.CreateAccount(_address1, 1);
@@ -152,9 +152,9 @@ namespace Nethermind.Store.Test
             void CommitEverything()
             {
                 storageProvider.Commit();
-                storageProvider.CommitTrees();
+                storageProvider.CommitTrees(0);
                 provider.Commit(spec);
-                provider.CommitTree();
+                provider.CommitTree(0);
             }
 
             provider.CreateAccount(_address1, 1);

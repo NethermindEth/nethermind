@@ -310,11 +310,11 @@ namespace Nethermind.State
             _storages.Reset();
         }
 
-        public void CommitTrees()
+        public void CommitTrees(long blockNumber)
         {
             foreach (KeyValuePair<Address, StorageTree> storage in _storages)
             {
-                storage.Value.Commit();
+                storage.Value.Commit(blockNumber);
             }
 
             // only needed here as there is no control over cached storage size otherwise

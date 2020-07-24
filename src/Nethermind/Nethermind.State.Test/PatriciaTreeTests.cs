@@ -33,11 +33,11 @@ namespace Nethermind.Store.Test
             Account account = new Account(1);
             StateTree stateTree = new StateTree();
             stateTree.Set(TestItem.AddressA, account);
-            stateTree.Commit();
+            stateTree.Commit(0);
 
             account = account.WithChangedBalance(2);
             stateTree.Set(TestItem.AddressA, account);
-            stateTree.Commit();
+            stateTree.Commit(0);
 
             Account accountRestored = stateTree.Get(TestItem.AddressA);
             Assert.AreEqual((UInt256) 2, accountRestored.Balance);
@@ -50,11 +50,11 @@ namespace Nethermind.Store.Test
             StateTree stateTree = new StateTree();
             stateTree.Set(TestItem.AddressA, account);
             stateTree.Set(TestItem.AddressB, account);
-            stateTree.Commit();
+            stateTree.Commit(0);
 
             account = account.WithChangedBalance(2);
             stateTree.Set(TestItem.AddressA, account);
-            stateTree.Commit();
+            stateTree.Commit(0);
 
             Account accountRestored = stateTree.Get(TestItem.AddressA);
             Assert.AreEqual((UInt256) 2, accountRestored.Balance);
@@ -67,7 +67,7 @@ namespace Nethermind.Store.Test
             Account account = new Account(1);
             StateTree stateTree = new StateTree(db);
             stateTree.Set(TestItem.AddressA, account);
-            stateTree.Commit();
+            stateTree.Commit(0);
 
             Keccak rootHash = stateTree.RootHash;
             stateTree.RootHash = null;
@@ -76,7 +76,7 @@ namespace Nethermind.Store.Test
             stateTree.Get(TestItem.AddressA);
             account = account.WithChangedBalance(2);
             stateTree.Set(TestItem.AddressA, account);
-            stateTree.Commit();
+            stateTree.Commit(0);
 
             Assert.AreEqual(2, db.Keys.Count);
         }
