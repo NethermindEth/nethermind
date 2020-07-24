@@ -33,7 +33,7 @@ namespace Nethermind.Trie.Pruning
             if (_logger.IsTrace)
                 _logger.Trace($"Committing {blockNumber} {trieNode}");
 
-            if (blockNumber <= 0)
+            if (blockNumber < 0)
                 throw new ArgumentOutOfRangeException(nameof(blockNumber));
 
             bool shouldBeginNewPackage = CurrentPackage == null || CurrentPackage.BlockNumber != blockNumber;

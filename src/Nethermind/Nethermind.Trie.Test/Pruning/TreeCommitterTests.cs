@@ -98,5 +98,23 @@ namespace Nethermind.Trie.Test.Pruning
                 1 * 48 /* linked list node size */ +
                 2 * trieNode.GetMemorySize(false));
         }
+        
+        [Test]
+        public void Dispatcher_will_always_try_to_clear_memory()
+        {
+            TrieNode trieNode = new TrieNode(NodeType.Leaf, new byte[0]); // 192B
+            trieNode.ResolveKey(true);
+
+            TreeCommitter treeCommitter = new TreeCommitter(new MemDb(), LimboLogs.Instance, 512);
+            for (int i = 0; i < 1024; i++)
+            {
+                for (int j = 0; j < 1 + i % 3; j++)
+                {
+                    treeCommitter.Commit(i, trieNode);    
+                }
+            }
+
+            treeCommitter.MemorySize.Should().BeLessThan(512 * 2);
+        }
     }
 }
