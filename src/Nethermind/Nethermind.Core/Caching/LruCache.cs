@@ -140,9 +140,9 @@ namespace Nethermind.Core.Caching
             public TValue Value;
         }
 
-        public int MemorySize => CalculateMemorySize(0, _cacheMap.Count);
+        public long MemorySize => CalculateMemorySize(0, _cacheMap.Count);
 
-        public static int CalculateMemorySize(int keyPlusValueSize, int currentItemsCount)
+        public static long CalculateMemorySize(int keyPlusValueSize, int currentItemsCount)
         {
             // it may actually be different if the initial capacity not equal to max (depending on the dictionary growth path)
             

@@ -66,7 +66,7 @@ namespace Nethermind.Serialization.Rlp
             Bytes = bytes ?? throw new RlpException("RLP cannot be initialized with null bytes");
         }
 
-        public int MemorySize => /* this */ MemorySizes.SmallObjectOverhead +
+        public long MemorySize => /* this */ MemorySizes.SmallObjectOverhead +
                                             MemorySizes.Align(MemorySizes.ArrayOverhead + Bytes.Length);
 
         public byte[] Bytes { get; }

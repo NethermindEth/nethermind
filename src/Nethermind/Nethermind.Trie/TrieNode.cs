@@ -37,19 +37,19 @@ namespace Nethermind.Trie
         /// We leave this switch for testing purposes.
         /// </summary>
         public static bool AllowBranchValues { private get; set; }
-        
+
         public int Refs { get; set; }
-        
+
         private static object _nullNode = new object();
-        
+
         private static TrieNodeDecoder _nodeDecoder = new TrieNodeDecoder();
-        
+
         private static AccountDecoder _accountDecoder = new AccountDecoder();
-        
+
         private RlpStream? _rlpStream;
-        
+
         private object?[]? _data;
-        
+
         private bool _isDirty;
 
         public TrieNode(NodeType nodeType)
@@ -69,11 +69,11 @@ namespace Nethermind.Trie
             FullRlp = rlp;
             _rlpStream = rlp.AsRlpStream();
         }
-        
+
         public Keccak? Keccak { get; set; }
-        
+
         public byte[]? FullRlp { get; private set; }
-        
+
         public NodeType NodeType { get; private set; }
 
         public bool IsValidWithOneNodeLess
@@ -393,7 +393,7 @@ namespace Nethermind.Trie
             if (_rlpStream != null && _data?[i] == null)
             {
                 SeekChild(i);
-                return _rlpStream.PeekNextRlpLength() == 1;
+                return _rlpStream!.PeekNextRlpLength() == 1;
             }
 
             return _data?[i] == null || ReferenceEquals(_data[i], _nullNode);
@@ -416,89 +416,89 @@ namespace Nethermind.Trie
                 return false;
             }
 
-            return ((TrieNode) _data[i]).IsDirty;
+            return ((TrieNode) _data[i])!.IsDirty;
         }
-        
-        public TrieNode this[int i]
+
+        public TrieNode? this[int i]
         {
             get => GetChild(i);
             set => SetChild(i, value);
         }
 
-        public TrieNode GetChild(int childIndex)
+        public TrieNode? GetChild(int childIndex)
         {
             /* extensions store value before the child while branches store children before the value
              * so just to treat them in the same way we update index on extensions
              */
             childIndex = IsExtension ? childIndex + 1 : childIndex;
             ResolveChild(childIndex);
-            return ReferenceEquals(_data[childIndex], _nullNode) ? null : (TrieNode) _data[childIndex];
+            return ReferenceEquals(_data![childIndex], _nullNode) ? null : (TrieNode) _data[childIndex];
         }
 
-        public void SetChild(int i, TrieNode node)
+        public void SetChild(int i, TrieNode? node)
         {
             InitData();
             int index = IsExtension ? i + 1 : i;
-            _data[index] = node ?? _nullNode;
+            _data![index] = node ?? _nullNode;
         }
 
-        public int MemorySize
+        public long GetMemorySize(bool recursive)
         {
-            get
+            int keccakSize =
+                Keccak == null
+                    ? MemorySizes.RefSize
+                    : MemorySizes.RefSize + Keccak.MemorySize;
+            long fullRlpSize =
+                MemorySizes.RefSize +
+                (FullRlp is null ? 0 : MemorySizes.Align(FullRlp.Length + MemorySizes.ArrayOverhead));
+            long rlpStreamSize =
+                MemorySizes.RefSize + (_rlpStream?.MemorySize ?? 0)
+                - (FullRlp is null ? 0 : MemorySizes.Align(FullRlp.Length + MemorySizes.ArrayOverhead));
+            long dataSize =
+                MemorySizes.RefSize +
+                (_data is null
+                    ? 0
+                    : MemorySizes.Align(_data.Length * MemorySizes.RefSize + MemorySizes.ArrayOverhead));
+            int objectOverhead = MemorySizes.SmallObjectOverhead - MemorySizes.SmallObjectFreeDataSize;
+            int isDirtySize = 1;
+            int nodeTypeSize = 1;
+            /* _isDirty + NodeType aligned to 4 (is it 8?) and end up in object overhead*/
+
+            for (int i = 0; i < (_data?.Length ?? 0); i++)
             {
-                int keccakSize =
-                    Keccak == null
-                        ? MemorySizes.RefSize
-                        : MemorySizes.RefSize + Keccak.MemorySize;
-                int fullRlpSize =
-                    MemorySizes.RefSize +
-                    (FullRlp is null ? 0 : MemorySizes.Align(FullRlp.Length + MemorySizes.ArrayOverhead));
-                int rlpStreamSize =
-                    MemorySizes.RefSize + (_rlpStream?.MemorySize ?? 0)
-                    - (FullRlp is null ? 0 : MemorySizes.Align(FullRlp.Length + MemorySizes.ArrayOverhead));
-                int dataSize =
-                    MemorySizes.RefSize +
-                    (_data is null
-                        ? 0
-                        : MemorySizes.Align(_data.Length * MemorySizes.RefSize + MemorySizes.ArrayOverhead));
-                int objectOverhead = MemorySizes.SmallObjectOverhead - MemorySizes.SmallObjectFreeDataSize;
-                int isDirtySize = 1;
-                int nodeTypeSize = 1;
-                /* _isDirty + NodeType aligned to 4 (is it 8?) and end up in object overhead*/
-
-                for (int i = 0; i < (_data?.Length ?? 0); i++)
+                if (_data![i] == null)
                 {
-                    if (_data![i] == null)
-                    {
-                        continue;;
-                    }
+                    continue;
+                }
 
-                    if (_data![i] is Keccak)
-                    {
-                        dataSize += Keccak.MemorySize;
-                    }
-                    
-                    if (_data![i] is byte[] array)
-                    {
-                        dataSize += MemorySizes.ArrayOverhead + array.Length;
-                    }
+                if (_data![i] is Keccak)
+                {
+                    dataSize += Keccak.MemorySize;
+                }
 
+                if (_data![i] is byte[] array)
+                {
+                    dataSize += MemorySizes.ArrayOverhead + array.Length;
+                }
+
+                if (recursive)
+                {
                     if (_data![i] is TrieNode node)
                     {
-                        dataSize += node.MemorySize;
+                        dataSize += node.GetMemorySize(true);
                     }
                 }
-                
-                int unaligned = keccakSize +
-                                fullRlpSize +
-                                rlpStreamSize +
-                                dataSize +
-                                isDirtySize +
-                                nodeTypeSize +
-                                objectOverhead;
-
-                return MemorySizes.Align(unaligned);
             }
+
+            long unaligned = keccakSize +
+                             fullRlpSize +
+                             rlpStreamSize +
+                             dataSize +
+                             isDirtySize +
+                             nodeTypeSize +
+                             objectOverhead;
+
+            return MemorySizes.Align(unaligned);
         }
 
         public override string ToString()

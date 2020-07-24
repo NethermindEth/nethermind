@@ -34,11 +34,11 @@ namespace Nethermind.Trie
         public bool IsLeaf { get; }
         public bool IsExtension => !IsLeaf;
 
-        public int MemorySize
+        public long MemorySize
         {
             get
             {
-                int unaligned = MemorySizes.SmallObjectOverhead +
+                long unaligned = MemorySizes.SmallObjectOverhead +
                                 MemorySizes.Align(MemorySizes.ArrayOverhead + Path.Length) +
                                 1;
                 return MemorySizes.Align(unaligned);

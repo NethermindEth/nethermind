@@ -2,7 +2,11 @@
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Db;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Trie.Benchmark
 {

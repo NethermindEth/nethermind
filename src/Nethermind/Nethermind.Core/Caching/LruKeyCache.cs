@@ -106,10 +106,10 @@ namespace Nethermind.Core.Caching
             _cacheMap.Add(node.Value, node);
         }
 
-        public int MemorySize => CalculateMemorySize(0, _cacheMap.Count);
+        public long MemorySize => CalculateMemorySize(0, _cacheMap.Count);
 
         // TODO: memory size on the KeyCache will be smaller because we do not create LruCacheItems
-        public static int CalculateMemorySize(int keyPlusValueSize, int currentItemsCount)
+        public static long CalculateMemorySize(int keyPlusValueSize, int currentItemsCount)
         {
             // it may actually be different if the initial capacity not equal to max (depending on the dictionary growth path)
             

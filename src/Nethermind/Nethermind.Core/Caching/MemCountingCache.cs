@@ -109,12 +109,12 @@ namespace Nethermind.Core.Caching
             }
             else
             {
-                int cacheItemMemory = LruCacheItem.FindMemorySize(val);
+                long cacheItemMemory = LruCacheItem.FindMemorySize(val);
                 int newCount = _lruList.Count + 1;
                 int capacityRemembered = _currentDictionaryCapacity;
-                int dictionaryNewMemory = CalculateDictionaryPartMemory(_currentDictionaryCapacity, newCount);
+                long dictionaryNewMemory = CalculateDictionaryPartMemory(_currentDictionaryCapacity, newCount);
                 int initialGrowth = newCount == 1 ? PostInitMemorySize - PreInitMemorySize : 0;
-                int newMemorySize =
+                long newMemorySize =
                     MemorySizes.Align(
                         MemorySize +
                         initialGrowth +
@@ -179,9 +179,9 @@ namespace Nethermind.Core.Caching
             public Keccak Key;
             public byte[] Value;
 
-            public int MemorySize => FindMemorySize(Value);
+            public long MemorySize => FindMemorySize(Value);
 
-            public static int FindMemorySize(byte[] withValue)
+            public static long FindMemorySize(byte[] withValue)
             {
                 return MemorySizes.Align(
                     Keccak.MemorySize +
@@ -190,7 +190,7 @@ namespace Nethermind.Core.Caching
             }
         }
 
-        private int CalculateDictionaryPartMemory(int currentCapacity, int newCount)
+        private long CalculateDictionaryPartMemory(int currentCapacity, int newCount)
         {
             int previousSize = _currentDictionaryCapacity * DictionaryItemSize;
             int newSize = previousSize;
@@ -203,21 +203,6 @@ namespace Nethermind.Core.Caching
             return newSize - previousSize;
         }
 
-        public int MemorySize { get; private set; } = PreInitMemorySize;
-
-        public static int CalculateMemorySize(int keyPlusValueSize, int currentItemsCount)
-        {
-            // it may actually be different if the initial capacity not equal to max (depending on the dictionary growth path)
-
-            int postInit =
-                52 /* lazy init of two internal dictionary arrays + dictionary size times (entry size + int) */
-                + MemorySizes.FindNextPrime(currentItemsCount) * 28
-                + currentItemsCount * 80 /* LinkedListNode and CacheItem times items count */;
-
-            return MemorySizes.Align(
-                PreInitMemorySize +
-                postInit +
-                keyPlusValueSize * currentItemsCount);
-        }
+        public long MemorySize { get; private set; } = PreInitMemorySize;
     }
 }

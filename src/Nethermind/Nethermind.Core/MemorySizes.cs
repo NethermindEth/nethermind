@@ -26,7 +26,7 @@ namespace Nethermind.Core
         public const int Alignment = 8;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static int Align(int unalignedSize)
+        public static long Align(long unalignedSize)
         {
             return unalignedSize + (-unalignedSize & AlignmentMask);
         }
