@@ -143,6 +143,7 @@ namespace Nethermind.Core.Caching
         {
             if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem> node))
             {
+                MemorySize -= node.Value.MemorySize;
                 _lruList.Remove(node);
                 _cacheMap.Remove(key);
             }

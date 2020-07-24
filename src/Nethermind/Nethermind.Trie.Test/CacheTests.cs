@@ -57,5 +57,24 @@ namespace Nethermind.Trie.Test
             cache.Get(TestItem.KeccakC).Should().BeNull();
             cache.Get(TestItem.KeccakE).Should().NotBeNull();
         }
+        
+        [Test]
+        public void Limit_by_memory_works_fine_wth_deletes()
+        {
+            MemCountingCache cache = new MemCountingCache(800, string.Empty);
+            cache.Set(TestItem.KeccakA, new byte[0]);
+            cache.Set(TestItem.KeccakB, new byte[0]);
+            cache.Set(TestItem.KeccakC, new byte[0]);
+            
+            cache.Set(TestItem.KeccakA, null);
+            
+            cache.MemorySize.Should().Be(504);
+            cache.Get(TestItem.KeccakA).Should().BeNull();
+            
+            cache.Set(TestItem.KeccakD, new byte[0]);
+            cache.MemorySize.Should().Be(608);
+            cache.Get(TestItem.KeccakB).Should().NotBeNull();
+            cache.Get(TestItem.KeccakD).Should().NotBeNull();
+        }
     }
 }
