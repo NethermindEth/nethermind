@@ -326,7 +326,6 @@ namespace Nethermind.Trie
                 }
 
                 RootRef = TrieNodeFactory.CreateLeaf(new HexPrefix(true, updatePath.Slice(0, nibblesCount).ToArray()), updateValue);
-                RootRef.IsDirty = true;
                 return updateValue;
             }
 
@@ -356,7 +355,7 @@ namespace Nethermind.Trie
         }
 
         // TODO: this can be removed now but is lower priority temporarily while the patricia rewrite testing is in progress
-        private void ConnectNodes(TrieNode node)
+        private void ConnectNodes(TrieNode node, TrieNode previousHere)
         {
             bool isRoot = _nodeStack.Count == 0;
             TrieNode nextNode = node;
@@ -478,7 +477,7 @@ namespace Nethermind.Trie
                         return null;
                     }
 
-                    ConnectNodes(null);
+                    ConnectNodes(null, node);
                 }
                 else if (Bytes.AreEqual(traverseContext.UpdateValue, node.Value))
                 {
@@ -520,7 +519,7 @@ namespace Nethermind.Trie
 
                 byte[] leafPath = traverseContext.UpdatePath.Slice(traverseContext.CurrentIndex, traverseContext.UpdatePath.Length - traverseContext.CurrentIndex).ToArray();
                 TrieNode leaf = TrieNodeFactory.CreateLeaf(new HexPrefix(true, leafPath), traverseContext.UpdateValue);
-                ConnectNodes(leaf);
+                ConnectNodes(leaf, null);
 
                 return traverseContext.UpdateValue;
             }
@@ -574,7 +573,7 @@ namespace Nethermind.Trie
 
                 if (traverseContext.UpdateValue == null)
                 {
-                    ConnectNodes(null);
+                    ConnectNodes(null, node);
                     return traverseContext.UpdateValue;
                 }
 
@@ -582,7 +581,7 @@ namespace Nethermind.Trie
                 {
                     node.Value = traverseContext.UpdateValue;
                     node.IsDirty = true;
-                    ConnectNodes(node);
+                    ConnectNodes(node, node);
                     return traverseContext.UpdateValue;
                 }
 
@@ -631,7 +630,7 @@ namespace Nethermind.Trie
             node.Value = longerPathValue;
 
             _nodeStack.Push(new StackedNode(branch, longerPath[extensionLength]));
-            ConnectNodes(node);
+            ConnectNodes(node, node);
 
             return traverseContext.UpdateValue;
         }
@@ -703,8 +702,8 @@ namespace Nethermind.Trie
             {
                 branch.SetChild(pathBeforeUpdate[extensionLength], node.GetChild(0));
             }
-
-            ConnectNodes(branch);
+            
+            ConnectNodes(branch, node.GetChild(0));
             return traverseContext.UpdateValue;
         }
 
