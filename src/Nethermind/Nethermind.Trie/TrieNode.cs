@@ -95,6 +95,7 @@ namespace Nethermind.Trie
                 throw new InvalidOperationException($"{nameof(TrieNode)} {this} is already sealed.");
             }
 
+            IsDirty = false;
             IsSealed = true;
         }
 

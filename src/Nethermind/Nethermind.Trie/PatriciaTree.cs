@@ -208,7 +208,7 @@ namespace Nethermind.Trie
             }
 
             node.ResolveKey(isRoot);
-            node.IsDirty = false;
+            node.Seal();
 
             if (node.FullRlp != null && node.FullRlp.Length >= 32)
             {
