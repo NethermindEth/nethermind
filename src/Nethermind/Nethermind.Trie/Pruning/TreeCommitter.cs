@@ -6,27 +6,6 @@ using Nethermind.Logging;
 
 namespace Nethermind.Trie.Pruning
 {
-    public class PassThroughTreeCommitter : ITreeCommitter
-    {
-        private readonly IKeyValueStore _keyValueStore;
-
-        public PassThroughTreeCommitter(IKeyValueStore keyValueStore)
-        {
-            _keyValueStore = keyValueStore ?? throw new ArgumentNullException(nameof(keyValueStore));
-        }
-        
-        public void Commit(long blockNumber, TrieNode trieNode)
-        {
-            _keyValueStore[trieNode.Keccak!.Bytes] = trieNode.FullRlp;
-        }
-
-        public void Uncommit()
-        {
-        }
-
-        public byte[] this[byte[] key] => _keyValueStore[key];
-    }
-    
     public class TreeCommitter : ITreeCommitter
     {
         public TreeCommitter(IKeyValueStore keyValueStore, ILogManager logManager, long memoryLimit)
@@ -78,6 +57,12 @@ namespace Nethermind.Trie.Pruning
             }
 
             _queue.RemoveLast();
+        }
+
+        public void Flush()
+        {
+            CurrentPackage?.Seal();
+            while (TryDispatchOne()) { }
         }
 
         public byte[] this[byte[] key] => _keyValueStore[key];

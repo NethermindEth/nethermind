@@ -10,6 +10,10 @@ namespace Nethermind.Trie.Pruning
         {
         }
 
+        public void Flush()
+        {
+        }
+
         public byte[] this[byte[] key] => null;
     }
 }
