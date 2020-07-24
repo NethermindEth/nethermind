@@ -1,6 +1,8 @@
 using System;
 using FluentAssertions;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Trie.Pruning;
@@ -16,19 +18,19 @@ namespace Nethermind.Trie.Test
         {
             throw new NotImplementedException();
         }
-        
+
         [Test]
         public void When_committing_one_root_we_mark_the_block_number_on_the_nodes()
         {
             throw new NotImplementedException();
         }
-        
+
         [Test]
         public void And_what_with_the_storage_tries_big_question()
         {
             throw new NotImplementedException();
         }
-        
+
         [Test]
         public void In_the_commit_queue_leaves_are_before_other_nodes()
         {
@@ -49,16 +51,16 @@ namespace Nethermind.Trie.Test
             // or we do?
             throw new NotImplementedException();
         }
-        
+
         private static readonly byte[] _longLeaf1
             = Bytes.FromHexString("0000000000000000000000000000000000000000000000000000000000000000000000000000000001");
-        
+
         private static readonly byte[] _longLeaf2
             = Bytes.FromHexString("0000000000000000000000000000000000000000000000000000000000000000000000000000000002");
-        
+
         private static readonly byte[] _longLeaf3
             = Bytes.FromHexString("0000000000000000000000000000000000000000000000000000000000000000000000000000000003");
-        
+
         private static byte[] _keyA = Bytes.FromHexString("000000000000000aa");
         private static byte[] _keyB = Bytes.FromHexString("000000000000000bb");
         private static byte[] _keyC = Bytes.FromHexString("000000000000001aa");
@@ -77,7 +79,7 @@ namespace Nethermind.Trie.Test
             // leaf (root)
             memDb.Keys.Should().HaveCount(1);
         }
-        
+
         [Test]
         public void Single_leaf_update_same_block()
         {
@@ -91,12 +93,12 @@ namespace Nethermind.Trie.Test
 
             // leaf (root)
             memDb.Keys.Should().HaveCount(1);
-            
+
             PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
             checkTree.Get(_keyA).Should().NotBeEquivalentTo(_longLeaf1);
             checkTree.Get(_keyA).Should().BeEquivalentTo(_longLeaf2);
         }
-        
+
         [Test]
         public void Single_leaf_update_next_blocks()
         {
@@ -112,12 +114,12 @@ namespace Nethermind.Trie.Test
 
             // leaf (root)
             memDb.Keys.Should().HaveCount(1);
-            
+
             PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
             checkTree.Get(_keyA).Should().NotBeEquivalentTo(_longLeaf1);
             checkTree.Get(_keyA).Should().BeEquivalentTo(_longLeaf2);
         }
-        
+
         [Test]
         public void Single_leaf_delete_same_block()
         {
@@ -131,11 +133,11 @@ namespace Nethermind.Trie.Test
 
             // leaf (root)
             memDb.Keys.Should().HaveCount(0);
-            
+
             PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
             checkTree.Get(_keyA).Should().BeNull();
         }
-        
+
         [Test]
         public void Single_leaf_delete_next_block()
         {
@@ -151,11 +153,11 @@ namespace Nethermind.Trie.Test
 
             // leaf (root)
             memDb.Keys.Should().HaveCount(0);
-            
+
             PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
             checkTree.Get(_keyA).Should().BeNull();
         }
-        
+
         [Test]
         public void Branch_with_branch_and_leaf()
         {
@@ -175,7 +177,177 @@ namespace Nethermind.Trie.Test
             checkTree.Get(_keyB).Should().BeEquivalentTo(_longLeaf1);
             checkTree.Get(_keyC).Should().BeEquivalentTo(_longLeaf1);
         }
+
+        [Test]
+        public void Branch_with_branch_and_leaf_then_deleted()
+        {
+            MemDb memDb = new MemDb();
+            TreeCommitter treeCommitter = new TreeCommitter(memDb, LimboLogs.Instance, 1.MB());
+            PatriciaTree patriciaTree = new PatriciaTree(treeCommitter);
+            patriciaTree.Set(_keyA, _longLeaf1);
+            patriciaTree.Set(_keyB, _longLeaf1);
+            patriciaTree.Set(_keyC, _longLeaf1);
+            patriciaTree.Commit(0);
+            patriciaTree.Set(_keyA, Array.Empty<byte>());
+            patriciaTree.Set(_keyB, Array.Empty<byte>());
+            patriciaTree.Set(_keyC, Array.Empty<byte>());
+            patriciaTree.Commit(1);
+            treeCommitter.Flush();
+
+            // leaf (root)
+            memDb.Keys.Should().HaveCount(6);
+            PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
+            checkTree.Get(_keyA).Should().BeEquivalentTo(_longLeaf1);
+            checkTree.Get(_keyB).Should().BeEquivalentTo(_longLeaf1);
+            checkTree.Get(_keyC).Should().BeEquivalentTo(_longLeaf1);
+        }
+
+        public void Test_add_many(int i)
+        {
+            MemDb memDb = new MemDb();
+            TreeCommitter treeCommitter = new TreeCommitter(memDb, LimboLogs.Instance, 128.MB());
+            PatriciaTree patriciaTree = new PatriciaTree(treeCommitter);
+            
+            for (int j = 0; j < i; j++)
+            {
+                Keccak key = TestItem.Keccaks[j];
+                byte[] value = new byte[128];
+                value[^1] = (byte) j;
+                patriciaTree.Set(key.Bytes, value);
+            }
+
+            patriciaTree.Commit(0);
+            patriciaTree.UpdateRootHash();
+            treeCommitter.Flush();
+
+            PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
+            for (int j = 0; j < i; j++)
+            {
+                Keccak key = TestItem.Keccaks[j];
+                byte[] value = new byte[128];
+                value[^1] = (byte) j;
+                checkTree.Get(key.Bytes).Should().BeEquivalentTo(value, $@"{i} {j}");
+            }
+        }
         
+        public void Test_update_many(int i)
+        {
+            MemDb memDb = new MemDb();
+            TreeCommitter treeCommitter = new TreeCommitter(memDb, LimboLogs.Instance, 128.MB());
+            PatriciaTree patriciaTree = new PatriciaTree(treeCommitter);
+            
+            for (int j = 0; j < i; j++)
+            {
+                Keccak key = TestItem.Keccaks[j];
+                byte[] value = new byte[128];
+                value[^1] = (byte) j;
+                patriciaTree.Set(key.Bytes, value);
+            }
+            
+            for (int j = 0; j < i; j++)
+            {
+                Keccak key = TestItem.Keccaks[j];
+                byte[] value = new byte[128];
+                value[^1] = (byte) (j + 1);
+                patriciaTree.Set(key.Bytes, value);
+            }
+
+            patriciaTree.Commit(0);
+            patriciaTree.UpdateRootHash();
+            treeCommitter.Flush();
+
+            PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
+            for (int j = 0; j < i; j++)
+            {
+                Keccak key = TestItem.Keccaks[j];
+                byte[] value = new byte[128];
+                value[^1] = (byte) (j + 1);
+                checkTree.Get(key.Bytes).Should().BeEquivalentTo(value, $@"{i} {j}");
+            }
+        }
+        
+        public void Test_add_and_delete_many_same_block(int i)
+        {
+            MemDb memDb = new MemDb();
+            TreeCommitter treeCommitter = new TreeCommitter(memDb, LimboLogs.Instance, 128.MB());
+            PatriciaTree patriciaTree = new PatriciaTree(treeCommitter);
+            
+            for (int j = 0; j < i; j++)
+            {
+                Keccak key = TestItem.Keccaks[j];
+                byte[] value = new byte[128];
+                value[^1] = (byte) j;
+                patriciaTree.Set(key.Bytes, value);
+            }
+            
+            for (int j = 0; j < i; j++)
+            {
+                Keccak key = TestItem.Keccaks[j];
+                patriciaTree.Set(key.Bytes, Array.Empty<byte>());
+            }
+
+            patriciaTree.Commit(0);
+            patriciaTree.UpdateRootHash();
+            treeCommitter.Flush();
+
+            PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
+            for (int j = 0; j < i; j++)
+            {
+                Keccak key = TestItem.Keccaks[j];
+                byte[] value = new byte[128];
+                value[^1] = (byte) j;
+                checkTree.Get(key.Bytes).Should().BeNull($@"{i} {j}");
+            }
+        }
+        
+        public void Test_add_and_delete_many_next_block(int i)
+        {
+            MemDb memDb = new MemDb();
+            TreeCommitter treeCommitter = new TreeCommitter(memDb, LimboLogs.Instance, 128.MB());
+            PatriciaTree patriciaTree = new PatriciaTree(treeCommitter);
+            
+            for (int j = 0; j < i; j++)
+            {
+                Keccak key = TestItem.Keccaks[j];
+                byte[] value = new byte[128];
+                value[^1] = (byte) j;
+                patriciaTree.Set(key.Bytes, value);
+            }
+            
+            patriciaTree.Commit(0);
+
+            for (int j = 0; j < i; j++)
+            {
+                Keccak key = TestItem.Keccaks[j];
+                patriciaTree.Set(key.Bytes, Array.Empty<byte>());
+            }
+
+            patriciaTree.Commit(1);
+            patriciaTree.UpdateRootHash();
+            treeCommitter.Flush();
+
+            PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
+            for (int j = 0; j < i; j++)
+            {
+                Keccak key = TestItem.Keccaks[j];
+                byte[] value = new byte[128];
+                value[^1] = (byte) j;
+                checkTree.Get(key.Bytes).Should().BeNull($@"{i} {j}");
+            }
+        }
+
+        [Test]
+        public void Big_test()
+        {
+            for (int i = 0; i < 100; i++)
+            {
+                Test_add_many(i);
+                Test_update_many(i);
+                Test_add_and_delete_many_same_block(i);
+                Test_add_and_delete_many_next_block(i);
+            }
+        }
+
         [Test]
         public void Two_branches_exactly_same_leaf()
         {
@@ -197,7 +369,7 @@ namespace Nethermind.Trie.Test
             checkTree.Get(_keyC).Should().BeEquivalentTo(_longLeaf1);
             checkTree.Get(_keyD).Should().BeEquivalentTo(_longLeaf1);
         }
-        
+
         [Test]
         public void Two_branches_exactly_same_leaf_then_one_removed()
         {
@@ -239,14 +411,12 @@ namespace Nethermind.Trie.Test
             patriciaTree.Set(_keyB, _longLeaf2);
             patriciaTree.Commit(0);
             treeCommitter.Flush();
-            
             memDb.Keys.Should().HaveCount(4);
-
             PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
             checkTree.Get(_keyA).Should().BeEquivalentTo(_longLeaf1);
             checkTree.Get(_keyB).Should().BeEquivalentTo(_longLeaf2);
         }
-        
+
         [Test]
         public void Extension_with_branch_with_two_same_children()
         {
@@ -257,13 +427,12 @@ namespace Nethermind.Trie.Test
             patriciaTree.Set(_keyB, _longLeaf1);
             patriciaTree.Commit(0);
             treeCommitter.Flush();
-            
             memDb.Keys.Should().HaveCount(4);
             PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
             checkTree.Get(_keyA).Should().BeEquivalentTo(_longLeaf1);
             checkTree.Get(_keyB).Should().BeEquivalentTo(_longLeaf1);
         }
-        
+
         [Test]
         public void When_branch_with_two_different_children_change_one_and_change_back_next_block()
         {
@@ -274,12 +443,10 @@ namespace Nethermind.Trie.Test
             patriciaTree.Set(_keyB, _longLeaf2);
             patriciaTree.UpdateRootHash();
             patriciaTree.Commit(0);
-            
             patriciaTree.Set(_keyA, _longLeaf3);
             patriciaTree.Set(_keyA, _longLeaf1);
             patriciaTree.UpdateRootHash();
             patriciaTree.Commit(1);
-            
             treeCommitter.Flush();
 
             // extension
@@ -287,7 +454,7 @@ namespace Nethermind.Trie.Test
             // leaf x 2
             memDb.Keys.Should().HaveCount(4);
         }
-        
+
         [Test]
         public void When_branch_with_two_same_children_change_one_and_change_back_next_block()
         {
@@ -298,12 +465,10 @@ namespace Nethermind.Trie.Test
             patriciaTree.Set(_keyB, _longLeaf1);
             patriciaTree.UpdateRootHash();
             patriciaTree.Commit(0);
-            
             patriciaTree.Set(_keyA, _longLeaf3);
             patriciaTree.Set(_keyA, _longLeaf1);
             patriciaTree.UpdateRootHash();
             patriciaTree.Commit(1);
-            
             treeCommitter.Flush();
 
             // extension
@@ -311,7 +476,7 @@ namespace Nethermind.Trie.Test
             // leaf same x 2
             memDb.Keys.Should().HaveCount(4);
         }
-        
+
         [Test]
         public void When_two_branches_with_two_same_children_change_one_and_change_back_next_block()
         {
@@ -324,12 +489,10 @@ namespace Nethermind.Trie.Test
             patriciaTree.Set(_keyD, _longLeaf1);
             patriciaTree.UpdateRootHash();
             patriciaTree.Commit(0);
-            
             patriciaTree.Set(_keyA, _longLeaf3);
             patriciaTree.Set(_keyA, _longLeaf1);
             patriciaTree.UpdateRootHash();
             patriciaTree.Commit(1);
-            
             treeCommitter.Flush();
 
             // extension
