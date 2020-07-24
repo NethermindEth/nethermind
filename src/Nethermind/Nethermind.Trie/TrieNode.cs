@@ -32,7 +32,7 @@ namespace Nethermind.Trie
         public TrieNode(NodeType nodeType)
         {
             NodeType = nodeType;
-            
+
             // is it equivalent??? maybe can only use IsDirty
             IsDirty = true;
             IsSealed = false;
@@ -142,7 +142,7 @@ namespace Nethermind.Trie
                     throw new InvalidOperationException(
                         $"{nameof(TrieNode)} {this} is already sealed when setting {nameof(IsDirty)}.");
                 }
-                
+
                 if (value)
                 {
                     Keccak = null;
@@ -557,6 +557,44 @@ namespace Nethermind.Trie
         public override string ToString()
         {
             return $"{NodeType}({FullRlp?.Length}) {Keccak}, refs {Refs}";
+        }
+
+        public TrieNode CloneWithChangedKey(HexPrefix key)
+        {
+            TrieNode trieNode = new TrieNode(NodeType);
+            trieNode.Key = key;
+            if (_data != null)
+            {
+                trieNode.InitData();
+                for (int i = 0; i < 16; i++)
+                {
+                    trieNode._data![i] = _data[i];
+                }
+            }
+
+            return trieNode;
+        }
+        
+        public TrieNode CloneWithChangedValue(byte[] changedValue)
+        {
+            return CloneWithChangedKeyAndValue(Key, changedValue);
+        }
+
+        public TrieNode CloneWithChangedKeyAndValue(HexPrefix key, byte[] changedValue)
+        {
+            TrieNode trieNode = new TrieNode(NodeType);
+            trieNode.Value = changedValue;
+            trieNode.Key = key;
+            if (_data != null)
+            {
+                trieNode.InitData();
+                for (int i = 0; i < 16; i++)
+                {
+                    trieNode._data![i] = _data[i];
+                }
+            }
+
+            return trieNode;
         }
 
         #region private

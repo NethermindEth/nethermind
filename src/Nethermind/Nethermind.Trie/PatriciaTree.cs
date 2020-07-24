@@ -485,8 +485,10 @@ namespace Nethermind.Trie
                 }
                 else
                 {
-                    node.Value = traverseContext.UpdateValue;
-                    node.IsDirty = true;
+                    TrieNode withUpdatedValue = node.CloneWithChangedValue(traverseContext.UpdateValue); // new line
+                    ConnectNodes(withUpdatedValue, node); // new line
+                    // node.Value = traverseContext.UpdateValue;
+                    // node.IsDirty = true;
                 }
 
                 return traverseContext.UpdateValue;
@@ -579,9 +581,8 @@ namespace Nethermind.Trie
 
                 if (!Bytes.AreEqual(node.Value, traverseContext.UpdateValue))
                 {
-                    node.Value = traverseContext.UpdateValue;
-                    node.IsDirty = true;
-                    ConnectNodes(node, node);
+                    TrieNode withUpdatedValue = node.CloneWithChangedValue(traverseContext.UpdateValue);
+                    ConnectNodes(withUpdatedValue, node);
                     return traverseContext.UpdateValue;
                 }
 
@@ -625,12 +626,11 @@ namespace Nethermind.Trie
             Span<byte> leafPath = longerPath.Slice(extensionLength + 1, longerPath.Length - extensionLength - 1);
 
 
-            node.IsDirty = true;
-            node.Key = new HexPrefix(true, leafPath.ToArray());
-            node.Value = longerPathValue;
+            TrieNode withUpdatedKeyAndValue = node.CloneWithChangedKeyAndValue(
+                new HexPrefix(true, leafPath.ToArray()), longerPathValue);
 
             _nodeStack.Push(new StackedNode(branch, longerPath[extensionLength]));
-            ConnectNodes(node, node);
+            ConnectNodes(withUpdatedKeyAndValue, node);
 
             return traverseContext.UpdateValue;
         }
@@ -675,8 +675,9 @@ namespace Nethermind.Trie
             if (extensionLength != 0)
             {
                 byte[] extensionPath = node.Path.Slice(0, extensionLength);
-                node.Key = new HexPrefix(false, extensionPath);
-                node.IsDirty = true;
+                node = node.CloneWithChangedKey(new HexPrefix(false, extensionPath));
+                // node.Key = new HexPrefix(false, extensionPath);
+                // node.IsDirty = true;
                 _nodeStack.Push(new StackedNode(node, 0));
             }
 
