@@ -1,3 +1,5 @@
+using Nethermind.Core.Crypto;
+
 namespace Nethermind.Trie.Pruning
 {
     public interface ITreeCommitter
@@ -7,6 +9,8 @@ namespace Nethermind.Trie.Pruning
         void Uncommit();
 
         void Flush();
+
+        TrieNode FindCached(Keccak key);
         
         byte[] this[byte[] key] { get; }
     }

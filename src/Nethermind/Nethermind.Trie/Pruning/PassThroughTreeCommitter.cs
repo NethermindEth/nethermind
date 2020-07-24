@@ -1,4 +1,5 @@
 using System;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.Pruning
 {
@@ -22,6 +23,11 @@ namespace Nethermind.Trie.Pruning
 
         public void Flush()
         {
+        }
+
+        public TrieNode FindCached(Keccak key)
+        {
+            return null;
         }
 
         public byte[] this[byte[] key] => _keyValueStore[key];

@@ -67,7 +67,7 @@ namespace Nethermind.Trie.Test.Pruning
         public void Dispatcher_will_try_to_clear_memory()
         {
             TrieNode trieNode = new TrieNode(NodeType.Leaf, new byte[0]); // 192B
-            trieNode.ResolveKey(true);
+            trieNode.ResolveKey(null, true);
 
             TreeCommitter treeCommitter = new TreeCommitter(new MemDb(), LimboLogs.Instance, 640);
             treeCommitter.Commit(1234, trieNode);
@@ -85,7 +85,7 @@ namespace Nethermind.Trie.Test.Pruning
         public void Dispatcher_will_try_to_clear_memory_the_soonest_possible()
         {
             TrieNode trieNode = new TrieNode(NodeType.Leaf, new byte[0]); // 192B
-            trieNode.ResolveKey(true);
+            trieNode.ResolveKey(null, true);
 
             TreeCommitter treeCommitter = new TreeCommitter(new MemDb(), LimboLogs.Instance, 512);
             treeCommitter.Commit(1234, trieNode);
@@ -103,7 +103,7 @@ namespace Nethermind.Trie.Test.Pruning
         public void Dispatcher_will_always_try_to_clear_memory()
         {
             TrieNode trieNode = new TrieNode(NodeType.Leaf, new byte[0]); // 192B
-            trieNode.ResolveKey(true);
+            trieNode.ResolveKey(null, true);
 
             TreeCommitter treeCommitter = new TreeCommitter(new MemDb(), LimboLogs.Instance, 512);
             for (int i = 0; i < 1024; i++)

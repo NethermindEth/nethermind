@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 
 namespace Nethermind.Trie.Pruning
@@ -30,6 +31,12 @@ namespace Nethermind.Trie.Pruning
 
         public void Commit(long blockNumber, TrieNode trieNode)
         {
+            if (trieNode.Keccak == null)
+            {
+                throw new InvalidOperationException(
+                    $"Hash of the node {trieNode} should be known at the time of committing.");
+            }
+            
             if (_logger.IsTrace)
                 _logger.Trace($"Committing {blockNumber} {trieNode}");
 
@@ -46,6 +53,7 @@ namespace Nethermind.Trie.Pruning
 
             long previousPackageMemory = CurrentPackage.MemorySize;
             CurrentPackage.Enqueue(trieNode);
+            _inMemNodes[trieNode.Keccak] = trieNode;
             AddToMemory(CurrentPackage.MemorySize - previousPackageMemory);
         }
 
@@ -67,6 +75,11 @@ namespace Nethermind.Trie.Pruning
 
         public byte[] this[byte[] key] => _keyValueStore[key];
 
+        public TrieNode FindCached(Keccak key)
+        {
+            return _inMemNodes.TryGetValue(key, out TrieNode trieNode) ? trieNode : null;
+        }
+
         public long MemorySize { get; private set; }
 
         #region Private
@@ -80,6 +93,8 @@ namespace Nethermind.Trie.Pruning
         private readonly long _memoryLimit;
 
         private LinkedList<BlockCommitPackage> _queue = new LinkedList<BlockCommitPackage>();
+        
+        private Dictionary<Keccak, TrieNode> _inMemNodes = new Dictionary<Keccak, TrieNode>();
 
         private BlockCommitPackage? CurrentPackage => _queue.Last?.Value;
 

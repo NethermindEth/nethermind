@@ -246,6 +246,7 @@ namespace Nethermind.Trie
                         }
 
                         FullRlp = tree.GetNode(Keccak, allowCaching);
+                        Refs = int.MaxValue;
                         if (FullRlp == null)
                         {
                             throw new TrieException($"Trie returned a malformed RLP for node {Keccak}");
@@ -279,6 +280,8 @@ namespace Nethermind.Trie
                 {
                     HexPrefix key = HexPrefix.FromBytes(_rlpStream.DecodeByteArraySpan());
                     bool isExtension = key.IsExtension;
+
+                    IsSealed = false;
                     if (isExtension)
                     {
                         NodeType = NodeType.Extension;
@@ -290,6 +293,8 @@ namespace Nethermind.Trie
                         Key = key;
                         Value = _rlpStream.DecodeByteArray();
                     }
+                    
+                    IsSealed = true;
                 }
                 else
                 {
@@ -307,7 +312,7 @@ namespace Nethermind.Trie
             ResolveNode(tree, true);
         }
 
-        public void ResolveKey(bool isRoot)
+        public void ResolveKey(PatriciaTree tree, bool isRoot)
         {
             if (Keccak != null)
             {
@@ -316,7 +321,7 @@ namespace Nethermind.Trie
 
             if (FullRlp == null || IsDirty)
             {
-                FullRlp = RlpEncode();
+                FullRlp = RlpEncode(tree);
                 _rlpStream = FullRlp.AsRlpStream();
             }
 
@@ -332,9 +337,9 @@ namespace Nethermind.Trie
             Keccak = Keccak.Compute(FullRlp);
         }
 
-        internal byte[] RlpEncode()
+        internal byte[] RlpEncode(PatriciaTree tree)
         {
-            byte[] rlp = _nodeDecoder.Encode(this);
+            byte[] rlp = _nodeDecoder.Encode(tree, this);
             // just included here to improve the class reading
             // after some analysis I believe that any non-test Ethereum cases of a trie ever have nodes with RLP shorter than 32 bytes
             // if (rlp.Bytes.Length < 32)
@@ -384,7 +389,7 @@ namespace Nethermind.Trie
             }
         }
 
-        private void ResolveChild(int i)
+        private void ResolveChild(PatriciaTree tree, int i)
         {
             if (_rlpStream == null)
             {
@@ -404,7 +409,8 @@ namespace Nethermind.Trie
                         break;
                     case 160:
                         _rlpStream.Position--;
-                        _data![i] = new TrieNode(NodeType.Unknown, _rlpStream.DecodeKeccak());
+                        Keccak keccak = _rlpStream.DecodeKeccak();
+                        _data![i] = tree.GetUnknown(keccak);
                         break;
                     default:
                     {
@@ -468,17 +474,17 @@ namespace Nethermind.Trie
 
         public TrieNode? this[int i]
         {
-            get => GetChild(i);
+            // get => GetChild(i);
             set => SetChild(i, value);
         }
 
-        public TrieNode? GetChild(int childIndex)
+        public TrieNode? GetChild(PatriciaTree tree, int childIndex)
         {
             /* extensions store value before the child while branches store children before the value
              * so just to treat them in the same way we update index on extensions
              */
             childIndex = IsExtension ? childIndex + 1 : childIndex;
-            ResolveChild(childIndex);
+            ResolveChild(tree, childIndex);
             return ReferenceEquals(_data![childIndex], _nullNode) ? null : (TrieNode) _data[childIndex];
         }
 
@@ -572,7 +578,7 @@ namespace Nethermind.Trie
             if (_data != null)
             {
                 trieNode.InitData();
-                for (int i = 0; i < 16; i++)
+                for (int i = 0; i < _data.Length; i++)
                 {
                     trieNode._data![i] = _data[i];
                 }

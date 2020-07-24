@@ -46,7 +46,7 @@ namespace Nethermind.Trie
                     trieVisitContext.Level++;
                     for (int i = 0; i < 16; i++)
                     {
-                        TrieNode child = GetChild(i);
+                        TrieNode child = GetChild(tree, i);
                         if (child != null && visitor.ShouldVisit(child.Keccak))
                         {
                             trieVisitContext.BranchChildIndex = i;
@@ -62,7 +62,7 @@ namespace Nethermind.Trie
                 case NodeType.Extension:
                 {
                     visitor.VisitExtension(this, trieVisitContext);
-                    TrieNode child = GetChild(0);
+                    TrieNode child = GetChild(tree, 0);
                     if (child != null && visitor.ShouldVisit(child.Keccak))
                     {
                         trieVisitContext.Level++;
