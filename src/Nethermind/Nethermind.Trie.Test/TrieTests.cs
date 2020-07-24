@@ -192,14 +192,15 @@ namespace Nethermind.Trie.Test
             patriciaTree.Set(_keyB, Array.Empty<byte>());
             patriciaTree.Set(_keyC, Array.Empty<byte>());
             patriciaTree.Commit(1);
+            patriciaTree.UpdateRootHash();
             treeCommitter.Flush();
 
             // leaf (root)
-            memDb.Keys.Should().HaveCount(6);
+            memDb.Keys.Should().HaveCount(0);
             PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
-            checkTree.Get(_keyA).Should().BeEquivalentTo(_longLeaf1);
-            checkTree.Get(_keyB).Should().BeEquivalentTo(_longLeaf1);
-            checkTree.Get(_keyC).Should().BeEquivalentTo(_longLeaf1);
+            checkTree.Get(_keyA).Should().BeNull();
+            checkTree.Get(_keyB).Should().BeNull();
+            checkTree.Get(_keyC).Should().BeNull();
         }
 
         public void Test_add_many(int i)
@@ -341,6 +342,7 @@ namespace Nethermind.Trie.Test
         {
             for (int i = 0; i < 100; i++)
             {
+                TestContext.WriteLine(i);
                 Test_add_many(i);
                 Test_update_many(i);
                 Test_add_and_delete_many_same_block(i);

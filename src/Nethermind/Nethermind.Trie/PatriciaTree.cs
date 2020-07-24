@@ -369,7 +369,10 @@ namespace Nethermind.Trie
             bool isRoot = _nodeStack.Count == 0;
             TrieNode nextNode = node;
 
-            previousHere.Refs--;
+            if (previousHere != null)
+            {
+                previousHere.Refs--;
+            }
 
             while (!isRoot)
             {
@@ -387,7 +390,11 @@ namespace Nethermind.Trie
                 {
                     if (!(nextNode == null && !node.IsValidWithOneNodeLess))
                     {
-                        nextNode.Refs++;
+                        if (nextNode != null)
+                        {
+                            nextNode.Refs++;
+                        }
+
                         if (node.Refs != 0) // newly created node
                         {
                             node.Refs--;
@@ -429,8 +436,11 @@ namespace Nethermind.Trie
                             {
                                 TrieNode extensionFromBranch =
                                     TrieNodeFactory.CreateExtension(new HexPrefix(false, (byte) childNodeIndex), childNode); // new line
-                                childNode.Refs--;
-                                node.Refs--;
+                                if (node.Refs != 0)
+                                {
+                                    node.Refs--;
+                                }
+
                                 nextNode = extensionFromBranch; // new line
                             }
                             else if (childNode.IsExtension)
@@ -451,7 +461,11 @@ namespace Nethermind.Trie
                                     = new HexPrefix(true, Bytes.Concat((byte) childNodeIndex, childNode.Path));
                                 TrieNode extendedLeaf = childNode.CloneWithChangedKey(newKey); // new line
                                 childNode.Refs--;
-                                node.Refs--;
+                                if (node.Refs != 0)
+                                {
+                                    node.Refs--;
+                                }
+
                                 // childNode.Key = new HexPrefix(true, Bytes.Concat((byte) childNodeIndex, childNode.Path));
                                 // childNode.IsDirty = true;
                                 // nextNode = childNode;
@@ -473,7 +487,11 @@ namespace Nethermind.Trie
                         TrieNode extendedLeaf = nextNode.CloneWithChangedKey(newKey); // new line
                         // nextNode.Key = new HexPrefix(true, Bytes.Concat(node.Path, nextNode.Path));
                         node.Refs--;
-                        nextNode.Refs--;
+                        if (nextNode.Refs != 0)
+                        {
+                            nextNode.Refs--;
+                        }
+
                         nextNode = extendedLeaf; // new line
                     }
                     else if (nextNode.IsExtension)
