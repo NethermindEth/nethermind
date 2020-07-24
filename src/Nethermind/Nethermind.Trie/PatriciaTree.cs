@@ -389,7 +389,6 @@ namespace Nethermind.Trie
                     {
                         TrieNode changedParent = node.Clone();
                         changedParent.SetChild(parentOnStack.PathIndex, nextNode);
-                        nextNode!.Refs++;
                         node.Refs--;
                         nextNode = changedParent;
                         // node.SetChild(parentOnStack.PathIndex, nextNode);
@@ -487,13 +486,14 @@ namespace Nethermind.Trie
                     }
                     else if (nextNode.IsBranch)
                     {
-                        TrieNode branchWithChangedChild = node.Clone(); // new line
-                        branchWithChangedChild.SetChild(0, nextNode); // new line
+                        TrieNode extensionWithChangedChild = node.Clone(); // new line
+                        extensionWithChangedChild.SetChild(0, nextNode); // new line
+                        nextNode.Refs++;
                         node.Refs--;
                         // node.IsDirty = true;
                         // node.SetChild(0, nextNode);
                         // nextNode = node;
-                        nextNode = branchWithChangedChild;
+                        nextNode = extensionWithChangedChild;
                     }
                     else
                     {
@@ -506,6 +506,7 @@ namespace Nethermind.Trie
                 }
             }
 
+            nextNode.Refs++;
             RootRef = nextNode;
         }
 
@@ -657,10 +658,12 @@ namespace Nethermind.Trie
             {
                 Span<byte> extensionPath = longerPath.Slice(0, extensionLength);
                 TrieNode extension = TrieNodeFactory.CreateExtension(new HexPrefix(false, extensionPath.ToArray()));
+                extension.Refs++;
                 _nodeStack.Push(new StackedNode(extension, 0));
             }
 
             TrieNode branch = TrieNodeFactory.CreateBranch();
+            branch.Refs++;
             if (extensionLength == shorterPath.Length)
             {
                 branch.Value = shorterPathValue;
@@ -669,6 +672,7 @@ namespace Nethermind.Trie
             {
                 Span<byte> shortLeafPath = shorterPath.Slice(extensionLength + 1, shorterPath.Length - extensionLength - 1);
                 TrieNode shortLeaf = TrieNodeFactory.CreateLeaf(new HexPrefix(true, shortLeafPath.ToArray()), shorterPathValue);
+                shortLeaf.Refs++;
                 branch.SetChild(shorterPath[extensionLength], shortLeaf);
             }
 
@@ -677,6 +681,7 @@ namespace Nethermind.Trie
 
             TrieNode withUpdatedKeyAndValue = node.CloneWithChangedKeyAndValue(
                 new HexPrefix(true, leafPath.ToArray()), longerPathValue);
+            withUpdatedKeyAndValue.Refs++;
 
             _nodeStack.Push(new StackedNode(branch, longerPath[extensionLength]));
             ConnectNodes(withUpdatedKeyAndValue, node);
@@ -792,6 +797,11 @@ namespace Nethermind.Trie
 
             public TrieNode Node { get; }
             public int PathIndex { get; }
+
+            public override string ToString()
+            {
+                return $"{PathIndex} {Node}";
+            }
         }
 
         public void Accept(ITreeVisitor visitor, Keccak rootHash, bool expectAccounts)
