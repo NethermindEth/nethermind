@@ -14,10 +14,12 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
 using NSubstitute;
 using NUnit.Framework;
@@ -79,8 +81,7 @@ namespace Nethermind.Trie.Test
         [Test]
         public void When_resolving_an_unknown_node_without_rlp_trie_exception_should_be_thrown()
         {
-            TrieNode trieNode = new TrieNode(NodeType.Unknown);
-            trieNode.Keccak = Keccak.Zero;
+            TrieNode trieNode = new TrieNode(NodeType.Unknown, Keccak.Zero);
             Assert.Throws<TrieException>(() => trieNode.ResolveNode(new PatriciaTree()));
         }
 
@@ -364,7 +365,7 @@ namespace Nethermind.Trie.Test
 
             visitor.Received().VisitLeaf(node, context, node.Value);
         }
-        
+
         [Test]
         public void Leaf_with_contract_with_storage_and_without_code_can_accept_visitors()
         {
@@ -472,7 +473,6 @@ namespace Nethermind.Trie.Test
         {
             TrieNode node = new TrieNode(NodeType.Extension);
             TrieNode dirtyChild = new TrieNode(NodeType.Leaf);
-            dirtyChild.IsDirty = true;
             node.SetChild(0, dirtyChild);
             Assert.True(node.IsChildDirty(0));
         }
@@ -511,7 +511,7 @@ namespace Nethermind.Trie.Test
 
             restoredNode.RlpEncode();
         }
-        
+
         [Test]
         public void Size_of_a_heavy_leaf_is_correct()
         {
@@ -527,29 +527,29 @@ namespace Nethermind.Trie.Test
             {
                 node.SetChild(i, _accountLeaf);
             }
-            
+
             Assert.AreEqual(3152, node.GetMemorySize(true));
             Assert.AreEqual(208, node.GetMemorySize(false));
         }
-        
+
         [Test]
         public void Size_of_an_extension_is_correct()
         {
             TrieNode trieNode = new TrieNode(NodeType.Extension);
             trieNode.Key = new HexPrefix(false, 1);
             trieNode.SetChild(0, _tiniestLeaf);
-            
+
             Assert.AreEqual(216, trieNode.GetMemorySize(true));
             Assert.AreEqual(96, trieNode.GetMemorySize(false));
         }
-        
+
         [Test]
         public void Size_of_unknown_node_is_correct()
         {
             TrieNode trieNode = new TrieNode(NodeType.Extension);
             trieNode.Key = new HexPrefix(false, 1);
             trieNode.SetChild(0, _tiniestLeaf);
-            
+
             Assert.AreEqual(216, trieNode.GetMemorySize(true));
             Assert.AreEqual(96, trieNode.GetMemorySize(false));
         }
@@ -560,15 +560,14 @@ namespace Nethermind.Trie.Test
             TrieNode trieNode = new TrieNode(NodeType.Unknown);
             trieNode.GetMemorySize(false).Should().Be(56);
         }
-        
+
         [Test]
         public void Size_of_an_unknown_node_with_keccak_is_correct()
         {
-            TrieNode trieNode = new TrieNode(NodeType.Unknown);
-            trieNode.Keccak = Keccak.Zero;
+            TrieNode trieNode = new TrieNode(NodeType.Unknown, Keccak.Zero);
             trieNode.GetMemorySize(false).Should().Be(136);
         }
-        
+
         [Test]
         public void Size_of_extension_with_child()
         {
@@ -576,7 +575,7 @@ namespace Nethermind.Trie.Test
             trieNode.SetChild(0, null);
             trieNode.GetMemorySize(false).Should().Be(96);
         }
-        
+
         [Test]
         public void Size_of_branch_with_data()
         {
@@ -584,7 +583,7 @@ namespace Nethermind.Trie.Test
             trieNode.SetChild(0, null);
             trieNode.GetMemorySize(false).Should().Be(208);
         }
-        
+
         [Test]
         public void Size_of_leaf_with_value()
         {
@@ -592,20 +591,20 @@ namespace Nethermind.Trie.Test
             trieNode.Value = new byte[7];
             trieNode.GetMemorySize(false).Should().Be(128);
         }
-        
+
         [Test]
         public void Size_of_an_unknown_node_with_full_rlp_is_correct()
         {
             TrieNode trieNode = new TrieNode(NodeType.Unknown, new byte[7]);
             trieNode.GetMemorySize(false).Should().Be(120);
         }
-                
+
         [Test]
         public void Size_of_keccak_is_correct()
         {
             Keccak.MemorySize.Should().Be(80);
         }
-        
+
         [Test]
         public void Size_of_rlp_stream_is_correct()
         {
@@ -626,20 +625,64 @@ namespace Nethermind.Trie.Test
             Rlp rlp = new Rlp(new byte[1]);
             rlp.MemorySize.Should().Be(56);
         }
-        
+
         [Test]
         public void Size_of_rlp_aligned_is_correct()
         {
             Rlp rlp = new Rlp(new byte[8]);
             rlp.MemorySize.Should().Be(56);
         }
-        
+
         [Test]
         public void Size_of_hex_prefix_is_correct()
         {
             HexPrefix hexPrefix = new HexPrefix(true, new byte[5]);
             hexPrefix.MemorySize.Should().Be(64);
         }
-        
+
+        [Test]
+        public void Cannot_seal_already_sealed()
+        {
+            TrieNode trieNode = new TrieNode(NodeType.Leaf, Keccak.Zero);
+            Assert.Throws<InvalidOperationException>(() => trieNode.Seal());
+        }
+
+        [Test]
+        public void Cannot_change_value_on_sealed()
+        {
+            TrieNode trieNode = new TrieNode(NodeType.Leaf, Keccak.Zero);
+            Assert.Throws<InvalidOperationException>(() => trieNode.Value = new byte[5]);
+        }
+
+        [Test]
+        public void Can_change_ref_on_sealed()
+        {
+            TrieNode trieNode = new TrieNode(NodeType.Leaf, Keccak.Zero);
+            trieNode.Refs++;
+            trieNode.Refs--;
+        }
+
+        [Test]
+        public void Throws_when_trying_to_set_refs_below_zero()
+        {
+            TrieNode trieNode = new TrieNode(NodeType.Leaf, Keccak.Zero);
+            Assert.Throws<InvalidOperationException>(() => trieNode.Refs--);
+        }
+
+        [Test]
+        public void Cannot_change_key_on_sealed()
+        {
+            TrieNode trieNode = new TrieNode(NodeType.Leaf, Keccak.Zero);
+            Assert.Throws<InvalidOperationException>(
+                () => trieNode.Key = HexPrefix.FromBytes(Bytes.FromHexString("aaa")));
+        }
+
+        [Test]
+        public void Cannot_set_child_on_sealed()
+        {
+            TrieNode child = new TrieNode(NodeType.Leaf, Keccak.Zero);
+            TrieNode trieNode = new TrieNode(NodeType.Extension, Keccak.Zero);
+            Assert.Throws<InvalidOperationException>(() => trieNode.SetChild(0, child));
+        }
     }
 }

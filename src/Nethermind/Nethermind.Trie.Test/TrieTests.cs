@@ -1,7 +1,6 @@
 using System;
 using FluentAssertions;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Trie.Pruning;

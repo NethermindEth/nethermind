@@ -65,9 +65,8 @@ namespace Nethermind.Trie.Benchmark
         [Benchmark]
         public TrieNode Just_trie_node_with_hash_136B()
         {
-            TrieNode trieNode = new TrieNode(NodeType.Unknown);
             BinaryPrimitives.WriteInt64BigEndian(_bytes, _i);
-            trieNode.Keccak = Keccak.Compute(_bytes);
+            TrieNode trieNode = new TrieNode(NodeType.Unknown, Keccak.Compute(_bytes));
             return trieNode;
         }
 

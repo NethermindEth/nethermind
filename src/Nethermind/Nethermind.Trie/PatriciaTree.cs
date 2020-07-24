@@ -528,7 +528,6 @@ namespace Nethermind.Trie
                 byte[] leafPath = traverseContext.UpdatePath.Slice(traverseContext.CurrentIndex, traverseContext.UpdatePath.Length - traverseContext.CurrentIndex).ToArray();
                 TrieNode leaf = TrieNodeFactory.CreateLeaf(new HexPrefix(true, leafPath), traverseContext.UpdateValue);
                 leaf.Refs++;
-                leaf.IsDirty = true;
                 ConnectNodes(leaf);
 
                 return traverseContext.UpdateValue;
@@ -618,13 +617,11 @@ namespace Nethermind.Trie
                 Span<byte> extensionPath = longerPath.Slice(0, extensionLength);
                 TrieNode extension = TrieNodeFactory.CreateExtension(new HexPrefix(false, extensionPath.ToArray()));
                 extension.Refs++;
-                extension.IsDirty = true;
                 _nodeStack.Push(new StackedNode(extension, 0));
             }
 
             TrieNode branch = TrieNodeFactory.CreateBranch();
             branch.Refs++;
-            branch.IsDirty = true;
             if (extensionLength == shorterPath.Length)
             {
                 branch.Value = shorterPathValue;
@@ -634,7 +631,6 @@ namespace Nethermind.Trie
                 Span<byte> shortLeafPath = shorterPath.Slice(extensionLength + 1, shorterPath.Length - extensionLength - 1);
                 TrieNode shortLeaf = TrieNodeFactory.CreateLeaf(new HexPrefix(true, shortLeafPath.ToArray()), shorterPathValue);
                 shortLeaf.Refs++;
-                shortLeaf.IsDirty = true;
                 branch.SetChild(shorterPath[extensionLength], shortLeaf);
             }
 
@@ -698,7 +694,6 @@ namespace Nethermind.Trie
 
             TrieNode branch = TrieNodeFactory.CreateBranch();
             branch.Refs++;
-            branch.IsDirty = true;
             if (extensionLength == remaining.Length)
             {
                 branch.Value = traverseContext.UpdateValue;
@@ -708,7 +703,6 @@ namespace Nethermind.Trie
                 byte[] path = remaining.Slice(extensionLength + 1, remaining.Length - extensionLength - 1).ToArray();
                 TrieNode shortLeaf = TrieNodeFactory.CreateLeaf(new HexPrefix(true, path), traverseContext.UpdateValue);
                 shortLeaf.Refs++;
-                shortLeaf.IsDirty = true;
                 branch.SetChild(remaining[extensionLength], shortLeaf);
             }
 
@@ -717,7 +711,6 @@ namespace Nethermind.Trie
                 byte[] extensionPath = pathBeforeUpdate.Slice(extensionLength + 1, pathBeforeUpdate.Length - extensionLength - 1);
                 TrieNode secondExtension = TrieNodeFactory.CreateExtension(new HexPrefix(false, extensionPath), node.GetChild(0));
                 secondExtension.Refs++;
-                secondExtension.IsDirty = true;
                 branch.SetChild(pathBeforeUpdate[extensionLength], secondExtension);
             }
             else

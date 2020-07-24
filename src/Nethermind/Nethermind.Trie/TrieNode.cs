@@ -29,6 +29,30 @@ namespace Nethermind.Trie
 {
     public partial class TrieNode
     {
+        public TrieNode(NodeType nodeType)
+        {
+            NodeType = nodeType;
+            
+            // is it equivalent??? maybe can only use IsDirty
+            IsDirty = true;
+            IsSealed = false;
+        }
+
+        public TrieNode(NodeType nodeType, Keccak keccak)
+        {
+            NodeType = nodeType;
+            Keccak = keccak;
+            IsSealed = true;
+        }
+
+        public TrieNode(NodeType nodeType, byte[] rlp)
+        {
+            NodeType = nodeType;
+            FullRlp = rlp;
+            _rlpStream = rlp.AsRlpStream();
+            IsSealed = true;
+        }
+
         /// <summary>
         /// Ethereum Patricia Trie specification allows for branch values,
         /// although branched never have values as all the keys are of equal length.
@@ -38,39 +62,43 @@ namespace Nethermind.Trie
         /// </summary>
         public static bool AllowBranchValues { private get; set; }
 
-        public int Refs { get; set; }
-
-        private static object _nullNode = new object();
-
-        private static TrieNodeDecoder _nodeDecoder = new TrieNodeDecoder();
-
-        private static AccountDecoder _accountDecoder = new AccountDecoder();
-
-        private RlpStream? _rlpStream;
-
-        private object?[]? _data;
-
-        private bool _isDirty;
-
-        public TrieNode(NodeType nodeType)
+        /// <summary>
+        /// Temporary reference counting while in memory 
+        /// </summary>
+        public int Refs
         {
-            NodeType = nodeType;
+            get => _refs;
+            set
+            {
+                if (value < 0)
+                {
+                    throw new InvalidOperationException(
+                        $"Cannot change {nameof(Refs)} on {nameof(TrieNode)} to {value}");
+                }
+
+                _refs = value;
+            }
         }
 
-        public TrieNode(NodeType nodeType, Keccak keccak)
+        /// <summary>
+        /// Sealed node is the one that is already immutable except for reference counting and resolving existing data
+        /// </summary>
+        public bool IsSealed { get; private set; }
+
+        /// <summary>
+        /// Node will no longer be mutable except for ref counting
+        /// </summary>
+        public void Seal()
         {
-            NodeType = nodeType;
-            Keccak = keccak;
+            if (IsSealed)
+            {
+                throw new InvalidOperationException($"{nameof(TrieNode)} {this} is already sealed.");
+            }
+
+            IsSealed = true;
         }
 
-        public TrieNode(NodeType nodeType, byte[] rlp)
-        {
-            NodeType = nodeType;
-            FullRlp = rlp;
-            _rlpStream = rlp.AsRlpStream();
-        }
-
-        public Keccak? Keccak { get; set; }
+        public Keccak? Keccak { get; private set; }
 
         public byte[]? FullRlp { get; private set; }
 
@@ -106,8 +134,14 @@ namespace Nethermind.Trie
         public bool IsDirty
         {
             get => _isDirty;
-            set
+            private set
             {
+                if (IsSealed)
+                {
+                    throw new InvalidOperationException(
+                        $"{nameof(TrieNode)} {this} is already sealed when setting {nameof(IsDirty)}.");
+                }
+                
                 if (value)
                 {
                     Keccak = null;
@@ -128,6 +162,12 @@ namespace Nethermind.Trie
             get => _data?[0] as HexPrefix;
             set
             {
+                if (IsSealed)
+                {
+                    throw new InvalidOperationException(
+                        $"{nameof(TrieNode)} {this} is already sealed when setting {nameof(Key)}.");
+                }
+
                 InitData();
                 _data![0] = value;
             }
@@ -170,6 +210,12 @@ namespace Nethermind.Trie
 
             set
             {
+                if (IsSealed)
+                {
+                    throw new InvalidOperationException(
+                        $"{nameof(TrieNode)} {this} is already sealed when setting {nameof(Value)}.");
+                }
+
                 InitData();
                 if (IsBranch && !AllowBranchValues)
                 {
@@ -437,6 +483,12 @@ namespace Nethermind.Trie
 
         public void SetChild(int i, TrieNode? node)
         {
+            if (IsSealed)
+            {
+                throw new InvalidOperationException(
+                    $"{nameof(TrieNode)} {this} is already sealed when setting a child.");
+            }
+
             InitData();
             int index = IsExtension ? i + 1 : i;
             _data![index] = node ?? _nullNode;
@@ -505,5 +557,22 @@ namespace Nethermind.Trie
         {
             return $"{NodeType}({FullRlp?.Length}) {Keccak}, refs {Refs}";
         }
+
+        #region private
+
+        private static object _nullNode = new object();
+
+        private static TrieNodeDecoder _nodeDecoder = new TrieNodeDecoder();
+
+        private static AccountDecoder _accountDecoder = new AccountDecoder();
+
+        private RlpStream? _rlpStream;
+
+        private object?[]? _data;
+
+        private bool _isDirty;
+        private int _refs;
+
+        #endregion
     }
 }
