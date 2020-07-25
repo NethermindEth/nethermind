@@ -122,13 +122,8 @@ namespace Nethermind.Trie
             {
                 throw new TrieException("Commits are not allowed on this trie.");
             }
-
-            if (RootRef == null)
-            {
-                return;
-            }
-
-            if (RootRef.IsDirty)
+            
+            if (RootRef != null && RootRef.IsDirty)
             {
                 Commit(RootRef, true);
                 while (!_currentCommit.IsEmpty)
@@ -141,10 +136,16 @@ namespace Nethermind.Trie
 
                     _keyValueStore.Commit(blockNumber, node);
                 }
+                
+                // TODO: little cheating for now - we may rename it to seal or finalize later
 
                 // reset objects
                 RootRef.ResolveKey(this, true);
                 SetRootHash(RootRef.Keccak, true);
+            }
+            else
+            {
+                _keyValueStore.Commit(blockNumber, null);
             }
         }
 

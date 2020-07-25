@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
@@ -29,14 +30,8 @@ namespace Nethermind.Trie.Pruning
                 40 /* linked list */;
         }
 
-        public void Commit(long blockNumber, TrieNode trieNode)
+        public void Commit(long blockNumber, TrieNode? trieNode)
         {
-            if (trieNode.Keccak == null)
-            {
-                throw new InvalidOperationException(
-                    $"Hash of the node {trieNode} should be known at the time of committing.");
-            }
-            
             if (_logger.IsTrace)
                 _logger.Trace($"Committing {blockNumber} {trieNode}");
 
@@ -49,18 +44,30 @@ namespace Nethermind.Trie.Pruning
                 BeginNewPackage(blockNumber);
             }
 
-            Debug.Assert(CurrentPackage != null, "Current package is null when enqueing a trie node.");
+            _currentRoot = trieNode ?? _currentRoot;
 
-            if (_inMemNodes.ContainsKey(trieNode.Keccak))
+            if (trieNode != null)
             {
-                _inMemNodes[trieNode.Keccak].Refs += trieNode.Refs;
-            }
-            else
-            {
-                long previousPackageMemory = CurrentPackage.MemorySize;
-                CurrentPackage.Enqueue(trieNode);
-                _inMemNodes[trieNode.Keccak] = trieNode;
-                AddToMemory(CurrentPackage.MemorySize - previousPackageMemory);    
+                if (trieNode.Keccak == null)
+                {
+                    throw new InvalidOperationException(
+                        $"Hash of the node {trieNode} should be known at the time of committing.");
+                }
+
+                Debug.Assert(CurrentPackage != null, "Current package is null when enqueing a trie node.");
+
+                if (_inMemNodes.ContainsKey(trieNode.Keccak))
+                {
+                    // TODO: check if this solves the checklist problem
+                    // _inMemNodes[trieNode.Keccak].Refs += trieNode.Refs;
+                }
+                else
+                {
+                    long previousPackageMemory = CurrentPackage.MemorySize;
+                    CurrentPackage.Enqueue(trieNode);
+                    _inMemNodes[trieNode.Keccak] = trieNode;
+                    AddToMemory(CurrentPackage.MemorySize - previousPackageMemory);
+                }
             }
         }
 
@@ -76,8 +83,18 @@ namespace Nethermind.Trie.Pruning
 
         public void Flush()
         {
+            _checkList.Clear();
             CurrentPackage?.Seal();
             while (TryDispatchOne()) { }
+            
+            // the refs will be actually accumulating and showing the persistence of the node
+            // foreach (TrieNode trieNode in _checkList)
+            // {
+            //     if (trieNode.Refs == 0)
+            //     {
+            //         throw new Exception("I do not think this is an exceptional case but I would like to be notified when it happens so I can study");
+            //     }
+            // }
         }
 
         public byte[] this[byte[] key] => _keyValueStore[key];
@@ -107,6 +124,10 @@ namespace Nethermind.Trie.Pruning
 
         private bool IsCurrentPackageSealed => CurrentPackage == null || CurrentPackage.IsSealed;
 
+        private Stack<TrieNode> _rootStack = new Stack<TrieNode>();
+
+        private TrieNode _currentRoot;
+        
         private void BeginNewPackage(long blockNumber)
         {
             if (_logger.IsTrace)
@@ -116,6 +137,11 @@ namespace Nethermind.Trie.Pruning
                 "Newly begun block is not a successor of the last one");
 
             CurrentPackage?.Seal();
+            if (_currentRoot != null)
+            {
+                _rootStack.Push(_currentRoot);
+                _currentRoot.ReferenceRecursively();
+            }
             
             Debug.Assert(IsCurrentPackageSealed, "Not sealed when beginning new block");
 
@@ -162,6 +188,8 @@ namespace Nethermind.Trie.Pruning
             return canDispatch;
         }
         
+        private List<TrieNode> _checkList = new List<TrieNode>();
+        
         private void Dispatch(BlockCommitPackage commitPackage)
         {
             if (_logger.IsDebug)
@@ -172,23 +200,47 @@ namespace Nethermind.Trie.Pruning
                 $"Invalid {nameof(commitPackage)} - {commitPackage} received for dispatch.");
 
             long memoryToDrop = commitPackage.MemorySize + LinkedListNodeMemorySize;
+
+            TrieNode root = null;
             while (commitPackage.TryDequeue(out TrieNode currentNode))
             {
+                root = currentNode; // root will be the last one
+                _checkList.Add(currentNode);
                 Debug.Assert(currentNode.Keccak != null, "Committed node has a NULL key");
                 Debug.Assert(currentNode.FullRlp != null, $"Committed nad has a NULL {nameof(currentNode.FullRlp)}");
 
+                // if ref count is zero then just discard
                 if (currentNode.Refs == 0)
                 {
+                    if (_queue.Count > 0)
+                    {
+                        throw new Exception("Temporarily - this should not happen with the current code");
+                    }
+
                     if (_logger.IsTrace)
                         _logger.Trace($"Dropping a {nameof(TrieNode)} {currentNode} with a zero ref count.");
+                    _inMemNodes.Remove(currentNode.Keccak);
                     continue;
                 }
-
-                // if ref count is zero then just discard
+                
                 // start a batch here? (need to resolve responsibility between here and StateDb)
                 if (_logger.IsTrace)
                     _logger.Trace($"Saving a {nameof(TrieNode)} {currentNode}.");
                 _keyValueStore[currentNode.Keccak.Bytes] = currentNode.FullRlp;
+                
+                // TODO: there is a risk of dereferencing before committing?
+                // TODO: if it spans over multiple blocks?
+                // TODO: probably not as we always Commit with leaves landing first
+                // +L +L +B 
+                // currentNode.Refs--;
+                // // TODO: it is theoretically possible that here we are actually dumping multiple references to the same thing
+                // // TODO: and we need to clear it properly...
+            }
+            
+            // TODO: so here we HAD a big problem of same nodes represented multiple times as .NET objects and having mismatched refs
+            if (root != null && root.Refs != 0)
+            {
+                root.DereferenceRecursively();
             }
 
             MemorySize -= memoryToDrop;

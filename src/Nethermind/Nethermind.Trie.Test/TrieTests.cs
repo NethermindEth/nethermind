@@ -113,7 +113,7 @@ namespace Nethermind.Trie.Test
             treeCommitter.Flush();
 
             // leaf (root)
-            memDb.Keys.Should().HaveCount(1);
+            memDb.Keys.Should().HaveCount(2);
 
             PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
             checkTree.Get(_keyA).Should().NotBeEquivalentTo(_longLeaf1);
@@ -152,7 +152,7 @@ namespace Nethermind.Trie.Test
             treeCommitter.Flush();
 
             // leaf (root)
-            memDb.Keys.Should().HaveCount(0);
+            memDb.Keys.Should().HaveCount(1);
 
             PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
             checkTree.Get(_keyA).Should().BeNull();
@@ -196,7 +196,7 @@ namespace Nethermind.Trie.Test
             treeCommitter.Flush();
 
             // leaf (root)
-            memDb.Keys.Should().HaveCount(0);
+            memDb.Keys.Should().HaveCount(6);
             PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
             checkTree.Get(_keyA).Should().BeNull();
             checkTree.Get(_keyB).Should().BeNull();
@@ -335,7 +335,7 @@ namespace Nethermind.Trie.Test
                 patriciaTree.Set(key.Bytes, value);
             }
 
-            patriciaTree.Commit(0);
+            patriciaTree.Commit(1);
             patriciaTree.UpdateRootHash();
             treeCommitter.Flush();
 
@@ -426,7 +426,7 @@ namespace Nethermind.Trie.Test
         {
             // there was a case that was failing only at iteration 85 (before you change it to a smaller number)
             
-            for (int i = 0; i < 100; i++)
+            for (int i = 1; i < 100; i++)
             {
                 TestContext.WriteLine(i);
                 Test_add_many(i);
@@ -644,7 +644,7 @@ namespace Nethermind.Trie.Test
             patriciaTree.Commit(1);
             treeCommitter.Flush();
 
-            memDb.Keys.Should().HaveCount(4);
+            memDb.Keys.Should().HaveCount(8);
             PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
             checkTree.Get(key1).Should().BeEquivalentTo(_longLeaf1);
             checkTree.Get(key2).Should().BeEquivalentTo(_longLeaf1);

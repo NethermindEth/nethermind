@@ -293,7 +293,7 @@ namespace Nethermind.Trie
                         Key = key;
                         Value = _rlpStream.DecodeByteArray();
                     }
-                    
+
                     IsSealed = true;
                 }
                 else
@@ -571,7 +571,7 @@ namespace Nethermind.Trie
             trieNode.Key = key;
             return trieNode;
         }
-        
+
         public TrieNode Clone()
         {
             TrieNode trieNode = new TrieNode(NodeType);
@@ -586,7 +586,7 @@ namespace Nethermind.Trie
 
             return trieNode;
         }
-        
+
         public TrieNode CloneWithChangedValue(byte[] changedValue)
         {
             TrieNode trieNode = Clone();
@@ -600,6 +600,52 @@ namespace Nethermind.Trie
             trieNode.Key = key;
             trieNode.Value = changedValue;
             return trieNode;
+        }
+
+        public void DereferenceRecursively()
+        {
+            if (!IsLeaf)
+            {
+                if (_data != null)
+                {
+                    foreach (object o in _data)
+                    {
+                        if (o is TrieNode child)
+                        {
+                            child.DereferenceRecursively();
+                        }
+                    }
+
+                    Refs--;
+                }
+            }
+            else
+            {
+                Refs--;    
+            }
+        }
+        
+        public void ReferenceRecursively()
+        {
+            if (!IsLeaf)
+            {
+                if (_data != null)
+                {
+                    foreach (object o in _data)
+                    {
+                        if (o is TrieNode child)
+                        {
+                            child.ReferenceRecursively();
+                        }
+                    }
+
+                    Refs++;
+                }
+            }
+            else
+            {
+                Refs++;    
+            }
         }
 
         #region private
