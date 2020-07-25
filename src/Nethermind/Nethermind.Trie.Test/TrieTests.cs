@@ -107,7 +107,7 @@ namespace Nethermind.Trie.Test
         public void Single_leaf_update_next_blocks()
         {
             MemDb memDb = new MemDb();
-            TreeCommitter treeCommitter = new TreeCommitter(memDb, LimboLogs.Instance, 1.MB());
+            TreeCommitter treeCommitter = new TreeCommitter(memDb, LimboLogs.Instance, 1.MB(), 1);
             PatriciaTree patriciaTree = new PatriciaTree(treeCommitter);
             patriciaTree.Set(_keyA, _longLeaf1);
             patriciaTree.Commit(0);
@@ -318,7 +318,7 @@ namespace Nethermind.Trie.Test
         public void Test_update_many_next_block(int i)
         {
             MemDb memDb = new MemDb();
-            TreeCommitter treeCommitter = new TreeCommitter(memDb, LimboLogs.Instance, 128.MB());
+            TreeCommitter treeCommitter = new TreeCommitter(memDb, LimboLogs.Instance, 128.MB(), 1);
             PatriciaTree patriciaTree = new PatriciaTree(treeCommitter);
 
             for (int j = 0; j < i; j++)
@@ -636,7 +636,7 @@ namespace Nethermind.Trie.Test
             byte[] key3 = Bytes.FromHexString("000000200000000cc");
 
             MemDb memDb = new MemDb();
-            TreeCommitter treeCommitter = new TreeCommitter(memDb, LimboLogs.Instance, 1.MB());
+            TreeCommitter treeCommitter = new TreeCommitter(memDb, LimboLogs.Instance, 1.MB(), 1);
             PatriciaTree patriciaTree = new PatriciaTree(treeCommitter);
             patriciaTree.Set(key1, _longLeaf1);
             patriciaTree.Set(key2, _longLeaf1);
@@ -696,15 +696,17 @@ namespace Nethermind.Trie.Test
                 $"blocks {blocksCount}, " +
                 $"values: {uniqueValuesCount}, " +
                 $"lookup: {lookupLimit} into file {fileName}");
-            
+
             using FileStream fileStream = new FileStream(fileName, FileMode.Create);
             using StreamWriter streamWriter = new StreamWriter(fileStream);
-            
-            Stack<Keccak> rootStack = new Stack<Keccak>();
-            
+
+            Queue<Keccak> rootQueue = new Queue<Keccak>();
+
             Random random = new Random();
             MemDb memDb = new MemDb();
-            TreeCommitter treeCommitter = new TreeCommitter(memDb, LimboLogs.Instance, 1.MB(), lookupLimit);
+
+            ILogManager logManager = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Debug));
+            TreeCommitter treeCommitter = new TreeCommitter(memDb, logManager, 1.MB(), lookupLimit);
             PatriciaTree patriciaTree = new PatriciaTree(treeCommitter);
 
             byte[][] accounts = new byte[accountsCount][];
@@ -755,28 +757,41 @@ namespace Nethermind.Trie.Test
                     $"Commit block {blockNumber} | empty: {isEmptyBlock}");
                 patriciaTree.UpdateRootHash();
                 patriciaTree.Commit(blockNumber);
-                rootStack.Push(patriciaTree.RootHash);
+                rootQueue.Enqueue(patriciaTree.RootHash);
             }
 
             streamWriter.Flush();
             fileStream.Seek(0, SeekOrigin.Begin);
-            
+
             treeCommitter.Flush();
             streamWriter.WriteLine($"DB size: {memDb.Keys.Count}");
             TestContext.Out.WriteLine($"DB size: {memDb.Keys.Count}");
 
             int verifiedBlocks = 0;
-            
+
             PatriciaTree.NodeCache.Clear();
-            while (rootStack.TryPop(out Keccak currentRoot))
+            while (rootQueue.TryDequeue(out Keccak currentRoot))
             {
-                patriciaTree.RootHash = currentRoot;
-                for (int i = 0; i < accounts.Length; i++)
+                try
                 {
-                    patriciaTree.Get(accounts[i]);
+                    patriciaTree.RootHash = currentRoot;
+                    for (int i = 0; i < accounts.Length; i++)
+                    {
+                        patriciaTree.Get(accounts[i]);
+                    }
+
+                    TestContext.Out.WriteLine($"Verified positive {verifiedBlocks}");
                 }
-                
-                TestContext.Out.WriteLine($"Verified {verifiedBlocks++}");
+                catch (Exception)
+                {
+                    TestContext.Out.WriteLine($"Verified negative {verifiedBlocks}");
+                    if (verifiedBlocks % lookupLimit == 0)
+                    {
+                        throw new InvalidDataException();
+                    }
+                }
+
+                verifiedBlocks++;
             }
         }
     }
