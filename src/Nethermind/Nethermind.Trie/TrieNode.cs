@@ -85,6 +85,8 @@ namespace Nethermind.Trie
         /// </summary>
         public bool IsSealed { get; private set; }
 
+        public bool IsPersisted { get; set; }
+
         /// <summary>
         /// Node will no longer be mutable except for ref counting
         /// </summary>
@@ -562,7 +564,7 @@ namespace Nethermind.Trie
 
         public override string ToString()
         {
-            return $"{NodeType}({FullRlp?.Length}) {Keccak}, refs {Refs}";
+            return $"{NodeType}({FullRlp?.Length}) {Keccak?.ToShortString()}, refs {Refs}, persisted {IsPersisted}";
         }
 
         public TrieNode CloneWithChangedKey(HexPrefix key)
@@ -602,7 +604,7 @@ namespace Nethermind.Trie
             return trieNode;
         }
 
-        public void DereferenceRecursively()
+        public void DecrementRefsRecursively()
         {
             if (!IsLeaf)
             {
@@ -612,7 +614,7 @@ namespace Nethermind.Trie
                     {
                         if (o is TrieNode child)
                         {
-                            child.DereferenceRecursively();
+                            child.DecrementRefsRecursively();
                         }
                     }
 
@@ -625,7 +627,7 @@ namespace Nethermind.Trie
             }
         }
         
-        public void ReferenceRecursively()
+        public void IncrementRefsRecursively()
         {
             if (!IsLeaf)
             {
@@ -635,7 +637,7 @@ namespace Nethermind.Trie
                     {
                         if (o is TrieNode child)
                         {
-                            child.ReferenceRecursively();
+                            child.IncrementRefsRecursively();
                         }
                     }
 
@@ -659,7 +661,7 @@ namespace Nethermind.Trie
         private RlpStream? _rlpStream;
 
         private object?[]? _data;
-
+        
         private bool _isDirty;
         private int _refs;
 

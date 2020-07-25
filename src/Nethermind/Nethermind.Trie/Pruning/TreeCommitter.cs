@@ -32,7 +32,7 @@ namespace Nethermind.Trie.Pruning
 
             _memoryLimit = memoryLimit;
             _lookupLimit = lookupLimit;
-            
+
             MemorySize =
                 MemorySizes.SmallObjectOverhead +
                 5 * MemorySizes.RefSize -
@@ -40,10 +40,13 @@ namespace Nethermind.Trie.Pruning
                 40 /* linked list */;
         }
 
+        public bool IsInMemory(Keccak key)
+        {
+            return _inMemNodes.ContainsKey(key);
+        }
+
         public void Commit(long blockNumber, TrieNode? trieNode)
         {
-            _highestBlockNumber = Math.Max(blockNumber, _highestBlockNumber);
-            
             if (_logger.IsTrace)
                 _logger.Trace($"Committing {blockNumber} {trieNode}");
 
@@ -61,7 +64,7 @@ namespace Nethermind.Trie.Pruning
             if (trieNode != null)
             {
                 _commitCount++;
-                
+
                 if (trieNode.Keccak == null)
                 {
                     throw new InvalidOperationException(
@@ -97,19 +100,22 @@ namespace Nethermind.Trie.Pruning
 
         public void Flush()
         {
-            if(_logger.IsDebug) _logger.Debug($"Flushing trie cache - in memory {_inMemNodes.Count} " +
-                                              $"| commit count {_commitCount} " +
-                                              $"| drop count {_dropCount} " +
-                                              $"| save count {_saveCount}");
-                
-            _checkList.Clear();
+            if (_logger.IsDebug)
+                _logger.Debug($"Flushing trie cache - in memory {_inMemNodes.Count} " +
+                              $"| commit count {_commitCount} " +
+                              $"| drop count {_dropCount} " +
+                              $"| save count {_saveCount}");
+
             CurrentPackage?.Seal();
-            while (TryDispatchOne()) { }
-            
-            if(_logger.IsDebug) _logger.Debug($"Flushed trie cache - in memory {_inMemNodes.Count} " +
-                                              $"| commit count {_commitCount} " +
-                                              $"| drop count {_dropCount} " +
-                                              $"| save count {_saveCount}");
+            while (TryDispatchOne())
+            {
+            }
+
+            if (_logger.IsDebug)
+                _logger.Debug($"Flushed trie cache - in memory {_inMemNodes.Count} " +
+                              $"| commit count {_commitCount} " +
+                              $"| drop count {_dropCount} " +
+                              $"| save count {_saveCount}");
         }
 
         public byte[] this[byte[] key] => _keyValueStore[key];
@@ -130,13 +136,15 @@ namespace Nethermind.Trie.Pruning
         private readonly ILogger _logger;
 
         private readonly long _memoryLimit;
-        
+
         private readonly long _lookupLimit;
 
         private long _highestBlockNumber;
 
         private LinkedList<BlockCommitPackage> _queue = new LinkedList<BlockCommitPackage>();
-        
+
+        private Queue<TrieNode> _carryQueue = new Queue<TrieNode>();
+
         private Dictionary<Keccak, TrieNode> _inMemNodes = new Dictionary<Keccak, TrieNode>();
 
         private BlockCommitPackage? CurrentPackage => _queue.Last?.Value;
@@ -146,12 +154,12 @@ namespace Nethermind.Trie.Pruning
         private Stack<TrieNode> _rootStack = new Stack<TrieNode>();
 
         private TrieNode _currentRoot;
-        
+
         private void BeginNewPackage(long blockNumber)
         {
             if (_logger.IsDebug)
                 _logger.Debug($"Beginning new {nameof(BlockCommitPackage)} - {blockNumber} | memory {MemorySize}");
-            
+
             Debug.Assert(CurrentPackage == null || CurrentPackage.BlockNumber == blockNumber - 1,
                 "Newly begun block is not a successor of the last one");
 
@@ -159,13 +167,21 @@ namespace Nethermind.Trie.Pruning
             if (_currentRoot != null)
             {
                 _rootStack.Push(_currentRoot);
-                _currentRoot.ReferenceRecursively();
+                _currentRoot.IncrementRefsRecursively();
             }
             
+            
+
             Debug.Assert(IsCurrentPackageSealed, "Not sealed when beginning new block");
 
             BlockCommitPackage newPackage = new BlockCommitPackage(blockNumber);
             _queue.AddLast(newPackage);
+            
+            _highestBlockNumber = Math.Max(blockNumber, _highestBlockNumber);
+            if (_queue.First!.Value.BlockNumber <= _highestBlockNumber - _lookupLimit)
+            {
+                TryDispatchOne();
+            }
 
             long newMemory = newPackage.MemorySize + LinkedListNodeMemorySize;
             AddToMemory(newMemory);
@@ -187,7 +203,7 @@ namespace Nethermind.Trie.Pruning
 
             if (MemorySize + newMemory > _memoryLimit)
             {
-                if(_logger.IsTrace)
+                if (_logger.IsTrace)
                     _logger.Trace($"Not able to dispatch to decrease memory usage below the limit of {_memoryLimit}.");
             }
 
@@ -196,8 +212,6 @@ namespace Nethermind.Trie.Pruning
 
         private bool TryDispatchOne()
         {
-            // dispatch will have two flavours - either deref or persist?
-            
             BlockCommitPackage package = _queue.First?.Value;
             bool canDispatch = package?.IsSealed ?? false;
             if (canDispatch)
@@ -208,15 +222,15 @@ namespace Nethermind.Trie.Pruning
 
             return canDispatch;
         }
-        
-        private List<TrieNode> _checkList = new List<TrieNode>();
 
         private int _commitCount;
-        
+
         private int _dropCount;
-        
+
+        private int _carriedCount;
+
         private int _saveCount;
-        
+
         private void Dispatch(BlockCommitPackage commitPackage)
         {
             if (_logger.IsDebug)
@@ -229,52 +243,69 @@ namespace Nethermind.Trie.Pruning
             long memoryToDrop = commitPackage.MemorySize + LinkedListNodeMemorySize;
 
             TrieNode root = null;
-            while (commitPackage.TryDequeue(out TrieNode currentNode))
+            Queue<TrieNode> localCarryQueue = _carryQueue;
+            _carryQueue = new Queue<TrieNode>();
+            while (localCarryQueue.TryDequeue(out TrieNode currentNode) ||
+                   commitPackage.TryDequeue(out currentNode))
             {
                 root = currentNode; // root will be the last one
-                _checkList.Add(currentNode);
-                Debug.Assert(currentNode.Keccak != null, "Committed node has a NULL key");
-                Debug.Assert(currentNode.FullRlp != null, $"Committed nad has a NULL {nameof(currentNode.FullRlp)}");
+                Debug.Assert(currentNode.Keccak != null, $"Committed node {currentNode} has a NULL key");
+                Debug.Assert(currentNode.FullRlp != null, $"Committed node {currentNode} has a NULL {nameof(currentNode.FullRlp)}");
 
                 // if ref count is zero then just discard
                 bool isSnapshotBlock = commitPackage.BlockNumber % _lookupLimit == 0;
                 if (currentNode.Refs == 0)
                 {
-                    throw new TrieException(
-                        "Refs should never be zero while committing from a package queue.");
-
-                    if (_logger.IsTrace)
-                        _logger.Trace($"Dropping a {nameof(TrieNode)} {currentNode} with a zero ref count.");
-                    _inMemNodes.Remove(currentNode.Keccak);
-                    continue;
+                    if (!currentNode.IsPersisted)
+                    {
+                        throw new TrieException(
+                            $"Refs should never be zero while committing from a package queue ({currentNode})");    
+                    }
+                    else
+                    {
+                        continue;
+                    }
+                    
+                    // this must have been carried and so there are no snapshot roots holding it
+                    // TODO: Assert that it is persisted
                 }
-                
-                // start a batch here? (need to resolve responsibility between here and StateDb)
-                if (_logger.IsTrace)
-                    _logger.Trace($"Saving a {nameof(TrieNode)} {currentNode}.");
 
                 if (isSnapshotBlock)
                 {
+                    if (_logger.IsTrace)
+                        _logger.Trace($"Saving a {nameof(TrieNode)} {currentNode}.");
                     _keyValueStore[currentNode.Keccak.Bytes] = currentNode.FullRlp;
+                    _inMemNodes.Remove(currentNode.Keccak);
+                    currentNode.IsPersisted = true;
                     _saveCount++;
                 }
                 else
                 {
-                    if (currentNode.Refs == 1) // only referenced by this route
+                    if (currentNode.Refs == 1) // only referenced by this root
                     {
-                        if(_logger.IsTrace)
+                        if (_logger.IsTrace)
                             _logger.Trace($"Dropping a {nameof(TrieNode)} {currentNode}.");
                         _inMemNodes.Remove(currentNode.Keccak);
                         _dropCount++;
                     }
+                    else
+                    {
+                        if (_logger.IsTrace)
+                            _logger.Trace($"Carrying a {nameof(TrieNode)} {currentNode}.");
+                        // TODO: this will carry even saved ones which may lead to a massive mem leak
+                        // we need to be able to drop the refs for saved nodes, maybe in mem review and unloading
+                        // all trie nodes marked as persisted?
+                        _carryQueue.Enqueue(currentNode);
+                        _carriedCount++;
+                    }     
                 }
             }
-            
+
             // TODO: so here we HAD a big problem of same nodes represented multiple times as .NET objects and having mismatched refs
             if (root != null && root.Refs != 0)
             {
                 // remove from memory on zero reference?
-                root.DereferenceRecursively();
+                root.DecrementRefsRecursively();
             }
 
             MemorySize -= memoryToDrop;

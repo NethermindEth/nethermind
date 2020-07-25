@@ -682,7 +682,8 @@ namespace Nethermind.Trie.Test
         }
 
         // [TestCase(1024, 1024 * 16, 128, 128)]
-        [TestCase(128, 128, 8, 8)]
+        // [TestCase(128, 128, 8, 8)]
+        [TestCase(4, 16, 4, 4)]
         public void Fuzz_accounts(
             int accountsCount,
             int blocksCount,
@@ -705,7 +706,7 @@ namespace Nethermind.Trie.Test
             Random random = new Random();
             MemDb memDb = new MemDb();
 
-            ILogManager logManager = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Debug));
+            ILogManager logManager = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Trace));
             TreeCommitter treeCommitter = new TreeCommitter(memDb, logManager, 1.MB(), lookupLimit);
             PatriciaTree patriciaTree = new PatriciaTree(treeCommitter);
 
