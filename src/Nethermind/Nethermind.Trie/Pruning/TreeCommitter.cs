@@ -104,6 +104,7 @@ namespace Nethermind.Trie.Pruning
                 _logger.Debug($"Flushing trie cache - in memory {_inMemNodes.Count} " +
                               $"| commit count {_commitCount} " +
                               $"| drop count {_dropCount} " +
+                              $"| carry count {_carriedCount} " +
                               $"| save count {_saveCount}");
 
             CurrentPackage?.Seal();
@@ -115,6 +116,7 @@ namespace Nethermind.Trie.Pruning
                 _logger.Debug($"Flushed trie cache - in memory {_inMemNodes.Count} " +
                               $"| commit count {_commitCount} " +
                               $"| drop count {_dropCount} " +
+                              $"| carry count {_carriedCount} " +
                               $"| save count {_saveCount}");
         }
 
