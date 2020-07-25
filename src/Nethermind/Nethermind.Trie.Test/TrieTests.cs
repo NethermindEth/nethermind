@@ -1,9 +1,12 @@
 using System;
+using System.IO;
 using FluentAssertions;
+using MathNet.Numerics.Random;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
@@ -208,7 +211,7 @@ namespace Nethermind.Trie.Test
             MemDb memDb = new MemDb();
             TreeCommitter treeCommitter = new TreeCommitter(memDb, LimboLogs.Instance, 128.MB());
             PatriciaTree patriciaTree = new PatriciaTree(treeCommitter, Keccak.EmptyTreeHash, true, true);
-            
+
             for (int j = 0; j < i; j++)
             {
                 Keccak key = TestItem.Keccaks[j];
@@ -230,13 +233,13 @@ namespace Nethermind.Trie.Test
                 checkTree.Get(key.Bytes).Should().BeEquivalentTo(value, $@"{i} {j}");
             }
         }
-        
+
         public void Test_try_delete_and_read_missing_nodes(int i)
         {
             MemDb memDb = new MemDb();
             TreeCommitter treeCommitter = new TreeCommitter(memDb, LimboLogs.Instance, 128.MB());
             PatriciaTree patriciaTree = new PatriciaTree(treeCommitter, Keccak.EmptyTreeHash, true, true);
-            
+
             for (int j = 0; j < i; j++)
             {
                 Keccak key = TestItem.Keccaks[j];
@@ -244,7 +247,7 @@ namespace Nethermind.Trie.Test
                 value[^1] = (byte) j;
                 patriciaTree.Set(key.Bytes, value);
             }
-            
+
             // delete missing
             for (int j = 0; j < i; j++)
             {
@@ -257,7 +260,7 @@ namespace Nethermind.Trie.Test
             treeCommitter.Flush();
 
             PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
-            
+
             // confirm nothing deleted
             for (int j = 0; j < i; j++)
             {
@@ -266,7 +269,7 @@ namespace Nethermind.Trie.Test
                 value[^1] = (byte) j;
                 checkTree.Get(key.Bytes).Should().BeEquivalentTo(value, $@"{i} {j}");
             }
-            
+
             // read missing
             for (int j = 0; j < i; j++)
             {
@@ -274,13 +277,13 @@ namespace Nethermind.Trie.Test
                 checkTree.Get(key.Bytes).Should().BeNull();
             }
         }
-        
+
         public void Test_update_many(int i)
         {
             MemDb memDb = new MemDb();
             TreeCommitter treeCommitter = new TreeCommitter(memDb, LimboLogs.Instance, 128.MB());
             PatriciaTree patriciaTree = new PatriciaTree(treeCommitter);
-            
+
             for (int j = 0; j < i; j++)
             {
                 Keccak key = TestItem.Keccaks[j];
@@ -288,7 +291,7 @@ namespace Nethermind.Trie.Test
                 value[^1] = (byte) j;
                 patriciaTree.Set(key.Bytes, value);
             }
-            
+
             for (int j = 0; j < i; j++)
             {
                 Keccak key = TestItem.Keccaks[j];
@@ -310,13 +313,13 @@ namespace Nethermind.Trie.Test
                 checkTree.Get(key.Bytes).Should().BeEquivalentTo(value, $@"{i} {j}");
             }
         }
-        
+
         public void Test_update_many_next_block(int i)
         {
             MemDb memDb = new MemDb();
             TreeCommitter treeCommitter = new TreeCommitter(memDb, LimboLogs.Instance, 128.MB());
             PatriciaTree patriciaTree = new PatriciaTree(treeCommitter);
-            
+
             for (int j = 0; j < i; j++)
             {
                 Keccak key = TestItem.Keccaks[j];
@@ -324,9 +327,9 @@ namespace Nethermind.Trie.Test
                 value[^1] = (byte) j;
                 patriciaTree.Set(key.Bytes, value);
             }
-            
+
             patriciaTree.Commit(0);
-            
+
             for (int j = 0; j < i; j++)
             {
                 Keccak key = TestItem.Keccaks[j];
@@ -348,13 +351,13 @@ namespace Nethermind.Trie.Test
                 checkTree.Get(key.Bytes).Should().BeEquivalentTo(value, $@"{i} {j}");
             }
         }
-        
+
         public void Test_add_and_delete_many_same_block(int i)
         {
             MemDb memDb = new MemDb();
             TreeCommitter treeCommitter = new TreeCommitter(memDb, LimboLogs.Instance, 128.MB());
             PatriciaTree patriciaTree = new PatriciaTree(treeCommitter);
-            
+
             for (int j = 0; j < i; j++)
             {
                 TestContext.WriteLine($"  set {j}");
@@ -363,7 +366,7 @@ namespace Nethermind.Trie.Test
                 value[^1] = (byte) j;
                 patriciaTree.Set(key.Bytes, value);
             }
-            
+
             for (int j = 0; j < i; j++)
             {
                 TestContext.WriteLine($"  delete {j}");
@@ -384,13 +387,13 @@ namespace Nethermind.Trie.Test
                 checkTree.Get(key.Bytes).Should().BeNull($@"{i} {j}");
             }
         }
-        
+
         public void Test_add_and_delete_many_next_block(int i)
         {
             MemDb memDb = new MemDb();
             TreeCommitter treeCommitter = new TreeCommitter(memDb, LimboLogs.Instance, 128.MB());
             PatriciaTree patriciaTree = new PatriciaTree(treeCommitter);
-            
+
             for (int j = 0; j < i; j++)
             {
                 Keccak key = TestItem.Keccaks[j];
@@ -398,7 +401,7 @@ namespace Nethermind.Trie.Test
                 value[^1] = (byte) j;
                 patriciaTree.Set(key.Bytes, value);
             }
-            
+
             patriciaTree.Commit(0);
 
             for (int j = 0; j < i; j++)
@@ -425,7 +428,7 @@ namespace Nethermind.Trie.Test
         public void Big_test()
         {
             // there was a case that was failing only at iteration 85 (before you change it to a smaller number)
-            
+
             for (int i = 1; i < 100; i++)
             {
                 TestContext.WriteLine(i);
@@ -581,7 +584,7 @@ namespace Nethermind.Trie.Test
             byte[] key1 = Bytes.FromHexString("000000100000000aa");
             byte[] key2 = Bytes.FromHexString("000000100000000bb");
             byte[] key3 = Bytes.FromHexString("000000200000000cc");
-            
+
             MemDb memDb = new MemDb();
             TreeCommitter treeCommitter = new TreeCommitter(memDb, LimboLogs.Instance, 1.MB());
             PatriciaTree patriciaTree = new PatriciaTree(treeCommitter);
@@ -598,7 +601,7 @@ namespace Nethermind.Trie.Test
             checkTree.Get(key2).Should().BeEquivalentTo(_longLeaf1);
             checkTree.Get(key3).Should().BeEquivalentTo(_longLeaf1);
         }
-        
+
         [Test]
         public void Connect_extension_with_extension()
         {
@@ -626,11 +629,11 @@ namespace Nethermind.Trie.Test
                E - - - - - - - - - - - - - - -
                B B B B B B B B B B B B B B B B
                L L - - - - - - - - - - - - - - */
-            
+
             byte[] key1 = Bytes.FromHexString("000000100000000aa");
             byte[] key2 = Bytes.FromHexString("000000100000000bb");
             byte[] key3 = Bytes.FromHexString("000000200000000cc");
-            
+
             MemDb memDb = new MemDb();
             TreeCommitter treeCommitter = new TreeCommitter(memDb, LimboLogs.Instance, 1.MB());
             PatriciaTree patriciaTree = new PatriciaTree(treeCommitter);
@@ -675,6 +678,82 @@ namespace Nethermind.Trie.Test
             checkTree.Get(_keyB).Should().BeEquivalentTo(_longLeaf1);
             checkTree.Get(_keyC).Should().BeEquivalentTo(_longLeaf1);
             checkTree.Get(_keyD).Should().BeEquivalentTo(_longLeaf1);
+        }
+
+        [TestCase(1024, 1024 * 16, 128, 128)]
+        public void Fuzz_accounts(
+            int accountsCount,
+            int blocksCount,
+            int uniqueValuesCount,
+            int lookupLimit)
+        {
+            string fileName = Path.GetTempFileName();
+            TestContext.Out.WriteLine(
+                $"Fuzzing with accounts: {accountsCount}, " +
+                $"blocks {blocksCount}, " +
+                $"values: {uniqueValuesCount}, " +
+                $"lookup: {lookupLimit} into file {fileName}");
+            
+            using FileStream fileStream = new FileStream(fileName, FileMode.Create);
+            using StreamWriter streamWriter = new StreamWriter(fileStream);
+            
+            Random random = new Random();
+            MemDb memDb = new MemDb();
+            TreeCommitter treeCommitter = new TreeCommitter(memDb, LimboLogs.Instance, 1.MB(), lookupLimit);
+            PatriciaTree patriciaTree = new PatriciaTree(treeCommitter);
+
+            byte[][] accounts = new byte[accountsCount][];
+            byte[][] randomValues = new byte[uniqueValuesCount][];
+
+            for (int i = 0; i < randomValues.Length; i++)
+            {
+                bool isEmptyValue = random.Next(0, 2) == 0;
+                if (isEmptyValue)
+                {
+                    randomValues[i] = Array.Empty<byte>();
+                }
+                else
+                {
+                    byte[] value = new byte[random.Next(128)];
+                    random.NextBytes(value);
+                    randomValues[i] = value;
+                }
+            }
+
+            for (int accountIndex = 0; accountIndex < accounts.Length; accountIndex++)
+            {
+                byte[] key = new byte[32];
+                ((UInt256) accountIndex).ToBigEndian(key);
+                accounts[accountIndex] = key;
+            }
+
+            for (int blockNumber = 0; blockNumber < blocksCount; blockNumber++)
+            {
+                bool isEmptyBlock = random.Next(5) == 0;
+                if (!isEmptyBlock)
+                {
+                    for (int i = 0; i < Math.Max(1, accountsCount / 8); i++)
+                    {
+                        int randomAccountIndex = random.Next(accounts.Length);
+                        int randomValueIndex = random.Next(randomValues.Length);
+
+                        byte[] account = accounts[randomAccountIndex];
+                        byte[] value = randomValues[randomValueIndex];
+
+                        streamWriter.WriteLine(
+                            $"Block {blockNumber} - setting {account.ToHexString()} = {value.ToHexString()}");
+                        patriciaTree.Set(account, value);
+                    }
+                }
+
+                streamWriter.WriteLine(
+                    $"Commit block {blockNumber} | empty: {isEmptyBlock}");
+                patriciaTree.Commit(blockNumber);
+            }
+
+            streamWriter.Flush();
+            fileStream.Seek(0, SeekOrigin.Begin);
+            streamWriter.WriteLine($"DB size: {memDb.Keys.Count}");
         }
     }
 }

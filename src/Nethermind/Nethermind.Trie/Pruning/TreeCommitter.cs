@@ -1,16 +1,21 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 
 namespace Nethermind.Trie.Pruning
 {
+    // is this class even needed?
+    // we need to stack ref changes for each block
     public class TreeCommitter : ITreeCommitter
     {
-        public TreeCommitter(IKeyValueStore keyValueStore, ILogManager logManager, long memoryLimit)
+        public TreeCommitter(
+            IKeyValueStore keyValueStore,
+            ILogManager logManager,
+            long memoryLimit,
+            long lookupLimit = 128)
         {
             // ReSharper disable once ConstantConditionalAccessQualifier
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -86,15 +91,6 @@ namespace Nethermind.Trie.Pruning
             _checkList.Clear();
             CurrentPackage?.Seal();
             while (TryDispatchOne()) { }
-            
-            // the refs will be actually accumulating and showing the persistence of the node
-            // foreach (TrieNode trieNode in _checkList)
-            // {
-            //     if (trieNode.Refs == 0)
-            //     {
-            //         throw new Exception("I do not think this is an exceptional case but I would like to be notified when it happens so I can study");
-            //     }
-            // }
         }
 
         public byte[] this[byte[] key] => _keyValueStore[key];
@@ -227,14 +223,6 @@ namespace Nethermind.Trie.Pruning
                 if (_logger.IsTrace)
                     _logger.Trace($"Saving a {nameof(TrieNode)} {currentNode}.");
                 _keyValueStore[currentNode.Keccak.Bytes] = currentNode.FullRlp;
-                
-                // TODO: there is a risk of dereferencing before committing?
-                // TODO: if it spans over multiple blocks?
-                // TODO: probably not as we always Commit with leaves landing first
-                // +L +L +B 
-                // currentNode.Refs--;
-                // // TODO: it is theoretically possible that here we are actually dumping multiple references to the same thing
-                // // TODO: and we need to clear it properly...
             }
             
             // TODO: so here we HAD a big problem of same nodes represented multiple times as .NET objects and having mismatched refs
