@@ -327,7 +327,7 @@ namespace Nethermind.Trie
 
             if (!(rootHash is null))
             {
-                var rootRef = GetUnknown(rootHash);
+                TrieNode rootRef = GetUnknown(rootHash);
                 rootRef.ResolveNode(this);
                 return TraverseNode(rootRef, new TraverseContext(updatePath.Slice(0, nibblesCount), updateValue,
                     false, ignoreMissingDelete));
@@ -572,7 +572,11 @@ namespace Nethermind.Trie
                             = HexPrefix.Extension(Bytes.Concat(node.Path, nextNode.Path));
                         TrieNode extendedExtension = nextNode.CloneWithChangedKey(newKey); // new line
                         node.Refs--;
-                        nextNode.Refs--;
+                        if (nextNode.Refs != 0)
+                        {
+                            nextNode.Refs--;
+                        }
+
                         nextNode = extendedExtension; // new line
                     }
                     else if (nextNode.IsBranch)
@@ -858,22 +862,24 @@ namespace Nethermind.Trie
                 branch.SetChild(remaining[extensionLength], shortLeaf);
             }
 
+            TrieNode originalNodeChild = originalNode.GetChild(this, 0);
             if (pathBeforeUpdate.Length - extensionLength > 1)
             {
                 byte[] extensionPath = pathBeforeUpdate.Slice(extensionLength + 1, pathBeforeUpdate.Length - extensionLength - 1);
                 TrieNode secondExtension
-                    = TrieNodeFactory.CreateExtension(HexPrefix.Extension(extensionPath), node.GetChild(this, 0));
+                    = TrieNodeFactory.CreateExtension(HexPrefix.Extension(extensionPath), originalNodeChild);
+                originalNodeChild!.Refs++;
                 secondExtension.Refs++;
                 branch.SetChild(pathBeforeUpdate[extensionLength], secondExtension);
             }
             else
             {
-                TrieNode childNode = originalNode.GetChild(this, 0);
+                TrieNode childNode = originalNodeChild;
                 childNode!.Refs++;
                 branch.SetChild(pathBeforeUpdate[extensionLength], childNode);
             }
 
-            ConnectNodes(branch, originalNode.GetChild(this, 0));
+            ConnectNodes(branch, originalNodeChild);
             return traverseContext.UpdateValue;
         }
         

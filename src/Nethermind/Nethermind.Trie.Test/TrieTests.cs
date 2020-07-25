@@ -231,7 +231,7 @@ namespace Nethermind.Trie.Test
             }
         }
         
-        public void Test_try_delete_missing_nodes(int i)
+        public void Test_try_delete_and_read_missing_nodes(int i)
         {
             MemDb memDb = new MemDb();
             TreeCommitter treeCommitter = new TreeCommitter(memDb, LimboLogs.Instance, 128.MB());
@@ -245,6 +245,7 @@ namespace Nethermind.Trie.Test
                 patriciaTree.Set(key.Bytes, value);
             }
             
+            // delete missing
             for (int j = 0; j < i; j++)
             {
                 Keccak key = TestItem.Keccaks[j + 100];
@@ -256,12 +257,21 @@ namespace Nethermind.Trie.Test
             treeCommitter.Flush();
 
             PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
+            
+            // confirm nothing deleted
             for (int j = 0; j < i; j++)
             {
                 Keccak key = TestItem.Keccaks[j];
                 byte[] value = new byte[128];
                 value[^1] = (byte) j;
                 checkTree.Get(key.Bytes).Should().BeEquivalentTo(value, $@"{i} {j}");
+            }
+            
+            // read missing
+            for (int j = 0; j < i; j++)
+            {
+                Keccak key = TestItem.Keccaks[j + 100];
+                checkTree.Get(key.Bytes).Should().BeNull();
             }
         }
         
@@ -424,7 +434,7 @@ namespace Nethermind.Trie.Test
                 Test_update_many_next_block(i);
                 Test_add_and_delete_many_same_block(i);
                 Test_add_and_delete_many_next_block(i);
-                Test_try_delete_missing_nodes(i);
+                Test_try_delete_and_read_missing_nodes(i);
             }
         }
 
@@ -555,6 +565,90 @@ namespace Nethermind.Trie.Test
             PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
             checkTree.Get(_keyA).Should().BeEquivalentTo(_longLeaf1);
             checkTree.Get(_keyB).Should().BeEquivalentTo(_longLeaf1);
+        }
+
+        [Test]
+        public void Extension_branch_extension_and_leaf_then_branch_leaf_leaf()
+        {
+            /* R
+               E - - - - - - - - - - - - - - -
+               B B B B B B B B B B B B B B B B
+               E L - - - - - - - - - - - - - -
+               E - - - - - - - - - - - - - - -
+               B B B B B B B B B B B B B B B B
+               L L - - - - - - - - - - - - - - */
+
+            byte[] key1 = Bytes.FromHexString("000000100000000aa");
+            byte[] key2 = Bytes.FromHexString("000000100000000bb");
+            byte[] key3 = Bytes.FromHexString("000000200000000cc");
+            
+            MemDb memDb = new MemDb();
+            TreeCommitter treeCommitter = new TreeCommitter(memDb, LimboLogs.Instance, 1.MB());
+            PatriciaTree patriciaTree = new PatriciaTree(treeCommitter);
+            patriciaTree.Set(key1, _longLeaf1);
+            patriciaTree.Set(key2, _longLeaf1);
+            patriciaTree.Set(key3, _longLeaf1);
+            patriciaTree.UpdateRootHash();
+            patriciaTree.Commit(0);
+            treeCommitter.Flush();
+
+            memDb.Keys.Should().HaveCount(7);
+            PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
+            checkTree.Get(key1).Should().BeEquivalentTo(_longLeaf1);
+            checkTree.Get(key2).Should().BeEquivalentTo(_longLeaf1);
+            checkTree.Get(key3).Should().BeEquivalentTo(_longLeaf1);
+        }
+        
+        [Test]
+        public void Connect_extension_with_extension()
+        {
+            /* to test this case we need something like this initially */
+            /* R
+               E - - - - - - - - - - - - - - -
+               B B B B B B B B B B B B B B B B
+               E L - - - - - - - - - - - - - -
+               E - - - - - - - - - - - - - - -
+               B B B B B B B B B B B B B B B B
+               L L - - - - - - - - - - - - - - */
+
+            /* then we delete the leaf (marked as X) */
+            /* R
+               B B B B B B B B B B B B B B B B
+               E X - - - - - - - - - - - - - -
+               E - - - - - - - - - - - - - - -
+               B B B B B B B B B B B B B B B B
+               L L - - - - - - - - - - - - - - */
+
+            /* and we end up with an extended extension replacing what was previously a top-level branch*/
+            /* R
+               E
+               E
+               E - - - - - - - - - - - - - - -
+               B B B B B B B B B B B B B B B B
+               L L - - - - - - - - - - - - - - */
+            
+            byte[] key1 = Bytes.FromHexString("000000100000000aa");
+            byte[] key2 = Bytes.FromHexString("000000100000000bb");
+            byte[] key3 = Bytes.FromHexString("000000200000000cc");
+            
+            MemDb memDb = new MemDb();
+            TreeCommitter treeCommitter = new TreeCommitter(memDb, LimboLogs.Instance, 1.MB());
+            PatriciaTree patriciaTree = new PatriciaTree(treeCommitter);
+            patriciaTree.Set(key1, _longLeaf1);
+            patriciaTree.Set(key2, _longLeaf1);
+            patriciaTree.Set(key3, _longLeaf1);
+            patriciaTree.UpdateRootHash();
+            patriciaTree.Commit(0);
+            patriciaTree.Set(key3, Array.Empty<byte>());
+            patriciaTree.UpdateRootHash();
+            patriciaTree.Commit(1);
+            treeCommitter.Flush();
+
+            memDb.Keys.Should().HaveCount(4);
+            PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
+            checkTree.Get(key1).Should().BeEquivalentTo(_longLeaf1);
+            checkTree.Get(key2).Should().BeEquivalentTo(_longLeaf1);
+            checkTree.Get(key3).Should().BeNull();
         }
 
         [Test]
