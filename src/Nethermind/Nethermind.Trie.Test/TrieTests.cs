@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using FluentAssertions;
 using MathNet.Numerics.Random;
@@ -680,14 +681,16 @@ namespace Nethermind.Trie.Test
             checkTree.Get(_keyD).Should().BeEquivalentTo(_longLeaf1);
         }
 
-        [TestCase(1024, 1024 * 16, 128, 128)]
+        // [TestCase(1024, 1024 * 16, 128, 128)]
+        [TestCase(128, 128, 8, 8)]
         public void Fuzz_accounts(
             int accountsCount,
             int blocksCount,
             int uniqueValuesCount,
             int lookupLimit)
         {
-            string fileName = Path.GetTempFileName();
+            // string fileName = Path.GetTempFileName();
+            string fileName = "C:\\Temp\\fuzz.txt";
             TestContext.Out.WriteLine(
                 $"Fuzzing with accounts: {accountsCount}, " +
                 $"blocks {blocksCount}, " +
@@ -696,6 +699,8 @@ namespace Nethermind.Trie.Test
             
             using FileStream fileStream = new FileStream(fileName, FileMode.Create);
             using StreamWriter streamWriter = new StreamWriter(fileStream);
+            
+            Stack<Keccak> rootStack = new Stack<Keccak>();
             
             Random random = new Random();
             MemDb memDb = new MemDb();
@@ -748,12 +753,31 @@ namespace Nethermind.Trie.Test
 
                 streamWriter.WriteLine(
                     $"Commit block {blockNumber} | empty: {isEmptyBlock}");
+                patriciaTree.UpdateRootHash();
                 patriciaTree.Commit(blockNumber);
+                rootStack.Push(patriciaTree.RootHash);
             }
 
             streamWriter.Flush();
             fileStream.Seek(0, SeekOrigin.Begin);
+            
+            treeCommitter.Flush();
             streamWriter.WriteLine($"DB size: {memDb.Keys.Count}");
+            TestContext.Out.WriteLine($"DB size: {memDb.Keys.Count}");
+
+            int verifiedBlocks = 0;
+            
+            PatriciaTree.NodeCache.Clear();
+            while (rootStack.TryPop(out Keccak currentRoot))
+            {
+                patriciaTree.RootHash = currentRoot;
+                for (int i = 0; i < accounts.Length; i++)
+                {
+                    patriciaTree.Get(accounts[i]);
+                }
+                
+                TestContext.Out.WriteLine($"Verified {verifiedBlocks++}");
+            }
         }
     }
 }

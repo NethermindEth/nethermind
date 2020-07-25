@@ -88,12 +88,20 @@ namespace Nethermind.Trie.Pruning
 
         public void Flush()
         {
+            Console.WriteLine($"{_inMemNodes.Count}");
+            
             _checkList.Clear();
             CurrentPackage?.Seal();
             while (TryDispatchOne()) { }
         }
 
-        public byte[] this[byte[] key] => _keyValueStore[key];
+        public byte[] this[byte[] key]
+        {
+            get
+            {
+                return _keyValueStore[key];       
+            }
+        }
 
         public TrieNode FindCached(Keccak key)
         {
@@ -222,6 +230,7 @@ namespace Nethermind.Trie.Pruning
                 // start a batch here? (need to resolve responsibility between here and StateDb)
                 if (_logger.IsTrace)
                     _logger.Trace($"Saving a {nameof(TrieNode)} {currentNode}.");
+                
                 _keyValueStore[currentNode.Keccak.Bytes] = currentNode.FullRlp;
             }
             
