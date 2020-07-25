@@ -564,7 +564,7 @@ namespace Nethermind.Trie
 
         public override string ToString()
         {
-            return $"{NodeType}({FullRlp?.Length}) {Keccak?.ToShortString()}, refs {Refs}, persisted {IsPersisted}";
+            return $"[{NodeType}({FullRlp?.Length})|{Keccak?.ToShortString()}|refs:{Refs}|D:{IsDirty}|S:{IsSealed}|P:{IsPersisted}|";
         }
 
         public TrieNode CloneWithChangedKey(HexPrefix key)
