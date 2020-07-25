@@ -353,22 +353,16 @@ namespace Nethermind.Trie
 
         private byte[] TraverseNode(TrieNode node, TraverseContext traverseContext)
         {
-            if (node.IsLeaf)
+            return node.NodeType switch
             {
-                return TraverseLeaf(node, traverseContext);
-            }
-
-            if (node.IsBranch)
-            {
-                return TraverseBranch(node, traverseContext);
-            }
-
-            if (node.IsExtension)
-            {
-                return TraverseExtension(node, traverseContext);
-            }
-
-            throw new NotSupportedException($"Unknown node type {node.NodeType}");
+                NodeType.Branch => TraverseBranch(node, traverseContext),
+                NodeType.Extension => TraverseExtension(node, traverseContext),
+                NodeType.Leaf => TraverseLeaf(node, traverseContext),
+                NodeType.Unknown => throw new InvalidOperationException(
+                    $"Cannot traverse unresolved node {node.Keccak}"),
+                _ => throw new NotSupportedException(
+                    $"Unknown node type {node.NodeType}")
+            };
         }
 
         private void ConnectNodes(TrieNode node, TrieNode previousHere)
@@ -815,6 +809,12 @@ namespace Nethermind.Trie
                 }
 
                 TrieNode next = node.GetChild(this, 0);
+                if (next == null)
+                {
+                    throw new TrieException(
+                        $"Found an {nameof(NodeType.Extension)} {node.Keccak} that is missing a child.");
+                }
+                
                 next.ResolveNode(this);
                 return TraverseNode(next, traverseContext);
             }
