@@ -16,6 +16,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 
@@ -28,6 +29,18 @@ namespace Nethermind.Trie
         {
             IsLeaf = isLeaf;
             Path = path;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static HexPrefix Leaf(params byte[] path)
+        {
+            return new HexPrefix(true, path);
+        }
+        
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static HexPrefix Extension(params byte[] path)
+        {
+            return new HexPrefix(false, path);
         }
 
         public byte[] Path { get; private set; }

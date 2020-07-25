@@ -44,7 +44,6 @@ namespace Nethermind.Trie
             TrieNode node = new TrieNode(NodeType.Extension);
             node.SetChild(0, child);
             node.Key = key;
-            node.Refs++;
             return node;
         }
     }
