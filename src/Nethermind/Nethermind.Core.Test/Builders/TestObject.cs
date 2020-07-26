@@ -16,6 +16,7 @@
 
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core.Test.Builders
 {
@@ -41,7 +42,15 @@ namespace Nethermind.Core.Test.Builders
                 Keccaks[i - 1] = Keccak.Compute(PublicKeys[i - 1].Bytes);
             }
         }
-        
+
+        public static Keccak KeccakFromNumber(int i)
+        {
+            UInt256 keccakNumber = (UInt256) i;
+            byte[] keccakBytes = new byte[32];
+            keccakNumber.ToBigEndian(keccakBytes);
+            return new Keccak(keccakBytes);
+        }
+
         public static byte[] RandomDataA = {1, 2, 3};
         public static byte[] RandomDataB = {4, 5, 6, 7};
         public static byte[] RandomDataC = {1, 2, 8, 9, 10};
@@ -64,7 +73,7 @@ namespace Nethermind.Core.Test.Builders
         public static PublicKey PublicKeyB = PrivateKeyB.PublicKey;
         public static PublicKey PublicKeyC = PrivateKeyC.PublicKey;
         public static PublicKey PublicKeyD = PrivateKeyD.PublicKey;
-        
+
         public static PrivateKey IgnoredPrivateKey = new PrivateKey("040102030405060708090a0b0c0d0e0f0001abe120919026fffff12155555555");
         public static PublicKey IgnoredPublicKey = IgnoredPrivateKey.PublicKey;
 
