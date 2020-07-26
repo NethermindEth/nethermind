@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
@@ -171,8 +170,6 @@ namespace Nethermind.Trie.Pruning
                 _rootStack.Push(_currentRoot);
                 _currentRoot.IncrementRefsRecursively();
             }
-            
-            
 
             Debug.Assert(IsCurrentPackageSealed, "Not sealed when beginning new block");
 
