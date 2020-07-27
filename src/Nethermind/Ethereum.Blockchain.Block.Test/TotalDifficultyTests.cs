@@ -35,7 +35,7 @@ namespace Ethereum.Blockchain.Block.Test
         
         public static IEnumerable<BlockchainTest> LoadTests()
         {
-            var loader = new DirectoryTestsSourceLoader(new LoadBlockchainTestsStrategy(), "TotalDifficultyTest");
+            var loader = new TestsSourceLoader(new LoadBlockchainTestsStrategy(), "TotalDifficultyTest");
         return (IEnumerable<BlockchainTest>)loader.LoadTests();
         }
     }
