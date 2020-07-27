@@ -14,6 +14,6 @@ namespace Nethermind.Trie.Pruning
 
         JournalBook Unwind();
         
-        void Rewind(JournalBook journalBook);
+        void Rewind(JournalBook book);
     }
 }

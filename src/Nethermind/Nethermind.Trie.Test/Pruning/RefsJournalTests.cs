@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Logging;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
@@ -11,32 +12,62 @@ namespace Nethermind.Trie.Test.Pruning
     [TestFixture]
     public class RefsJournalTests
     {
+        private IRefsCache _refsCache;
+        private ILogManager _logManager;
+        private ILogger _logger;
+
+        [SetUp]
+        public void Setup()
+        {
+            _logManager = new OneLoggerLogManager(new NUnitLogger(LogLevel.Trace));
+            _logger = _logManager?.GetClassLogger();
+            _refsCache = new RefsCache(_logManager);
+        }
+        
         [Test]
         public void Default_capacity_is_128()
         {
-            IRefsJournal refsJournal = new RefsJournal();
+            IRefsJournal refsJournal = new RefsJournal(_refsCache, _logManager);
             refsJournal.Capacity.Should().Be(128);
         }
 
         [Test]
         public void Cannot_unwind_if_no_books_present()
         {
-            IRefsJournal refsJournal = new RefsJournal();
+            IRefsJournal refsJournal = new RefsJournal(_refsCache, _logManager);
             Assert.Throws<InvalidOperationException>(() => refsJournal.Unwind());
         }
 
         [Test]
         public void Cannot_unwind_unsealed()
         {
-            IRefsJournal refsJournal = new RefsJournal();
+            IRefsJournal refsJournal = new RefsJournal(_refsCache, _logManager);
             refsJournal.StartNewBook(TestItem.KeccakFromNumber(0));
+            Assert.Throws<InvalidOperationException>(() => refsJournal.Unwind());
+        }
+        
+        [Test]
+        public void Will_drop_books_beyond_capacity()
+        {
+            IRefsJournal refsJournal = new RefsJournal(_refsCache, _logManager);
+            for (int i = 0; i < refsJournal.Capacity * 2; i++)
+            {
+                refsJournal.StartNewBook(TestItem.KeccakFromNumber(i));
+                refsJournal.SealBook();
+            }
+            
+            for (int i = 0; i < refsJournal.Capacity; i++)
+            {
+                refsJournal.Unwind();
+            }
+            
             Assert.Throws<InvalidOperationException>(() => refsJournal.Unwind());
         }
 
         [Test]
         public void Can_seal_empty_book()
         {
-            IRefsJournal refsJournal = new RefsJournal();
+            IRefsJournal refsJournal = new RefsJournal(_refsCache, _logManager);
             refsJournal.StartNewBook(TestItem.KeccakFromNumber(0));
             refsJournal.SealBook();
         }
@@ -44,7 +75,7 @@ namespace Nethermind.Trie.Test.Pruning
         [Test]
         public void Can_seal_non_empty_book()
         {
-            IRefsJournal refsJournal = new RefsJournal();
+            IRefsJournal refsJournal = new RefsJournal(_refsCache, _logManager);
             refsJournal.StartNewBook(TestItem.KeccakFromNumber(0));
             refsJournal.RecordEntry(Keccak.Zero, 1);
             refsJournal.RecordEntry(Keccak.Zero, 2);
@@ -55,7 +86,7 @@ namespace Nethermind.Trie.Test.Pruning
         [Test]
         public void Can_unwind_sealed_and_empty()
         {
-            IRefsJournal refsJournal = new RefsJournal();
+            IRefsJournal refsJournal = new RefsJournal(_refsCache, _logManager);
             refsJournal.StartNewBook(TestItem.KeccakFromNumber(0));
             refsJournal.SealBook();
             var book = refsJournal.Unwind();
@@ -65,7 +96,7 @@ namespace Nethermind.Trie.Test.Pruning
         [Test]
         public void Cannot_rewind_twice()
         {
-            IRefsJournal refsJournal = new RefsJournal();
+            IRefsJournal refsJournal = new RefsJournal(_refsCache, _logManager);
             refsJournal.StartNewBook(TestItem.KeccakFromNumber(0));
             refsJournal.SealBook();
             var book = refsJournal.Unwind();
@@ -76,7 +107,12 @@ namespace Nethermind.Trie.Test.Pruning
         [Test]
         public void Unwound_book_has_correct_number_of_entries()
         {
-            IRefsJournal refsJournal = new RefsJournal();
+            TrieNode trieNode = new TrieNode(NodeType.Unknown, Keccak.Zero);
+            trieNode.Refs = 6;
+            
+            _refsCache.Add(trieNode.Keccak!, trieNode);
+            
+            IRefsJournal refsJournal = new RefsJournal(_refsCache, _logManager);
             refsJournal.StartNewBook(TestItem.KeccakFromNumber(0));
             refsJournal.RecordEntry(Keccak.Zero, 1);
             refsJournal.RecordEntry(Keccak.Zero, 2);
@@ -93,7 +129,12 @@ namespace Nethermind.Trie.Test.Pruning
         [Test]
         public void Rewound_book_has_correct_number_of_entries()
         {
-            IRefsJournal refsJournal = new RefsJournal();
+            TrieNode trieNode = new TrieNode(NodeType.Unknown, Keccak.Zero);
+            trieNode.Refs = 6;
+            
+            _refsCache.Add(trieNode.Keccak!, trieNode);
+            
+            IRefsJournal refsJournal = new RefsJournal(_refsCache, _logManager);
             refsJournal.StartNewBook(TestItem.KeccakFromNumber(0));
             refsJournal.RecordEntry(Keccak.Zero, 1);
             refsJournal.RecordEntry(Keccak.Zero, 2);
@@ -109,14 +150,14 @@ namespace Nethermind.Trie.Test.Pruning
         [Test]
         public void Can_start_new()
         {
-            IRefsJournal refsJournal = new RefsJournal();
+            IRefsJournal refsJournal = new RefsJournal(_refsCache, _logManager);
             refsJournal.StartNewBook(TestItem.KeccakFromNumber(0));
         }
 
         [Test]
         public void Can_start_new_if_previous_had_no_records()
         {
-            IRefsJournal refsJournal = new RefsJournal();
+            IRefsJournal refsJournal = new RefsJournal(_refsCache, _logManager);
             refsJournal.StartNewBook(TestItem.KeccakFromNumber(0));
             refsJournal.StartNewBook(TestItem.KeccakFromNumber(1));
             refsJournal.StartNewBook(TestItem.KeccakFromNumber(2));
@@ -125,7 +166,7 @@ namespace Nethermind.Trie.Test.Pruning
         [Test]
         public void Can_start_new_if_previous_had_records()
         {
-            IRefsJournal refsJournal = new RefsJournal();
+            IRefsJournal refsJournal = new RefsJournal(_refsCache, _logManager);
             refsJournal.StartNewBook(TestItem.KeccakFromNumber(0));
             refsJournal.RecordEntry(Keccak.Zero, 1);
             refsJournal.RecordEntry(Keccak.Zero, 2);
@@ -136,7 +177,7 @@ namespace Nethermind.Trie.Test.Pruning
         [Test]
         public void Does_not_care_about_0_or_negative_or_very_big_numbers()
         {
-            IRefsJournal refsJournal = new RefsJournal();
+            IRefsJournal refsJournal = new RefsJournal(_refsCache, _logManager);
             refsJournal.StartNewBook(TestItem.KeccakFromNumber(0));
             refsJournal.RecordEntry(Keccak.Zero, 0);
             refsJournal.StartNewBook(TestItem.KeccakFromNumber(1));
@@ -150,7 +191,7 @@ namespace Nethermind.Trie.Test.Pruning
         [Test]
         public void Can_keep_winding_unwinding()
         {
-            IRefsJournal refsJournal = new RefsJournal();
+            IRefsJournal refsJournal = new RefsJournal(_refsCache, _logManager);
             refsJournal.StartNewBook(TestItem.KeccakFromNumber(0));
             refsJournal.SealBook();
 
@@ -164,7 +205,7 @@ namespace Nethermind.Trie.Test.Pruning
         [Test]
         public void Cannot_seal_sealed()
         {
-            IRefsJournal refsJournal = new RefsJournal();
+            IRefsJournal refsJournal = new RefsJournal(_refsCache, _logManager);
             refsJournal.StartNewBook(TestItem.KeccakFromNumber(0));
             refsJournal.SealBook();
             Assert.Throws<InvalidOperationException>(() => refsJournal.SealBook());
@@ -173,14 +214,14 @@ namespace Nethermind.Trie.Test.Pruning
         [Test]
         public void Cannot_record_when_no_book()
         {
-            IRefsJournal refsJournal = new RefsJournal();
+            IRefsJournal refsJournal = new RefsJournal(_refsCache, _logManager);
             Assert.Throws<InvalidOperationException>(() => refsJournal.RecordEntry(Keccak.Zero, 1));
         }
         
         [Test]
         public void Cannot_record_when_book_is_sealed()
         {
-            IRefsJournal refsJournal = new RefsJournal();
+            IRefsJournal refsJournal = new RefsJournal(_refsCache, _logManager);
             refsJournal.StartNewBook(Keccak.Zero);
             refsJournal.SealBook();
             Assert.Throws<InvalidOperationException>(() => refsJournal.RecordEntry(Keccak.Zero, 1));
@@ -189,67 +230,85 @@ namespace Nethermind.Trie.Test.Pruning
         [Test]
         public void Cannot_seal_when_no_books()
         {
-            IRefsJournal refsJournal = new RefsJournal();
+            IRefsJournal refsJournal = new RefsJournal(_refsCache, _logManager);
             Assert.Throws<InvalidOperationException>(() => refsJournal.SealBook());
         }
         
         [Test]
         public void Cannot_rewind_null()
         {
-            IRefsJournal refsJournal = new RefsJournal();
+            IRefsJournal refsJournal = new RefsJournal(_refsCache, _logManager);
             Assert.Throws<ArgumentNullException>(() => refsJournal.Rewind(null));
         }
 
         [Test]
         public void Fuzz_unwind_rewind()
         {
-            int numberOfBlocks = _random.Next(4, 2048);
+            int numberOfBlocks = _random.Next(4, 64);
             int numberOfInitialNodes = _random.Next(4, 2048);
 
+            Dictionary<Keccak, int> initialRefs = new Dictionary<Keccak, int>();
             Dictionary<Keccak, int> expectedRefs = new Dictionary<Keccak, int>();
             
-            IRefsJournal refsJournal = new RefsJournal();
-            IRefsCache refsCache = new RefsCache();
-            IRefsReorganizer refsReorganizer = new RefsReorganizer(refsJournal, refsCache);
+            IRefsJournal refsJournal = new RefsJournal(_refsCache, _logManager);
+            IRefsReorganizer refsReorganizer = new RefsReorganizer(refsJournal, _refsCache);
             
             for (int i = 0; i < numberOfInitialNodes; i++)
             {
                 var keccak = TestItem.KeccakFromNumber(i);
                 TrieNode trieNode = new TrieNode(NodeType.Unknown, keccak);
                 trieNode.Refs = _random.Next(0, 4);
-                refsCache.Add(trieNode.Keccak, trieNode);
-                expectedRefs[trieNode.Keccak] = trieNode.Refs;
+                _logger.Trace($"{keccak} refs to {trieNode.Refs} (Init)");
+                _refsCache.Add(trieNode.Keccak!, trieNode);
+                initialRefs[trieNode.Keccak] = trieNode.Refs;
+            }
+
+            int booksCount = 0;
+            for (int i = 0; i < numberOfBlocks; i++)
+            {
+                _logger.Trace($"{i}");
+                int numberOfChangesInTheBlock = _random.Next(0, 128);
+
+                bool shouldRewind = _random.Next(2) == 0;
+                int reorgDepth = _random.Next(Math.Min(booksCount, 16));
+                if (!shouldRewind)
+                {
+                    booksCount -= reorgDepth;
+                }
+                
+                Reorganize(refsReorganizer, refsJournal, reorgDepth, shouldRewind);
+                
+                booksCount++;
+                AddOneFuzzBook(
+                    refsJournal, _refsCache, expectedRefs, i, numberOfChangesInTheBlock, numberOfInitialNodes);
             }
 
             for (int i = 0; i < numberOfBlocks; i++)
             {
-                int numberOfChangesInTheBlock = _random.Next(0, 128);
-                AddOneFuzzBook(
-                    refsJournal, refsCache, expectedRefs, i, numberOfChangesInTheBlock, numberOfInitialNodes);
-                
-                bool shouldRewind = _random.Next(2) == 0;
-                Reorganize(refsReorganizer, refsJournal, i, shouldRewind);
+                int reorgDepth = _random.Next(Math.Min(booksCount, i));
+                Reorganize(refsReorganizer, refsJournal, reorgDepth, true);
             }
-
-            foreach ((Keccak key, int value) in expectedRefs)
+            
+            for (int i = 0; i < booksCount; i++)
             {
-                refsCache.Get(key).Refs.Should().Be(value);
+                refsJournal.Unwind();
             }
-
-            for (int i = 0; i < 1024; i++)
+            
+            foreach ((Keccak key, int value) in initialRefs)
             {
-                Reorganize(refsReorganizer, refsJournal, i, true);
+                _logger.Trace($"Checking {key} - expected {value}, is {_refsCache.Get(key).Refs}");
+                _refsCache.Get(key).Refs.Should().Be(value);
             }
         }
 
-        private static void Reorganize(
+        private void Reorganize(
             IRefsReorganizer refsReorganizer,
             IRefsJournal refsJournal,
-            int i,
+            int reorgDepth,
             bool shouldRewind)
         {
-            int reorgDepth = _random.Next(0, Math.Min(i, 16));
-            refsReorganizer.MoveBack();
+            _logger.Trace($"Reorganizing with depth {reorgDepth}");
+            // refsReorganizer.MoveBack();
 
             Stack<JournalBook> unwindStack
                 = new Stack<JournalBook>();
@@ -268,7 +327,7 @@ namespace Nethermind.Trie.Test.Pruning
             }
         }
 
-        private static void AddOneFuzzBook(
+        private void AddOneFuzzBook(
             IRefsJournal refsJournal,
             IRefsCache refsCache,
             Dictionary<Keccak, int> refsForChecks,
@@ -280,33 +339,48 @@ namespace Nethermind.Trie.Test.Pruning
             for (int j = 0; j < numberOfChangesInTheBook; j++)
             {
                 int actionType = _random.Next(3);
+                Keccak key;
+                TrieNode node = null;
+                int refsChange;
                 switch (actionType)
                 {
                     case 0: // new node
-                        var keccak = TestItem.KeccakFromNumber(numberOfInitialNodes + j * bookIndex);
-                        TrieNode trieNode = new TrieNode(NodeType.Unknown, keccak);
-                        refsCache.Add(keccak, trieNode);
-                        trieNode.Refs = _random.Next(4);
-                        refsForChecks[trieNode.Keccak] = trieNode.Refs;
-                        refsJournal.RecordEntry(trieNode.Keccak, trieNode.Refs);
+                        key = TestItem.KeccakFromNumber(numberOfInitialNodes + j * bookIndex);
+                        if (refsForChecks.ContainsKey(key))
+                        {
+                            continue;
+                        }
+                        
+                        node = new TrieNode(NodeType.Unknown, key);
+                        node.Refs = _random.Next(4);
+                        refsCache.Add(key, node);
+                        refsChange = node.Refs;
+                        refsJournal.RecordEntry(node.Keccak!, node.Refs);
+                        _logger.Trace($"New journal entry {key} refs to {node.Refs} ({refsChange}) (New)");
                         break;
                     case 1: // update node
-                        int nodeTpUpdateIndex = _random.Next(numberOfInitialNodes);
-                        var keccakOfNodeToUpdate = TestItem.KeccakFromNumber(nodeTpUpdateIndex);
-                        var nodeToUpdate = refsCache.Get(keccakOfNodeToUpdate);
-                        nodeToUpdate.Refs = _random.Next(4);
-                        refsForChecks[nodeToUpdate.Keccak] = nodeToUpdate.Refs;
-                        refsJournal.RecordEntry(nodeToUpdate.Keccak, nodeToUpdate.Refs);
+                        key = TestItem.KeccakFromNumber(_random.Next(numberOfInitialNodes));
+                        node = refsCache.Get(key);
+                        int previousRefs = node.Refs; 
+                        node.Refs = _random.Next(4);
+                        refsChange = node.Refs - previousRefs;
+                        refsJournal.RecordEntry(node.Keccak!, refsChange);
+                        _logger.Trace($"New journal entry {key} refs to {node.Refs} ({refsChange}) (Update)");
                         break;
                     case 2: // delete
-                        int nodeToDeleteIndex = _random.Next(numberOfInitialNodes);
-                        var keccakOfNodeToDelete = TestItem.KeccakFromNumber(nodeToDeleteIndex);
-                        var nodeToDelete = refsCache.Get(keccakOfNodeToDelete);
-                        nodeToDelete.Refs = 0;
-                        refsForChecks[nodeToDelete.Keccak] = nodeToDelete.Refs;
-                        refsCache.Remove(keccakOfNodeToDelete);
-                        refsJournal.RecordEntry(nodeToDelete.Keccak, nodeToDelete.Refs);
+                        key = TestItem.KeccakFromNumber(_random.Next(numberOfInitialNodes));
+                        node = refsCache.Get(key);
+                        refsChange = -node.Refs;
+                        node.Refs = 0;
+                        refsJournal.RecordEntry(node.Keccak!, refsChange);
+                        refsCache.Remove(key);
+                        _logger.Trace($"New journal entry {key} refs to {node.Refs} ({refsChange}) (Delete)");
                         break;
+                }
+
+                if (node != null)
+                {
+                    refsForChecks[node.Keccak!] = node.Refs;
                 }
             }
 

@@ -2,16 +2,23 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core.Crypto;
+using Nethermind.Logging;
 
 namespace Nethermind.Trie.Pruning
 {
     public class RefsJournal : IRefsJournal
     {
+        private readonly IRefsCache _refsCache;
+
         private LinkedList<JournalBook> _books
             = new LinkedList<JournalBook>();
-        
-        public RefsJournal(int capacity = 128)
+
+        private ILogger _logger;
+
+        public RefsJournal(IRefsCache refsCache, ILogManager logManager, int capacity = 128)
         {
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _refsCache = refsCache ?? throw new ArgumentNullException(nameof(refsCache));
             Capacity = capacity;
         }
 
@@ -19,33 +26,50 @@ namespace Nethermind.Trie.Pruning
 
         public void StartNewBook(Keccak hash)
         {
-            JournalBook journalBook = new JournalBook(hash);
-            _books.AddLast(new LinkedListNode<JournalBook>(journalBook));
+            JournalBook book = new JournalBook(hash);
+            if (_logger.IsDebug) _logger.Debug($"New journal book  {book}");
+            _books.AddLast(new LinkedListNode<JournalBook>(book));
         }
 
         public void RecordEntry(Keccak hash, int refs)
         {
-            if (_books.Any() && !_books.Last!.Value.IsSealed)
-            {
-                _books.Last.Value.RecordEntry(hash, refs);
-            }
-            else
+            if (!_books.Any())
             {
                 throw new InvalidOperationException(
-                    "Trying to add an entry while there is no open book.");
+                    "An attempt to add an entry there are no books in journal.");
             }
+
+            if (_books.Last!.Value.IsSealed)
+            {
+                throw new InvalidOperationException(
+                    "An attempt to add an entry while the book has already been sealed.");
+            }
+
+            JournalEntry entry = new JournalEntry(hash, refs);
+            if(_logger.IsTrace) _logger.Trace($"New entry         {entry}.");
+            _books.Last.Value.RecordEntry(entry);
         }
 
         public void SealBook()
         {
-            if (_books.Any() && !_books.Last!.Value.IsSealed)
-            {
-                _books.Last.Value.IsSealed = true;
-            }
-            else
+            if (!_books.Any())
             {
                 throw new InvalidOperationException(
-                    "An attempt to seal a book while there is no open book.");
+                    "An attempt to seal a book while there are no books in journal.");
+            }
+
+            if (_books.Last!.Value.IsSealed)
+            {
+                throw new InvalidOperationException(
+                    "An attempt to seal a book that has already been sealed.");
+            }
+
+            if(_logger.IsDebug) _logger.Debug($"Sealing book      {_books.Last!.Value}");
+            _books.Last.Value.IsSealed = true;
+
+            if (_books.Count > Capacity)
+            {
+                _books.RemoveFirst();
             }
         }
 
@@ -56,43 +80,61 @@ namespace Nethermind.Trie.Pruning
         /// <exception cref="InvalidOperationException"></exception>
         public JournalBook Unwind()
         {
-            JournalBook unwoundBook;
-            if (_books.Any() && _books.Last!.Value.IsSealed)
-            {
-                unwoundBook = _books.Last.Value;
-                _books.RemoveLast();
-            }
-            else
+            if (!_books.Any())
             {
                 throw new InvalidOperationException(
-                    "An attempt to unwind a book while there is no open book.");
+                    "An attempt to unwind a book while there are no books in journal.");
             }
 
-            unwoundBook.IsUnwound = true;
-            return unwoundBook;
+            if (!_books.Last!.Value.IsSealed)
+            {
+                throw new InvalidOperationException(
+                    "An attempt to unwind a book that has not been sealed.");
+            }
+
+            JournalBook book = _books.Last.Value;
+            if (_logger.IsDebug) _logger.Debug($"Unwinding book    {book}");
+            
+            _books.RemoveLast();
+            book.IsUnwound = true;
+
+            foreach (JournalEntry entry in book.Entries.Reverse())
+            {
+                if(_logger.IsTrace) _logger.Debug($"Unwinding         {entry}");
+                _refsCache.Get(entry.Hash).Refs -= entry.RefsChange;
+            }
+
+            return book;
         }
 
         /// <summary>
         /// There is a big chance that this is not needed
         /// </summary>
-        /// <param name="journalBook"></param>
+        /// <param name="book"></param>
         /// <exception cref="ArgumentNullException"></exception>
         /// <exception cref="InvalidOperationException"></exception>
-        public void Rewind(JournalBook journalBook)
+        public void Rewind(JournalBook book)
         {
-            if (journalBook is null)
+            if (book is null)
             {
-                throw new ArgumentNullException(nameof(journalBook));
+                throw new ArgumentNullException(nameof(book));
             }
-            
-            if (!journalBook.IsUnwound)
+
+            if (!book.IsUnwound)
             {
                 throw new InvalidOperationException(
                     "Cannot rewind a book that is not unwound.");
             }
-            
-            journalBook.IsUnwound = false;
-            _books.AddLast(new LinkedListNode<JournalBook>(journalBook));
+
+            if (_logger.IsDebug) _logger.Debug($"Rewinding book    {book}");
+
+            book.IsUnwound = false;
+            _books.AddLast(new LinkedListNode<JournalBook>(book));
+            foreach (JournalEntry entry in book.Entries)
+            {
+                if(_logger.IsTrace) _logger.Debug($"Rewinding         {entry}");
+                _refsCache.Get(entry.Hash).Refs += entry.RefsChange;
+            }
         }
     }
 }

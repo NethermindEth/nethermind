@@ -29,9 +29,14 @@ namespace Nethermind.Trie.Pruning
         
         public bool IsUnwound { get; internal set; }
 
-        internal void RecordEntry(Keccak hash, int refs)
+        internal void RecordEntry(JournalEntry journalEntry)
         {
-            _entries.Add(new JournalEntry(hash, refs));
+            _entries.Add(journalEntry);
+        }
+
+        public override string ToString()
+        {
+            return $"[{nameof(JournalBook)}|{BookHash}|{_entries.Count}|sealed:{IsSealed}|unwound:{IsUnwound}]";
         }
     }
 }
