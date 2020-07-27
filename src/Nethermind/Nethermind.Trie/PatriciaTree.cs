@@ -32,7 +32,7 @@ using Nethermind.Trie.Pruning;
 namespace Nethermind.Trie
 {
     [DebuggerDisplay("{RootHash}")]
-    public class PatriciaTree
+    public class PatriciaTree : ITrieNodeResolver
     {
         private readonly ILogger _logger = NullLogger.Instance;
         private const int OneNodeAvgMemoryEstimate = 384;
@@ -56,7 +56,7 @@ namespace Nethermind.Trie
 
         private readonly ConcurrentQueue<TrieNode>? _currentCommit;
 
-        protected readonly ITreeCommitter _keyValueStore;
+        protected readonly ITreeStore _keyValueStore;
 
         private readonly bool _parallelBranches;
 
@@ -67,7 +67,7 @@ namespace Nethermind.Trie
         internal TrieNode? RootRef;
 
         public PatriciaTree()
-            : this(new NullTreeCommitter(), EmptyTreeHash, false, true)
+            : this(new NullTreeStore(), EmptyTreeHash, false, true)
         {
         }
 
@@ -76,18 +76,18 @@ namespace Nethermind.Trie
         {
         }
 
-        public PatriciaTree(ITreeCommitter keyValueStore, ILogger logger)
+        public PatriciaTree(ITreeStore keyValueStore, ILogger logger)
             : this(keyValueStore, EmptyTreeHash, false, true)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
         public PatriciaTree(IKeyValueStore keyValueStore, Keccak rootHash, bool parallelBranches, bool allowCommits)
-            : this(new PassThroughTreeCommitter(keyValueStore), rootHash, parallelBranches, allowCommits)
+            : this(new PassThroughTreeStore(keyValueStore), rootHash, parallelBranches, allowCommits)
         {
         }
 
-        public PatriciaTree(ITreeCommitter keyValueStore, Keccak rootHash, bool parallelBranches, bool allowCommits)
+        public PatriciaTree(ITreeStore keyValueStore, Keccak rootHash, bool parallelBranches, bool allowCommits)
         {
             _keyValueStore = keyValueStore ?? throw new ArgumentNullException(nameof(keyValueStore));
             _parallelBranches = parallelBranches;
@@ -308,29 +308,6 @@ namespace Nethermind.Trie
         public void Set(Span<byte> rawKey, Rlp? value)
         {
             Set(rawKey, value == null ? Array.Empty<byte>() : value.Bytes);
-        }
-
-        internal byte[] GetNode(Keccak keccak, bool allowCaching)
-        {
-            if (!allowCaching)
-            {
-                return _keyValueStore[keccak.Bytes];
-            }
-
-            byte[] cachedRlp = NodeCache.Get(keccak);
-            if (cachedRlp == null)
-            {
-                byte[] dbValue = _keyValueStore[keccak.Bytes];
-                if (dbValue == null)
-                {
-                    throw new TrieException($"Node {keccak} is missing from the DB");
-                }
-
-                NodeCache.Set(keccak, dbValue);
-                return dbValue;
-            }
-
-            return cachedRlp;
         }
 
         private byte[]? Run(Span<byte> updatePath, int nibblesCount, byte[] updateValue, bool isUpdate, bool ignoreMissingDelete = true, Keccak? rootHash = null)
@@ -1023,6 +1000,16 @@ namespace Nethermind.Trie
 
             visitor.VisitTree(rootHash, trieVisitContext);
             rootRef?.Accept(visitor, this, trieVisitContext);
+        }
+
+        public TrieNode FindCachedOrUnknown(Keccak hash)
+        {
+            return _keyValueStore.FindCachedOrUnknown(hash);
+        }
+
+        public byte[] LoadRlp(Keccak hash, bool allowCaching)
+        {
+            return _keyValueStore.LoadRlp(hash, allowCaching);
         }
     }
 }

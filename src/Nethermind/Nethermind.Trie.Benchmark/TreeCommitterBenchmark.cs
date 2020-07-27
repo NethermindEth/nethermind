@@ -9,9 +9,9 @@ namespace Nethermind.Trie.Benchmark
 {
     [MemoryDiagnoser]
     [DryJob(RuntimeMoniker.NetCoreApp31)]
-    public class TreeCommitterBenchmark
+    public class TreeStoreBenchmark
     {
-        static TreeCommitterBenchmark()
+        static TreeStoreBenchmark()
         {
             _ = LimboLogs.Instance.GetClassLogger(); // lazy-init
         }
@@ -53,14 +53,20 @@ namespace Nethermind.Trie.Benchmark
         private ILogManager _logManager = new OneLoggerLogManager(NullLogger.Instance);
 
         [Benchmark]
-        public TreeCommitter Trie_committer_with_one_node()
+        public TreeStore Trie_committer_with_one_node()
         {
             TrieNode trieNode = new TrieNode(NodeType.Unknown); // 56B
 
-            TreeCommitter treeCommitter = new TreeCommitter(
-                new TrieNodeCache(_logManager), _whateverDb, _logManager, 1.MB(), 128);
-            treeCommitter.Commit(1234, trieNode);
-            return treeCommitter;
+            ITrieNodeCache trieNodeCache = new TrieNodeCache(_logManager);
+            TreeStore treeStore = new TreeStore(
+                trieNodeCache,
+                _whateverDb,
+                new RefsJournal(trieNodeCache, _logManager),
+                _logManager,
+                1.MB(),
+                128);
+            treeStore.Commit(1234, trieNode);
+            return treeStore;
         }
     }
 }

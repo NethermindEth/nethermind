@@ -9,11 +9,12 @@ namespace Nethermind.Trie.Pruning
 {
     // is this class even needed?
     // we need to stack ref changes for each block
-    public class TreeCommitter : ITreeCommitter
+    public class TreeStore : ITreeStore
     {
-        public TreeCommitter(
+        public TreeStore(
             ITrieNodeCache trieNodeCache,
             IKeyValueStore keyValueStore,
+            IRefsJournal refsJournal,
             ILogManager logManager,
             long memoryLimit,
             long lookupLimit = 128)
@@ -22,9 +23,10 @@ namespace Nethermind.Trie.Pruning
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _trieNodeCache = trieNodeCache ?? throw new ArgumentNullException(nameof(trieNodeCache));
             _keyValueStore = keyValueStore ?? throw new ArgumentNullException(nameof(keyValueStore));
+            _refsJournal = refsJournal ?? throw new ArgumentNullException(nameof(refsJournal));
 
             if (_logger.IsTrace)
-                _logger.Trace($"Creating a new {nameof(TreeCommitter)} with memory limit {memoryLimit}");
+                _logger.Trace($"Creating a new {nameof(TreeStore)} with memory limit {memoryLimit}");
 
             if (memoryLimit <= 0)
                 throw new ArgumentOutOfRangeException(nameof(memoryLimit));
@@ -121,11 +123,39 @@ namespace Nethermind.Trie.Pruning
                               $"| save count {_saveCount}");
         }
 
-        public byte[] this[byte[] key] => _keyValueStore[key];
+        public void UpdateRefs(TrieNode trieNode, int refChange)
+        {
+            throw new NotImplementedException();
+        }
 
         public TrieNode? FindCachedOrUnknown(Keccak hash)
         {
             return _trieNodeCache.Get(hash);
+        }
+        
+        public byte[]? LoadRlp(Keccak keccak, bool allowCaching)
+        {
+            if (!allowCaching)
+            {
+                return _keyValueStore[keccak.Bytes];
+            }
+
+            // TODO: to not modify too many other parts of the solution I leave the cache as a static field of
+            // the PatriciaTree class for now
+            byte[] cachedRlp = PatriciaTree.NodeCache.Get(keccak);
+            if (cachedRlp == null)
+            {
+                byte[] dbValue = _keyValueStore[keccak.Bytes];
+                if (dbValue == null)
+                {
+                    throw new TrieException($"Node {keccak} is missing from the DB");
+                }
+
+                PatriciaTree.NodeCache.Set(keccak, dbValue);
+                return dbValue;
+            }
+
+            return cachedRlp;
         }
 
         public long MemorySize { get; private set; }
@@ -135,7 +165,10 @@ namespace Nethermind.Trie.Pruning
         private const int LinkedListNodeMemorySize = 48;
 
         private readonly ITrieNodeCache _trieNodeCache;
+        
         private readonly IKeyValueStore _keyValueStore;
+        
+        private readonly IRefsJournal _refsJournal;
 
         private readonly ILogger _logger;
 
@@ -149,15 +182,13 @@ namespace Nethermind.Trie.Pruning
 
         private Queue<TrieNode> _carryQueue = new Queue<TrieNode>();
 
-        private Dictionary<Keccak, TrieNode> _inMemNodes = new Dictionary<Keccak, TrieNode>();
-
         private BlockCommitPackage? CurrentPackage => _queue.Last?.Value;
 
         private bool IsCurrentPackageSealed => CurrentPackage == null || CurrentPackage.IsSealed;
 
         private Stack<TrieNode> _rootStack = new Stack<TrieNode>();
 
-        private TrieNode _currentRoot;
+        private TrieNode? _currentRoot;
 
         private void BeginNewPackage(long blockNumber)
         {

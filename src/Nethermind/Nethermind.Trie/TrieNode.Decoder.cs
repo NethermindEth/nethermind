@@ -20,6 +20,7 @@ using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Trie.Pruning;
 
 [assembly: InternalsVisibleTo("Ethereum.Trie.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
@@ -31,7 +32,7 @@ namespace Nethermind.Trie
     {
         private class TrieNodeDecoder
         {
-            public byte[] Encode(PatriciaTree tree, TrieNode item)
+            public byte[] Encode(ITrieNodeResolver tree, TrieNode item)
             {
                 Metrics.TreeNodeRlpEncodings++;
 
@@ -49,7 +50,7 @@ namespace Nethermind.Trie
                 };
             }
 
-            private static byte[] EncodeExtension(PatriciaTree tree, TrieNode item)
+            private static byte[] EncodeExtension(ITrieNodeResolver tree, TrieNode item)
             {
                 Debug.Assert(item.NodeType == NodeType.Extension,
                     $"Node passed to {nameof(EncodeExtension)} is {item.NodeType}");
@@ -101,7 +102,7 @@ namespace Nethermind.Trie
                 return rlpStream.Data;
             }
 
-            private static byte[] RlpEncodeBranch(PatriciaTree tree, TrieNode item)
+            private static byte[] RlpEncodeBranch(ITrieNodeResolver tree, TrieNode item)
             {
                 int valueRlpLength = AllowBranchValues ? Rlp.LengthOf(item.Value) : 1;
                 int contentLength = valueRlpLength + GetChildrenRlpLength(tree, item);
@@ -123,7 +124,7 @@ namespace Nethermind.Trie
                 return result;
             }
 
-            private static int GetChildrenRlpLength(PatriciaTree tree, TrieNode item)
+            private static int GetChildrenRlpLength(ITrieNodeResolver tree, TrieNode item)
             {
                 int totalLength = 0;
                 item.InitData();
@@ -155,7 +156,7 @@ namespace Nethermind.Trie
                 return totalLength;
             }
 
-            private static void WriteChildrenRlp(PatriciaTree tree, TrieNode item, Span<byte> destination)
+            private static void WriteChildrenRlp(ITrieNodeResolver tree, TrieNode item, Span<byte> destination)
             {
                 int position = 0;
                 RlpStream rlpStream = item._rlpStream;

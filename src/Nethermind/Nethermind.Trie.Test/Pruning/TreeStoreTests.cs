@@ -10,21 +10,23 @@ using NUnit.Framework;
 namespace Nethermind.Trie.Test.Pruning
 {
     [TestFixture]
-    public class TreeCommitterTests
+    public class TreeStoreTests
     {
         private ITrieNodeCache _trieNodeCache;
+        private IRefsJournal _refsJournal;
 
         [SetUp]
         public void Setup()
         {
             _trieNodeCache = new TrieNodeCache(LimboLogs.Instance);
+            _refsJournal = new RefsJournal(_trieNodeCache, LimboLogs.Instance);
         }
 
         [Test]
         public void Initial_memory_is_96()
         {
-            TreeCommitter treeCommitter = new TreeCommitter(_trieNodeCache, new MemDb(), LimboLogs.Instance, 1.MB());
-            treeCommitter.MemorySize.Should().Be(96);
+            TreeStore treeStore = new TreeStore(_trieNodeCache, new MemDb(), _refsJournal, LimboLogs.Instance, 1.MB());
+            treeStore.MemorySize.Should().Be(96);
         }
 
         [Test]
@@ -32,9 +34,9 @@ namespace Nethermind.Trie.Test.Pruning
         {
             TrieNode trieNode = new TrieNode(NodeType.Unknown, Keccak.Zero); // 56B
 
-            TreeCommitter treeCommitter = new TreeCommitter(_trieNodeCache, new MemDb(), LimboLogs.Instance, 1.MB());
-            treeCommitter.Commit(1234, trieNode);
-            treeCommitter.MemorySize.Should().Be(
+            TreeStore treeStore = new TreeStore(_trieNodeCache, new MemDb(), _refsJournal, LimboLogs.Instance, 1.MB());
+            treeStore.Commit(1234, trieNode);
+            treeStore.MemorySize.Should().Be(
                 96 /* committer */ +
                 88 /* block package */ +
                 48 /* linked list node size */ +
@@ -47,10 +49,10 @@ namespace Nethermind.Trie.Test.Pruning
             TrieNode trieNode1 = new TrieNode(NodeType.Unknown, TestItem.KeccakA);
             TrieNode trieNode2 = new TrieNode(NodeType.Unknown, TestItem.KeccakB);
 
-            TreeCommitter treeCommitter = new TreeCommitter(_trieNodeCache, new MemDb(), LimboLogs.Instance, 1.MB());
-            treeCommitter.Commit(1234, trieNode1);
-            treeCommitter.Commit(1234, trieNode2);
-            treeCommitter.MemorySize.Should().Be(
+            TreeStore treeStore = new TreeStore(_trieNodeCache, new MemDb(), _refsJournal, LimboLogs.Instance, 1.MB());
+            treeStore.Commit(1234, trieNode1);
+            treeStore.Commit(1234, trieNode2);
+            treeStore.MemorySize.Should().Be(
                 96 /* committer */ +
                 88 /* block package */ +
                 48 /* linked list node size */ +
@@ -64,12 +66,12 @@ namespace Nethermind.Trie.Test.Pruning
             TrieNode trieNode1 = new TrieNode(NodeType.Unknown, TestItem.KeccakA);
             TrieNode trieNode2 = new TrieNode(NodeType.Unknown, TestItem.KeccakB);
 
-            TreeCommitter treeCommitter = new TreeCommitter(_trieNodeCache, new MemDb(), LimboLogs.Instance, 1.MB());
-            treeCommitter.Commit(1234, trieNode1);
-            treeCommitter.Commit(1234, trieNode2);
-            treeCommitter.Commit(1235, trieNode1);
-            treeCommitter.Commit(1235, trieNode2);
-            treeCommitter.MemorySize.Should().Be(
+            TreeStore treeStore = new TreeStore(_trieNodeCache, new MemDb(), _refsJournal, LimboLogs.Instance, 1.MB());
+            treeStore.Commit(1234, trieNode1);
+            treeStore.Commit(1234, trieNode2);
+            treeStore.Commit(1235, trieNode1);
+            treeStore.Commit(1235, trieNode2);
+            treeStore.MemorySize.Should().Be(
                 96 /* committer */ +
                 2 * 88 /* block package */ +
                 2 * 48 /* linked list node size */ +
@@ -95,12 +97,12 @@ namespace Nethermind.Trie.Test.Pruning
             trieNode4.ResolveKey(null!, true);
             trieNode4.Refs = 1;
 
-            TreeCommitter treeCommitter = new TreeCommitter(_trieNodeCache, new MemDb(), LimboLogs.Instance, 640);
-            treeCommitter.Commit(1234, trieNode1);
-            treeCommitter.Commit(1234, trieNode2);
-            treeCommitter.Commit(1235, trieNode3);
-            treeCommitter.Commit(1235, trieNode4);
-            treeCommitter.MemorySize.Should().Be(
+            TreeStore treeStore = new TreeStore(_trieNodeCache, new MemDb(), _refsJournal, LimboLogs.Instance, 640);
+            treeStore.Commit(1234, trieNode1);
+            treeStore.Commit(1234, trieNode2);
+            treeStore.Commit(1235, trieNode3);
+            treeStore.Commit(1235, trieNode4);
+            treeStore.MemorySize.Should().Be(
                 96 /* committer */ +
                 1 * 88 /* block package */ +
                 1 * 48 /* linked list node size */ +
@@ -126,12 +128,12 @@ namespace Nethermind.Trie.Test.Pruning
             trieNode4.ResolveKey(null!, true);
             trieNode4.Refs = 1;
 
-            TreeCommitter treeCommitter = new TreeCommitter(_trieNodeCache, new MemDb(), LimboLogs.Instance, 512);
-            treeCommitter.Commit(1234, trieNode1);
-            treeCommitter.Commit(1234, trieNode2);
-            treeCommitter.Commit(1235, trieNode3);
-            treeCommitter.Commit(1235, trieNode4);
-            treeCommitter.MemorySize.Should().Be(
+            TreeStore treeStore = new TreeStore(_trieNodeCache, new MemDb(), _refsJournal, LimboLogs.Instance, 512);
+            treeStore.Commit(1234, trieNode1);
+            treeStore.Commit(1234, trieNode2);
+            treeStore.Commit(1235, trieNode3);
+            treeStore.Commit(1235, trieNode4);
+            treeStore.MemorySize.Should().Be(
                 96 /* committer */ +
                 1 * 88 /* block package */ +
                 1 * 48 /* linked list node size */ +
@@ -143,18 +145,18 @@ namespace Nethermind.Trie.Test.Pruning
         public void Dispatcher_will_always_try_to_clear_memory()
         {
             TrieNode trieNode = new TrieNode(NodeType.Leaf, new byte[0]); // 192B
-            trieNode.ResolveKey(null, true);
+            trieNode.ResolveKey(NullTrieNodeResolver.Instance, true);
 
-            TreeCommitter treeCommitter = new TreeCommitter(_trieNodeCache, new MemDb(), LimboLogs.Instance, 512);
+            TreeStore treeStore = new TreeStore(_trieNodeCache, new MemDb(), _refsJournal, LimboLogs.Instance, 512);
             for (int i = 0; i < 1024; i++)
             {
                 for (int j = 0; j < 1 + i % 3; j++)
                 {
-                    treeCommitter.Commit(i, trieNode);
+                    treeStore.Commit(i, trieNode);
                 }
             }
 
-            treeCommitter.MemorySize.Should().BeLessThan(512 * 2);
+            treeStore.MemorySize.Should().BeLessThan(512 * 2);
         }
 
         [TestCase(1)]
@@ -163,22 +165,21 @@ namespace Nethermind.Trie.Test.Pruning
         public void Dispatcher_will_save_to_db_everything_from_snapshot_blocks(int refCount)
         {
             TrieNode a = new TrieNode(NodeType.Leaf, new byte[0]); // 192B
-            a.ResolveKey(null, true);
+            a.ResolveKey(NullTrieNodeResolver.Instance, true);
 
             MemDb memDb = new MemDb();
             
-            ITrieNodeCache trieNodeCache = new TrieNodeCache(LimboLogs.Instance);
-            TreeCommitter treeCommitter = new TreeCommitter(trieNodeCache, memDb, LimboLogs.Instance, 16.MB(), 4);
+            TreeStore treeStore = new TreeStore(_trieNodeCache, memDb, _refsJournal, LimboLogs.Instance, 16.MB(), 4);
 
             a.Refs = refCount;
-            treeCommitter.Commit(0, a);
-            treeCommitter.Commit(1, null);
-            treeCommitter.Commit(2, null);
-            treeCommitter.Commit(3, null);
-            treeCommitter.Commit(4, null);
+            treeStore.Commit(0, a);
+            treeStore.Commit(1, null);
+            treeStore.Commit(2, null);
+            treeStore.Commit(3, null);
+            treeStore.Commit(4, null);
 
             memDb[a.Keccak!.Bytes].Should().NotBeNull();
-            treeCommitter.IsInMemory(a.Keccak).Should().BeFalse();
+            treeStore.IsInMemory(a.Keccak).Should().BeFalse();
         }
 
         [TestCase(1)]
@@ -187,22 +188,21 @@ namespace Nethermind.Trie.Test.Pruning
         public void Stays_in_memory_until_persisted(int refCount)
         {
             TrieNode a = new TrieNode(NodeType.Leaf, new byte[0]); // 192B
-            a.ResolveKey(null, true);
+            a.ResolveKey(NullTrieNodeResolver.Instance, true);
 
             MemDb memDb = new MemDb();
 
-            ITrieNodeCache trieNodeCache = new TrieNodeCache(LimboLogs.Instance);
-            TreeCommitter treeCommitter = new TreeCommitter(trieNodeCache, memDb, LimboLogs.Instance, 16.MB(), 4);
+            TreeStore treeStore = new TreeStore(_trieNodeCache, memDb, _refsJournal, LimboLogs.Instance, 16.MB(), 4);
 
             a.Refs = refCount;
-            treeCommitter.Commit(0, a);
-            treeCommitter.Commit(1, null);
-            treeCommitter.Commit(2, null);
-            treeCommitter.Commit(3, null);
+            treeStore.Commit(0, a);
+            treeStore.Commit(1, null);
+            treeStore.Commit(2, null);
+            treeStore.Commit(3, null);
             // treeCommitter.Commit(4, null); <- do not persist in this test
 
             memDb[a.Keccak!.Bytes].Should().BeNull();
-            treeCommitter.IsInMemory(a.Keccak).Should().BeTrue();
+            treeStore.IsInMemory(a.Keccak).Should().BeTrue();
         }
 
         [TestCase(1)]
@@ -211,87 +211,85 @@ namespace Nethermind.Trie.Test.Pruning
         public void Will_get_persisted_on_snapshot_if_referenced(int refCount)
         {
             TrieNode a = new TrieNode(NodeType.Leaf, new byte[0]); // 192B
-            a.ResolveKey(null, true);
+            a.ResolveKey(NullTrieNodeResolver.Instance, true);
 
             MemDb memDb = new MemDb();
 
-            ITrieNodeCache trieNodeCache = new TrieNodeCache(LimboLogs.Instance);
-            TreeCommitter treeCommitter = new TreeCommitter(trieNodeCache, memDb, LimboLogs.Instance, 16.MB(), 4);
+            TreeStore treeStore = new TreeStore(_trieNodeCache, memDb, _refsJournal, LimboLogs.Instance, 16.MB(), 4);
 
             a.Refs = refCount;
-            treeCommitter.Commit(0, null);
-            treeCommitter.Commit(1, a);
-            treeCommitter.Commit(2, null);
-            treeCommitter.Commit(3, null);
-            treeCommitter.Commit(4, null);
-            treeCommitter.Commit(5, null);
-            treeCommitter.Commit(6, null);
-            treeCommitter.Commit(7, null);
-            treeCommitter.Commit(8, null);
+            treeStore.Commit(0, null);
+            treeStore.Commit(1, a);
+            treeStore.Commit(2, null);
+            treeStore.Commit(3, null);
+            treeStore.Commit(4, null);
+            treeStore.Commit(5, null);
+            treeStore.Commit(6, null);
+            treeStore.Commit(7, null);
+            treeStore.Commit(8, null);
 
             memDb[a.Keccak!.Bytes].Should().NotBeNull();
-            treeCommitter.IsInMemory(a.Keccak).Should().BeFalse();
+            treeStore.IsInMemory(a.Keccak).Should().BeFalse();
         }
 
         [Test]
         public void Will_not_get_dropped_on_snapshot_if_unreferenced_in_later_blocks()
         {
             TrieNode a = new TrieNode(NodeType.Leaf, new byte[0]);
-            a.ResolveKey(null, true);
+            a.ResolveKey(NullTrieNodeResolver.Instance, true);
 
             TrieNode b = new TrieNode(NodeType.Leaf, new byte[1]);
-            b.ResolveKey(null, true);
+            b.ResolveKey(NullTrieNodeResolver.Instance, true);
 
             MemDb memDb = new MemDb();
 
-            ITrieNodeCache trieNodeCache = new TrieNodeCache(LimboLogs.Instance);
-            TreeCommitter treeCommitter = new TreeCommitter(trieNodeCache, memDb, LimboLogs.Instance, 16.MB(), 4);
+            TreeStore treeStore = new TreeStore(_trieNodeCache, memDb, _refsJournal, LimboLogs.Instance, 16.MB(), 4);
 
             a.Refs = 1;
-            treeCommitter.Commit(0, null);
-            treeCommitter.Commit(1, a);
-            treeCommitter.Commit(2, null);
-            treeCommitter.Commit(3, null);
-            treeCommitter.Commit(4, null);
-            treeCommitter.Commit(5, null);
-            treeCommitter.Commit(6, null);
+            treeStore.Commit(0, null);
+            treeStore.Commit(1, a);
+            treeStore.Commit(2, null);
+            treeStore.Commit(3, null);
+            treeStore.Commit(4, null);
+            treeStore.Commit(5, null);
+            treeStore.Commit(6, null);
             // TODO: this is actually a bug since 'a' was referenced from root at the time of block 4
             a.Refs = 0;
-            treeCommitter.Commit(7, b); // <- new root
-            treeCommitter.Commit(8, null);
+            treeStore.Commit(7, b); // <- new root
+            treeStore.Commit(8, null);
 
             memDb[a.Keccak!.Bytes].Should().NotBeNull();
-            treeCommitter.IsInMemory(a.Keccak).Should().BeFalse();
+            treeStore.IsInMemory(a.Keccak).Should().BeFalse();
         }
 
         [Test]
         public void Will_get_dropped_on_snapshot_if_it_was_a_transient_node()
         {
             TrieNode a = new TrieNode(NodeType.Leaf, new byte[0]);
-            a.ResolveKey(null, true);
+            a.ResolveKey(NullTrieNodeResolver.Instance, true);
 
             TrieNode b = new TrieNode(NodeType.Leaf, new byte[1]);
-            b.ResolveKey(null, true);
+            b.ResolveKey(NullTrieNodeResolver.Instance, true);
 
             MemDb memDb = new MemDb();
             
             ITrieNodeCache cache = new TrieNodeCache(LimboLogs.Instance);
-            TreeCommitter treeCommitter = new TreeCommitter(cache,  memDb, LimboLogs.Instance, 16.MB(), 4);
+            TreeStore treeStore = new TreeStore(cache,  memDb, _refsJournal, LimboLogs.Instance, 16.MB(), 4);
 
             a.Refs = 1;
-            treeCommitter.Commit(0, null);
-            treeCommitter.Commit(1, a);
-            treeCommitter.Commit(2, null);
+            treeStore.Commit(0, null);
+            treeStore.Commit(1, a);
+            treeStore.Commit(2, null);
             a.Refs = 0;
-            treeCommitter.Commit(3, b); // <- new root
-            treeCommitter.Commit(4, null);
-            treeCommitter.Commit(5, null);
-            treeCommitter.Commit(6, null);
-            treeCommitter.Commit(7, null);
-            treeCommitter.Commit(8, null);
+            treeStore.Commit(3, b); // <- new root
+            treeStore.Commit(4, null);
+            treeStore.Commit(5, null);
+            treeStore.Commit(6, null);
+            treeStore.Commit(7, null);
+            treeStore.Commit(8, null);
 
             memDb[a.Keccak!.Bytes].Should().BeNull();
-            treeCommitter.IsInMemory(a.Keccak).Should().BeFalse();
+            treeStore.IsInMemory(a.Keccak).Should().BeFalse();
         }
     }
 }

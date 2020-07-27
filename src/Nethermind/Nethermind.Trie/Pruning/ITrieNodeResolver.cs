@@ -2,12 +2,10 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.Pruning
 {
-    public interface ITreeCommitter
+    public interface ITrieNodeResolver
     {
-        void Commit(long blockNumber, TrieNode trieNode);
-
         TrieNode FindCachedOrUnknown(Keccak hash);
         
-        byte[] this[byte[] key] { get; }
+        byte[] LoadRlp(Keccak hash, bool allowCaching);
     }
 }

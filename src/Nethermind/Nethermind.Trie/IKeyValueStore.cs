@@ -18,6 +18,6 @@ namespace Nethermind.Trie
 {
     public interface IKeyValueStore
     {
-        byte[] this[byte[] key] { get; set; }
+        byte[]? this[byte[] key] { get; set; }
     }
 }

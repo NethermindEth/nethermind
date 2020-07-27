@@ -20,6 +20,7 @@ using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Trie.Pruning;
 
 [assembly: InternalsVisibleTo("Ethereum.Trie.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
@@ -83,9 +84,17 @@ namespace Nethermind.Trie
         /// <summary>
         /// Sealed node is the one that is already immutable except for reference counting and resolving existing data
         /// </summary>
-        public bool IsSealed { get; private set; }
+        public bool IsSealed
+        {
+            get => _isSealed;
+            private set => _isSealed = value;
+        }
 
-        public bool IsPersisted { get; set; }
+        public bool IsPersisted
+        {
+            get => _isPersisted;
+            set => _isPersisted = value;
+        }
 
         /// <summary>
         /// Node will no longer be mutable except for ref counting
@@ -234,7 +243,7 @@ namespace Nethermind.Trie
         /// <summary>
         /// Highly optimized
         /// </summary>
-        internal void ResolveNode(PatriciaTree tree, bool allowCaching)
+        internal void ResolveNode(ITrieNodeResolver tree, bool allowCaching)
         {
             try
             {
@@ -247,7 +256,7 @@ namespace Nethermind.Trie
                             throw new TrieException($"Unable to resolve node without Keccak");
                         }
 
-                        FullRlp = tree.GetNode(Keccak, allowCaching);
+                        FullRlp = tree.LoadRlp(Keccak, allowCaching);
                         Refs = int.MaxValue;
                         if (FullRlp == null)
                         {
@@ -309,12 +318,12 @@ namespace Nethermind.Trie
             }
         }
 
-        public void ResolveNode(PatriciaTree tree)
+        public void ResolveNode(ITrieNodeResolver tree)
         {
             ResolveNode(tree, true);
         }
 
-        public void ResolveKey(PatriciaTree tree, bool isRoot)
+        public void ResolveKey(ITrieNodeResolver tree, bool isRoot)
         {
             if (Keccak != null)
             {
@@ -339,7 +348,7 @@ namespace Nethermind.Trie
             Keccak = Keccak.Compute(FullRlp);
         }
 
-        internal byte[] RlpEncode(PatriciaTree tree)
+        internal byte[] RlpEncode(ITrieNodeResolver tree)
         {
             byte[] rlp = _nodeDecoder.Encode(tree, this);
             // just included here to improve the class reading
@@ -391,7 +400,7 @@ namespace Nethermind.Trie
             }
         }
 
-        private void ResolveChild(PatriciaTree tree, int i)
+        private void ResolveChild(ITrieNodeResolver tree, int i)
         {
             if (_rlpStream == null)
             {
@@ -412,7 +421,7 @@ namespace Nethermind.Trie
                     case 160:
                         _rlpStream.Position--;
                         Keccak keccak = _rlpStream.DecodeKeccak();
-                        _data![i] = tree.GetUnknown(keccak);
+                        _data![i] = tree.FindCachedOrUnknown(keccak);
                         break;
                     default:
                     {
@@ -480,7 +489,7 @@ namespace Nethermind.Trie
             set => SetChild(i, value);
         }
 
-        public TrieNode? GetChild(PatriciaTree tree, int childIndex)
+        public TrieNode? GetChild(ITrieNodeResolver tree, int childIndex)
         {
             /* extensions store value before the child while branches store children before the value
              * so just to treat them in the same way we update index on extensions
@@ -661,9 +670,14 @@ namespace Nethermind.Trie
         private RlpStream? _rlpStream;
 
         private object?[]? _data;
+
+        private int _refs; 
         
         private bool _isDirty;
-        private int _refs;
+        
+        private bool _isPersisted;
+        
+        private bool _isSealed;
 
         #endregion
     }
