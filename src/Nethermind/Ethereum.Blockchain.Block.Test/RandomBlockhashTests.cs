@@ -34,7 +34,7 @@ namespace Ethereum.Blockchain.Block.Test
         }
         public static IEnumerable<BlockchainTest> LoadTests()
         {
-            var loader = new DirectoryTestsSourceLoader(new LoadBlockchainTestsStrategy(), "bcRandomBlockhashTests");
+            var loader = new TestsSourceLoader(new LoadBlockchainTestsStrategy(), "bcRandomBlockhashTests");
         return (IEnumerable<BlockchainTest>)loader.LoadTests();
         }
     }

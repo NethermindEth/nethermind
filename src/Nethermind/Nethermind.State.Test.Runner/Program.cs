@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using CommandLine;
 using Ethereum.Test.Base;
@@ -83,21 +84,18 @@ namespace Nethermind.State.Test.Runner
 
         private static void RunSingleTest(string path, Func<ITestSourceLoader, IStateTestRunner> testRunnerBuilder)
         {
-            // ITestSourceLoader source;
-            // if (Directory.Exists(path))
-            // {
-            //     source = new DirectoryTestsSourceLoader(path);
-            // }
-            // else if (File.Exists(path))
-            // {
-            //     source = new FileTestsSource(path);
-            // }
-            // else
-            // {
-            //     throw new IOException("Input path could not be resolved.");
-            // }
+            ITestSourceLoader source;
 
-            // testRunnerBuilder(source).RunTests();
+            if(Path.HasExtension(path))
+            {
+                source = new TestsSourceLoader(new LoadGeneralStateTestFileStrategy(), path);
+            }
+            else
+            {
+                source = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), path);
+            }
+            
+            testRunnerBuilder(source).RunTests();
         }
     }
 }
