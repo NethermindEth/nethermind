@@ -52,9 +52,9 @@ namespace Nethermind.Trie
         /// </summary>
         private readonly Stack<StackedNode> _nodeStack = new Stack<StackedNode>();
 
-        private readonly ConcurrentQueue<Exception> _commitExceptions;
+        private readonly ConcurrentQueue<Exception>? _commitExceptions;
 
-        private readonly ConcurrentQueue<TrieNode> _currentCommit;
+        private readonly ConcurrentQueue<TrieNode>? _currentCommit;
 
         protected readonly ITreeCommitter _keyValueStore;
 
@@ -64,7 +64,7 @@ namespace Nethermind.Trie
 
         private Keccak _rootHash = Keccak.EmptyTreeHash;
 
-        internal TrieNode RootRef;
+        internal TrieNode? RootRef;
 
         public PatriciaTree()
             : this(new NullTreeCommitter(), EmptyTreeHash, false, true)
@@ -104,7 +104,7 @@ namespace Nethermind.Trie
         /// <summary>
         /// Only used in EthereumTests
         /// </summary>
-        internal TrieNode Root
+        internal TrieNode? Root
         {
             get
             {
@@ -121,6 +121,12 @@ namespace Nethermind.Trie
 
         public void Commit(long blockNumber)
         {
+            if (_currentCommit is null)
+            {
+                throw new InvalidAsynchronousStateException(
+                    $"{nameof(_currentCommit)} is NULL when calling {nameof(Commit)}");
+            }
+            
             if (!_allowCommits)
             {
                 throw new TrieException("Commits are not allowed on this trie.");
@@ -143,8 +149,8 @@ namespace Nethermind.Trie
                 // TODO: little cheating for now - we may rename it to seal or finalize later
 
                 // reset objects
-                RootRef.ResolveKey(this, true);
-                SetRootHash(RootRef.Keccak, true);
+                RootRef!.ResolveKey(this, true);
+                SetRootHash(RootRef.Keccak!, true);
             }
             else
             {
@@ -154,6 +160,18 @@ namespace Nethermind.Trie
 
         private void Commit(TrieNode node, bool isRoot)
         {
+            if (_currentCommit is null)
+            {
+                throw new InvalidAsynchronousStateException(
+                    $"{nameof(_currentCommit)} is NULL when calling {nameof(Commit)}");
+            }
+            
+            if (_commitExceptions is null)
+            {
+                throw new InvalidAsynchronousStateException(
+                    $"{nameof(_commitExceptions)} is NULL when calling {nameof(Commit)}");
+            }
+            
             if (node.IsBranch)
             {
                 // idea from EthereumJ - testing parallel branches
@@ -163,7 +181,7 @@ namespace Nethermind.Trie
                     {
                         if (node.IsChildDirty(i))
                         {
-                            Commit(node.GetChild(this, i), false);
+                            Commit(node.GetChild(this, i)!, false);
                         }
                     }
                 }
@@ -189,7 +207,7 @@ namespace Nethermind.Trie
                             }
                             catch (Exception e)
                             {
-                                _commitExceptions.Enqueue(e);
+                                _commitExceptions!.Enqueue(e);
                             }
                         });
 
@@ -217,7 +235,7 @@ namespace Nethermind.Trie
 
                 if (extensionChild.IsDirty)
                 {
-                    Commit(node.GetChild(this, 0), false);
+                    Commit(extensionChild, false);
                 }
             }
 
@@ -256,7 +274,7 @@ namespace Nethermind.Trie
         }
 
         [DebuggerStepThrough]
-        public byte[] Get(Span<byte> rawKey, Keccak rootHash = null)
+        public byte[]? Get(Span<byte> rawKey, Keccak? rootHash = null)
         {
             int nibblesCount = 2 * rawKey.Length;
             byte[] array = null;
@@ -287,7 +305,7 @@ namespace Nethermind.Trie
         }
 
         [DebuggerStepThrough]
-        public void Set(Span<byte> rawKey, Rlp value)
+        public void Set(Span<byte> rawKey, Rlp? value)
         {
             Set(rawKey, value == null ? Array.Empty<byte>() : value.Bytes);
         }
@@ -315,7 +333,7 @@ namespace Nethermind.Trie
             return cachedRlp;
         }
 
-        private byte[] Run(Span<byte> updatePath, int nibblesCount, byte[] updateValue, bool isUpdate, bool ignoreMissingDelete = true, Keccak rootHash = null)
+        private byte[]? Run(Span<byte> updatePath, int nibblesCount, byte[] updateValue, bool isUpdate, bool ignoreMissingDelete = true, Keccak? rootHash = null)
         {
             if (isUpdate && rootHash != null)
             {
@@ -354,11 +372,12 @@ namespace Nethermind.Trie
             }
 
             RootRef.ResolveNode(this);
-            TraverseContext traverseContext = new TraverseContext(updatePath.Slice(0, nibblesCount), updateValue, isUpdate, ignoreMissingDelete);
+            TraverseContext traverseContext =
+                new TraverseContext(updatePath.Slice(0, nibblesCount), updateValue, isUpdate, ignoreMissingDelete);
             return TraverseNode(RootRef, traverseContext);
         }
 
-        private byte[] TraverseNode(TrieNode node, TraverseContext traverseContext)
+        private byte[]? TraverseNode(TrieNode node, TraverseContext traverseContext)
         {
             return node.NodeType switch
             {
@@ -372,7 +391,7 @@ namespace Nethermind.Trie
             };
         }
 
-        private void ConnectNodes(TrieNode node, TrieNode previousHere)
+        private void ConnectNodes(TrieNode? node, TrieNode? previousHere)
         {
             bool isRoot = _nodeStack.Count == 0;
             TrieNode nextNode = node;
@@ -637,7 +656,7 @@ namespace Nethermind.Trie
             RootRef = nextNode;
         }
 
-        private byte[] TraverseBranch(TrieNode node, TraverseContext traverseContext)
+        private byte[]? TraverseBranch(TrieNode node, TraverseContext traverseContext)
         {
             if (traverseContext.RemainingUpdatePathLength == 0)
             {
@@ -713,7 +732,7 @@ namespace Nethermind.Trie
             return TraverseNode(nextNode, traverseContext);
         }
 
-        private byte[] TraverseLeaf(TrieNode node, TraverseContext traverseContext)
+        private byte[]? TraverseLeaf(TrieNode node, TraverseContext traverseContext)
         {
             if (node.Path == null)
             {
@@ -819,7 +838,7 @@ namespace Nethermind.Trie
             return traverseContext.UpdateValue;
         }
 
-        private byte[] TraverseExtension(TrieNode node, TraverseContext traverseContext)
+        private byte[]? TraverseExtension(TrieNode node, TraverseContext traverseContext)
         {
             if (node.Path == null)
             {
@@ -829,7 +848,7 @@ namespace Nethermind.Trie
             TrieNode originalNode = node;
             Span<byte> remaining = traverseContext.GetRemainingUpdatePath();
             
-            int extensionLength = FindCommonPrefixLength(remaining, node.Path);;
+            int extensionLength = FindCommonPrefixLength(remaining, node.Path);
             if (extensionLength == node.Path.Length)
             {
                 traverseContext.CurrentIndex += extensionLength;
@@ -889,12 +908,18 @@ namespace Nethermind.Trie
             }
 
             TrieNode originalNodeChild = originalNode.GetChild(this, 0);
+            if (originalNodeChild is null)
+            {
+                throw new InvalidDataException(
+                    $"Extension {originalNode.Keccak} has no child.");
+            }
+            
             if (pathBeforeUpdate.Length - extensionLength > 1)
             {
                 byte[] extensionPath = pathBeforeUpdate.Slice(extensionLength + 1, pathBeforeUpdate.Length - extensionLength - 1);
                 TrieNode secondExtension
                     = TrieNodeFactory.CreateExtension(HexPrefix.Extension(extensionPath), originalNodeChild);
-                originalNodeChild!.Refs++;
+                originalNodeChild.Refs++;
                 secondExtension.Refs++;
                 branch.SetChild(pathBeforeUpdate[extensionLength], secondExtension);
             }
@@ -924,7 +949,7 @@ namespace Nethermind.Trie
         private ref struct TraverseContext
         {
             public Span<byte> UpdatePath { get; }
-            public byte[] UpdateValue { get; }
+            public byte[]? UpdateValue { get; }
             public bool IsUpdate { get; }
             public bool IsRead => !IsUpdate;
             public bool IsDelete => IsUpdate && UpdateValue == null;
@@ -937,7 +962,11 @@ namespace Nethermind.Trie
                 return UpdatePath.Slice(CurrentIndex, RemainingUpdatePathLength);
             }
 
-            public TraverseContext(Span<byte> updatePath, byte[] updateValue, bool isUpdate, bool ignoreMissingDelete = true)
+            public TraverseContext(
+                Span<byte> updatePath,
+                byte[]? updateValue,
+                bool isUpdate,
+                bool ignoreMissingDelete = true)
             {
                 UpdatePath = updatePath;
                 UpdateValue = updateValue;

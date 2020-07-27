@@ -121,9 +121,20 @@ namespace Nethermind.Trie.Pruning
 
         public byte[] this[byte[] key] => _keyValueStore[key];
 
-        public TrieNode FindCached(Keccak key)
+        // an use RLP cache here as well
+        // public TrieNode? FindCached(Keccak hash, bool fetchFromStoreIfMissing)
+        // {
+        //     return _inMemNodes.TryGetValue(hash, out TrieNode trieNode)
+        //         ? trieNode
+        //         : fetchFromStoreIfMissing
+        //             ? new TrieNode(NodeType.Unknown, hash)
+        //             : new TrieNode(NodeType.Unknown, _keyValueStore[hash.Bytes]);
+        // }
+        
+        public TrieNode? FindCached(Keccak hash)
         {
-            return _inMemNodes.TryGetValue(key, out TrieNode trieNode) ? trieNode : null;
+            _inMemNodes.TryGetValue(hash, out TrieNode trieNode);
+            return trieNode;
         }
 
         public long MemorySize { get; private set; }

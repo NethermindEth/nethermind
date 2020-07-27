@@ -6,11 +6,7 @@ namespace Nethermind.Trie.Pruning
     {
         void Commit(long blockNumber, TrieNode trieNode);
 
-        void Uncommit();
-
-        void Flush();
-
-        TrieNode FindCached(Keccak key);
+        TrieNode FindCached(Keccak hash);
         
         byte[] this[byte[] key] { get; }
     }

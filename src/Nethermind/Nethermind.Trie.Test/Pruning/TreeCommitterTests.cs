@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -21,7 +22,7 @@ namespace Nethermind.Trie.Test.Pruning
         [Test]
         public void Memory_with_one_node_is_288()
         {
-            TrieNode trieNode = new TrieNode(NodeType.Unknown); // 56B
+            TrieNode trieNode = new TrieNode(NodeType.Unknown, Keccak.Zero); // 56B
             
             TreeCommitter treeCommitter = new TreeCommitter(new MemDb(), LimboLogs.Instance, 1.MB());
             treeCommitter.Commit(1234, trieNode);
@@ -33,71 +34,101 @@ namespace Nethermind.Trie.Test.Pruning
         }
         
         [Test]
-        public void Memory_with_two_nodes_is_344()
+        public void Memory_with_two_nodes_is_correct()
         {
-            TrieNode trieNode = new TrieNode(NodeType.Unknown); // 56B
+            TrieNode trieNode1 = new TrieNode(NodeType.Unknown, TestItem.KeccakA);
+            TrieNode trieNode2 = new TrieNode(NodeType.Unknown, TestItem.KeccakB);
             
             TreeCommitter treeCommitter = new TreeCommitter(new MemDb(), LimboLogs.Instance, 1.MB());
-            treeCommitter.Commit(1234, trieNode);
-            treeCommitter.Commit(1234, trieNode);
+            treeCommitter.Commit(1234, trieNode1);
+            treeCommitter.Commit(1234, trieNode2);
             treeCommitter.MemorySize.Should().Be(
                 96 /* committer */ +
                 88 /* block package */ +
                 48 /* linked list node size */ +
-                2 * trieNode.GetMemorySize(false));
+                trieNode1.GetMemorySize(false) +
+                trieNode2.GetMemorySize(false));
         }
         
         [Test]
         public void Memory_with_two_times_two_nodes_is_592()
         {
-            TrieNode trieNode = new TrieNode(NodeType.Unknown); // 56B
+            TrieNode trieNode1 = new TrieNode(NodeType.Unknown, TestItem.KeccakA);
+            TrieNode trieNode2 = new TrieNode(NodeType.Unknown, TestItem.KeccakB);
             
             TreeCommitter treeCommitter = new TreeCommitter(new MemDb(), LimboLogs.Instance, 1.MB());
-            treeCommitter.Commit(1234, trieNode);
-            treeCommitter.Commit(1234, trieNode);
-            treeCommitter.Commit(1235, trieNode);
-            treeCommitter.Commit(1235, trieNode);
+            treeCommitter.Commit(1234, trieNode1);
+            treeCommitter.Commit(1234, trieNode2);
+            treeCommitter.Commit(1235, trieNode1);
+            treeCommitter.Commit(1235, trieNode2);
             treeCommitter.MemorySize.Should().Be(
                 96 /* committer */ +
                 2 * 88 /* block package */ +
                 2 * 48 /* linked list node size */ +
-                4 * trieNode.GetMemorySize(false));
+                trieNode1.GetMemorySize(false) +
+                trieNode2.GetMemorySize(false));
         }
         
         [Test]
         public void Dispatcher_will_try_to_clear_memory()
         {
-            TrieNode trieNode = new TrieNode(NodeType.Leaf, new byte[0]); // 192B
-            trieNode.ResolveKey(null, true);
+            TrieNode trieNode1 = new TrieNode(NodeType.Leaf, new byte[0]);
+            trieNode1.ResolveKey(null!, true);
+            trieNode1.Refs = 1;
+            TrieNode trieNode2 = new TrieNode(NodeType.Leaf, new byte[1]);
+            trieNode2.ResolveKey(null!, true);
+            trieNode2.Refs = 1;
+            
+            TrieNode trieNode3 = new TrieNode(NodeType.Leaf, new byte[2]);
+            trieNode3.ResolveKey(null!, true);
+            trieNode3.Refs = 1;
+            
+            TrieNode trieNode4 = new TrieNode(NodeType.Leaf, new byte[3]);
+            trieNode4.ResolveKey(null!, true);
+            trieNode4.Refs = 1;
 
             TreeCommitter treeCommitter = new TreeCommitter(new MemDb(), LimboLogs.Instance, 640);
-            treeCommitter.Commit(1234, trieNode);
-            treeCommitter.Commit(1234, trieNode);
-            treeCommitter.Commit(1235, trieNode);
-            treeCommitter.Commit(1235, trieNode);
+            treeCommitter.Commit(1234, trieNode1);
+            treeCommitter.Commit(1234, trieNode2);
+            treeCommitter.Commit(1235, trieNode3);
+            treeCommitter.Commit(1235, trieNode4);
             treeCommitter.MemorySize.Should().Be(
                 96 /* committer */ +
                 1 * 88 /* block package */ +
                 1 * 48 /* linked list node size */ +
-                2 * trieNode.GetMemorySize(false));
+                trieNode3.GetMemorySize(false) + 
+                trieNode4.GetMemorySize(false));
         }
         
         [Test]
         public void Dispatcher_will_try_to_clear_memory_the_soonest_possible()
         {
-            TrieNode trieNode = new TrieNode(NodeType.Leaf, new byte[0]); // 192B
-            trieNode.ResolveKey(null, true);
+            TrieNode trieNode1 = new TrieNode(NodeType.Leaf, new byte[0]);
+            trieNode1.ResolveKey(null!, true);
+            trieNode1.Refs = 1;
+            TrieNode trieNode2 = new TrieNode(NodeType.Leaf, new byte[1]);
+            trieNode2.ResolveKey(null!, true);
+            trieNode2.Refs = 1;
+            
+            TrieNode trieNode3 = new TrieNode(NodeType.Leaf, new byte[2]);
+            trieNode3.ResolveKey(null!, true);
+            trieNode3.Refs = 1;
+            
+            TrieNode trieNode4 = new TrieNode(NodeType.Leaf, new byte[3]);
+            trieNode4.ResolveKey(null!, true);
+            trieNode4.Refs = 1;
 
             TreeCommitter treeCommitter = new TreeCommitter(new MemDb(), LimboLogs.Instance, 512);
-            treeCommitter.Commit(1234, trieNode);
-            treeCommitter.Commit(1234, trieNode);
-            treeCommitter.Commit(1235, trieNode);
-            treeCommitter.Commit(1235, trieNode);
+            treeCommitter.Commit(1234, trieNode1);
+            treeCommitter.Commit(1234, trieNode2);
+            treeCommitter.Commit(1235, trieNode3);
+            treeCommitter.Commit(1235, trieNode4);
             treeCommitter.MemorySize.Should().Be(
                 96 /* committer */ +
                 1 * 88 /* block package */ +
                 1 * 48 /* linked list node size */ +
-                2 * trieNode.GetMemorySize(false));
+                trieNode3.GetMemorySize(false) +
+                trieNode4.GetMemorySize(false));
         }
         
         [Test]

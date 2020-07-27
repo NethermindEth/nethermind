@@ -16,7 +16,7 @@ namespace Nethermind.Trie.Pruning
         {
         }
 
-        public TrieNode FindCached(Keccak key)
+        public TrieNode FindCached(Keccak hash)
         {
             return null;
         }

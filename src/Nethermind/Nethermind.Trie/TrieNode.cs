@@ -589,14 +589,14 @@ namespace Nethermind.Trie
             return trieNode;
         }
 
-        public TrieNode CloneWithChangedValue(byte[] changedValue)
+        public TrieNode CloneWithChangedValue(byte[]? changedValue)
         {
             TrieNode trieNode = Clone();
             trieNode.Value = changedValue;
             return trieNode;
         }
 
-        public TrieNode CloneWithChangedKeyAndValue(HexPrefix key, byte[] changedValue)
+        public TrieNode CloneWithChangedKeyAndValue(HexPrefix key, byte[]? changedValue)
         {
             TrieNode trieNode = Clone();
             trieNode.Key = key;

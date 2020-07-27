@@ -24,7 +24,7 @@ namespace Nethermind.Trie
             return node;
         }
 
-        public static TrieNode CreateLeaf(HexPrefix key, byte[] value)
+        public static TrieNode CreateLeaf(HexPrefix key, byte[]? value)
         {
             TrieNode node = new TrieNode(NodeType.Leaf);
             node.Key = key;
