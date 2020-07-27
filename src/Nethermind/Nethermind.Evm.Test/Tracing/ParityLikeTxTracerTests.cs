@@ -775,23 +775,9 @@ namespace Nethermind.Evm.Test.Tracing
         }
 
         [Test]
-        public void Tracers_cancellation_tokens_does_not_affect_each_other()
-        {
-            CancellationToken cancellationToken = new CancellationTokenSource(TimeSpan.FromMilliseconds(1)).Token;
-            ParityLikeBlockTracer tracer = new ParityLikeBlockTracer(ParityTraceTypes.All, cancellationToken);
-
-            CancellationToken cancellationToken2 = new CancellationTokenSource().Token;
-            ParityLikeBlockTracer tracer2 = new ParityLikeBlockTracer(ParityTraceTypes.All, cancellationToken2);
-
-            Thread.Sleep(5);
-
-            Assert.AreNotEqual(cancellationToken, cancellationToken2); 
-        }
-
-        [Test]
         public void Throws_operation_canceled_after_timeout()
         {
-            CancellationToken cancellationToken = new CancellationTokenSource(TimeSpan.FromSeconds(3)).Token;
+            CancellationToken cancellationToken = new CancellationTokenSource(TimeSpan.FromMilliseconds(300)).Token;
 
             (var block, var transaction) = PrepareTx(BlockNumber, 100000, new byte[]{0,0,0});
             ParityLikeTxTracer tracer = new ParityLikeTxTracer(block, transaction, ParityTraceTypes.Trace, cancellationToken);
@@ -806,7 +792,7 @@ namespace Nethermind.Evm.Test.Tracing
                     Assert.Fail("Threw OperationCancelledException before timeout.");
             }
 
-            Thread.Sleep(TimeSpan.FromSeconds(5));
+            Thread.Sleep(TimeSpan.FromMilliseconds(500));
 
             Assert.Throws<OperationCanceledException>(() => tracer.StartOperation(0, 0, Instruction.ADD, 0));
         }
