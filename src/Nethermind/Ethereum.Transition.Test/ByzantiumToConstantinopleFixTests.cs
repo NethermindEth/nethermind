@@ -33,7 +33,7 @@ namespace Ethereum.Transition.Test
             await RunTest(test);
         }
         
-        public static IEnumerable<BlockchainTest> LoadTests() { var loader = new DirectoryTestsSourceLoader(new LoadLegacyBlockchainTestsStrategy(), "bcByzantiumToConstantinopleFix");
+        public static IEnumerable<BlockchainTest> LoadTests() { var loader = new TestsSourceLoader(new LoadLegacyBlockchainTestsStrategy(), "bcByzantiumToConstantinopleFix");
         return (IEnumerable<BlockchainTest>)loader.LoadTests(); }
     }
 }
