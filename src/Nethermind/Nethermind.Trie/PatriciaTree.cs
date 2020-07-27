@@ -270,7 +270,7 @@ namespace Nethermind.Trie
 
         internal TrieNode GetUnknown(Keccak hash)
         {
-            return _keyValueStore.FindCached(hash) ?? new TrieNode(NodeType.Unknown, hash);
+            return _keyValueStore.FindCachedOrUnknown(hash);
         }
 
         [DebuggerStepThrough]

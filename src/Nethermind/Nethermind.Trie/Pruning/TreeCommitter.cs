@@ -12,6 +12,7 @@ namespace Nethermind.Trie.Pruning
     public class TreeCommitter : ITreeCommitter
     {
         public TreeCommitter(
+            ITrieNodeCache trieNodeCache,
             IKeyValueStore keyValueStore,
             ILogManager logManager,
             long memoryLimit,
@@ -19,6 +20,7 @@ namespace Nethermind.Trie.Pruning
         {
             // ReSharper disable once ConstantConditionalAccessQualifier
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _trieNodeCache = trieNodeCache ?? throw new ArgumentNullException(nameof(trieNodeCache));
             _keyValueStore = keyValueStore ?? throw new ArgumentNullException(nameof(keyValueStore));
 
             if (_logger.IsTrace)
@@ -41,7 +43,7 @@ namespace Nethermind.Trie.Pruning
 
         public bool IsInMemory(Keccak key)
         {
-            return _inMemNodes.ContainsKey(key);
+            return _trieNodeCache.IsInMemory(key);
         }
 
         public void Commit(long blockNumber, TrieNode? trieNode)
@@ -72,7 +74,7 @@ namespace Nethermind.Trie.Pruning
 
                 Debug.Assert(CurrentPackage != null, "Current package is null when enqueing a trie node.");
 
-                if (_inMemNodes.ContainsKey(trieNode.Keccak))
+                if (_trieNodeCache.IsInMemory(trieNode.Keccak))
                 {
                     // TODO: check if this solves the checklist problem
                     // _inMemNodes[trieNode.Keccak].Refs += trieNode.Refs;
@@ -81,7 +83,7 @@ namespace Nethermind.Trie.Pruning
                 {
                     long previousPackageMemory = CurrentPackage.MemorySize;
                     CurrentPackage.Enqueue(trieNode);
-                    _inMemNodes[trieNode.Keccak] = trieNode;
+                    _trieNodeCache.Set(trieNode.Keccak, trieNode);
                     AddToMemory(CurrentPackage.MemorySize - previousPackageMemory);
                 }
             }
@@ -100,7 +102,7 @@ namespace Nethermind.Trie.Pruning
         public void Flush()
         {
             if (_logger.IsDebug)
-                _logger.Debug($"Flushing trie cache - in memory {_inMemNodes.Count} " +
+                _logger.Debug($"Flushing trie cache - in memory {_trieNodeCache.Count} " +
                               $"| commit count {_commitCount} " +
                               $"| drop count {_dropCount} " +
                               $"| carry count {_carriedCount} " +
@@ -112,7 +114,7 @@ namespace Nethermind.Trie.Pruning
             }
 
             if (_logger.IsDebug)
-                _logger.Debug($"Flushed trie cache - in memory {_inMemNodes.Count} " +
+                _logger.Debug($"Flushed trie cache - in memory {_trieNodeCache.Count} " +
                               $"| commit count {_commitCount} " +
                               $"| drop count {_dropCount} " +
                               $"| carry count {_carriedCount} " +
@@ -121,20 +123,9 @@ namespace Nethermind.Trie.Pruning
 
         public byte[] this[byte[] key] => _keyValueStore[key];
 
-        // an use RLP cache here as well
-        // public TrieNode? FindCached(Keccak hash, bool fetchFromStoreIfMissing)
-        // {
-        //     return _inMemNodes.TryGetValue(hash, out TrieNode trieNode)
-        //         ? trieNode
-        //         : fetchFromStoreIfMissing
-        //             ? new TrieNode(NodeType.Unknown, hash)
-        //             : new TrieNode(NodeType.Unknown, _keyValueStore[hash.Bytes]);
-        // }
-        
-        public TrieNode? FindCached(Keccak hash)
+        public TrieNode? FindCachedOrUnknown(Keccak hash)
         {
-            _inMemNodes.TryGetValue(hash, out TrieNode trieNode);
-            return trieNode;
+            return _trieNodeCache.Get(hash);
         }
 
         public long MemorySize { get; private set; }
@@ -143,6 +134,7 @@ namespace Nethermind.Trie.Pruning
 
         private const int LinkedListNodeMemorySize = 48;
 
+        private readonly ITrieNodeCache _trieNodeCache;
         private readonly IKeyValueStore _keyValueStore;
 
         private readonly ILogger _logger;
@@ -285,7 +277,7 @@ namespace Nethermind.Trie.Pruning
                     if (_logger.IsTrace)
                         _logger.Trace($"Saving a {nameof(TrieNode)} {currentNode}.");
                     _keyValueStore[currentNode.Keccak.Bytes] = currentNode.FullRlp;
-                    _inMemNodes.Remove(currentNode.Keccak);
+                    _trieNodeCache.Remove(currentNode.Keccak);
                     currentNode.IsPersisted = true;
                     _saveCount++;
                 }
@@ -295,7 +287,7 @@ namespace Nethermind.Trie.Pruning
                     {
                         if (_logger.IsTrace)
                             _logger.Trace($"Dropping a {nameof(TrieNode)} {currentNode}.");
-                        _inMemNodes.Remove(currentNode.Keccak);
+                        _trieNodeCache.Remove(currentNode.Keccak);
                         _dropCount++;
                     }
                     else

@@ -8,17 +8,17 @@ namespace Nethermind.Trie.Pruning
 {
     public class RefsJournal : IRefsJournal
     {
-        private readonly IRefsCache _refsCache;
+        private readonly ITrieNodeCache _trieNodeCache;
 
         private LinkedList<JournalBook> _books
             = new LinkedList<JournalBook>();
 
         private ILogger _logger;
 
-        public RefsJournal(IRefsCache refsCache, ILogManager logManager, int capacity = 128)
+        public RefsJournal(ITrieNodeCache trieNodeCache, ILogManager logManager, int capacity = 128)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _refsCache = refsCache ?? throw new ArgumentNullException(nameof(refsCache));
+            _trieNodeCache = trieNodeCache ?? throw new ArgumentNullException(nameof(trieNodeCache));
             Capacity = capacity;
         }
 
@@ -101,7 +101,7 @@ namespace Nethermind.Trie.Pruning
             foreach (JournalEntry entry in book.Entries.Reverse())
             {
                 if(_logger.IsTrace) _logger.Debug($"Unwinding         {entry}");
-                _refsCache.Get(entry.Hash).Refs -= entry.RefsChange;
+                _trieNodeCache.Get(entry.Hash).Refs -= entry.RefsChange;
             }
 
             return book;
@@ -133,7 +133,7 @@ namespace Nethermind.Trie.Pruning
             foreach (JournalEntry entry in book.Entries)
             {
                 if(_logger.IsTrace) _logger.Debug($"Rewinding         {entry}");
-                _refsCache.Get(entry.Hash).Refs += entry.RefsChange;
+                _trieNodeCache.Get(entry.Hash).Refs += entry.RefsChange;
             }
         }
     }

@@ -5,13 +5,25 @@ using Nethermind.Logging;
 
 namespace Nethermind.Trie.Pruning
 {
-    public class RefsCache : IRefsCache
+    public class TrieNodeCache : ITrieNodeCache
     {
-        public RefsCache(ILogManager logManager)
+        public TrieNodeCache()
+        {
+            _logger = NullLogger.Instance;
+        }
+        
+        public TrieNodeCache(ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
-        
+
+        public int Count => _actualCache.Count;
+
+        public bool IsInMemory(Keccak hash)
+        {
+            return _actualCache.ContainsKey(hash);
+        }
+
         public TrieNode Get(Keccak hash)
         {
             if (!_actualCache.ContainsKey(hash))
@@ -24,7 +36,7 @@ namespace Nethermind.Trie.Pruning
             return _actualCache[hash];
         }
 
-        public void Add(Keccak hash, TrieNode trieNode)
+        public void Set(Keccak hash, TrieNode trieNode)
         {
             _actualCache[hash] = trieNode;
         }

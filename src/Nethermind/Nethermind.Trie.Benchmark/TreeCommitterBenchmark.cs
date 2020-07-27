@@ -57,7 +57,8 @@ namespace Nethermind.Trie.Benchmark
         {
             TrieNode trieNode = new TrieNode(NodeType.Unknown); // 56B
 
-            TreeCommitter treeCommitter = new TreeCommitter(_whateverDb, _logManager, 1.MB(), 128);
+            TreeCommitter treeCommitter = new TreeCommitter(
+                new TrieNodeCache(_logManager), _whateverDb, _logManager, 1.MB(), 128);
             treeCommitter.Commit(1234, trieNode);
             return treeCommitter;
         }

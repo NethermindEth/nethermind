@@ -6,7 +6,7 @@ namespace Nethermind.Trie.Pruning
     {
         void Commit(long blockNumber, TrieNode trieNode);
 
-        TrieNode FindCached(Keccak hash);
+        TrieNode FindCachedOrUnknown(Keccak hash);
         
         byte[] this[byte[] key] { get; }
     }

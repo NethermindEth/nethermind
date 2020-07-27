@@ -11,15 +11,15 @@ namespace Nethermind.Trie.Pruning
     public class RefsReorganizer : IRefsReorganizer
     {
         private readonly IRefsJournal _refsJournal;
-        private readonly IRefsCache _refsCache;
+        private readonly ITrieNodeCache _trieNodeCache;
 
         private Dictionary<Keccak, JournalBook> _cachedBooks
             = new Dictionary<Keccak, JournalBook>();
 
-        public RefsReorganizer(IRefsJournal refsJournal, IRefsCache refsCache)
+        public RefsReorganizer(IRefsJournal refsJournal, ITrieNodeCache trieNodeCache)
         {
             _refsJournal = refsJournal ?? throw new ArgumentNullException(nameof(refsJournal));
-            _refsCache = refsCache ?? throw new ArgumentNullException(nameof(refsCache));
+            _trieNodeCache = trieNodeCache ?? throw new ArgumentNullException(nameof(trieNodeCache));
         }
 
         public void MoveBack(params Keccak[] hashes)
