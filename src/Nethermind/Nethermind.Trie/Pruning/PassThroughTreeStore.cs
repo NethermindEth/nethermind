@@ -14,9 +14,12 @@ namespace Nethermind.Trie.Pruning
             _keyValueStore = keyValueStore ?? throw new ArgumentNullException(nameof(keyValueStore));
         }
         
-        public void Commit(long blockNumber, TrieNode trieNode)
+        public void Commit(long blockNumber, TrieNode? trieNode)
         {
-            _keyValueStore[trieNode.Keccak!.Bytes] = trieNode.FullRlp;
+            if (trieNode != null)
+            {
+                _keyValueStore[trieNode.Keccak!.Bytes] = trieNode.FullRlp;
+            }
         }
 
         public TrieNode FindCachedOrUnknown(Keccak hash)

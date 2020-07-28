@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Diagnostics;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -44,7 +45,6 @@ namespace Nethermind.Serialization.Rlp
         public RlpStream(int length)
         {
             Data = new byte[length];
-            ;
         }
 
         public RlpStream(byte[] data)
@@ -994,5 +994,10 @@ namespace Nethermind.Serialization.Rlp
         private const byte EmptyArrayByte = 128;
 
         private const byte EmptySequenceByte = 192;
+
+        public override string ToString()
+        {
+            return $"[{nameof(RlpStream)}|{Position}/{Data.Length}]";
+        }
     }
 }

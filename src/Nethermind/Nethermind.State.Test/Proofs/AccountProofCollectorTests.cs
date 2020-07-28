@@ -655,7 +655,7 @@ storage: 10075208144087594565017167249218046892267736431914869828855077415926031
             for (int j = 0; j < accountProof.StorageProofs.Length; j++)
             {
                 TrieNode node = new TrieNode(NodeType.Unknown, accountProof.StorageProofs[j].Proof.Last());
-                node.ResolveNode(null);
+                node.ResolveNode(storageTree);
                 if (node.Value.Length != 1)
                 {
                     TestContext.WriteLine($"{j}");

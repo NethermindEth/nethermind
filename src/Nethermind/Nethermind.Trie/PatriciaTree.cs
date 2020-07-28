@@ -255,9 +255,9 @@ namespace Nethermind.Trie
             SetRootHash(RootRef?.Keccak ?? EmptyTreeHash, false);
         }
 
-        private void SetRootHash(Keccak value, bool resetObjects)
+        private void SetRootHash(Keccak? value, bool resetObjects)
         {
-            _rootHash = value;
+            _rootHash = value ?? Keccak.EmptyTreeHash; // nulls were allowed before so for now we leave it this way
             if (_rootHash == Keccak.EmptyTreeHash)
             {
                 RootRef = null;

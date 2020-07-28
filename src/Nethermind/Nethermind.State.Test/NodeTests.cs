@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -96,6 +96,7 @@ namespace Nethermind.Store.Test
             PatriciaTree tree = BuildATreeFromNode(node);
             TrieNode decoded = new TrieNode(NodeType.Unknown, node.Keccak);
             decoded.ResolveNode(tree);
+            decoded = decoded.Clone();
             decoded.SetChild(0, new TrieNode(NodeType.Leaf, TestItem.KeccakC));
             decoded.RlpEncode(tree);
         }
@@ -109,6 +110,7 @@ namespace Nethermind.Store.Test
             PatriciaTree tree = BuildATreeFromNode(node);
             TrieNode decoded = new TrieNode(NodeType.Unknown, node.Keccak);
             decoded.ResolveNode(tree);
+            decoded = decoded.Clone();
             decoded.SetChild(4, new TrieNode(NodeType.Leaf, TestItem.KeccakC));
             decoded.SetChild(5, new TrieNode(NodeType.Leaf, TestItem.KeccakD));
             decoded.RlpEncode(tree);
@@ -123,6 +125,7 @@ namespace Nethermind.Store.Test
             PatriciaTree tree = BuildATreeFromNode(node);
             TrieNode decoded = new TrieNode(NodeType.Unknown, node.Keccak);
             decoded.ResolveNode(tree);
+            decoded = decoded.Clone();
             decoded.SetChild(0, null);
             decoded.SetChild(4, new TrieNode(NodeType.Leaf, TestItem.KeccakC));
             decoded.RlpEncode(tree);
