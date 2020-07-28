@@ -15,12 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
@@ -686,6 +686,40 @@ namespace Nethermind.Trie.Test
             TrieNode child = new TrieNode(NodeType.Leaf, Keccak.Zero);
             TrieNode trieNode = new TrieNode(NodeType.Extension, Keccak.Zero);
             Assert.Throws<InvalidOperationException>(() => trieNode.SetChild(0, child));
+        }
+
+        [Test]
+        public void Rlp_is_cloned_when_cloning()
+        {
+            PassThroughTreeStore treeStore = new PassThroughTreeStore(new MemDb());
+
+            TrieNode leaf1 = new TrieNode(NodeType.Leaf);
+            leaf1.Key = new HexPrefix(true, Bytes.FromHexString("abc"));
+            leaf1.Value = new byte[111];
+            leaf1.ResolveKey(treeStore, false);
+            leaf1.Seal();
+            treeStore.Commit(0, leaf1);
+
+            TrieNode leaf2 = new TrieNode(NodeType.Leaf);
+            leaf2.Key = new HexPrefix(true, Bytes.FromHexString("abd"));
+            leaf2.Value = new byte[222];
+            leaf2.ResolveKey(treeStore, false);
+            leaf2.Seal();
+            treeStore.Commit(0, leaf2);
+
+            TrieNode trieNode = new TrieNode(NodeType.Branch);
+            trieNode.SetChild(1, leaf1);
+            trieNode.SetChild(2, leaf2);
+            trieNode.ResolveKey(treeStore, true);
+            byte[] rlp = trieNode.FullRlp;
+
+            TrieNode restoredBranch = new TrieNode(NodeType.Branch, rlp);
+
+            TrieNode clone = restoredBranch.Clone();
+            var restoredLeaf1 = clone.GetChild(treeStore, 1);
+            restoredLeaf1.Should().NotBeNull();
+            restoredLeaf1.ResolveNode(treeStore);
+            restoredLeaf1.Value.Should().BeEquivalentTo(leaf1.Value);
         }
     }
 }

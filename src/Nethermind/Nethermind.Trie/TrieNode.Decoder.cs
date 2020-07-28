@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -89,7 +89,7 @@ namespace Nethermind.Trie
             {
                 if (node.Key == null)
                 {
-                    throw new TrieException($"Key of a leaf node is null at node {node.Keccak}");
+                    throw new TrieException($"Hex prefix of a leaf node is null at node {node.Keccak}");
                 }
 
                 byte[] keyBytes = node.Key.ToBytes();

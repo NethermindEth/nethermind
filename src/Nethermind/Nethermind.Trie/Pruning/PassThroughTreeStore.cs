@@ -18,7 +18,12 @@ namespace Nethermind.Trie.Pruning
         {
             if (trieNode != null)
             {
-                _keyValueStore[trieNode.Keccak!.Bytes] = trieNode.FullRlp;
+                if (trieNode.Keccak is null)
+                {
+                    throw new ArgumentNullException($"Keccak is null when commiting a node {trieNode}");
+                }
+
+                _keyValueStore[trieNode.Keccak.Bytes] = trieNode.FullRlp;
             }
         }
 
