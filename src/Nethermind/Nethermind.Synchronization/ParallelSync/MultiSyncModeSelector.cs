@@ -419,8 +419,8 @@ namespace Nethermind.Synchronization.ParallelSync
                                        || best.PeerDifficulty == localChainDifficulty && best.PeerBlock > best.Header;
             if (anyDesiredPeerKnown)
             {
-                if (_logger.IsInfo)
-                    _logger.Info($"Best peer [{best.PeerBlock},{best.PeerDifficulty}] " +
+                if (_logger.IsTrace)
+                    _logger.Trace($"Best peer [{best.PeerBlock},{best.PeerDifficulty}] " +
                                   $"> local [{best.Header},{localChainDifficulty}]");
             }
 
