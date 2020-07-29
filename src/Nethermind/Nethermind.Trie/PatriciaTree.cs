@@ -344,6 +344,8 @@ namespace Nethermind.Trie
 
                 HexPrefix key = HexPrefix.Leaf(updatePath.Slice(0, nibblesCount).ToArray());
                 RootRef = TrieNodeFactory.CreateLeaf(key, updateValue);
+                if(_logger.IsTrace)
+                    _logger.Trace($"Incrementing refs on root {RootRef}");
                 RootRef.Refs++;
                 return updateValue;
             }
@@ -356,6 +358,9 @@ namespace Nethermind.Trie
 
         private byte[]? TraverseNode(TrieNode node, TraverseContext traverseContext)
         {
+            if(_logger.IsTrace) _logger.Trace(
+                $"Traversing {node} to {(traverseContext.IsRead ? "READ" : traverseContext.IsUpdate ? "UPDATE" : "DELETE")}");
+            
             return node.NodeType switch
             {
                 NodeType.Branch => TraverseBranch(node, traverseContext),
@@ -375,7 +380,8 @@ namespace Nethermind.Trie
 
             if (previousHere != null)
             {
-                previousHere.Refs--; if(_logger.IsTrace) _logger.Trace($"Decrementing ref on {previousHere}");
+                if(_logger.IsTrace) _logger.Trace($"Decrementing ref on a node being disconnected {previousHere}");
+                previousHere.Refs--;
             }
 
             while (!isRoot)
@@ -395,15 +401,18 @@ namespace Nethermind.Trie
                 {
                     if (!(nextNode == null && !node.IsValidWithOneNodeLess))
                     {
-                        if (nextNode != null)
-                        {
-                            nextNode.Refs++;
-                        }
-
                         if (node.IsSealed)
                         {
-                            node.Refs--; if(_logger.IsTrace) _logger.Trace($"Decrementing ref on {node}");
+                            if(_logger.IsTrace) _logger.Trace($"Decrementing ref on disappearing branch {node}");
+                            node.Refs--;
                             node = node.Clone();
+                        }
+                        
+                        if (nextNode != null)
+                        {
+                            if(_logger.IsTrace)
+                                _logger.Trace($"Incrementing refs after connecting {nextNode} to {node}");
+                            nextNode.Refs++;
                         }
 
                         node.SetChild(parentOnStack.PathIndex, nextNode);
@@ -420,7 +429,8 @@ namespace Nethermind.Trie
                             TrieNode leafFromBranch = TrieNodeFactory.CreateLeaf(HexPrefix.Leaf(), node.Value);
                             if(_logger.IsTrace)
                                 _logger.Trace($"Converting {node} into {leafFromBranch}");
-                            node.Refs--; if(_logger.IsTrace) _logger.Trace($"Decrementing ref on {node}");
+                            if(_logger.IsTrace) _logger.Trace($"Decrementing ref on a branch turned leaf {node}");
+                            node.Refs--;
                             nextNode = leafFromBranch;
                         }
                         else
@@ -468,7 +478,8 @@ namespace Nethermind.Trie
                                         $"Extending child {childNodeIndex} {childNode} of {node} into {extensionFromBranch}");
                                 if (node.IsSealed)
                                 {
-                                    node.Refs--; if(_logger.IsTrace) _logger.Trace($"Decrementing ref on {node}");
+                                    if(_logger.IsTrace) _logger.Trace($"Decrementing ref on a branch turned extension {node}");
+                                    node.Refs--;
                                 }
 
                                 nextNode = extensionFromBranch; // new line
@@ -506,8 +517,10 @@ namespace Nethermind.Trie
                                 if(_logger.IsTrace)
                                     _logger.Trace(
                                         $"Extending child {childNodeIndex} {childNode} of {node} into {extendedExtension}");
-                                childNode.Refs--; if(_logger.IsTrace) _logger.Trace($"Decrementing ref on {childNode}");
-                                node.Refs--; if(_logger.IsTrace) _logger.Trace($"Decrementing ref on {node}");
+                                if(_logger.IsTrace) _logger.Trace($"Decrementing ref on an extension extended up to eat a branch {childNode}");
+                                childNode.Refs--;
+                                if(_logger.IsTrace) _logger.Trace($"Decrementing ref on a branch being replaced by an extension {node}");
+                                node.Refs--;
                                 // childNode.Key = newKey;
                                 // childNode.IsDirty = true;
                                 // nextNode = childNode;
@@ -521,10 +534,12 @@ namespace Nethermind.Trie
                                     _logger.Trace(
                                         $"Extending branch child {childNodeIndex} {childNode} into {extendedLeaf}");
                                 
-                                childNode.Refs--; if(_logger.IsTrace) _logger.Trace($"Decrementing ref on {childNode}");
+                                if(_logger.IsTrace) _logger.Trace($"Decrementing ref on a leaf extended up to eat a branch {childNode}");
+                                childNode.Refs--;
                                 if (node.IsSealed)
                                 {
-                                    node.Refs--; if(_logger.IsTrace) _logger.Trace($"Decrementing ref on {node}");
+                                    if(_logger.IsTrace) _logger.Trace($"Decrementing ref on a branch replaced by a leaf {node}");
+                                    node.Refs--;
                                 }
 
                                 // childNode.Key = new HexPrefix(true, Bytes.Concat((byte) childNodeIndex, childNode.Path));
@@ -548,10 +563,12 @@ namespace Nethermind.Trie
                         if(_logger.IsTrace)
                             _logger.Trace($"Combining {node} and {nextNode} into {extendedLeaf}");
                         // nextNode.Key = new HexPrefix(true, Bytes.Concat(node.Path, nextNode.Path));
-                        node.Refs--; if(_logger.IsTrace) _logger.Trace($"Decrementing ref on {node}");
+                        if(_logger.IsTrace) _logger.Trace($"Decrementing ref on an extension being replaced by a longer leaf{node}");
+                        node.Refs--;
                         if (nextNode.IsSealed)
                         {
-                            nextNode.Refs--; if(_logger.IsTrace) _logger.Trace($"Decrementing ref on {nextNode}");
+                            if(_logger.IsTrace) _logger.Trace($"Decrementing ref on a leaf eating a parent extension {nextNode}");
+                            nextNode.Refs--;
                         }
 
                         nextNode = extendedLeaf; // new line
@@ -591,10 +608,12 @@ namespace Nethermind.Trie
                         if(_logger.IsTrace)
                             _logger.Trace($"Combining {node} and {nextNode} into {extendedExtension}");
                         
-                        node.Refs--; if(_logger.IsTrace) _logger.Trace($"Decrementing ref on {node}");
+                        if(_logger.IsTrace) _logger.Trace($"Decrementing ref on an extension extended up {node}");
+                        node.Refs--;
                         if (nextNode.IsSealed)
                         {
-                            nextNode.Refs--; if(_logger.IsTrace) _logger.Trace($"Decrementing ref on {nextNode}");
+                            if(_logger.IsTrace) _logger.Trace($"Decrementing ref on an extension extended down {nextNode}");
+                            nextNode.Refs--;
                         }
 
                         nextNode = extendedExtension; // new line
@@ -603,13 +622,16 @@ namespace Nethermind.Trie
                     {
                         if (node.IsSealed)
                         {
-                            node.Refs--; if(_logger.IsTrace) _logger.Trace($"Decrementing ref on {node}");
+                            if(_logger.IsTrace) _logger.Trace($"Decrementing ref on an extension which child is being replaced {node}");
+                            node.Refs--;
                             node = node.Clone(); // new line    
                         }
 
                         if(_logger.IsTrace)
                             _logger.Trace($"Connecting {node} with {nextNode}");
                         node.SetChild(0, nextNode); // new line
+                        if(_logger.IsTrace)
+                            _logger.Trace($"Incrementing refs on {nextNode} connected to {node}");
                         nextNode.Refs++;
 
                         nextNode = node;
@@ -627,6 +649,8 @@ namespace Nethermind.Trie
 
             if (nextNode != null)
             {
+                if(_logger.IsTrace)
+                    _logger.Trace($"Incrementing refs on a connected root {nextNode}");
                 nextNode.Refs++;
             }
 
@@ -801,6 +825,8 @@ namespace Nethermind.Trie
                 Span<byte> shortLeafPath = shorterPath.Slice(extensionLength + 1, shorterPath.Length - extensionLength - 1);
                 TrieNode shortLeaf = TrieNodeFactory.CreateLeaf(
                     HexPrefix.Leaf(shortLeafPath.ToArray()), shorterPathValue);
+                if(_logger.IsTrace)
+                    _logger.Trace($"Incrementing refs on new short leaf {shortLeaf}");
                 shortLeaf.Refs++;
                 branch.SetChild(shorterPath[extensionLength], shortLeaf);
             }
@@ -880,6 +906,8 @@ namespace Nethermind.Trie
             {
                 byte[] path = remaining.Slice(extensionLength + 1, remaining.Length - extensionLength - 1).ToArray();
                 TrieNode shortLeaf = TrieNodeFactory.CreateLeaf(HexPrefix.Leaf(path), traverseContext.UpdateValue);
+                if(_logger.IsTrace)
+                    _logger.Trace($"Incrementing refs on new short leaf from extension {shortLeaf}");
                 shortLeaf.Refs++;
                 branch.SetChild(remaining[extensionLength], shortLeaf);
             }
@@ -896,13 +924,19 @@ namespace Nethermind.Trie
                 byte[] extensionPath = pathBeforeUpdate.Slice(extensionLength + 1, pathBeforeUpdate.Length - extensionLength - 1);
                 TrieNode secondExtension
                     = TrieNodeFactory.CreateExtension(HexPrefix.Extension(extensionPath), originalNodeChild);
+                if(_logger.IsTrace)
+                    _logger.Trace($"Incrementing refs on a child of the second extension {originalNodeChild}");
                 originalNodeChild.Refs++;
+                if(_logger.IsTrace)
+                    _logger.Trace($"Incrementing refs on the second extension {secondExtension}");
                 secondExtension.Refs++;
                 branch.SetChild(pathBeforeUpdate[extensionLength], secondExtension);
             }
             else
             {
                 TrieNode childNode = originalNodeChild;
+                if(_logger.IsTrace)
+                    _logger.Trace($"Incrementing refs on a child of the new brnch from extension {childNode}");
                 childNode!.Refs++;
                 branch.SetChild(pathBeforeUpdate[extensionLength], childNode);
             }

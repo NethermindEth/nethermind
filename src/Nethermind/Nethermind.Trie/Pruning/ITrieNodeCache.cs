@@ -13,5 +13,7 @@ namespace Nethermind.Trie.Pruning
         void Set(Keccak hash, TrieNode trieNode);
         
         void Remove(Keccak hash);
+        
+        void Dump();
     }
 }

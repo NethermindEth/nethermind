@@ -25,7 +25,7 @@ namespace Nethermind.Trie.Test
         public void SetUp()
         {
             _logManager = new OneLoggerLogManager(_logger);
-            _trieNodeCache = new TrieNodeCache(LimboLogs.Instance);
+            _trieNodeCache = new TrieNodeCache(_logManager);
             _refsJournal = new RefsJournal(_trieNodeCache, _logManager);
         }
 
@@ -712,6 +712,16 @@ namespace Nethermind.Trie.Test
             int uniqueValuesCount,
             int lookupLimit)
         {
+            // TODO: note that the problem is traversing a newly resolved node that has a ref count mismatch because of same keccaks
+            // 23:34:46.990 [13]   [Leaf(98)|13|0x81187a...e159c2|refs:1|D:False|S:True|P:False|
+            // 23:34:46.990 [13] Current root: [Extension(68)|14|0x41dbc4...b3a870|refs:2|D:False|S:True|P:False|, block 8
+            // 23:34:46.990 [13] Setting 0000000000000000000000000000000000000000000000000000000000000003 = a373c9422edd012db9d3e29ceaa64d2689ac6d704e9ba92323a76fa0a6735e62e4a5382e08a8c5e0caeced171235ef1aa77c67017258ec08c9a51f87
+            // 23:34:46.990 [13] Traversing [Extension(68)|2|0x41dbc4...b3a870|refs:0|D:False|S:True|P:True| to UPDATE
+            // 23:34:46.990 [13] Traversing [Branch(83)|3|0x91e6b1...8e8d0b|refs:0|D:False|S:True|P:True| to UPDATE
+            // 23:34:46.990 [13] Decrementing ref on disappearing branch [Branch(83)|3|0x91e6b1...8e8d0b|refs:0|D:False|S:True|P:True|
+            // EXCEPTION on ref to -1
+            
+            
             // string fileName = Path.GetTempFileName();
             string fileName = "C:\\Temp\\fuzz.txt";
             TestContext.Out.WriteLine(

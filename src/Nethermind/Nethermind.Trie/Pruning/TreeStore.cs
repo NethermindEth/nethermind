@@ -287,21 +287,21 @@ namespace Nethermind.Trie.Pruning
 
                 // if ref count is zero then just discard
                 bool isSnapshotBlock = commitPackage.BlockNumber % _lookupLimit == 0;
-                if (currentNode.Refs == 0)
-                {
-                    if (!currentNode.IsPersisted)
-                    {
-                        throw new TrieException(
-                            $"Refs should never be zero while committing from a package queue ({currentNode})");    
-                    }
-                    else
-                    {
-                        continue;
-                    }
-                    
-                    // this must have been carried and so there are no snapshot roots holding it
-                    // TODO: Assert that it is persisted
-                }
+                // if (currentNode.Refs == 0)
+                // {
+                //     if (!currentNode.IsPersisted)
+                //     {
+                //         throw new TrieException(
+                //             $"Refs should never be zero while committing from a package queue ({currentNode})");    
+                //     }
+                //     else
+                //     {
+                //         continue;
+                //     }
+                //     
+                //     // this must have been carried and so there are no snapshot roots holding it
+                //     // TODO: Assert that it is persisted
+                // }
 
                 if (isSnapshotBlock)
                 {
@@ -334,7 +334,8 @@ namespace Nethermind.Trie.Pruning
                 }
             }
 
-            // TODO: so here we HAD a big problem of same nodes represented multiple times as .NET objects and having mismatched refs
+            if (_logger.IsTrace)
+                _logger.Trace($"Decrementing all refs starting from root {root}");
             if (root != null && root.Refs != 0)
             {
                 // remove from memory on zero reference?
@@ -345,6 +346,9 @@ namespace Nethermind.Trie.Pruning
             if (_logger.IsDebug)
                 _logger.Debug(
                     $"End dispatching {nameof(BlockCommitPackage)} - {commitPackage.BlockNumber} | memory {MemorySize}");
+
+            _trieNodeCache.Dump();
+            if(_logger.IsTrace) _logger.Trace($"Current root: {_currentRoot}, block {CurrentPackage?.BlockNumber}");
         }
 
         #endregion

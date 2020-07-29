@@ -17,6 +17,7 @@ namespace Nethermind.Trie.Test
         private void Log(string text)
         {
             TestContext.Out.WriteLine($"{DateTime.Now:HH:mm:ss.fff} [{Thread.CurrentThread.ManagedThreadId}] {text}");
+            TestContext.Out.Flush();
         }
 
         public void Info(string text)

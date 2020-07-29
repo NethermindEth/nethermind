@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -17,6 +17,7 @@
 using System;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
@@ -30,6 +31,12 @@ namespace Nethermind.Trie
 {
     public partial class TrieNode
     {
+#if DEBUG
+        private static int _idCounter;
+
+        public int Id = Interlocked.Increment(ref _idCounter);
+#endif
+
         public TrieNode(NodeType nodeType)
         {
             NodeType = nodeType;
@@ -573,7 +580,11 @@ namespace Nethermind.Trie
 
         public override string ToString()
         {
+#if DEBUG
+            return $"[{NodeType}({FullRlp?.Length})|{Id}|{Keccak?.ToShortString()}|refs:{Refs}|D:{IsDirty}|S:{IsSealed}|P:{IsPersisted}|";
+#else
             return $"[{NodeType}({FullRlp?.Length})|{Keccak?.ToShortString()}|refs:{Refs}|D:{IsDirty}|S:{IsSealed}|P:{IsPersisted}|";
+#endif
         }
 
         public TrieNode CloneWithChangedKey(HexPrefix key)
@@ -625,11 +636,17 @@ namespace Nethermind.Trie
             {
                 if (_data != null)
                 {
-                    foreach (object o in _data)
+                    for (int i = 0; i < _data.Length; i++)
                     {
-                        if (o is TrieNode child)
+                        TrieNode child = _data[i] as TrieNode;
+                        ;
+                        if (child != null) // both unresolved and NULL are handled here
                         {
                             child.DecrementRefsRecursively();
+                            if (child.Refs == 0)
+                            {
+                                _data[i] = _unresolvedChild;
+                            }
                         }
                     }
 
@@ -638,10 +655,10 @@ namespace Nethermind.Trie
             }
             else
             {
-                Refs--;    
+                Refs--;
             }
         }
-        
+
         public void IncrementRefsRecursively()
         {
             if (!IsLeaf)
@@ -661,13 +678,15 @@ namespace Nethermind.Trie
             }
             else
             {
-                Refs++;    
+                Refs++;
             }
         }
 
         #region private
 
         private static object _nullNode = new object();
+
+        private static object _unresolvedChild = null;
 
         private static TrieNodeDecoder _nodeDecoder = new TrieNodeDecoder();
 
@@ -677,12 +696,12 @@ namespace Nethermind.Trie
 
         private object?[]? _data;
 
-        private int _refs; 
-        
+        private int _refs;
+
         private bool _isDirty;
-        
+
         private bool _isPersisted;
-        
+
         private bool _isSealed;
 
         #endregion

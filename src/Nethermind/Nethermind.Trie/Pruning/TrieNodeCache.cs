@@ -46,6 +46,18 @@ namespace Nethermind.Trie.Pruning
             _actualCache.Remove(hash);
         }
 
+        public void Dump()
+        {
+            if (_logger.IsTrace)
+            {
+                _logger.Trace($"Trie node cache ({_actualCache.Count})");
+                foreach (KeyValuePair<Keccak, TrieNode> keyValuePair in _actualCache)
+                {
+                    _logger.Trace($"  {keyValuePair.Value}");
+                }
+            }
+        }
+
         #region private
 
         private ILogger _logger;
