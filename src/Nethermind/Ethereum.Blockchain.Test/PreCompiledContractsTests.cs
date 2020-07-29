@@ -32,7 +32,7 @@ namespace Ethereum.Blockchain.Test
             Assert.True(RunTest(test).Pass);
         }
         
-        public static IEnumerable<GeneralStateTest> LoadTests() { var loader = new DirectoryTestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stPreCompiledContracts");
+        public static IEnumerable<GeneralStateTest> LoadTests() { var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stPreCompiledContracts");
             return (IEnumerable<GeneralStateTest>)loader.LoadTests(); }
     }
 }

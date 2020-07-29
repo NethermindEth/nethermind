@@ -16,7 +16,7 @@ namespace Ethereum.Blockchain.Legacy.Test
 
         public static IEnumerable<GeneralStateTest> LoadTests() 
         {
-            var loader = new DirectoryTestsSourceLoader(new LoadLegacyGeneralStateTestsStrategy(), "stBugs");
+            var loader = new TestsSourceLoader(new LoadLegacyGeneralStateTestsStrategy(), "stBugs");
             return (IEnumerable<GeneralStateTest>)loader.LoadTests();
         }
     }
