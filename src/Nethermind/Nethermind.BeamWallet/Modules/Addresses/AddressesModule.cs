@@ -33,13 +33,13 @@ namespace Nethermind.BeamWallet.Modules.Addresses
         {
             var mainWindow = new Window("Beam Wallet")
             {
-                X = 0, 
-                Y = 0, 
-                Width = Dim.Fill(), 
-                Height = 10
+                X = 0,
+                Y = 0,
+                Width = Dim.Fill(),
+                Height = Dim.Fill()
             };
             var nodeAddressLabel = new Label(3, 1, "Enter node address:");
-            var nodeAddressTextField = new TextField(28, 1, 80, "");
+            var nodeAddressTextField = new TextField(28, 1, 80, "http://localhost:8545");
             var addressLabel = new Label(3, 3, "Enter account address:");
             var addressTextField = new TextField(28, 3, 80, "");
             

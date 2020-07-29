@@ -63,7 +63,7 @@ namespace Nethermind.BeamWallet.Modules.Data
                 Height = Dim.Fill()
             };
             Application.Top.Add(_window);
-            await RenderBalanceAsync();
+            RenderBalanceAsync();
 
             return _window;
         }
@@ -148,7 +148,7 @@ namespace Nethermind.BeamWallet.Modules.Data
         {
             var addressLabel = new Label(1, 1, $"Address: {_address}");
             var balanceLabel = new Label(60, 1, "Balance:");
-            _syncingInfoLabel = new Label(70, 1, "Syncing...");
+            _syncingInfoLabel = new Label(70, 1, "Syncing... Please wait for the updated balance.");
             _window.Add(addressLabel, balanceLabel, _syncingInfoLabel);
 
             decimal? balance;
@@ -164,21 +164,19 @@ namespace Nethermind.BeamWallet.Modules.Data
             _window.Remove(_syncingInfoLabel);
             _window.Add(_balanceValueLabel);
             
-            var quitButton = new Button(1, 11, "Quit");
-            var transferButton = new Button(12, 11, "Transfer");
-            
+            var transferButton = new Button(1, 11, "Transfer");
+            transferButton.Clicked = () =>
+            {
+                TransferClicked?.Invoke(this, new TransferClickedEventArgs(_address, _balance));
+            };
+
+            var quitButton = new Button(15, 11, "Quit");
             quitButton.Clicked = () =>
             {
                 Application.Top.Running = false;
                 Application.RequestStop();
             };
-
-            transferButton.Clicked = () =>
-            {
-                TransferClicked?.Invoke(this, new TransferClickedEventArgs(_address, _balance));
-            };
-            
-            _window.Add(quitButton, transferButton);
+            _window.Add(transferButton, quitButton);
         }
 
         private async Task DisplayTokensBalance()
