@@ -69,8 +69,6 @@ namespace Nethermind.Trie.Pruning
             if (_logger.IsTrace)
                 _logger.Trace($"Committing {blockNumber} {nodeCommitInfo}");
 
-            _currentRoot = nodeCommitInfo.Node ?? _currentRoot;
-
             if (!nodeCommitInfo.IsEmptyBlockMarker)
             {
                 TrieNode trieNode = nodeCommitInfo.Node;
@@ -113,6 +111,23 @@ namespace Nethermind.Trie.Pruning
             }
             
             _trieNodeCache.Dump();
+        }
+
+        public void FinalizeBlock(long blockNumber, TrieNode? root)
+        {
+            bool shouldBeginNewPackage = CurrentPackage == null || CurrentPackage.BlockNumber != blockNumber;
+            if (shouldBeginNewPackage)
+            {
+                BeginNewPackage(blockNumber);
+            }
+            
+            if (CurrentPackage != null)
+            {
+                CurrentPackage.Seal();
+                if(_logger.IsTrace) _logger.Trace($"Current root: {CurrentPackage?.Root}, block {CurrentPackage?.BlockNumber}");
+                CurrentPackage.Root = root;
+                CurrentPackage.Root?.IncrementRefsRecursively();
+            }
         }
 
         public void Flush()
@@ -200,10 +215,6 @@ namespace Nethermind.Trie.Pruning
 
         private bool IsCurrentPackageSealed => CurrentPackage == null || CurrentPackage.IsSealed;
 
-        private Stack<TrieNode> _rootStack = new Stack<TrieNode>();
-
-        private TrieNode? _currentRoot;
-
         private void BeginNewPackage(long blockNumber)
         {
             if (_logger.IsDebug)
@@ -211,13 +222,6 @@ namespace Nethermind.Trie.Pruning
 
             Debug.Assert(CurrentPackage == null || CurrentPackage.BlockNumber == blockNumber - 1,
                 "Newly begun block is not a successor of the last one");
-
-            CurrentPackage?.Seal();
-            if (_currentRoot != null)
-            {
-                _rootStack.Push(_currentRoot);
-                _currentRoot.IncrementRefsRecursively();
-            }
 
             Debug.Assert(IsCurrentPackageSealed, "Not sealed when beginning new block");
 
@@ -292,6 +296,10 @@ namespace Nethermind.Trie.Pruning
             TrieNode root = null;
             Queue<TrieNode> localCarryQueue = _carryQueue;
             _carryQueue = new Queue<TrieNode>();
+            
+            // TODO: if snapshot block then should save everything from root
+            // now we miss whatever was unreferenced later
+            
             while (localCarryQueue.TryDequeue(out TrieNode currentNode) ||
                    commitPackage.TryDequeue(out currentNode))
             {
@@ -324,6 +332,7 @@ namespace Nethermind.Trie.Pruning
                     _keyValueStore[currentNode.Keccak.Bytes] = currentNode.FullRlp;
                     _trieNodeCache.Remove(currentNode.Keccak);
                     currentNode.IsPersisted = true;
+                    currentNode.Refs = int.MaxValue;
                     _saveCount++;
                 }
                 else
@@ -362,7 +371,6 @@ namespace Nethermind.Trie.Pruning
                     $"End dispatching {nameof(BlockCommitPackage)} - {commitPackage.BlockNumber} | memory {MemorySize}");
 
             _trieNodeCache.Dump();
-            if(_logger.IsTrace) _logger.Trace($"Current root: {_currentRoot}, block {CurrentPackage?.BlockNumber}");
         }
 
         #endregion

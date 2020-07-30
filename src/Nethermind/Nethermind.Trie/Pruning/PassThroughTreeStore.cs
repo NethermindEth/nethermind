@@ -28,6 +28,10 @@ namespace Nethermind.Trie.Pruning
             }
         }
 
+        public void FinalizeBlock(long blockNumber, TrieNode? root)
+        {
+        }
+
         public TrieNode FindCachedOrUnknown(Keccak hash)
         {
             return _trieNodeCache.Get(hash);

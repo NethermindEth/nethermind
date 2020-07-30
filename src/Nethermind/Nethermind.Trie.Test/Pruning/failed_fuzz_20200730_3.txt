@@ -1,0 +1,151 @@
+Nethermind.Trie.Test.TrieTests.Fuzz_accounts(4,16,4,4)
+
+System.InvalidOperationException : Cannot change Refs on [Leaf(165)|2|0xce9bcb...d79a93|refs:0|D:False|S:True|P:False| to -1
+   at Nethermind.Trie.TrieNode.set_Refs(Int32 value) in C:\src\nethermind\src\Nethermind\Nethermind.Trie\TrieNode.cs:line 93
+   at Nethermind.Trie.PatriciaTree.ConnectNodes(TrieNode node, TrieNode previousHere) in C:\src\nethermind\src\Nethermind\Nethermind.Trie\PatriciaTree.cs:line 418
+   at Nethermind.Trie.PatriciaTree.TraverseLeaf(TrieNode node, TraverseContext traverseContext) in C:\src\nethermind\src\Nethermind\Nethermind.Trie\PatriciaTree.cs:line 873
+   at Nethermind.Trie.PatriciaTree.TraverseNode(TrieNode node, TraverseContext traverseContext) in C:\src\nethermind\src\Nethermind\Nethermind.Trie\PatriciaTree.cs:line 398
+   at Nethermind.Trie.PatriciaTree.Run(Span`1 updatePath, Int32 nibblesCount, Byte[] updateValue, Boolean isUpdate, Boolean ignoreMissingDelete, Keccak rootHash) in C:\src\nethermind\src\Nethermind\Nethermind.Trie\PatriciaTree.cs:line 390
+   at Nethermind.Trie.PatriciaTree.Set(Span`1 rawKey, Byte[] value) in C:\src\nethermind\src\Nethermind\Nethermind.Trie\PatriciaTree.cs:line 337
+   at Nethermind.Trie.Test.TrieTests.Fuzz_accounts(Int32 accountsCount, Int32 blocksCount, Int32 uniqueValuesCount, Int32 lookupLimit) in C:\src\nethermind\src\Nethermind\Nethermind.Trie.Test\TrieTests.cs:line 784
+
+
+
+1|09:04:47.847 [13] Fuzzing with accounts: 4, blocks 16, values: 4, lookup: 4 into file C:\Temp\fuzz.txt
+2|09:04:47.849 [13] Creating a new TreeStore with memory limit 1000000
+3|09:04:47.857 [13] Deleting 0000000000000000000000000000000000000000000000000000000000000002
+4|09:04:47.858 [13] Skipping commit of root 
+5|09:04:47.859 [13] Beginning new BlockCommitPackage - 0 | memory 96
+6|09:04:47.859 [13] Committing 0 [NodeCommitInfo||root]
+7|09:04:47.860 [13] Trie node cache (0)
+8|09:04:47.860 [13] Finished committing block 0
+9|09:04:47.860 [13] Skipping commit of root 
+10|09:04:47.860 [13] Beginning new BlockCommitPackage - 1 | memory 232
+11|09:04:47.860 [13] Committing 1 [NodeCommitInfo||root]
+12|09:04:47.860 [13] Trie node cache (0)
+13|09:04:47.860 [13] Finished committing block 1
+14|09:04:47.860 [13] Deleting 0000000000000000000000000000000000000000000000000000000000000001
+15|09:04:47.860 [13] Skipping commit of root 
+16|09:04:47.860 [13] Beginning new BlockCommitPackage - 2 | memory 368
+17|09:04:47.860 [13] Committing 2 [NodeCommitInfo||root]
+18|09:04:47.860 [13] Trie node cache (0)
+19|09:04:47.860 [13] Finished committing block 2
+20|09:04:47.860 [13] Setting 0000000000000000000000000000000000000000000000000000000000000003 = 0d62fa180ddf22f53f2ad195aedf8ce2ac8c3634ea80209be6dbdfbb1736294961db36b227b207ccc2bb7cc800ad5556ada0a23854c99d8d425e3131ff67de08018733d2a9d9bbfa8569712e04589b3986890d7694f0f4983ea870c980d5cc5bdd73c6787a82add3e5a8b2ea576e89e9c2f8ab7659677410929a940068f17a
+21|09:04:47.862 [13] Incrementing refs on root [Leaf()|1||refs:0|D:True|S:False|P:False|
+22|09:04:47.870 [13] Beginning new BlockCommitPackage - 3 | memory 504
+23|09:04:47.870 [13] Committing 3 [NodeCommitInfo|[Leaf(165)|1|0xfba2ea...8710b2|refs:1|D:False|S:True|P:False||root]
+24|09:04:47.871 [13] Trie node cache (1)
+25|09:04:47.871 [13]   [Leaf(165)|1|0xfba2ea...8710b2|refs:1|D:False|S:True|P:False|
+26|09:04:47.871 [13] Finished committing block 3
+27|09:04:47.871 [13] Skipping commit of root [Leaf(165)|1|0xfba2ea...8710b2|refs:1|D:False|S:True|P:False|
+28|09:04:47.871 [13] Beginning new BlockCommitPackage - 4 | memory 1192
+29|09:04:47.872 [13] Start dispatching BlockCommitPackage - 0 | memory 1192
+30|09:04:47.872 [13] Decrementing all refs starting from root 
+31|09:04:47.872 [13] End dispatching BlockCommitPackage - 0 | memory 1056
+32|09:04:47.872 [13] Trie node cache (1)
+33|09:04:47.872 [13]   [Leaf(165)|1|0xfba2ea...8710b2|refs:2|D:False|S:True|P:False|
+34|09:04:47.872 [13] Current root: , block 4
+35|09:04:47.872 [13] Committing 4 [NodeCommitInfo||root]
+36|09:04:47.872 [13] Trie node cache (1)
+37|09:04:47.872 [13]   [Leaf(165)|1|0xfba2ea...8710b2|refs:2|D:False|S:True|P:False|
+38|09:04:47.872 [13] Finished committing block 4
+39|09:04:47.872 [13] Deleting 0000000000000000000000000000000000000000000000000000000000000003
+40|09:04:47.873 [13] Traversing [Leaf(165)|1|0xfba2ea...8710b2|refs:2|D:False|S:True|P:False| to UPDATE
+41|09:04:47.876 [13] Decrementing ref on a node being disconnected [Leaf(165)|1|0xfba2ea...8710b2|refs:2|D:False|S:True|P:False|
+42|09:04:47.876 [13] Skipping commit of root 
+43|09:04:47.876 [13] Beginning new BlockCommitPackage - 5 | memory 1192
+44|09:04:47.876 [13] Start dispatching BlockCommitPackage - 1 | memory 1192
+45|09:04:47.876 [13] Decrementing all refs starting from root 
+46|09:04:47.876 [13] End dispatching BlockCommitPackage - 1 | memory 1056
+47|09:04:47.876 [13] Trie node cache (1)
+48|09:04:47.876 [13]   [Leaf(165)|1|0xfba2ea...8710b2|refs:1|D:False|S:True|P:False|
+49|09:04:47.876 [13] Current root: , block 5
+50|09:04:47.876 [13] Committing 5 [NodeCommitInfo||root]
+51|09:04:47.876 [13] Trie node cache (1)
+52|09:04:47.876 [13]   [Leaf(165)|1|0xfba2ea...8710b2|refs:1|D:False|S:True|P:False|
+53|09:04:47.876 [13] Finished committing block 5
+54|09:04:47.876 [13] Setting 0000000000000000000000000000000000000000000000000000000000000002 = 0d62fa180ddf22f53f2ad195aedf8ce2ac8c3634ea80209be6dbdfbb1736294961db36b227b207ccc2bb7cc800ad5556ada0a23854c99d8d425e3131ff67de08018733d2a9d9bbfa8569712e04589b3986890d7694f0f4983ea870c980d5cc5bdd73c6787a82add3e5a8b2ea576e89e9c2f8ab7659677410929a940068f17a
+55|09:04:47.876 [13] Incrementing refs on root [Leaf()|2||refs:0|D:True|S:False|P:False|
+56|09:04:47.876 [13] Beginning new BlockCommitPackage - 6 | memory 1192
+57|09:04:47.876 [13] Start dispatching BlockCommitPackage - 2 | memory 1192
+58|09:04:47.876 [13] Decrementing all refs starting from root 
+59|09:04:47.876 [13] End dispatching BlockCommitPackage - 2 | memory 1056
+60|09:04:47.876 [13] Trie node cache (1)
+61|09:04:47.876 [13]   [Leaf(165)|1|0xfba2ea...8710b2|refs:1|D:False|S:True|P:False|
+62|09:04:47.876 [13] Current root: , block 6
+63|09:04:47.876 [13] Committing 6 [NodeCommitInfo|[Leaf(165)|2|0xce9bcb...d79a93|refs:1|D:False|S:True|P:False||root]
+64|09:04:47.876 [13] Trie node cache (2)
+65|09:04:47.876 [13]   [Leaf(165)|1|0xfba2ea...8710b2|refs:1|D:False|S:True|P:False|
+66|09:04:47.876 [13]   [Leaf(165)|2|0xce9bcb...d79a93|refs:1|D:False|S:True|P:False|
+67|09:04:47.876 [13] Finished committing block 6
+68|09:04:47.876 [13] Deleting 0000000000000000000000000000000000000000000000000000000000000003
+69|09:04:47.876 [13] Traversing [Leaf(165)|2|0xce9bcb...d79a93|refs:1|D:False|S:True|P:False| to UPDATE
+70|09:04:47.876 [13] Skipping commit of root [Leaf(165)|2|0xce9bcb...d79a93|refs:1|D:False|S:True|P:False|
+71|09:04:47.876 [13] Beginning new BlockCommitPackage - 7 | memory 1744
+72|09:04:47.876 [13] Start dispatching BlockCommitPackage - 3 | memory 1744
+73|09:04:47.876 [13] Dropping a TrieNode [Leaf(165)|1|0xfba2ea...8710b2|refs:1|D:False|S:True|P:False|.
+74|09:04:47.876 [13] Decrementing all refs starting from root [Leaf(165)|1|0xfba2ea...8710b2|refs:1|D:False|S:True|P:False|
+75|09:04:47.876 [13] End dispatching BlockCommitPackage - 3 | memory 1056
+76|09:04:47.876 [13] Trie node cache (1)
+77|09:04:47.877 [13]   [Leaf(165)|2|0xce9bcb...d79a93|refs:2|D:False|S:True|P:False|
+78|09:04:47.877 [13] Current root: , block 7
+79|09:04:47.877 [13] Committing 7 [NodeCommitInfo||root]
+80|09:04:47.877 [13] Trie node cache (1)
+81|09:04:47.877 [13]   [Leaf(165)|2|0xce9bcb...d79a93|refs:2|D:False|S:True|P:False|
+82|09:04:47.877 [13] Finished committing block 7
+83|09:04:47.877 [13] Skipping commit of root [Leaf(165)|2|0xce9bcb...d79a93|refs:2|D:False|S:True|P:False|
+84|09:04:47.877 [13] Beginning new BlockCommitPackage - 8 | memory 1192
+85|09:04:47.877 [13] Start dispatching BlockCommitPackage - 4 | memory 1192
+86|09:04:47.877 [13] Decrementing all refs starting from root 
+87|09:04:47.877 [13] End dispatching BlockCommitPackage - 4 | memory 1056
+88|09:04:47.877 [13] Trie node cache (1)
+89|09:04:47.877 [13]   [Leaf(165)|2|0xce9bcb...d79a93|refs:2|D:False|S:True|P:False|
+90|09:04:47.877 [13] Current root: , block 8
+91|09:04:47.877 [13] Committing 8 [NodeCommitInfo||root]
+92|09:04:47.877 [13] Trie node cache (1)
+93|09:04:47.877 [13]   [Leaf(165)|2|0xce9bcb...d79a93|refs:2|D:False|S:True|P:False|
+94|09:04:47.877 [13] Finished committing block 8
+95|09:04:47.877 [13] Skipping commit of root [Leaf(165)|2|0xce9bcb...d79a93|refs:2|D:False|S:True|P:False|
+96|09:04:47.877 [13] Beginning new BlockCommitPackage - 9 | memory 1192
+97|09:04:47.877 [13] Start dispatching BlockCommitPackage - 5 | memory 1192
+98|09:04:47.877 [13] Decrementing all refs starting from root 
+99|09:04:47.877 [13] End dispatching BlockCommitPackage - 5 | memory 1056
+100|09:04:47.877 [13] Trie node cache (1)
+101|09:04:47.877 [13]   [Leaf(165)|2|0xce9bcb...d79a93|refs:2|D:False|S:True|P:False|
+102|09:04:47.877 [13] Current root: , block 9
+103|09:04:47.877 [13] Committing 9 [NodeCommitInfo||root]
+104|09:04:47.877 [13] Trie node cache (1)
+105|09:04:47.877 [13]   [Leaf(165)|2|0xce9bcb...d79a93|refs:2|D:False|S:True|P:False|
+106|09:04:47.877 [13] Finished committing block 9
+107|09:04:47.877 [13] Deleting 0000000000000000000000000000000000000000000000000000000000000001
+108|09:04:47.877 [13] Traversing [Leaf(165)|2|0xce9bcb...d79a93|refs:2|D:False|S:True|P:False| to UPDATE
+109|09:04:47.877 [13] Skipping commit of root [Leaf(165)|2|0xce9bcb...d79a93|refs:2|D:False|S:True|P:False|
+110|09:04:47.877 [13] Beginning new BlockCommitPackage - 10 | memory 1192
+111|09:04:47.877 [13] Start dispatching BlockCommitPackage - 6 | memory 1192
+112|09:04:47.877 [13] Carrying a TrieNode [Leaf(165)|2|0xce9bcb...d79a93|refs:2|D:False|S:True|P:False|.
+113|09:04:47.877 [13] Decrementing all refs starting from root [Leaf(165)|2|0xce9bcb...d79a93|refs:2|D:False|S:True|P:False|
+114|09:04:47.877 [13] End dispatching BlockCommitPackage - 6 | memory 504
+115|09:04:47.877 [13] Trie node cache (1)
+116|09:04:47.877 [13]   [Leaf(165)|2|0xce9bcb...d79a93|refs:1|D:False|S:True|P:False|
+117|09:04:47.877 [13] Current root: , block 10
+118|09:04:47.877 [13] Committing 10 [NodeCommitInfo||root]
+119|09:04:47.877 [13] Trie node cache (1)
+120|09:04:47.877 [13]   [Leaf(165)|2|0xce9bcb...d79a93|refs:1|D:False|S:True|P:False|
+121|09:04:47.877 [13] Finished committing block 10
+122|09:04:47.877 [13] Setting 0000000000000000000000000000000000000000000000000000000000000002 = 0d62fa180ddf22f53f2ad195aedf8ce2ac8c3634ea80209be6dbdfbb1736294961db36b227b207ccc2bb7cc800ad5556ada0a23854c99d8d425e3131ff67de08018733d2a9d9bbfa8569712e04589b3986890d7694f0f4983ea870c980d5cc5bdd73c6787a82add3e5a8b2ea576e89e9c2f8ab7659677410929a940068f17a
+123|09:04:47.877 [13] Traversing [Leaf(165)|2|0xce9bcb...d79a93|refs:1|D:False|S:True|P:False| to UPDATE
+124|09:04:47.877 [13] Skipping commit of root [Leaf(165)|2|0xce9bcb...d79a93|refs:1|D:False|S:True|P:False|
+125|09:04:47.877 [13] Beginning new BlockCommitPackage - 11 | memory 640
+126|09:04:47.877 [13] Start dispatching BlockCommitPackage - 7 | memory 640
+127|09:04:47.877 [13] Dropping a TrieNode [Leaf(165)|2|0xce9bcb...d79a93|refs:1|D:False|S:True|P:False|.
+128|09:04:47.877 [13] Decrementing all refs starting from root [Leaf(165)|2|0xce9bcb...d79a93|refs:1|D:False|S:True|P:False|
+129|09:04:47.877 [13] End dispatching BlockCommitPackage - 7 | memory 504
+130|09:04:47.877 [13] Trie node cache (0)
+131|09:04:47.877 [13] Current root: , block 11
+132|09:04:47.877 [13] Committing 11 [NodeCommitInfo||root]
+133|09:04:47.877 [13] Trie node cache (0)
+134|09:04:47.877 [13] Finished committing block 11
+135|09:04:47.877 [13] Setting 0000000000000000000000000000000000000000000000000000000000000001 = 0d62fa180ddf22f53f2ad195aedf8ce2ac8c3634ea80209be6dbdfbb1736294961db36b227b207ccc2bb7cc800ad5556ada0a23854c99d8d425e3131ff67de08018733d2a9d9bbfa8569712e04589b3986890d7694f0f4983ea870c980d5cc5bdd73c6787a82add3e5a8b2ea576e89e9c2f8ab7659677410929a940068f17a
+136|09:04:47.877 [13] Traversing [Leaf(165)|2|0xce9bcb...d79a93|refs:0|D:False|S:True|P:False| to UPDATE
+137|09:04:47.878 [13] Incrementing refs on new short leaf [Leaf()|5||refs:0|D:True|S:False|P:False|
+138|09:04:47.878 [13] Decrementing ref on a node being disconnected [Leaf(165)|2|0xce9bcb...d79a93|refs:0|D:False|S:True|P:False|

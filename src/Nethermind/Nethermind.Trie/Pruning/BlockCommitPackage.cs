@@ -1,11 +1,14 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.Pruning
 {
     internal class BlockCommitPackage
     {
+        public TrieNode? Root { get; set; }
+        
         public long BlockNumber { get; }
 
         public bool IsSealed { get; set; }

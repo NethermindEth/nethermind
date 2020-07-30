@@ -69,6 +69,7 @@ namespace Nethermind.Trie.Test.Pruning
             TreeStore treeStore = new TreeStore(_trieNodeCache, new MemDb(), _refsJournal, LimboLogs.Instance, 1.MB());
             treeStore.Commit(1234, new NodeCommitInfo(trieNode1));
             treeStore.Commit(1234, new NodeCommitInfo(trieNode2));
+            treeStore.FinalizeBlock(1234, trieNode2);
             treeStore.Commit(1235, new NodeCommitInfo(trieNode1));
             treeStore.Commit(1235, new NodeCommitInfo(trieNode2));
             treeStore.MemorySize.Should().Be(
@@ -100,6 +101,7 @@ namespace Nethermind.Trie.Test.Pruning
             TreeStore treeStore = new TreeStore(_trieNodeCache, new MemDb(), _refsJournal, LimboLogs.Instance, 640);
             treeStore.Commit(1234, new NodeCommitInfo(trieNode1));
             treeStore.Commit(1234, new NodeCommitInfo(trieNode2));
+            treeStore.FinalizeBlock(1234, trieNode2);
             treeStore.Commit(1235, new NodeCommitInfo(trieNode3));
             treeStore.Commit(1235, new NodeCommitInfo(trieNode4));
             treeStore.MemorySize.Should().Be(
@@ -131,6 +133,7 @@ namespace Nethermind.Trie.Test.Pruning
             TreeStore treeStore = new TreeStore(_trieNodeCache, new MemDb(), _refsJournal, LimboLogs.Instance, 512);
             treeStore.Commit(1234, new NodeCommitInfo(trieNode1));
             treeStore.Commit(1234, new NodeCommitInfo(trieNode2));
+            treeStore.FinalizeBlock(1234, trieNode2);
             treeStore.Commit(1235, new NodeCommitInfo(trieNode3));
             treeStore.Commit(1235, new NodeCommitInfo(trieNode4));
             treeStore.MemorySize.Should().Be(
@@ -154,6 +157,8 @@ namespace Nethermind.Trie.Test.Pruning
                 {
                     treeStore.Commit(i, new NodeCommitInfo(trieNode));
                 }
+                
+                treeStore.FinalizeBlock(i, trieNode);
             }
 
             treeStore.MemorySize.Should().BeLessThan(512 * 2);
@@ -173,10 +178,11 @@ namespace Nethermind.Trie.Test.Pruning
 
             a.Refs = refCount;
             treeStore.Commit(0, new NodeCommitInfo(a));
-            treeStore.Commit(1, NodeCommitInfo.BlockFinalizationMarker);
-            treeStore.Commit(2, NodeCommitInfo.BlockFinalizationMarker);
-            treeStore.Commit(3, NodeCommitInfo.BlockFinalizationMarker);
-            treeStore.Commit(4, NodeCommitInfo.BlockFinalizationMarker);
+            treeStore.FinalizeBlock(0, a);
+            treeStore.FinalizeBlock(1, a);
+            treeStore.FinalizeBlock(2, a);
+            treeStore.FinalizeBlock(3, a);
+            treeStore.FinalizeBlock(4, a);
 
             memDb[a.Keccak!.Bytes].Should().NotBeNull();
             treeStore.IsInMemory(a.Keccak).Should().BeFalse();
@@ -196,10 +202,11 @@ namespace Nethermind.Trie.Test.Pruning
 
             a.Refs = refCount;
             treeStore.Commit(0, new NodeCommitInfo(a));
-            treeStore.Commit(1, NodeCommitInfo.BlockFinalizationMarker);
-            treeStore.Commit(2, NodeCommitInfo.BlockFinalizationMarker);
-            treeStore.Commit(3, NodeCommitInfo.BlockFinalizationMarker);
-            // treeCommitter.Commit(4, null); <- do not persist in this test
+            treeStore.FinalizeBlock(0, a);
+            treeStore.FinalizeBlock(1, a);
+            treeStore.FinalizeBlock(2, a);
+            treeStore.FinalizeBlock(3, a);
+            //  <- do not persist in this test
 
             memDb[a.Keccak!.Bytes].Should().BeNull();
             treeStore.IsInMemory(a.Keccak).Should().BeTrue();
@@ -218,15 +225,16 @@ namespace Nethermind.Trie.Test.Pruning
             TreeStore treeStore = new TreeStore(_trieNodeCache, memDb, _refsJournal, LimboLogs.Instance, 16.MB(), 4);
 
             a.Refs = refCount;
-            treeStore.Commit(0, NodeCommitInfo.BlockFinalizationMarker);
+            treeStore.FinalizeBlock(0, null);
             treeStore.Commit(1, new NodeCommitInfo(a));
-            treeStore.Commit(2, NodeCommitInfo.BlockFinalizationMarker);
-            treeStore.Commit(3, NodeCommitInfo.BlockFinalizationMarker);
-            treeStore.Commit(4, NodeCommitInfo.BlockFinalizationMarker);
-            treeStore.Commit(5, NodeCommitInfo.BlockFinalizationMarker);
-            treeStore.Commit(6, NodeCommitInfo.BlockFinalizationMarker);
-            treeStore.Commit(7, NodeCommitInfo.BlockFinalizationMarker);
-            treeStore.Commit(8, NodeCommitInfo.BlockFinalizationMarker);
+            treeStore.FinalizeBlock(1, a);
+            treeStore.FinalizeBlock(2, a);
+            treeStore.FinalizeBlock(3, a);
+            treeStore.FinalizeBlock(4, a);
+            treeStore.FinalizeBlock(5, a);
+            treeStore.FinalizeBlock(6, a);
+            treeStore.FinalizeBlock(7, a);
+            treeStore.FinalizeBlock(8, a);
 
             memDb[a.Keccak!.Bytes].Should().NotBeNull();
             treeStore.IsInMemory(a.Keccak).Should().BeFalse();
@@ -246,17 +254,19 @@ namespace Nethermind.Trie.Test.Pruning
             TreeStore treeStore = new TreeStore(_trieNodeCache, memDb, _refsJournal, LimboLogs.Instance, 16.MB(), 4);
 
             a.Refs = 1;
-            treeStore.Commit(0, NodeCommitInfo.BlockFinalizationMarker);
+            treeStore.FinalizeBlock(0, null);
             treeStore.Commit(1, new NodeCommitInfo(a));
-            treeStore.Commit(2, NodeCommitInfo.BlockFinalizationMarker);
-            treeStore.Commit(3, NodeCommitInfo.BlockFinalizationMarker);
-            treeStore.Commit(4, NodeCommitInfo.BlockFinalizationMarker);
-            treeStore.Commit(5, NodeCommitInfo.BlockFinalizationMarker);
-            treeStore.Commit(6, NodeCommitInfo.BlockFinalizationMarker);
+            treeStore.FinalizeBlock(1, a);
+            treeStore.FinalizeBlock(2, a);
+            treeStore.FinalizeBlock(3, a);
+            treeStore.FinalizeBlock(4, a);
+            treeStore.FinalizeBlock(5, a);
+            treeStore.FinalizeBlock(6, a);
             // TODO: this is actually a bug since 'a' was referenced from root at the time of block 4
             a.Refs = 0;
-            treeStore.Commit(7, new NodeCommitInfo(b)); // <- new root
-            treeStore.Commit(8, NodeCommitInfo.BlockFinalizationMarker);
+            treeStore.Commit(7, new NodeCommitInfo(b));
+            treeStore.FinalizeBlock(7, b);
+            treeStore.FinalizeBlock(8, b);
 
             memDb[a.Keccak!.Bytes].Should().NotBeNull();
             treeStore.IsInMemory(a.Keccak).Should().BeFalse();
@@ -277,16 +287,18 @@ namespace Nethermind.Trie.Test.Pruning
             TreeStore treeStore = new TreeStore(cache,  memDb, _refsJournal, LimboLogs.Instance, 16.MB(), 4);
 
             a.Refs = 1;
-            treeStore.Commit(0, NodeCommitInfo.BlockFinalizationMarker);
+            treeStore.FinalizeBlock(0, null);
             treeStore.Commit(1, new NodeCommitInfo(a));
-            treeStore.Commit(2, NodeCommitInfo.BlockFinalizationMarker);
+            treeStore.FinalizeBlock(1, a);
+            treeStore.FinalizeBlock(2, a);
             a.Refs = 0;
             treeStore.Commit(3, new NodeCommitInfo(b)); // <- new root
-            treeStore.Commit(4, NodeCommitInfo.BlockFinalizationMarker);
-            treeStore.Commit(5, NodeCommitInfo.BlockFinalizationMarker);
-            treeStore.Commit(6, NodeCommitInfo.BlockFinalizationMarker);
-            treeStore.Commit(7, NodeCommitInfo.BlockFinalizationMarker);
-            treeStore.Commit(8, NodeCommitInfo.BlockFinalizationMarker);
+            treeStore.FinalizeBlock(3, b);
+            treeStore.FinalizeBlock(4, a);
+            treeStore.FinalizeBlock(5, a);
+            treeStore.FinalizeBlock(6, a);
+            treeStore.FinalizeBlock(7, a);
+            treeStore.FinalizeBlock(8, a);
 
             memDb[a.Keccak!.Bytes].Should().BeNull();
             treeStore.IsInMemory(a.Keccak).Should().BeFalse();

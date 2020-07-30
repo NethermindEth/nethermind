@@ -79,6 +79,11 @@ namespace Nethermind.Trie
             get => _refs;
             set
             {
+                if (IsPersisted)
+                {
+                    return;
+                }
+                
                 if (value < 0)
                 {
                     throw new InvalidOperationException(
@@ -700,7 +705,7 @@ namespace Nethermind.Trie
 
         private static object _nullNode = new object();
 
-        private static object _unresolvedChild = null;
+        private static object _unresolvedChild = null!;
 
         private static TrieNodeDecoder _nodeDecoder = new TrieNodeDecoder();
 

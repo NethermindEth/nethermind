@@ -178,6 +178,41 @@ namespace Nethermind.Trie.Test
             PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
             checkTree.Get(_keyA).Should().BeNull();
         }
+        
+        [Test]
+        public void Single_leaf_and_keep_for_multiple_dispatches_then_delete()
+        {
+            MemDb memDb = new MemDb();
+            TreeStore treeStore = new TreeStore(_trieNodeCache, memDb, _refsJournal, LimboLogs.Instance, 1.MB(), 4);
+            PatriciaTree patriciaTree = new PatriciaTree(treeStore, _logger);
+            patriciaTree.Commit(0);
+            patriciaTree.Commit(1);
+            patriciaTree.Commit(2);
+            patriciaTree.Set(_keyA, _longLeaf1);
+            patriciaTree.Commit(3);
+            patriciaTree.Commit(4);
+            patriciaTree.Set(_keyA, Array.Empty<byte>());
+            patriciaTree.Commit(5);
+            patriciaTree.Set(_keyB, _longLeaf2);
+            patriciaTree.Commit(6);
+            patriciaTree.Commit(7);
+            patriciaTree.Commit(8);
+            patriciaTree.Commit(9);
+            patriciaTree.Commit(10);
+            patriciaTree.Commit(11);
+            patriciaTree.Set(_keyB, Array.Empty<byte>());
+            patriciaTree.Commit(12);
+            patriciaTree.Commit(13);
+            patriciaTree.UpdateRootHash();
+            treeStore.Flush();
+
+            // leaf (root)
+            memDb.Keys.Should().HaveCount(2);
+
+            PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
+            checkTree.Get(_keyA).Should().BeNull();
+            checkTree.Get(_keyB).Should().BeNull();
+        }
 
         [Test]
         public void Branch_with_branch_and_leaf()

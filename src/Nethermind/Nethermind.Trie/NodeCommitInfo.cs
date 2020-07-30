@@ -2,8 +2,6 @@ namespace Nethermind.Trie
 {
     public readonly struct NodeCommitInfo
     {
-        public static NodeCommitInfo BlockFinalizationMarker = new NodeCommitInfo();
-
         public NodeCommitInfo(TrieNode node)
         {
             ChildPositionAtParent = 0;
