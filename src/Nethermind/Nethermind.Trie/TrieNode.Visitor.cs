@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -38,6 +38,8 @@ namespace Nethermind.Trie
                 return;
             }
 
+            ResolveKey(tree, trieVisitContext.Level == 0);
+
             switch (NodeType)
             {
                 case NodeType.Branch:
@@ -47,6 +49,7 @@ namespace Nethermind.Trie
                     for (int i = 0; i < 16; i++)
                     {
                         TrieNode child = GetChild(tree, i);
+                        child?.ResolveKey(tree, false);
                         if (child != null && visitor.ShouldVisit(child.Keccak))
                         {
                             trieVisitContext.BranchChildIndex = i;
@@ -63,6 +66,7 @@ namespace Nethermind.Trie
                 {
                     visitor.VisitExtension(this, trieVisitContext);
                     TrieNode child = GetChild(tree, 0);
+                    child.ResolveKey(tree, false);
                     if (child != null && visitor.ShouldVisit(child.Keccak))
                     {
                         trieVisitContext.Level++;

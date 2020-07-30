@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -36,11 +36,21 @@ namespace Nethermind.Trie
         {
             return new HexPrefix(true, path);
         }
-        
+
+        public static HexPrefix Leaf(string path)
+        {
+            return new HexPrefix(true, Bytes.FromHexString(path));
+        }
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static HexPrefix Extension(params byte[] path)
         {
             return new HexPrefix(false, path);
+        }
+
+        public static HexPrefix Extension(string path)
+        {
+            return new HexPrefix(false, Bytes.FromHexString(path));
         }
 
         public byte[] Path { get; private set; }

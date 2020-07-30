@@ -20,6 +20,7 @@ using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie.Pruning;
@@ -48,8 +49,9 @@ namespace Nethermind.Trie.Test
 
             Account account = new Account(100);
             AccountDecoder decoder = new AccountDecoder();
-            _accountLeaf = new TrieNode(NodeType.Leaf);
-            _accountLeaf.Value = decoder.Encode(account).Bytes;
+            _accountLeaf = TrieNodeFactory.CreateLeaf(
+                HexPrefix.Leaf("bbb"),
+                decoder.Encode(account).Bytes);
         }
 
         [Test]
@@ -296,9 +298,8 @@ namespace Nethermind.Trie.Test
             ITreeVisitor visitor = Substitute.For<ITreeVisitor>();
             TrieVisitContext context = new TrieVisitContext();
             PatriciaTree tree = new PatriciaTree();
-            TrieNode ignore = new TrieNode(NodeType.Unknown);
-            TrieNode node = new TrieNode(NodeType.Extension);
-            node.SetChild(0, ignore);
+            TrieNode ignore = TrieNodeFactory.CreateLeaf(HexPrefix.Leaf("ccc"), Array.Empty<byte>());
+            TrieNode node = TrieNodeFactory.CreateExtension(HexPrefix.Extension("aa"), ignore);
 
             node.Accept(visitor, tree, context);
 
@@ -326,8 +327,7 @@ namespace Nethermind.Trie.Test
             PatriciaTree tree = new PatriciaTree();
             Account account = new Account(100);
             AccountDecoder decoder = new AccountDecoder();
-            TrieNode node = new TrieNode(NodeType.Leaf);
-            node.Value = decoder.Encode(account).Bytes;
+            TrieNode node = TrieNodeFactory.CreateLeaf(HexPrefix.Leaf("aa"), decoder.Encode(account).Bytes);
 
             node.Accept(visitor, tree, context);
 
@@ -342,8 +342,7 @@ namespace Nethermind.Trie.Test
             PatriciaTree tree = new PatriciaTree();
             Account account = new Account(1, 100, Keccak.EmptyTreeHash, Keccak.OfAnEmptyString);
             AccountDecoder decoder = new AccountDecoder();
-            TrieNode node = new TrieNode(NodeType.Leaf);
-            node.Value = decoder.Encode(account).Bytes;
+            TrieNode node = TrieNodeFactory.CreateLeaf(HexPrefix.Leaf("aa"), decoder.Encode(account).Bytes);
 
             node.Accept(visitor, tree, context);
 
@@ -360,8 +359,7 @@ namespace Nethermind.Trie.Test
             PatriciaTree tree = new PatriciaTree();
             Account account = new Account(1, 100, Keccak.EmptyTreeHash, Keccak.Zero);
             AccountDecoder decoder = new AccountDecoder();
-            TrieNode node = new TrieNode(NodeType.Leaf);
-            node.Value = decoder.Encode(account).Bytes;
+            TrieNode node = TrieNodeFactory.CreateLeaf(HexPrefix.Leaf("aa"), decoder.Encode(account).Bytes);
 
             node.Accept(visitor, tree, context);
 
@@ -378,8 +376,7 @@ namespace Nethermind.Trie.Test
             PatriciaTree tree = new PatriciaTree();
             Account account = new Account(1, 100, Keccak.Zero, Keccak.OfAnEmptyString);
             AccountDecoder decoder = new AccountDecoder();
-            TrieNode node = new TrieNode(NodeType.Leaf);
-            node.Value = decoder.Encode(account).Bytes;
+            TrieNode node = TrieNodeFactory.CreateLeaf(HexPrefix.Leaf("aa"), decoder.Encode(account).Bytes);
 
             node.Accept(visitor, tree, context);
 
@@ -394,8 +391,7 @@ namespace Nethermind.Trie.Test
 
             TrieVisitContext context = new TrieVisitContext();
             PatriciaTree tree = new PatriciaTree();
-            TrieNode node = new TrieNode(NodeType.Extension);
-            node.SetChild(0, _accountLeaf);
+            TrieNode node = TrieNodeFactory.CreateExtension(HexPrefix.Extension("aa"), _accountLeaf);
 
             node.Accept(visitor, tree, context);
 

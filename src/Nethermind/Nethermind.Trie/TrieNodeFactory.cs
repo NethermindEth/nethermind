@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,6 +14,9 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Diagnostics;
+using System.Xml.XPath;
+
 namespace Nethermind.Trie
 {
     internal static class TrieNodeFactory
@@ -26,6 +29,10 @@ namespace Nethermind.Trie
 
         public static TrieNode CreateLeaf(HexPrefix key, byte[]? value)
         {
+            Debug.Assert(
+                key.IsLeaf,
+                $"{nameof(NodeType.Leaf)} should always be created with a leaf {nameof(HexPrefix)}");
+
             TrieNode node = new TrieNode(NodeType.Leaf);
             node.Key = key;
             node.Value = value;
@@ -41,6 +48,10 @@ namespace Nethermind.Trie
 
         public static TrieNode CreateExtension(HexPrefix key, TrieNode child)
         {
+            Debug.Assert(
+                key.IsExtension,
+                $"{nameof(NodeType.Extension)} should always be created with an extension {nameof(HexPrefix)}");
+
             TrieNode node = new TrieNode(NodeType.Extension);
             node.SetChild(0, child);
             node.Key = key;
