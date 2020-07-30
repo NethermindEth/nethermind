@@ -57,6 +57,8 @@ namespace Nethermind.Trie.Pruning
         /// <exception cref="InvalidOperationException"></exception>
         public void Commit(long blockNumber, NodeCommitInfo nodeCommitInfo)
         {
+            CAN I SIMPLY FLUSH ALL REFS FROM ROOT EACH TIME???
+            
             if (blockNumber < 0)
                 throw new ArgumentOutOfRangeException(nameof(blockNumber));
 
@@ -124,9 +126,14 @@ namespace Nethermind.Trie.Pruning
             if (CurrentPackage != null)
             {
                 CurrentPackage.Seal();
-                if(_logger.IsTrace) _logger.Trace($"Current root: {CurrentPackage?.Root}, block {CurrentPackage?.BlockNumber}");
                 CurrentPackage.Root = root;
-                CurrentPackage.Root?.IncrementRefsRecursively();
+                CurrentPackage.Root?.IncrementRefsRecursively(CurrentPackage.BlockNumber);
+                if(_logger.IsTrace)
+                    _logger.Trace(
+                        $"Current root (block {blockNumber}): {CurrentPackage?.Root}, block {CurrentPackage?.BlockNumber}");
+                if(_logger.IsTrace)
+                    _logger.Trace(
+                        $"Incrementing refs from block {blockNumber} root {CurrentPackage?.Root} ");
             }
         }
 

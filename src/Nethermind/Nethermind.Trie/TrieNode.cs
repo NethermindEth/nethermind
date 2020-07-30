@@ -36,6 +36,8 @@ namespace Nethermind.Trie
         private static int _idCounter;
 
         public int Id = Interlocked.Increment(ref _idCounter);
+
+        public long LastConnectedBlock;
 #endif
 
         public TrieNode(NodeType nodeType)
@@ -83,7 +85,7 @@ namespace Nethermind.Trie
                 {
                     return;
                 }
-                
+
                 if (value < 0)
                 {
                     throw new InvalidOperationException(
@@ -283,6 +285,8 @@ namespace Nethermind.Trie
 
                         FullRlp = tree.LoadRlp(Keccak, allowCaching);
                         Refs = int.MaxValue;
+                        IsPersisted = true;
+                        
                         if (FullRlp == null)
                         {
                             throw new TrieException($"Trie returned a malformed RLP for node {Keccak}");
@@ -446,6 +450,7 @@ namespace Nethermind.Trie
                     case 160:
                         _rlpStream.Position--;
                         Keccak keccak = _rlpStream.DecodeKeccak();
+                        // TODO: here we assume the node is in the DB and should be loadable from the DB
                         _data![i] = tree.FindCachedOrUnknown(keccak);
                         break;
                     default:
@@ -530,12 +535,12 @@ namespace Nethermind.Trie
             {
                 throw new InvalidOperationException();
             }
-            
+
             InitData();
             int index = IsExtension ? i + 1 : i;
             _data![index] = child;
         }
-        
+
         public void SetChild(int i, TrieNode? node)
         {
             if (IsSealed)
@@ -612,7 +617,7 @@ namespace Nethermind.Trie
         {
 #if DEBUG
             return $"[{NodeType}({FullRlp?.Length}){(FullRlp != null && FullRlp?.Length < 32 ? $"{FullRlp.ToHexString()}" : "")}" +
-                   $"|{Id}|{Keccak?.ToShortString()}|refs:{Refs}|D:{IsDirty}|S:{IsSealed}|P:{IsPersisted}|";
+                   $"|{Id}|block:{LastConnectedBlock}|{Keccak?.ToShortString()}|refs:{Refs}|D:{IsDirty}|S:{IsSealed}|P:{IsPersisted}|";
 #else
             return $"[{NodeType}({FullRlp?.Length})|{Keccak?.ToShortString()}|refs:{Refs}|D:{IsDirty}|S:{IsSealed}|P:{IsPersisted}|";
 #endif
@@ -680,17 +685,13 @@ namespace Nethermind.Trie
                             }
                         }
                     }
-
-                    Refs--;
                 }
             }
-            else
-            {
-                Refs--;
-            }
+
+            Refs--;
         }
 
-        public void IncrementRefsRecursively()
+        public void IncrementRefsRecursively(long block)
         {
             if (!IsLeaf)
             {
@@ -700,17 +701,16 @@ namespace Nethermind.Trie
                     {
                         if (o is TrieNode child)
                         {
-                            child.IncrementRefsRecursively();
+                            child.IncrementRefsRecursively(block);
                         }
                     }
-
-                    Refs++;
                 }
             }
-            else
-            {
-                Refs++;
-            }
+
+#if DEBUG
+            LastConnectedBlock = block;
+#endif
+            Refs++;
         }
 
         #region private

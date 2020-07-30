@@ -1,0 +1,540 @@
+Nethermind.Trie.Test.TrieTests.Fuzz_accounts(4,16,4,4)
+
+System.InvalidOperationException : Cannot change Refs on [Leaf(42)|17|0xd0b7a5...0c8490|refs:0|D:False|S:True|P:False| to -1
+   at Nethermind.Trie.TrieNode.set_Refs(Int32 value) in C:\src\nethermind\src\Nethermind\Nethermind.Trie\TrieNode.cs:line 93
+   at Nethermind.Trie.TrieNode.DecrementRefsRecursively() in C:\src\nethermind\src\Nethermind\Nethermind.Trie\TrieNode.cs:line 689
+   at Nethermind.Trie.TrieNode.DecrementRefsRecursively() in C:\src\nethermind\src\Nethermind\Nethermind.Trie\TrieNode.cs:line 676
+   at Nethermind.Trie.TrieNode.DecrementRefsRecursively() in C:\src\nethermind\src\Nethermind\Nethermind.Trie\TrieNode.cs:line 676
+   at Nethermind.Trie.Pruning.TreeStore.Dispatch(BlockCommitPackage commitPackage) in C:\src\nethermind\src\Nethermind\Nethermind.Trie\Pruning\TreeStore.cs:line 365
+   at Nethermind.Trie.Pruning.TreeStore.TryDispatchOne() in C:\src\nethermind\src\Nethermind\Nethermind.Trie\Pruning\TreeStore.cs:line 270
+   at Nethermind.Trie.Pruning.TreeStore.BeginNewPackage(Int64 blockNumber) in C:\src\nethermind\src\Nethermind\Nethermind.Trie\Pruning\TreeStore.cs:line 234
+   at Nethermind.Trie.Pruning.TreeStore.Commit(Int64 blockNumber, NodeCommitInfo nodeCommitInfo) in C:\src\nethermind\src\Nethermind\Nethermind.Trie\Pruning\TreeStore.cs:line 66
+   at Nethermind.Trie.PatriciaTree.Commit(Int64 blockNumber) in C:\src\nethermind\src\Nethermind\Nethermind.Trie\PatriciaTree.cs:line 146
+   at Nethermind.Trie.Test.TrieTests.Fuzz_accounts(Int32 accountsCount, Int32 blocksCount, Int32 uniqueValuesCount, Int32 lookupLimit) in C:\src\nethermind\src\Nethermind\Nethermind.Trie.Test\TrieTests.cs:line 826
+
+
+
+1|10:34:46.721 [13] Fuzzing with accounts: 4, blocks 16, values: 4, lookup: 4 into file C:\Temp\fuzz.txt
+2|10:34:46.724 [13] Creating a new TreeStore with memory limit 1000000
+3|10:34:46.732 [13] Setting 0000000000000000000000000000000000000000000000000000000000000000 = 5716df61b897b187cc7033362c7a739a1024bfff93e758bd255426db563e08e5342f941c2d586c
+4|10:34:46.734 [13] Incrementing refs on root [Leaf()|1||refs:0|D:True|S:False|P:False|
+5|10:34:46.743 [13] Beginning new BlockCommitPackage - 0 | memory 96
+6|10:34:46.744 [13] Committing 0 [NodeCommitInfo|[Leaf(76)|1|0x2563a7...677b6b|refs:1|D:False|S:True|P:False||root]
+7|10:34:46.745 [13] Trie node cache (1)
+8|10:34:46.745 [13]   [Leaf(76)|1|0x2563a7...677b6b|refs:1|D:False|S:True|P:False|
+9|10:34:46.746 [13] Current root: , block 0
+10|10:34:46.746 [13] Finished committing block 0
+11|10:34:46.746 [13] Beginning new BlockCommitPackage - 1 | memory 608
+12|10:34:46.746 [13] Current root: , block 1
+13|10:34:46.746 [13] Finished committing block 1
+14|10:34:46.746 [13] Setting 0000000000000000000000000000000000000000000000000000000000000003 = 5716df61b897b187cc7033362c7a739a1024bfff93e758bd255426db563e08e5342f941c2d586c
+15|10:34:46.747 [13] Traversing [Leaf(76)|1|0x2563a7...677b6b|refs:3|D:False|S:True|P:False| to UPDATE
+16|10:34:46.748 [13] Incrementing refs on new short leaf [Leaf()|4||refs:0|D:True|S:False|P:False|
+17|10:34:46.750 [13] Decrementing ref on a node being disconnected [Leaf(76)|1|0x2563a7...677b6b|refs:3|D:False|S:True|P:False|
+18|10:34:46.750 [13] Incrementing refs after connecting [Leaf(76)|5||refs:0|D:True|S:False|P:False| to [Branch()|3||refs:0|D:True|S:False|P:False|
+19|10:34:46.750 [13] Connecting [Extension()|2||refs:0|D:True|S:False|P:False| with [Branch()|3||refs:0|D:True|S:False|P:False|
+20|10:34:46.750 [13] Incrementing refs on [Branch()|3||refs:0|D:True|S:False|P:False| connected to [Extension()|2||refs:0|D:True|S:False|P:False|
+21|10:34:46.750 [13] Incrementing refs on a connected root [Extension()|2||refs:0|D:True|S:False|P:False|
+22|10:34:46.753 [13] Beginning new BlockCommitPackage - 2 | memory 744
+23|10:34:46.753 [13] Committing 2 [NodeCommitInfo|[Leaf(42)|4|0xd0b7a5...0c8490|refs:1|D:False|S:True|P:False||child 0 of [Branch(83)|3|0x79df50...49ea6c|refs:1|D:False|S:True|P:False|]
+24|10:34:46.753 [13] Trie node cache (2)
+25|10:34:46.753 [13]   [Leaf(76)|1|0x2563a7...677b6b|refs:2|D:False|S:True|P:False|
+26|10:34:46.753 [13]   [Leaf(42)|4|0xd0b7a5...0c8490|refs:1|D:False|S:True|P:False|
+27|10:34:46.753 [13] Committing 2 [NodeCommitInfo|[Leaf(42)|5|0xd0b7a5...0c8490|refs:1|D:False|S:True|P:False||child 3 of [Branch(83)|3|0x79df50...49ea6c|refs:1|D:False|S:True|P:False|]
+28|10:34:46.753 [13] Replacing a trieNode object [Leaf(42)|5|0xd0b7a5...0c8490|refs:1|D:False|S:True|P:False| with its cached representation [Leaf(42)|4|0xd0b7a5...0c8490|refs:1|D:False|S:True|P:False|.
+29|10:34:46.753 [13] Trie node cache (2)
+30|10:34:46.753 [13]   [Leaf(76)|1|0x2563a7...677b6b|refs:2|D:False|S:True|P:False|
+31|10:34:46.753 [13]   [Leaf(42)|4|0xd0b7a5...0c8490|refs:2|D:False|S:True|P:False|
+32|10:34:46.753 [13] Committing 2 [NodeCommitInfo|[Branch(83)|3|0x79df50...49ea6c|refs:1|D:False|S:True|P:False||child 0 of [Extension(68)|2|0x457a9f...631faf|refs:1|D:False|S:True|P:False|]
+33|10:34:46.753 [13] Trie node cache (3)
+34|10:34:46.753 [13]   [Leaf(76)|1|0x2563a7...677b6b|refs:2|D:False|S:True|P:False|
+35|10:34:46.753 [13]   [Leaf(42)|4|0xd0b7a5...0c8490|refs:2|D:False|S:True|P:False|
+36|10:34:46.753 [13]   [Branch(83)|3|0x79df50...49ea6c|refs:1|D:False|S:True|P:False|
+37|10:34:46.753 [13] Committing 2 [NodeCommitInfo|[Extension(68)|2|0x457a9f...631faf|refs:1|D:False|S:True|P:False||root]
+38|10:34:46.753 [13] Trie node cache (4)
+39|10:34:46.753 [13]   [Leaf(76)|1|0x2563a7...677b6b|refs:2|D:False|S:True|P:False|
+40|10:34:46.753 [13]   [Leaf(42)|4|0xd0b7a5...0c8490|refs:2|D:False|S:True|P:False|
+41|10:34:46.753 [13]   [Branch(83)|3|0x79df50...49ea6c|refs:1|D:False|S:True|P:False|
+42|10:34:46.753 [13]   [Extension(68)|2|0x457a9f...631faf|refs:1|D:False|S:True|P:False|
+43|10:34:46.753 [13] Current root: , block 2
+44|10:34:46.753 [13] Finished committing block 2
+45|10:34:46.753 [13] Deleting 0000000000000000000000000000000000000000000000000000000000000001
+46|10:34:46.753 [13] Traversing [Extension(68)|2|0x457a9f...631faf|refs:2|D:False|S:True|P:False| to DELETE
+47|10:34:46.754 [13] Traversing [Branch(83)|3|0x79df50...49ea6c|refs:2|D:False|S:True|P:False| to DELETE
+48|10:34:46.754 [13] Beginning new BlockCommitPackage - 3 | memory 1960
+49|10:34:46.754 [13] Current root: , block 3
+50|10:34:46.754 [13] Finished committing block 3
+51|10:34:46.754 [13] Setting 0000000000000000000000000000000000000000000000000000000000000003 = 6c5cc1e46f79f8c4ee8198b2db89d415a812e93cc9fc4ffa20d78cc5b8345c3f22ff3c7dfafbc367a6a7ca4918906f34aed8d3a4a87077700dc7c497ec330cb92458
+52|10:34:46.754 [13] Traversing [Extension(68)|2|0x457a9f...631faf|refs:3|D:False|S:True|P:False| to UPDATE
+53|10:34:46.754 [13] Traversing [Branch(83)|3|0x79df50...49ea6c|refs:3|D:False|S:True|P:False| to UPDATE
+54|10:34:46.754 [13] Traversing [Leaf(42)|4|0xd0b7a5...0c8490|refs:6|D:False|S:True|P:False| to UPDATE
+55|10:34:46.754 [13] Decrementing ref on a node being disconnected [Leaf(42)|4|0xd0b7a5...0c8490|refs:6|D:False|S:True|P:False|
+56|10:34:46.754 [13] Decrementing ref on disappearing branch [Branch(83)|3|0x79df50...49ea6c|refs:3|D:False|S:True|P:False|
+57|10:34:46.754 [13] Incrementing refs after connecting [Leaf(42)|6||refs:0|D:True|S:False|P:False| to [Branch(83)|7||refs:0|D:True|S:False|P:False|
+58|10:34:46.754 [13] Decrementing ref on an extension which child is being replaced [Extension(68)|2|0x457a9f...631faf|refs:3|D:False|S:True|P:False|
+59|10:34:46.754 [13] Connecting [Extension(68)|8||refs:0|D:True|S:False|P:False| with [Branch(83)|7||refs:0|D:True|S:False|P:False|
+60|10:34:46.754 [13] Incrementing refs on [Branch(83)|7||refs:0|D:True|S:False|P:False| connected to [Extension(68)|8||refs:0|D:True|S:False|P:False|
+61|10:34:46.754 [13] Incrementing refs on a connected root [Extension(68)|8||refs:0|D:True|S:False|P:False|
+62|10:34:46.754 [13] Skipping commit of [Leaf(42)|4|0xd0b7a5...0c8490|refs:5|D:False|S:True|P:False|
+63|10:34:46.755 [13] Beginning new BlockCommitPackage - 4 | memory 2096
+64|10:34:46.755 [13] Start dispatching BlockCommitPackage - 0 | memory 2096
+65|10:34:46.755 [13] Saving a TrieNode [Leaf(76)|1|0x2563a7...677b6b|refs:2|D:False|S:True|P:False|.
+66|10:34:46.756 [13] Decrementing all refs starting from root [Leaf(76)|1|0x2563a7...677b6b|refs:2|D:False|S:True|P:True|
+67|10:34:46.756 [13] End dispatching BlockCommitPackage - 0 | memory 1584
+68|10:34:46.756 [13] Trie node cache (3)
+69|10:34:46.756 [13]   [Leaf(42)|4|0xd0b7a5...0c8490|refs:5|D:False|S:True|P:False|
+70|10:34:46.756 [13]   [Branch(83)|3|0x79df50...49ea6c|refs:2|D:False|S:True|P:False|
+71|10:34:46.756 [13]   [Extension(68)|2|0x457a9f...631faf|refs:2|D:False|S:True|P:False|
+72|10:34:46.756 [13] Committing 4 [NodeCommitInfo|[Leaf(71)|6|0x2a2f8d...3dede5|refs:1|D:False|S:True|P:False||child 3 of [Branch(83)|7|0xbc64bf...82ab00|refs:1|D:False|S:True|P:False|]
+73|10:34:46.756 [13] Trie node cache (4)
+74|10:34:46.756 [13]   [Leaf(71)|6|0x2a2f8d...3dede5|refs:1|D:False|S:True|P:False|
+75|10:34:46.756 [13]   [Leaf(42)|4|0xd0b7a5...0c8490|refs:5|D:False|S:True|P:False|
+76|10:34:46.756 [13]   [Branch(83)|3|0x79df50...49ea6c|refs:2|D:False|S:True|P:False|
+77|10:34:46.756 [13]   [Extension(68)|2|0x457a9f...631faf|refs:2|D:False|S:True|P:False|
+78|10:34:46.756 [13] Committing 4 [NodeCommitInfo|[Branch(83)|7|0xbc64bf...82ab00|refs:1|D:False|S:True|P:False||child 0 of [Extension(68)|8|0xb3e900...cf30eb|refs:1|D:False|S:True|P:False|]
+79|10:34:46.756 [13] Trie node cache (5)
+80|10:34:46.756 [13]   [Leaf(71)|6|0x2a2f8d...3dede5|refs:1|D:False|S:True|P:False|
+81|10:34:46.756 [13]   [Leaf(42)|4|0xd0b7a5...0c8490|refs:5|D:False|S:True|P:False|
+82|10:34:46.756 [13]   [Branch(83)|3|0x79df50...49ea6c|refs:2|D:False|S:True|P:False|
+83|10:34:46.756 [13]   [Extension(68)|2|0x457a9f...631faf|refs:2|D:False|S:True|P:False|
+84|10:34:46.756 [13]   [Branch(83)|7|0xbc64bf...82ab00|refs:1|D:False|S:True|P:False|
+85|10:34:46.756 [13] Committing 4 [NodeCommitInfo|[Extension(68)|8|0xb3e900...cf30eb|refs:1|D:False|S:True|P:False||root]
+86|10:34:46.756 [13] Trie node cache (6)
+87|10:34:46.756 [13]   [Leaf(71)|6|0x2a2f8d...3dede5|refs:1|D:False|S:True|P:False|
+88|10:34:46.756 [13]   [Leaf(42)|4|0xd0b7a5...0c8490|refs:5|D:False|S:True|P:False|
+89|10:34:46.756 [13]   [Branch(83)|3|0x79df50...49ea6c|refs:2|D:False|S:True|P:False|
+90|10:34:46.756 [13]   [Extension(68)|2|0x457a9f...631faf|refs:2|D:False|S:True|P:False|
+91|10:34:46.756 [13]   [Branch(83)|7|0xbc64bf...82ab00|refs:1|D:False|S:True|P:False|
+92|10:34:46.756 [13]   [Extension(68)|8|0xb3e900...cf30eb|refs:1|D:False|S:True|P:False|
+93|10:34:46.756 [13] Current root: , block 4
+94|10:34:46.756 [13] Finished committing block 4
+95|10:34:46.756 [13] Setting 0000000000000000000000000000000000000000000000000000000000000000 = 5716df61b897b187cc7033362c7a739a1024bfff93e758bd255426db563e08e5342f941c2d586c
+96|10:34:46.756 [13] Traversing [Extension(68)|8|0xb3e900...cf30eb|refs:2|D:False|S:True|P:False| to UPDATE
+97|10:34:46.756 [13] Traversing [Branch(83)|7|0xbc64bf...82ab00|refs:2|D:False|S:True|P:False| to UPDATE
+98|10:34:46.756 [13] Traversing [Leaf(42)|4|0xd0b7a5...0c8490|refs:6|D:False|S:True|P:False| to UPDATE
+99|10:34:46.756 [13] Beginning new BlockCommitPackage - 5 | memory 2848
+100|10:34:46.756 [13] Start dispatching BlockCommitPackage - 1 | memory 2848
+101|10:34:46.756 [13] Decrementing all refs starting from root 
+102|10:34:46.756 [13] End dispatching BlockCommitPackage - 1 | memory 2712
+103|10:34:46.756 [13] Trie node cache (6)
+104|10:34:46.756 [13]   [Leaf(71)|6|0x2a2f8d...3dede5|refs:2|D:False|S:True|P:False|
+105|10:34:46.756 [13]   [Leaf(42)|4|0xd0b7a5...0c8490|refs:6|D:False|S:True|P:False|
+106|10:34:46.756 [13]   [Branch(83)|3|0x79df50...49ea6c|refs:2|D:False|S:True|P:False|
+107|10:34:46.756 [13]   [Extension(68)|2|0x457a9f...631faf|refs:2|D:False|S:True|P:False|
+108|10:34:46.756 [13]   [Branch(83)|7|0xbc64bf...82ab00|refs:2|D:False|S:True|P:False|
+109|10:34:46.756 [13]   [Extension(68)|8|0xb3e900...cf30eb|refs:2|D:False|S:True|P:False|
+110|10:34:46.756 [13] Current root: , block 5
+111|10:34:46.756 [13] Finished committing block 5
+112|10:34:46.756 [13] Setting 0000000000000000000000000000000000000000000000000000000000000001 = 4d561bad4f8295213105
+113|10:34:46.756 [13] Traversing [Extension(68)|8|0xb3e900...cf30eb|refs:3|D:False|S:True|P:False| to UPDATE
+114|10:34:46.756 [13] Traversing [Branch(83)|7|0xbc64bf...82ab00|refs:3|D:False|S:True|P:False| to UPDATE
+115|10:34:46.756 [13] Decrementing ref on disappearing branch [Branch(83)|7|0xbc64bf...82ab00|refs:3|D:False|S:True|P:False|
+116|10:34:46.756 [13] Incrementing refs after connecting [Leaf()|9||refs:0|D:True|S:False|P:False| to [Branch(83)|10||refs:0|D:True|S:False|P:False|
+117|10:34:46.756 [13] Decrementing ref on an extension which child is being replaced [Extension(68)|8|0xb3e900...cf30eb|refs:3|D:False|S:True|P:False|
+118|10:34:46.756 [13] Connecting [Extension(68)|11||refs:0|D:True|S:False|P:False| with [Branch(83)|10||refs:0|D:True|S:False|P:False|
+119|10:34:46.756 [13] Incrementing refs on [Branch(83)|10||refs:0|D:True|S:False|P:False| connected to [Extension(68)|11||refs:0|D:True|S:False|P:False|
+120|10:34:46.756 [13] Incrementing refs on a connected root [Extension(68)|11||refs:0|D:True|S:False|P:False|
+121|10:34:46.756 [13] Skipping commit of [Leaf(42)|4|0xd0b7a5...0c8490|refs:7|D:False|S:True|P:False|
+122|10:34:46.756 [13] Skipping commit of an inlined [Leaf(13)cc208a4d561bad4f8295213105|9||refs:1|D:False|S:True|P:True|
+123|10:34:46.756 [13] Skipping commit of [Leaf(71)|6|0x2a2f8d...3dede5|refs:3|D:False|S:True|P:False|
+124|10:34:46.756 [13] Beginning new BlockCommitPackage - 6 | memory 2848
+125|10:34:46.756 [13] Start dispatching BlockCommitPackage - 2 | memory 2848
+126|10:34:46.756 [13] Carrying a TrieNode [Leaf(42)|4|0xd0b7a5...0c8490|refs:7|D:False|S:True|P:False|.
+127|10:34:46.756 [13] Carrying a TrieNode [Branch(83)|3|0x79df50...49ea6c|refs:2|D:False|S:True|P:False|.
+128|10:34:46.756 [13] Carrying a TrieNode [Extension(68)|2|0x457a9f...631faf|refs:2|D:False|S:True|P:False|.
+129|10:34:46.756 [13] Decrementing all refs starting from root [Extension(68)|2|0x457a9f...631faf|refs:2|D:False|S:True|P:False|
+130|10:34:46.756 [13] End dispatching BlockCommitPackage - 2 | memory 1632
+131|10:34:46.756 [13] Trie node cache (6)
+132|10:34:46.756 [13]   [Leaf(71)|6|0x2a2f8d...3dede5|refs:3|D:False|S:True|P:False|
+133|10:34:46.756 [13]   [Leaf(42)|4|0xd0b7a5...0c8490|refs:5|D:False|S:True|P:False|
+134|10:34:46.756 [13]   [Branch(83)|3|0x79df50...49ea6c|refs:1|D:False|S:True|P:False|
+135|10:34:46.756 [13]   [Extension(68)|2|0x457a9f...631faf|refs:1|D:False|S:True|P:False|
+136|10:34:46.756 [13]   [Branch(83)|7|0xbc64bf...82ab00|refs:2|D:False|S:True|P:False|
+137|10:34:46.756 [13]   [Extension(68)|8|0xb3e900...cf30eb|refs:2|D:False|S:True|P:False|
+138|10:34:46.756 [13] Committing 6 [NodeCommitInfo|[Branch(95)|10|0x09025e...b8f0c9|refs:1|D:False|S:True|P:False||child 0 of [Extension(68)|11|0x2c92df...54d78a|refs:1|D:False|S:True|P:False|]
+139|10:34:46.756 [13] Trie node cache (7)
+140|10:34:46.756 [13]   [Leaf(71)|6|0x2a2f8d...3dede5|refs:3|D:False|S:True|P:False|
+141|10:34:46.756 [13]   [Leaf(42)|4|0xd0b7a5...0c8490|refs:5|D:False|S:True|P:False|
+142|10:34:46.756 [13]   [Branch(83)|3|0x79df50...49ea6c|refs:1|D:False|S:True|P:False|
+143|10:34:46.756 [13]   [Extension(68)|2|0x457a9f...631faf|refs:1|D:False|S:True|P:False|
+144|10:34:46.756 [13]   [Branch(83)|7|0xbc64bf...82ab00|refs:2|D:False|S:True|P:False|
+145|10:34:46.756 [13]   [Extension(68)|8|0xb3e900...cf30eb|refs:2|D:False|S:True|P:False|
+146|10:34:46.756 [13]   [Branch(95)|10|0x09025e...b8f0c9|refs:1|D:False|S:True|P:False|
+147|10:34:46.756 [13] Committing 6 [NodeCommitInfo|[Extension(68)|11|0x2c92df...54d78a|refs:1|D:False|S:True|P:False||root]
+148|10:34:46.756 [13] Trie node cache (8)
+149|10:34:46.756 [13]   [Leaf(71)|6|0x2a2f8d...3dede5|refs:3|D:False|S:True|P:False|
+150|10:34:46.756 [13]   [Leaf(42)|4|0xd0b7a5...0c8490|refs:5|D:False|S:True|P:False|
+151|10:34:46.756 [13]   [Branch(83)|3|0x79df50...49ea6c|refs:1|D:False|S:True|P:False|
+152|10:34:46.756 [13]   [Extension(68)|2|0x457a9f...631faf|refs:1|D:False|S:True|P:False|
+153|10:34:46.756 [13]   [Branch(83)|7|0xbc64bf...82ab00|refs:2|D:False|S:True|P:False|
+154|10:34:46.756 [13]   [Extension(68)|8|0xb3e900...cf30eb|refs:2|D:False|S:True|P:False|
+155|10:34:46.756 [13]   [Branch(95)|10|0x09025e...b8f0c9|refs:1|D:False|S:True|P:False|
+156|10:34:46.756 [13]   [Extension(68)|11|0x2c92df...54d78a|refs:1|D:False|S:True|P:False|
+157|10:34:46.756 [13] Current root: , block 6
+158|10:34:46.756 [13] Finished committing block 6
+159|10:34:46.756 [13] Setting 0000000000000000000000000000000000000000000000000000000000000002 = 4d561bad4f8295213105
+160|10:34:46.756 [13] Traversing [Extension(68)|11|0x2c92df...54d78a|refs:2|D:False|S:True|P:False| to UPDATE
+161|10:34:46.756 [13] Traversing [Branch(95)|10|0x09025e...b8f0c9|refs:2|D:False|S:True|P:False| to UPDATE
+162|10:34:46.756 [13] Decrementing ref on disappearing branch [Branch(95)|10|0x09025e...b8f0c9|refs:2|D:False|S:True|P:False|
+163|10:34:46.756 [13] Incrementing refs after connecting [Leaf()|12||refs:0|D:True|S:False|P:False| to [Branch(95)|13||refs:0|D:True|S:False|P:False|
+164|10:34:46.756 [13] Decrementing ref on an extension which child is being replaced [Extension(68)|11|0x2c92df...54d78a|refs:2|D:False|S:True|P:False|
+165|10:34:46.756 [13] Connecting [Extension(68)|14||refs:0|D:True|S:False|P:False| with [Branch(95)|13||refs:0|D:True|S:False|P:False|
+166|10:34:46.756 [13] Incrementing refs on [Branch(95)|13||refs:0|D:True|S:False|P:False| connected to [Extension(68)|14||refs:0|D:True|S:False|P:False|
+167|10:34:46.756 [13] Incrementing refs on a connected root [Extension(68)|14||refs:0|D:True|S:False|P:False|
+168|10:34:46.756 [13] Skipping commit of [Leaf(42)|4|0xd0b7a5...0c8490|refs:6|D:False|S:True|P:False|
+169|10:34:46.756 [13] Skipping commit of [Leaf(13)cc208a4d561bad4f8295213105|9||refs:1|D:False|S:True|P:True|
+170|10:34:46.756 [13] Skipping commit of an inlined [Leaf(13)cc208a4d561bad4f8295213105|12||refs:1|D:False|S:True|P:True|
+171|10:34:46.756 [13] Skipping commit of [Leaf(71)|6|0x2a2f8d...3dede5|refs:4|D:False|S:True|P:False|
+172|10:34:46.756 [13] Beginning new BlockCommitPackage - 7 | memory 2512
+173|10:34:46.756 [13] Start dispatching BlockCommitPackage - 3 | memory 2512
+174|10:34:46.756 [13] Carrying a TrieNode [Leaf(42)|4|0xd0b7a5...0c8490|refs:6|D:False|S:True|P:False|.
+175|10:34:46.756 [13] Dropping a TrieNode [Branch(83)|3|0x79df50...49ea6c|refs:1|D:False|S:True|P:False|.
+176|10:34:46.756 [13] Dropping a TrieNode [Extension(68)|2|0x457a9f...631faf|refs:1|D:False|S:True|P:False|.
+177|10:34:46.756 [13] Decrementing all refs starting from root [Extension(68)|2|0x457a9f...631faf|refs:1|D:False|S:True|P:False|
+178|10:34:46.756 [13] End dispatching BlockCommitPackage - 3 | memory 2376
+179|10:34:46.756 [13] Trie node cache (6)
+180|10:34:46.756 [13]   [Leaf(71)|6|0x2a2f8d...3dede5|refs:4|D:False|S:True|P:False|
+181|10:34:46.757 [13]   [Leaf(42)|4|0xd0b7a5...0c8490|refs:4|D:False|S:True|P:False|
+182|10:34:46.757 [13]   [Branch(83)|7|0xbc64bf...82ab00|refs:2|D:False|S:True|P:False|
+183|10:34:46.757 [13]   [Extension(68)|8|0xb3e900...cf30eb|refs:2|D:False|S:True|P:False|
+184|10:34:46.757 [13]   [Branch(95)|10|0x09025e...b8f0c9|refs:1|D:False|S:True|P:False|
+185|10:34:46.757 [13]   [Extension(68)|11|0x2c92df...54d78a|refs:1|D:False|S:True|P:False|
+186|10:34:46.757 [13] Committing 7 [NodeCommitInfo|[Branch(107)|13|0x200751...c10945|refs:1|D:False|S:True|P:False||child 0 of [Extension(68)|14|0x3d36df...8030d1|refs:1|D:False|S:True|P:False|]
+187|10:34:46.757 [13] Trie node cache (7)
+188|10:34:46.757 [13]   [Leaf(71)|6|0x2a2f8d...3dede5|refs:4|D:False|S:True|P:False|
+189|10:34:46.757 [13]   [Leaf(42)|4|0xd0b7a5...0c8490|refs:4|D:False|S:True|P:False|
+190|10:34:46.757 [13]   [Branch(107)|13|0x200751...c10945|refs:1|D:False|S:True|P:False|
+191|10:34:46.757 [13]   [Branch(83)|7|0xbc64bf...82ab00|refs:2|D:False|S:True|P:False|
+192|10:34:46.757 [13]   [Extension(68)|8|0xb3e900...cf30eb|refs:2|D:False|S:True|P:False|
+193|10:34:46.757 [13]   [Branch(95)|10|0x09025e...b8f0c9|refs:1|D:False|S:True|P:False|
+194|10:34:46.757 [13]   [Extension(68)|11|0x2c92df...54d78a|refs:1|D:False|S:True|P:False|
+195|10:34:46.757 [13] Committing 7 [NodeCommitInfo|[Extension(68)|14|0x3d36df...8030d1|refs:1|D:False|S:True|P:False||root]
+196|10:34:46.757 [13] Trie node cache (8)
+197|10:34:46.757 [13]   [Leaf(71)|6|0x2a2f8d...3dede5|refs:4|D:False|S:True|P:False|
+198|10:34:46.757 [13]   [Leaf(42)|4|0xd0b7a5...0c8490|refs:4|D:False|S:True|P:False|
+199|10:34:46.757 [13]   [Extension(68)|14|0x3d36df...8030d1|refs:1|D:False|S:True|P:False|
+200|10:34:46.757 [13]   [Branch(107)|13|0x200751...c10945|refs:1|D:False|S:True|P:False|
+201|10:34:46.757 [13]   [Branch(83)|7|0xbc64bf...82ab00|refs:2|D:False|S:True|P:False|
+202|10:34:46.757 [13]   [Extension(68)|8|0xb3e900...cf30eb|refs:2|D:False|S:True|P:False|
+203|10:34:46.757 [13]   [Branch(95)|10|0x09025e...b8f0c9|refs:1|D:False|S:True|P:False|
+204|10:34:46.757 [13]   [Extension(68)|11|0x2c92df...54d78a|refs:1|D:False|S:True|P:False|
+205|10:34:46.757 [13] Current root: , block 7
+206|10:34:46.757 [13] Finished committing block 7
+207|10:34:46.757 [13] Deleting 0000000000000000000000000000000000000000000000000000000000000000
+208|10:34:46.757 [13] Traversing [Extension(68)|14|0x3d36df...8030d1|refs:2|D:False|S:True|P:False| to DELETE
+209|10:34:46.757 [13] Traversing [Branch(107)|13|0x200751...c10945|refs:2|D:False|S:True|P:False| to DELETE
+210|10:34:46.757 [13] Traversing [Leaf(42)|4|0xd0b7a5...0c8490|refs:5|D:False|S:True|P:False| to DELETE
+211|10:34:46.757 [13] Decrementing ref on a node being disconnected [Leaf(42)|4|0xd0b7a5...0c8490|refs:5|D:False|S:True|P:False|
+212|10:34:46.757 [13] Decrementing ref on disappearing branch [Branch(107)|13|0x200751...c10945|refs:2|D:False|S:True|P:False|
+213|10:34:46.757 [13] Decrementing ref on an extension which child is being replaced [Extension(68)|14|0x3d36df...8030d1|refs:2|D:False|S:True|P:False|
+214|10:34:46.757 [13] Connecting [Extension(68)|16||refs:0|D:True|S:False|P:False| with [Branch(107)|15||refs:0|D:True|S:False|P:False|
+215|10:34:46.757 [13] Incrementing refs on [Branch(107)|15||refs:0|D:True|S:False|P:False| connected to [Extension(68)|16||refs:0|D:True|S:False|P:False|
+216|10:34:46.757 [13] Incrementing refs on a connected root [Extension(68)|16||refs:0|D:True|S:False|P:False|
+217|10:34:46.757 [13] Skipping commit of [Leaf(13)cc208a4d561bad4f8295213105|9||refs:1|D:False|S:True|P:True|
+218|10:34:46.757 [13] Skipping commit of [Leaf(13)cc208a4d561bad4f8295213105|12||refs:1|D:False|S:True|P:True|
+219|10:34:46.757 [13] Skipping commit of [Leaf(71)|6|0x2a2f8d...3dede5|refs:5|D:False|S:True|P:False|
+220|10:34:46.757 [13] Beginning new BlockCommitPackage - 8 | memory 3272
+221|10:34:46.757 [13] Start dispatching BlockCommitPackage - 4 | memory 3272
+222|10:34:46.757 [13] Saving a TrieNode [Leaf(42)|4|0xd0b7a5...0c8490|refs:4|D:False|S:True|P:False|.
+223|10:34:46.757 [13] Saving a TrieNode [Leaf(71)|6|0x2a2f8d...3dede5|refs:5|D:False|S:True|P:False|.
+224|10:34:46.757 [13] Saving a TrieNode [Branch(83)|7|0xbc64bf...82ab00|refs:2|D:False|S:True|P:False|.
+225|10:34:46.757 [13] Saving a TrieNode [Extension(68)|8|0xb3e900...cf30eb|refs:2|D:False|S:True|P:False|.
+226|10:34:46.757 [13] Decrementing all refs starting from root [Extension(68)|8|0xb3e900...cf30eb|refs:2|D:False|S:True|P:True|
+227|10:34:46.757 [13] End dispatching BlockCommitPackage - 4 | memory 2008
+228|10:34:46.757 [13] Trie node cache (4)
+229|10:34:46.757 [13]   [Extension(68)|14|0x3d36df...8030d1|refs:1|D:False|S:True|P:False|
+230|10:34:46.757 [13]   [Branch(107)|13|0x200751...c10945|refs:1|D:False|S:True|P:False|
+231|10:34:46.757 [13]   [Branch(95)|10|0x09025e...b8f0c9|refs:1|D:False|S:True|P:False|
+232|10:34:46.757 [13]   [Extension(68)|11|0x2c92df...54d78a|refs:1|D:False|S:True|P:False|
+233|10:34:46.757 [13] Committing 8 [NodeCommitInfo|[Branch(75)|15|0xe787ea...222289|refs:1|D:False|S:True|P:False||child 0 of [Extension(68)|16|0x2f586d...2ca128|refs:1|D:False|S:True|P:False|]
+234|10:34:46.757 [13] Trie node cache (5)
+235|10:34:46.757 [13]   [Extension(68)|14|0x3d36df...8030d1|refs:1|D:False|S:True|P:False|
+236|10:34:46.757 [13]   [Branch(107)|13|0x200751...c10945|refs:1|D:False|S:True|P:False|
+237|10:34:46.757 [13]   [Branch(75)|15|0xe787ea...222289|refs:1|D:False|S:True|P:False|
+238|10:34:46.757 [13]   [Branch(95)|10|0x09025e...b8f0c9|refs:1|D:False|S:True|P:False|
+239|10:34:46.757 [13]   [Extension(68)|11|0x2c92df...54d78a|refs:1|D:False|S:True|P:False|
+240|10:34:46.757 [13] Committing 8 [NodeCommitInfo|[Extension(68)|16|0x2f586d...2ca128|refs:1|D:False|S:True|P:False||root]
+241|10:34:46.757 [13] Trie node cache (6)
+242|10:34:46.757 [13]   [Extension(68)|14|0x3d36df...8030d1|refs:1|D:False|S:True|P:False|
+243|10:34:46.757 [13]   [Branch(107)|13|0x200751...c10945|refs:1|D:False|S:True|P:False|
+244|10:34:46.757 [13]   [Extension(68)|16|0x2f586d...2ca128|refs:1|D:False|S:True|P:False|
+245|10:34:46.757 [13]   [Branch(75)|15|0xe787ea...222289|refs:1|D:False|S:True|P:False|
+246|10:34:46.757 [13]   [Branch(95)|10|0x09025e...b8f0c9|refs:1|D:False|S:True|P:False|
+247|10:34:46.757 [13]   [Extension(68)|11|0x2c92df...54d78a|refs:1|D:False|S:True|P:False|
+248|10:34:46.757 [13] Current root: , block 8
+249|10:34:46.757 [13] Finished committing block 8
+250|10:34:46.757 [13] Setting 0000000000000000000000000000000000000000000000000000000000000000 = 5716df61b897b187cc7033362c7a739a1024bfff93e758bd255426db563e08e5342f941c2d586c
+251|10:34:46.757 [13] Traversing [Extension(68)|16|0x2f586d...2ca128|refs:2|D:False|S:True|P:False| to UPDATE
+252|10:34:46.757 [13] Traversing [Branch(75)|15|0xe787ea...222289|refs:2|D:False|S:True|P:False| to UPDATE
+253|10:34:46.757 [13] Decrementing ref on disappearing branch [Branch(75)|15|0xe787ea...222289|refs:2|D:False|S:True|P:False|
+254|10:34:46.757 [13] Incrementing refs after connecting [Leaf()|17||refs:0|D:True|S:False|P:False| to [Branch(75)|18||refs:0|D:True|S:False|P:False|
+255|10:34:46.757 [13] Decrementing ref on an extension which child is being replaced [Extension(68)|16|0x2f586d...2ca128|refs:2|D:False|S:True|P:False|
+256|10:34:46.757 [13] Connecting [Extension(68)|19||refs:0|D:True|S:False|P:False| with [Branch(75)|18||refs:0|D:True|S:False|P:False|
+257|10:34:46.757 [13] Incrementing refs on [Branch(75)|18||refs:0|D:True|S:False|P:False| connected to [Extension(68)|19||refs:0|D:True|S:False|P:False|
+258|10:34:46.757 [13] Incrementing refs on a connected root [Extension(68)|19||refs:0|D:True|S:False|P:False|
+259|10:34:46.757 [13] Skipping commit of [Leaf(13)cc208a4d561bad4f8295213105|9||refs:1|D:False|S:True|P:True|
+260|10:34:46.757 [13] Skipping commit of [Leaf(13)cc208a4d561bad4f8295213105|12||refs:1|D:False|S:True|P:True|
+261|10:34:46.757 [13] Skipping commit of [Leaf(71)|6|0x2a2f8d...3dede5|refs:5|D:False|S:True|P:True|
+262|10:34:46.757 [13] Beginning new BlockCommitPackage - 9 | memory 2872
+263|10:34:46.757 [13] Start dispatching BlockCommitPackage - 5 | memory 2872
+264|10:34:46.757 [13] Decrementing all refs starting from root 
+265|10:34:46.757 [13] End dispatching BlockCommitPackage - 5 | memory 2736
+266|10:34:46.757 [13] Trie node cache (6)
+267|10:34:46.757 [13]   [Extension(68)|14|0x3d36df...8030d1|refs:1|D:False|S:True|P:False|
+268|10:34:46.757 [13]   [Branch(107)|13|0x200751...c10945|refs:1|D:False|S:True|P:False|
+269|10:34:46.757 [13]   [Extension(68)|16|0x2f586d...2ca128|refs:1|D:False|S:True|P:False|
+270|10:34:46.757 [13]   [Branch(75)|15|0xe787ea...222289|refs:1|D:False|S:True|P:False|
+271|10:34:46.757 [13]   [Branch(95)|10|0x09025e...b8f0c9|refs:1|D:False|S:True|P:False|
+272|10:34:46.757 [13]   [Extension(68)|11|0x2c92df...54d78a|refs:1|D:False|S:True|P:False|
+273|10:34:46.757 [13] Committing 9 [NodeCommitInfo|[Leaf(42)|17|0xd0b7a5...0c8490|refs:1|D:False|S:True|P:False||child 0 of [Branch(107)|18|0x200751...c10945|refs:1|D:False|S:True|P:False|]
+274|10:34:46.757 [13] Trie node cache (7)
+275|10:34:46.757 [13]   [Leaf(42)|17|0xd0b7a5...0c8490|refs:1|D:False|S:True|P:False|
+276|10:34:46.757 [13]   [Extension(68)|14|0x3d36df...8030d1|refs:1|D:False|S:True|P:False|
+277|10:34:46.757 [13]   [Branch(107)|13|0x200751...c10945|refs:1|D:False|S:True|P:False|
+278|10:34:46.757 [13]   [Extension(68)|16|0x2f586d...2ca128|refs:1|D:False|S:True|P:False|
+279|10:34:46.757 [13]   [Branch(75)|15|0xe787ea...222289|refs:1|D:False|S:True|P:False|
+280|10:34:46.757 [13]   [Branch(95)|10|0x09025e...b8f0c9|refs:1|D:False|S:True|P:False|
+281|10:34:46.757 [13]   [Extension(68)|11|0x2c92df...54d78a|refs:1|D:False|S:True|P:False|
+282|10:34:46.757 [13] Committing 9 [NodeCommitInfo|[Branch(107)|18|0x200751...c10945|refs:1|D:False|S:True|P:False||child 0 of [Extension(68)|19|0x3d36df...8030d1|refs:1|D:False|S:True|P:False|]
+283|10:34:46.757 [13] Replacing a trieNode object [Branch(107)|18|0x200751...c10945|refs:1|D:False|S:True|P:False| with its cached representation [Branch(107)|13|0x200751...c10945|refs:1|D:False|S:True|P:False|.
+284|10:34:46.757 [13] Trie node cache (7)
+285|10:34:46.757 [13]   [Leaf(42)|17|0xd0b7a5...0c8490|refs:1|D:False|S:True|P:False|
+286|10:34:46.757 [13]   [Extension(68)|14|0x3d36df...8030d1|refs:1|D:False|S:True|P:False|
+287|10:34:46.757 [13]   [Branch(107)|13|0x200751...c10945|refs:2|D:False|S:True|P:False|
+288|10:34:46.757 [13]   [Extension(68)|16|0x2f586d...2ca128|refs:1|D:False|S:True|P:False|
+289|10:34:46.757 [13]   [Branch(75)|15|0xe787ea...222289|refs:1|D:False|S:True|P:False|
+290|10:34:46.757 [13]   [Branch(95)|10|0x09025e...b8f0c9|refs:1|D:False|S:True|P:False|
+291|10:34:46.757 [13]   [Extension(68)|11|0x2c92df...54d78a|refs:1|D:False|S:True|P:False|
+292|10:34:46.757 [13] Committing 9 [NodeCommitInfo|[Extension(68)|19|0x3d36df...8030d1|refs:1|D:False|S:True|P:False||root]
+293|10:34:46.757 [13] Replacing a trieNode object [Extension(68)|19|0x3d36df...8030d1|refs:1|D:False|S:True|P:False| with its cached representation [Extension(68)|14|0x3d36df...8030d1|refs:1|D:False|S:True|P:False|.
+294|10:34:46.757 [13] Trie node cache (7)
+295|10:34:46.757 [13]   [Leaf(42)|17|0xd0b7a5...0c8490|refs:1|D:False|S:True|P:False|
+296|10:34:46.757 [13]   [Extension(68)|14|0x3d36df...8030d1|refs:2|D:False|S:True|P:False|
+297|10:34:46.757 [13]   [Branch(107)|13|0x200751...c10945|refs:2|D:False|S:True|P:False|
+298|10:34:46.757 [13]   [Extension(68)|16|0x2f586d...2ca128|refs:1|D:False|S:True|P:False|
+299|10:34:46.757 [13]   [Branch(75)|15|0xe787ea...222289|refs:1|D:False|S:True|P:False|
+300|10:34:46.757 [13]   [Branch(95)|10|0x09025e...b8f0c9|refs:1|D:False|S:True|P:False|
+301|10:34:46.757 [13]   [Extension(68)|11|0x2c92df...54d78a|refs:1|D:False|S:True|P:False|
+302|10:34:46.757 [13] Current root: , block 9
+303|10:34:46.757 [13] Finished committing block 9
+304|10:34:46.757 [13] Setting 0000000000000000000000000000000000000000000000000000000000000002 = 5716df61b897b187cc7033362c7a739a1024bfff93e758bd255426db563e08e5342f941c2d586c
+305|10:34:46.757 [13] Traversing [Extension(68)|14|0x3d36df...8030d1|refs:3|D:False|S:True|P:False| to UPDATE
+306|10:34:46.757 [13] Traversing [Branch(107)|13|0x200751...c10945|refs:3|D:False|S:True|P:False| to UPDATE
+307|10:34:46.757 [13] Traversing [Leaf(13)cc208a4d561bad4f8295213105|12||refs:1|D:False|S:True|P:True| to UPDATE
+308|10:34:46.757 [13] Decrementing ref on a node being disconnected [Leaf(13)cc208a4d561bad4f8295213105|12||refs:1|D:False|S:True|P:True|
+309|10:34:46.757 [13] Decrementing ref on disappearing branch [Branch(107)|13|0x200751...c10945|refs:3|D:False|S:True|P:False|
+310|10:34:46.757 [13] Incrementing refs after connecting [Leaf(13)cc208a4d561bad4f8295213105|20||refs:0|D:True|S:False|P:True| to [Branch(107)|21||refs:0|D:True|S:False|P:False|
+311|10:34:46.757 [13] Decrementing ref on an extension which child is being replaced [Extension(68)|14|0x3d36df...8030d1|refs:3|D:False|S:True|P:False|
+312|10:34:46.757 [13] Connecting [Extension(68)|22||refs:0|D:True|S:False|P:False| with [Branch(107)|21||refs:0|D:True|S:False|P:False|
+313|10:34:46.757 [13] Incrementing refs on [Branch(107)|21||refs:0|D:True|S:False|P:False| connected to [Extension(68)|22||refs:0|D:True|S:False|P:False|
+314|10:34:46.757 [13] Incrementing refs on a connected root [Extension(68)|22||refs:0|D:True|S:False|P:False|
+315|10:34:46.757 [13] Skipping commit of [Leaf(42)|4|0xd0b7a5...0c8490|refs:4|D:False|S:True|P:True|
+316|10:34:46.757 [13] Skipping commit of [Leaf(13)cc208a4d561bad4f8295213105|9||refs:1|D:False|S:True|P:True|
+317|10:34:46.757 [13] Skipping commit of [Leaf(71)|6|0x2a2f8d...3dede5|refs:5|D:False|S:True|P:True|
+318|10:34:46.757 [13] Beginning new BlockCommitPackage - 10 | memory 3216
+319|10:34:46.757 [13] Start dispatching BlockCommitPackage - 6 | memory 3216
+320|10:34:46.757 [13] Dropping a TrieNode [Branch(95)|10|0x09025e...b8f0c9|refs:1|D:False|S:True|P:False|.
+321|10:34:46.757 [13] Dropping a TrieNode [Extension(68)|11|0x2c92df...54d78a|refs:1|D:False|S:True|P:False|.
+322|10:34:46.757 [13] Decrementing all refs starting from root [Extension(68)|11|0x2c92df...54d78a|refs:1|D:False|S:True|P:False|
+323|10:34:46.757 [13] End dispatching BlockCommitPackage - 6 | memory 2336
+324|10:34:46.757 [13] Trie node cache (5)
+325|10:34:46.757 [13]   [Leaf(42)|17|0xd0b7a5...0c8490|refs:1|D:False|S:True|P:False|
+326|10:34:46.757 [13]   [Extension(68)|14|0x3d36df...8030d1|refs:2|D:False|S:True|P:False|
+327|10:34:46.758 [13]   [Branch(107)|13|0x200751...c10945|refs:2|D:False|S:True|P:False|
+328|10:34:46.758 [13]   [Extension(68)|16|0x2f586d...2ca128|refs:1|D:False|S:True|P:False|
+329|10:34:46.758 [13]   [Branch(75)|15|0xe787ea...222289|refs:1|D:False|S:True|P:False|
+330|10:34:46.758 [13] Committing 10 [NodeCommitInfo|[Leaf(42)|20|0xd0b7a5...0c8490|refs:0|D:False|S:True|P:True||child 2 of [Branch(127)|21|0xaa72d2...330e6e|refs:1|D:False|S:True|P:False|]
+331|10:34:46.758 [13] Replacing a trieNode object [Leaf(42)|20|0xd0b7a5...0c8490|refs:0|D:False|S:True|P:True| with its cached representation [Leaf(42)|17|0xd0b7a5...0c8490|refs:1|D:False|S:True|P:False|.
+332|10:34:46.758 [13] Trie node cache (5)
+333|10:34:46.758 [13]   [Leaf(42)|17|0xd0b7a5...0c8490|refs:1|D:False|S:True|P:False|
+334|10:34:46.758 [13]   [Extension(68)|14|0x3d36df...8030d1|refs:2|D:False|S:True|P:False|
+335|10:34:46.758 [13]   [Branch(107)|13|0x200751...c10945|refs:2|D:False|S:True|P:False|
+336|10:34:46.758 [13]   [Extension(68)|16|0x2f586d...2ca128|refs:1|D:False|S:True|P:False|
+337|10:34:46.758 [13]   [Branch(75)|15|0xe787ea...222289|refs:1|D:False|S:True|P:False|
+338|10:34:46.758 [13] Committing 10 [NodeCommitInfo|[Branch(127)|21|0xaa72d2...330e6e|refs:1|D:False|S:True|P:False||child 0 of [Extension(68)|22|0xf51651...1f0a3b|refs:1|D:False|S:True|P:False|]
+339|10:34:46.758 [13] Trie node cache (6)
+340|10:34:46.758 [13]   [Leaf(42)|17|0xd0b7a5...0c8490|refs:1|D:False|S:True|P:False|
+341|10:34:46.758 [13]   [Extension(68)|14|0x3d36df...8030d1|refs:2|D:False|S:True|P:False|
+342|10:34:46.758 [13]   [Branch(107)|13|0x200751...c10945|refs:2|D:False|S:True|P:False|
+343|10:34:46.758 [13]   [Extension(68)|16|0x2f586d...2ca128|refs:1|D:False|S:True|P:False|
+344|10:34:46.758 [13]   [Branch(75)|15|0xe787ea...222289|refs:1|D:False|S:True|P:False|
+345|10:34:46.758 [13]   [Branch(127)|21|0xaa72d2...330e6e|refs:1|D:False|S:True|P:False|
+346|10:34:46.758 [13] Committing 10 [NodeCommitInfo|[Extension(68)|22|0xf51651...1f0a3b|refs:1|D:False|S:True|P:False||root]
+347|10:34:46.758 [13] Trie node cache (7)
+348|10:34:46.758 [13]   [Leaf(42)|17|0xd0b7a5...0c8490|refs:1|D:False|S:True|P:False|
+349|10:34:46.758 [13]   [Extension(68)|14|0x3d36df...8030d1|refs:2|D:False|S:True|P:False|
+350|10:34:46.758 [13]   [Branch(107)|13|0x200751...c10945|refs:2|D:False|S:True|P:False|
+351|10:34:46.758 [13]   [Extension(68)|16|0x2f586d...2ca128|refs:1|D:False|S:True|P:False|
+352|10:34:46.758 [13]   [Branch(75)|15|0xe787ea...222289|refs:1|D:False|S:True|P:False|
+353|10:34:46.758 [13]   [Extension(68)|22|0xf51651...1f0a3b|refs:1|D:False|S:True|P:False|
+354|10:34:46.758 [13]   [Branch(127)|21|0xaa72d2...330e6e|refs:1|D:False|S:True|P:False|
+355|10:34:46.758 [13] Current root: , block 10
+356|10:34:46.758 [13] Finished committing block 10
+357|10:34:46.758 [13] Setting 0000000000000000000000000000000000000000000000000000000000000000 = 6c5cc1e46f79f8c4ee8198b2db89d415a812e93cc9fc4ffa20d78cc5b8345c3f22ff3c7dfafbc367a6a7ca4918906f34aed8d3a4a87077700dc7c497ec330cb92458
+358|10:34:46.758 [13] Traversing [Extension(68)|22|0xf51651...1f0a3b|refs:2|D:False|S:True|P:False| to UPDATE
+359|10:34:46.758 [13] Traversing [Branch(127)|21|0xaa72d2...330e6e|refs:2|D:False|S:True|P:False| to UPDATE
+360|10:34:46.758 [13] Traversing [Leaf(42)|4|0xd0b7a5...0c8490|refs:4|D:False|S:True|P:True| to UPDATE
+361|10:34:46.758 [13] Decrementing ref on a node being disconnected [Leaf(42)|4|0xd0b7a5...0c8490|refs:4|D:False|S:True|P:True|
+362|10:34:46.758 [13] Decrementing ref on disappearing branch [Branch(127)|21|0xaa72d2...330e6e|refs:2|D:False|S:True|P:False|
+363|10:34:46.758 [13] Incrementing refs after connecting [Leaf(42)|23||refs:0|D:True|S:False|P:False| to [Branch(127)|24||refs:0|D:True|S:False|P:False|
+364|10:34:46.758 [13] Decrementing ref on an extension which child is being replaced [Extension(68)|22|0xf51651...1f0a3b|refs:2|D:False|S:True|P:False|
+365|10:34:46.758 [13] Connecting [Extension(68)|25||refs:0|D:True|S:False|P:False| with [Branch(127)|24||refs:0|D:True|S:False|P:False|
+366|10:34:46.758 [13] Incrementing refs on [Branch(127)|24||refs:0|D:True|S:False|P:False| connected to [Extension(68)|25||refs:0|D:True|S:False|P:False|
+367|10:34:46.758 [13] Incrementing refs on a connected root [Extension(68)|25||refs:0|D:True|S:False|P:False|
+368|10:34:46.758 [13] Skipping commit of [Leaf(13)cc208a4d561bad4f8295213105|9||refs:1|D:False|S:True|P:True|
+369|10:34:46.758 [13] Skipping commit of [Leaf(42)|17|0xd0b7a5...0c8490|refs:2|D:False|S:True|P:False|
+370|10:34:46.758 [13] Skipping commit of [Leaf(71)|6|0x2a2f8d...3dede5|refs:5|D:False|S:True|P:True|
+371|10:34:46.758 [13] Beginning new BlockCommitPackage - 11 | memory 3248
+372|10:34:46.758 [13] Start dispatching BlockCommitPackage - 7 | memory 3248
+373|10:34:46.758 [13] Carrying a TrieNode [Branch(107)|13|0x200751...c10945|refs:2|D:False|S:True|P:False|.
+374|10:34:46.758 [13] Carrying a TrieNode [Extension(68)|14|0x3d36df...8030d1|refs:2|D:False|S:True|P:False|.
+375|10:34:46.758 [13] Decrementing all refs starting from root [Extension(68)|14|0x3d36df...8030d1|refs:2|D:False|S:True|P:False|
+376|10:34:46.758 [13] End dispatching BlockCommitPackage - 7 | memory 2352
+377|10:34:46.758 [13] Trie node cache (7)
+378|10:34:46.758 [13]   [Leaf(42)|17|0xd0b7a5...0c8490|refs:2|D:False|S:True|P:False|
+379|10:34:46.758 [13]   [Extension(68)|14|0x3d36df...8030d1|refs:1|D:False|S:True|P:False|
+380|10:34:46.762 [13]   [Branch(107)|13|0x200751...c10945|refs:1|D:False|S:True|P:False|
+381|10:34:46.762 [13]   [Extension(68)|16|0x2f586d...2ca128|refs:1|D:False|S:True|P:False|
+382|10:34:46.762 [13]   [Branch(75)|15|0xe787ea...222289|refs:1|D:False|S:True|P:False|
+383|10:34:46.762 [13]   [Extension(68)|22|0xf51651...1f0a3b|refs:1|D:False|S:True|P:False|
+384|10:34:46.762 [13]   [Branch(127)|21|0xaa72d2...330e6e|refs:1|D:False|S:True|P:False|
+385|10:34:46.762 [13] Committing 11 [NodeCommitInfo|[Leaf(71)|23|0x2a2f8d...3dede5|refs:1|D:False|S:True|P:False||child 0 of [Branch(127)|24|0x7447e5...50b733|refs:1|D:False|S:True|P:False|]
+386|10:34:46.762 [13] Trie node cache (8)
+387|10:34:46.762 [13]   [Leaf(42)|17|0xd0b7a5...0c8490|refs:2|D:False|S:True|P:False|
+388|10:34:46.762 [13]   [Leaf(71)|23|0x2a2f8d...3dede5|refs:1|D:False|S:True|P:False|
+389|10:34:46.762 [13]   [Extension(68)|14|0x3d36df...8030d1|refs:1|D:False|S:True|P:False|
+390|10:34:46.762 [13]   [Branch(107)|13|0x200751...c10945|refs:1|D:False|S:True|P:False|
+391|10:34:46.762 [13]   [Extension(68)|16|0x2f586d...2ca128|refs:1|D:False|S:True|P:False|
+392|10:34:46.762 [13]   [Branch(75)|15|0xe787ea...222289|refs:1|D:False|S:True|P:False|
+393|10:34:46.762 [13]   [Extension(68)|22|0xf51651...1f0a3b|refs:1|D:False|S:True|P:False|
+394|10:34:46.762 [13]   [Branch(127)|21|0xaa72d2...330e6e|refs:1|D:False|S:True|P:False|
+395|10:34:46.762 [13] Committing 11 [NodeCommitInfo|[Branch(127)|24|0x7447e5...50b733|refs:1|D:False|S:True|P:False||child 0 of [Extension(68)|25|0xdb7754...cf57e0|refs:1|D:False|S:True|P:False|]
+396|10:34:46.762 [13] Trie node cache (9)
+397|10:34:46.762 [13]   [Leaf(42)|17|0xd0b7a5...0c8490|refs:2|D:False|S:True|P:False|
+398|10:34:46.762 [13]   [Leaf(71)|23|0x2a2f8d...3dede5|refs:1|D:False|S:True|P:False|
+399|10:34:46.762 [13]   [Extension(68)|14|0x3d36df...8030d1|refs:1|D:False|S:True|P:False|
+400|10:34:46.762 [13]   [Branch(107)|13|0x200751...c10945|refs:1|D:False|S:True|P:False|
+401|10:34:46.762 [13]   [Extension(68)|16|0x2f586d...2ca128|refs:1|D:False|S:True|P:False|
+402|10:34:46.762 [13]   [Branch(75)|15|0xe787ea...222289|refs:1|D:False|S:True|P:False|
+403|10:34:46.762 [13]   [Extension(68)|22|0xf51651...1f0a3b|refs:1|D:False|S:True|P:False|
+404|10:34:46.762 [13]   [Branch(127)|21|0xaa72d2...330e6e|refs:1|D:False|S:True|P:False|
+405|10:34:46.762 [13]   [Branch(127)|24|0x7447e5...50b733|refs:1|D:False|S:True|P:False|
+406|10:34:46.762 [13] Committing 11 [NodeCommitInfo|[Extension(68)|25|0xdb7754...cf57e0|refs:1|D:False|S:True|P:False||root]
+407|10:34:46.762 [13] Trie node cache (10)
+408|10:34:46.762 [13]   [Leaf(42)|17|0xd0b7a5...0c8490|refs:2|D:False|S:True|P:False|
+409|10:34:46.762 [13]   [Leaf(71)|23|0x2a2f8d...3dede5|refs:1|D:False|S:True|P:False|
+410|10:34:46.762 [13]   [Extension(68)|14|0x3d36df...8030d1|refs:1|D:False|S:True|P:False|
+411|10:34:46.762 [13]   [Branch(107)|13|0x200751...c10945|refs:1|D:False|S:True|P:False|
+412|10:34:46.762 [13]   [Extension(68)|16|0x2f586d...2ca128|refs:1|D:False|S:True|P:False|
+413|10:34:46.762 [13]   [Branch(75)|15|0xe787ea...222289|refs:1|D:False|S:True|P:False|
+414|10:34:46.762 [13]   [Extension(68)|22|0xf51651...1f0a3b|refs:1|D:False|S:True|P:False|
+415|10:34:46.762 [13]   [Branch(127)|21|0xaa72d2...330e6e|refs:1|D:False|S:True|P:False|
+416|10:34:46.762 [13]   [Branch(127)|24|0x7447e5...50b733|refs:1|D:False|S:True|P:False|
+417|10:34:46.762 [13]   [Extension(68)|25|0xdb7754...cf57e0|refs:1|D:False|S:True|P:False|
+418|10:34:46.762 [13] Current root: , block 11
+419|10:34:46.762 [13] Finished committing block 11
+420|10:34:46.762 [13] Setting 0000000000000000000000000000000000000000000000000000000000000002 = 4d561bad4f8295213105
+421|10:34:46.762 [13] Traversing [Extension(68)|25|0xdb7754...cf57e0|refs:2|D:False|S:True|P:False| to UPDATE
+422|10:34:46.762 [13] Traversing [Branch(127)|24|0x7447e5...50b733|refs:2|D:False|S:True|P:False| to UPDATE
+423|10:34:46.762 [13] Traversing [Leaf(42)|17|0xd0b7a5...0c8490|refs:3|D:False|S:True|P:False| to UPDATE
+424|10:34:46.762 [13] Decrementing ref on a node being disconnected [Leaf(42)|17|0xd0b7a5...0c8490|refs:3|D:False|S:True|P:False|
+425|10:34:46.762 [13] Decrementing ref on disappearing branch [Branch(127)|24|0x7447e5...50b733|refs:2|D:False|S:True|P:False|
+426|10:34:46.762 [13] Incrementing refs after connecting [Leaf(42)|26||refs:0|D:True|S:False|P:False| to [Branch(127)|27||refs:0|D:True|S:False|P:False|
+427|10:34:46.762 [13] Decrementing ref on an extension which child is being replaced [Extension(68)|25|0xdb7754...cf57e0|refs:2|D:False|S:True|P:False|
+428|10:34:46.762 [13] Connecting [Extension(68)|28||refs:0|D:True|S:False|P:False| with [Branch(127)|27||refs:0|D:True|S:False|P:False|
+429|10:34:46.762 [13] Incrementing refs on [Branch(127)|27||refs:0|D:True|S:False|P:False| connected to [Extension(68)|28||refs:0|D:True|S:False|P:False|
+430|10:34:46.762 [13] Incrementing refs on a connected root [Extension(68)|28||refs:0|D:True|S:False|P:False|
+431|10:34:46.762 [13] Skipping commit of [Leaf(71)|23|0x2a2f8d...3dede5|refs:2|D:False|S:True|P:False|
+432|10:34:46.762 [13] Skipping commit of [Leaf(13)cc208a4d561bad4f8295213105|9||refs:1|D:False|S:True|P:True|
+433|10:34:46.762 [13] Skipping commit of an inlined [Leaf(13)cc208a4d561bad4f8295213105|26||refs:1|D:False|S:True|P:True|
+434|10:34:46.762 [13] Skipping commit of [Leaf(71)|6|0x2a2f8d...3dede5|refs:5|D:False|S:True|P:True|
+435|10:34:46.762 [13] Beginning new BlockCommitPackage - 12 | memory 3656
+436|10:34:46.762 [13] Start dispatching BlockCommitPackage - 8 | memory 3656
+437|10:34:46.762 [13] Saving a TrieNode [Branch(107)|13|0x200751...c10945|refs:1|D:False|S:True|P:False|.
+438|10:34:46.762 [13] Saving a TrieNode [Extension(68)|14|0x3d36df...8030d1|refs:1|D:False|S:True|P:False|.
+439|10:34:46.762 [13] Saving a TrieNode [Branch(75)|15|0xe787ea...222289|refs:1|D:False|S:True|P:False|.
+440|10:34:46.762 [13] Saving a TrieNode [Extension(68)|16|0x2f586d...2ca128|refs:1|D:False|S:True|P:False|.
+441|10:34:46.762 [13] Decrementing all refs starting from root [Extension(68)|16|0x2f586d...2ca128|refs:1|D:False|S:True|P:True|
+442|10:34:46.762 [13] End dispatching BlockCommitPackage - 8 | memory 2792
+443|10:34:46.762 [13] Trie node cache (6)
+444|10:34:46.762 [13]   [Leaf(42)|17|0xd0b7a5...0c8490|refs:2|D:False|S:True|P:False|
+445|10:34:46.762 [13]   [Leaf(71)|23|0x2a2f8d...3dede5|refs:2|D:False|S:True|P:False|
+446|10:34:46.762 [13]   [Extension(68)|22|0xf51651...1f0a3b|refs:1|D:False|S:True|P:False|
+447|10:34:46.762 [13]   [Branch(127)|21|0xaa72d2...330e6e|refs:1|D:False|S:True|P:False|
+448|10:34:46.762 [13]   [Branch(127)|24|0x7447e5...50b733|refs:1|D:False|S:True|P:False|
+449|10:34:46.762 [13]   [Extension(68)|25|0xdb7754...cf57e0|refs:1|D:False|S:True|P:False|
+450|10:34:46.762 [13] Committing 12 [NodeCommitInfo|[Branch(107)|27|0xf232c4...345ba9|refs:1|D:False|S:True|P:False||child 0 of [Extension(68)|28|0xc34f0e...45dc5e|refs:1|D:False|S:True|P:False|]
+451|10:34:46.762 [13] Trie node cache (7)
+452|10:34:46.762 [13]   [Leaf(42)|17|0xd0b7a5...0c8490|refs:2|D:False|S:True|P:False|
+453|10:34:46.762 [13]   [Leaf(71)|23|0x2a2f8d...3dede5|refs:2|D:False|S:True|P:False|
+454|10:34:46.762 [13]   [Branch(107)|27|0xf232c4...345ba9|refs:1|D:False|S:True|P:False|
+455|10:34:46.762 [13]   [Extension(68)|22|0xf51651...1f0a3b|refs:1|D:False|S:True|P:False|
+456|10:34:46.762 [13]   [Branch(127)|21|0xaa72d2...330e6e|refs:1|D:False|S:True|P:False|
+457|10:34:46.762 [13]   [Branch(127)|24|0x7447e5...50b733|refs:1|D:False|S:True|P:False|
+458|10:34:46.762 [13]   [Extension(68)|25|0xdb7754...cf57e0|refs:1|D:False|S:True|P:False|
+459|10:34:46.762 [13] Committing 12 [NodeCommitInfo|[Extension(68)|28|0xc34f0e...45dc5e|refs:1|D:False|S:True|P:False||root]
+460|10:34:46.762 [13] Trie node cache (8)
+461|10:34:46.762 [13]   [Leaf(42)|17|0xd0b7a5...0c8490|refs:2|D:False|S:True|P:False|
+462|10:34:46.762 [13]   [Leaf(71)|23|0x2a2f8d...3dede5|refs:2|D:False|S:True|P:False|
+463|10:34:46.762 [13]   [Branch(107)|27|0xf232c4...345ba9|refs:1|D:False|S:True|P:False|
+464|10:34:46.762 [13]   [Extension(68)|28|0xc34f0e...45dc5e|refs:1|D:False|S:True|P:False|
+465|10:34:46.762 [13]   [Extension(68)|22|0xf51651...1f0a3b|refs:1|D:False|S:True|P:False|
+466|10:34:46.762 [13]   [Branch(127)|21|0xaa72d2...330e6e|refs:1|D:False|S:True|P:False|
+467|10:34:46.762 [13]   [Branch(127)|24|0x7447e5...50b733|refs:1|D:False|S:True|P:False|
+468|10:34:46.762 [13]   [Extension(68)|25|0xdb7754...cf57e0|refs:1|D:False|S:True|P:False|
+469|10:34:46.762 [13] Current root: , block 12
+470|10:34:46.762 [13] Finished committing block 12
+471|10:34:46.762 [13] Beginning new BlockCommitPackage - 13 | memory 3688
+472|10:34:46.762 [13] Start dispatching BlockCommitPackage - 9 | memory 3688
+473|10:34:46.762 [13] Carrying a TrieNode [Leaf(42)|17|0xd0b7a5...0c8490|refs:2|D:False|S:True|P:False|.
+474|10:34:46.762 [13] Decrementing all refs starting from root [Leaf(42)|17|0xd0b7a5...0c8490|refs:2|D:False|S:True|P:False|
+475|10:34:46.762 [13] End dispatching BlockCommitPackage - 9 | memory 3208
+476|10:34:46.762 [13] Trie node cache (8)
+477|10:34:46.762 [13]   [Leaf(42)|17|0xd0b7a5...0c8490|refs:1|D:False|S:True|P:False|
+478|10:34:46.762 [13]   [Leaf(71)|23|0x2a2f8d...3dede5|refs:3|D:False|S:True|P:False|
+479|10:34:46.762 [13]   [Branch(107)|27|0xf232c4...345ba9|refs:2|D:False|S:True|P:False|
+480|10:34:46.762 [13]   [Extension(68)|28|0xc34f0e...45dc5e|refs:2|D:False|S:True|P:False|
+481|10:34:46.762 [13]   [Extension(68)|22|0xf51651...1f0a3b|refs:1|D:False|S:True|P:False|
+482|10:34:46.762 [13]   [Branch(127)|21|0xaa72d2...330e6e|refs:1|D:False|S:True|P:False|
+483|10:34:46.762 [13]   [Branch(127)|24|0x7447e5...50b733|refs:1|D:False|S:True|P:False|
+484|10:34:46.762 [13]   [Extension(68)|25|0xdb7754...cf57e0|refs:1|D:False|S:True|P:False|
+485|10:34:46.762 [13] Current root: , block 13
+486|10:34:46.762 [13] Finished committing block 13
+487|10:34:46.762 [13] Setting 0000000000000000000000000000000000000000000000000000000000000003 = 6c5cc1e46f79f8c4ee8198b2db89d415a812e93cc9fc4ffa20d78cc5b8345c3f22ff3c7dfafbc367a6a7ca4918906f34aed8d3a4a87077700dc7c497ec330cb92458
+488|10:34:46.762 [13] Traversing [Extension(68)|28|0xc34f0e...45dc5e|refs:3|D:False|S:True|P:False| to UPDATE
+489|10:34:46.762 [13] Traversing [Branch(107)|27|0xf232c4...345ba9|refs:3|D:False|S:True|P:False| to UPDATE
+490|10:34:46.762 [13] Traversing [Leaf(71)|6|0x2a2f8d...3dede5|refs:5|D:False|S:True|P:True| to UPDATE
+491|10:34:46.762 [13] Beginning new BlockCommitPackage - 14 | memory 3344
+492|10:34:46.762 [13] Start dispatching BlockCommitPackage - 10 | memory 3344
+493|10:34:46.762 [13] Dropping a TrieNode [Leaf(42)|17|0xd0b7a5...0c8490|refs:1|D:False|S:True|P:False|.
+494|10:34:46.762 [13] Dropping a TrieNode [Branch(127)|21|0xaa72d2...330e6e|refs:1|D:False|S:True|P:False|.
+495|10:34:46.762 [13] Dropping a TrieNode [Extension(68)|22|0xf51651...1f0a3b|refs:1|D:False|S:True|P:False|.
+496|10:34:46.762 [13] Decrementing all refs starting from root [Extension(68)|22|0xf51651...1f0a3b|refs:1|D:False|S:True|P:False|
+497|10:34:46.762 [13] End dispatching BlockCommitPackage - 10 | memory 2432
+498|10:34:46.762 [13] Trie node cache (5)
+499|10:34:46.762 [13]   [Leaf(71)|23|0x2a2f8d...3dede5|refs:4|D:False|S:True|P:False|
+500|10:34:46.762 [13]   [Branch(107)|27|0xf232c4...345ba9|refs:3|D:False|S:True|P:False|
+501|10:34:46.762 [13]   [Extension(68)|28|0xc34f0e...45dc5e|refs:3|D:False|S:True|P:False|
+502|10:34:46.762 [13]   [Branch(127)|24|0x7447e5...50b733|refs:1|D:False|S:True|P:False|
+503|10:34:46.762 [13]   [Extension(68)|25|0xdb7754...cf57e0|refs:1|D:False|S:True|P:False|
+504|10:34:46.762 [13] Current root: , block 14
+505|10:34:46.762 [13] Finished committing block 14
+506|10:34:46.762 [13] Deleting 0000000000000000000000000000000000000000000000000000000000000003
+507|10:34:46.762 [13] Traversing [Extension(68)|28|0xc34f0e...45dc5e|refs:4|D:False|S:True|P:False| to DELETE
+508|10:34:46.762 [13] Traversing [Branch(107)|27|0xf232c4...345ba9|refs:4|D:False|S:True|P:False| to DELETE
+509|10:34:46.762 [13] Traversing [Leaf(71)|6|0x2a2f8d...3dede5|refs:5|D:False|S:True|P:True| to DELETE
+510|10:34:46.762 [13] Decrementing ref on a node being disconnected [Leaf(71)|6|0x2a2f8d...3dede5|refs:5|D:False|S:True|P:True|
+511|10:34:46.762 [13] Decrementing ref on disappearing branch [Branch(107)|27|0xf232c4...345ba9|refs:4|D:False|S:True|P:False|
+512|10:34:46.762 [13] Decrementing ref on an extension which child is being replaced [Extension(68)|28|0xc34f0e...45dc5e|refs:4|D:False|S:True|P:False|
+513|10:34:46.762 [13] Connecting [Extension(68)|30||refs:0|D:True|S:False|P:False| with [Branch(107)|29||refs:0|D:True|S:False|P:False|
+514|10:34:46.762 [13] Incrementing refs on [Branch(107)|29||refs:0|D:True|S:False|P:False| connected to [Extension(68)|30||refs:0|D:True|S:False|P:False|
+515|10:34:46.762 [13] Incrementing refs on a connected root [Extension(68)|30||refs:0|D:True|S:False|P:False|
+516|10:34:46.762 [13] Skipping commit of [Leaf(71)|23|0x2a2f8d...3dede5|refs:5|D:False|S:True|P:False|
+517|10:34:46.762 [13] Skipping commit of [Leaf(13)cc208a4d561bad4f8295213105|9||refs:1|D:False|S:True|P:True|
+518|10:34:46.762 [13] Skipping commit of [Leaf(13)cc208a4d561bad4f8295213105|26||refs:1|D:False|S:True|P:True|
+519|10:34:46.762 [13] Beginning new BlockCommitPackage - 15 | memory 2568
+520|10:34:46.762 [13] Start dispatching BlockCommitPackage - 11 | memory 2568
+521|10:34:46.762 [13] Carrying a TrieNode [Leaf(71)|23|0x2a2f8d...3dede5|refs:5|D:False|S:True|P:False|.
+522|10:34:46.762 [13] Dropping a TrieNode [Branch(127)|24|0x7447e5...50b733|refs:1|D:False|S:True|P:False|.
+523|10:34:46.762 [13] Dropping a TrieNode [Extension(68)|25|0xdb7754...cf57e0|refs:1|D:False|S:True|P:False|.
+524|10:34:46.762 [13] Decrementing all refs starting from root [Extension(68)|25|0xdb7754...cf57e0|refs:1|D:False|S:True|P:False|

@@ -294,13 +294,8 @@ namespace Nethermind.Trie
             }
             else if (resetObjects)
             {
-                RootRef = GetUnknown(_rootHash);
+                RootRef = FindCachedOrUnknown(_rootHash);
             }
-        }
-
-        internal TrieNode GetUnknown(Keccak hash)
-        {
-            return _keyValueStore.FindCachedOrUnknown(hash);
         }
 
         [DebuggerStepThrough]
@@ -359,7 +354,7 @@ namespace Nethermind.Trie
 
             if (!(rootHash is null))
             {
-                TrieNode rootRef = GetUnknown(rootHash);
+                TrieNode rootRef = FindCachedOrUnknown(rootHash);
                 rootRef.ResolveNode(this);
                 return TraverseNode(rootRef, new TraverseContext(updatePath.Slice(0, nibblesCount), updateValue,
                     false, ignoreMissingDelete));
@@ -1050,7 +1045,7 @@ namespace Nethermind.Trie
             TrieNode rootRef = null;
             if (!rootHash.Equals(Keccak.EmptyTreeHash))
             {
-                rootRef = RootHash == rootHash ? RootRef : GetUnknown(rootHash);
+                rootRef = RootHash == rootHash ? RootRef : FindCachedOrUnknown(rootHash);
                 try
                 {
                     // not allowing caching just for test scenarios when we use multiple trees
