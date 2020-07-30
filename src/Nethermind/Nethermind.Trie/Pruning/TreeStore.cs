@@ -57,9 +57,6 @@ namespace Nethermind.Trie.Pruning
         /// <exception cref="InvalidOperationException"></exception>
         public void Commit(long blockNumber, NodeCommitInfo nodeCommitInfo)
         {
-            if (_logger.IsTrace)
-                _logger.Trace($"Committing {blockNumber} {nodeCommitInfo}");
-
             if (blockNumber < 0)
                 throw new ArgumentOutOfRangeException(nameof(blockNumber));
 
@@ -68,6 +65,9 @@ namespace Nethermind.Trie.Pruning
             {
                 BeginNewPackage(blockNumber);
             }
+            
+            if (_logger.IsTrace)
+                _logger.Trace($"Committing {blockNumber} {nodeCommitInfo}");
 
             _currentRoot = nodeCommitInfo.Node ?? _currentRoot;
 
@@ -94,7 +94,7 @@ namespace Nethermind.Trie.Pruning
                     TrieNode cachedReplacement = _trieNodeCache.Get(trieNode.Keccak);
                     if (!ReferenceEquals(cachedReplacement, trieNode))
                     {
-                        if(_logger.IsTrace) _logger.Trace($"Replacing a {nameof(trieNode)} object {trieNode} with its cached representation.");
+                        if(_logger.IsTrace) _logger.Trace($"Replacing a {nameof(trieNode)} object {trieNode} with its cached representation {cachedReplacement}.");
                         if (!nodeCommitInfo.IsRoot)
                         {
                             nodeCommitInfo.NodeParent!.ReplaceChildRef(nodeCommitInfo.ChildPositionAtParent, cachedReplacement);
@@ -111,6 +111,8 @@ namespace Nethermind.Trie.Pruning
                     AddToMemory(CurrentPackage.MemorySize - previousPackageMemory);
                 }
             }
+            
+            _trieNodeCache.Dump();
         }
 
         public void Flush()

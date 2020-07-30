@@ -157,6 +157,8 @@ namespace Nethermind.Trie
                 if(_logger.IsTrace) _logger.Trace($"Skipping commit of root {RootRef}");
                 _keyValueStore.Commit(blockNumber, NodeCommitInfo.BlockFinalizationMarker);
             }
+            
+            if(_logger.IsDebug) _logger.Debug($"Finished committing block {blockNumber}");
         }
 
         private void Commit(NodeCommitInfo nodeCommitInfo)
@@ -274,6 +276,10 @@ namespace Nethermind.Trie
             {
                 NodeCache.Set(node.Keccak, node.FullRlp);
                 _currentCommit.Enqueue(nodeCommitInfo);
+            }
+            else
+            {
+                if(_logger.IsTrace) _logger.Trace($"Skipping commit of an inlined {node}");
             }
         }
 

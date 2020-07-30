@@ -1,5 +1,6 @@
 using System;
 using System.Threading;
+using Nethermind.Core.Test;
 using Nethermind.Logging;
 using NUnit.Framework;
 
@@ -14,9 +15,11 @@ namespace Nethermind.Trie.Test
             _logLevel = logLevel;
         }
 
+        private static int _keepOrdering = 0;
+        
         private void Log(string text)
         {
-            TestContext.Out.WriteLine($"{DateTime.Now:HH:mm:ss.fff} [{Thread.CurrentThread.ManagedThreadId}] {text}");
+            TestContext.Out.WriteLine($"{Interlocked.Increment(ref _keepOrdering)}|{DateTime.Now:HH:mm:ss.fff} [{Thread.CurrentThread.ManagedThreadId}] {text}");
             TestContext.Out.Flush();
         }
 

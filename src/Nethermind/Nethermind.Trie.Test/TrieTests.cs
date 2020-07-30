@@ -378,7 +378,7 @@ namespace Nethermind.Trie.Test
 
             for (int j = 0; j < i; j++)
             {
-                TestContext.WriteLine($"  set {j}");
+                _logger.Trace($"  set {j}");
                 Keccak key = TestItem.Keccaks[j];
                 byte[] value = new byte[128];
                 value[^1] = (byte) j;
@@ -387,7 +387,7 @@ namespace Nethermind.Trie.Test
 
             for (int j = 0; j < i; j++)
             {
-                TestContext.WriteLine($"  delete {j}");
+                _logger.Trace($"  delete {j}");
                 Keccak key = TestItem.Keccaks[j];
                 patriciaTree.Set(key.Bytes, Array.Empty<byte>());
             }
@@ -449,7 +449,7 @@ namespace Nethermind.Trie.Test
 
             for (int i = 1; i < 100; i++)
             {
-                TestContext.WriteLine(i);
+                _logger.Trace(i.ToString());
                 Test_add_many(i);
                 Test_update_many(i);
                 Test_update_many_next_block(i);
@@ -724,7 +724,7 @@ namespace Nethermind.Trie.Test
             
             // string fileName = Path.GetTempFileName();
             string fileName = "C:\\Temp\\fuzz.txt";
-            TestContext.Out.WriteLine(
+            _logger.Info(
                 $"Fuzzing with accounts: {accountsCount}, " +
                 $"blocks {blocksCount}, " +
                 $"values: {uniqueValuesCount}, " +
@@ -737,9 +737,8 @@ namespace Nethermind.Trie.Test
 
             Random random = new Random();
             MemDb memDb = new MemDb();
-
-            ILogManager logManager = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Trace));
-            TreeStore treeStore = new TreeStore(_trieNodeCache, memDb, _refsJournal, logManager, 1.MB(), lookupLimit);
+            
+            TreeStore treeStore = new TreeStore(_trieNodeCache, memDb, _refsJournal, _logManager, 1.MB(), lookupLimit);
             PatriciaTree patriciaTree = new PatriciaTree(treeStore, _logger);
 
             byte[][] accounts = new byte[accountsCount][];
@@ -798,7 +797,7 @@ namespace Nethermind.Trie.Test
 
             treeStore.Flush();
             streamWriter.WriteLine($"DB size: {memDb.Keys.Count}");
-            TestContext.Out.WriteLine($"DB size: {memDb.Keys.Count}");
+            _logger.Info($"DB size: {memDb.Keys.Count}");
 
             int verifiedBlocks = 0;
 
@@ -813,11 +812,11 @@ namespace Nethermind.Trie.Test
                         patriciaTree.Get(accounts[i]);
                     }
 
-                    TestContext.Out.WriteLine($"Verified positive {verifiedBlocks}");
+                    _logger.Info($"Verified positive {verifiedBlocks}");
                 }
                 catch (Exception)
                 {
-                    TestContext.Out.WriteLine($"Verified negative {verifiedBlocks}");
+                    _logger.Info($"Verified negative {verifiedBlocks}");
                     if (verifiedBlocks % lookupLimit == 0)
                     {
                         // throw new InvalidDataException();

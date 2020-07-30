@@ -20,6 +20,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie.Pruning;
 
@@ -81,7 +82,7 @@ namespace Nethermind.Trie
                 if (value < 0)
                 {
                     throw new InvalidOperationException(
-                        $"Cannot change {nameof(Refs)} on {nameof(TrieNode)} to {value}");
+                        $"Cannot change {nameof(Refs)} on {this} to {value}");
                 }
 
                 _refs = value;
@@ -593,7 +594,8 @@ namespace Nethermind.Trie
         public override string ToString()
         {
 #if DEBUG
-            return $"[{NodeType}({FullRlp?.Length})|{Id}|{Keccak?.ToShortString()}|refs:{Refs}|D:{IsDirty}|S:{IsSealed}|P:{IsPersisted}|";
+            return $"[{NodeType}({FullRlp?.Length}){(FullRlp != null && FullRlp?.Length < 32 ? $"{FullRlp.ToHexString()}" : "")}" +
+                   $"|{Id}|{Keccak?.ToShortString()}|refs:{Refs}|D:{IsDirty}|S:{IsSealed}|P:{IsPersisted}|";
 #else
             return $"[{NodeType}({FullRlp?.Length})|{Keccak?.ToShortString()}|refs:{Refs}|D:{IsDirty}|S:{IsSealed}|P:{IsPersisted}|";
 #endif
