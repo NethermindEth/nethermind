@@ -34,45 +34,6 @@ namespace Nethermind.Trie.Test
         {
         }
 
-        // [Test]
-        // public void When_dispatching_one_root_we_decrease_the_refs_and_move_nodes_somewhere()
-        // {
-        //     throw new NotImplementedException();
-        // }
-        //
-        // [Test]
-        // public void When_committing_one_root_we_mark_the_block_number_on_the_nodes()
-        // {
-        //     throw new NotImplementedException();
-        // }
-        //
-        // [Test]
-        // public void And_what_with_the_storage_tries_big_question()
-        // {
-        //     throw new NotImplementedException();
-        // }
-        //
-        // [Test]
-        // public void In_the_commit_queue_leaves_are_before_other_nodes()
-        // {
-        //     throw new NotImplementedException();
-        // }
-        //
-        // [Test]
-        // public void When_persisting_from_commit_queue_we_do_not_drop_zero_refs_if_this_is_memory_induced()
-        // {
-        //     // in the front of the commit queue is the oldest block
-        //     // and within this block we have leaves first and then everything else
-        //     throw new NotImplementedException();
-        // }
-        //
-        // [Test]
-        // public void When_reorganizing_we_uncommit_and_commit()
-        // {
-        //     // or we do?
-        //     throw new NotImplementedException();
-        // }
-
         private static readonly byte[] _longLeaf1
             = Bytes.FromHexString("0000000000000000000000000000000000000000000000000000000000000000000000000000000001");
 
@@ -759,18 +720,8 @@ namespace Nethermind.Trie.Test
             int uniqueValuesCount,
             int lookupLimit)
         {
-            // TODO: note that the problem is traversing a newly resolved node that has a ref count mismatch because of same keccaks
-            // 23:34:46.990 [13]   [Leaf(98)|13|0x81187a...e159c2|refs:1|D:False|S:True|P:False|
-            // 23:34:46.990 [13] Current root: [Extension(68)|14|0x41dbc4...b3a870|refs:2|D:False|S:True|P:False|, block 8
-            // 23:34:46.990 [13] Setting 0000000000000000000000000000000000000000000000000000000000000003 = a373c9422edd012db9d3e29ceaa64d2689ac6d704e9ba92323a76fa0a6735e62e4a5382e08a8c5e0caeced171235ef1aa77c67017258ec08c9a51f87
-            // 23:34:46.990 [13] Traversing [Extension(68)|2|0x41dbc4...b3a870|refs:0|D:False|S:True|P:True| to UPDATE
-            // 23:34:46.990 [13] Traversing [Branch(83)|3|0x91e6b1...8e8d0b|refs:0|D:False|S:True|P:True| to UPDATE
-            // 23:34:46.990 [13] Decrementing ref on disappearing branch [Branch(83)|3|0x91e6b1...8e8d0b|refs:0|D:False|S:True|P:True|
-            // EXCEPTION on ref to -1
-            
-            
-            // string fileName = Path.GetTempFileName();
-            string fileName = "C:\\Temp\\fuzz.txt";
+            string fileName = Path.GetTempFileName();
+            //string fileName = "C:\\Temp\\fuzz.txt";
             _logger.Info(
                 $"Fuzzing with accounts: {accountsCount}, " +
                 $"blocks {blocksCount}, " +
