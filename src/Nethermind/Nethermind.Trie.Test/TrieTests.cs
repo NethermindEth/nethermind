@@ -820,7 +820,7 @@ namespace Nethermind.Trie.Test
                     TestContext.Out.WriteLine($"Verified negative {verifiedBlocks}");
                     if (verifiedBlocks % lookupLimit == 0)
                     {
-                        throw new InvalidDataException();
+                        // throw new InvalidDataException();
                     }
                 }
 

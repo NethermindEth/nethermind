@@ -48,10 +48,17 @@ namespace Nethermind.Trie.Pruning
             return _trieNodeCache.IsInMemory(key);
         }
 
-        public void Commit(long blockNumber, TrieNode? trieNode)
+        /// <summary>
+        /// Beware - at the moment we assume a strict leaf to root ordering of commits
+        /// </summary>
+        /// <param name="blockNumber"></param>
+        /// <param name="nodeCommitInfo"></param>
+        /// <exception cref="ArgumentOutOfRangeException"></exception>
+        /// <exception cref="InvalidOperationException"></exception>
+        public void Commit(long blockNumber, NodeCommitInfo nodeCommitInfo)
         {
             if (_logger.IsTrace)
-                _logger.Trace($"Committing {blockNumber} {trieNode}");
+                _logger.Trace($"Committing {blockNumber} {nodeCommitInfo}");
 
             if (blockNumber < 0)
                 throw new ArgumentOutOfRangeException(nameof(blockNumber));
@@ -62,13 +69,14 @@ namespace Nethermind.Trie.Pruning
                 BeginNewPackage(blockNumber);
             }
 
-            _currentRoot = trieNode ?? _currentRoot;
+            _currentRoot = nodeCommitInfo.Node ?? _currentRoot;
 
-            if (trieNode != null)
+            if (!nodeCommitInfo.IsEmptyBlockMarker)
             {
+                TrieNode trieNode = nodeCommitInfo.Node;
                 _commitCount++;
 
-                if (trieNode.Keccak == null)
+                if (trieNode!.Keccak == null)
                 {
                     throw new InvalidOperationException(
                         $"Hash of the node {trieNode} should be known at the time of committing.");
@@ -78,8 +86,22 @@ namespace Nethermind.Trie.Pruning
 
                 if (_trieNodeCache.IsInMemory(trieNode.Keccak))
                 {
-                    // TODO: check if this solves the checklist problem
-                    // _inMemNodes[trieNode.Keccak].Refs += trieNode.Refs;
+                    // DONE 1) replace at parent
+                    // DONE 2) update ref at node
+                    // TODO: 2) update references below
+                    // TODO: 3) avoid updating the structure multiple times
+
+                    TrieNode cachedReplacement = _trieNodeCache.Get(trieNode.Keccak);
+                    if (!ReferenceEquals(cachedReplacement, trieNode))
+                    {
+                        if(_logger.IsTrace) _logger.Trace($"Replacing a {nameof(trieNode)} object {trieNode} with its cached representation.");
+                        if (!nodeCommitInfo.IsRoot)
+                        {
+                            nodeCommitInfo.NodeParent!.ReplaceChildRef(nodeCommitInfo.ChildPositionAtParent, cachedReplacement);
+                        }
+
+                        cachedReplacement.Refs += trieNode.Refs;
+                    }
                 }
                 else
                 {
@@ -89,16 +111,6 @@ namespace Nethermind.Trie.Pruning
                     AddToMemory(CurrentPackage.MemorySize - previousPackageMemory);
                 }
             }
-        }
-
-        public void Uncommit()
-        {
-            if (_queue.Count == 0)
-            {
-                throw new InvalidOperationException("Trying to uncommit a block when queue is empty");
-            }
-
-            _queue.RemoveLast();
         }
 
         public void Flush()

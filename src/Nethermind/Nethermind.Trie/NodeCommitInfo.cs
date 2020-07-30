@@ -1,0 +1,39 @@
+namespace Nethermind.Trie
+{
+    public readonly struct NodeCommitInfo
+    {
+        public static NodeCommitInfo BlockFinalizationMarker = new NodeCommitInfo();
+
+        public NodeCommitInfo(TrieNode node)
+        {
+            ChildPositionAtParent = 0;
+            Node = node;
+            NodeParent = null;
+        }
+        
+        public NodeCommitInfo(
+            TrieNode node, 
+            TrieNode nodeParent,
+            int childPositionAtParent)
+        {
+            ChildPositionAtParent = childPositionAtParent;
+            Node = node;
+            NodeParent = nodeParent;
+        }
+            
+        public TrieNode? Node { get; }
+            
+        public TrieNode? NodeParent { get; }
+            
+        public int ChildPositionAtParent { get; }
+
+        public bool IsEmptyBlockMarker => Node == null;
+        
+        public bool IsRoot => !IsEmptyBlockMarker && NodeParent == null;
+
+        public override string ToString()
+        {
+            return $"[{nameof(NodeCommitInfo)}|{Node}|child {ChildPositionAtParent} of {NodeParent}]";
+        }
+    }
+}

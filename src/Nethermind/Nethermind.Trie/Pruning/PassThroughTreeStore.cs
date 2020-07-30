@@ -14,8 +14,9 @@ namespace Nethermind.Trie.Pruning
             _keyValueStore = keyValueStore ?? throw new ArgumentNullException(nameof(keyValueStore));
         }
         
-        public void Commit(long blockNumber, TrieNode? trieNode)
+        public void Commit(long blockNumber, NodeCommitInfo nodeCommitInfo)
         {
+            TrieNode? trieNode = nodeCommitInfo.Node;
             if (trieNode != null)
             {
                 if (trieNode.Keccak is null)

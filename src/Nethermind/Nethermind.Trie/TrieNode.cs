@@ -506,6 +506,18 @@ namespace Nethermind.Trie
             return ReferenceEquals(_data![childIndex], _nullNode) ? null : (TrieNode) _data[childIndex];
         }
 
+        public void ReplaceChildRef(int i, TrieNode child)
+        {
+            if (child == null)
+            {
+                throw new InvalidOperationException();
+            }
+            
+            InitData();
+            int index = IsExtension ? i + 1 : i;
+            _data![index] = child;
+        }
+        
         public void SetChild(int i, TrieNode? node)
         {
             if (IsSealed)

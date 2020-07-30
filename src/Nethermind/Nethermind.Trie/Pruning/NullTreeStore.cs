@@ -5,7 +5,7 @@ namespace Nethermind.Trie.Pruning
 {
     public class NullTreeStore : ITreeStore
     {
-        public void Commit(long blockNumber, TrieNode trieNode)
+        public void Commit(long blockNumber, NodeCommitInfo nodeCommitInfo)
         {
         }
 

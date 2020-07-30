@@ -54,7 +54,7 @@ namespace Nethermind.Trie
 
         private readonly ConcurrentQueue<Exception>? _commitExceptions;
 
-        private readonly ConcurrentQueue<TrieNode>? _currentCommit;
+        private readonly ConcurrentQueue<NodeCommitInfo>? _currentCommit;
 
         protected readonly ITreeStore _keyValueStore;
 
@@ -96,7 +96,7 @@ namespace Nethermind.Trie
 
             if (_allowCommits)
             {
-                _currentCommit = new ConcurrentQueue<TrieNode>();
+                _currentCommit = new ConcurrentQueue<NodeCommitInfo>();
                 _commitExceptions = new ConcurrentQueue<Exception>();
             }
         }
@@ -134,10 +134,10 @@ namespace Nethermind.Trie
             
             if (RootRef != null && RootRef.IsDirty)
             {
-                Commit(RootRef, true);
+                Commit(new NodeCommitInfo(RootRef));
                 while (!_currentCommit.IsEmpty)
                 {
-                    if (!_currentCommit.TryDequeue(out TrieNode node))
+                    if (!_currentCommit.TryDequeue(out NodeCommitInfo node))
                     {
                         throw new InvalidAsynchronousStateException(
                             $"Threading issue at {nameof(_currentCommit)} - should not happen unless we use static objects somewhere here.");
@@ -154,11 +154,11 @@ namespace Nethermind.Trie
             }
             else
             {
-                _keyValueStore.Commit(blockNumber, null);
+                _keyValueStore.Commit(blockNumber, NodeCommitInfo.BlockFinalizationMarker);
             }
         }
 
-        private void Commit(TrieNode node, bool isRoot)
+        private void Commit(NodeCommitInfo nodeCommitInfo)
         {
             if (_currentCommit is null)
             {
@@ -171,28 +171,29 @@ namespace Nethermind.Trie
                 throw new InvalidAsynchronousStateException(
                     $"{nameof(_commitExceptions)} is NULL when calling {nameof(Commit)}");
             }
-            
-            if (node.IsBranch)
+
+            TrieNode node = nodeCommitInfo.Node;
+            if (node!.IsBranch)
             {
                 // idea from EthereumJ - testing parallel branches
-                if (!_parallelBranches || !isRoot)
+                if (!_parallelBranches || !nodeCommitInfo.IsRoot)
                 {
                     for (int i = 0; i < 16; i++)
                     {
                         if (node.IsChildDirty(i))
                         {
-                            Commit(node.GetChild(this, i)!, false);
+                            Commit(new NodeCommitInfo(node.GetChild(this, i)!, node, i));
                         }
                     }
                 }
                 else
                 {
-                    List<TrieNode> nodesToCommit = new List<TrieNode>();
+                    List<NodeCommitInfo> nodesToCommit = new List<NodeCommitInfo>();
                     for (int i = 0; i < 16; i++)
                     {
                         if (node.IsChildDirty(i))
                         {
-                            nodesToCommit.Add(node.GetChild(this, i));
+                            nodesToCommit.Add(new NodeCommitInfo(node.GetChild(this, i)!, node, i));
                         }
                     }
 
@@ -203,7 +204,7 @@ namespace Nethermind.Trie
                         {
                             try
                             {
-                                Commit(nodesToCommit[i], false);
+                                Commit(nodesToCommit[i]);
                             }
                             catch (Exception e)
                             {
@@ -220,7 +221,7 @@ namespace Nethermind.Trie
                     {
                         for (int i = 0; i < nodesToCommit.Count; i++)
                         {
-                            Commit(nodesToCommit[i], false);
+                            Commit(nodesToCommit[i]);
                         }
                     }
                 }
@@ -235,17 +236,17 @@ namespace Nethermind.Trie
 
                 if (extensionChild.IsDirty)
                 {
-                    Commit(extensionChild, false);
+                    Commit(new NodeCommitInfo(extensionChild, node, 0));
                 }
             }
 
-            node.ResolveKey(this, isRoot);
+            node.ResolveKey(this, nodeCommitInfo.IsRoot);
             node.Seal();
 
             if (node.FullRlp != null && node.FullRlp.Length >= 32)
             {
                 NodeCache.Set(node.Keccak, node.FullRlp);
-                _currentCommit.Enqueue(node);
+                _currentCommit.Enqueue(nodeCommitInfo);
             }
         }
 

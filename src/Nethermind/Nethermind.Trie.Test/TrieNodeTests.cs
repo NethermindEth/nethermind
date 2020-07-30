@@ -698,14 +698,14 @@ namespace Nethermind.Trie.Test
             leaf1.Value = new byte[111];
             leaf1.ResolveKey(treeStore, false);
             leaf1.Seal();
-            treeStore.Commit(0, leaf1);
+            treeStore.Commit(0, new NodeCommitInfo(leaf1));
 
             TrieNode leaf2 = new TrieNode(NodeType.Leaf);
             leaf2.Key = new HexPrefix(true, Bytes.FromHexString("abd"));
             leaf2.Value = new byte[222];
             leaf2.ResolveKey(treeStore, false);
             leaf2.Seal();
-            treeStore.Commit(0, leaf2);
+            treeStore.Commit(0, new NodeCommitInfo(leaf2));
 
             TrieNode trieNode = new TrieNode(NodeType.Branch);
             trieNode.SetChild(1, leaf1);
