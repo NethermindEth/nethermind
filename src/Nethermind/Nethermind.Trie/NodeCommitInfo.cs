@@ -33,7 +33,7 @@ namespace Nethermind.Trie
 
         public override string ToString()
         {
-            return $"[{nameof(NodeCommitInfo)}|{Node}|child {ChildPositionAtParent} of {NodeParent}]";
+            return $"[{nameof(NodeCommitInfo)}|{Node}|{(NodeParent is null ? "root" : $"child {ChildPositionAtParent} of {NodeParent}")}]";
         }
     }
 }

@@ -154,6 +154,7 @@ namespace Nethermind.Trie
             }
             else
             {
+                if(_logger.IsTrace) _logger.Trace($"Skipping commit of root {RootRef}");
                 _keyValueStore.Commit(blockNumber, NodeCommitInfo.BlockFinalizationMarker);
             }
         }
@@ -184,6 +185,17 @@ namespace Nethermind.Trie
                         {
                             Commit(new NodeCommitInfo(node.GetChild(this, i)!, node, i));
                         }
+                        else
+                        {
+                            if (_logger.IsTrace)
+                            {
+                                TrieNode child = node.GetChild(this, i);
+                                if (child != null)
+                                {
+                                    _logger.Trace($"Skipping commit of {child}");
+                                }
+                            }
+                        }
                     }
                 }
                 else
@@ -194,6 +206,17 @@ namespace Nethermind.Trie
                         if (node.IsChildDirty(i))
                         {
                             nodesToCommit.Add(new NodeCommitInfo(node.GetChild(this, i)!, node, i));
+                        }
+                        else
+                        {
+                            if (_logger.IsTrace)
+                            {
+                                TrieNode child = node.GetChild(this, i);
+                                if (child != null)
+                                {
+                                    _logger.Trace($"Skipping commit of {child}");
+                                }
+                            }
                         }
                     }
 
@@ -237,6 +260,10 @@ namespace Nethermind.Trie
                 if (extensionChild.IsDirty)
                 {
                     Commit(new NodeCommitInfo(extensionChild, node, 0));
+                }
+                else
+                {
+                    if(_logger.IsTrace) _logger.Trace($"Skipping commit of {extensionChild}");
                 }
             }
 
@@ -292,7 +319,7 @@ namespace Nethermind.Trie
         public void Set(Span<byte> rawKey, byte[] value)
         {
             if(_logger.IsTrace)
-                _logger.Trace($"Setting {rawKey.ToHexString()} = {value.ToHexString()}");
+                _logger.Trace($"{(value.Length == 0 ? $"Deleting {rawKey.ToHexString()}" : $"Setting {rawKey.ToHexString()} = {value.ToHexString()}")}");
             
 //            ValueCache.Delete(rawKey);
             int nibblesCount = 2 * rawKey.Length;
