@@ -122,13 +122,14 @@ namespace Nethermind.Trie.Pruning
             {
                 CurrentPackage.Seal();
                 CurrentPackage.Root = root;
+                if(_logger.IsTrace)
+                    _logger.Trace(
+                        $"Current root (block {blockNumber}): {CurrentPackage.Root}, block {CurrentPackage?.BlockNumber}");
+                if(_logger.IsTrace)
+                    _logger.Trace(
+                        $"Incrementing refs from block {blockNumber} root {CurrentPackage.Root?.ToString() ?? "NULL"} ");
                 CurrentPackage.Root?.IncrementRefsRecursively(CurrentPackage.BlockNumber);
-                if(_logger.IsTrace)
-                    _logger.Trace(
-                        $"Current root (block {blockNumber}): {CurrentPackage?.Root}, block {CurrentPackage?.BlockNumber}");
-                if(_logger.IsTrace)
-                    _logger.Trace(
-                        $"Incrementing refs from block {blockNumber} root {CurrentPackage?.Root} ");
+                _trieNodeCache.Dump();
             }
         }
 
@@ -152,11 +153,6 @@ namespace Nethermind.Trie.Pruning
                               $"| drop count {_dropCount} " +
                               $"| carry count {_carriedCount} " +
                               $"| save count {_saveCount}");
-        }
-
-        public void UpdateRefs(TrieNode trieNode, int refChange)
-        {
-            throw new NotImplementedException();
         }
 
         public TrieNode? FindCachedOrUnknown(Keccak hash)
@@ -295,7 +291,7 @@ namespace Nethermind.Trie.Pruning
 
             long memoryToDrop = commitPackage.MemorySize + LinkedListNodeMemorySize;
 
-            TrieNode root = null;
+            TrieNode root = commitPackage.Root;
             Queue<TrieNode> localCarryQueue = _carryQueue;
             _carryQueue = new Queue<TrieNode>();
             
@@ -305,7 +301,6 @@ namespace Nethermind.Trie.Pruning
             while (localCarryQueue.TryDequeue(out TrieNode currentNode) ||
                    commitPackage.TryDequeue(out currentNode))
             {
-                root = currentNode; // root will be the last one
                 Debug.Assert(currentNode.Keccak != null, $"Committed node {currentNode} has a NULL key");
                 Debug.Assert(currentNode.FullRlp != null, $"Committed node {currentNode} has a NULL {nameof(currentNode.FullRlp)}");
 
@@ -358,13 +353,15 @@ namespace Nethermind.Trie.Pruning
                     }     
                 }
             }
-
-            if (_logger.IsTrace)
-                _logger.Trace($"Decrementing all refs starting from root {root}");
+            
             if (root != null && root.Refs != 0)
             {
                 // remove from memory on zero reference?
+                if(_logger.IsTrace)
+                    _logger.Trace(
+                        $"Decrementing refs from block {commitPackage.BlockNumber} root {commitPackage.Root?.ToString() ?? "NULL"}");
                 root.DecrementRefsRecursively();
+                _trieNodeCache.Dump();
             }
 
             MemorySize -= memoryToDrop;
