@@ -41,10 +41,5 @@ namespace Nethermind.Trie.Pruning
         {
             return _keyValueStore[hash.Bytes];
         }
-
-        public void UpdateRefs(TrieNode trieNode, int refChange)
-        {
-            throw new NotImplementedException();
-        }
     }
 }

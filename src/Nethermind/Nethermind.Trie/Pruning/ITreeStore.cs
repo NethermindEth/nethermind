@@ -5,7 +5,5 @@ namespace Nethermind.Trie.Pruning
         void Commit(long blockNumber, NodeCommitInfo nodeCommitInfo);
         
         void FinalizeBlock(long blockNumber, TrieNode? root);
-
-        void UpdateRefs(TrieNode trieNode, int refChange);
     }
 }

@@ -46,14 +46,12 @@ namespace Nethermind.Trie
 
             // is it equivalent??? maybe can only use IsDirty
             IsDirty = true;
-            IsSealed = false;
         }
 
         public TrieNode(NodeType nodeType, Keccak keccak)
         {
             NodeType = nodeType;
             Keccak = keccak;
-            IsSealed = true;
         }
 
         public TrieNode(NodeType nodeType, byte[] rlp)
@@ -61,7 +59,6 @@ namespace Nethermind.Trie
             NodeType = nodeType;
             FullRlp = rlp;
             _rlpStream = rlp.AsRlpStream();
-            IsSealed = true;
         }
 
         /// <summary>
@@ -101,8 +98,7 @@ namespace Nethermind.Trie
         /// </summary>
         public bool IsSealed
         {
-            get => _isSealed;
-            private set => _isSealed = value;
+            get => !IsDirty;
         }
 
         public bool IsPersisted
@@ -122,7 +118,6 @@ namespace Nethermind.Trie
             }
 
             IsDirty = false;
-            IsSealed = true;
         }
 
         public Keccak? Keccak { get; private set; }
@@ -175,12 +170,6 @@ namespace Nethermind.Trie
             get => _isDirty;
             private set
             {
-                if (IsSealed)
-                {
-                    throw new InvalidOperationException(
-                        $"{nameof(TrieNode)} {this} is already sealed when setting {nameof(IsDirty)}.");
-                }
-
                 if (value)
                 {
                     Keccak = null;
@@ -321,7 +310,10 @@ namespace Nethermind.Trie
                     HexPrefix key = HexPrefix.FromBytes(_rlpStream.DecodeByteArraySpan());
                     bool isExtension = key.IsExtension;
 
-                    IsSealed = false;
+                    // a hack to set internally and still verify attempts from the outside
+                    // after the code is ready we should just add proper access control for methods from the outside and inside
+                    IsDirty = true;
+
                     if (isExtension)
                     {
                         NodeType = NodeType.Extension;
@@ -333,8 +325,8 @@ namespace Nethermind.Trie
                         Key = key;
                         Value = _rlpStream.DecodeByteArray();
                     }
-
-                    IsSealed = true;
+                    
+                    IsDirty = false;
                 }
                 else
                 {

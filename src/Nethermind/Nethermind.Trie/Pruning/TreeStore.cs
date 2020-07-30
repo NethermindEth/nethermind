@@ -43,11 +43,6 @@ namespace Nethermind.Trie.Pruning
                 40 /* linked list */;
         }
 
-        public bool IsInMemory(Keccak key)
-        {
-            return _trieNodeCache.IsInMemory(key);
-        }
-
         /// <summary>
         /// Beware - at the moment we assume a strict leaf to root ordering of commits
         /// </summary>

@@ -22,9 +22,5 @@ namespace Nethermind.Trie.Pruning
         {
             return Array.Empty<byte>();
         }
-
-        public void UpdateRefs(TrieNode trieNode, int refChange)
-        {
-        }
     }
 }
