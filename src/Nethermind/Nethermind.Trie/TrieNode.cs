@@ -125,7 +125,19 @@ namespace Nethermind.Trie
 
         public Keccak? Keccak { get; private set; }
 
-        public byte[]? FullRlp { get; private set; }
+        public byte[]? FullRlp
+        {
+            get => _fullRlp;
+            private set
+            {
+                _fullRlp = value;
+                if (_fullRlp != null && _fullRlp.Length < 32)
+                {
+                    IsPersisted = true;
+                    Refs = int.MaxValue;
+                }
+            }
+        }
 
         public NodeType NodeType { get; private set; }
 
@@ -722,6 +734,7 @@ namespace Nethermind.Trie
         private bool _isPersisted;
 
         private bool _isSealed;
+        private byte[]? _fullRlp;
 
         #endregion
     }
