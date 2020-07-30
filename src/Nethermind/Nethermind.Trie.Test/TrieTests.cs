@@ -234,17 +234,17 @@ namespace Nethermind.Trie.Test
             checkTree.Get(_keyC).Should().BeEquivalentTo(_longLeaf1);
         }
         
-        [Test]
-        public void When_an_inlined_leaf_is_cloned_and_the_extended_version_is_no_longer_inlined()
-        {
-            throw new NotImplementedException();
-        }
-        
-        [Test]
-        public void When_a_node_is_loaded_from_the_DB_as_unknown_and_unreferenced()
-        {
-            throw new NotImplementedException();
-        }
+        // [Test]
+        // public void When_an_inlined_leaf_is_cloned_and_the_extended_version_is_no_longer_inlined()
+        // {
+        //     throw new NotImplementedException();
+        // }
+        //
+        // [Test]
+        // public void When_a_node_is_loaded_from_the_DB_as_unknown_and_unreferenced()
+        // {
+        //     throw new NotImplementedException();
+        // }
 
         [Test]
         public void Branch_with_branch_and_leaf_then_deleted()
@@ -750,9 +750,9 @@ namespace Nethermind.Trie.Test
             checkTree.Get(_keyD).Should().BeEquivalentTo(_longLeaf1);
         }
 
-        // [TestCase(1024, 1024 * 16, 128, 128)]
+        [TestCase(256, 128, 128, 32)]
         // [TestCase(128, 128, 8, 8)]
-        [TestCase(4, 16, 4, 4)]
+        // [TestCase(4, 16, 4, 4)]
         public void Fuzz_accounts(
             int accountsCount,
             int blocksCount,

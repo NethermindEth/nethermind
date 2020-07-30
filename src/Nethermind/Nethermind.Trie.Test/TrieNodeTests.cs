@@ -656,21 +656,21 @@ namespace Nethermind.Trie.Test
             TrieNode trieNode = new TrieNode(NodeType.Leaf, Keccak.Zero);
             Assert.Throws<InvalidOperationException>(() => trieNode.Value = new byte[5]);
         }
-        //
-        // [Test]
-        // public void Can_change_ref_on_sealed()
-        // {
-        //     TrieNode trieNode = new TrieNode(NodeType.Leaf, Keccak.Zero);
-        //     trieNode.Refs++;
-        //     trieNode.Refs--;
-        // }
+        
+        [Test]
+        public void Can_change_ref_on_sealed()
+        {
+            TrieNode trieNode = new TrieNode(NodeType.Leaf, Keccak.Zero);
+            trieNode.Refs++;
+            trieNode.Refs--;
+        }
 
-        // [Test]
-        // public void Throws_when_trying_to_set_refs_below_zero()
-        // {
-        //     TrieNode trieNode = new TrieNode(NodeType.Leaf, Keccak.Zero);
-        //     Assert.Throws<InvalidOperationException>(() => trieNode.Refs--);
-        // }
+        [Test]
+        public void Throws_when_trying_to_set_refs_below_zero()
+        {
+            TrieNode trieNode = new TrieNode(NodeType.Leaf, Keccak.Zero);
+            Assert.Throws<InvalidOperationException>(() => trieNode.Refs--);
+        }
 
         [Test]
         public void Cannot_change_key_on_sealed()

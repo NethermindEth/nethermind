@@ -7,8 +7,6 @@ using Nethermind.Logging;
 
 namespace Nethermind.Trie.Pruning
 {
-    // is this class even needed?
-    // we need to stack ref changes for each block
     public class TreeStore : ITreeStore
     {
         public TreeStore(
@@ -52,8 +50,6 @@ namespace Nethermind.Trie.Pruning
         /// <exception cref="InvalidOperationException"></exception>
         public void Commit(long blockNumber, NodeCommitInfo nodeCommitInfo)
         {
-            // CAN I SIMPLY FLUSH ALL REFS FROM ROOT EACH TIME???
-            
             if (blockNumber < 0)
                 throw new ArgumentOutOfRangeException(nameof(blockNumber));
 
@@ -81,11 +77,6 @@ namespace Nethermind.Trie.Pruning
 
                 if (_trieNodeCache.IsInMemory(trieNode.Keccak))
                 {
-                    // DONE 1) replace at parent
-                    // DONE 2) update ref at node
-                    // TODO: 2) update references below
-                    // TODO: 3) avoid updating the structure multiple times
-
                     TrieNode cachedReplacement = _trieNodeCache.Get(trieNode.Keccak);
                     if (!ReferenceEquals(cachedReplacement, trieNode))
                     {
@@ -94,8 +85,6 @@ namespace Nethermind.Trie.Pruning
                         {
                             nodeCommitInfo.NodeParent!.ReplaceChildRef(nodeCommitInfo.ChildPositionAtParent, cachedReplacement);
                         }
-
-                        // cachedReplacement.Refs += trieNode.Refs;
                     }
                 }
                 else
@@ -110,6 +99,11 @@ namespace Nethermind.Trie.Pruning
             _trieNodeCache.Dump();
         }
 
+        public bool IsInMemory(Keccak keccak)
+        {
+            return _trieNodeCache.IsInMemory(keccak);
+        }
+        
         public void FinalizeBlock(long blockNumber, TrieNode? root)
         {
             bool shouldBeginNewPackage = CurrentPackage == null || CurrentPackage.BlockNumber != blockNumber;
@@ -313,13 +307,6 @@ namespace Nethermind.Trie.Pruning
                 //         throw new TrieException(
                 //             $"Refs should never be zero while committing from a package queue ({currentNode})");    
                 //     }
-                //     else
-                //     {
-                //         continue;
-                //     }
-                //     
-                //     // this must have been carried and so there are no snapshot roots holding it
-                //     // TODO: Assert that it is persisted
                 // }
 
                 if (isSnapshotBlock)
@@ -329,7 +316,6 @@ namespace Nethermind.Trie.Pruning
                     _keyValueStore[currentNode.Keccak.Bytes] = currentNode.FullRlp;
                     _trieNodeCache.Remove(currentNode.Keccak);
                     currentNode.IsPersisted = true;
-                    // currentNode.Refs = int.MaxValue;
                     _saveCount++;
                 }
                 else
@@ -345,22 +331,23 @@ namespace Nethermind.Trie.Pruning
                     {
                         if (_logger.IsTrace)
                             _logger.Trace($"Carrying a {nameof(TrieNode)} {currentNode}.");
-                        // TODO: this will carry even saved ones which may lead to a massive mem leak
-                        // we need to be able to drop the refs for saved nodes, maybe in mem review and unloading
-                        // all trie nodes marked as persisted?
-                        _carryQueue.Enqueue(currentNode);
-                        _carriedCount++;
+
+                        if (!currentNode.IsPersisted)
+                        {
+                            _carryQueue.Enqueue(currentNode);
+                            _carriedCount++;
+                        }
                     }     
                 }
             }
             
+            if(_logger.IsTrace)
+                _logger.Trace(
+                    $"Decrementing refs from block {commitPackage.BlockNumber} root {root?.ToString() ?? "NULL"}");
             if (root != null && root.Refs != 0)
             {
-                // remove from memory on zero reference?
-                if(_logger.IsTrace)
-                    _logger.Trace(
-                        $"Decrementing refs from block {commitPackage.BlockNumber} root {commitPackage.Root?.ToString() ?? "NULL"}");
                 root.DecrementRefsRecursively();
+                _trieNodeCache.Prune();
                 _trieNodeCache.Dump();
             }
 

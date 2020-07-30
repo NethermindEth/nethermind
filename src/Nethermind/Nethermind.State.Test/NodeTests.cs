@@ -102,7 +102,7 @@ namespace Nethermind.Store.Test
         }
 
         [Test]
-        public void Two_children_store_resolve_updatenull_encode()
+        public void Two_children_store_resolve_update_null_encode()
         {
             TrieNode node = new TrieNode(NodeType.Branch);
             node.SetChild(0, new TrieNode(NodeType.Leaf, TestItem.KeccakA));

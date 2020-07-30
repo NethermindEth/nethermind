@@ -58,6 +58,24 @@ namespace Nethermind.Trie.Pruning
             }
         }
 
+        public void Prune()
+        {
+            foreach ((Keccak key, TrieNode value) in _actualCache)
+            {
+                if (value.Refs == 0)
+                {
+                    if(_logger.IsTrace) _logger.Trace($"Removing unreferenced {value} from memory.");
+                    _actualCache.Remove(key);
+                }
+                
+                if (value.IsPersisted)
+                {
+                    if(_logger.IsTrace) _logger.Trace($"Removing persisted {value} from memory.");
+                    _actualCache.Remove(key);
+                }
+            }
+        }
+
         #region private
 
         private ILogger _logger;

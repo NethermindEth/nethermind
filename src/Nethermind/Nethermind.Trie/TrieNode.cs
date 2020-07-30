@@ -76,7 +76,7 @@ namespace Nethermind.Trie
         public int Refs
         {
             get => _refs;
-            private set
+            internal set
             {
                 if (IsPersisted)
                 {
@@ -96,15 +96,20 @@ namespace Nethermind.Trie
         /// <summary>
         /// Sealed node is the one that is already immutable except for reference counting and resolving existing data
         /// </summary>
-        public bool IsSealed
-        {
-            get => !IsDirty;
-        }
+        public bool IsSealed => !IsDirty;
 
         public bool IsPersisted
         {
             get => _isPersisted;
-            set => _isPersisted = value;
+            set
+            {
+                if (value)
+                {
+                    Refs = int.MaxValue;
+                }
+                
+                _isPersisted = value;
+            }
         }
 
         /// <summary>
@@ -122,19 +127,7 @@ namespace Nethermind.Trie
 
         public Keccak? Keccak { get; private set; }
 
-        public byte[]? FullRlp
-        {
-            get => _fullRlp;
-            private set
-            {
-                _fullRlp = value;
-                if (_fullRlp != null && _fullRlp.Length < 32)
-                {
-                    IsPersisted = true;
-                    Refs = int.MaxValue;
-                }
-            }
-        }
+        public byte[]? FullRlp { get; private set; }
 
         public NodeType NodeType { get; private set; }
 
@@ -273,7 +266,6 @@ namespace Nethermind.Trie
                         }
 
                         FullRlp = tree.LoadRlp(Keccak, allowCaching);
-                        Refs = int.MaxValue;
                         IsPersisted = true;
                         
                         if (FullRlp == null)
@@ -667,7 +659,6 @@ namespace Nethermind.Trie
                     for (int i = 0; i < _data.Length; i++)
                     {
                         TrieNode child = _data[i] as TrieNode;
-                        ;
                         if (child != null) // both unresolved and NULL are handled here
                         {
                             child.DecrementRefsRecursively();
@@ -724,9 +715,6 @@ namespace Nethermind.Trie
         private bool _isDirty;
 
         private bool _isPersisted;
-
-        private bool _isSealed;
-        private byte[]? _fullRlp;
 
         #endregion
     }
