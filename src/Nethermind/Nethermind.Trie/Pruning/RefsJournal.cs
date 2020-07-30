@@ -80,31 +80,32 @@ namespace Nethermind.Trie.Pruning
         /// <exception cref="InvalidOperationException"></exception>
         public JournalBook Unwind()
         {
-            if (!_books.Any())
-            {
-                throw new InvalidOperationException(
-                    "An attempt to unwind a book while there are no books in journal.");
-            }
-
-            if (!_books.Last!.Value.IsSealed)
-            {
-                throw new InvalidOperationException(
-                    "An attempt to unwind a book that has not been sealed.");
-            }
-
-            JournalBook book = _books.Last.Value;
-            if (_logger.IsDebug) _logger.Debug($"Unwinding book    {book}");
-            
-            _books.RemoveLast();
-            book.IsUnwound = true;
-
-            foreach (JournalEntry entry in book.Entries.Reverse())
-            {
-                if(_logger.IsTrace) _logger.Debug($"Unwinding         {entry}");
-                _trieNodeCache.Get(entry.Hash).Refs -= entry.RefsChange;
-            }
-
-            return book;
+            throw new NotImplementedException();
+            // if (!_books.Any())
+            // {
+            //     throw new InvalidOperationException(
+            //         "An attempt to unwind a book while there are no books in journal.");
+            // }
+            //
+            // if (!_books.Last!.Value.IsSealed)
+            // {
+            //     throw new InvalidOperationException(
+            //         "An attempt to unwind a book that has not been sealed.");
+            // }
+            //
+            // JournalBook book = _books.Last.Value;
+            // if (_logger.IsDebug) _logger.Debug($"Unwinding book    {book}");
+            //
+            // _books.RemoveLast();
+            // book.IsUnwound = true;
+            //
+            // foreach (JournalEntry entry in book.Entries.Reverse())
+            // {
+            //     if(_logger.IsTrace) _logger.Debug($"Unwinding         {entry}");
+            //     _trieNodeCache.Get(entry.Hash).Refs -= entry.RefsChange;
+            // }
+            //
+            // return book;
         }
 
         /// <summary>
@@ -115,26 +116,27 @@ namespace Nethermind.Trie.Pruning
         /// <exception cref="InvalidOperationException"></exception>
         public void Rewind(JournalBook book)
         {
-            if (book is null)
-            {
-                throw new ArgumentNullException(nameof(book));
-            }
-
-            if (!book.IsUnwound)
-            {
-                throw new InvalidOperationException(
-                    "Cannot rewind a book that is not unwound.");
-            }
-
-            if (_logger.IsDebug) _logger.Debug($"Rewinding book    {book}");
-
-            book.IsUnwound = false;
-            _books.AddLast(new LinkedListNode<JournalBook>(book));
-            foreach (JournalEntry entry in book.Entries)
-            {
-                if(_logger.IsTrace) _logger.Debug($"Rewinding         {entry}");
-                _trieNodeCache.Get(entry.Hash).Refs += entry.RefsChange;
-            }
+            throw new NotImplementedException();
+            // if (book is null)
+            // {
+            //     throw new ArgumentNullException(nameof(book));
+            // }
+            //
+            // if (!book.IsUnwound)
+            // {
+            //     throw new InvalidOperationException(
+            //         "Cannot rewind a book that is not unwound.");
+            // }
+            //
+            // if (_logger.IsDebug) _logger.Debug($"Rewinding book    {book}");
+            //
+            // book.IsUnwound = false;
+            // _books.AddLast(new LinkedListNode<JournalBook>(book));
+            // foreach (JournalEntry entry in book.Entries)
+            // {
+            //     if(_logger.IsTrace) _logger.Debug($"Rewinding         {entry}");
+            //     _trieNodeCache.Get(entry.Hash).Refs += entry.RefsChange;
+            // }
         }
     }
 }

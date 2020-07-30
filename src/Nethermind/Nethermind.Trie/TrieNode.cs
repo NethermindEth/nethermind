@@ -79,7 +79,7 @@ namespace Nethermind.Trie
         public int Refs
         {
             get => _refs;
-            set
+            private set
             {
                 if (IsPersisted)
                 {

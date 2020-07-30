@@ -57,7 +57,7 @@ namespace Nethermind.Trie.Pruning
         /// <exception cref="InvalidOperationException"></exception>
         public void Commit(long blockNumber, NodeCommitInfo nodeCommitInfo)
         {
-            CAN I SIMPLY FLUSH ALL REFS FROM ROOT EACH TIME???
+            // CAN I SIMPLY FLUSH ALL REFS FROM ROOT EACH TIME???
             
             if (blockNumber < 0)
                 throw new ArgumentOutOfRangeException(nameof(blockNumber));
@@ -100,7 +100,7 @@ namespace Nethermind.Trie.Pruning
                             nodeCommitInfo.NodeParent!.ReplaceChildRef(nodeCommitInfo.ChildPositionAtParent, cachedReplacement);
                         }
 
-                        cachedReplacement.Refs += trieNode.Refs;
+                        // cachedReplacement.Refs += trieNode.Refs;
                     }
                 }
                 else
@@ -339,7 +339,7 @@ namespace Nethermind.Trie.Pruning
                     _keyValueStore[currentNode.Keccak.Bytes] = currentNode.FullRlp;
                     _trieNodeCache.Remove(currentNode.Keccak);
                     currentNode.IsPersisted = true;
-                    currentNode.Refs = int.MaxValue;
+                    // currentNode.Refs = int.MaxValue;
                     _saveCount++;
                 }
                 else
