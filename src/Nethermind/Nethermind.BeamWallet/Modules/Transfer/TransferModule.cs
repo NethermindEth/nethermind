@@ -193,7 +193,7 @@ namespace Nethermind.BeamWallet.Modules.Transfer
             var estimateGasResult = result.Result.ToHexString();
             SetEstimateGas(decimal.Parse(estimateGasResult));
             _transferWindow.Remove(_estimateGasLabel);
-            _estimateGasLabel = new Label(1, 18, $"Gas limit: {_estimateGas}, (eth_estimateGas result: {estimateGasResult})");
+            _estimateGasLabel = new Label(1, 18, $"Gas limit: {_estimateGas}");
             _transferWindow.Add(_estimateGasLabel);
         }
 
@@ -309,7 +309,8 @@ namespace Nethermind.BeamWallet.Modules.Transfer
 
                 if (!unlockAccountResult.Result)
                 {
-                    MessageBox.ErrorQuery(40, 7, "Error", "Unlocking account failed.");
+                    MessageBox.ErrorQuery(40, 7, "Error",
+                        $" Unlocking account failed. {Environment.NewLine} Make sure you have pasted your Keystore File into keystore folder.");
                     DeleteLabels();
                     AddButtons();
                     Application.Run(_transferWindow);
@@ -344,7 +345,7 @@ namespace Nethermind.BeamWallet.Modules.Transfer
                         }
                     } while (_newNonce == _currentNonce);
 
-                    _transferWindow.Add(_backButton, _transferButton);
+                    _transferWindow.Add(_transferButton, _backButton);
                     _transferWindow.Remove(_sendingTransactionLabel);
 
                     _sentTransactionLabel = new Label(1, 22, $"Transaction sent with nonce {_transaction.Nonce}.");
