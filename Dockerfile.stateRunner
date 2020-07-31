@@ -1,0 +1,11 @@
+FROM mcr.microsoft.com/dotnet/core/sdk:3.1-alpine AS build
+
+COPY src/ .
+
+RUN dotnet publish Nethermind/Nethermind.State.Test.Runner -c release -o out
+
+FROM mcr.microsoft.com/dotnet/core/sdk:3.1-alpine
+
+COPY --from=build /out .
+
+ENTRYPOINT [ "./nethtest" ]

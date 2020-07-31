@@ -187,7 +187,8 @@ namespace Nethermind.BeamWallet.Modules.Data
             var transferButton = new Button(1, 11, "Transfer");
             transferButton.Clicked = () =>
             {
-                TransferClicked?.Invoke(this, new TransferClickedEventArgs(_address, _balance));
+                Application.Top.Running = false;
+                Application.RequestStop();
             };
 
             var quitButton = new Button(15, 11, "Quit");

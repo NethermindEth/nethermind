@@ -9,12 +9,22 @@ namespace Ethereum.Test.Base
     {
         public IEnumerable<IEthereumTest> Load(string testName)
         {
+            //in case user wants to give test file other than the ones in ethereum tests submodule 
+            if(File.Exists(testName))
+            {
+                var fileTestsSource = new FileTestsSource(testName);
+                var tests = fileTestsSource.LoadGeneralStateTests();
+
+                return tests;
+            }
+
             string testsDirectory = GetGeneralStateTestsDirectory();
 
             IEnumerable<string> testFiles = Directory.EnumerateFiles(testsDirectory, testName, SearchOption.AllDirectories);
 
             List<GeneralStateTest> generalStateTests = new List<GeneralStateTest>();
 
+            //load all tests from found test files in ethereum tests submodule 
             foreach (string testFile in testFiles)
             {
                 FileTestsSource fileTestsSource = new FileTestsSource(testFile);
