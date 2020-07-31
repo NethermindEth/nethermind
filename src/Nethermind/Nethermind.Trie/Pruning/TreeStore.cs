@@ -123,6 +123,11 @@ namespace Nethermind.Trie.Pruning
                     _logger.Trace(
                         $"Incrementing refs from block {blockNumber} root {CurrentPackage.Root?.ToString() ?? "NULL"} ");
                 CurrentPackage.Root?.IncrementRefsRecursively(CurrentPackage.BlockNumber);
+                
+                _refsJournal.StartNewBook();
+                CurrentPackage.Root?.RecordRefs(this, _refsJournal, true);
+                _refsJournal.SealBook();
+                
                 _trieNodeCache.Dump();
             }
         }
@@ -186,7 +191,7 @@ namespace Nethermind.Trie.Pruning
         private const int LinkedListNodeMemorySize = 48;
 
         private readonly ITrieNodeCache _trieNodeCache;
-        
+
         private readonly IKeyValueStore _keyValueStore;
         
         private readonly IRefsJournal _refsJournal;

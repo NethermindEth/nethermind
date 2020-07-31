@@ -4,19 +4,29 @@ namespace Nethermind.Trie.Pruning
 {
     public readonly struct JournalEntry
     {
-        public JournalEntry(Keccak hash, int refsChange)
+        public JournalEntry(Keccak hash, int refs)
         {
+            Node = null;
             Hash = hash;
-            RefsChange = refsChange;
+            Refs = refs;
+        }
+        
+        public JournalEntry(TrieNode node, int refs)
+        {
+            Node = node;
+            Hash = null;
+            Refs = refs;
         }
 
         public Keccak Hash { get; }
+        
+        public TrieNode Node { get; }
             
-        public int RefsChange { get; }
+        public int Refs { get; }
 
         public override string ToString()
         {
-            return $"[{nameof(JournalEntry)}|{Hash}|{RefsChange}]";
+            return $"[{nameof(JournalEntry)}|{Hash}|{Refs}]";
         }
     }
 }

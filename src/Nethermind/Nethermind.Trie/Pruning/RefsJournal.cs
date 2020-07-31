@@ -24,15 +24,20 @@ namespace Nethermind.Trie.Pruning
 
         public int Capacity { get; }
 
-        public void StartNewBook(Keccak hash)
+        public void StartNewBook()
         {
-            JournalBook book = new JournalBook(hash);
+            JournalBook book = new JournalBook();
             if (_logger.IsDebug) _logger.Debug($"New journal book  {book}");
             _books.AddLast(new LinkedListNode<JournalBook>(book));
         }
 
         public void RecordEntry(Keccak hash, int refs)
         {
+            if (hash == null)
+            {
+                throw new ArgumentNullException(nameof(hash));
+            }
+            
             if (!_books.Any())
             {
                 throw new InvalidOperationException(
@@ -97,11 +102,12 @@ namespace Nethermind.Trie.Pruning
             
             _books.RemoveLast();
             book.IsUnwound = true;
+            var newRefsBook = _books.Last!.Value;
             
-            foreach (JournalEntry entry in book.Entries.Reverse())
+            foreach (JournalEntry entry in newRefsBook.Entries.Reverse())
             {
                 if(_logger.IsTrace) _logger.Debug($"Unwinding         {entry}");
-                _trieNodeCache.Get(entry.Hash).Refs -= entry.RefsChange;
+                _trieNodeCache.Get(entry.Hash).Refs -= entry.Refs;
             }
             
             return book;
@@ -133,7 +139,7 @@ namespace Nethermind.Trie.Pruning
             foreach (JournalEntry entry in book.Entries)
             {
                 if(_logger.IsTrace) _logger.Debug($"Rewinding         {entry}");
-                _trieNodeCache.Get(entry.Hash).Refs += entry.RefsChange;
+                _trieNodeCache.Get(entry.Hash).Refs += entry.Refs;
             }
         }
     }

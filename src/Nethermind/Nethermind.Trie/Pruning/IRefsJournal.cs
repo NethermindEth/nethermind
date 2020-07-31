@@ -6,7 +6,7 @@ namespace Nethermind.Trie.Pruning
     {
         int Capacity { get; }
 
-        void StartNewBook(Keccak hash);
+        void StartNewBook();
         
         void RecordEntry(Keccak hash, int refs);
         

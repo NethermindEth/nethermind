@@ -824,5 +824,123 @@ namespace Nethermind.Trie.Test
                 verifiedBlocks++;
             }
         }
+
+            [TestCase(256, 128, 128, 32)]
+        // [TestCase(128, 128, 8, 8)]
+        // [TestCase(4, 16, 4, 4)]
+        public void Fuzz_accounts_with_reorganizations(
+            int accountsCount,
+            int blocksCount,
+            int uniqueValuesCount,
+            int lookupLimit)
+        {
+            string fileName = Path.GetTempFileName();
+            //string fileName = "C:\\Temp\\fuzz.txt";
+            _logger.Info(
+                $"Fuzzing with accounts: {accountsCount}, " +
+                $"blocks {blocksCount}, " +
+                $"values: {uniqueValuesCount}, " +
+                $"lookup: {lookupLimit} into file {fileName}");
+
+            using FileStream fileStream = new FileStream(fileName, FileMode.Create);
+            using StreamWriter streamWriter = new StreamWriter(fileStream);
+
+            Queue<Keccak> rootQueue = new Queue<Keccak>();
+
+            Random random = new Random();
+            MemDb memDb = new MemDb();
+            
+            TreeStore treeStore = new TreeStore(_trieNodeCache, memDb, _refsJournal, _logManager, 1.MB(), lookupLimit);
+            PatriciaTree patriciaTree = new PatriciaTree(treeStore, _logger);
+
+            byte[][] accounts = new byte[accountsCount][];
+            byte[][] randomValues = new byte[uniqueValuesCount][];
+
+            for (int i = 0; i < randomValues.Length; i++)
+            {
+                bool isEmptyValue = random.Next(0, 2) == 0;
+                if (isEmptyValue)
+                {
+                    randomValues[i] = Array.Empty<byte>();
+                }
+                else
+                {
+                    byte[] value = new byte[random.Next(128)];
+                    random.NextBytes(value);
+                    randomValues[i] = value;
+                }
+            }
+
+            for (int accountIndex = 0; accountIndex < accounts.Length; accountIndex++)
+            {
+                byte[] key = new byte[32];
+                ((UInt256) accountIndex).ToBigEndian(key);
+                accounts[accountIndex] = key;
+            }
+
+            for (int blockNumber = 0; blockNumber < blocksCount; blockNumber++)
+            {
+                _refsJournal.StartNewBook();
+                bool isEmptyBlock = random.Next(5) == 0;
+                if (!isEmptyBlock)
+                {
+                    for (int i = 0; i < Math.Max(1, accountsCount / 8); i++)
+                    {
+                        int randomAccountIndex = random.Next(accounts.Length);
+                        int randomValueIndex = random.Next(randomValues.Length);
+
+                        byte[] account = accounts[randomAccountIndex];
+                        byte[] value = randomValues[randomValueIndex];
+
+                        streamWriter.WriteLine(
+                            $"Block {blockNumber} - setting {account.ToHexString()} = {value.ToHexString()}");
+                        patriciaTree.Set(account, value);
+                    }
+                }
+
+                streamWriter.WriteLine(
+                    $"Commit block {blockNumber} | empty: {isEmptyBlock}");
+                patriciaTree.UpdateRootHash();
+                patriciaTree.Commit(blockNumber);
+                rootQueue.Enqueue(patriciaTree.RootHash);
+                
+                JournalBook book = _refsJournal.Unwind();
+                _refsJournal.Rewind(book);
+            }
+
+            streamWriter.Flush();
+            fileStream.Seek(0, SeekOrigin.Begin);
+
+            treeStore.Flush();
+            streamWriter.WriteLine($"DB size: {memDb.Keys.Count}");
+            _logger.Info($"DB size: {memDb.Keys.Count}");
+
+            int verifiedBlocks = 0;
+
+            PatriciaTree.NodeCache.Clear();
+            while (rootQueue.TryDequeue(out Keccak currentRoot))
+            {
+                try
+                {
+                    patriciaTree.RootHash = currentRoot;
+                    for (int i = 0; i < accounts.Length; i++)
+                    {
+                        patriciaTree.Get(accounts[i]);
+                    }
+
+                    _logger.Info($"Verified positive {verifiedBlocks}");
+                }
+                catch (Exception)
+                {
+                    _logger.Info($"Verified negative {verifiedBlocks}");
+                    if (verifiedBlocks % lookupLimit == 0)
+                    {
+                        // throw new InvalidDataException();
+                    }
+                }
+
+                verifiedBlocks++;
+            }
+        }
     }
 }

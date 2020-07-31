@@ -17,6 +17,7 @@
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Trie.Pruning;
 
 [assembly: InternalsVisibleTo("Ethereum.Trie.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
@@ -26,11 +27,11 @@ namespace Nethermind.Trie
 {
     public partial class TrieNode
     {
-        internal void Accept(ITreeVisitor visitor, PatriciaTree tree, TrieVisitContext trieVisitContext)
+        internal void Accept(ITreeVisitor visitor, ITrieNodeResolver nodeResolver, TrieVisitContext trieVisitContext)
         {
             try
             {
-                ResolveNode(tree, false);
+                ResolveNode(nodeResolver, false);
             }
             catch (TrieException)
             {
@@ -38,7 +39,7 @@ namespace Nethermind.Trie
                 return;
             }
 
-            ResolveKey(tree, trieVisitContext.Level == 0);
+            ResolveKey(nodeResolver, trieVisitContext.Level == 0);
 
             switch (NodeType)
             {
@@ -48,12 +49,12 @@ namespace Nethermind.Trie
                     trieVisitContext.Level++;
                     for (int i = 0; i < 16; i++)
                     {
-                        TrieNode child = GetChild(tree, i);
-                        child?.ResolveKey(tree, false);
+                        TrieNode child = GetChild(nodeResolver, i);
+                        child?.ResolveKey(nodeResolver, false);
                         if (child != null && visitor.ShouldVisit(child.Keccak))
                         {
                             trieVisitContext.BranchChildIndex = i;
-                            child.Accept(visitor, tree, trieVisitContext);
+                            child.Accept(visitor, nodeResolver, trieVisitContext);
                         }
                     }
 
@@ -65,13 +66,13 @@ namespace Nethermind.Trie
                 case NodeType.Extension:
                 {
                     visitor.VisitExtension(this, trieVisitContext);
-                    TrieNode child = GetChild(tree, 0);
-                    child.ResolveKey(tree, false);
+                    TrieNode child = GetChild(nodeResolver, 0);
+                    child.ResolveKey(nodeResolver, false);
                     if (child != null && visitor.ShouldVisit(child.Keccak))
                     {
                         trieVisitContext.Level++;
                         trieVisitContext.BranchChildIndex = null;
-                        child.Accept(visitor, tree, trieVisitContext);
+                        child.Accept(visitor, nodeResolver, trieVisitContext);
                         trieVisitContext.Level--;
                     }
 
@@ -98,7 +99,7 @@ namespace Nethermind.Trie
                             TrieNode storageRoot = new TrieNode(NodeType.Unknown, account.StorageRoot);
                             trieVisitContext.Level++;
                             trieVisitContext.BranchChildIndex = null;
-                            storageRoot.Accept(visitor, tree, trieVisitContext);
+                            storageRoot.Accept(visitor, nodeResolver, trieVisitContext);
                             trieVisitContext.Level--;
                             trieVisitContext.IsStorage = false;
                         }

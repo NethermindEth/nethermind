@@ -18,6 +18,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
 namespace Nethermind.Store.Test
@@ -43,7 +44,7 @@ namespace Nethermind.Store.Test
             TrieNode node = new TrieNode(NodeType.Branch);
             node.SetChild(0, new TrieNode(NodeType.Leaf, TestItem.KeccakA));
             node.SetChild(1, new TrieNode(NodeType.Leaf, TestItem.KeccakB));
-            PatriciaTree tree = BuildATreeFromNode(node);
+            ITrieNodeResolver tree = BuildATreeFromNode(node);
             TrieNode decoded = new TrieNode(NodeType.Unknown, node.Keccak);
             decoded.ResolveNode(tree);
             decoded.RlpEncode(tree);
@@ -55,7 +56,7 @@ namespace Nethermind.Store.Test
             TrieNode node = new TrieNode(NodeType.Branch);
             node.SetChild(0, new TrieNode(NodeType.Leaf, TestItem.KeccakA));
             node.SetChild(1, new TrieNode(NodeType.Leaf, TestItem.KeccakB));
-            PatriciaTree tree = BuildATreeFromNode(node);
+            ITrieNodeResolver tree = BuildATreeFromNode(node);
             TrieNode decoded = new TrieNode(NodeType.Unknown, node.Keccak);
             decoded.ResolveNode(tree);
             decoded.RlpEncode(tree);
@@ -67,7 +68,7 @@ namespace Nethermind.Store.Test
             TrieNode node = new TrieNode(NodeType.Branch);
             node.SetChild(0, new TrieNode(NodeType.Leaf, TestItem.KeccakA));
             node.SetChild(1, new TrieNode(NodeType.Leaf, TestItem.KeccakB));
-            PatriciaTree tree = BuildATreeFromNode(node);
+            ITrieNodeResolver tree = BuildATreeFromNode(node);
             TrieNode decoded = new TrieNode(NodeType.Unknown, node.Keccak);
             decoded.ResolveNode(tree);
             TrieNode child0 = decoded.GetChild(tree, 0);
@@ -80,7 +81,7 @@ namespace Nethermind.Store.Test
             TrieNode node = new TrieNode(NodeType.Branch);
             node.SetChild(0, new TrieNode(NodeType.Leaf, TestItem.KeccakA));
             node.SetChild(1, new TrieNode(NodeType.Leaf, TestItem.KeccakB));
-            PatriciaTree tree = BuildATreeFromNode(node);
+            ITrieNodeResolver tree = BuildATreeFromNode(node);
             TrieNode decoded = new TrieNode(NodeType.Unknown, node.Keccak);
             decoded.ResolveNode(tree);
             TrieNode child = decoded.GetChild(tree, 3);
@@ -93,7 +94,7 @@ namespace Nethermind.Store.Test
             TrieNode node = new TrieNode(NodeType.Branch);
             node.SetChild(0, new TrieNode(NodeType.Leaf, TestItem.KeccakA));
             node.SetChild(1, new TrieNode(NodeType.Leaf, TestItem.KeccakB));
-            PatriciaTree tree = BuildATreeFromNode(node);
+            ITrieNodeResolver tree = BuildATreeFromNode(node);
             TrieNode decoded = new TrieNode(NodeType.Unknown, node.Keccak);
             decoded.ResolveNode(tree);
             decoded = decoded.Clone();
@@ -107,7 +108,7 @@ namespace Nethermind.Store.Test
             TrieNode node = new TrieNode(NodeType.Branch);
             node.SetChild(0, new TrieNode(NodeType.Leaf, TestItem.KeccakA));
             node.SetChild(1, new TrieNode(NodeType.Leaf, TestItem.KeccakB));
-            PatriciaTree tree = BuildATreeFromNode(node);
+            ITrieNodeResolver tree = BuildATreeFromNode(node);
             TrieNode decoded = new TrieNode(NodeType.Unknown, node.Keccak);
             decoded.ResolveNode(tree);
             decoded = decoded.Clone();
@@ -122,7 +123,7 @@ namespace Nethermind.Store.Test
             TrieNode node = new TrieNode(NodeType.Branch);
             node.SetChild(0, new TrieNode(NodeType.Leaf, TestItem.KeccakA));
             node.SetChild(1, new TrieNode(NodeType.Leaf, TestItem.KeccakB));
-            PatriciaTree tree = BuildATreeFromNode(node);
+            ITrieNodeResolver tree = BuildATreeFromNode(node);
             TrieNode decoded = new TrieNode(NodeType.Unknown, node.Keccak);
             decoded.ResolveNode(tree);
             decoded = decoded.Clone();
@@ -136,13 +137,13 @@ namespace Nethermind.Store.Test
         {
             TrieNode node = new TrieNode(NodeType.Branch);
             node.SetChild(0, new TrieNode(NodeType.Leaf, TestItem.KeccakA));
-            PatriciaTree tree = BuildATreeFromNode(node);
+            ITrieNodeResolver tree = BuildATreeFromNode(node);
             TrieNode decoded = new TrieNode(NodeType.Unknown, node.Keccak);
             decoded.ResolveNode(tree);
             decoded.RlpEncode(tree);
         }
 
-        private static PatriciaTree BuildATreeFromNode(TrieNode node)
+        private static ITrieNodeResolver BuildATreeFromNode(TrieNode node)
         {
             TrieNode.AllowBranchValues = true;
             byte[] rlp = node.RlpEncode(null);
@@ -151,8 +152,8 @@ namespace Nethermind.Store.Test
             MemDb memDb = new MemDb();
             memDb[node.Keccak.Bytes] = rlp;
 
-            PatriciaTree tree = new PatriciaTree(memDb, node.Keccak, false, true);
-            return tree;
+            // ITrieNodeResolver tree = new PatriciaTree(memDb, node.Keccak, false, true);
+            return new PassThroughTreeStore(memDb);
         }
     }
 }

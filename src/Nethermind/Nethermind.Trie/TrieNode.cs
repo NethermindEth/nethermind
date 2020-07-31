@@ -648,6 +648,7 @@ namespace Nethermind.Trie
             return trieNode;
         }
 
+        // TODO: can do it as visitors but seems an overkill
         public void DecrementRefsRecursively()
         {
             if (!IsLeaf)
@@ -672,6 +673,7 @@ namespace Nethermind.Trie
             Refs--;
         }
 
+        // TODO: can do it as visitors but seems an overkill
         public void IncrementRefsRecursively(long block)
         {
             if (!IsLeaf)
@@ -692,6 +694,29 @@ namespace Nethermind.Trie
             LastConnectedBlock = block;
 #endif
             Refs++;
+        }
+        
+        public void RecordRefs(ITrieNodeResolver nodeResolver, IRefsJournal refsJournal, bool isRoot)
+        {
+            if (!IsLeaf)
+            {
+                if (_data != null)
+                {
+                    foreach (object o in _data)
+                    {
+                        if (o is TrieNode child)
+                        {
+                            child.RecordRefs(nodeResolver, refsJournal, false);
+                        }
+                    }
+                }
+            }
+            
+            ResolveKey(nodeResolver, isRoot);
+            if (Keccak != null) // inlined node
+            {
+                refsJournal.RecordEntry(Keccak!, _refs);    
+            }
         }
 
         #region private

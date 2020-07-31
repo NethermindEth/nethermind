@@ -297,11 +297,10 @@ namespace Nethermind.Trie.Test
         {
             ITreeVisitor visitor = Substitute.For<ITreeVisitor>();
             TrieVisitContext context = new TrieVisitContext();
-            PatriciaTree tree = new PatriciaTree();
             TrieNode ignore = TrieNodeFactory.CreateLeaf(HexPrefix.Leaf("ccc"), Array.Empty<byte>());
             TrieNode node = TrieNodeFactory.CreateExtension(HexPrefix.Extension("aa"), ignore);
 
-            node.Accept(visitor, tree, context);
+            node.Accept(visitor, NullTrieNodeResolver.Instance, context);
 
             visitor.Received().VisitExtension(node, context);
         }
@@ -311,10 +310,9 @@ namespace Nethermind.Trie.Test
         {
             ITreeVisitor visitor = Substitute.For<ITreeVisitor>();
             TrieVisitContext context = new TrieVisitContext();
-            PatriciaTree tree = new PatriciaTree();
             TrieNode node = new TrieNode(NodeType.Unknown);
 
-            node.Accept(visitor, tree, context);
+            node.Accept(visitor, NullTrieNodeResolver.Instance, context);
 
             visitor.Received().VisitMissingNode(node.Keccak, context);
         }
@@ -324,12 +322,11 @@ namespace Nethermind.Trie.Test
         {
             ITreeVisitor visitor = Substitute.For<ITreeVisitor>();
             TrieVisitContext context = new TrieVisitContext();
-            PatriciaTree tree = new PatriciaTree();
             Account account = new Account(100);
             AccountDecoder decoder = new AccountDecoder();
             TrieNode node = TrieNodeFactory.CreateLeaf(HexPrefix.Leaf("aa"), decoder.Encode(account).Bytes);
 
-            node.Accept(visitor, tree, context);
+            node.Accept(visitor, NullTrieNodeResolver.Instance, context);
 
             visitor.Received().VisitLeaf(node, context, node.Value);
         }
@@ -339,12 +336,11 @@ namespace Nethermind.Trie.Test
         {
             ITreeVisitor visitor = Substitute.For<ITreeVisitor>();
             TrieVisitContext context = new TrieVisitContext();
-            PatriciaTree tree = new PatriciaTree();
             Account account = new Account(1, 100, Keccak.EmptyTreeHash, Keccak.OfAnEmptyString);
             AccountDecoder decoder = new AccountDecoder();
             TrieNode node = TrieNodeFactory.CreateLeaf(HexPrefix.Leaf("aa"), decoder.Encode(account).Bytes);
 
-            node.Accept(visitor, tree, context);
+            node.Accept(visitor, NullTrieNodeResolver.Instance, context);
 
             visitor.Received().VisitLeaf(node, context, node.Value);
         }
@@ -356,12 +352,11 @@ namespace Nethermind.Trie.Test
             visitor.ShouldVisit(Arg.Any<Keccak>()).Returns(true);
 
             TrieVisitContext context = new TrieVisitContext();
-            PatriciaTree tree = new PatriciaTree();
             Account account = new Account(1, 100, Keccak.EmptyTreeHash, Keccak.Zero);
             AccountDecoder decoder = new AccountDecoder();
             TrieNode node = TrieNodeFactory.CreateLeaf(HexPrefix.Leaf("aa"), decoder.Encode(account).Bytes);
 
-            node.Accept(visitor, tree, context);
+            node.Accept(visitor, NullTrieNodeResolver.Instance, context);
 
             visitor.Received().VisitLeaf(node, context, node.Value);
         }
@@ -373,12 +368,11 @@ namespace Nethermind.Trie.Test
             visitor.ShouldVisit(Arg.Any<Keccak>()).Returns(true);
 
             TrieVisitContext context = new TrieVisitContext();
-            PatriciaTree tree = new PatriciaTree();
             Account account = new Account(1, 100, Keccak.Zero, Keccak.OfAnEmptyString);
             AccountDecoder decoder = new AccountDecoder();
             TrieNode node = TrieNodeFactory.CreateLeaf(HexPrefix.Leaf("aa"), decoder.Encode(account).Bytes);
 
-            node.Accept(visitor, tree, context);
+            node.Accept(visitor, NullTrieNodeResolver.Instance, context);
 
             visitor.Received().VisitLeaf(node, context, node.Value);
         }
@@ -390,10 +384,9 @@ namespace Nethermind.Trie.Test
             visitor.ShouldVisit(Arg.Any<Keccak>()).Returns(true);
 
             TrieVisitContext context = new TrieVisitContext();
-            PatriciaTree tree = new PatriciaTree();
             TrieNode node = TrieNodeFactory.CreateExtension(HexPrefix.Extension("aa"), _accountLeaf);
 
-            node.Accept(visitor, tree, context);
+            node.Accept(visitor, NullTrieNodeResolver.Instance, context);
 
             visitor.Received().VisitExtension(node, context);
             visitor.Received().VisitLeaf(_accountLeaf, context, _accountLeaf.Value);
@@ -406,14 +399,13 @@ namespace Nethermind.Trie.Test
             visitor.ShouldVisit(Arg.Any<Keccak>()).Returns(true);
 
             TrieVisitContext context = new TrieVisitContext();
-            PatriciaTree tree = new PatriciaTree();
             TrieNode node = new TrieNode(NodeType.Branch);
             for (int i = 0; i < 16; i++)
             {
                 node.SetChild(i, _accountLeaf);
             }
 
-            node.Accept(visitor, tree, context);
+            node.Accept(visitor, NullTrieNodeResolver.Instance, context);
 
             visitor.Received().VisitBranch(node, context);
             visitor.Received(16).VisitLeaf(_accountLeaf, context, _accountLeaf.Value);
@@ -424,14 +416,13 @@ namespace Nethermind.Trie.Test
         {
             ITreeVisitor visitor = Substitute.For<ITreeVisitor>();
             TrieVisitContext context = new TrieVisitContext();
-            PatriciaTree tree = new PatriciaTree();
             TrieNode node = new TrieNode(NodeType.Branch);
             for (int i = 0; i < 16; i++)
             {
                 node.SetChild(i, null);
             }
 
-            node.Accept(visitor, tree, context);
+            node.Accept(visitor, NullTrieNodeResolver.Instance, context);
 
             visitor.Received().VisitBranch(node, context);
         }
