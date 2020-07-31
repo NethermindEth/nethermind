@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -151,7 +151,7 @@ namespace Nethermind.Trie
                 SetRootHash(RootRef.Keccak!, true);
             }
 
-            _treeStore.FinalizeBlock(blockNumber, RootRef);
+            _treeStore.FinishBlockCommit(blockNumber, RootRef);
             if (_logger.IsDebug) _logger.Debug($"Finished committing block {blockNumber}");
         }
 
@@ -399,15 +399,10 @@ namespace Nethermind.Trie
             };
         }
 
-        private void ConnectNodes(TrieNode? node, TrieNode? previousHere)
+        private void ConnectNodes(TrieNode? node)
         {
             bool isRoot = _nodeStack.Count == 0;
             TrieNode nextNode = node;
-
-            if (previousHere != null)
-            {
-                if (_logger.IsTrace) _logger.Trace($"Decrementing ref on a node being disconnected {previousHere}");
-            }
 
             while (!isRoot)
             {
@@ -645,7 +640,7 @@ namespace Nethermind.Trie
                         return null;
                     }
 
-                    ConnectNodes(null, node);
+                    ConnectNodes(null);
                 }
                 else if (Bytes.AreEqual(traverseContext.UpdateValue, node.Value))
                 {
@@ -654,7 +649,7 @@ namespace Nethermind.Trie
                 else
                 {
                     TrieNode withUpdatedValue = node.CloneWithChangedValue(traverseContext.UpdateValue);
-                    ConnectNodes(withUpdatedValue, node);
+                    ConnectNodes(withUpdatedValue);
                 }
 
                 return traverseContext.UpdateValue;
@@ -690,7 +685,7 @@ namespace Nethermind.Trie
                     traverseContext.CurrentIndex,
                     traverseContext.UpdatePath.Length - traverseContext.CurrentIndex).ToArray();
                 TrieNode leaf = TrieNodeFactory.CreateLeaf(HexPrefix.Leaf(leafPath), traverseContext.UpdateValue);
-                ConnectNodes(leaf, null);
+                ConnectNodes(leaf);
 
                 return traverseContext.UpdateValue;
             }
@@ -745,14 +740,14 @@ namespace Nethermind.Trie
 
                 if (traverseContext.IsDelete)
                 {
-                    ConnectNodes(null, node);
+                    ConnectNodes(null);
                     return traverseContext.UpdateValue;
                 }
 
                 if (!Bytes.AreEqual(node.Value, traverseContext.UpdateValue))
                 {
                     TrieNode withUpdatedValue = node.CloneWithChangedValue(traverseContext.UpdateValue);
-                    ConnectNodes(withUpdatedValue, node);
+                    ConnectNodes(withUpdatedValue);
                     return traverseContext.UpdateValue;
                 }
 
@@ -800,7 +795,7 @@ namespace Nethermind.Trie
                 HexPrefix.Leaf(leafPath.ToArray()), longerPathValue);
 
             _nodeStack.Push(new StackedNode(branch, longerPath[extensionLength]));
-            ConnectNodes(withUpdatedKeyAndValue, node);
+            ConnectNodes(withUpdatedKeyAndValue);
 
             return traverseContext.UpdateValue;
         }
@@ -893,7 +888,7 @@ namespace Nethermind.Trie
                 branch.SetChild(pathBeforeUpdate[extensionLength], childNode);
             }
 
-            ConnectNodes(branch, originalNodeChild);
+            ConnectNodes(branch);
             return traverseContext.UpdateValue;
         }
 

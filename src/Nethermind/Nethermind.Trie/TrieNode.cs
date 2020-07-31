@@ -696,7 +696,7 @@ namespace Nethermind.Trie
             Refs++;
         }
         
-        public void RecordRefs(ITrieNodeResolver nodeResolver, IRefsJournal refsJournal, bool isRoot)
+        public void RecordRefs(ITrieNodeResolver nodeResolver, bool isRoot)
         {
             if (!IsLeaf)
             {
@@ -706,17 +706,13 @@ namespace Nethermind.Trie
                     {
                         if (o is TrieNode child)
                         {
-                            child.RecordRefs(nodeResolver, refsJournal, false);
+                            child.RecordRefs(nodeResolver, false);
                         }
                     }
                 }
             }
             
             ResolveKey(nodeResolver, isRoot);
-            if (Keccak != null) // inlined node
-            {
-                refsJournal.RecordEntry(Keccak!, _refs);    
-            }
         }
 
         #region private

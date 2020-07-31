@@ -28,7 +28,7 @@ namespace Nethermind.Trie.Pruning
             }
         }
 
-        public void FinalizeBlock(long blockNumber, TrieNode? root)
+        public void FinishBlockCommit(long blockNumber, TrieNode? root)
         {
         }
 
@@ -40,6 +40,10 @@ namespace Nethermind.Trie.Pruning
         public byte[]? LoadRlp(Keccak hash, bool allowCaching)
         {
             return _keyValueStore[hash.Bytes];
+        }
+
+        public void Unwind()
+        {
         }
     }
 }

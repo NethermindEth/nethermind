@@ -1,4 +1,4 @@
-﻿using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
@@ -61,7 +61,6 @@ namespace Nethermind.Trie.Benchmark
             TreeStore treeStore = new TreeStore(
                 trieNodeCache,
                 _whateverDb,
-                new RefsJournal(trieNodeCache, _logManager),
                 _logManager,
                 1.MB(),
                 128);
