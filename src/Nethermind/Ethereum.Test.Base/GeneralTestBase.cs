@@ -96,14 +96,11 @@ namespace Ethereum.Test.Base
             BlockHeader header = new BlockHeader(test.PreviousHash, Keccak.OfAnEmptySequenceRlp, test.CurrentCoinbase, test.CurrentDifficulty, test.CurrentNumber, test.CurrentGasLimit, test.CurrentTimestamp, new byte[0]);
             header.StateRoot = test.PostHash;
             header.Hash = Keccak.Compute("1");
-            
-            stateProvider.Commit(specProvider.GenesisSpec);
-            stateProvider.CommitTree();
-            
+
             transactionProcessor.Execute(test.Transaction, header, txTracer);
             
             stateProvider.Commit(specProvider.GenesisSpec);
-            stateProvider.CommitTree();
+            stateProvider.CommitTree(1);
 
             // '@winsvega added a 0-wei reward to the miner , so we had to add that into the state test execution phase. He needed it for retesteth.'
             if (!stateProvider.AccountExists(test.CurrentCoinbase))
@@ -146,8 +143,8 @@ namespace Ethereum.Test.Base
             storageProvider.Commit();
             stateProvider.Commit(specProvider.GenesisSpec);
 
-            storageProvider.CommitTrees();
-            stateProvider.CommitTree();
+            storageProvider.CommitTrees(0);
+            stateProvider.CommitTree(0);
 
             storageProvider.Reset();
             stateProvider.Reset();

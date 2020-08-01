@@ -302,8 +302,8 @@ namespace Ethereum.Test.Base
             storageProvider.Commit();
             stateProvider.Commit(specProvider.GenesisSpec);
 
-            storageProvider.CommitTrees();
-            stateProvider.CommitTree();
+            storageProvider.CommitTrees(0);
+            stateProvider.CommitTree(0);
 
             storageProvider.Reset();
             stateProvider.Reset();
