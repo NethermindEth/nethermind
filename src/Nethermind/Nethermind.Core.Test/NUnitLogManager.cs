@@ -16,16 +16,15 @@
 
 using System;
 using Nethermind.Logging;
-using NUnit.Framework;
 
 namespace Nethermind.Core.Test
 {
     public class NUnitLogManager : ILogManager
     {
         public static readonly NUnitLogManager Instance = new NUnitLogManager();
-        
+
         private readonly LogLevel _level;
-        
+
         public NUnitLogManager(LogLevel level = LogLevel.Info)
         {
             _level = level;
@@ -38,73 +37,5 @@ namespace Nethermind.Core.Test
         public ILogger GetClassLogger() => new NUnitLogger(_level);
 
         public ILogger GetLogger(string loggerName) => GetClassLogger();
-
-        public class NUnitLogger : ILogger
-        {
-            private readonly LogLevel _level;
-
-            public NUnitLogger(LogLevel level)
-            {
-                _level = level;
-            }
-
-            public void Info(string text)
-            {
-                if (IsInfo)
-                {
-                    Log(text);
-                }
-            }
-
-            public void Warn(string text)
-            {
-                if (IsWarn)
-                {
-                    Log(text);
-                }
-            }
-
-            public void Debug(string text)
-            {
-                if (IsDebug)
-                {
-                    Log(text);
-                }
-            }
-
-            public void Trace(string text)
-            {
-                if (IsTrace)
-                {
-                    Log(text);
-                }
-            }
-
-            public void Error(string text, Exception ex = null)
-            {
-                if (IsError)
-                {
-                    Log(text, ex);
-                }
-            }
-
-            public bool IsInfo => CheckLevel(LogLevel.Info);
-            public bool IsWarn => CheckLevel(LogLevel.Warn);
-            public bool IsDebug => CheckLevel(LogLevel.Debug);
-            public bool IsTrace => CheckLevel(LogLevel.Trace);
-            public bool IsError => CheckLevel(LogLevel.Error);
-                
-            private bool CheckLevel(LogLevel logLevel) => _level >= logLevel;
-                
-            private static void Log(string text, Exception ex = null)
-            {
-                TestContext.Out.WriteLine(text);
-                    
-                if (ex != null)
-                {
-                    TestContext.Out.WriteLine(ex.ToString());
-                }
-            }
-        }
     }
 }

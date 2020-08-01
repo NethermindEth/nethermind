@@ -22,6 +22,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
@@ -678,7 +679,7 @@ namespace Nethermind.Trie.Test
         [Test]
         public void Rlp_is_cloned_when_cloning()
         {
-            PassThroughTreeStore treeStore = new PassThroughTreeStore(new MemDb());
+            PassThroughTreeStore treeStore = new PassThroughTreeStore(new MemDb(), NullLogger.Instance);
 
             TrieNode leaf1 = new TrieNode(NodeType.Leaf);
             leaf1.Key = new HexPrefix(true, Bytes.FromHexString("abc"));

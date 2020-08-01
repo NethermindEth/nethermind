@@ -248,7 +248,7 @@ namespace Nethermind.Evm.Test
         
         protected override ILogManager GetLogManager()
         {
-            _logManager ??= new OneLoggerLogManager(new NUnitLogManager.NUnitLogger(LogLevel.Trace));
+            _logManager ??= new OneLoggerLogManager(new NUnitLogger(LogLevel.Trace));
             return _logManager;
         }
 
