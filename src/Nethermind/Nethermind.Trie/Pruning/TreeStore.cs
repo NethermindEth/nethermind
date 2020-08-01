@@ -337,26 +337,25 @@ namespace Nethermind.Trie.Pruning
                             _saveCount++;
                         }
                     }
-                    // TODO: it feels like the below is not needed
-                    // else
-                    // {
-                    //     if (currentNode.Refs <= 1)
-                    //     {
-                    //         // since it is only referenced by this block, it can be dropped
-                    //         DropNode(currentNode);
-                    //     }
-                    //     else
-                    //     {
-                    //         if (_logger.IsTrace)
-                    //             _logger.Trace($"Carrying a {nameof(TrieNode)} {currentNode}.");
-                    //
-                    //         if (!currentNode.IsPersisted)
-                    //         {
-                    //             _carryQueue.Enqueue(currentNode);
-                    //             _carriedCount++;
-                    //         }
-                    //     }
-                    // }
+                    else
+                    {
+                        if (currentNode.Refs <= 1)
+                        {
+                            // since it is only referenced by this block, it can be dropped
+                            DropNode(currentNode);
+                        }
+                        else
+                        {
+                            if (_logger.IsTrace)
+                                _logger.Trace($"Carrying a {nameof(TrieNode)} {currentNode}.");
+                    
+                            if (!currentNode.IsPersisted)
+                            {
+                                _carryQueue.Enqueue(currentNode);
+                                _carriedCount++;
+                            }
+                        }
+                    }
                 }
             }
 
