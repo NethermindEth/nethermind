@@ -64,12 +64,17 @@ namespace Nethermind.Trie.Pruning
             {
                 if (value.Refs == 0)
                 {
-                    if(_logger.IsTrace) _logger.Trace($"Removing unreferenced {value} from memory.");
+                    if (!value.IsPersisted)
+                    {
+                        if (_logger.IsInfo) _logger.Info($"Pruning in cache: {value}.");
+                    }
+
                     _actualCache.Remove(key);
                 }
                 
                 if (value.IsPersisted)
                 {
+                    // TODO: remove refs
                     if(_logger.IsTrace) _logger.Trace($"Removing persisted {value} from memory.");
                     _actualCache.Remove(key);
                 }

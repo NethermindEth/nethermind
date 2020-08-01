@@ -29,6 +29,7 @@ using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
@@ -38,6 +39,8 @@ using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
 using Nethermind.Synchronization.BeamSync;
+using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
 
@@ -78,8 +81,11 @@ namespace Nethermind.Runner.Ethereum.Steps
             
             _context.Signer = new Signer(_context.SpecProvider.ChainId, _context.OriginalSignerKey, _context.LogManager);
 
+            TrieNodeCache trieNodeCache = new TrieNodeCache(_context.LogManager);
             _context.StateProvider = new StateProvider(
-                _context.DbProvider.StateDb,
+                new StateTree(
+                    new TreeStore(trieNodeCache, _context.DbProvider.StateDb, _context.LogManager, 256.MB(), 1024),
+                    _context.LogManager.GetClassLogger()),
                 _context.DbProvider.CodeDb,
                 _context.LogManager);
 

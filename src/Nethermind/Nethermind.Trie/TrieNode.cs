@@ -51,6 +51,11 @@ namespace Nethermind.Trie
         {
             NodeType = nodeType;
             Keccak = keccak;
+            if (nodeType == NodeType.Unknown)
+            {
+                Refs = int.MaxValue;
+                IsPersisted = true;
+            }
         }
 
         public TrieNode(NodeType nodeType, byte[] rlp)

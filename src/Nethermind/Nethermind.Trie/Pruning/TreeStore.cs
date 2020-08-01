@@ -134,15 +134,15 @@ namespace Nethermind.Trie.Pruning
 
         public void Unwind()
         {
-            if(!_packageQueue.Any())
+            if (!_packageQueue.Any())
             {
                 throw new InvalidOperationException(
                     $"Trying to unwind a {nameof(BlockCommitPackage)} when the queue is empty.");
             }
 
-            if(_logger.IsDebug)
+            if (_logger.IsDebug)
                 _logger.Debug($"Unwinding {CurrentPackage}");
-            
+
             DecrementRefs(CurrentPackage!);
             _packageQueue.RemoveLast();
         }
@@ -306,6 +306,9 @@ namespace Nethermind.Trie.Pruning
             Queue<TrieNode> localCarryQueue = _carryQueue;
             _carryQueue = new Queue<TrieNode>();
 
+            bool isSnapshotBlock = commitPackage.BlockNumber % _lookupLimit == 0;
+            
+            // really I should just save from root...
             while (localCarryQueue.TryDequeue(out TrieNode currentNode) ||
                    commitPackage.TryDequeue(out currentNode))
             {
@@ -322,7 +325,6 @@ namespace Nethermind.Trie.Pruning
                 }
                 else
                 {
-                    bool isSnapshotBlock = commitPackage.BlockNumber % _lookupLimit == 0;
                     if (isSnapshotBlock)
                     {
                         if (!currentNode.IsPersisted)
@@ -335,25 +337,26 @@ namespace Nethermind.Trie.Pruning
                             _saveCount++;
                         }
                     }
-                    else
-                    {
-                        if (currentNode.Refs <= 1)
-                        {
-                            // since it is only referenced by this block, it can be dropped
-                            DropNode(currentNode);
-                        }
-                        else
-                        {
-                            if (_logger.IsTrace)
-                                _logger.Trace($"Carrying a {nameof(TrieNode)} {currentNode}.");
-
-                            if (!currentNode.IsPersisted)
-                            {
-                                _carryQueue.Enqueue(currentNode);
-                                _carriedCount++;
-                            }
-                        }
-                    }
+                    // TODO: it feels like the below is not needed
+                    // else
+                    // {
+                    //     if (currentNode.Refs <= 1)
+                    //     {
+                    //         // since it is only referenced by this block, it can be dropped
+                    //         DropNode(currentNode);
+                    //     }
+                    //     else
+                    //     {
+                    //         if (_logger.IsTrace)
+                    //             _logger.Trace($"Carrying a {nameof(TrieNode)} {currentNode}.");
+                    //
+                    //         if (!currentNode.IsPersisted)
+                    //         {
+                    //             _carryQueue.Enqueue(currentNode);
+                    //             _carriedCount++;
+                    //         }
+                    //     }
+                    // }
                 }
             }
 
@@ -369,10 +372,14 @@ namespace Nethermind.Trie.Pruning
 
         private void DropNode(TrieNode trieNode)
         {
-            if (_logger.IsTrace)
-                _logger.Trace($"Dropping a {nameof(TrieNode)} {trieNode}.");
+            if (!trieNode.IsPersisted)
+            {
+                _dropCount++;
+                if (_logger.IsInfo)
+                    _logger.Info($"Pruning in store: {nameof(TrieNode)} {trieNode}. ({_dropCount / ((decimal) _dropCount + _saveCount):P2})");
+            }
+
             _trieNodeCache.Remove(trieNode.Keccak);
-            _dropCount++;
         }
 
         private void DecrementRefs(BlockCommitPackage package)
