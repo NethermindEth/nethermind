@@ -17,7 +17,8 @@ namespace Nethermind.Trie.Test
     [TestFixture]
     public class TrieTests
     {
-        private NUnitLogger _logger = new NUnitLogger(LogLevel.Trace);
+        // private ILogger _logger = NullLogger.Instance;
+        private ILogger _logger = new NUnitLogger(LogLevel.Trace);
         private ILogManager _logManager;
         private ITrieNodeCache _trieNodeCache;
 
@@ -876,8 +877,6 @@ namespace Nethermind.Trie.Test
                 ((UInt256) accountIndex).ToBigEndian(key);
                 accounts[accountIndex] = key;
             }
-
-            Stack<Keccak> _roots = new Stack<Keccak>();
 
             int blockCount = 0;
             for (int blockNumber = 0; blockNumber < blocksCount; blockNumber++)

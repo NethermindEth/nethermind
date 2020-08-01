@@ -138,7 +138,10 @@ namespace Nethermind.Trie.Pruning
                     $"Trying to unwind a {nameof(BlockCommitPackage)} when the queue is empty.");
             }
 
-            DecrementRefs(CurrentPackage);
+            if(_logger.IsDebug)
+                _logger.Debug($"Unwinding {CurrentPackage}");
+            
+            DecrementRefs(CurrentPackage!);
             _packageQueue.RemoveLast();
         }
 

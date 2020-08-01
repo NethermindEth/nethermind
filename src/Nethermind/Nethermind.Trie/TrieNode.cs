@@ -106,7 +106,7 @@ namespace Nethermind.Trie
                 {
                     Refs = int.MaxValue;
                 }
-                
+
                 _isPersisted = value;
             }
         }
@@ -175,7 +175,7 @@ namespace Nethermind.Trie
                     throw new InvalidOperationException(
                         $"{nameof(TrieNode)} {this} is already sealed when setting {nameof(Key)}.");
                 }
-                
+
                 InitData();
                 _data![0] = value;
                 UnresolveKey();
@@ -255,7 +255,7 @@ namespace Nethermind.Trie
 
                         FullRlp = tree.LoadRlp(Keccak, allowCaching);
                         IsPersisted = true;
-                        
+
                         if (FullRlp == null)
                         {
                             throw new TrieException($"Trie returned a malformed RLP for node {Keccak}");
@@ -305,7 +305,7 @@ namespace Nethermind.Trie
                         Key = key;
                         Value = _rlpStream.DecodeByteArray();
                     }
-                    
+
                     IsDirty = false;
                 }
                 else
@@ -447,7 +447,7 @@ namespace Nethermind.Trie
                 throw new InvalidOperationException(
                     $"{nameof(TrieNode)} {this} is already sealed when setting a child.");
             }
-            
+
             InitData();
             int index = IsExtension ? i + 1 : i;
             _data![index] = node ?? _nullNode;
@@ -516,9 +516,7 @@ namespace Nethermind.Trie
         public override string ToString()
         {
 #if DEBUG
-            // return $"[{NodeType}({FullRlp?.Length}){(FullRlp != null && FullRlp?.Length < 32 ? $"{FullRlp.ToHexString()}" : "")}" +
-            //        $"|{Id}|{Keccak?.ToShortString()}|refs:{Refs}|D:{IsDirty}|S:{IsSealed}|P:{IsPersisted}|";
-            return $"[{NodeType}({FullRlp?.Length}){(FullRlp != null ? $"{FullRlp.ToHexString()}" : "")}" +
+            return $"[{NodeType}({FullRlp?.Length}){(FullRlp != null && FullRlp?.Length < 32 ? $"{FullRlp.ToHexString()}" : "")}" +
                    $"|{Id}|{Keccak?.ToShortString()}|refs:{Refs}|D:{IsDirty}|S:{IsSealed}|P:{IsPersisted}|";
 #else
             return $"[{NodeType}({FullRlp?.Length})|{Keccak?.ToShortString()}|refs:{Refs}|D:{IsDirty}|S:{IsSealed}|P:{IsPersisted}|";
@@ -615,7 +613,7 @@ namespace Nethermind.Trie
 #endif
             Refs++;
         }
-        
+
         public void RecordRefs(ITrieNodeResolver nodeResolver, bool isRoot)
         {
             if (!IsLeaf)
@@ -631,7 +629,7 @@ namespace Nethermind.Trie
                     }
                 }
             }
-            
+
             ResolveKey(nodeResolver, isRoot);
         }
 
@@ -652,13 +650,13 @@ namespace Nethermind.Trie
         private int _refs;
 
         private bool _isPersisted;
-        
+
         private void UnresolveKey()
         {
             Keccak = null;
         }
-        
-                private void InitData()
+
+        private void InitData()
         {
             if (_data == null)
             {
