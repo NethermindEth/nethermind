@@ -159,7 +159,7 @@ namespace Nethermind.Trie.Test.Pruning
                 {
                     trieStore.Commit(TrieType.State, i, new NodeCommitInfo(trieNode));
                 }
-                
+
                 trieStore.FinishBlockCommit(TrieType.State, i, trieNode);
             }
 
@@ -175,7 +175,7 @@ namespace Nethermind.Trie.Test.Pruning
             a.ResolveKey(NullTrieNodeResolver.Instance, true);
 
             MemDb memDb = new MemDb();
-            
+
             TrieStore trieStore = new TrieStore(_trieNodeCache, memDb, _logManager, 16.MB(), 4);
 
             a.Refs = refCount;
@@ -281,9 +281,9 @@ namespace Nethermind.Trie.Test.Pruning
             b.ResolveKey(NullTrieNodeResolver.Instance, true);
 
             MemDb memDb = new MemDb();
-            
+
             ITrieNodeCache cache = new TrieNodeCache(_logManager);
-            TrieStore trieStore = new TrieStore(cache,  memDb, _logManager, 16.MB(), 4);
+            TrieStore trieStore = new TrieStore(cache, memDb, _logManager, 16.MB(), 4);
 
             trieStore.FinishBlockCommit(TrieType.State, 0, null);
             trieStore.Commit(TrieType.State, 1, new NodeCommitInfo(a));
@@ -300,15 +300,15 @@ namespace Nethermind.Trie.Test.Pruning
             memDb[a.Keccak!.Bytes].Should().BeNull();
             trieStore.IsInMemory(a.Keccak).Should().BeFalse();
         }
-        
+
         private AccountDecoder _accountDecoder = new AccountDecoder();
-        
+
         [Test]
         public void Will_store_storage_on_snapshot()
         {
             TrieNode storage1 = new TrieNode(NodeType.Leaf, new byte[2]);
             storage1.ResolveKey(NullTrieNodeResolver.Instance, true);
-            
+
             TrieNode a = new TrieNode(NodeType.Leaf);
             Account account = new Account(1, 1, storage1.Keccak, Keccak.OfAnEmptyString);
             a.Value = _accountDecoder.Encode(account).Bytes;
@@ -316,9 +316,9 @@ namespace Nethermind.Trie.Test.Pruning
             a.ResolveKey(NullTrieNodeResolver.Instance, true);
 
             MemDb memDb = new MemDb();
-            
+
             ITrieNodeCache cache = new TrieNodeCache(_logManager);
-            TrieStore trieStore = new TrieStore(cache,  memDb, _logManager, 16.MB(), 4);
+            TrieStore trieStore = new TrieStore(cache, memDb, _logManager, 16.MB(), 4);
             trieStore.FinishBlockCommit(TrieType.State, 0, null);
             trieStore.Commit(TrieType.State, 1, new NodeCommitInfo(a));
             trieStore.Commit(TrieType.Storage, 1, new NodeCommitInfo(storage1));
@@ -337,23 +337,26 @@ namespace Nethermind.Trie.Test.Pruning
             trieStore.IsInMemory(a.Keccak).Should().BeFalse();
             // trieStore.IsInMemory(storage1.Keccak).Should().BeFalse();
         }
-        
+
         [Test]
         public void Will_drop_transient_storage()
         {
-            TrieNode a = new TrieNode(NodeType.Leaf, new byte[0]);
-            a.ResolveKey(NullTrieNodeResolver.Instance, true);
-            
             TrieNode storage1 = new TrieNode(NodeType.Leaf, new byte[2]);
             storage1.ResolveKey(NullTrieNodeResolver.Instance, true);
+
+            TrieNode a = new TrieNode(NodeType.Leaf);
+            Account account = new Account(1, 1, storage1.Keccak, Keccak.OfAnEmptyString);
+            a.Value = _accountDecoder.Encode(account).Bytes;
+            a.Key = HexPrefix.Leaf("abc");
+            a.ResolveKey(NullTrieNodeResolver.Instance, true);
 
             TrieNode b = new TrieNode(NodeType.Leaf, new byte[1]);
             b.ResolveKey(NullTrieNodeResolver.Instance, true);
 
             MemDb memDb = new MemDb();
-            
+
             ITrieNodeCache cache = new TrieNodeCache(_logManager);
-            TrieStore trieStore = new TrieStore(cache,  memDb, _logManager, 16.MB(), 4);
+            TrieStore trieStore = new TrieStore(cache, memDb, _logManager, 16.MB(), 4);
 
             trieStore.FinishBlockCommit(TrieType.State, 0, null);
             trieStore.Commit(TrieType.State, 1, new NodeCommitInfo(a));
@@ -373,6 +376,60 @@ namespace Nethermind.Trie.Test.Pruning
             memDb[storage1.Keccak!.Bytes].Should().BeNull();
             trieStore.IsInMemory(a.Keccak).Should().BeFalse();
             trieStore.IsInMemory(storage1.Keccak).Should().BeFalse();
+        }
+
+        [Test]
+        public void Will_combine_same_storage()
+        {
+            TrieNode storage1 = new TrieNode(NodeType.Leaf, new byte[32]);
+            storage1.ResolveKey(NullTrieNodeResolver.Instance, true);
+            
+            TrieNode a = new TrieNode(NodeType.Leaf);
+            Account account = new Account(1, 1, storage1.Keccak, Keccak.OfAnEmptyString);
+            a.Value = _accountDecoder.Encode(account).Bytes;
+            a.Key = HexPrefix.Leaf("abc");
+            a.ResolveKey(NullTrieNodeResolver.Instance, true);
+            
+            TrieNode storage2 = new TrieNode(NodeType.Leaf, new byte[32]);
+            storage2.ResolveKey(NullTrieNodeResolver.Instance, true);
+            
+            TrieNode b = new TrieNode(NodeType.Leaf);
+            Account accountB = new Account(2, 1, storage2.Keccak, Keccak.OfAnEmptyString);
+            b.Value = _accountDecoder.Encode(accountB).Bytes;
+            b.Key = HexPrefix.Leaf("abcd");
+            b.ResolveKey(NullTrieNodeResolver.Instance, true);
+            
+            TrieNode branch = new TrieNode(NodeType.Branch);
+            branch.SetChild(0, a);
+            branch.SetChild(1, b);
+            branch.ResolveKey(NullTrieStore.Instance, true);
+
+            MemDb memDb = new MemDb();
+
+            ITrieNodeCache cache = new TrieNodeCache(_logManager);
+            TrieStore trieStore = new TrieStore(cache, memDb, _logManager, 16.MB(), 4);
+
+            trieStore.FinishBlockCommit(TrieType.State, 0, null);
+            trieStore.Commit(TrieType.Storage, 1, new NodeCommitInfo(storage1));
+            trieStore.FinishBlockCommit(TrieType.Storage, 1, storage1);
+            trieStore.Commit(TrieType.Storage, 1, new NodeCommitInfo(storage2));
+            trieStore.FinishBlockCommit(TrieType.Storage, 1, storage2);
+            trieStore.Commit(TrieType.State, 1, new NodeCommitInfo(a));
+            trieStore.Commit(TrieType.State, 1, new NodeCommitInfo(b));
+            trieStore.Commit(TrieType.State, 1, new NodeCommitInfo(branch));
+            trieStore.FinishBlockCommit(TrieType.State, 1, branch);
+            trieStore.FinishBlockCommit(TrieType.State, 2, branch);
+            trieStore.FinishBlockCommit(TrieType.State, 3, branch);
+            trieStore.FinishBlockCommit(TrieType.State, 4, branch);
+            trieStore.FinishBlockCommit(TrieType.State, 5, branch);
+            trieStore.FinishBlockCommit(TrieType.State, 6, branch);
+            trieStore.FinishBlockCommit(TrieType.State, 7, branch);
+            trieStore.FinishBlockCommit(TrieType.State, 8, branch);
+
+            memDb[a.Keccak!.Bytes].Should().NotBeNull();
+            memDb[storage1.Keccak!.Bytes].Should().NotBeNull();
+            trieStore.IsInMemory(a.Keccak).Should().BeFalse();
+            trieStore.IsInMemory(storage1.Keccak).Should().BeTrue();
         }
     }
 }
