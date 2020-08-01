@@ -129,23 +129,16 @@ namespace Nethermind.Trie.Pruning
             {
                 BeginNewPackage(blockNumber);
             }
-
-            if (_logger.IsTrace) _logger.Trace($"Enqueued packages {_packageQueue.Count}");
-
-            if (CurrentPackage != null)
+            
+            if (trieType == TrieType.Storage)
             {
-                CurrentPackage.Root = root;
-                if (_logger.IsTrace)
-                    _logger.Trace(
-                        $"Current root (block {blockNumber}): {CurrentPackage.Root}, block {CurrentPackage?.BlockNumber}");
-                if (_logger.IsTrace)
-                    _logger.Trace(
-                        $"Incrementing refs from block {blockNumber} root {CurrentPackage.Root?.ToString() ?? "NULL"} ");
-                CurrentPackage.Root?.IncrementRefsRecursively(CurrentPackage.BlockNumber);
-                CurrentPackage.Seal();
-
-                _trieNodeCache.Dump();
+                // do nothing, we will extract roots from accounts
             }
+            else
+            {
+                FinishBlockCommitOnState(blockNumber, root);
+            }
+            
         }
 
         public void Unwind()
@@ -276,6 +269,36 @@ namespace Nethermind.Trie.Pruning
             Debug.Assert(CurrentPackage == newPackage,
                 "Current package is not equal the new package just after adding");
         }
+        
+        private List<Keccak> _emptyList = new List<Keccak>();
+        
+        private void FinishBlockCommitOnState(long blockNumber, TrieNode? root)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Enqueued packages {_packageQueue.Count}");
+
+            BlockCommitPackage package = CurrentPackage;
+            if (package != null)
+            {
+                package.Root = root;
+                if (_logger.IsTrace)
+                    _logger.Trace(
+                        $"Current root (block {blockNumber}): {package.Root}, block {package.BlockNumber}");
+                if (_logger.IsTrace)
+                    _logger.Trace(
+                        $"Incrementing refs from block {blockNumber} root {package.Root?.ToString() ?? "NULL"} ");
+                
+                package.Root?.IncrementRefsRecursively(package.BlockNumber, package.StorageRoots);
+                for (int index = 0; index < package.StorageRoots.Count; index++)
+                {
+                    Keccak storageRootHash = package.StorageRoots[index];
+                    TrieNode storageRoot = _trieNodeCache.Get(storageRootHash);
+                    storageRoot.IncrementRefsRecursively(package.BlockNumber, _emptyList);
+                }
+
+                package.Seal();
+                _trieNodeCache.Dump();
+            }
+        }
 
         private void AddToMemory(long newMemory)
         {
@@ -396,11 +419,11 @@ namespace Nethermind.Trie.Pruning
             if (!trieNode.IsPersisted)
             {
                 _dropCount++;
-                // if (_logger.IsInfo)
-                //     _logger.Info($"Pruning in store: {nameof(TrieNode)} {trieNode}. ({_dropCount / ((decimal) _dropCount + _saveCount):P2})");
+                if (_logger.IsTrace)
+                    _logger.Trace($"Pruning in store: {nameof(TrieNode)} {trieNode}. ({_dropCount / ((decimal) _dropCount + _saveCount):P2})");
             }
 
-            _trieNodeCache.Remove(trieNode.Keccak);
+            _trieNodeCache.Remove(trieNode.Keccak!);
         }
 
         private void DecrementRefs(BlockCommitPackage package)
@@ -424,6 +447,12 @@ namespace Nethermind.Trie.Pruning
                 }
 
                 root.DecrementRefsRecursively();
+                foreach (Keccak storageRootHash in package.StorageRoots)
+                {
+                    TrieNode storageRoot = _trieNodeCache.Get(storageRootHash);
+                    storageRoot.DecrementRefsRecursively();
+                }
+                
                 _trieNodeCache.Prune();
                 _trieNodeCache.Dump();
             }

@@ -63,7 +63,7 @@ namespace Nethermind.BeamWallet.Modules.Data
                 Height = Dim.Fill()
             };
             Application.Top.Add(_window);
-            RenderBalanceAsync();
+            await RenderBalanceAsync();
 
             return _window;
         }

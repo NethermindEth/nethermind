@@ -25,6 +25,8 @@ namespace Nethermind.Trie.Pruning
     {
         public TrieNode? Root { get; set; }
         
+        public List<Keccak> StorageRoots { get; set; } = new List<Keccak>();
+        
         public long BlockNumber { get; }
 
         public bool IsSealed { get; set; }

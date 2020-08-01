@@ -80,17 +80,12 @@ namespace Nethermind.Trie.Pruning
             {
                 if (value.Refs == 0)
                 {
-                    if (!value.IsPersisted)
-                    {
-                        if (_logger.IsInfo) _logger.Info($"Pruning in cache: {value}.");
-                    }
-
+                    if (_logger.IsInfo) _logger.Info($"Pruning in cache: {value}.");
                     _actualCache.Remove(key);
                 }
-                
-                if (value.IsPersisted)
+                else if (value.IsPersisted)
                 {
-                    // TODO: remove refs
+                    // TODO: remove refs (as the node is still being held by other nodes and this will grow in memory)
                     if(_logger.IsTrace) _logger.Trace($"Removing persisted {value} from memory.");
                     _actualCache.Remove(key);
                 }

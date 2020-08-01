@@ -23,7 +23,7 @@ namespace Nethermind.Serialization.Rlp
 {
     public class AccountDecoder : IRlpDecoder<Account>
     {
-        public (Keccak CodeHash, Keccak StorageRoot) DecodeHashesOnly(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public (Keccak CodeHash, Keccak StorageRoot) DecodeHashesOnly(RlpStream rlpStream)
         {
             rlpStream.SkipLength();
             rlpStream.SkipItem();
@@ -31,6 +31,15 @@ namespace Nethermind.Serialization.Rlp
             Keccak storageRoot = rlpStream.DecodeKeccak();
             Keccak codeHash = rlpStream.DecodeKeccak();
             return (codeHash, storageRoot);
+        }
+        
+        public Keccak DecodeStorageRootOnly(RlpStream rlpStream)
+        {
+            rlpStream.SkipLength();
+            rlpStream.SkipItem();
+            rlpStream.SkipItem();
+            Keccak storageRoot = rlpStream.DecodeKeccak();
+            return storageRoot;
         }
         
         public Account Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

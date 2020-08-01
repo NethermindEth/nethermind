@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
 using System.Runtime.CompilerServices;
@@ -597,7 +598,7 @@ namespace Nethermind.Trie
         }
 
         // TODO: can do it as visitors but seems an overkill
-        public void IncrementRefsRecursively(long block)
+        public void IncrementRefsRecursively(long block, List<Keccak> storageRoots)
         {
             if (!IsLeaf)
             {
@@ -607,8 +608,20 @@ namespace Nethermind.Trie
                     {
                         if (o is TrieNode child)
                         {
-                            child.IncrementRefsRecursively(block);
+                            child.IncrementRefsRecursively(block, storageRoots);
                         }
+                    }
+                }
+            }
+            else
+            {
+                if ((Value?.Length ?? 0) > 64) // if not storage
+                {
+                    Keccak storageRoot =
+                        _accountDecoder.DecodeStorageRootOnly(Value.AsRlpStream());
+                    if (storageRoot != Keccak.EmptyTreeHash)
+                    {
+                        storageRoots.Add(storageRoot);
                     }
                 }
             }
@@ -616,26 +629,8 @@ namespace Nethermind.Trie
 #if DEBUG
             LastConnectedBlock = block;
 #endif
+
             Refs++;
-        }
-
-        public void RecordRefs(ITrieNodeResolver nodeResolver, bool isRoot)
-        {
-            if (!IsLeaf)
-            {
-                if (_data != null)
-                {
-                    foreach (object o in _data)
-                    {
-                        if (o is TrieNode child)
-                        {
-                            child.RecordRefs(nodeResolver, false);
-                        }
-                    }
-                }
-            }
-
-            ResolveKey(nodeResolver, isRoot);
         }
 
         #region private

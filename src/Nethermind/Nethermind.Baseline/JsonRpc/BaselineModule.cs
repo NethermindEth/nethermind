@@ -91,7 +91,7 @@ namespace Nethermind.Baseline.JsonRpc
 
         private BaselineMetadata LoadMetadata()
         {
-            byte[] serializedMetadata = _baselineDb[_metadataKey];
+            byte[]? serializedMetadata = _baselineDb[_metadataKey];
             BaselineMetadata metadata;
             if (serializedMetadata == null)
             {
