@@ -22,6 +22,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State
 {
@@ -38,7 +39,7 @@ namespace Nethermind.State
 
         private readonly ILogger _logger;
 
-        private readonly ISnapshotableDb _stateDb;
+        private readonly ITrieStore _trieStore;
         private readonly IStateProvider _stateProvider;
 
         private ResettableDictionary<Address, StorageTree> _storages = new ResettableDictionary<Address, StorageTree>();
@@ -49,9 +50,14 @@ namespace Nethermind.State
         private int _currentPosition = -1;
 
         public StorageProvider(ISnapshotableDb stateDb, IStateProvider stateProvider, ILogManager logManager)
+            : this(new PassThroughTrieStore(stateDb, logManager), stateProvider, logManager)
+        {
+        }
+
+        public StorageProvider(ITrieStore trieStore, IStateProvider stateProvider, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
+            _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
         }
 
@@ -325,7 +331,7 @@ namespace Nethermind.State
         {
             if (!_storages.ContainsKey(address))
             {
-                StorageTree storageTree = new StorageTree(_stateDb, _stateProvider.GetStorageRoot(address));
+                StorageTree storageTree = new StorageTree(_trieStore, _stateProvider.GetStorageRoot(address));
                 return _storages[address] = storageTree;
             }
 
@@ -412,7 +418,8 @@ namespace Nethermind.State
             /* here it is important to make sure that we will not reuse the same tree when the contract is revived
                by means of CREATE 2 - notice that the cached trie may carry information about items that were not
                touched in this block, hence were not zeroed above */
-            _storages[address] = new StorageTree(_stateDb, Keccak.EmptyTreeHash);
+            // TODO: how does it work with pruning?
+            _storages[address] = new StorageTree(_trieStore, Keccak.EmptyTreeHash);
         }
 
         private enum ChangeType

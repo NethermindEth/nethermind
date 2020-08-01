@@ -56,14 +56,7 @@ namespace Nethermind.Trie.Pruning
                 MemorySizes.SmallObjectFreeDataSize +
                 40 /* linked list */;
         }
-
-        /// <summary>
-        /// Beware - at the moment we assume a strict leaf to root ordering of commits
-        /// </summary>
-        /// <param name="blockNumber"></param>
-        /// <param name="nodeCommitInfo"></param>
-        /// <exception cref="ArgumentOutOfRangeException"></exception>
-        /// <exception cref="InvalidOperationException"></exception>
+        
         public void Commit(TrieType trieType, long blockNumber, NodeCommitInfo nodeCommitInfo)
         {
             if (blockNumber < 0)

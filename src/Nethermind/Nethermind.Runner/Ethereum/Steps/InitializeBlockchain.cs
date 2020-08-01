@@ -134,7 +134,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context.RecoveryStep = new TxSignaturesRecoveryStep(_context.EthereumEcdsa, _context.TxPool, _context.LogManager);
 
             _context.StorageProvider = new StorageProvider(
-                _context.DbProvider.StateDb,
+                trieStore,
                 _context.StateProvider,
                 _context.LogManager);
 

@@ -56,6 +56,12 @@ namespace Nethermind.State
             TrieType = TrieType.Storage;
         }
         
+        public StorageTree(ITrieStore trieStore, Keccak rootHash)
+            : base(trieStore, rootHash, false, true, NullLogManager.Instance)
+        {
+            TrieType = TrieType.Storage;
+        }
+        
         public static Span<byte> GetKey(UInt256 index)
         {
             if (index < CacheSize)

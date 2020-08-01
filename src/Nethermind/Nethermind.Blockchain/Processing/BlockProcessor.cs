@@ -165,8 +165,8 @@ namespace Nethermind.Blockchain.Processing
         private void PreCommitBlock(Keccak newBranchStateRoot, long blockNumber)
         {
             if (_logger.IsTrace) _logger.Trace($"Committing the branch - {newBranchStateRoot} | {_stateProvider.StateRoot}");
-            _stateProvider.CommitTree(blockNumber);
             _storageProvider.CommitTrees(blockNumber);
+            _stateProvider.CommitTree(blockNumber);
         }
         
         private void CommitBranch()
