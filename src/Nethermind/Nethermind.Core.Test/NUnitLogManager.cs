@@ -18,7 +18,7 @@ using System;
 using Nethermind.Logging;
 using NUnit.Framework;
 
-namespace Nethermind.Runner.Test
+namespace Nethermind.Core.Test
 {
     public class NUnitLogManager : ILogManager
     {

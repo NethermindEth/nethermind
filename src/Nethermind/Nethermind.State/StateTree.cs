@@ -18,6 +18,7 @@ using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -29,12 +30,20 @@ namespace Nethermind.State
         private readonly AccountDecoder _decoder = new AccountDecoder();
         
         [DebuggerStepThrough]
-        public StateTree() : base(new MemDb(), Keccak.EmptyTreeHash, true, true)
+        public StateTree()
+            : base(new MemDb(), Keccak.EmptyTreeHash, true, true, NullLogger.Instance)
         {
         }
         
         [DebuggerStepThrough]
-        public StateTree(IDb db) : base(db, Keccak.EmptyTreeHash, true, true)
+        public StateTree(IDb db)
+            : base(db, Keccak.EmptyTreeHash, true, true, NullLogger.Instance)
+        {
+        }
+        
+        [DebuggerStepThrough]
+        public StateTree(IDb db, ILogger logger)
+            : base(db, Keccak.EmptyTreeHash, true, true, logger)
         {
         }
 

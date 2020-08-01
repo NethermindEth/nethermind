@@ -54,10 +54,10 @@ namespace Nethermind.Runner.Ethereum.Steps
         // Environment.SetEnvironmentVariable("io.netty.allocator.pageSize", "8192");
         private const uint PageSize = 8192;
         
-        public static ulong Estimate(uint cpuCount, int arenaOrder)
+        public static long Estimate(uint cpuCount, int arenaOrder)
         {
             // do not remember why there is 2 in front
-            return 2UL * cpuCount * (1UL << arenaOrder) * PageSize;
+            return 2L * cpuCount * (1L << arenaOrder) * PageSize;
         }
     }
 
@@ -210,7 +210,8 @@ namespace Nethermind.Runner.Ethereum.Steps
             ThisNodeInfo.AddInfo("Node address :", $"{_ctx.Enode.Address} (do not use as an account)");
         }
 
-        protected virtual MultiSyncModeSelector CreateMultiSyncModeSelector(SyncProgressResolver syncProgressResolver) => new MultiSyncModeSelector(syncProgressResolver, _ctx.SyncPeerPool, _syncConfig, _ctx.LogManager);
+        protected virtual MultiSyncModeSelector CreateMultiSyncModeSelector(SyncProgressResolver syncProgressResolver)
+            => new MultiSyncModeSelector(syncProgressResolver, _ctx.SyncPeerPool!, _syncConfig, _ctx.LogManager);
 
         private Task StartDiscovery()
         {

@@ -1,5 +1,7 @@
 using System;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Logging;
 
 namespace Nethermind.Trie.Pruning
 {
@@ -7,11 +9,13 @@ namespace Nethermind.Trie.Pruning
     {
         private readonly ITrieNodeCache _trieNodeCache;
         private readonly IKeyValueStore _keyValueStore;
+        private readonly ILogger _logger;
 
-        public PassThroughTreeStore(IKeyValueStore keyValueStore)
+        public PassThroughTreeStore(IKeyValueStore keyValueStore, ILogger? logger)
         {
             _trieNodeCache = new TrieNodeCache();
             _keyValueStore = keyValueStore ?? throw new ArgumentNullException(nameof(keyValueStore));
+            _logger = logger ?? NullLogger.Instance;
         }
         
         public void Commit(long blockNumber, NodeCommitInfo nodeCommitInfo)
@@ -23,7 +27,8 @@ namespace Nethermind.Trie.Pruning
                 {
                     throw new ArgumentNullException($"Keccak is null when commiting a node {trieNode}");
                 }
-
+                
+                if(_logger.IsTrace) _logger.Trace($"Storing {trieNode.Keccak} = {trieNode.FullRlp.ToHexString()}");
                 _keyValueStore[trieNode.Keccak.Bytes] = trieNode.FullRlp;
             }
         }

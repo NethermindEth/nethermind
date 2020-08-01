@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -96,8 +96,8 @@ namespace Nethermind.Blockchain
             _storageProvider.Commit();
             _stateProvider.Commit(_specProvider.GenesisSpec);
 
-            _storageProvider.CommitTrees();
-            _stateProvider.CommitTree();
+            _storageProvider.CommitTrees(0);
+            _stateProvider.CommitTree(0);
 
             _dbProvider.StateDb.Commit();
             _dbProvider.CodeDb.Commit();

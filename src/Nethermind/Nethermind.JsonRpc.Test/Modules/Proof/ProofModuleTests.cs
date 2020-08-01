@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -744,10 +744,10 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             }
 
             storageProvider.Commit();
-            storageProvider.CommitTrees();
+            storageProvider.CommitTrees(0);
 
             stateProvider.Commit(MainnetSpecProvider.Instance.GenesisSpec, null);
-            stateProvider.CommitTree();
+            stateProvider.CommitTree(0);
 
             _dbProvider.StateDb.Commit();
 
@@ -828,6 +828,10 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 AddAccount(stateProvider, Address.SystemUser, 1.Ether());
             }
 
+            stateProvider.CommitTree(0);
+            _dbProvider.CodeDb.Commit();
+            _dbProvider.StateDb.Commit();
+
             return stateProvider;
         }
 
@@ -835,8 +839,6 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
         {
             stateProvider.CreateAccount(account, initialBalance);
             stateProvider.Commit(MuirGlacier.Instance, null);
-            stateProvider.CommitTree();
-            _dbProvider.StateDb.Commit();
         }
 
         private void AddCode(StateProvider stateProvider, Address account, byte[] code)
@@ -845,9 +847,6 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             stateProvider.UpdateCodeHash(account, codeHash, MuirGlacier.Instance);
 
             stateProvider.Commit(MainnetSpecProvider.Instance.GenesisSpec, null);
-            stateProvider.CommitTree();
-            _dbProvider.CodeDb.Commit();
-            _dbProvider.StateDb.Commit();
         }
     }
 }

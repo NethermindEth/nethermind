@@ -27,6 +27,7 @@ using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -67,7 +68,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             TrieNode leaf = TrieNodeFactory.CreateLeaf(new HexPrefix(true, new byte[] {1, 2, 3}), accountDecoder.Encode(Account.TotallyEmpty).Bytes);
             TrieNode branch = TrieNodeFactory.CreateBranch();
             branch.SetChild(1, leaf);
-            branch.ResolveKey(true);
+            branch.ResolveKey(NullTrieNodeResolver.Instance, true);
 
             // PatriciaTree tree = new PatriciaTree();
             // tree = new PatriciaTree();

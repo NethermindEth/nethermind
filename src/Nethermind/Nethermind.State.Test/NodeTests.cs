@@ -16,6 +16,7 @@
 
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -153,7 +154,7 @@ namespace Nethermind.Store.Test
             memDb[node.Keccak.Bytes] = rlp;
 
             // ITrieNodeResolver tree = new PatriciaTree(memDb, node.Keccak, false, true);
-            return new PassThroughTreeStore(memDb);
+            return new PassThroughTreeStore(memDb, NullLogger.Instance);
         }
     }
 }

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -22,6 +22,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 
@@ -34,23 +35,26 @@ namespace Nethermind.Synchronization.LesSync
 
         private static readonly byte[] MaxSectionKey = Encoding.ASCII.GetBytes("MaxSection");
 
-        public CanonicalHashTrie(IKeyValueStore db) : base(db, GetMaxRootHash(db), true, true)
+        public CanonicalHashTrie(IKeyValueStore db)
+            : base(db, GetMaxRootHash(db), true, true, NullLogger.Instance)
         {
         }
 
-        public CanonicalHashTrie(IKeyValueStore db, Keccak rootHash) : base(db, rootHash, true, true)
+        public CanonicalHashTrie(IKeyValueStore db, Keccak rootHash)
+            : base(db, rootHash, true, true, NullLogger.Instance)
         {
         }
 
         public void Commit(long sectionIndex)
         {
             StoreRootHash(sectionIndex);
-            Commit();
+            //Commit();
         }
 
         public long GetMaxSectionIndex()
         {
-            return GetMaxSectionIndex(_keyValueStore);
+            //return GetMaxSectionIndex(_keyValueStore);
+            return -1;
         }
 
         public static long GetSectionFromBlockNo(long blockNo) => (blockNo / SectionSize) - 1L;
@@ -63,18 +67,18 @@ namespace Nethermind.Synchronization.LesSync
         public byte[][] BuildProof(byte[] key, long sectionIndex, long fromLevel)
         {
             ChtProofCollector proofCollector = new ChtProofCollector(key, fromLevel);
-            Accept(proofCollector, GetRootHash(sectionIndex), false);
+            //Accept(proofCollector, GetRootHash(sectionIndex), false);
             return proofCollector.BuildResult();
         }
 
         private void StoreRootHash(long sectionIndex)
         {
             UpdateRootHash();
-            _keyValueStore[GetRootHashKey(sectionIndex)] = RootHash.Bytes;
-            if (GetMaxSectionIndex(_keyValueStore) < sectionIndex)
-            {
-                SetMaxSectionIndex(sectionIndex);
-            }
+            //_keyValueStore[GetRootHashKey(sectionIndex)] = RootHash.Bytes;
+            //if (GetMaxSectionIndex(_keyValueStore) < sectionIndex)
+            //{
+            //    SetMaxSectionIndex(sectionIndex);
+            //}
         }
 
         private static long GetMaxSectionIndex(IKeyValueStore db)
@@ -90,16 +94,17 @@ namespace Nethermind.Synchronization.LesSync
 
         private void SetMaxSectionIndex(long sectionIndex)
         {
-            _keyValueStore[MaxSectionKey] = sectionIndex.ToBigEndianByteArrayWithoutLeadingZeros();
+            //_keyValueStore[MaxSectionKey] = sectionIndex.ToBigEndianByteArrayWithoutLeadingZeros();
         }
 
-        private Keccak GetRootHash(long sectionIndex)
-        {
-            return GetRootHash(_keyValueStore, sectionIndex);
-        }
+        //private Keccak GetRootHash(long sectionIndex)
+        //{
+        //    //return GetRootHash(_keyValueStore, sectionIndex);
+        //}
+
         private static Keccak GetRootHash(IKeyValueStore db, long sectionIndex)
         {
-            byte[] hash = db[GetRootHashKey(sectionIndex)];
+            byte[]? hash = db[GetRootHashKey(sectionIndex)];
             return hash == null ? EmptyTreeHash : new Keccak(hash);
         }
 

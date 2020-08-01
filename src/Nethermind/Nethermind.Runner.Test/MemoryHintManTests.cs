@@ -30,8 +30,8 @@ namespace Nethermind.Runner.Test
     [TestFixture]
     public class MemoryHintManTests
     {
-        private const ulong GB = 1000 * 1000 * 1000;
-        private const ulong MB = 1000 * 1000;
+        private const long GB = 1000 * 1000 * 1000;
+        private const long MB = 1000 * 1000;
 
         private IDbConfig _dbConfig;
         private ISyncConfig _syncConfig;
@@ -70,7 +70,7 @@ namespace Nethermind.Runner.Test
         [TestCase(256 * MB, 6u, 8)]
         [TestCase(1000 * MB, 12u, 9)]
         [TestCase(2000 * MB, 12u, 10)]
-        public void Netty_arena_order_is_configured_correctly(ulong memoryHint, uint cpuCount, int expectedArenaOrder)
+        public void Netty_arena_order_is_configured_correctly(long memoryHint, uint cpuCount, int expectedArenaOrder)
         {
             _txPoolConfig.Size = 128;
             _initConfig.DiagnosticMode = DiagnosticMode.MemDb;
@@ -82,7 +82,7 @@ namespace Nethermind.Runner.Test
         [Test]
         public void Db_size_are_computed_correctly(
             [Values(256 * MB, 512 * MB, 1 * GB, 4 * GB, 6 * GB, 16 * GB, 32 * GB, 64 * GB, 128 * GB)]
-            ulong memoryHint,
+            long memoryHint,
             [Values(1u, 2u, 3u, 4u, 8u, 32u)] uint cpuCount,
             [Values(true, false)] bool fastSync,
             [Values(true, false)] bool fastBlocks)
@@ -95,7 +95,7 @@ namespace Nethermind.Runner.Test
                 _initConfig.DiagnosticMode = DiagnosticMode.MemDb;
             }
 
-            _initConfig.MemoryHint = (long) memoryHint;
+            _initConfig.MemoryHint = memoryHint;
             SetMemoryAllowances(cpuCount);
 
             SyncConfig syncConfig = new SyncConfig();
@@ -138,8 +138,8 @@ namespace Nethermind.Runner.Test
             }
             else
             {
-                _memoryHintMan.DbMemory.Should().BeGreaterThan((ulong) ((memoryHint - 100.MB()) * 0.6));
-                _memoryHintMan.DbMemory.Should().BeLessThan((ulong) ((memoryHint - 100.MB()) * 0.9));
+                _memoryHintMan.DbMemory.Should().BeGreaterThan((long) ((memoryHint - 100.MB()) * 0.6));
+                _memoryHintMan.DbMemory.Should().BeLessThan((long) ((memoryHint - 100.MB()) * 0.9));
             }
         }
 
@@ -147,7 +147,7 @@ namespace Nethermind.Runner.Test
         [TestCase(100 * GB, 16u, 1)]
         [TestCase(384 * MB, 1u, -1)]
         [TestCase(384 * MB, 1u, 1)]
-        public void Will_not_change_non_default_arena_order(ulong memoryHint, uint cpuCount, int differenceFromDefault)
+        public void Will_not_change_non_default_arena_order(long memoryHint, uint cpuCount, int differenceFromDefault)
         {
             _initConfig.MemoryHint = (long) memoryHint;
             int manuallyConfiguredArenaOrder = INetworkConfig.DefaultNettyArenaOrder + differenceFromDefault;
@@ -157,9 +157,9 @@ namespace Nethermind.Runner.Test
         }
 
         [TestCase(4 * GB, 0u)]
-        public void Incorrect_input_throws(ulong memoryHint, uint cpuCount)
+        public void Incorrect_input_throws(long memoryHint, uint cpuCount)
         {
-            _initConfig.MemoryHint = (long) memoryHint;
+            _initConfig.MemoryHint = memoryHint;
             Assert.Throws<ArgumentOutOfRangeException>(
                 () => SetMemoryAllowances(cpuCount));
         }

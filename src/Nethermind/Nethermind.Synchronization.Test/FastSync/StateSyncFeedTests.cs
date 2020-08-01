@@ -82,7 +82,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             StorageTree remoteStorageTree = new StorageTree(db);
             for (int j = 0; j < i; j++) remoteStorageTree.Set((UInt256) j, new[] {(byte) j, i});
 
-            remoteStorageTree.Commit();
+            remoteStorageTree.Commit(0);
             return remoteStorageTree;
         }
 
@@ -323,7 +323,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                         .WithChangedStorageRoot(SetStorage(dbContext.RemoteStateDb, i).RootHash));
 
             dbContext.RemoteStateTree.UpdateRootHash();
-            dbContext.RemoteStateTree.Commit();
+            dbContext.RemoteStateTree.Commit(0);
             dbContext.RemoteStateDb.Commit();
 
             ctx.Feed.FallAsleep();
@@ -343,7 +343,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                         .WithChangedStorageRoot(SetStorage(dbContext.RemoteStateDb, (byte) (i % 7)).RootHash));
 
             dbContext.RemoteStateTree.UpdateRootHash();
-            dbContext.RemoteStateTree.Commit();
+            dbContext.RemoteStateTree.Commit(0);
             dbContext.RemoteStateDb.Commit();
             ctx.Feed.FallAsleep();
 
@@ -458,7 +458,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         {
             DbContext dbContext = new DbContext(_logger);
             dbContext.RemoteStateTree.Set(TestItem.KeccakA, Build.An.Account.TestObject);
-            dbContext.RemoteStateTree.Commit();
+            dbContext.RemoteStateTree.Commit(0);
             dbContext.RemoteStateDb.Commit();
 
             dbContext.CompareTrees("BEGIN");
@@ -504,7 +504,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             dbContext.CompareTrees("BEFORE COMMIT");
 
-            dbContext.RemoteStateTree.Commit();
+            dbContext.RemoteStateTree.Commit(0);
             dbContext.RemoteStateDb.Commit();
 
             ctx.Pool.WakeUpAll();
@@ -536,10 +536,10 @@ namespace Nethermind.Synchronization.Test.FastSync
                 Bytes.FromHexString("eeeeeeeeeeeeeeeeeeeeeb000000000000000000000000000000000000000000"), new byte[] {1});
             remoteStorageTree.Set(
                 Bytes.FromHexString("eeeeeeeeeeeeeeeeeeeeeb111111111111111111111111111111111111111111"), new byte[] {1});
-            remoteStorageTree.Commit();
+            remoteStorageTree.Commit(0);
 
             dbContext.RemoteStateTree.Set(TestItem.AddressD, TrieScenarios.AccountJustState0.WithChangedStorageRoot(remoteStorageTree.RootHash));
-            dbContext.RemoteStateTree.Commit();
+            dbContext.RemoteStateTree.Commit(0);
 
             dbContext.CompareTrees("BEGIN");
 
@@ -564,7 +564,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             dbContext.RemoteCodeDb.Commit();
 
             dbContext.RemoteStateTree.Set(TestItem.AddressD, TrieScenarios.AccountJustState0.WithChangedCodeHash(Keccak.Compute(TrieScenarios.Code0)));
-            dbContext.RemoteStateTree.Commit();
+            dbContext.RemoteStateTree.Commit(0);
 
             dbContext.CompareTrees("BEGIN");
 
@@ -590,10 +590,10 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             StorageTree remoteStorageTree = new StorageTree(dbContext.RemoteDb);
             remoteStorageTree.Set((UInt256) 1, new byte[] {1});
-            remoteStorageTree.Commit();
+            remoteStorageTree.Commit(0);
 
             dbContext.RemoteStateTree.Set(TestItem.AddressD, TrieScenarios.AccountJustState0.WithChangedCodeHash(Keccak.Compute(TrieScenarios.Code0)).WithChangedStorageRoot(remoteStorageTree.RootHash));
-            dbContext.RemoteStateTree.Commit();
+            dbContext.RemoteStateTree.Commit(0);
 
             dbContext.CompareTrees("BEGIN");
 
@@ -616,11 +616,11 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             StorageTree remoteStorageTree = new StorageTree(dbContext.RemoteDb);
             remoteStorageTree.Set((UInt256) 1, new byte[] {1});
-            remoteStorageTree.Commit();
+            remoteStorageTree.Commit(0);
 
             dbContext.RemoteStateTree.Set(TestItem.AddressD, TrieScenarios.AccountJustState0.WithChangedStorageRoot(remoteStorageTree.RootHash));
             dbContext.RemoteStateTree.Set(TestItem.AddressD, TrieScenarios.AccountJustState0.WithChangedStorageRoot(remoteStorageTree.RootHash));
-            dbContext.RemoteStateTree.Commit();
+            dbContext.RemoteStateTree.Commit(0);
 
             dbContext.CompareTrees("BEGIN");
 

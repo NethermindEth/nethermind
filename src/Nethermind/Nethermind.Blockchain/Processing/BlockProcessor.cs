@@ -107,7 +107,7 @@ namespace Nethermind.Blockchain.Processing
                     processedBlocks[i] = ProcessOne(suggestedBlocks[i], options, blockTracer);
 
                     // be cautious here as AuRa depends on processing
-                    PreCommitBlock(newBranchStateRoot); // only needed if we plan to read state root?
+                    PreCommitBlock(newBranchStateRoot, suggestedBlocks[i].Number);
                     if (!readOnly)
                     {
                         BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(processedBlocks[i]));
@@ -125,7 +125,7 @@ namespace Nethermind.Blockchain.Processing
 
                 return processedBlocks;
             }
-            catch (Exception) // try to restore for all cost
+            catch (Exception ex) // try to restore for all cost
             {
                 RestoreBranch(previousBranchStateRoot);
                 throw;
@@ -161,11 +161,11 @@ namespace Nethermind.Blockchain.Processing
             return currentBranchStateRoot;
         }
 
-        private void PreCommitBlock(Keccak newBranchStateRoot)
+        private void PreCommitBlock(Keccak newBranchStateRoot, long blockNumber)
         {
             if (_logger.IsTrace) _logger.Trace($"Committing the branch - {newBranchStateRoot} | {_stateProvider.StateRoot}");
-            _stateProvider.CommitTree();
-            _storageProvider.CommitTrees();
+            _stateProvider.CommitTree(blockNumber);
+            _storageProvider.CommitTrees(blockNumber);
         }
         
         private void CommitBranch()

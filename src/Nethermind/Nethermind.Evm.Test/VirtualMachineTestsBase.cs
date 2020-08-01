@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -63,17 +63,24 @@ namespace Nethermind.Evm.Test
         protected virtual ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
         protected IReleaseSpec Spec => SpecProvider.GetSpec(BlockNumber);
 
+        protected virtual ILogManager GetLogManager()
+        {
+            return LimboLogs.Instance;
+        }
+        
         [SetUp]
         public virtual void Setup()
         {
-            ILogManager logger = LimboLogs.Instance;
+            ILogManager logger = GetLogManager();
 
             MemDb beamStateDb = new MemDb();
-            ISnapshotableDb beamSyncDb = new StateDb(new BeamSyncDb(new MemDb(), beamStateDb, StaticSelector.Full, LimboLogs.Instance));
-            IDb beamSyncCodeDb = new BeamSyncDb(new MemDb(), beamStateDb, StaticSelector.Full, LimboLogs.Instance);
+            ISnapshotableDb beamSyncDb = new StateDb(
+                new BeamSyncDb(new MemDb(), beamStateDb, StaticSelector.Full, logger));
+            IDb beamSyncCodeDb = new BeamSyncDb(
+                new MemDb(), beamStateDb, StaticSelector.Full, logger);
             IDb codeDb = UseBeamSync ? beamSyncCodeDb : new StateDb();
             _stateDb = UseBeamSync ? beamSyncDb : new StateDb();
-            TestState = new StateProvider(_stateDb, codeDb, logger);
+            TestState = new StateProvider(new StateTree(_stateDb, logger.GetClassLogger()), codeDb, logger);
             Storage = new StorageProvider(_stateDb, TestState, logger);
             _ethereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId, logger);
             IBlockhashProvider blockhashProvider = TestBlockhashProvider.Instance;
@@ -109,6 +116,7 @@ namespace Nethermind.Evm.Test
         {
             (var block, var transaction) = PrepareTx(blockNumber, gasLimit, code);
             CallOutputTracer tracer = new CallOutputTracer();
+            // return new CallOutputTracer();
             _processor.Execute(transaction, block.Header, tracer);
             return tracer;
         }
@@ -125,8 +133,12 @@ namespace Nethermind.Evm.Test
             Keccak codeHash = TestState.UpdateCode(code);
             TestState.UpdateCodeHash(senderRecipientAndMiner.Recipient, codeHash, SpecProvider.GenesisSpec);
 
+            GetLogManager().GetClassLogger().Debug("Committing initial state");
             TestState.Commit(SpecProvider.GenesisSpec);
-            TestState.CommitTree();
+            GetLogManager().GetClassLogger().Debug("Committed initial state");
+            GetLogManager().GetClassLogger().Debug("Committing initial tree");
+            TestState.CommitTree(0);
+            GetLogManager().GetClassLogger().Debug("Committed initial tree");
 
             Transaction transaction = Build.A.Transaction
                 .WithGasLimit(gasLimit)

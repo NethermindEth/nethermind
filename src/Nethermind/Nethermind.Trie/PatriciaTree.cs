@@ -72,23 +72,33 @@ namespace Nethermind.Trie
         }
 
         public PatriciaTree(IKeyValueStore keyValueStore)
-            : this(keyValueStore, EmptyTreeHash, false, true)
+            : this(keyValueStore, EmptyTreeHash, false, true, NullLogger.Instance)
         {
         }
 
         public PatriciaTree(ITreeStore keyValueStore, ILogger logger)
-            : this(keyValueStore, EmptyTreeHash, false, true)
-        {
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        }
-
-        public PatriciaTree(IKeyValueStore keyValueStore, Keccak rootHash, bool parallelBranches, bool allowCommits)
-            : this(new PassThroughTreeStore(keyValueStore), rootHash, parallelBranches, allowCommits)
+            : this(keyValueStore, EmptyTreeHash, false, true, logger)
         {
         }
 
-        public PatriciaTree(ITreeStore keyValueStore, Keccak rootHash, bool parallelBranches, bool allowCommits)
+        public PatriciaTree(
+            IKeyValueStore keyValueStore,
+            Keccak rootHash,
+            bool parallelBranches,
+            bool allowCommits,
+            ILogger logger)
+            : this(new PassThroughTreeStore(keyValueStore, logger), rootHash, parallelBranches, allowCommits, logger)
         {
+        }
+
+        public PatriciaTree(
+            ITreeStore keyValueStore,
+            Keccak rootHash,
+            bool parallelBranches,
+            bool allowCommits,
+            ILogger? logger = null)
+        {
+            _logger = logger ?? NullLogger.Instance;
             _treeStore = keyValueStore ?? throw new ArgumentNullException(nameof(keyValueStore));
             _parallelBranches = parallelBranches;
             _allowCommits = allowCommits;
@@ -143,6 +153,7 @@ namespace Nethermind.Trie
                             $"Threading issue at {nameof(_currentCommit)} - should not happen unless we use static objects somewhere here.");
                     }
 
+                    if (_logger.IsTrace) _logger.Trace($"Committing {node} in {blockNumber}");
                     _treeStore.Commit(blockNumber, node);
                 }
 
@@ -851,8 +862,6 @@ namespace Nethermind.Trie
             {
                 byte[] extensionPath = node.Path.Slice(0, extensionLength);
                 node = node.CloneWithChangedKey(HexPrefix.Extension(extensionPath));
-                // node.Key = new HexPrefix(false, extensionPath);
-                // node.IsDirty = true;
                 _nodeStack.Push(new StackedNode(node, 0));
             }
 

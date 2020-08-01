@@ -49,14 +49,14 @@ namespace Nethermind.Runner
             ITxPoolConfig txPoolConfig,
             uint cpuCount)
         {
-            TotalMemory = (ulong) (initConfig.MemoryHint ?? (long) 2.GB());
+            TotalMemory = initConfig.MemoryHint ?? 2.GB();
             ValidateCpuCount(cpuCount);
 
             checked
             {
                 if (_logger.IsInfo) _logger.Info("Setting up memory allowances");
                 if (_logger.IsInfo) _logger.Info($"  memory hint:        {TotalMemory / 1000 / 1000}MB");
-                _remainingMemory = (ulong) (initConfig.MemoryHint ?? (long) 2.GB());
+                _remainingMemory = initConfig.MemoryHint ?? 2.GB();
                 _remainingMemory -= GeneralMemory;
                 if (_logger.IsInfo) _logger.Info($"  general memory:     {GeneralMemory / 1000 / 1000}MB");
                 AssignPeersMemory(networkConfig);
@@ -80,26 +80,26 @@ namespace Nethermind.Runner
             }
         }
 
-        private ulong _remainingMemory;
+        private long _remainingMemory;
 
-        public ulong TotalMemory = 1024 * 1024 * 1024;
-        public ulong GeneralMemory { get; } = 32.MB();
-        public ulong FastBlocksMemory { get; private set; }
-        public ulong DbMemory { get; private set; }
-        public ulong NettyMemory { get; private set; }
-        public ulong TxPoolMemory { get; private set; }
-        public ulong PeersMemory { get; private set; }
-        public ulong TrieCacheMemory { get; private set; }
+        public long TotalMemory = 1024 * 1024 * 1024;
+        public long GeneralMemory { get; } = 32.MB();
+        public long FastBlocksMemory { get; private set; }
+        public long DbMemory { get; private set; }
+        public long NettyMemory { get; private set; }
+        public long TxPoolMemory { get; private set; }
+        public long PeersMemory { get; private set; }
+        public long TrieCacheMemory { get; private set; }
 
         private void AssignTrieCacheMemory()
         {
-            TrieCacheMemory = (ulong) (0.2 * _remainingMemory);
-            Trie.MemoryAllowance.TrieNodeCacheMemory = (ulong) TrieCacheMemory;
+            TrieCacheMemory = (long) (0.2 * _remainingMemory);
+            Trie.MemoryAllowance.TrieNodeCacheMemory = TrieCacheMemory;
         }
 
         private void AssignPeersMemory(INetworkConfig networkConfig)
         {
-            PeersMemory = (ulong) networkConfig.ActivePeersMaxCount * 1.MB();
+            PeersMemory = networkConfig.ActivePeersMaxCount * 1.MB();
             if (PeersMemory > _remainingMemory * 0.75)
             {
                 throw new InvalidDataException(
@@ -110,16 +110,16 @@ namespace Nethermind.Runner
 
         private void AssignTxPoolMemory(ITxPoolConfig txPoolConfig)
         {
-            ulong hashCacheMemory = (ulong) txPoolConfig.Size / 4UL * 1024UL * 128UL;
+            long hashCacheMemory = txPoolConfig.Size / 4L * 1024L * 128L;
             if ((_remainingMemory * 0.05) < hashCacheMemory)
             {
-                hashCacheMemory = (ulong) Math.Min((long) (_remainingMemory * 0.05), (long) (hashCacheMemory));
+                hashCacheMemory = Math.Min((long) (_remainingMemory * 0.05), hashCacheMemory);
             }
 
             MemoryAllowance.TxHashCacheSize = (int) (hashCacheMemory / 128);
-            hashCacheMemory = (ulong) (MemoryAllowance.TxHashCacheSize * 128);
+            hashCacheMemory = MemoryAllowance.TxHashCacheSize * 128;
 
-            ulong txPoolMemory = (ulong) txPoolConfig.Size * 40.KB() + hashCacheMemory;
+            long txPoolMemory = txPoolConfig.Size * 40.KB() + hashCacheMemory;
             if (txPoolMemory > _remainingMemory * 0.5)
             {
                 throw new InvalidDataException(
@@ -135,14 +135,14 @@ namespace Nethermind.Runner
             {
                 if (!syncConfig.DownloadBodiesInFastSync && !syncConfig.DownloadReceiptsInFastSync)
                 {
-                    FastBlocksMemory = (ulong) Math.Min((long) 128.MB(), (long) (0.1 * _remainingMemory));
+                    FastBlocksMemory = Math.Min(128.MB(), (long) (0.1 * _remainingMemory));
                 }
                 else
                 {
-                    FastBlocksMemory = (ulong) Math.Min((long) 1.GB(), (long) (0.1 * _remainingMemory));
+                    FastBlocksMemory = Math.Min(1.GB(), (long) (0.1 * _remainingMemory));
                 }
 
-                Synchronization.MemoryAllowance.FastBlocksMemory = FastBlocksMemory;
+                Synchronization.MemoryAllowance.FastBlocksMemory = (ulong) FastBlocksMemory;
             }
         }
 
@@ -155,78 +155,78 @@ namespace Nethermind.Runner
             }
 
             DbMemory = _remainingMemory;
-            ulong remaining = DbMemory;
+            long remaining = DbMemory;
             DbNeeds dbNeeds = GetHeaderNeeds(cpuCount, syncConfig);
             DbGets dbGets = GiveItWhatYouCan(dbNeeds, DbMemory, remaining);
             remaining -= dbGets.CacheMem + dbGets.Buffers * dbGets.SingleBufferMem;
             dbConfig.HeadersDbWriteBufferNumber = dbGets.Buffers;
-            dbConfig.HeadersDbWriteBufferSize = dbGets.SingleBufferMem;
-            dbConfig.HeadersDbBlockCacheSize = dbGets.CacheMem;
+            dbConfig.HeadersDbWriteBufferSize = (ulong) dbGets.SingleBufferMem;
+            dbConfig.HeadersDbBlockCacheSize = (ulong) dbGets.CacheMem;
 
             dbNeeds = GetBlocksNeeds(cpuCount, syncConfig);
             dbGets = GiveItWhatYouCan(dbNeeds, DbMemory, remaining);
             remaining -= dbGets.CacheMem + dbGets.Buffers * dbGets.SingleBufferMem;
             dbConfig.BlocksDbWriteBufferNumber = dbGets.Buffers;
-            dbConfig.BlocksDbWriteBufferSize = dbGets.SingleBufferMem;
-            dbConfig.BlocksDbBlockCacheSize = dbGets.CacheMem;
+            dbConfig.BlocksDbWriteBufferSize = (ulong) dbGets.SingleBufferMem;
+            dbConfig.BlocksDbBlockCacheSize = (ulong) dbGets.CacheMem;
 
             dbNeeds = GetBlockInfosNeeds(cpuCount, syncConfig);
             dbGets = GiveItWhatYouCan(dbNeeds, DbMemory, remaining);
             remaining -= dbGets.CacheMem + dbGets.Buffers * dbGets.SingleBufferMem;
             dbConfig.BlockInfosDbWriteBufferNumber = dbGets.Buffers;
-            dbConfig.BlockInfosDbWriteBufferSize = dbGets.SingleBufferMem;
-            dbConfig.BlockInfosDbBlockCacheSize = dbGets.CacheMem;
+            dbConfig.BlockInfosDbWriteBufferSize = (ulong) dbGets.SingleBufferMem;
+            dbConfig.BlockInfosDbBlockCacheSize = (ulong) dbGets.CacheMem;
 
             dbNeeds = GetReceiptsNeeds(cpuCount, syncConfig);
             dbGets = GiveItWhatYouCan(dbNeeds, DbMemory, remaining);
             remaining -= dbGets.CacheMem + dbGets.Buffers * dbGets.SingleBufferMem;
             dbConfig.ReceiptsDbWriteBufferNumber = dbGets.Buffers;
-            dbConfig.ReceiptsDbWriteBufferSize = dbGets.SingleBufferMem;
-            dbConfig.ReceiptsDbBlockCacheSize = dbGets.CacheMem;
+            dbConfig.ReceiptsDbWriteBufferSize = (ulong) dbGets.SingleBufferMem;
+            dbConfig.ReceiptsDbBlockCacheSize = (ulong) dbGets.CacheMem;
 
             dbNeeds = GetCodeNeeds(cpuCount, syncConfig);
             dbGets = GiveItWhatYouCan(dbNeeds, DbMemory, remaining);
             remaining -= dbGets.CacheMem + dbGets.Buffers * dbGets.SingleBufferMem;
             dbConfig.CodeDbWriteBufferNumber = dbGets.Buffers;
-            dbConfig.CodeDbWriteBufferSize = dbGets.SingleBufferMem;
-            dbConfig.CodeDbBlockCacheSize = dbGets.CacheMem;
+            dbConfig.CodeDbWriteBufferSize = (ulong) dbGets.SingleBufferMem;
+            dbConfig.CodeDbBlockCacheSize = (ulong) dbGets.CacheMem;
 
             dbNeeds = GetPendingTxNeeds(cpuCount, syncConfig);
             dbGets = GiveItWhatYouCan(dbNeeds, DbMemory, remaining);
             remaining -= dbGets.CacheMem + dbGets.Buffers * dbGets.SingleBufferMem;
             dbConfig.PendingTxsDbWriteBufferNumber = dbGets.Buffers;
-            dbConfig.PendingTxsDbWriteBufferSize = dbGets.SingleBufferMem;
-            dbConfig.PendingTxsDbBlockCacheSize = dbGets.CacheMem;
+            dbConfig.PendingTxsDbWriteBufferSize = (ulong) dbGets.SingleBufferMem;
+            dbConfig.PendingTxsDbBlockCacheSize = (ulong) dbGets.CacheMem;
 
             dbNeeds = GetStateNeeds(cpuCount, syncConfig);
             dbGets = GiveItWhatYouCan(dbNeeds, DbMemory, remaining);
             remaining -= dbGets.CacheMem + dbGets.Buffers * dbGets.SingleBufferMem;
             dbConfig.WriteBufferNumber = dbGets.Buffers;
-            dbConfig.WriteBufferSize = dbGets.SingleBufferMem;
-            dbConfig.BlockCacheSize = dbGets.CacheMem;
+            dbConfig.WriteBufferSize = (ulong) dbGets.SingleBufferMem;
+            dbConfig.BlockCacheSize = (ulong) dbGets.CacheMem;
         }
 
-        private DbGets GiveItWhatYouCan(DbNeeds dbNeeds, ulong memoryHint, ulong remaining)
+        private DbGets GiveItWhatYouCan(DbNeeds dbNeeds, long memoryHint, long remaining)
         {
             uint buffers = dbNeeds.PreferredBuffers; // this is fine for now
             decimal maxPercentage = Math.Min((decimal) remaining / memoryHint, dbNeeds.PreferredMemoryPercentage);
-            ulong availableMemory = remaining;
-            ulong minBufferMem = buffers * dbNeeds.PreferredMinBufferMemory;
-            ulong minCacheMem = dbNeeds.PreferredMinMemory;
-            ulong maxBufferMem = buffers * dbNeeds.PreferredMaxBufferMemory;
-            ulong minMemory = minBufferMem + minCacheMem;
+            long availableMemory = remaining;
+            long minBufferMem = buffers * dbNeeds.PreferredMinBufferMemory;
+            long minCacheMem = dbNeeds.PreferredMinMemory;
+            long maxBufferMem = buffers * dbNeeds.PreferredMaxBufferMemory;
+            long minMemory = minBufferMem + minCacheMem;
             if (minMemory > availableMemory)
             {
                 throw new ArgumentException($"Memory hint of {TotalMemory} is not enough to cover DB requirements.");
             }
 
-            ulong maxWantedMemory = Math.Max(minMemory, (ulong) (memoryHint * maxPercentage));
-            ulong availableDynamic = minMemory >= maxWantedMemory ? 0ul : maxWantedMemory - minMemory;
-            ulong availableForBuffer = (ulong) (availableDynamic * 0.05m);
-            ulong bufferDynamic = Math.Min(maxBufferMem, availableForBuffer);
-            ulong bufferMem = minBufferMem + bufferDynamic;
-            ulong cacheDynamic = availableDynamic - bufferDynamic;
-            ulong cacheMem = Math.Min(dbNeeds.PreferredMaxMemory, minCacheMem + cacheDynamic);
+            long maxWantedMemory = Math.Max(minMemory, (long) (memoryHint * maxPercentage));
+            long availableDynamic = minMemory >= maxWantedMemory ? 0L : maxWantedMemory - minMemory;
+            long availableForBuffer = (long) (availableDynamic * 0.05m);
+            long bufferDynamic = Math.Min(maxBufferMem, availableForBuffer);
+            long bufferMem = minBufferMem + bufferDynamic;
+            long cacheDynamic = availableDynamic - bufferDynamic;
+            long cacheMem = Math.Min(dbNeeds.PreferredMaxMemory, minCacheMem + cacheDynamic);
 
             Debug.Assert(bufferDynamic + cacheDynamic <= availableDynamic, "dynamic exceeded");
             Debug.Assert(bufferMem + cacheMem <= maxWantedMemory, "max wanted exceeded");
@@ -238,7 +238,7 @@ namespace Nethermind.Runner
 
         private struct DbGets
         {
-            public DbGets(uint buffers, ulong singleBufferMem, ulong cacheMem)
+            public DbGets(uint buffers, long singleBufferMem, long cacheMem)
             {
                 Buffers = buffers;
                 SingleBufferMem = singleBufferMem;
@@ -246,18 +246,18 @@ namespace Nethermind.Runner
             }
 
             public uint Buffers { get; set; }
-            public ulong SingleBufferMem { get; set; }
-            public ulong CacheMem { get; set; }
+            public long SingleBufferMem { get; set; }
+            public long CacheMem { get; set; }
         }
 
         private struct DbNeeds
         {
             public DbNeeds(
                 uint preferredBuffers,
-                ulong preferredMinBufferMemory,
-                ulong preferredMaxBufferMemory,
-                ulong preferredMinMemory,
-                ulong preferredMaxMemory,
+                long preferredMinBufferMemory,
+                long preferredMaxBufferMemory,
+                long preferredMinMemory,
+                long preferredMaxMemory,
                 decimal preferredMemoryPercentage)
             {
                 PreferredBuffers = preferredBuffers;
@@ -269,10 +269,10 @@ namespace Nethermind.Runner
             }
 
             public uint PreferredBuffers { get; set; }
-            public ulong PreferredMinBufferMemory { get; set; }
-            public ulong PreferredMaxBufferMemory { get; set; }
-            public ulong PreferredMinMemory { get; set; }
-            public ulong PreferredMaxMemory { get; set; }
+            public long PreferredMinBufferMemory { get; set; }
+            public long PreferredMaxBufferMemory { get; set; }
+            public long PreferredMinMemory { get; set; }
+            public long PreferredMaxMemory { get; set; }
             public decimal PreferredMemoryPercentage { get; set; }
         }
 
@@ -363,8 +363,8 @@ namespace Nethermind.Runner
 
         private void AssignNettyMemory(INetworkConfig networkConfig, uint cpuCount)
         {
-            NettyMemory = (ulong) Math.Min((long) 512.MB(), (long) (0.2 * _remainingMemory));
-            ulong estimate = NettyMemoryEstimator.Estimate(cpuCount, networkConfig.NettyArenaOrder);
+            NettyMemory = Math.Min(512.MB(), (long) (0.2 * _remainingMemory));
+            long estimate = NettyMemoryEstimator.Estimate(cpuCount, networkConfig.NettyArenaOrder);
             ValidateCpuCount(cpuCount);
 
             /* first of all we assume that the mainnet will be heavier than any other chain on the side */
@@ -381,7 +381,7 @@ namespace Nethermind.Runner
                 for (int i = networkConfig.NettyArenaOrder; i > 0; i--)
                 {
                     estimate = NettyMemoryEstimator.Estimate(cpuCount, i);
-                    ulong maxAvailableFoNetty = NettyMemory;
+                    long maxAvailableFoNetty = NettyMemory;
                     if (estimate <= maxAvailableFoNetty)
                     {
                         targetNettyArenaOrder = i;

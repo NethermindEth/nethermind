@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -43,7 +43,7 @@ namespace Nethermind.Network.P2P
 {
     public abstract class SyncPeerProtocolHandlerBase : ProtocolHandlerBase, ISyncPeer
     {
-        public static readonly ulong SoftOutgoingMessageSizeLimit = 2.MB();
+        public static readonly ulong SoftOutgoingMessageSizeLimit = (ulong) 2.MB();
         public Node Node => Session?.Node;
         public string ClientId => Session?.Node?.ClientId;
         public UInt256 TotalDifficulty { get; set; }

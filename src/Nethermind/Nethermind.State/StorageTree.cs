@@ -20,6 +20,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 
@@ -44,11 +45,11 @@ namespace Nethermind.State
             }
         }
 
-        public StorageTree(IDb db) : base(db, Keccak.EmptyTreeHash, false, true)
+        public StorageTree(IDb db) : base(db, Keccak.EmptyTreeHash, false, true, NullLogger.Instance)
         {
         }
 
-        public StorageTree(IDb db, Keccak rootHash) : base(db, rootHash, false, true)
+        public StorageTree(IDb db, Keccak rootHash) : base(db, rootHash, false, true, NullLogger.Instance)
         {
         }
         

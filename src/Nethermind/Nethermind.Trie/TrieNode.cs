@@ -16,6 +16,7 @@
 
 using System;
 using System.ComponentModel;
+using System.IO;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core;
@@ -156,19 +157,7 @@ namespace Nethermind.Trie
             }
         }
 
-        public bool IsDirty
-        {
-            get => _isDirty;
-            private set
-            {
-                if (value)
-                {
-                    Keccak = null;
-                }
-
-                _isDirty = value;
-            }
-        }
+        public bool IsDirty { get; private set; }
 
         public bool IsLeaf => NodeType == NodeType.Leaf;
         public bool IsBranch => NodeType == NodeType.Branch;
@@ -186,9 +175,10 @@ namespace Nethermind.Trie
                     throw new InvalidOperationException(
                         $"{nameof(TrieNode)} {this} is already sealed when setting {nameof(Key)}.");
                 }
-
+                
                 InitData();
                 _data![0] = value;
+                UnresolveKey();
             }
         }
 
@@ -338,6 +328,8 @@ namespace Nethermind.Trie
         {
             if (Keccak != null)
             {
+                // please not it is totally fine to leave the RLP null here
+                // this node will simply act as a ref only node (a ref to some node with unresolved data in the DB)
                 return;
             }
 
@@ -370,81 +362,6 @@ namespace Nethermind.Trie
             // }
 
             return rlp;
-        }
-
-        private void InitData()
-        {
-            if (_data == null)
-            {
-                switch (NodeType)
-                {
-                    case NodeType.Unknown:
-                        throw new InvalidOperationException($"Cannot resolve children of an {nameof(NodeType.Unknown)} node");
-                    case NodeType.Branch:
-                        _data = new object[AllowBranchValues ? 17 : 16];
-                        break;
-                    default:
-                        _data = new object[2];
-                        break;
-                }
-            }
-        }
-
-        private void SeekChild(int itemToSetOn)
-        {
-            if (_rlpStream == null)
-            {
-                return;
-            }
-
-            _rlpStream.Reset();
-            _rlpStream.SkipLength();
-            if (IsExtension)
-            {
-                _rlpStream.SkipItem();
-                itemToSetOn--;
-            }
-
-            for (int i = 0; i < itemToSetOn; i++)
-            {
-                _rlpStream.SkipItem();
-            }
-        }
-
-        private void ResolveChild(ITrieNodeResolver tree, int i)
-        {
-            if (_rlpStream == null)
-            {
-                return;
-            }
-
-            InitData();
-            if (_data![i] == null)
-            {
-                SeekChild(i);
-                int prefix = _rlpStream!.ReadByte();
-                switch (prefix)
-                {
-                    case 0:
-                    case 128:
-                        _data![i] = _nullNode;
-                        break;
-                    case 160:
-                        _rlpStream.Position--;
-                        Keccak keccak = _rlpStream.DecodeKeccak();
-                        // TODO: here we assume the node is in the DB and should be loadable from the DB
-                        _data![i] = tree.FindCachedOrUnknown(keccak);
-                        break;
-                    default:
-                    {
-                        _rlpStream.Position--;
-                        Span<byte> fullRlp = _rlpStream.PeekNextItem();
-                        TrieNode child = new TrieNode(NodeType.Unknown, fullRlp.ToArray());
-                        _data![i] = child;
-                        break;
-                    }
-                }
-            }
         }
 
         public Keccak? GetChildHash(int i)
@@ -530,10 +447,11 @@ namespace Nethermind.Trie
                 throw new InvalidOperationException(
                     $"{nameof(TrieNode)} {this} is already sealed when setting a child.");
             }
-
+            
             InitData();
             int index = IsExtension ? i + 1 : i;
             _data![index] = node ?? _nullNode;
+            UnresolveKey();
         }
 
         public long GetMemorySize(bool recursive)
@@ -598,8 +516,10 @@ namespace Nethermind.Trie
         public override string ToString()
         {
 #if DEBUG
-            return $"[{NodeType}({FullRlp?.Length}){(FullRlp != null && FullRlp?.Length < 32 ? $"{FullRlp.ToHexString()}" : "")}" +
-                   $"|{Id}|block:{LastConnectedBlock}|{Keccak?.ToShortString()}|refs:{Refs}|D:{IsDirty}|S:{IsSealed}|P:{IsPersisted}|";
+            // return $"[{NodeType}({FullRlp?.Length}){(FullRlp != null && FullRlp?.Length < 32 ? $"{FullRlp.ToHexString()}" : "")}" +
+            //        $"|{Id}|{Keccak?.ToShortString()}|refs:{Refs}|D:{IsDirty}|S:{IsSealed}|P:{IsPersisted}|";
+            return $"[{NodeType}({FullRlp?.Length}){(FullRlp != null ? $"{FullRlp.ToHexString()}" : "")}" +
+                   $"|{Id}|{Keccak?.ToShortString()}|refs:{Refs}|D:{IsDirty}|S:{IsSealed}|P:{IsPersisted}|";
 #else
             return $"[{NodeType}({FullRlp?.Length})|{Keccak?.ToShortString()}|refs:{Refs}|D:{IsDirty}|S:{IsSealed}|P:{IsPersisted}|";
 #endif
@@ -731,9 +651,87 @@ namespace Nethermind.Trie
 
         private int _refs;
 
-        private bool _isDirty;
-
         private bool _isPersisted;
+        
+        private void UnresolveKey()
+        {
+            Keccak = null;
+        }
+        
+                private void InitData()
+        {
+            if (_data == null)
+            {
+                switch (NodeType)
+                {
+                    case NodeType.Unknown:
+                        throw new InvalidOperationException($"Cannot resolve children of an {nameof(NodeType.Unknown)} node");
+                    case NodeType.Branch:
+                        _data = new object[AllowBranchValues ? 17 : 16];
+                        break;
+                    default:
+                        _data = new object[2];
+                        break;
+                }
+            }
+        }
+
+        private void SeekChild(int itemToSetOn)
+        {
+            if (_rlpStream == null)
+            {
+                return;
+            }
+
+            _rlpStream.Reset();
+            _rlpStream.SkipLength();
+            if (IsExtension)
+            {
+                _rlpStream.SkipItem();
+                itemToSetOn--;
+            }
+
+            for (int i = 0; i < itemToSetOn; i++)
+            {
+                _rlpStream.SkipItem();
+            }
+        }
+
+        private void ResolveChild(ITrieNodeResolver tree, int i)
+        {
+            if (_rlpStream == null)
+            {
+                return;
+            }
+
+            InitData();
+            if (_data![i] == null)
+            {
+                SeekChild(i);
+                int prefix = _rlpStream!.ReadByte();
+                switch (prefix)
+                {
+                    case 0:
+                    case 128:
+                        _data![i] = _nullNode;
+                        break;
+                    case 160:
+                        _rlpStream.Position--;
+                        Keccak keccak = _rlpStream.DecodeKeccak();
+                        // TODO: here we assume the node is in the DB and should be loadable from the DB
+                        _data![i] = tree.FindCachedOrUnknown(keccak);
+                        break;
+                    default:
+                    {
+                        _rlpStream.Position--;
+                        Span<byte> fullRlp = _rlpStream.PeekNextItem();
+                        TrieNode child = new TrieNode(NodeType.Unknown, fullRlp.ToArray());
+                        _data![i] = child;
+                        break;
+                    }
+                }
+            }
+        }
 
         #endregion
     }

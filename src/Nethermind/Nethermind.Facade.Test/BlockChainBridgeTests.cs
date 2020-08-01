@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -153,16 +153,16 @@ namespace Nethermind.Facade.Test
             /* to start with we need to create an account that we will be setting storage at */
             _stateProvider.CreateAccount(storageCell.Address, UInt256.One);
             _stateProvider.Commit(MuirGlacier.Instance);
-            _stateProvider.CommitTree();
+            //_stateProvider.CommitTree();
             
             /* at this stage we have an account with empty storage at the address that we want to test */
 
             byte[] initialValue = new byte[] {1, 2, 3};
             _storageProvider.Set(storageCell, initialValue);
             _storageProvider.Commit();
-            _storageProvider.CommitTrees();
+            _storageProvider.CommitTrees(0);
             _stateProvider.Commit(MuirGlacier.Instance);
-            _stateProvider.CommitTree();
+            _stateProvider.CommitTree(0);
 
             var retrieved =
                 _blockchainBridge.GetStorage(storageCell.Address, storageCell.Index, _stateProvider.StateRoot);
@@ -185,9 +185,9 @@ namespace Nethermind.Facade.Test
             
             processorStorageProvider.Set(storageCell, newValue);
             processorStorageProvider.Commit();
-            processorStorageProvider.CommitTrees();
+            processorStorageProvider.CommitTrees(0);
             processorStateProvider.Commit(MuirGlacier.Instance);
-            processorStateProvider.CommitTree();
+            processorStateProvider.CommitTree(0);
             
             /* At this stage the DB should have the storage value updated to 5.
                We will try to retrieve the value by taking the state root from the processor.*/

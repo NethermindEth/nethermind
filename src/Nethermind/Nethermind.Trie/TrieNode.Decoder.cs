@@ -54,14 +54,16 @@ namespace Nethermind.Trie
             {
                 Debug.Assert(item.NodeType == NodeType.Extension,
                     $"Node passed to {nameof(EncodeExtension)} is {item.NodeType}");
-                Debug.Assert(item.Key != null, "Extension key is null when encoding");
+                Debug.Assert(item.Key != null,
+                    "Extension key is null when encoding");
                 
                 byte[] keyBytes = item.Key.ToBytes();
                 TrieNode nodeRef = item.GetChild(tree, 0);
-                nodeRef.ResolveKey(tree, false);
-                Debug.Assert(nodeRef.FullRlp != null,
-                    $"{nameof(nodeRef.FullRlp)} is null after a call to {nameof(nodeRef.ResolveKey)}");
+                Debug.Assert(nodeRef != null,
+                    "Extension child is null when encoding.");
                 
+                nodeRef.ResolveKey(tree, false);
+
                 int contentLength = Rlp.LengthOf(keyBytes) + (nodeRef.Keccak == null ? nodeRef.FullRlp.Length : Rlp.LengthOfKeccakRlp);
                 int totalLength = Rlp.LengthOfSequence(contentLength);
                 RlpStream rlpStream = new RlpStream(totalLength);
