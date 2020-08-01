@@ -45,11 +45,11 @@ namespace Nethermind.State
             }
         }
 
-        public StorageTree(IDb db) : base(db, Keccak.EmptyTreeHash, false, true, NullLogger.Instance)
+        public StorageTree(IDb db) : base(db, Keccak.EmptyTreeHash, false, true, NullLogManager.Instance)
         {
         }
 
-        public StorageTree(IDb db, Keccak rootHash) : base(db, rootHash, false, true, NullLogger.Instance)
+        public StorageTree(IDb db, Keccak rootHash) : base(db, rootHash, false, true, NullLogManager.Instance)
         {
         }
         

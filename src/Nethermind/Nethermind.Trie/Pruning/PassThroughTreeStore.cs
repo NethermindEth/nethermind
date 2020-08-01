@@ -11,11 +11,11 @@ namespace Nethermind.Trie.Pruning
         private readonly IKeyValueStore _keyValueStore;
         private readonly ILogger _logger;
 
-        public PassThroughTreeStore(IKeyValueStore keyValueStore, ILogger? logger)
+        public PassThroughTreeStore(IKeyValueStore keyValueStore, ILogManager logManager)
         {
             _trieNodeCache = new TrieNodeCache();
             _keyValueStore = keyValueStore ?? throw new ArgumentNullException(nameof(keyValueStore));
-            _logger = logger ?? NullLogger.Instance;
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
         
         public void Commit(long blockNumber, NodeCommitInfo nodeCommitInfo)
@@ -50,5 +50,7 @@ namespace Nethermind.Trie.Pruning
         public void Unwind()
         {
         }
+
+        public event EventHandler<BlockNumberEventArgs> Stored;
     }
 }

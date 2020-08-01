@@ -31,25 +31,25 @@ namespace Nethermind.State
         
         [DebuggerStepThrough]
         public StateTree()
-            : base(new MemDb(), Keccak.EmptyTreeHash, true, true, NullLogger.Instance)
+            : base(new MemDb(), Keccak.EmptyTreeHash, true, true, NullLogManager.Instance)
         {
         }
         
         [DebuggerStepThrough]
         public StateTree(IKeyValueStore store)
-            : base(store, Keccak.EmptyTreeHash, true, true, NullLogger.Instance)
+            : base(store, Keccak.EmptyTreeHash, true, true, NullLogManager.Instance)
         {
         }
         
         [DebuggerStepThrough]
-        public StateTree(IKeyValueStore store, ILogger logger)
+        public StateTree(IKeyValueStore store, ILogManager logger)
             : base(store, Keccak.EmptyTreeHash, true, true, logger)
         {
         }
         
         [DebuggerStepThrough]
-        public StateTree(ITreeStore store, ILogger logger)
-            : base(store, Keccak.EmptyTreeHash, true, true, logger)
+        public StateTree(ITreeStore store, ILogManager logManager)
+            : base(store, Keccak.EmptyTreeHash, true, true, logManager)
         {
         }
 

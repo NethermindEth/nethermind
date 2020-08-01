@@ -82,10 +82,9 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context.Signer = new Signer(_context.SpecProvider.ChainId, _context.OriginalSignerKey, _context.LogManager);
 
             TrieNodeCache trieNodeCache = new TrieNodeCache(_context.LogManager);
+            TreeStore treeStore = new TreeStore(trieNodeCache, _context.DbProvider.StateDb, _context.LogManager, 256.MB(), 1024);
             _context.StateProvider = new StateProvider(
-                new StateTree(
-                    new TreeStore(trieNodeCache, _context.DbProvider.StateDb, _context.LogManager, 256.MB(), 1024),
-                    _context.LogManager.GetClassLogger()),
+                new StateTree(treeStore, _context.LogManager),
                 _context.DbProvider.CodeDb,
                 _context.LogManager);
 

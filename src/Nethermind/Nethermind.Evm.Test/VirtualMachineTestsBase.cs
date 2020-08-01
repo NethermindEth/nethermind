@@ -71,21 +71,21 @@ namespace Nethermind.Evm.Test
         [SetUp]
         public virtual void Setup()
         {
-            ILogManager logger = GetLogManager();
+            ILogManager logManager = GetLogManager();
 
             MemDb beamStateDb = new MemDb();
             ISnapshotableDb beamSyncDb = new StateDb(
-                new BeamSyncDb(new MemDb(), beamStateDb, StaticSelector.Full, logger));
+                new BeamSyncDb(new MemDb(), beamStateDb, StaticSelector.Full, logManager));
             IDb beamSyncCodeDb = new BeamSyncDb(
-                new MemDb(), beamStateDb, StaticSelector.Full, logger);
+                new MemDb(), beamStateDb, StaticSelector.Full, logManager);
             IDb codeDb = UseBeamSync ? beamSyncCodeDb : new StateDb();
             _stateDb = UseBeamSync ? beamSyncDb : new StateDb();
-            TestState = new StateProvider(new StateTree(_stateDb, logger.GetClassLogger()), codeDb, logger);
-            Storage = new StorageProvider(_stateDb, TestState, logger);
-            _ethereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId, logger);
+            TestState = new StateProvider(new StateTree(_stateDb, logManager), codeDb, logManager);
+            Storage = new StorageProvider(_stateDb, TestState, logManager);
+            _ethereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId, logManager);
             IBlockhashProvider blockhashProvider = TestBlockhashProvider.Instance;
-            Machine = new VirtualMachine(TestState, Storage, blockhashProvider, SpecProvider, logger);
-            _processor = new TransactionProcessor(SpecProvider, TestState, Storage, Machine, logger);
+            Machine = new VirtualMachine(TestState, Storage, blockhashProvider, SpecProvider, logManager);
+            _processor = new TransactionProcessor(SpecProvider, TestState, Storage, Machine, logManager);
         }
 
         protected GethLikeTxTrace ExecuteAndTrace(params byte[] code)

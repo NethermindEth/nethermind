@@ -154,7 +154,7 @@ namespace Nethermind.Store.Test
             memDb[node.Keccak.Bytes] = rlp;
 
             // ITrieNodeResolver tree = new PatriciaTree(memDb, node.Keccak, false, true);
-            return new PassThroughTreeStore(memDb, NullLogger.Instance);
+            return new PassThroughTreeStore(memDb, NullLogManager.Instance);
         }
     }
 }

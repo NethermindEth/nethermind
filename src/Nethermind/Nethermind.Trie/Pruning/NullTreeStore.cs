@@ -26,5 +26,7 @@ namespace Nethermind.Trie.Pruning
         public void Unwind()
         {
         }
+
+        public event EventHandler<BlockNumberEventArgs> Stored;
     }
 }

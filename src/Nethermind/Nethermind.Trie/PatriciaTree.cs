@@ -67,17 +67,17 @@ namespace Nethermind.Trie
         internal TrieNode? RootRef;
 
         public PatriciaTree()
-            : this(new NullTreeStore(), EmptyTreeHash, false, true)
+            : this(new NullTreeStore(), EmptyTreeHash, false, true, NullLogManager.Instance)
         {
         }
 
         public PatriciaTree(IKeyValueStore keyValueStore)
-            : this(keyValueStore, EmptyTreeHash, false, true, NullLogger.Instance)
+            : this(keyValueStore, EmptyTreeHash, false, true, NullLogManager.Instance)
         {
         }
 
-        public PatriciaTree(ITreeStore keyValueStore, ILogger logger)
-            : this(keyValueStore, EmptyTreeHash, false, true, logger)
+        public PatriciaTree(ITreeStore keyValueStore, ILogManager logManager)
+            : this(keyValueStore, EmptyTreeHash, false, true, logManager)
         {
         }
 
@@ -86,7 +86,7 @@ namespace Nethermind.Trie
             Keccak rootHash,
             bool parallelBranches,
             bool allowCommits,
-            ILogger logger)
+            ILogManager logger)
             : this(new PassThroughTreeStore(keyValueStore, logger), rootHash, parallelBranches, allowCommits, logger)
         {
         }
@@ -96,9 +96,9 @@ namespace Nethermind.Trie
             Keccak rootHash,
             bool parallelBranches,
             bool allowCommits,
-            ILogger? logger = null)
+            ILogManager logManager)
         {
-            _logger = logger ?? NullLogger.Instance;
+            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _treeStore = keyValueStore ?? throw new ArgumentNullException(nameof(keyValueStore));
             _parallelBranches = parallelBranches;
             _allowCommits = allowCommits;

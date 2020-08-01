@@ -1,3 +1,5 @@
+using System;
+
 namespace Nethermind.Trie.Pruning
 {
     public interface ITreeStore : ITrieNodeResolver
@@ -8,5 +10,7 @@ namespace Nethermind.Trie.Pruning
         void FinishBlockCommit(long blockNumber, TrieNode? root);
 
         public void Unwind();
+
+        public event EventHandler<BlockNumberEventArgs> Stored;
     }
 }

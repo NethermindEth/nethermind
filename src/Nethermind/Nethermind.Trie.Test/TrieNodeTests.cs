@@ -679,7 +679,7 @@ namespace Nethermind.Trie.Test
         [Test]
         public void Rlp_is_cloned_when_cloning()
         {
-            PassThroughTreeStore treeStore = new PassThroughTreeStore(new MemDb(), NullLogger.Instance);
+            PassThroughTreeStore treeStore = new PassThroughTreeStore(new MemDb(), NullLogManager.Instance);
 
             TrieNode leaf1 = new TrieNode(NodeType.Leaf);
             leaf1.Key = new HexPrefix(true, Bytes.FromHexString("abc"));

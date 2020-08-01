@@ -29,7 +29,7 @@ namespace Nethermind.State.Proofs
         private static TransactionDecoder _txDecoder = new TransactionDecoder();
 
         public TxTrie(Transaction[] txs, bool allowProofs = false)
-            : base(allowProofs ? (IDb) new MemDb() : NullDb.Instance, EmptyTreeHash, false, false, NullLogger.Instance)
+            : base(allowProofs ? (IDb) new MemDb() : NullDb.Instance, EmptyTreeHash, false, false, NullLogManager.Instance)
         {
             _allowProofs = allowProofs;
             if (txs.Length == 0)

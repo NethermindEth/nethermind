@@ -147,6 +147,8 @@ namespace Nethermind.Trie.Pruning
             _packageQueue.RemoveLast();
         }
 
+        public event EventHandler<BlockNumberEventArgs> Stored;
+
         public void Flush()
         {
             if (_logger.IsDebug)
@@ -367,6 +369,10 @@ namespace Nethermind.Trie.Pruning
                     $"End dispatching {nameof(BlockCommitPackage)} - {commitPackage.BlockNumber} | memory {MemorySize}");
 
             _trieNodeCache.Dump();
+            if (isSnapshotBlock)
+            {
+                Stored?.Invoke(this, new BlockNumberEventArgs(commitPackage.BlockNumber));
+            }
         }
 
         private void DropNode(TrieNode trieNode)
