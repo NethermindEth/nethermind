@@ -34,7 +34,7 @@ namespace Ethereum.Blockchain.Legacy.Test
 
         public static IEnumerable<GeneralStateTest> LoadTests() 
         {
-            var loader = new DirectoryTestsSourceLoader(new LoadLegacyGeneralStateTestsStrategy(), "stRevertTest");
+            var loader = new TestsSourceLoader(new LoadLegacyGeneralStateTestsStrategy(), "stRevertTest");
             List<GeneralStateTest> tests = (List<GeneralStateTest>)loader.LoadTests();
             HashSet<string> ignoredTests = new HashSet<string>
             {

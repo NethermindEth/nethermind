@@ -23,22 +23,22 @@ using Ethereum.Test.Base.Interfaces;
 
 namespace Ethereum.Test.Base
 {
-    public class DirectoryTestsSourceLoader : ITestSourceLoader
+    public class TestsSourceLoader : ITestSourceLoader
     {
         private readonly ITestLoadStrategy _testLoadStrategy;
-        private readonly string _directory;
+        private readonly string _path;
         private readonly string _wildcard;
 
-        public DirectoryTestsSourceLoader(ITestLoadStrategy testLoadStrategy, string directory, string wildcard = null)
+        public TestsSourceLoader(ITestLoadStrategy testLoadStrategy, string path, string wildcard = null)
         {
             _testLoadStrategy = testLoadStrategy ?? throw new ArgumentNullException(nameof(testLoadStrategy));
-            _directory = directory ?? throw new ArgumentNullException(nameof(directory));
+            _path = path ?? throw new ArgumentNullException(nameof(path));
             _wildcard = wildcard;
         }
 
         public IEnumerable<IEthereumTest> LoadTests()
         {
-            return _testLoadStrategy.Load(_directory);
+            return _testLoadStrategy.Load(_path);
         }
     }
 }

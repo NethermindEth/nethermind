@@ -33,7 +33,7 @@ namespace Ethereum.Blockchain.Test
         
         public static IEnumerable<GeneralStateTest> LoadTests() 
         { 
-            var loader = new DirectoryTestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stAttackTest");
+            var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stAttackTest");
             return (IEnumerable<GeneralStateTest>)loader.LoadTests(); 
         }
     }
