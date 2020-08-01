@@ -886,12 +886,22 @@ namespace Nethermind.Trie.Test
 
                 for (int i = 0; i < reorgDepth; i++)
                 {
-                    treeStore.Unwind();
+                    try
+                    {
+                        treeStore.Unwind();
+                    }
+                    catch(InvalidOperationException)
+                    {
+                        // if memory limit hits in
+                        blockCount = 0;
+                    }
+                    
                     rootStack.Pop();
                     patriciaTree.RootHash = rootStack.Peek();
                 }
 
-                blockCount -= reorgDepth;
+                blockCount = Math.Max(0, blockCount - reorgDepth);
+                _logger.Debug($"Setting block count to {blockCount}");
 
                 bool isEmptyBlock = random.Next(5) == 0;
                 if (!isEmptyBlock)
@@ -917,6 +927,7 @@ namespace Nethermind.Trie.Test
                 rootQueue.Enqueue(patriciaTree.RootHash);
                 rootStack.Push(patriciaTree.RootHash);
                 blockCount++;
+                _logger.Debug($"Setting block count to {blockCount}");
             }
 
             streamWriter.Flush();

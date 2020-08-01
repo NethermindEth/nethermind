@@ -114,6 +114,8 @@ namespace Nethermind.Trie.Pruning
                 BeginNewPackage(blockNumber);
             }
 
+            if (_logger.IsTrace) _logger.Trace($"Enqueued packages {_packageQueue.Count}");
+
             if (CurrentPackage != null)
             {
                 CurrentPackage.Root = root;
