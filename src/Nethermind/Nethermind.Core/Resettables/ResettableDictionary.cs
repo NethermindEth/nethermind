@@ -22,21 +22,29 @@ namespace Nethermind.Core.Resettables
 {
     public class ResettableDictionary<TKey, TValue> : IDictionary<TKey, TValue>
     {
+        private readonly IEqualityComparer<TKey> _comparer;
         private int _currentCapacity;
         private int _startCapacity;
         private int _resetRatio;
 
         private IDictionary<TKey, TValue> _wrapped;
 
-        public ResettableDictionary(IEqualityComparer<TKey> comparer, int startCapacity = Resettable.StartCapacity, int resetRatio = Resettable.ResetRatio)
+        public ResettableDictionary(
+            IEqualityComparer<TKey> comparer,
+            int startCapacity = Resettable.StartCapacity,
+            int resetRatio = Resettable.ResetRatio)
         {
-            _wrapped = new Dictionary<TKey, TValue>(startCapacity, comparer);
+            _comparer = comparer;
+            _wrapped = new Dictionary<TKey, TValue>(startCapacity, _comparer);
+            
             _startCapacity = startCapacity;
             _resetRatio = resetRatio;
             _currentCapacity = _startCapacity;
         }
 
-        public ResettableDictionary(int startCapacity = Resettable.StartCapacity, int resetRatio = Resettable.ResetRatio)
+        public ResettableDictionary(
+            int startCapacity = Resettable.StartCapacity,
+            int resetRatio = Resettable.ResetRatio)
             : this(null, startCapacity, resetRatio)
         {
         }
@@ -118,7 +126,11 @@ namespace Nethermind.Core.Resettables
             if (_wrapped.Count < _currentCapacity / _resetRatio && _currentCapacity != _startCapacity)
             {
                 _currentCapacity = Math.Max(_startCapacity, _currentCapacity / _resetRatio);
-                _wrapped = new Dictionary<TKey, TValue>(_currentCapacity);
+                
+                // probably the strangest change required - comparer was not passed here which would suggest a very deep
+                // error in the previously used code...?
+                // or maybe the reset was never used?
+                _wrapped = new Dictionary<TKey, TValue>(_currentCapacity, _comparer);
             }
             else
             {

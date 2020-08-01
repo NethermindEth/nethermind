@@ -33,7 +33,8 @@ namespace Nethermind.Db
         private Change[] _changes = new Change[StartCapacity];
         private int _currentPosition = -1;
 
-        private readonly ResettableDictionary<byte[], int> _pendingChanges = new ResettableDictionary<byte[], int>(Bytes.EqualityComparer, StartCapacity);
+        private readonly ResettableDictionary<byte[], int> _pendingChanges
+            = new ResettableDictionary<byte[], int>(Bytes.EqualityComparer, StartCapacity);
         
         public string Name { get; } = "State";
 
@@ -148,7 +149,8 @@ namespace Nethermind.Db
 
         private byte[] Get(byte[] key)
         {
-            if (_pendingChanges.TryGetValue(key, out int pendingChangeIndex)) return _changes[pendingChangeIndex].Value;
+            if (_pendingChanges.TryGetValue(key, out int pendingChangeIndex))
+                return _changes[pendingChangeIndex].Value;
             return _db[key];
         }
 
@@ -179,6 +181,11 @@ namespace Nethermind.Db
 
             public byte[] Key { get; }
             public byte[] Value { get; }
+
+            public override string ToString()
+            {
+                return $"{Key.ToHexString()} {Value?.Length.ToString() ?? "NULL"}";
+            }
         }
     }
 }

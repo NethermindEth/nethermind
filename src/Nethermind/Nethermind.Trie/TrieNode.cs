@@ -250,7 +250,7 @@ namespace Nethermind.Trie
                     {
                         if (Keccak == null)
                         {
-                            throw new TrieException($"Unable to resolve node without Keccak");
+                            throw new TrieException("Unable to resolve node without Keccak");
                         }
 
                         FullRlp = tree.LoadRlp(Keccak, allowCaching);

@@ -127,6 +127,7 @@ namespace Nethermind.Blockchain.Processing
             }
             catch (Exception ex) // try to restore for all cost
             {
+                _logger.Trace($"Encountered exception {ex} while processing blocks.");
                 RestoreBranch(previousBranchStateRoot);
                 throw;
             }
