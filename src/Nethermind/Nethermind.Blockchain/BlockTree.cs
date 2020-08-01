@@ -41,7 +41,8 @@ namespace Nethermind.Blockchain
     [Todo(Improve.Refactor, "After the fast sync work there are some duplicated code parts for the 'by header' and 'by block' approaches.")]
     public partial class BlockTree : IBlockTree
     {
-        private const long LowestInsertedBodyNumberDbEntryAddress = 0; 
+        private const long LowestInsertedBodyNumberDbEntryAddress = 0;
+        private const long StateHeadHashDbEntryAddress = 1;
         private const int CacheSize = 64;
         private readonly ICache<Keccak, Block> _blockCache = new LruCacheWithRecycling<Keccak, Block>(CacheSize, CacheSize, "blocks");
         private readonly ICache<Keccak, BlockHeader> _headerCache = new LruCacheWithRecycling<Keccak, BlockHeader>(CacheSize, CacheSize, "headers");
@@ -1026,7 +1027,7 @@ namespace Nethermind.Blockchain
 
         private void LoadHeadBlockAtStart()
         {
-            byte[] data = _blockInfoDb.Get(HeadAddressInDb);
+            byte[] data = _blockInfoDb.Get(StateHeadHashDbEntryAddress) ?? _blockInfoDb.Get(HeadAddressInDb);
             if (data != null)
             {
                 Block headBlock = FindBlock(new Keccak(data), BlockTreeLookupOptions.None);
@@ -1366,6 +1367,11 @@ namespace Nethermind.Blockchain
         internal void ReleaseAcceptingNewBlocks()
         {
             Interlocked.Decrement(ref _canAcceptNewBlocksCounter);
+        }
+
+        public void SaveStateHead(Keccak stateHeadHash)
+        {
+            _blockInfoDb.Set(StateHeadHashDbEntryAddress, stateHeadHash.Bytes);
         }
     }
 }

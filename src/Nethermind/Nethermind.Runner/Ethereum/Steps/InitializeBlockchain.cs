@@ -17,7 +17,6 @@
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
@@ -27,7 +26,6 @@ using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
-using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
@@ -39,7 +37,6 @@ using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
 using Nethermind.Synchronization.BeamSync;
-using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
@@ -83,6 +80,8 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             TrieNodeCache trieNodeCache = new TrieNodeCache(_context.LogManager);
             TreeStore treeStore = new TreeStore(trieNodeCache, _context.DbProvider.StateDb, _context.LogManager, 256.MB(), 1024);
+            treeStore.Stored += TreeStoreOnStored; 
+            
             _context.StateProvider = new StateProvider(
                 new StateTree(treeStore, _context.LogManager),
                 _context.DbProvider.CodeDb,
@@ -214,6 +213,14 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
 
             return Task.CompletedTask;
+        }
+
+        private void TreeStoreOnStored(object? sender, BlockNumberEventArgs e)
+        {
+            // the kind of hacks when you run out of time...
+            long blockNumber = e.BlockNumber;
+            Keccak stateHeadHash = _context.BlockTree.FindHash(blockNumber);
+            (_context.BlockTree as BlockTree).SaveStateHead(stateHeadHash);
         }
 
         protected virtual  HeaderValidator CreateHeaderValidator() =>
