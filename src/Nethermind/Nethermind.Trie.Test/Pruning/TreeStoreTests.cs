@@ -25,8 +25,8 @@ namespace Nethermind.Trie.Test.Pruning
         [Test]
         public void Initial_memory_is_96()
         {
-            TreeStore treeStore = new TreeStore(_trieNodeCache, new MemDb(), _logManager, 1.MB());
-            treeStore.MemorySize.Should().Be(96);
+            TrieStore trieStore = new TrieStore(_trieNodeCache, new MemDb(), _logManager, 1.MB());
+            trieStore.MemorySize.Should().Be(96);
         }
 
         [Test]
@@ -34,9 +34,9 @@ namespace Nethermind.Trie.Test.Pruning
         {
             TrieNode trieNode = new TrieNode(NodeType.Unknown, Keccak.Zero); // 56B
 
-            TreeStore treeStore = new TreeStore(_trieNodeCache, new MemDb(), _logManager, 1.MB());
-            treeStore.Commit(1234, new NodeCommitInfo(trieNode));
-            treeStore.MemorySize.Should().Be(
+            TrieStore trieStore = new TrieStore(_trieNodeCache, new MemDb(), _logManager, 1.MB());
+            trieStore.Commit(TrieType.State, 1234, new NodeCommitInfo(trieNode));
+            trieStore.MemorySize.Should().Be(
                 96 /* committer */ +
                 88 /* block package */ +
                 48 /* linked list node size */ +
@@ -49,10 +49,10 @@ namespace Nethermind.Trie.Test.Pruning
             TrieNode trieNode1 = new TrieNode(NodeType.Unknown, TestItem.KeccakA);
             TrieNode trieNode2 = new TrieNode(NodeType.Unknown, TestItem.KeccakB);
 
-            TreeStore treeStore = new TreeStore(_trieNodeCache, new MemDb(), _logManager, 1.MB());
-            treeStore.Commit(1234, new NodeCommitInfo(trieNode1));
-            treeStore.Commit(1234, new NodeCommitInfo(trieNode2));
-            treeStore.MemorySize.Should().Be(
+            TrieStore trieStore = new TrieStore(_trieNodeCache, new MemDb(), _logManager, 1.MB());
+            trieStore.Commit(TrieType.State, 1234, new NodeCommitInfo(trieNode1));
+            trieStore.Commit(TrieType.State, 1234, new NodeCommitInfo(trieNode2));
+            trieStore.MemorySize.Should().Be(
                 96 /* committer */ +
                 88 /* block package */ +
                 48 /* linked list node size */ +
@@ -66,13 +66,13 @@ namespace Nethermind.Trie.Test.Pruning
             TrieNode trieNode1 = new TrieNode(NodeType.Unknown, TestItem.KeccakA);
             TrieNode trieNode2 = new TrieNode(NodeType.Unknown, TestItem.KeccakB);
 
-            TreeStore treeStore = new TreeStore(_trieNodeCache, new MemDb(), _logManager, 1.MB());
-            treeStore.Commit(1234, new NodeCommitInfo(trieNode1));
-            treeStore.Commit(1234, new NodeCommitInfo(trieNode2));
-            treeStore.FinishBlockCommit(1234, trieNode2);
-            treeStore.Commit(1235, new NodeCommitInfo(trieNode1));
-            treeStore.Commit(1235, new NodeCommitInfo(trieNode2));
-            treeStore.MemorySize.Should().Be(
+            TrieStore trieStore = new TrieStore(_trieNodeCache, new MemDb(), _logManager, 1.MB());
+            trieStore.Commit(TrieType.State, 1234, new NodeCommitInfo(trieNode1));
+            trieStore.Commit(TrieType.State, 1234, new NodeCommitInfo(trieNode2));
+            trieStore.FinishBlockCommit(TrieType.State, 1234, trieNode2);
+            trieStore.Commit(TrieType.State, 1235, new NodeCommitInfo(trieNode1));
+            trieStore.Commit(TrieType.State, 1235, new NodeCommitInfo(trieNode2));
+            trieStore.MemorySize.Should().Be(
                 96 /* committer */ +
                 2 * 88 /* block package */ +
                 2 * 48 /* linked list node size */ +
@@ -98,13 +98,13 @@ namespace Nethermind.Trie.Test.Pruning
             trieNode4.ResolveKey(null!, true);
             trieNode4.Refs = 1;
 
-            TreeStore treeStore = new TreeStore(_trieNodeCache, new MemDb(), _logManager, 640);
-            treeStore.Commit(1234, new NodeCommitInfo(trieNode1));
-            treeStore.Commit(1234, new NodeCommitInfo(trieNode2));
-            treeStore.FinishBlockCommit(1234, trieNode2);
-            treeStore.Commit(1235, new NodeCommitInfo(trieNode3));
-            treeStore.Commit(1235, new NodeCommitInfo(trieNode4));
-            treeStore.MemorySize.Should().Be(
+            TrieStore trieStore = new TrieStore(_trieNodeCache, new MemDb(), _logManager, 640);
+            trieStore.Commit(TrieType.State, 1234, new NodeCommitInfo(trieNode1));
+            trieStore.Commit(TrieType.State, 1234, new NodeCommitInfo(trieNode2));
+            trieStore.FinishBlockCommit(TrieType.State, 1234, trieNode2);
+            trieStore.Commit(TrieType.State, 1235, new NodeCommitInfo(trieNode3));
+            trieStore.Commit(TrieType.State, 1235, new NodeCommitInfo(trieNode4));
+            trieStore.MemorySize.Should().Be(
                 96 /* committer */ +
                 1 * 88 /* block package */ +
                 1 * 48 /* linked list node size */ +
@@ -130,13 +130,13 @@ namespace Nethermind.Trie.Test.Pruning
             trieNode4.ResolveKey(null!, true);
             trieNode4.Refs = 1;
 
-            TreeStore treeStore = new TreeStore(_trieNodeCache, new MemDb(), _logManager, 512);
-            treeStore.Commit(1234, new NodeCommitInfo(trieNode1));
-            treeStore.Commit(1234, new NodeCommitInfo(trieNode2));
-            treeStore.FinishBlockCommit(1234, trieNode2);
-            treeStore.Commit(1235, new NodeCommitInfo(trieNode3));
-            treeStore.Commit(1235, new NodeCommitInfo(trieNode4));
-            treeStore.MemorySize.Should().Be(
+            TrieStore trieStore = new TrieStore(_trieNodeCache, new MemDb(), _logManager, 512);
+            trieStore.Commit(TrieType.State, 1234, new NodeCommitInfo(trieNode1));
+            trieStore.Commit(TrieType.State, 1234, new NodeCommitInfo(trieNode2));
+            trieStore.FinishBlockCommit(TrieType.State, 1234, trieNode2);
+            trieStore.Commit(TrieType.State, 1235, new NodeCommitInfo(trieNode3));
+            trieStore.Commit(TrieType.State, 1235, new NodeCommitInfo(trieNode4));
+            trieStore.MemorySize.Should().Be(
                 96 /* committer */ +
                 1 * 88 /* block package */ +
                 1 * 48 /* linked list node size */ +
@@ -150,18 +150,18 @@ namespace Nethermind.Trie.Test.Pruning
             TrieNode trieNode = new TrieNode(NodeType.Leaf, new byte[0]); // 192B
             trieNode.ResolveKey(NullTrieNodeResolver.Instance, true);
 
-            TreeStore treeStore = new TreeStore(_trieNodeCache, new MemDb(), _logManager, 512);
+            TrieStore trieStore = new TrieStore(_trieNodeCache, new MemDb(), _logManager, 512);
             for (int i = 0; i < 1024; i++)
             {
                 for (int j = 0; j < 1 + i % 3; j++)
                 {
-                    treeStore.Commit(i, new NodeCommitInfo(trieNode));
+                    trieStore.Commit(TrieType.State, i, new NodeCommitInfo(trieNode));
                 }
                 
-                treeStore.FinishBlockCommit(i, trieNode);
+                trieStore.FinishBlockCommit(TrieType.State, i, trieNode);
             }
 
-            treeStore.MemorySize.Should().BeLessThan(512 * 2);
+            trieStore.MemorySize.Should().BeLessThan(512 * 2);
         }
 
         [TestCase(1)]
@@ -174,18 +174,18 @@ namespace Nethermind.Trie.Test.Pruning
 
             MemDb memDb = new MemDb();
             
-            TreeStore treeStore = new TreeStore(_trieNodeCache, memDb, _logManager, 16.MB(), 4);
+            TrieStore trieStore = new TrieStore(_trieNodeCache, memDb, _logManager, 16.MB(), 4);
 
             a.Refs = refCount;
-            treeStore.Commit(0, new NodeCommitInfo(a));
-            treeStore.FinishBlockCommit(0, a);
-            treeStore.FinishBlockCommit(1, a);
-            treeStore.FinishBlockCommit(2, a);
-            treeStore.FinishBlockCommit(3, a);
-            treeStore.FinishBlockCommit(4, a);
+            trieStore.Commit(TrieType.State, 0, new NodeCommitInfo(a));
+            trieStore.FinishBlockCommit(TrieType.State, 0, a);
+            trieStore.FinishBlockCommit(TrieType.State, 1, a);
+            trieStore.FinishBlockCommit(TrieType.State, 2, a);
+            trieStore.FinishBlockCommit(TrieType.State, 3, a);
+            trieStore.FinishBlockCommit(TrieType.State, 4, a);
 
             memDb[a.Keccak!.Bytes].Should().NotBeNull();
-            treeStore.IsInMemory(a.Keccak).Should().BeFalse();
+            trieStore.IsInMemory(a.Keccak).Should().BeFalse();
         }
 
         [TestCase(1)]
@@ -198,18 +198,18 @@ namespace Nethermind.Trie.Test.Pruning
 
             MemDb memDb = new MemDb();
 
-            TreeStore treeStore = new TreeStore(_trieNodeCache, memDb, _logManager, 16.MB(), 4);
+            TrieStore trieStore = new TrieStore(_trieNodeCache, memDb, _logManager, 16.MB(), 4);
 
             a.Refs = refCount;
-            treeStore.Commit(0, new NodeCommitInfo(a));
-            treeStore.FinishBlockCommit(0, a);
-            treeStore.FinishBlockCommit(1, a);
-            treeStore.FinishBlockCommit(2, a);
-            treeStore.FinishBlockCommit(3, a);
+            trieStore.Commit(TrieType.State, 0, new NodeCommitInfo(a));
+            trieStore.FinishBlockCommit(TrieType.State, 0, a);
+            trieStore.FinishBlockCommit(TrieType.State, 1, a);
+            trieStore.FinishBlockCommit(TrieType.State, 2, a);
+            trieStore.FinishBlockCommit(TrieType.State, 3, a);
             //  <- do not persist in this test
 
             memDb[a.Keccak!.Bytes].Should().BeNull();
-            treeStore.IsInMemory(a.Keccak).Should().BeTrue();
+            trieStore.IsInMemory(a.Keccak).Should().BeTrue();
         }
 
         [TestCase(1)]
@@ -222,22 +222,22 @@ namespace Nethermind.Trie.Test.Pruning
 
             MemDb memDb = new MemDb();
 
-            TreeStore treeStore = new TreeStore(_trieNodeCache, memDb, _logManager, 16.MB(), 4);
+            TrieStore trieStore = new TrieStore(_trieNodeCache, memDb, _logManager, 16.MB(), 4);
 
             a.Refs = refCount;
-            treeStore.FinishBlockCommit(0, null);
-            treeStore.Commit(1, new NodeCommitInfo(a));
-            treeStore.FinishBlockCommit(1, a);
-            treeStore.FinishBlockCommit(2, a);
-            treeStore.FinishBlockCommit(3, a);
-            treeStore.FinishBlockCommit(4, a);
-            treeStore.FinishBlockCommit(5, a);
-            treeStore.FinishBlockCommit(6, a);
-            treeStore.FinishBlockCommit(7, a);
-            treeStore.FinishBlockCommit(8, a);
+            trieStore.FinishBlockCommit(TrieType.State, 0, null);
+            trieStore.Commit(TrieType.State, 1, new NodeCommitInfo(a));
+            trieStore.FinishBlockCommit(TrieType.State, 1, a);
+            trieStore.FinishBlockCommit(TrieType.State, 2, a);
+            trieStore.FinishBlockCommit(TrieType.State, 3, a);
+            trieStore.FinishBlockCommit(TrieType.State, 4, a);
+            trieStore.FinishBlockCommit(TrieType.State, 5, a);
+            trieStore.FinishBlockCommit(TrieType.State, 6, a);
+            trieStore.FinishBlockCommit(TrieType.State, 7, a);
+            trieStore.FinishBlockCommit(TrieType.State, 8, a);
 
             memDb[a.Keccak!.Bytes].Should().NotBeNull();
-            treeStore.IsInMemory(a.Keccak).Should().BeFalse();
+            trieStore.IsInMemory(a.Keccak).Should().BeFalse();
         }
 
         [Test]
@@ -251,23 +251,22 @@ namespace Nethermind.Trie.Test.Pruning
 
             MemDb memDb = new MemDb();
 
-            TreeStore treeStore = new TreeStore(_trieNodeCache, memDb, _logManager, 16.MB(), 4);
+            TrieStore trieStore = new TrieStore(_trieNodeCache, memDb, _logManager, 16.MB(), 4);
 
-            a.Refs = 1;
-            treeStore.FinishBlockCommit(0, null);
-            treeStore.Commit(1, new NodeCommitInfo(a));
-            treeStore.FinishBlockCommit(1, a);
-            treeStore.FinishBlockCommit(2, a);
-            treeStore.FinishBlockCommit(3, a);
-            treeStore.FinishBlockCommit(4, a);
-            treeStore.FinishBlockCommit(5, a);
-            treeStore.FinishBlockCommit(6, a);
-            treeStore.Commit(7, new NodeCommitInfo(b));
-            treeStore.FinishBlockCommit(7, b);
-            treeStore.FinishBlockCommit(8, b);
+            trieStore.FinishBlockCommit(TrieType.State, 0, null);
+            trieStore.Commit(TrieType.State, 1, new NodeCommitInfo(a));
+            trieStore.FinishBlockCommit(TrieType.State, 1, a);
+            trieStore.FinishBlockCommit(TrieType.State, 2, a);
+            trieStore.FinishBlockCommit(TrieType.State, 3, a);
+            trieStore.FinishBlockCommit(TrieType.State, 4, a);
+            trieStore.FinishBlockCommit(TrieType.State, 5, a);
+            trieStore.FinishBlockCommit(TrieType.State, 6, a);
+            trieStore.Commit(TrieType.State, 7, new NodeCommitInfo(b));
+            trieStore.FinishBlockCommit(TrieType.State, 7, b);
+            trieStore.FinishBlockCommit(TrieType.State, 8, b);
 
             memDb[a.Keccak!.Bytes].Should().NotBeNull();
-            treeStore.IsInMemory(a.Keccak).Should().BeFalse();
+            trieStore.IsInMemory(a.Keccak).Should().BeFalse();
         }
 
         [Test]
@@ -282,24 +281,92 @@ namespace Nethermind.Trie.Test.Pruning
             MemDb memDb = new MemDb();
             
             ITrieNodeCache cache = new TrieNodeCache(_logManager);
-            TreeStore treeStore = new TreeStore(cache,  memDb, _logManager, 16.MB(), 4);
+            TrieStore trieStore = new TrieStore(cache,  memDb, _logManager, 16.MB(), 4);
 
-            a.Refs = 1;
-            treeStore.FinishBlockCommit(0, null);
-            treeStore.Commit(1, new NodeCommitInfo(a));
-            treeStore.FinishBlockCommit(1, a);
-            treeStore.FinishBlockCommit(2, a);
-            a.Refs = 0;
-            treeStore.Commit(3, new NodeCommitInfo(b)); // <- new root
-            treeStore.FinishBlockCommit(3, b);
-            treeStore.FinishBlockCommit(4, a);
-            treeStore.FinishBlockCommit(5, a);
-            treeStore.FinishBlockCommit(6, a);
-            treeStore.FinishBlockCommit(7, a);
-            treeStore.FinishBlockCommit(8, a);
+            trieStore.FinishBlockCommit(TrieType.State, 0, null);
+            trieStore.Commit(TrieType.State, 1, new NodeCommitInfo(a));
+            trieStore.FinishBlockCommit(TrieType.State, 1, a);
+            trieStore.FinishBlockCommit(TrieType.State, 2, a);
+            trieStore.Commit(TrieType.State, 3, new NodeCommitInfo(b)); // <- new root
+            trieStore.FinishBlockCommit(TrieType.State, 3, b);
+            trieStore.FinishBlockCommit(TrieType.State, 4, a);
+            trieStore.FinishBlockCommit(TrieType.State, 5, a);
+            trieStore.FinishBlockCommit(TrieType.State, 6, a);
+            trieStore.FinishBlockCommit(TrieType.State, 7, a);
+            trieStore.FinishBlockCommit(TrieType.State, 8, a);
 
             memDb[a.Keccak!.Bytes].Should().BeNull();
-            treeStore.IsInMemory(a.Keccak).Should().BeFalse();
+            trieStore.IsInMemory(a.Keccak).Should().BeFalse();
+        }
+        
+        [Test]
+        public void Will_store_storage_on_snapshot()
+        {
+            TrieNode a = new TrieNode(NodeType.Leaf, new byte[0]);
+            a.ResolveKey(NullTrieNodeResolver.Instance, true);
+            
+            TrieNode storage1 = new TrieNode(NodeType.Leaf, new byte[2]);
+            storage1.ResolveKey(NullTrieNodeResolver.Instance, true);
+
+            TrieNode b = new TrieNode(NodeType.Leaf, new byte[1]);
+            b.ResolveKey(NullTrieNodeResolver.Instance, true);
+
+            MemDb memDb = new MemDb();
+            
+            ITrieNodeCache cache = new TrieNodeCache(_logManager);
+            TrieStore trieStore = new TrieStore(cache,  memDb, _logManager, 16.MB(), 4);
+            trieStore.FinishBlockCommit(TrieType.State, 0, null);
+            trieStore.Commit(TrieType.State, 1, new NodeCommitInfo(a));
+            trieStore.Commit(TrieType.Storage, 1, new NodeCommitInfo(storage1));
+            trieStore.FinishBlockCommit(TrieType.Storage, 1, storage1);
+            trieStore.FinishBlockCommit(TrieType.State, 2, a);
+            trieStore.FinishBlockCommit(TrieType.State, 3, b);
+            trieStore.FinishBlockCommit(TrieType.State, 4, a);
+            trieStore.FinishBlockCommit(TrieType.State, 5, a);
+            trieStore.FinishBlockCommit(TrieType.State, 6, a);
+            trieStore.FinishBlockCommit(TrieType.State, 7, a);
+            trieStore.FinishBlockCommit(TrieType.State, 8, a);
+
+            memDb[a.Keccak!.Bytes].Should().BeNull();
+            memDb[storage1.Keccak!.Bytes].Should().BeNull();
+            trieStore.IsInMemory(a.Keccak).Should().BeFalse();
+            trieStore.IsInMemory(storage1.Keccak).Should().BeFalse();
+        }
+        
+        [Test]
+        public void Will_drop_transient_storage()
+        {
+            TrieNode a = new TrieNode(NodeType.Leaf, new byte[0]);
+            a.ResolveKey(NullTrieNodeResolver.Instance, true);
+            
+            TrieNode storage1 = new TrieNode(NodeType.Leaf, new byte[2]);
+            storage1.ResolveKey(NullTrieNodeResolver.Instance, true);
+
+            TrieNode b = new TrieNode(NodeType.Leaf, new byte[1]);
+            b.ResolveKey(NullTrieNodeResolver.Instance, true);
+
+            MemDb memDb = new MemDb();
+            
+            ITrieNodeCache cache = new TrieNodeCache(_logManager);
+            TrieStore trieStore = new TrieStore(cache,  memDb, _logManager, 16.MB(), 4);
+
+            trieStore.FinishBlockCommit(TrieType.State, 0, null);
+            trieStore.Commit(TrieType.State, 1, new NodeCommitInfo(a));
+            trieStore.Commit(TrieType.Storage, 1, new NodeCommitInfo(storage1));
+            trieStore.FinishBlockCommit(TrieType.Storage, 1, storage1);
+            trieStore.FinishBlockCommit(TrieType.State, 2, a);
+            trieStore.Commit(TrieType.State, 3, new NodeCommitInfo(b)); // <- new root
+            trieStore.FinishBlockCommit(TrieType.State, 3, b);
+            trieStore.FinishBlockCommit(TrieType.State, 4, a);
+            trieStore.FinishBlockCommit(TrieType.State, 5, a);
+            trieStore.FinishBlockCommit(TrieType.State, 6, a);
+            trieStore.FinishBlockCommit(TrieType.State, 7, a);
+            trieStore.FinishBlockCommit(TrieType.State, 8, a);
+
+            memDb[a.Keccak!.Bytes].Should().BeNull();
+            memDb[storage1.Keccak!.Bytes].Should().BeNull();
+            trieStore.IsInMemory(a.Keccak).Should().BeFalse();
+            trieStore.IsInMemory(storage1.Keccak).Should().BeFalse();
         }
     }
 }

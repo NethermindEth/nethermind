@@ -21,13 +21,11 @@ namespace Nethermind.Trie.Pruning
 {
     public class BlockNumberEventArgs : EventArgs
     {
-        private readonly long _blockNumber;
-
         public BlockNumberEventArgs(long blockNumber)
         {
-            _blockNumber = blockNumber;
+            BlockNumber = blockNumber;
         }
 
-        public long BlockNumber => _blockNumber;
+        public long BlockNumber { get; }
     }
 }

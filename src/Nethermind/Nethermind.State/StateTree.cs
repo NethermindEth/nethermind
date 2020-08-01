@@ -33,24 +33,28 @@ namespace Nethermind.State
         public StateTree()
             : base(new MemDb(), Keccak.EmptyTreeHash, true, true, NullLogManager.Instance)
         {
+            TrieType = TrieType.State;
         }
         
         [DebuggerStepThrough]
         public StateTree(IKeyValueStore store)
             : base(store, Keccak.EmptyTreeHash, true, true, NullLogManager.Instance)
         {
+            TrieType = TrieType.State;
         }
         
         [DebuggerStepThrough]
-        public StateTree(IKeyValueStore store, ILogManager logger)
-            : base(store, Keccak.EmptyTreeHash, true, true, logger)
-        {
-        }
-        
-        [DebuggerStepThrough]
-        public StateTree(ITreeStore store, ILogManager logManager)
+        public StateTree(IKeyValueStore store, ILogManager logManager)
             : base(store, Keccak.EmptyTreeHash, true, true, logManager)
         {
+            TrieType = TrieType.State;
+        }
+        
+        [DebuggerStepThrough]
+        public StateTree(ITrieStore store, ILogManager logManager)
+            : base(store, Keccak.EmptyTreeHash, true, true, logManager)
+        {
+            TrieType = TrieType.State;
         }
 
         [DebuggerStepThrough]

@@ -23,6 +23,7 @@ using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State
 {
@@ -47,10 +48,12 @@ namespace Nethermind.State
 
         public StorageTree(IDb db) : base(db, Keccak.EmptyTreeHash, false, true, NullLogManager.Instance)
         {
+            TrieType = TrieType.Storage;
         }
 
         public StorageTree(IDb db, Keccak rootHash) : base(db, rootHash, false, true, NullLogManager.Instance)
         {
+            TrieType = TrieType.Storage;
         }
         
         public static Span<byte> GetKey(UInt256 index)

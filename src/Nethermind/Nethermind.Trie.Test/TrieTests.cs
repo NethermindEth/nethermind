@@ -52,11 +52,11 @@ namespace Nethermind.Trie.Test
         public void Single_leaf()
         {
             MemDb memDb = new MemDb();
-            TreeStore treeStore = new TreeStore(_trieNodeCache, memDb, LimboLogs.Instance, 1.MB());
-            PatriciaTree patriciaTree = new PatriciaTree(treeStore, _logManager);
+            TrieStore trieStore = new TrieStore(_trieNodeCache, memDb, LimboLogs.Instance, 1.MB());
+            PatriciaTree patriciaTree = new PatriciaTree(trieStore, _logManager);
             patriciaTree.Set(_keyA, _longLeaf1);
             patriciaTree.Commit(0);
-            treeStore.Flush();
+            trieStore.Flush();
 
             // leaf (root)
             memDb.Keys.Should().HaveCount(1);
@@ -66,12 +66,12 @@ namespace Nethermind.Trie.Test
         public void Single_leaf_update_same_block()
         {
             MemDb memDb = new MemDb();
-            TreeStore treeStore = new TreeStore(_trieNodeCache, memDb, LimboLogs.Instance, 1.MB());
-            PatriciaTree patriciaTree = new PatriciaTree(treeStore, _logManager);
+            TrieStore trieStore = new TrieStore(_trieNodeCache, memDb, LimboLogs.Instance, 1.MB());
+            PatriciaTree patriciaTree = new PatriciaTree(trieStore, _logManager);
             patriciaTree.Set(_keyA, _longLeaf1);
             patriciaTree.Set(_keyA, _longLeaf2);
             patriciaTree.Commit(0);
-            treeStore.Flush();
+            trieStore.Flush();
 
             // leaf (root)
             memDb.Keys.Should().HaveCount(1);
@@ -85,14 +85,14 @@ namespace Nethermind.Trie.Test
         public void Single_leaf_update_next_blocks()
         {
             MemDb memDb = new MemDb();
-            TreeStore treeStore = new TreeStore(_trieNodeCache, memDb, LimboLogs.Instance, 1.MB(), 1);
-            PatriciaTree patriciaTree = new PatriciaTree(treeStore, _logManager);
+            TrieStore trieStore = new TrieStore(_trieNodeCache, memDb, LimboLogs.Instance, 1.MB(), 1);
+            PatriciaTree patriciaTree = new PatriciaTree(trieStore, _logManager);
             patriciaTree.Set(_keyA, _longLeaf1);
             patriciaTree.Commit(0);
             patriciaTree.Set(_keyA, _longLeaf2);
             patriciaTree.Commit(1);
             patriciaTree.UpdateRootHash();
-            treeStore.Flush();
+            trieStore.Flush();
 
             // leaf (root)
             memDb.Keys.Should().HaveCount(2);
@@ -106,12 +106,12 @@ namespace Nethermind.Trie.Test
         public void Single_leaf_delete_same_block()
         {
             MemDb memDb = new MemDb();
-            TreeStore treeStore = new TreeStore(_trieNodeCache, memDb, LimboLogs.Instance, 1.MB());
-            PatriciaTree patriciaTree = new PatriciaTree(treeStore, _logManager);
+            TrieStore trieStore = new TrieStore(_trieNodeCache, memDb, LimboLogs.Instance, 1.MB());
+            PatriciaTree patriciaTree = new PatriciaTree(trieStore, _logManager);
             patriciaTree.Set(_keyA, _longLeaf1);
             patriciaTree.Set(_keyA, Array.Empty<byte>());
             patriciaTree.Commit(0);
-            treeStore.Flush();
+            trieStore.Flush();
 
             // leaf (root)
             memDb.Keys.Should().HaveCount(0);
@@ -124,14 +124,14 @@ namespace Nethermind.Trie.Test
         public void Single_leaf_delete_next_block()
         {
             MemDb memDb = new MemDb();
-            TreeStore treeStore = new TreeStore(_trieNodeCache, memDb, LimboLogs.Instance, 1.MB());
-            PatriciaTree patriciaTree = new PatriciaTree(treeStore, _logManager);
+            TrieStore trieStore = new TrieStore(_trieNodeCache, memDb, LimboLogs.Instance, 1.MB());
+            PatriciaTree patriciaTree = new PatriciaTree(trieStore, _logManager);
             patriciaTree.Set(_keyA, _longLeaf1);
             patriciaTree.Commit(0);
             patriciaTree.Set(_keyA, Array.Empty<byte>());
             patriciaTree.Commit(1);
             patriciaTree.UpdateRootHash();
-            treeStore.Flush();
+            trieStore.Flush();
 
             // leaf (root)
             memDb.Keys.Should().HaveCount(1);
@@ -144,8 +144,8 @@ namespace Nethermind.Trie.Test
         public void Single_leaf_and_keep_for_multiple_dispatches_then_delete()
         {
             MemDb memDb = new MemDb();
-            TreeStore treeStore = new TreeStore(_trieNodeCache, memDb, LimboLogs.Instance, 1.MB(), 4);
-            PatriciaTree patriciaTree = new PatriciaTree(treeStore, _logManager);
+            TrieStore trieStore = new TrieStore(_trieNodeCache, memDb, LimboLogs.Instance, 1.MB(), 4);
+            PatriciaTree patriciaTree = new PatriciaTree(trieStore, _logManager);
             patriciaTree.Commit(0);
             patriciaTree.Commit(1);
             patriciaTree.Commit(2);
@@ -165,7 +165,7 @@ namespace Nethermind.Trie.Test
             patriciaTree.Commit(12);
             patriciaTree.Commit(13);
             patriciaTree.UpdateRootHash();
-            treeStore.Flush();
+            trieStore.Flush();
 
             // leaf (root)
             memDb.Keys.Should().HaveCount(2);
@@ -179,13 +179,13 @@ namespace Nethermind.Trie.Test
         public void Branch_with_branch_and_leaf()
         {
             MemDb memDb = new MemDb();
-            TreeStore treeStore = new TreeStore(_trieNodeCache, memDb, LimboLogs.Instance, 1.MB());
-            PatriciaTree patriciaTree = new PatriciaTree(treeStore, _logManager);
+            TrieStore trieStore = new TrieStore(_trieNodeCache, memDb, LimboLogs.Instance, 1.MB());
+            PatriciaTree patriciaTree = new PatriciaTree(trieStore, _logManager);
             patriciaTree.Set(_keyA, _longLeaf1);
             patriciaTree.Set(_keyB, _longLeaf1);
             patriciaTree.Set(_keyC, _longLeaf1);
             patriciaTree.Commit(0);
-            treeStore.Flush();
+            trieStore.Flush();
 
             // leaf (root)
             memDb.Keys.Should().HaveCount(6);
@@ -211,8 +211,8 @@ namespace Nethermind.Trie.Test
         public void Branch_with_branch_and_leaf_then_deleted()
         {
             MemDb memDb = new MemDb();
-            TreeStore treeStore = new TreeStore(_trieNodeCache, memDb, LimboLogs.Instance, 1.MB());
-            PatriciaTree patriciaTree = new PatriciaTree(treeStore, _logManager);
+            TrieStore trieStore = new TrieStore(_trieNodeCache, memDb, LimboLogs.Instance, 1.MB());
+            PatriciaTree patriciaTree = new PatriciaTree(trieStore, _logManager);
             patriciaTree.Set(_keyA, _longLeaf1);
             patriciaTree.Set(_keyB, _longLeaf1);
             patriciaTree.Set(_keyC, _longLeaf1);
@@ -222,7 +222,7 @@ namespace Nethermind.Trie.Test
             patriciaTree.Set(_keyC, Array.Empty<byte>());
             patriciaTree.Commit(1);
             patriciaTree.UpdateRootHash();
-            treeStore.Flush();
+            trieStore.Flush();
 
             // leaf (root)
             memDb.Keys.Should().HaveCount(6);
@@ -235,8 +235,8 @@ namespace Nethermind.Trie.Test
         public void Test_add_many(int i)
         {
             MemDb memDb = new MemDb();
-            TreeStore treeStore = new TreeStore(_trieNodeCache, memDb, LimboLogs.Instance, 128.MB());
-            PatriciaTree patriciaTree = new PatriciaTree(treeStore, Keccak.EmptyTreeHash, true, true, _logManager);
+            TrieStore trieStore = new TrieStore(_trieNodeCache, memDb, LimboLogs.Instance, 128.MB());
+            PatriciaTree patriciaTree = new PatriciaTree(trieStore, Keccak.EmptyTreeHash, true, true, _logManager);
 
             for (int j = 0; j < i; j++)
             {
@@ -248,7 +248,7 @@ namespace Nethermind.Trie.Test
 
             patriciaTree.Commit(0);
             patriciaTree.UpdateRootHash();
-            treeStore.Flush();
+            trieStore.Flush();
 
             PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
             for (int j = 0; j < i; j++)
@@ -263,8 +263,8 @@ namespace Nethermind.Trie.Test
         public void Test_try_delete_and_read_missing_nodes(int i)
         {
             MemDb memDb = new MemDb();
-            TreeStore treeStore = new TreeStore(_trieNodeCache, memDb, LimboLogs.Instance, 128.MB());
-            PatriciaTree patriciaTree = new PatriciaTree(treeStore, Keccak.EmptyTreeHash, true, true, _logManager);
+            TrieStore trieStore = new TrieStore(_trieNodeCache, memDb, LimboLogs.Instance, 128.MB());
+            PatriciaTree patriciaTree = new PatriciaTree(trieStore, Keccak.EmptyTreeHash, true, true, _logManager);
 
             for (int j = 0; j < i; j++)
             {
@@ -283,7 +283,7 @@ namespace Nethermind.Trie.Test
 
             patriciaTree.Commit(0);
             patriciaTree.UpdateRootHash();
-            treeStore.Flush();
+            trieStore.Flush();
 
             PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
 
@@ -307,8 +307,8 @@ namespace Nethermind.Trie.Test
         public void Test_update_many(int i)
         {
             MemDb memDb = new MemDb();
-            TreeStore treeStore = new TreeStore(_trieNodeCache, memDb, LimboLogs.Instance, 128.MB());
-            PatriciaTree patriciaTree = new PatriciaTree(treeStore, _logManager);
+            TrieStore trieStore = new TrieStore(_trieNodeCache, memDb, LimboLogs.Instance, 128.MB());
+            PatriciaTree patriciaTree = new PatriciaTree(trieStore, _logManager);
 
             for (int j = 0; j < i; j++)
             {
@@ -328,7 +328,7 @@ namespace Nethermind.Trie.Test
 
             patriciaTree.Commit(0);
             patriciaTree.UpdateRootHash();
-            treeStore.Flush();
+            trieStore.Flush();
 
             PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
             for (int j = 0; j < i; j++)
@@ -343,8 +343,8 @@ namespace Nethermind.Trie.Test
         public void Test_update_many_next_block(int i)
         {
             MemDb memDb = new MemDb();
-            TreeStore treeStore = new TreeStore(_trieNodeCache, memDb, LimboLogs.Instance, 128.MB(), 1);
-            PatriciaTree patriciaTree = new PatriciaTree(treeStore, _logManager);
+            TrieStore trieStore = new TrieStore(_trieNodeCache, memDb, LimboLogs.Instance, 128.MB(), 1);
+            PatriciaTree patriciaTree = new PatriciaTree(trieStore, _logManager);
 
             for (int j = 0; j < i; j++)
             {
@@ -366,7 +366,7 @@ namespace Nethermind.Trie.Test
 
             patriciaTree.Commit(1);
             patriciaTree.UpdateRootHash();
-            treeStore.Flush();
+            trieStore.Flush();
 
             PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
             for (int j = 0; j < i; j++)
@@ -381,8 +381,8 @@ namespace Nethermind.Trie.Test
         public void Test_add_and_delete_many_same_block(int i)
         {
             MemDb memDb = new MemDb();
-            TreeStore treeStore = new TreeStore(_trieNodeCache, memDb, LimboLogs.Instance, 128.MB());
-            PatriciaTree patriciaTree = new PatriciaTree(treeStore, _logManager);
+            TrieStore trieStore = new TrieStore(_trieNodeCache, memDb, LimboLogs.Instance, 128.MB());
+            PatriciaTree patriciaTree = new PatriciaTree(trieStore, _logManager);
 
             for (int j = 0; j < i; j++)
             {
@@ -402,7 +402,7 @@ namespace Nethermind.Trie.Test
 
             patriciaTree.Commit(0);
             patriciaTree.UpdateRootHash();
-            treeStore.Flush();
+            trieStore.Flush();
 
             PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
             for (int j = 0; j < i; j++)
@@ -417,8 +417,8 @@ namespace Nethermind.Trie.Test
         public void Test_add_and_delete_many_next_block(int i)
         {
             MemDb memDb = new MemDb();
-            TreeStore treeStore = new TreeStore(_trieNodeCache, memDb, LimboLogs.Instance, 128.MB());
-            PatriciaTree patriciaTree = new PatriciaTree(treeStore, _logManager);
+            TrieStore trieStore = new TrieStore(_trieNodeCache, memDb, LimboLogs.Instance, 128.MB());
+            PatriciaTree patriciaTree = new PatriciaTree(trieStore, _logManager);
 
             for (int j = 0; j < i; j++)
             {
@@ -438,7 +438,7 @@ namespace Nethermind.Trie.Test
 
             patriciaTree.Commit(1);
             patriciaTree.UpdateRootHash();
-            treeStore.Flush();
+            trieStore.Flush();
 
             PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
             for (int j = 0; j < i; j++)
@@ -471,14 +471,14 @@ namespace Nethermind.Trie.Test
         public void Two_branches_exactly_same_leaf()
         {
             MemDb memDb = new MemDb();
-            TreeStore treeStore = new TreeStore(_trieNodeCache, memDb, LimboLogs.Instance, 1.MB());
-            PatriciaTree patriciaTree = new PatriciaTree(treeStore, _logManager);
+            TrieStore trieStore = new TrieStore(_trieNodeCache, memDb, LimboLogs.Instance, 1.MB());
+            PatriciaTree patriciaTree = new PatriciaTree(trieStore, _logManager);
             patriciaTree.Set(_keyA, _longLeaf1);
             patriciaTree.Set(_keyB, _longLeaf1);
             patriciaTree.Set(_keyC, _longLeaf1);
             patriciaTree.Set(_keyD, _longLeaf1);
             patriciaTree.Commit(0);
-            treeStore.Flush();
+            trieStore.Flush();
 
             // leaf (root)
             memDb.Keys.Should().HaveCount(5);
@@ -493,19 +493,19 @@ namespace Nethermind.Trie.Test
         public void Two_branches_exactly_same_leaf_then_one_removed()
         {
             MemDb memDb = new MemDb();
-            TreeStore treeStore = new TreeStore(
+            TrieStore trieStore = new TrieStore(
                 _trieNodeCache,
                 memDb,
                 LimboLogs.Instance,
                 1.MB());
-            PatriciaTree patriciaTree = new PatriciaTree(treeStore, _logManager);
+            PatriciaTree patriciaTree = new PatriciaTree(trieStore, _logManager);
             patriciaTree.Set(_keyA, _longLeaf1);
             patriciaTree.Set(_keyB, _longLeaf1);
             patriciaTree.Set(_keyC, _longLeaf1);
             patriciaTree.Set(_keyD, _longLeaf1);
             patriciaTree.Set(_keyA, Array.Empty<byte>());
             patriciaTree.Commit(0);
-            treeStore.Flush();
+            trieStore.Flush();
 
             // leaf (root)
             memDb.Keys.Should().HaveCount(6);
@@ -528,12 +528,12 @@ namespace Nethermind.Trie.Test
         public void Extension_with_branch_with_two_different_children()
         {
             MemDb memDb = new MemDb();
-            TreeStore treeStore = new TreeStore(_trieNodeCache, memDb, LimboLogs.Instance, 1.MB());
-            PatriciaTree patriciaTree = new PatriciaTree(treeStore, _logManager);
+            TrieStore trieStore = new TrieStore(_trieNodeCache, memDb, LimboLogs.Instance, 1.MB());
+            PatriciaTree patriciaTree = new PatriciaTree(trieStore, _logManager);
             patriciaTree.Set(_keyA, _longLeaf1);
             patriciaTree.Set(_keyB, _longLeaf2);
             patriciaTree.Commit(0);
-            treeStore.Flush();
+            trieStore.Flush();
             memDb.Keys.Should().HaveCount(4);
             PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
             checkTree.Get(_keyA).Should().BeEquivalentTo(_longLeaf1);
@@ -544,12 +544,12 @@ namespace Nethermind.Trie.Test
         public void Extension_with_branch_with_two_same_children()
         {
             MemDb memDb = new MemDb();
-            TreeStore treeStore = new TreeStore(_trieNodeCache, memDb, LimboLogs.Instance, 1.MB());
-            PatriciaTree patriciaTree = new PatriciaTree(treeStore, _logManager);
+            TrieStore trieStore = new TrieStore(_trieNodeCache, memDb, LimboLogs.Instance, 1.MB());
+            PatriciaTree patriciaTree = new PatriciaTree(trieStore, _logManager);
             patriciaTree.Set(_keyA, _longLeaf1);
             patriciaTree.Set(_keyB, _longLeaf1);
             patriciaTree.Commit(0);
-            treeStore.Flush();
+            trieStore.Flush();
             memDb.Keys.Should().HaveCount(4);
             PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
             checkTree.Get(_keyA).Should().BeEquivalentTo(_longLeaf1);
@@ -560,8 +560,8 @@ namespace Nethermind.Trie.Test
         public void When_branch_with_two_different_children_change_one_and_change_back_next_block()
         {
             MemDb memDb = new MemDb();
-            TreeStore treeStore = new TreeStore(_trieNodeCache, memDb, LimboLogs.Instance, 1.MB());
-            PatriciaTree patriciaTree = new PatriciaTree(treeStore, _logManager);
+            TrieStore trieStore = new TrieStore(_trieNodeCache, memDb, LimboLogs.Instance, 1.MB());
+            PatriciaTree patriciaTree = new PatriciaTree(trieStore, _logManager);
             patriciaTree.Set(_keyA, _longLeaf1);
             patriciaTree.Set(_keyB, _longLeaf2);
             patriciaTree.UpdateRootHash();
@@ -570,7 +570,7 @@ namespace Nethermind.Trie.Test
             patriciaTree.Set(_keyA, _longLeaf1);
             patriciaTree.UpdateRootHash();
             patriciaTree.Commit(1);
-            treeStore.Flush();
+            trieStore.Flush();
 
             // extension
             // branch
@@ -582,8 +582,8 @@ namespace Nethermind.Trie.Test
         public void When_branch_with_two_same_children_change_one_and_change_back_next_block()
         {
             MemDb memDb = new MemDb();
-            TreeStore treeStore = new TreeStore(_trieNodeCache, memDb, LimboLogs.Instance, 1.MB());
-            PatriciaTree patriciaTree = new PatriciaTree(treeStore, _logManager);
+            TrieStore trieStore = new TrieStore(_trieNodeCache, memDb, LimboLogs.Instance, 1.MB());
+            PatriciaTree patriciaTree = new PatriciaTree(trieStore, _logManager);
             patriciaTree.Set(_keyA, _longLeaf1);
             patriciaTree.Set(_keyB, _longLeaf1);
             patriciaTree.UpdateRootHash();
@@ -592,7 +592,7 @@ namespace Nethermind.Trie.Test
             patriciaTree.Set(_keyA, _longLeaf1);
             patriciaTree.UpdateRootHash();
             patriciaTree.Commit(1);
-            treeStore.Flush();
+            trieStore.Flush();
 
             memDb.Keys.Should().HaveCount(4);
             PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
@@ -616,14 +616,14 @@ namespace Nethermind.Trie.Test
             byte[] key3 = Bytes.FromHexString("000000200000000cc");
 
             MemDb memDb = new MemDb();
-            TreeStore treeStore = new TreeStore(_trieNodeCache, memDb, LimboLogs.Instance, 1.MB());
-            PatriciaTree patriciaTree = new PatriciaTree(treeStore, _logManager);
+            TrieStore trieStore = new TrieStore(_trieNodeCache, memDb, LimboLogs.Instance, 1.MB());
+            PatriciaTree patriciaTree = new PatriciaTree(trieStore, _logManager);
             patriciaTree.Set(key1, _longLeaf1);
             patriciaTree.Set(key2, _longLeaf1);
             patriciaTree.Set(key3, _longLeaf1);
             patriciaTree.UpdateRootHash();
             patriciaTree.Commit(0);
-            treeStore.Flush();
+            trieStore.Flush();
 
             memDb.Keys.Should().HaveCount(7);
             PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
@@ -665,8 +665,8 @@ namespace Nethermind.Trie.Test
             byte[] key3 = Bytes.FromHexString("000000200000000cc");
 
             MemDb memDb = new MemDb();
-            TreeStore treeStore = new TreeStore(_trieNodeCache, memDb, LimboLogs.Instance, 1.MB(), 1);
-            PatriciaTree patriciaTree = new PatriciaTree(treeStore, _logManager);
+            TrieStore trieStore = new TrieStore(_trieNodeCache, memDb, LimboLogs.Instance, 1.MB(), 1);
+            PatriciaTree patriciaTree = new PatriciaTree(trieStore, _logManager);
             patriciaTree.Set(key1, _longLeaf1);
             patriciaTree.Set(key2, _longLeaf1);
             patriciaTree.Set(key3, _longLeaf1);
@@ -675,7 +675,7 @@ namespace Nethermind.Trie.Test
             patriciaTree.Set(key3, Array.Empty<byte>());
             patriciaTree.UpdateRootHash();
             patriciaTree.Commit(1);
-            treeStore.Flush();
+            trieStore.Flush();
 
             memDb.Keys.Should().HaveCount(8);
             PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
@@ -688,8 +688,8 @@ namespace Nethermind.Trie.Test
         public void When_two_branches_with_two_same_children_change_one_and_change_back_next_block()
         {
             MemDb memDb = new MemDb();
-            TreeStore treeStore = new TreeStore(_trieNodeCache, memDb, LimboLogs.Instance, 1.MB());
-            PatriciaTree patriciaTree = new PatriciaTree(treeStore, _logManager);
+            TrieStore trieStore = new TrieStore(_trieNodeCache, memDb, LimboLogs.Instance, 1.MB());
+            PatriciaTree patriciaTree = new PatriciaTree(trieStore, _logManager);
             patriciaTree.Set(_keyA, _longLeaf1);
             patriciaTree.Set(_keyB, _longLeaf1);
             patriciaTree.Set(_keyC, _longLeaf1);
@@ -700,7 +700,7 @@ namespace Nethermind.Trie.Test
             patriciaTree.Set(_keyA, _longLeaf1);
             patriciaTree.UpdateRootHash();
             patriciaTree.Commit(1);
-            treeStore.Flush();
+            trieStore.Flush();
 
             memDb.Keys.Should().HaveCount(5);
             PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
@@ -735,8 +735,8 @@ namespace Nethermind.Trie.Test
             Random random = new Random();
             MemDb memDb = new MemDb();
             
-            TreeStore treeStore = new TreeStore(_trieNodeCache, memDb, _logManager, 1.MB(), lookupLimit);
-            PatriciaTree patriciaTree = new PatriciaTree(treeStore, _logManager);
+            TrieStore trieStore = new TrieStore(_trieNodeCache, memDb, _logManager, 1.MB(), lookupLimit);
+            PatriciaTree patriciaTree = new PatriciaTree(trieStore, _logManager);
 
             byte[][] accounts = new byte[accountsCount][];
             byte[][] randomValues = new byte[uniqueValuesCount][];
@@ -792,7 +792,7 @@ namespace Nethermind.Trie.Test
             streamWriter.Flush();
             fileStream.Seek(0, SeekOrigin.Begin);
 
-            treeStore.Flush();
+            trieStore.Flush();
             streamWriter.WriteLine($"DB size: {memDb.Keys.Count}");
             _logger.Info($"DB size: {memDb.Keys.Count}");
 
@@ -850,8 +850,8 @@ namespace Nethermind.Trie.Test
             Random random = new Random();
             MemDb memDb = new MemDb();
             
-            TreeStore treeStore = new TreeStore(_trieNodeCache, memDb, _logManager, 1.MB(), lookupLimit);
-            PatriciaTree patriciaTree = new PatriciaTree(treeStore, _logManager);
+            TrieStore trieStore = new TrieStore(_trieNodeCache, memDb, _logManager, 1.MB(), lookupLimit);
+            PatriciaTree patriciaTree = new PatriciaTree(trieStore, _logManager);
 
             byte[][] accounts = new byte[accountsCount][];
             byte[][] randomValues = new byte[uniqueValuesCount][];
@@ -888,7 +888,7 @@ namespace Nethermind.Trie.Test
                 {
                     try
                     {
-                        treeStore.Unwind();
+                        trieStore.Unwind();
                     }
                     catch(InvalidOperationException)
                     {
@@ -933,7 +933,7 @@ namespace Nethermind.Trie.Test
             streamWriter.Flush();
             fileStream.Seek(0, SeekOrigin.Begin);
 
-            treeStore.Flush();
+            trieStore.Flush();
             streamWriter.WriteLine($"DB size: {memDb.Keys.Count}");
             _logger.Info($"DB size: {memDb.Keys.Count}");
 

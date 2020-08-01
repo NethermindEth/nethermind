@@ -1,3 +1,19 @@
+//  Copyright (c) 2018 Demerzel Solutions Limited
+//  This file is part of the Nethermind library.
+// 
+//  The Nethermind library is free software: you can redistribute it and/or modify
+//  it under the terms of the GNU Lesser General Public License as published by
+//  the Free Software Foundation, either version 3 of the License, or
+//  (at your option) any later version.
+// 
+//  The Nethermind library is distributed in the hope that it will be useful,
+//  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+//  GNU Lesser General Public License for more details.
+// 
+//  You should have received a copy of the GNU Lesser General Public License
+//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -9,9 +25,9 @@ using Nethermind.Logging;
 
 namespace Nethermind.Trie.Pruning
 {
-    public class TreeStore : ITreeStore
+    public class TrieStore : ITrieStore
     {
-        public TreeStore(
+        public TrieStore(
             ITrieNodeCache trieNodeCache,
             IKeyValueStore keyValueStore,
             ILogManager logManager,
@@ -24,7 +40,7 @@ namespace Nethermind.Trie.Pruning
             _keyValueStore = keyValueStore ?? throw new ArgumentNullException(nameof(keyValueStore));
 
             if (_logger.IsTrace)
-                _logger.Trace($"Creating a new {nameof(TreeStore)} with memory limit {memoryLimit}");
+                _logger.Trace($"Creating a new {nameof(TrieStore)} with memory limit {memoryLimit}");
 
             if (memoryLimit <= 0)
                 throw new ArgumentOutOfRangeException(nameof(memoryLimit));
@@ -48,7 +64,7 @@ namespace Nethermind.Trie.Pruning
         /// <param name="nodeCommitInfo"></param>
         /// <exception cref="ArgumentOutOfRangeException"></exception>
         /// <exception cref="InvalidOperationException"></exception>
-        public void Commit(long blockNumber, NodeCommitInfo nodeCommitInfo)
+        public void Commit(TrieType trieType, long blockNumber, NodeCommitInfo nodeCommitInfo)
         {
             if (blockNumber < 0)
                 throw new ArgumentOutOfRangeException(nameof(blockNumber));
@@ -106,7 +122,7 @@ namespace Nethermind.Trie.Pruning
             return _trieNodeCache.IsInMemory(keccak);
         }
 
-        public void FinishBlockCommit(long blockNumber, TrieNode? root)
+        public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root)
         {
             bool shouldBeginNewPackage = CurrentPackage == null || CurrentPackage.BlockNumber != blockNumber;
             if (shouldBeginNewPackage)
@@ -380,8 +396,8 @@ namespace Nethermind.Trie.Pruning
             if (!trieNode.IsPersisted)
             {
                 _dropCount++;
-                if (_logger.IsInfo)
-                    _logger.Info($"Pruning in store: {nameof(TrieNode)} {trieNode}. ({_dropCount / ((decimal) _dropCount + _saveCount):P2})");
+                // if (_logger.IsInfo)
+                //     _logger.Info($"Pruning in store: {nameof(TrieNode)} {trieNode}. ({_dropCount / ((decimal) _dropCount + _saveCount):P2})");
             }
 
             _trieNodeCache.Remove(trieNode.Keccak);
