@@ -91,7 +91,7 @@ namespace Nethermind.Trie.Pruning
             {
                 if (value.Refs == 0)
                 {
-                    if (_logger.IsInfo) _logger.Info($"Pruning in cache: {value}.");
+                    if (_logger.IsTrace) _logger.Trace($"Pruning in cache: {value}.");
                     _actualCache.Remove(key);
                 }
                 else if (value.IsPersisted)
