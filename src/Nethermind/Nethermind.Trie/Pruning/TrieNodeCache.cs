@@ -52,8 +52,19 @@ namespace Nethermind.Trie.Pruning
             return _actualCache[hash];
         }
 
+        public TrieNode? StrictlyGet(Keccak hash)
+        {
+            _actualCache.TryGetValue(hash, out TrieNode value);
+            return value;
+        }
+
         public void Set(Keccak hash, TrieNode trieNode)
         {
+            if (trieNode.NodeType == NodeType.Unknown)
+            {
+                throw new InvalidOperationException("Cannot cache unknown node.");
+            }
+            
             _actualCache[hash] = trieNode;
         }
 

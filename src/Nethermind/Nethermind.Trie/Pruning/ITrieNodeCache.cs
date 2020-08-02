@@ -26,6 +26,8 @@ namespace Nethermind.Trie.Pruning
         
         TrieNode Get(Keccak hash);
         
+        TrieNode? StrictlyGet(Keccak hash);
+        
         void Set(Keccak hash, TrieNode trieNode);
         
         void Remove(Keccak hash);

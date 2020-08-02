@@ -442,8 +442,12 @@ namespace Nethermind.Trie.Pruning
                 root.DecrementRefsRecursively();
                 foreach (Keccak storageRootHash in package.StorageRoots)
                 {
-                    TrieNode storageRoot = _trieNodeCache.Get(storageRootHash);
-                    storageRoot.DecrementRefsRecursively();
+                    TrieNode storageRoot = _trieNodeCache.StrictlyGet(storageRootHash);
+                    if (storageRoot != null && !storageRoot.IsPersisted)
+                    {
+                        // _logger.Info($"Decrementing refs on storage root {storageRoot}");
+                        storageRoot.DecrementRefsRecursively();
+                    }
                 }
                 
                 _trieNodeCache.Prune();
