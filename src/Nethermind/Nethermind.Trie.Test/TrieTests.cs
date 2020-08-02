@@ -1110,17 +1110,27 @@ namespace Nethermind.Trie.Test
                     stateProvider.StateRoot = currentRoot;
                     for (int i = 0; i < addresses.Length; i++)
                     {
-                        stateProvider.GetAccount(addresses[i]);
+                        Account account = stateProvider.GetAccount(addresses[i]);
+                        if (account != null)
+                        {
+                            for (int j = 0; j < 256; j++)
+                            {
+                                storageProvider.Get(new StorageCell(addresses[i], (UInt256) j));
+                            }
+                        }
                     }
 
                     _logger.Info($"Verified positive {verifiedBlocks}");
                 }
-                catch (Exception)
+                catch (Exception ex)
                 {
-                    _logger.Info($"Verified negative {verifiedBlocks}");
                     if (verifiedBlocks % lookupLimit == 0)
                     {
-                        // throw new InvalidDataException();
+                        throw new InvalidDataException(ex.ToString());
+                    }
+                    else
+                    {
+                        _logger.Info($"Verified negative {verifiedBlocks} which is ok here");
                     }
                 }
 
