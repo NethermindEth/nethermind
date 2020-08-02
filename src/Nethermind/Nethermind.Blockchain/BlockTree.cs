@@ -41,8 +41,12 @@ namespace Nethermind.Blockchain
     [Todo(Improve.Refactor, "After the fast sync work there are some duplicated code parts for the 'by header' and 'by block' approaches.")]
     public partial class BlockTree : IBlockTree
     {
+        // there is not much logic in the addressing here
         private const long LowestInsertedBodyNumberDbEntryAddress = 0;
-        private const long StateHeadHashDbEntryAddress = 1;
+        private static byte[] StateHeadHashDbEntryAddress = new byte[16];
+        internal static Keccak DeletePointerAddressInDb = new Keccak(new BitArray(32 * 8, true).ToBytes());
+        internal static Keccak HeadAddressInDb = Keccak.Zero;
+        
         private const int CacheSize = 64;
         private readonly ICache<Keccak, Block> _blockCache = new LruCacheWithRecycling<Keccak, Block>(CacheSize, CacheSize, "blocks");
         private readonly ICache<Keccak, BlockHeader> _headerCache = new LruCacheWithRecycling<Keccak, BlockHeader>(CacheSize, CacheSize, "headers");
@@ -64,9 +68,6 @@ namespace Nethermind.Blockchain
         private readonly IBloomStorage _bloomStorage;
         private readonly ISyncConfig _syncConfig;
         private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
-
-        internal static Keccak DeletePointerAddressInDb = new Keccak(new BitArray(32 * 8, true).ToBytes());
-        internal static Keccak HeadAddressInDb = Keccak.Zero;
 
         public BlockHeader Genesis { get; private set; }
         public Block Head { get; private set; }

@@ -86,12 +86,19 @@ namespace Nethermind.Db
             db.Remove(key.Bytes);
         }
         
+        public static void Set(this IDb db, byte[] key, byte[] value)
+        {
+            db[key] = value;
+        }
+        
         public static void Set(this IDb db, long key, byte[] value)
         {
             db[key.ToBigEndianByteArrayWithoutLeadingZeros()] = value;
         }
         
         public static byte[] Get(this IDb db, long key) => db[key.ToBigEndianByteArrayWithoutLeadingZeros()];
+        
+        public static byte[] Get(this IDb db, byte[] key) => db[key];
         
         /// <summary>
         /// 
