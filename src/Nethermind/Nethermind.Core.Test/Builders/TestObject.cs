@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Dirichlet.Numerics;
@@ -22,6 +23,8 @@ namespace Nethermind.Core.Test.Builders
 {
     public static class TestItem
     {
+        private static Random _random = new Random();
+        
         static TestItem()
         {
             NonZeroBloom = new Bloom();
@@ -88,5 +91,19 @@ namespace Nethermind.Core.Test.Builders
         public static Address AddressD = PublicKeyD.Address;
 
         public static Bloom NonZeroBloom;
+        
+        public static Address GetRandomAddress()
+        {
+            byte[] bytes = new byte[20];
+            _random.NextBytes(bytes);
+            return new Address(bytes);
+        }
+        
+        public static Keccak GetRandomKeccak()
+        {
+            byte[] bytes = new byte[32];
+            _random.NextBytes(bytes);
+            return new Keccak(bytes);
+        }
     }
 }
