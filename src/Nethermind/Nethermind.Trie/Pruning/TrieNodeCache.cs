@@ -62,7 +62,7 @@ namespace Nethermind.Trie.Pruning
         {
             if (trieNode.NodeType == NodeType.Unknown)
             {
-                throw new InvalidOperationException("Cannot cache unknown node.");
+                // throw new InvalidOperationException("Cannot cache unknown node.");
             }
             
             _actualCache[hash] = trieNode;

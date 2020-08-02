@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using FluentAssertions;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
@@ -9,6 +10,8 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
+using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
@@ -24,7 +27,7 @@ namespace Nethermind.Trie.Test
         [SetUp]
         public void SetUp()
         {
-            _logManager = NullLogManager.Instance;
+            _logManager = new NUnitLogManager(LogLevel.Trace);
             _logger = _logManager.GetClassLogger();
             _trieNodeCache = new TrieNodeCache(_logManager);
         }
@@ -241,8 +244,7 @@ namespace Nethermind.Trie.Test
             for (int j = 0; j < i; j++)
             {
                 Keccak key = TestItem.Keccaks[j];
-                byte[] value = new byte[128];
-                value[^1] = (byte) j;
+                byte[] value = GenerateIndexedAccountRlp(j);
                 patriciaTree.Set(key.Bytes, value);
             }
 
@@ -254,8 +256,7 @@ namespace Nethermind.Trie.Test
             for (int j = 0; j < i; j++)
             {
                 Keccak key = TestItem.Keccaks[j];
-                byte[] value = new byte[128];
-                value[^1] = (byte) j;
+                byte[] value = GenerateIndexedAccountRlp(j);
                 checkTree.Get(key.Bytes).Should().BeEquivalentTo(value, $@"{i} {j}");
             }
         }
@@ -269,8 +270,7 @@ namespace Nethermind.Trie.Test
             for (int j = 0; j < i; j++)
             {
                 Keccak key = TestItem.Keccaks[j];
-                byte[] value = new byte[128];
-                value[^1] = (byte) j;
+                byte[] value = GenerateIndexedAccountRlp(j);
                 patriciaTree.Set(key.Bytes, value);
             }
 
@@ -291,8 +291,7 @@ namespace Nethermind.Trie.Test
             for (int j = 0; j < i; j++)
             {
                 Keccak key = TestItem.Keccaks[j];
-                byte[] value = new byte[128];
-                value[^1] = (byte) j;
+                byte[] value = GenerateIndexedAccountRlp(j);
                 checkTree.Get(key.Bytes).Should().BeEquivalentTo(value, $@"{i} {j}");
             }
 
@@ -313,16 +312,14 @@ namespace Nethermind.Trie.Test
             for (int j = 0; j < i; j++)
             {
                 Keccak key = TestItem.Keccaks[j];
-                byte[] value = new byte[128];
-                value[^1] = (byte) j;
+                byte[] value = GenerateIndexedAccountRlp(j);
                 patriciaTree.Set(key.Bytes, value);
             }
 
             for (int j = 0; j < i; j++)
             {
                 Keccak key = TestItem.Keccaks[j];
-                byte[] value = new byte[128];
-                value[^1] = (byte) (j + 1);
+                byte[] value = GenerateIndexedAccountRlp(j + 1);
                 patriciaTree.Set(key.Bytes, value);
             }
 
@@ -334,8 +331,7 @@ namespace Nethermind.Trie.Test
             for (int j = 0; j < i; j++)
             {
                 Keccak key = TestItem.Keccaks[j];
-                byte[] value = new byte[128];
-                value[^1] = (byte) (j + 1);
+                byte[] value = GenerateIndexedAccountRlp(j + 1);
                 checkTree.Get(key.Bytes).Should().BeEquivalentTo(value, $@"{i} {j}");
             }
         }
@@ -349,8 +345,7 @@ namespace Nethermind.Trie.Test
             for (int j = 0; j < i; j++)
             {
                 Keccak key = TestItem.Keccaks[j];
-                byte[] value = new byte[128];
-                value[^1] = (byte) j;
+                byte[] value = GenerateIndexedAccountRlp(j);
                 patriciaTree.Set(key.Bytes, value);
             }
 
@@ -359,8 +354,7 @@ namespace Nethermind.Trie.Test
             for (int j = 0; j < i; j++)
             {
                 Keccak key = TestItem.Keccaks[j];
-                byte[] value = new byte[128];
-                value[^1] = (byte) (j + 1);
+                byte[] value = GenerateIndexedAccountRlp(j + 1);
                 patriciaTree.Set(key.Bytes, value);
             }
 
@@ -372,8 +366,7 @@ namespace Nethermind.Trie.Test
             for (int j = 0; j < i; j++)
             {
                 Keccak key = TestItem.Keccaks[j];
-                byte[] value = new byte[128];
-                value[^1] = (byte) (j + 1);
+                byte[] value = GenerateIndexedAccountRlp(j + 1);
                 checkTree.Get(key.Bytes).Should().BeEquivalentTo(value, $@"{i} {j}");
             }
         }
@@ -388,8 +381,7 @@ namespace Nethermind.Trie.Test
             {
                 _logger.Trace($"  set {j}");
                 Keccak key = TestItem.Keccaks[j];
-                byte[] value = new byte[128];
-                value[^1] = (byte) j;
+                byte[] value = GenerateIndexedAccountRlp(j);
                 patriciaTree.Set(key.Bytes, value);
             }
 
@@ -408,8 +400,6 @@ namespace Nethermind.Trie.Test
             for (int j = 0; j < i; j++)
             {
                 Keccak key = TestItem.Keccaks[j];
-                byte[] value = new byte[128];
-                value[^1] = (byte) j;
                 checkTree.Get(key.Bytes).Should().BeNull($@"{i} {j}");
             }
         }
@@ -423,8 +413,7 @@ namespace Nethermind.Trie.Test
             for (int j = 0; j < i; j++)
             {
                 Keccak key = TestItem.Keccaks[j];
-                byte[] value = new byte[128];
-                value[^1] = (byte) j;
+                byte[] value = GenerateIndexedAccountRlp(j);
                 patriciaTree.Set(key.Bytes, value);
             }
 
@@ -444,8 +433,6 @@ namespace Nethermind.Trie.Test
             for (int j = 0; j < i; j++)
             {
                 Keccak key = TestItem.Keccaks[j];
-                byte[] value = new byte[128];
-                value[^1] = (byte) j;
                 checkTree.Get(key.Bytes).Should().BeNull($@"{i} {j}");
             }
         }
@@ -709,10 +696,13 @@ namespace Nethermind.Trie.Test
             checkTree.Get(_keyC).Should().BeEquivalentTo(_longLeaf1);
             checkTree.Get(_keyD).Should().BeEquivalentTo(_longLeaf1);
         }
+        
+        private AccountDecoder _accountDecoder = new AccountDecoder();
+        private Random _random = new Random();
 
-        [TestCase(256, 128, 128, 32)]
+        // [TestCase(256, 128, 128, 32)]
         // [TestCase(128, 128, 8, 8)]
-        // [TestCase(4, 16, 4, 4)]
+        [TestCase(4, 16, 4, 4)]
         public void Fuzz_accounts(
             int accountsCount,
             int blocksCount,
@@ -732,27 +722,24 @@ namespace Nethermind.Trie.Test
 
             Queue<Keccak> rootQueue = new Queue<Keccak>();
 
-            Random random = new Random();
             MemDb memDb = new MemDb();
             
             TrieStore trieStore = new TrieStore(_trieNodeCache, memDb, _logManager, 1.MB(), lookupLimit);
-            PatriciaTree patriciaTree = new PatriciaTree(trieStore, _logManager);
+            StateTree patriciaTree = new StateTree(trieStore, _logManager);
 
             byte[][] accounts = new byte[accountsCount][];
             byte[][] randomValues = new byte[uniqueValuesCount][];
 
             for (int i = 0; i < randomValues.Length; i++)
             {
-                bool isEmptyValue = random.Next(0, 2) == 0;
+                bool isEmptyValue = _random.Next(0, 2) == 0;
                 if (isEmptyValue)
                 {
                     randomValues[i] = Array.Empty<byte>();
                 }
                 else
                 {
-                    byte[] value = new byte[random.Next(128)];
-                    random.NextBytes(value);
-                    randomValues[i] = value;
+                    randomValues[i] = GenerateRandomAccountRlp();
                 }
             }
 
@@ -765,13 +752,13 @@ namespace Nethermind.Trie.Test
 
             for (int blockNumber = 0; blockNumber < blocksCount; blockNumber++)
             {
-                bool isEmptyBlock = random.Next(5) == 0;
+                bool isEmptyBlock = _random.Next(5) == 0;
                 if (!isEmptyBlock)
                 {
                     for (int i = 0; i < Math.Max(1, accountsCount / 8); i++)
                     {
-                        int randomAccountIndex = random.Next(accounts.Length);
-                        int randomValueIndex = random.Next(randomValues.Length);
+                        int randomAccountIndex = _random.Next(accounts.Length);
+                        int randomValueIndex = _random.Next(randomValues.Length);
 
                         byte[] account = accounts[randomAccountIndex];
                         byte[] value = randomValues[randomValueIndex];
@@ -824,7 +811,31 @@ namespace Nethermind.Trie.Test
             }
         }
 
-            [TestCase(256, 128, 128, 32)]
+        private byte[] GenerateRandomAccountRlp()
+        {
+            Account account = new Account(
+                (UInt256) _random.Next(2),
+                (UInt256) _random.Next(100),
+                Keccak.EmptyTreeHash,
+                Keccak.OfAnEmptyString);
+
+            byte[] value = _accountDecoder.Encode(account).Bytes;
+            return value;
+        }
+        
+        private byte[] GenerateIndexedAccountRlp(int index)
+        {
+            Account account = new Account(
+                (UInt256) index,
+                (UInt256) index,
+                Keccak.EmptyTreeHash,
+                Keccak.OfAnEmptyString);
+
+            byte[] value = _accountDecoder.Encode(account).Bytes;
+            return value;
+        }
+
+        [TestCase(256, 128, 128, 32)]
         // [TestCase(128, 128, 8, 8)]
         // [TestCase(4, 16, 4, 4)]
         public void Fuzz_accounts_with_reorganizations(
@@ -847,7 +858,6 @@ namespace Nethermind.Trie.Test
             Queue<Keccak> rootQueue = new Queue<Keccak>();
             Stack<Keccak> rootStack = new Stack<Keccak>();
 
-            Random random = new Random();
             MemDb memDb = new MemDb();
             
             TrieStore trieStore = new TrieStore(_trieNodeCache, memDb, _logManager, 1.MB(), lookupLimit);
@@ -858,16 +868,14 @@ namespace Nethermind.Trie.Test
 
             for (int i = 0; i < randomValues.Length; i++)
             {
-                bool isEmptyValue = random.Next(0, 2) == 0;
+                bool isEmptyValue = _random.Next(0, 2) == 0;
                 if (isEmptyValue)
                 {
                     randomValues[i] = Array.Empty<byte>();
                 }
                 else
                 {
-                    byte[] value = new byte[random.Next(128)];
-                    random.NextBytes(value);
-                    randomValues[i] = value;
+                    randomValues[i] = GenerateRandomAccountRlp();
                 }
             }
 
@@ -881,7 +889,7 @@ namespace Nethermind.Trie.Test
             int blockCount = 0;
             for (int blockNumber = 0; blockNumber < blocksCount; blockNumber++)
             {
-                int reorgDepth = random.Next(Math.Min(5, blockCount));
+                int reorgDepth = _random.Next(Math.Min(5, blockCount));
                 _logger.Debug($"Reorganizing {reorgDepth}");
 
                 for (int i = 0; i < reorgDepth; i++)
@@ -903,13 +911,13 @@ namespace Nethermind.Trie.Test
                 blockCount = Math.Max(0, blockCount - reorgDepth);
                 _logger.Debug($"Setting block count to {blockCount}");
 
-                bool isEmptyBlock = random.Next(5) == 0;
+                bool isEmptyBlock = _random.Next(5) == 0;
                 if (!isEmptyBlock)
                 {
                     for (int i = 0; i < Math.Max(1, accountsCount / 8); i++)
                     {
-                        int randomAccountIndex = random.Next(accounts.Length);
-                        int randomValueIndex = random.Next(randomValues.Length);
+                        int randomAccountIndex = _random.Next(accounts.Length);
+                        int randomValueIndex = _random.Next(randomValues.Length);
 
                         byte[] account = accounts[randomAccountIndex];
                         byte[] value = randomValues[randomValueIndex];
