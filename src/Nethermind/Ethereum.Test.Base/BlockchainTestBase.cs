@@ -115,7 +115,7 @@ namespace Ethereum.Test.Base
             IRewardCalculator rewardCalculator = new RewardCalculator(specProvider);
 
             IEthereumEcdsa ecdsa = new EthereumEcdsa(specProvider.ChainId, _logManager);
-            IStateProvider stateProvider = new StateProvider(new StateTree(stateDb, _logger), codeDb, _logManager);
+            IStateProvider stateProvider = new StateProvider(new StateTree(stateDb, _logManager), codeDb, _logManager);
             ITxPool transactionPool = new TxPool(NullTxStorage.Instance, new Timestamper(), ecdsa, specProvider, new TxPoolConfig(), stateProvider, _logManager);
             IReceiptStorage receiptStorage = NullReceiptStorage.Instance;
             var blockInfoDb = new MemDb();
