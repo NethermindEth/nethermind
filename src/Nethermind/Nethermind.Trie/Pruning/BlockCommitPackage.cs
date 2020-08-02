@@ -26,7 +26,11 @@ namespace Nethermind.Trie.Pruning
     {
         public TrieNode? Root { get; set; }
         
-        public List<Keccak> StorageRoots { get; set; } = new List<Keccak>();
+        /// <summary>
+        /// Cannot hold Keccaks only here as we need the physical references to prevent them from being resolved
+        /// from fresh.
+        /// </summary>
+        public List<TrieNode> StorageRoots { get; set; } = new List<TrieNode>();
         
         public long BlockNumber { get; }
 

@@ -267,6 +267,8 @@ namespace Nethermind.Trie.Pruning
 
         private List<Keccak> _emptyList = new List<Keccak>();
 
+        private List<Keccak> _storageRootsCollector = new List<Keccak>();
+        
         private void FinishBlockCommitOnState(long blockNumber, TrieNode? root)
         {
             if (_logger.IsTrace) _logger.Trace($"Enqueued packages {_packageQueue.Count}");
@@ -282,13 +284,20 @@ namespace Nethermind.Trie.Pruning
                     _logger.Trace(
                         $"Incrementing refs from block {blockNumber} root {package.Root?.ToString() ?? "NULL"} ");
 
-                package.Root?.IncrementRefsRecursively(package.BlockNumber, package.StorageRoots);
-                for (int index = 0; index < package.StorageRoots.Count; index++)
+                
+                package.Root?.IncrementRefsRecursively(package.BlockNumber, _storageRootsCollector);
+                for (int index = 0; index < _storageRootsCollector.Count; index++)
                 {
-                    Keccak storageRootHash = package.StorageRoots[index];
+                    Keccak storageRootHash = _storageRootsCollector[index];
                     TrieNode storageRoot = _trieNodeCache.Get(storageRootHash);
+                    package.StorageRoots.Add(storageRoot);
+                    if (_logger.IsTrace)
+                        _logger.Trace(
+                            $"Incrementing refs from block {blockNumber} storage root {storageRoot} ");
                     storageRoot.IncrementRefsRecursively(package.BlockNumber, _emptyList);
                 }
+                
+                _storageRootsCollector.Clear();
 
                 package.Seal();
                 _trieNodeCache.Dump();
@@ -450,12 +459,13 @@ namespace Nethermind.Trie.Pruning
                 }
 
                 root.DecrementRefsRecursively();
-                foreach (Keccak storageRootHash in package.StorageRoots)
+                foreach (TrieNode storageRoot in package.StorageRoots)
                 {
-                    TrieNode storageRoot = _trieNodeCache.StrictlyGet(storageRootHash);
-                    if (storageRoot != null && !storageRoot.IsPersisted)
+                    if (!storageRoot.IsPersisted)
                     {
-                        // _logger.Info($"Decrementing refs on storage root {storageRoot}");
+                        if (_logger.IsTrace)
+                            _logger.Trace(
+                                $"Decrementing refs from block {package.BlockNumber} storage root {storageRoot} ");
                         storageRoot.DecrementRefsRecursively();
                     }
                 }
