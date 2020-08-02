@@ -56,7 +56,7 @@ namespace Nethermind.Trie.Pruning
                 MemorySizes.SmallObjectFreeDataSize +
                 40 /* linked list */;
         }
-        
+
         public void Commit(TrieType trieType, long blockNumber, NodeCommitInfo nodeCommitInfo)
         {
             if (blockNumber < 0)
@@ -106,8 +106,6 @@ namespace Nethermind.Trie.Pruning
                     AddToMemory(CurrentPackage.MemorySize - previousPackageMemory);
                 }
             }
-
-            _trieNodeCache.Dump();
         }
 
         public bool IsInMemory(Keccak keccak)
@@ -122,7 +120,7 @@ namespace Nethermind.Trie.Pruning
             {
                 BeginNewPackage(blockNumber);
             }
-            
+
             if (trieType == TrieType.Storage)
             {
                 // do nothing, we will extract roots from accounts
@@ -131,7 +129,6 @@ namespace Nethermind.Trie.Pruning
             {
                 FinishBlockCommitOnState(blockNumber, root);
             }
-            
         }
 
         public void Unwind()
@@ -239,6 +236,11 @@ namespace Nethermind.Trie.Pruning
 
         private void BeginNewPackage(long blockNumber)
         {
+            if (CurrentPackage != null)
+            {
+                CurrentPackage.LogContent(_logger);
+            }
+
             if (_logger.IsDebug)
                 _logger.Debug($"Beginning new {nameof(BlockCommitPackage)} - {blockNumber} | memory {MemorySize}");
 
@@ -262,9 +264,9 @@ namespace Nethermind.Trie.Pruning
             Debug.Assert(CurrentPackage == newPackage,
                 "Current package is not equal the new package just after adding");
         }
-        
+
         private List<Keccak> _emptyList = new List<Keccak>();
-        
+
         private void FinishBlockCommitOnState(long blockNumber, TrieNode? root)
         {
             if (_logger.IsTrace) _logger.Trace($"Enqueued packages {_packageQueue.Count}");
@@ -279,7 +281,7 @@ namespace Nethermind.Trie.Pruning
                 if (_logger.IsTrace)
                     _logger.Trace(
                         $"Incrementing refs from block {blockNumber} root {package.Root?.ToString() ?? "NULL"} ");
-                
+
                 package.Root?.IncrementRefsRecursively(package.BlockNumber, package.StorageRoots);
                 for (int index = 0; index < package.StorageRoots.Count; index++)
                 {
@@ -341,7 +343,7 @@ namespace Nethermind.Trie.Pruning
             _carryQueue = new Queue<TrieNode>();
 
             bool isSnapshotBlock = commitPackage.BlockNumber % _lookupLimit == 0;
-            
+
             // really I should just save from root...
             while (localCarryQueue.TryDequeue(out TrieNode currentNode) ||
                    commitPackage.TryDequeue(out currentNode))
@@ -355,6 +357,9 @@ namespace Nethermind.Trie.Pruning
 
                 if (currentNode.Refs == 0)
                 {
+                    if (_logger.IsTrace)
+                        _logger.Trace($"Dropping (refs 0) {nameof(TrieNode)} {currentNode}.");
+
                     DropNode(currentNode);
                 }
                 else
@@ -364,30 +369,35 @@ namespace Nethermind.Trie.Pruning
                         if (!currentNode.IsPersisted)
                         {
                             if (_logger.IsTrace)
-                                _logger.Trace($"Saving a {nameof(TrieNode)} {currentNode}.");
+                                _logger.Trace($"Saving {nameof(TrieNode)} {currentNode}.");
                             _keyValueStore[currentNode.Keccak.Bytes] = currentNode.FullRlp;
                             _trieNodeCache.Remove(currentNode.Keccak);
                             currentNode.IsPersisted = true;
                             _saveCount++;
                         }
+                        else
+                        {
+                            if (_logger.IsTrace)
+                                _logger.Trace($"Ignoring persisted {nameof(TrieNode)} {currentNode}.");
+                        }
                     }
                     else
                     {
-                        if (currentNode.Refs <= 1)
+                        // there was an incorrect drop of ref <= 1 here but it was wrong
+                        // imagine referenced by block 12 but not by block 11 and
+
+                        if (!currentNode.IsPersisted)
                         {
-                            // since it is only referenced by this block, it can be dropped
-                            DropNode(currentNode);
+                            if (_logger.IsTrace)
+                                _logger.Trace($"Carrying (refs > 1) and not P {nameof(TrieNode)} {currentNode}.");
+
+                            _carryQueue.Enqueue(currentNode);
+                            _carriedCount++;
                         }
                         else
                         {
                             if (_logger.IsTrace)
-                                _logger.Trace($"Carrying a {nameof(TrieNode)} {currentNode}.");
-                    
-                            if (!currentNode.IsPersisted)
-                            {
-                                _carryQueue.Enqueue(currentNode);
-                                _carriedCount++;
-                            }
+                                _logger.Trace($"Ignoring persisted {nameof(TrieNode)} {currentNode}.");
                         }
                     }
                 }
@@ -449,7 +459,7 @@ namespace Nethermind.Trie.Pruning
                         storageRoot.DecrementRefsRecursively();
                     }
                 }
-                
+
                 _trieNodeCache.Prune();
                 _trieNodeCache.Dump();
             }

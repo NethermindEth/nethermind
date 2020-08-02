@@ -18,6 +18,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Logging;
 
 namespace Nethermind.Trie.Pruning
 {
@@ -91,5 +92,16 @@ namespace Nethermind.Trie.Pruning
         private Queue<TrieNode> _queue = new Queue<TrieNode>();
 
         #endregion
+
+        public void LogContent(ILogger logger)
+        {
+            if (logger.IsTrace)
+            {
+                foreach (TrieNode trieNode in _queue)
+                {
+                    logger.Trace($"  Queued {trieNode}");    
+                }
+            }
+        }
     }
 }
