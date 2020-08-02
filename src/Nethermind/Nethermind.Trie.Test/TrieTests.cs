@@ -703,8 +703,8 @@ namespace Nethermind.Trie.Test
         private Random _random = new Random();
 
         // [TestCase(256, 128, 128, 32)]
-        [TestCase(128, 128, 8, 8)]
-        // [TestCase(4, 16, 4, 4)]
+        // [TestCase(128, 128, 8, 8)]
+        [TestCase(4, 16, 4, 4)]
         public void Fuzz_accounts(
             int accountsCount,
             int blocksCount,
@@ -800,12 +800,15 @@ namespace Nethermind.Trie.Test
 
                     _logger.Info($"Verified positive {verifiedBlocks}");
                 }
-                catch (Exception)
+                catch (Exception ex)
                 {
-                    _logger.Info($"Verified negative {verifiedBlocks}");
                     if (verifiedBlocks % lookupLimit == 0)
                     {
-                        throw new InvalidDataException();
+                        throw new InvalidDataException(ex.ToString());
+                    }
+                    else
+                    {
+                        _logger.Info($"Verified negative {verifiedBlocks}");
                     }
                 }
 
