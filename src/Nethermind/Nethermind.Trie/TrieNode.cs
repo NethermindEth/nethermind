@@ -589,6 +589,11 @@ namespace Nethermind.Trie
                             {
                                 _data[i] = _unresolvedChild;
                             }
+
+                            if (child.IsPersisted)
+                            {
+                                _data[i] = _unresolvedChild;
+                            }
                         }
                     }
                 }
@@ -604,12 +609,17 @@ namespace Nethermind.Trie
             {
                 if (_data != null)
                 {
-                    foreach (object o in _data)
+                    for (int i = 0; i < _data.Length; i++)
                     {
+                        object o = _data[i];
                         if (o is TrieNode child)
                         {
                             child.IncrementRefsRecursively(block, storageRoots);
-                        }
+                            // if(child.IsPersisted)
+                            // {
+                            //     _data[i] = _unresolvedChild;
+                            // }
+                        }   
                     }
                 }
             }
