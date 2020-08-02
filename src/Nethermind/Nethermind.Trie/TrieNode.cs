@@ -573,8 +573,13 @@ namespace Nethermind.Trie
         }
 
         // TODO: can do it as visitors but seems an overkill
-        public void DecrementRefsRecursively()
+        public void DecrementRefsRecursively(bool isParentPersisted = false)
         {
+            // if (!IsPersisted && isParentPersisted)
+            // {
+            //     throw new InvalidDataException($"{this} is not persisted while parent is.");
+            // }
+            
             if (!IsLeaf)
             {
                 if (_data != null)
@@ -584,16 +589,16 @@ namespace Nethermind.Trie
                         TrieNode child = _data[i] as TrieNode;
                         if (child != null) // both unresolved and NULL are handled here
                         {
-                            child.DecrementRefsRecursively();
+                            child.DecrementRefsRecursively(IsPersisted);
                             if (child.Refs == 0)
                             {
                                 _data[i] = _unresolvedChild;
                             }
 
-                            if (child.IsPersisted)
-                            {
-                                _data[i] = _unresolvedChild;
-                            }
+                            // if (child.IsPersisted)
+                            // {
+                            //     _data[i] = _unresolvedChild;
+                            // }
                         }
                     }
                 }
@@ -603,8 +608,13 @@ namespace Nethermind.Trie
         }
 
         // TODO: can do it as visitors but seems an overkill
-        public void IncrementRefsRecursively(long block, List<Keccak> storageRoots)
+        public void IncrementRefsRecursively(long block, List<Keccak> storageRoots, bool isParentPersisted = false)
         {
+            // if (!IsPersisted && isParentPersisted)
+            // {
+            //     throw new InvalidDataException($"{this} is not persisted while parent is.");
+            // }
+            
             if (!IsLeaf)
             {
                 if (_data != null)
@@ -614,7 +624,7 @@ namespace Nethermind.Trie
                         object o = _data[i];
                         if (o is TrieNode child)
                         {
-                            child.IncrementRefsRecursively(block, storageRoots);
+                            child.IncrementRefsRecursively(block, storageRoots, IsPersisted);
                             // if(child.IsPersisted)
                             // {
                             //     _data[i] = _unresolvedChild;
