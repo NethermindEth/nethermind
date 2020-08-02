@@ -358,6 +358,7 @@ namespace Nethermind.Trie.Test
                 Keccak key = TestItem.Keccaks[j];
                 byte[] value = GenerateIndexedAccountRlp(j + 1);
                 patriciaTree.Set(key.Bytes, value);
+                _logger.Trace($"Setting {key.Bytes.ToHexString()} = {value.ToHexString()}");
             }
 
             patriciaTree.Commit(1);
@@ -369,6 +370,8 @@ namespace Nethermind.Trie.Test
             {
                 Keccak key = TestItem.Keccaks[j];
                 byte[] value = GenerateIndexedAccountRlp(j + 1);
+                
+                _logger.Trace($"Checking {key.Bytes.ToHexString()} = {value.ToHexString()}");
                 checkTree.Get(key.Bytes).Should().BeEquivalentTo(value, $@"{i} {j}");
             }
         }
@@ -444,7 +447,7 @@ namespace Nethermind.Trie.Test
         {
             // there was a case that was failing only at iteration 85 (before you change it to a smaller number)
 
-            for (int i = 1; i < 100; i++)
+            for (int i = 0; i < 100; i++)
             {
                 _logger.Trace(i.ToString());
                 Test_add_many(i);
@@ -837,8 +840,8 @@ namespace Nethermind.Trie.Test
         private Account GenerateIndexedAccount(int index)
         {
             Account account = new Account(
-                (UInt256) _random.Next(index),
-                (UInt256) _random.Next(index),
+                (UInt256) index,
+                (UInt256) index,
                 Keccak.EmptyTreeHash,
                 Keccak.OfAnEmptyString);
 
