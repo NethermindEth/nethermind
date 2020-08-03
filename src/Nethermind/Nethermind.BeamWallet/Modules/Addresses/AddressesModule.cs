@@ -144,9 +144,15 @@ namespace Nethermind.BeamWallet.Modules.Addresses
             var quitButton = new Button(36, 7, "Quit");
             quitButton.Clicked = () =>
             {
-                _process?.Kill();
-                Application.Top.Running = false;
-                Application.RequestStop();
+                try
+                {
+                    _process.Kill();
+                }
+                catch
+                {
+                    Application.Top.Running = false;
+                    Application.RequestStop();
+                }
             };
             okButton.Clicked = () =>
             {

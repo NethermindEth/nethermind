@@ -194,9 +194,15 @@ namespace Nethermind.BeamWallet.Modules.Data
             var quitButton = new Button(15, 11, "Quit");
             quitButton.Clicked = () =>
             {
-                _process?.Kill();
-                Application.Top.Running = false;
-                Application.RequestStop();
+                try
+                {
+                    _process.Kill();
+                }
+                catch
+                {
+                    Application.Top.Running = false;
+                    Application.RequestStop();
+                }
             };
             _window.Add(transferButton, quitButton);
         }
