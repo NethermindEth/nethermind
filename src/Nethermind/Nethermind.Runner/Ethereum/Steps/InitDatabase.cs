@@ -71,7 +71,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             catch(TypeInitializationException)
             {
                 if(logger.IsError)
-                    logger.Error("RocksDb was not found, please make sure it is installed on your machine.");
+                    logger.Error("RocksDb was not found, please make sure it is installed on your machine. \n On ubuntu: 'sudo apt-get install librocksdb-dev' \n On macOS: 'brew install rocksdb' \n On windows: 'vcpkg install rocksdb:x64-windows' \n For more info visit https://github.com/facebook/rocksdb/blob/master/INSTALL.md");
             }
         }
 
