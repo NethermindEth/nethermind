@@ -16,7 +16,9 @@
 // 
 
 using System;
+using System.Diagnostics;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using Terminal.Gui;
 
@@ -27,28 +29,130 @@ namespace Nethermind.BeamWallet.Modules.Addresses
         private static readonly Regex _urlRegex = new Regex(@"^http(s)?://([\w-]+.)+[\w-]+(/[\w- ./?%&=])?",
             RegexOptions.Compiled);
         private static readonly Regex _addressRegex = new Regex("(0x)([0-9A-Fa-f]{40})", RegexOptions.Compiled);
-        public event EventHandler<(string nodeAddress, string address)> AddressesSelected;
+        private Process _process;
+        private Timer _timer;
+        private Window _mainWindow;
+        private int _processId;
+        private Label _runnerOnInfo;
+        private Label _runnerOffInfo;
+        public event EventHandler<(string nodeAddress, string address, Process process)> AddressesSelected;
 
-        public Task<Window> InitAsync()
+        public AddressesModule()
         {
-            var mainWindow = new Window("Beam Wallet")
+            // if (!File.Exists(path))
+            // {
+            //     return;
+            // }
+            CreateWindow();
+            CreateProcess();
+            StartProcess();
+        }
+
+        private void CreateWindow()
+        {
+            _mainWindow = new Window("Beam Wallet")
             {
                 X = 0,
                 Y = 0,
                 Width = Dim.Fill(),
                 Height = Dim.Fill()
             };
-            var nodeAddressLabel = new Label(3, 1, "Enter node address:");
-            var nodeAddressTextField = new TextField(28, 1, 80, "http://localhost:8545");
-            var addressLabel = new Label(3, 3, "Enter account address:");
-            var addressTextField = new TextField(28, 3, 80, "");
+        }
+
+        private void CreateProcess()
+        {
+            _process = new Process
+            {
+                StartInfo = new ProcessStartInfo
+                {
+                    FileName = "./Nethermind.Runner",
+                    Arguments = "--config mainnet_beam --JsonRpc.Enabled true",
+                    RedirectStandardOutput = true
+                }
+            };
+        }
+
+        private void StartProcess()
+        {
+            try
+            {
+                _process.Start();
+                _processId = _process.Id;
+                _timer = new Timer(Update, null, TimeSpan.Zero, TimeSpan.FromSeconds(7));
+            }
+            catch
+            {
+                AddRunnerInfo("Error with starting a Nethermind.Runner process.");
+            }
+        }
+
+        private void Update(object state)
+        {
+            UpdateRunnerState();
+        }
+
+        private void UpdateRunnerState()
+        {
+            Process process = null;
+            try
+            {
+                process = Process.GetProcessById(_processId);
+                AddRunnerInfo("Nethermind Runner is running");
+                return;
+            }
+            catch
+            {
+                // ignored
+            }
+
+            if (process is null)
+            {
+                if (_runnerOnInfo is {})
+                {
+                    _mainWindow.Remove(_runnerOnInfo);
+                }
+
+                _runnerOffInfo = new Label(3, 1, $"Nethermind Runner is stopped.. Please, wait for it to start.");
+                _mainWindow.Add(_runnerOffInfo);
+                _process.Start();
+                _processId = _process.Id;
+            }
+
+            if (_runnerOffInfo is {})
+            {
+                _mainWindow.Remove(_runnerOffInfo);
+            }
+
+            _runnerOnInfo = new Label(3, 1, "Nethermind Runner is running.");
+            _mainWindow.Add(_runnerOnInfo);
+        }
+
+        private void AddRunnerInfo(string info)
+        {
+            _runnerOnInfo = new Label(3, 1, $"{info}");
+            _mainWindow.Add(_runnerOnInfo);
+        }
+
+        public Task<Window> InitAsync()
+        {
+            var nodeAddressLabel = new Label(3, 3, "Enter node address:");
+            var nodeAddressTextField = new TextField(28, 3, 80, "http://localhost:8545");
+            var addressLabel = new Label(3, 5, "Enter account address:");
+            var addressTextField = new TextField(28, 5, 80, "");
             
-            var okButton = new Button(28, 5, "OK");
-            var quitButton = new Button(36, 5, "Quit");
+            var okButton = new Button(28, 7, "OK");
+            var quitButton = new Button(36, 7, "Quit");
             quitButton.Clicked = () =>
             {
-                Application.Top.Running = false;
-                Application.RequestStop();
+                try
+                {
+                    _process.Kill();
+                }
+                catch
+                {
+                    Application.Top.Running = false;
+                    Application.RequestStop();
+                }
             };
             okButton.Clicked = () =>
             {
@@ -80,12 +184,12 @@ namespace Nethermind.BeamWallet.Modules.Addresses
                     return;
                 }
                 
-                AddressesSelected?.Invoke(this, (nodeAddressString, addressString));
+                AddressesSelected?.Invoke(this, (nodeAddressString, addressString, _process));
             };
-            mainWindow.Add(quitButton, nodeAddressLabel, nodeAddressTextField, addressLabel,
+            _mainWindow.Add(quitButton, nodeAddressLabel, nodeAddressTextField, addressLabel,
                 addressTextField, okButton);
 
-            return Task.FromResult(mainWindow);
+            return Task.FromResult(_mainWindow);
         }
     }
 }

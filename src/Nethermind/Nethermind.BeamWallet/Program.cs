@@ -38,7 +38,7 @@ namespace Nethermind.BeamWallet
                 var jsonRpcWalletClientProxy = new JsonRpcWalletClientProxy(jsonRpcClientProxy);
                 var ethJsonRpcClientProxy = new EthJsonRpcClientProxy(jsonRpcClientProxy);
                 
-                var dataModule = new DataModule(ethJsonRpcClientProxy, data.address);
+                var dataModule = new DataModule(ethJsonRpcClientProxy, data.address, data.process);
                 dataModule.TransferClicked += async (_, e) =>
                 {
                     var transferModule = new TransferModule(ethJsonRpcClientProxy, jsonRpcWalletClientProxy,

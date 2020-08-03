@@ -17,6 +17,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
@@ -42,15 +43,16 @@ namespace Nethermind.BeamWallet.Modules.Data
         private CallTransactionModel _tokenTransaction;
         private Label _tokenBalanceLabel;
         private readonly IEnumerable<Token> _tokens = InitTokens();
+        private readonly Process _process;
 
         public event EventHandler<TransferClickedEventArgs> TransferClicked;
         
-        public DataModule(IEthJsonRpcClientProxy ethJsonRpcClientProxy, string address)
+        public DataModule(IEthJsonRpcClientProxy ethJsonRpcClientProxy, string address, Process process)
         {
             _ethJsonRpcClientProxy = ethJsonRpcClientProxy;
             _address = new Address(address);
-            TimeSpan interval = TimeSpan.FromSeconds(5);
-            _timer = new Timer(Update, null, TimeSpan.Zero, interval);
+            _process = process;
+            _timer = new Timer(Update, null, TimeSpan.Zero, TimeSpan.FromSeconds(5));
         }
 
         public async Task<Window> InitAsync()
@@ -82,17 +84,24 @@ namespace Nethermind.BeamWallet.Modules.Data
             }
 
             var balance = await GetBalanceAsync();
-            if (!balance.HasValue)    
+            if (!balance.HasValue || balance.Value == 0)    
             {
                 return;
             }
 
             _balance = balance.Value;
             _window.Remove(_balanceValueLabel);
-            _balanceValueLabel = new Label(70, 1, $"{_balance} ETH (refreshing every 5s)");
+            _balanceValueLabel = new Label(70, 1, $"{_balance} ETH (refreshing every 5s).");
             
             _window.Remove(_syncingInfoLabel);
             _window.Add(_balanceValueLabel);
+            AddButtons();
+        }
+
+        private async Task<long?> GetLatestBlockNumber()
+        {
+            var result = await _ethJsonRpcClientProxy.eth_blockNumber();
+            return result.Result;
         }
 
         private async Task<decimal?> GetBalanceAsync()
@@ -143,7 +152,7 @@ namespace Nethermind.BeamWallet.Modules.Data
           
             return UInt256.Parse(result.Result.ToHexString(), NumberStyles.HexNumber);
         }
-        
+
         private async Task RenderBalanceAsync()
         {
             var addressLabel = new Label(1, 1, $"Address: {_address}");
@@ -157,24 +166,43 @@ namespace Nethermind.BeamWallet.Modules.Data
                 balance = await GetBalanceAsync();
                 await Task.Delay(1000);
             } while (!balance.HasValue);
-                
+
             _balance = balance.Value;
-            _balanceValueLabel = new Label(70, 1, $"{_balance} ETH (refreshing every 5s)");   
-            
+            if (await GetLatestBlockNumber() == 0)
+            {
+                _balanceValueLabel = new Label(70, 1, "Syncing... Please wait for the updated balance.");
+                return;
+            }
+
+            _balanceValueLabel = new Label(70, 1, $"{_balance} ETH (refreshing every 5s).");
+
             _window.Remove(_syncingInfoLabel);
             _window.Add(_balanceValueLabel);
-            
+
+            AddButtons();
+        }
+
+        private void AddButtons()
+        {
             var transferButton = new Button(1, 11, "Transfer");
             transferButton.Clicked = () =>
             {
-                TransferClicked?.Invoke(this, new TransferClickedEventArgs(_address, _balance));
+                Application.Top.Running = false;
+                Application.RequestStop();
             };
 
             var quitButton = new Button(15, 11, "Quit");
             quitButton.Clicked = () =>
             {
-                Application.Top.Running = false;
-                Application.RequestStop();
+                try
+                {
+                    _process.Kill();
+                }
+                catch
+                {
+                    Application.Top.Running = false;
+                    Application.RequestStop();
+                }
             };
             _window.Add(transferButton, quitButton);
         }
