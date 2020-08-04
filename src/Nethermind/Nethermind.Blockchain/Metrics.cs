@@ -46,5 +46,8 @@ namespace Nethermind.Blockchain
 
         [Description("Indicator if blocks can be produced")]
         public static long CanProduceBlocks;
+        
+        [Description("Number of ms to process the last processed block.")]
+        public static long LastBlockProcessingTimeInMs;
     }
 }
