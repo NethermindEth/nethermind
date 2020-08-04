@@ -331,7 +331,7 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
-        public void ByteArrayToHexViaLookup32Safe_does_not_throw_null_reference()
+        public void ByteArrayToHexViaLookup32Safe_does_not_throw_on_null_bytes()
         {
             Assert.DoesNotThrow(() => Bytes.ByteArrayToHexViaLookup32Safe(null, true));
             Assert.DoesNotThrow(() => Bytes.ByteArrayToHexViaLookup32Safe(null, false));
