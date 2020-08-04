@@ -39,7 +39,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         [JsonRpcMethod(IsImplemented = true, Description = "Returns syncing status", IsReadOnly = true)]
         ResultWrapper<SyncingResult> eth_syncing();
         
-        [JsonRpcMethod(IsImplemented = false, Description = "Returns miner's coinbase'", IsReadOnly = true)]
+        [JsonRpcMethod(IsImplemented = false, Description = "Returns miner's coinbase", IsReadOnly = true)]
         ResultWrapper<Address> eth_coinbase();
         
         [JsonRpcMethod(IsImplemented = false, Description = "Returns mining status", IsReadOnly = true)]
