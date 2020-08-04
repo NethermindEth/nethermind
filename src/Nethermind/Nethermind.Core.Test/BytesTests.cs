@@ -329,5 +329,12 @@ namespace Nethermind.Core.Test
             first.AsSpan().Or(second);
             first.Should().Equal(expected);
         }
+
+        [Test]
+        public void ByteArrayToHexViaLookup32Safe_does_not_throw_null_reference()
+        {
+            Assert.DoesNotThrow(() => Bytes.ByteArrayToHexViaLookup32Safe(null, true));
+            Assert.DoesNotThrow(() => Bytes.ByteArrayToHexViaLookup32Safe(null, false));
+        }
     }
 }

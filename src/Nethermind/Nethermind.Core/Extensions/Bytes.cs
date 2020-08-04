@@ -531,7 +531,7 @@ namespace Nethermind.Core.Extensions
         [DebuggerStepThrough]
         public static string ByteArrayToHexViaLookup32Safe(byte[] bytes, bool withZeroX)
         {
-            if (bytes.Length == 0)
+            if (bytes?.Length == 0 || bytes == null)
             {
                 return withZeroX ? "0x" : "";
             }
