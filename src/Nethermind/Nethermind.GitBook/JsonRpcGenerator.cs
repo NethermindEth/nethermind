@@ -51,7 +51,7 @@ namespace Nethermind.GitBook
                 JsonRpcMethodAttribute attribute = method.GetCustomAttribute<JsonRpcMethodAttribute>();
                 bool isImplemented = attribute == null || attribute.IsImplemented;
                 string methodName = method.Name.Substring(method.Name.IndexOf('_'));
-                docBuilder.AppendLine(@$"{moduleName}\{methodName}");
+                docBuilder.AppendLine(@$"##{moduleName}\{methodName}");
                 docBuilder.AppendLine();
                 docBuilder.AppendLine(@$"{attribute?.Description ?? "_description missing_"} ");
                 docBuilder.AppendLine();
