@@ -1,6 +1,9 @@
 name: Update GitBook Docs
 
-on: push
+on:
+  push:
+    tags:
+    - '*'
     
 jobs:
   update-gitbook:
