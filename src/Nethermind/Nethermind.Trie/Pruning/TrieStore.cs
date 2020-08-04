@@ -285,7 +285,7 @@ namespace Nethermind.Trie.Pruning
                         $"Incrementing refs from block {blockNumber} root {package.Root?.ToString() ?? "NULL"} ");
 
                 
-                package.Root?.IncrementRefsRecursively(package.BlockNumber, _storageRootsCollector);
+                package.Root?.IncrementRefsRecursively(_logger, package.BlockNumber, _storageRootsCollector);
                 for (int index = 0; index < _storageRootsCollector.Count; index++)
                 {
                     Keccak storageRootHash = _storageRootsCollector[index];
@@ -294,7 +294,7 @@ namespace Nethermind.Trie.Pruning
                     if (_logger.IsTrace)
                         _logger.Trace(
                             $"Incrementing refs from block {blockNumber} storage root {storageRoot} ");
-                    storageRoot.IncrementRefsRecursively(package.BlockNumber, _emptyList);
+                    storageRoot.IncrementRefsRecursively(_logger, package.BlockNumber, _emptyList);
                 }
                 
                 _storageRootsCollector.Clear();
@@ -458,7 +458,7 @@ namespace Nethermind.Trie.Pruning
                     throw new InvalidDataException($"Found root node {root} with 0 refs.");
                 }
 
-                root.DecrementRefsRecursively();
+                root.DecrementRefsRecursively(_logger);
                 foreach (TrieNode storageRoot in package.StorageRoots)
                 {
                     if (!storageRoot.IsPersisted)
@@ -466,7 +466,7 @@ namespace Nethermind.Trie.Pruning
                         if (_logger.IsTrace)
                             _logger.Trace(
                                 $"Decrementing refs from block {package.BlockNumber} storage root {storageRoot} ");
-                        storageRoot.DecrementRefsRecursively();
+                        storageRoot.DecrementRefsRecursively(_logger);
                     }
                 }
 

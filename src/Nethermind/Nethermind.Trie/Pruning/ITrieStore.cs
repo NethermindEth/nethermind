@@ -22,6 +22,7 @@ namespace Nethermind.Trie.Pruning
     {
         void Commit(TrieType trieType, long blockNumber, NodeCommitInfo nodeCommitInfo);
         
+        // to be removed and replaced by a single batch commit
         void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root);
 
         public void Unwind();

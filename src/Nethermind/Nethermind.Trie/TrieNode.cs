@@ -23,6 +23,7 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie.Pruning;
 
@@ -103,6 +104,7 @@ namespace Nethermind.Trie
         /// </summary>
         public bool IsSealed => !IsDirty;
 
+        // TODO: we can just check if int.MaxValue
         public bool IsPersisted
         {
             get => _isPersisted;
@@ -573,12 +575,12 @@ namespace Nethermind.Trie
         }
 
         // TODO: can do it as visitors but seems an overkill
-        public void DecrementRefsRecursively(bool isParentPersisted = false)
+        public void DecrementRefsRecursively(ILogger logger, bool isParentPersisted = false)
         {
-            // if (!IsPersisted && isParentPersisted)
-            // {
-            //     throw new InvalidDataException($"{this} is not persisted while parent is.");
-            // }
+            if (!IsPersisted && isParentPersisted)
+            {
+                throw new InvalidDataException($"{this} is not persisted while parent is.");
+            }
             
             if (!IsLeaf)
             {
@@ -589,7 +591,8 @@ namespace Nethermind.Trie
                         TrieNode child = _data[i] as TrieNode;
                         if (child != null) // both unresolved and NULL are handled here
                         {
-                            child.DecrementRefsRecursively(IsPersisted);
+                            logger.Trace($"Decrementing refs recursively on child {i} {child}");
+                            child.DecrementRefsRecursively(logger, IsPersisted);
                             if (child.Refs == 0)
                             {
                                 _data[i] = _unresolvedChild;
@@ -608,12 +611,12 @@ namespace Nethermind.Trie
         }
 
         // TODO: can do it as visitors but seems an overkill
-        public void IncrementRefsRecursively(long block, List<Keccak> storageRoots, bool isParentPersisted = false)
+        public void IncrementRefsRecursively(ILogger logger, long block, List<Keccak> storageRoots, bool isParentPersisted = false)
         {
-            // if (!IsPersisted && isParentPersisted)
-            // {
-            //     throw new InvalidDataException($"{this} is not persisted while parent is.");
-            // }
+            if (!IsPersisted && isParentPersisted)
+            {
+                throw new InvalidDataException($"{this} is not persisted while parent is.");
+            }
             
             if (!IsLeaf)
             {
@@ -624,7 +627,8 @@ namespace Nethermind.Trie
                         object o = _data[i];
                         if (o is TrieNode child)
                         {
-                            child.IncrementRefsRecursively(block, storageRoots, IsPersisted);
+                            logger.Trace($"Incrementing refs recursively on child {i} {child}");
+                            child.IncrementRefsRecursively(logger, block, storageRoots, IsPersisted);
                             // if(child.IsPersisted)
                             // {
                             //     _data[i] = _unresolvedChild;
