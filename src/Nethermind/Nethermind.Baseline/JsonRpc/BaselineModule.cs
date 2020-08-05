@@ -115,7 +115,7 @@ namespace Nethermind.Baseline.JsonRpc
             {
                 return false;
             }
-            
+
             ShaBaselineTree tree = new ShaBaselineTree(_baselineDb, trackedTree.Bytes, TruncationLength);
             return _baselineTrees.TryAdd(trackedTree, tree);
         }
@@ -285,7 +285,6 @@ namespace Nethermind.Baseline.JsonRpc
             return Bytes.FromHexString(contractBytecode[3]);
         }
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
         public async Task<ResultWrapper<Keccak>> baseline_deploy(Address address, string contractType)
         {
             ResultWrapper<Keccak> result;
@@ -336,7 +335,6 @@ namespace Nethermind.Baseline.JsonRpc
                      (c >= 'A' && c <= 'F'));
         }
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
         public Task<ResultWrapper<Keccak>> baseline_deployBytecode(Address address, string byteCode)
         {
             ResultWrapper<Keccak> result;
@@ -449,7 +447,6 @@ namespace Nethermind.Baseline.JsonRpc
             return Task.FromResult(result);
         }
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
         public Task<ResultWrapper<BaselineTreeNode[]>> baseline_getSiblings(Address contractAddress, long leafIndex)
         {
             if (leafIndex > BaselineTree.MaxLeafIndex || leafIndex < 0L)
@@ -474,11 +471,10 @@ namespace Nethermind.Baseline.JsonRpc
             return Task.FromResult(ResultWrapper<BaselineTreeNode[]>.Success(tree!.GetProof((uint) leafIndex)));
         }
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
         public Task<ResultWrapper<bool>> baseline_track(Address contractAddress)
         {
             ResultWrapper<bool> result;
-            
+
             // can potentially warn user if tree is not deployed at the address
             if (contractAddress == null)
             {
@@ -493,7 +489,7 @@ namespace Nethermind.Baseline.JsonRpc
             {
                 result = ResultWrapper<bool>.Fail(
                     $"{contractAddress} is already tracked or no contract at given address",
-                    ErrorCodes.InvalidInput);    
+                    ErrorCodes.InvalidInput);
             }
 
             return Task.FromResult(result);
@@ -502,36 +498,45 @@ namespace Nethermind.Baseline.JsonRpc
         [MethodImpl(MethodImplOptions.Synchronized)]
         public Task<ResultWrapper<Address[]>> baseline_getTracked()
         {
-            return Task.FromResult(ResultWrapper<Address[]>.Success(_metadata.TrackedTrees));
+            lock (_metadata)
+            {
+                return Task.FromResult(ResultWrapper<Address[]>.Success(_metadata.TrackedTrees));
+            }
         }
 
         private void UpdateMetadata(Address contractAddress)
         {
-            var list = _metadata.TrackedTrees.ToList();
-            list.Add(contractAddress);
-            _metadata.TrackedTrees = list.ToArray();
-
-            _baselineDb[_metadataKey] = SerializeMetadata();
+            lock (_metadata)
+            {
+                var list = _metadata.TrackedTrees.ToList();
+                list.Add(contractAddress);
+                _metadata.TrackedTrees = list.ToArray();
+                
+                _baselineDb[_metadataKey] = SerializeMetadata();
+            }
         }
 
         private byte[] SerializeMetadata()
         {
-            int contentLength = 0;
-            for (int i = 0; i < _metadata.TrackedTrees.Length; i++)
+            lock (_metadata)
             {
-                contentLength += Rlp.LengthOf(_metadata.TrackedTrees[i]);
+                int contentLength = 0;
+                for (int i = 0; i < _metadata.TrackedTrees.Length; i++)
+                {
+                    contentLength += Rlp.LengthOf(_metadata.TrackedTrees[i]);
+                }
+
+                int totalLength = Rlp.LengthOfSequence(contentLength);
+
+                RlpStream rlpStream = new RlpStream(totalLength);
+                rlpStream.StartSequence(contentLength);
+                for (int i = 0; i < _metadata.TrackedTrees.Length; i++)
+                {
+                    rlpStream.Encode(_metadata.TrackedTrees[i]);
+                }
+
+                return rlpStream.Data;
             }
-
-            int totalLength = Rlp.LengthOfSequence(contentLength);
-
-            RlpStream rlpStream = new RlpStream(totalLength);
-            rlpStream.StartSequence(contentLength);
-            for (int i = 0; i < _metadata.TrackedTrees.Length; i++)
-            {
-                rlpStream.Encode(_metadata.TrackedTrees[i]);
-            }
-
-            return rlpStream.Data;
         }
     }
 }
