@@ -18,6 +18,7 @@
 using System;
 using System.Diagnostics;
 using System.Net.Http;
+using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -43,6 +44,7 @@ namespace Nethermind.BeamWallet.Modules.Addresses
         private EthJsonRpcClientProxy _ethJsonRpcClientProxy;
         private bool _externalRunnerIsRunning;
         private const string DefaultUrl = "http://localhost:8545";
+        private const string FileName = "Nethermind.Runner";
 
         public event EventHandler<(string nodeAddress, string address, Process process, bool _externalRunnerIsRunning)>
             AddressesSelected;
@@ -85,12 +87,15 @@ namespace Nethermind.BeamWallet.Modules.Addresses
             {
                 StartInfo = new ProcessStartInfo
                 {
-                    FileName = "./Nethermind.Runner",
+                    FileName = GetFileName(),
                     Arguments = "--config mainnet_beam --JsonRpc.Enabled true",
                     RedirectStandardOutput = true
                 }
             };
         }
+
+        private static string GetFileName()
+            => RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? $"{FileName}.exe" : $"./{FileName}";
 
         private async Task StartProcess()
         {
