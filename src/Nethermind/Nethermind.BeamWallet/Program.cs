@@ -34,11 +34,10 @@ namespace Nethermind.BeamWallet
                 
                 var jsonRpcClientProxy = new JsonRpcClientProxy(new DefaultHttpClient(httpClient,
                     new EthereumJsonSerializer(), LimboLogs.Instance, int.MaxValue), urls, LimboLogs.Instance);
-
                 var jsonRpcWalletClientProxy = new JsonRpcWalletClientProxy(jsonRpcClientProxy);
                 var ethJsonRpcClientProxy = new EthJsonRpcClientProxy(jsonRpcClientProxy);
                 
-                var dataModule = new DataModule(ethJsonRpcClientProxy, data.address, data.process);
+                var dataModule = new DataModule(ethJsonRpcClientProxy, data.address, data.process, data._externalRunnerIsRunning);
                 dataModule.TransferClicked += async (_, e) =>
                 {
                     var transferModule = new TransferModule(ethJsonRpcClientProxy, jsonRpcWalletClientProxy,
