@@ -19,6 +19,7 @@ using System.Collections.Concurrent;
 using System.IO;
 using System.IO.Abstractions;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Filters;
@@ -284,6 +285,7 @@ namespace Nethermind.Baseline.JsonRpc
             return Bytes.FromHexString(contractBytecode[3]);
         }
 
+        [MethodImpl(MethodImplOptions.Synchronized)]
         public async Task<ResultWrapper<Keccak>> baseline_deploy(Address address, string contractType)
         {
             ResultWrapper<Keccak> result;
@@ -334,6 +336,7 @@ namespace Nethermind.Baseline.JsonRpc
                      (c >= 'A' && c <= 'F'));
         }
 
+        [MethodImpl(MethodImplOptions.Synchronized)]
         public Task<ResultWrapper<Keccak>> baseline_deployBytecode(Address address, string byteCode)
         {
             ResultWrapper<Keccak> result;
@@ -420,6 +423,7 @@ namespace Nethermind.Baseline.JsonRpc
             return baselineTree;
         }
 
+        [MethodImpl(MethodImplOptions.Synchronized)]
         public Task<ResultWrapper<bool>> baseline_verify(
             Address contractAddress,
             Keccak root,
@@ -445,6 +449,7 @@ namespace Nethermind.Baseline.JsonRpc
             return Task.FromResult(result);
         }
 
+        [MethodImpl(MethodImplOptions.Synchronized)]
         public Task<ResultWrapper<BaselineTreeNode[]>> baseline_getSiblings(Address contractAddress, long leafIndex)
         {
             if (leafIndex > BaselineTree.MaxLeafIndex || leafIndex < 0L)
@@ -469,12 +474,17 @@ namespace Nethermind.Baseline.JsonRpc
             return Task.FromResult(ResultWrapper<BaselineTreeNode[]>.Success(tree!.GetProof((uint) leafIndex)));
         }
 
+        [MethodImpl(MethodImplOptions.Synchronized)]
         public Task<ResultWrapper<bool>> baseline_track(Address contractAddress)
         {
             ResultWrapper<bool> result;
-
+            
             // can potentially warn user if tree is not deployed at the address
-            if (TryAddTree(contractAddress))
+            if (contractAddress == null)
+            {
+                result = ResultWrapper<bool>.Fail("Contract address was NULL");
+            }
+            else if (TryAddTree(contractAddress))
             {
                 UpdateMetadata(contractAddress);
                 result = ResultWrapper<bool>.Success(true);
@@ -489,6 +499,7 @@ namespace Nethermind.Baseline.JsonRpc
             return Task.FromResult(result);
         }
 
+        [MethodImpl(MethodImplOptions.Synchronized)]
         public Task<ResultWrapper<Address[]>> baseline_getTracked()
         {
             return Task.FromResult(ResultWrapper<Address[]>.Success(_metadata.TrackedTrees));
