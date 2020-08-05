@@ -51,20 +51,29 @@ namespace Nethermind.GitBook
                 JsonRpcMethodAttribute attribute = method.GetCustomAttribute<JsonRpcMethodAttribute>();
                 bool isImplemented = attribute == null || attribute.IsImplemented;
                 string methodName = method.Name.Substring(method.Name.IndexOf('_'));
-                docBuilder.AppendLine(@$"{moduleName}\{methodName}");
+                docBuilder.AppendLine(@$"##{moduleName}\{methodName}");
                 docBuilder.AppendLine();
                 docBuilder.AppendLine(@$"{attribute?.Description ?? "_description missing_"} ");
                 docBuilder.AppendLine();
-                docBuilder.AppendLine($"Is implemented : {isImplemented}");
+                docBuilder.AppendLine($"Is implemented: **{isImplemented}**");
                 docBuilder.AppendLine();
-                docBuilder.AppendLine(@"### **Parameters**");
+                docBuilder.AppendLine(@"#### **Parameters**");
                 docBuilder.AppendLine();
-                docBuilder.AppendLine("| Parameter name | Type |");
-                docBuilder.AppendLine("| :--- | :--- |");
         
-                foreach(ParameterInfo parameter in method.GetParameters())
+                ParameterInfo[] parameters = method.GetParameters();
+
+                if(parameters.Length == 0)
                 {
-                    docBuilder.AppendLine($"| {parameter.Name} | {parameter.ParameterType.ToString()} |");
+                    docBuilder.AppendLine("_Method does does not have any parameters_");
+                }
+                else
+                {
+                    docBuilder.AppendLine("| Parameter name | Type |");
+                    docBuilder.AppendLine("| :--- | :--- |");
+                    foreach (ParameterInfo parameter in method.GetParameters())
+                    {
+                        docBuilder.AppendLine($"| {parameter.Name} | `{parameter.ParameterType.ToString()}` |");
+                    }
                 }
 
                 docBuilder.AppendLine();
@@ -72,8 +81,6 @@ namespace Nethermind.GitBook
 
             string rpcModuleFile = Directory.GetFiles(docsDir, $"{moduleName}.md", SearchOption.AllDirectories).First(); 
 
-            Console.WriteLine(rpcType);
-            Console.WriteLine(rpcModuleFile);
             string fileContent = docBuilder.ToString();
             File.WriteAllText(rpcModuleFile, fileContent);
         }
