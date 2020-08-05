@@ -1,3 +1,4 @@
+using System;
 using System.IO;
 using System.IO.Abstractions;
 using System.Linq;
@@ -588,6 +589,51 @@ namespace Nethermind.Baseline.Test.JsonRpc
             var result = await baselineModule.baseline_track(TestItem.AddressC);
 
             result.Result.ResultType.Should().Be(ResultType.Success);
+        }
+
+        [Test]
+        public async Task concurrent_track_requests_will_succeed()
+        {
+            Random random = new Random(42);
+
+            SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
+            TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
+
+            IStateReader stateReader = Substitute.For<IStateReader>();
+            BaselineModule baselineModule = new BaselineModule(
+                testRpc.TxPoolBridge,
+                stateReader,
+                testRpc.LogFinder,
+                testRpc.BlockTree,
+                _abiEncoder,
+                _fileSystem,
+                new MemDb(),
+                LimboLogs.Instance);
+
+            int iterationsPerTask = 1000;
+            Action trackAction = () =>
+            {
+                for (int i = 0; i < iterationsPerTask; i++)
+                {
+                    byte[] bytes = new byte[20];
+                    random.NextBytes(bytes);
+                    Address address = new Address(bytes);
+
+                    stateReader.GetCode(Arg.Any<Keccak>(), address).Returns(new byte[] {255});
+                    var result = baselineModule.baseline_track(address).Result; // safe to invoke Result here
+                    result.Result.ResultType.Should().Be(ResultType.Success);
+                }
+            };
+
+            Task task1 = new Task(trackAction);
+            Task task2 = new Task(trackAction);
+            Task task3 = new Task(trackAction);
+            
+            task1.Start();
+            task2.Start();
+            task3.Start();
+
+            await Task.WhenAll(task1, task2, task3);
         }
 
         [Test]
