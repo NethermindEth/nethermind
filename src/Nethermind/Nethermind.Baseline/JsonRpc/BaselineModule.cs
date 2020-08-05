@@ -19,7 +19,6 @@ using System.Collections.Concurrent;
 using System.IO;
 using System.IO.Abstractions;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Filters;
@@ -421,7 +420,6 @@ namespace Nethermind.Baseline.JsonRpc
             return baselineTree;
         }
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
         public Task<ResultWrapper<bool>> baseline_verify(
             Address contractAddress,
             Keccak root,
@@ -495,7 +493,6 @@ namespace Nethermind.Baseline.JsonRpc
             return Task.FromResult(result);
         }
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
         public Task<ResultWrapper<Address[]>> baseline_getTracked()
         {
             lock (_metadata)
