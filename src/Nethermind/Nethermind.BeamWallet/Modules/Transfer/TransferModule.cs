@@ -309,7 +309,7 @@ namespace Nethermind.BeamWallet.Modules.Transfer
 
                 if (!unlockAccountResult.Result)
                 {
-                    MessageBox.ErrorQuery(40, 10, "Error",
+                    MessageBox.ErrorQuery(40, 8, "Error",
                         $"Unlocking account failed." +
                         $"{Environment.NewLine}Make sure you have pasted your Keystore File into keystore folder." +
                         $"{Environment.NewLine}(ESC to close)");
@@ -425,6 +425,7 @@ namespace Nethermind.BeamWallet.Modules.Transfer
             {
                 MessageBox.ErrorQuery(40, 7, "Error", "Incorrect data." +
                                                       $"{Environment.NewLine}(ESC to close)");
+                AddButtons();
                 return true;
             }
             return false;
