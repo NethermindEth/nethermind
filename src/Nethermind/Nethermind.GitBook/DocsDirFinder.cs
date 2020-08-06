@@ -6,7 +6,7 @@ namespace Nethermind.GitBook
 {
     public static class DocsDirFinder
     {
-        public static string Find()
+        public static string FindJsonRpc()
         {
             string currentDir = Environment.CurrentDirectory;
             do
@@ -19,7 +19,7 @@ namespace Nethermind.GitBook
                 if (Directory.GetDirectories(currentDir).Contains(Path.Combine(currentDir, "gitbook")))
                 {
                     char pathSeparator = Path.AltDirectorySeparatorChar;
-                    return Path.Combine(currentDir, $"gitbook{pathSeparator}docs{pathSeparator}nethermind-utilities");
+                    return Path.Combine(currentDir, $"gitbook{pathSeparator}docs{pathSeparator}nethermind-utilities{pathSeparator}json-rpc");
                 }
 
                 currentDir = new DirectoryInfo(currentDir).Parent?.FullName;
