@@ -261,6 +261,7 @@ namespace Nethermind.BeamWallet.Modules.Transfer
             if (IncorrectData(_toAddress, _value, _passphrase))
             {
                 Application.Run(_transferWindow);
+                AddButtons();
                 return;
             }
 
