@@ -24,11 +24,21 @@ namespace Nethermind.JsonRpc.Modules.Parity
     [RpcModule(ModuleType.Parity)]
     public interface IParityModule : IModule
     {
+        [JsonRpcMethod(Description = "Returns a list of transactions currently in the queue.", Returns = "Array", IsImplemented = true)]
         ResultWrapper<ParityTransaction[]> parity_pendingTransactions();
+
+        [JsonRpcMethod(Description = "Get receipts from all transactions from particular block, more efficient than fetching the receipts one-by-one.", Returns = "Array", IsImplemented = true)]
         ResultWrapper<ReceiptForRpc[]> parity_getBlockReceipts(BlockParameter blockParameter);
+
+        [JsonRpcMethod(Description = "Returns the node enode URI.", Returns = "String", IsImplemented = true)]
         ResultWrapper<string> parity_enode();
+
+        [JsonRpcMethod(Description = "", Returns = "Boolean", IsImplemented = true)]
         ResultWrapper<bool> parity_setEngineSigner(Address address, string password);
+        [JsonRpcMethod(Description = "", Returns = "Boolean", IsImplemented = true)]
         ResultWrapper<bool> parity_setEngineSignerSecret(string privateKey);
+
+        [JsonRpcMethod(Description = "", Returns = "Boolean", IsImplemented = true)]
         ResultWrapper<bool> parity_clearEngineSigner();
     }
 }
