@@ -47,6 +47,11 @@ namespace Nethermind.State
 
         public void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, byte[] value = null)
         {
+            if (trieVisitContext.IsStorage)
+            {
+                return;
+            }
+            
             AccountDecoder accountDecoder = new AccountDecoder();
             Account account = accountDecoder.Decode(node.Value.AsRlpStream());
             _balance += account.Balance;
