@@ -25,11 +25,11 @@ using Nethermind.State;
 namespace Nethermind.Runner.Ethereum.Steps
 {
     [RunnerStepDependencies(typeof(ReviewBlockTree))]
-    public class RunCustomVerifiers : IStep
+    public class RunCustomTools : IStep
     {
         private readonly EthereumRunnerContext _context;
         
-        public RunCustomVerifiers(EthereumRunnerContext context)
+        public RunCustomTools(EthereumRunnerContext context)
         {
             _context = context;
         }
