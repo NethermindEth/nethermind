@@ -139,6 +139,18 @@ namespace Nethermind.Cli.Modules
         {
             return NodeManager.Post<long>("eth_getUncleCountByBlockNumber", blockParameter).Result;
         }
+        
+        [CliFunction("eth", "getUncleByBlockNumberAndIndex")]
+        public JsValue GetUncleByBlockNumberAndIndex(string blockParameter, int index)
+        {
+            return NodeManager.PostJint("eth_getUncleByBlockNumberAndIndex", blockParameter, index).Result;
+        }
+        
+        [CliFunction("eth", "getUncleByBlockHashAndIndex")]
+        public JsValue GetUncleByBlockHashAndIndex(string hash, int index)
+        {
+            return NodeManager.PostJint("eth_getUncleByBlockHashAndIndex", CliParseHash(hash), index).Result;
+        }
 
         [CliFunction("eth", "getTransactionByBlockNumberAndIndex")]
         public JsValue GetTransactionByBlockNumberAndIndex(string blockParameter, string index)
