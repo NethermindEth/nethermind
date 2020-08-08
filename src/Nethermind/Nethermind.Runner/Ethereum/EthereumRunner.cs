@@ -19,11 +19,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Core;
 using Nethermind.DataMarketplace.Initializers;
-using Nethermind.Dirichlet.Numerics;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
@@ -33,9 +31,7 @@ using Nethermind.Network.Config;
 using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Runner.Ethereum.Steps;
 using Nethermind.Serialization.Json;
-using Nethermind.Serialization.Rlp;
 using Nethermind.State;
-using Nethermind.Trie;
 using Nethermind.WebSockets;
 
 namespace Nethermind.Runner.Ethereum
@@ -78,53 +74,6 @@ namespace Nethermind.Runner.Ethereum
             networkConfig.LocalIp = _context.IpResolver.LocalIp.ToString();
         }
 
-        public class Visit : ITreeVisitor
-        {
-            private readonly ILogger _logger;
-            private UInt256 _balance = UInt256.Zero;
-            private int _accountsVisited = 0;
-
-            public Visit(ILogger logger)
-            {
-                _logger = logger;
-            }
-            
-            public bool ShouldVisit(Keccak nextNode)
-            {
-                return true;
-            }
-
-            public void VisitTree(Keccak rootHash, TrieVisitContext trieVisitContext)
-            {
-            }
-
-            public void VisitMissingNode(Keccak nodeHash, TrieVisitContext trieVisitContext)
-            {
-            }
-
-            public void VisitBranch(TrieNode node, TrieVisitContext trieVisitContext)
-            {
-            }
-
-            public void VisitExtension(TrieNode node, TrieVisitContext trieVisitContext)
-            {
-            }
-
-            public void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, byte[] value = null)
-            {
-                AccountDecoder accountDecoder = new AccountDecoder();
-                Account account = accountDecoder.Decode(node.Value.AsRlpStream());
-                _balance += account.Balance;
-                _accountsVisited++;
-                
-                _logger.Warn($"Balance after visiting {_accountsVisited}: {_balance}");
-            }
-
-            public void VisitCode(Keccak codeHash, TrieVisitContext trieVisitContext)
-            {
-            }
-        }
-        
         public async Task Start(CancellationToken cancellationToken)
         {
             if (_logger.IsDebug) _logger.Debug("Initializing Ethereum");
@@ -132,9 +81,7 @@ namespace Nethermind.Runner.Ethereum
             EthereumStepsLoader stepsLoader = new EthereumStepsLoader(GetType().Assembly);
             EthereumStepsManager stepsManager = new EthereumStepsManager(stepsLoader, _context, _context.LogManager);
             await stepsManager.InitializeAll(cancellationToken);
-            
-            _context.StateProvider!.Accept(new Visit(_context.LogManager.GetClassLogger()), _context.BlockTree!.Genesis.StateRoot);
-            
+
             string infoScreen = ThisNodeInfo.BuildNodeInfoScreen();
             if (_logger.IsInfo) _logger.Info(infoScreen);
         }

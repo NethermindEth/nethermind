@@ -89,6 +89,10 @@ namespace Nethermind.Runner
         [ConfigItem(Description = "Diagnostics mode which uses a remote DB")]
         RpcDb,
         [ConfigItem(Description = "Diagnostics mode which uses a read-only DB")]
-        ReadOnlyDb
+        ReadOnlyDb,
+        [ConfigItem(Description = "Just scan rewards for blocks + genesis")]
+        VerifyRewards,
+        [ConfigItem(Description = "Just scan and sum supply on all accounts")]
+        VerifySupply
     }
 }

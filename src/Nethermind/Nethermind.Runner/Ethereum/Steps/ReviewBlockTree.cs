@@ -16,8 +16,6 @@
 
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.FSharp.Linq;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Logging;
@@ -58,12 +56,6 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
             
             if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
-
-            if (!syncConfig.FastSync || syncConfig.DownloadBodiesInFastSync)
-            {
-                RewardsFun rewardsFun = new RewardsFun(_context.LogManager);
-                await _context.BlockTree.Accept(rewardsFun, cancellationToken);
-            }
 
             if (!syncConfig.FastSync && !syncConfig.BeamSync)
             {
