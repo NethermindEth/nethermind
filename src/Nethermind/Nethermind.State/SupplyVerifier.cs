@@ -29,6 +29,8 @@ namespace Nethermind.State
         private readonly ILogger _logger;
         private UInt256 _balance = UInt256.Zero;
         private int _accountsVisited;
+        private int _nodesVisited;
+        private int _missing;
 
         public SupplyVerifier(ILogger logger)
         {
@@ -39,14 +41,26 @@ namespace Nethermind.State
 
         public void VisitTree(Keccak rootHash, TrieVisitContext trieVisitContext) { }
 
-        public void VisitMissingNode(Keccak nodeHash, TrieVisitContext trieVisitContext) { }
+        public void VisitMissingNode(Keccak nodeHash, TrieVisitContext trieVisitContext)
+        {
+            _logger.Warn($"Missing node {nodeHash}");
+        }
 
-        public void VisitBranch(TrieNode node, TrieVisitContext trieVisitContext) { }
+        public void VisitBranch(TrieNode node, TrieVisitContext trieVisitContext)
+        {
+            _logger.Info($"Balance after visiting {_accountsVisited} accounts and {_nodesVisited} nodes: {_balance}");
+            _nodesVisited++;
+        }
 
-        public void VisitExtension(TrieNode node, TrieVisitContext trieVisitContext) { }
+        public void VisitExtension(TrieNode node, TrieVisitContext trieVisitContext)
+        {
+            _nodesVisited++;
+        }
 
         public void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, byte[] value = null)
         {
+            _nodesVisited++;
+            
             if (trieVisitContext.IsStorage)
             {
                 return;
@@ -57,9 +71,12 @@ namespace Nethermind.State
             _balance += account.Balance;
             _accountsVisited++;
                 
-            _logger.Info($"Balance after visiting {_accountsVisited}: {_balance}");
+            _logger.Info($"Balance after visiting {_accountsVisited} accounts and {_nodesVisited} nodes: {_balance}");
         }
 
-        public void VisitCode(Keccak codeHash, TrieVisitContext trieVisitContext) { }
+        public void VisitCode(Keccak codeHash, TrieVisitContext trieVisitContext)
+        {
+            _nodesVisited++;
+        }
     }
 }
