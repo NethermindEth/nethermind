@@ -17,14 +17,76 @@
 
 using System;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Rewards;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
+using Nethermind.Specs;
 
 namespace Nethermind.Blockchain.Visitors
 {
+    public class RewardsFun : IBlockTreeVisitor
+    {
+        private ILogger _logger;
+        public bool PreventsAcceptingNewBlocks => true;
+        public long StartLevelInclusive => 0;
+        public long EndLevelExclusive => 10618000;
+
+        private UInt256 _genesisAllocations = UInt256.Parse("72009990499480000000000000");
+        private UInt256 _uncles;
+        private UInt256 _blockRewards;
+
+        public RewardsFun(ILogManager logManager)
+        {
+            _logger = logManager.GetClassLogger();
+        }
+
+        public Task<LevelVisitOutcome> VisitLevelStart(ChainLevelInfo chainLevelInfo, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(LevelVisitOutcome.None);
+        }
+
+        public Task<bool> VisitMissing(Keccak hash, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(true);
+        }
+
+        public Task<bool> VisitHeader(BlockHeader header, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(true);
+        }
+
+        private RewardCalculator _rewardCalculator = new RewardCalculator(MainnetSpecProvider.Instance);
+        
+        public Task<BlockVisitOutcome> VisitBlock(Block block, CancellationToken cancellationToken)
+        {
+            BlockReward[] rewards = _rewardCalculator.CalculateRewards(block);
+            for (int i = 0; i < rewards.Length; i++)
+            {
+                if (rewards[i].RewardType == BlockRewardType.Uncle)
+                {
+                    _uncles += rewards[i].Value;
+                }
+                else
+                {
+                    _blockRewards += rewards[i].Value;
+                }
+            }
+             
+            _logger.Info($"Visiting block {block.Number}, total supply is (genesis + miner rewards + uncle rewards) | {_genesisAllocations} + {_blockRewards} + {_uncles}");
+            return Task.FromResult(BlockVisitOutcome.None);
+        }
+
+        public Task<LevelVisitOutcome> VisitLevelEnd(CancellationToken cancellationToken)
+        {
+            return Task.FromResult(LevelVisitOutcome.None);
+        }
+    }
+
     public class DbBlocksLoader : IBlockTreeVisitor
     {
         public const int DefaultBatchSize = 4000;

@@ -62,6 +62,9 @@ namespace Nethermind.Runner.Ethereum.Steps
             
             if (!syncConfig.FastSync && !syncConfig.BeamSync)
             {
+                RewardsFun rewardsFun = new RewardsFun(_context.LogManager);
+                await _context.BlockTree.Accept(rewardsFun, cancellationToken);
+                
                 DbBlocksLoader loader = new DbBlocksLoader(_context.BlockTree, _logger);
                 await _context.BlockTree.Accept(loader, cancellationToken).ContinueWith(t =>
                 {
