@@ -26,41 +26,41 @@ namespace Nethermind.Runner.Ethereum.Steps
 {
     /* this code was added as an example for users of extension interfaces */
     
-    // [RunnerStepDependencies(typeof(ReviewBlockTree))]
-    // public class RunCustomTools : IStep
-    // {
-    //     private readonly EthereumRunnerContext _context;
-    //     
-    //     public RunCustomTools(EthereumRunnerContext context)
-    //     {
-    //         _context = context;
-    //     }
-    //
-    //     public Task Execute(CancellationToken cancellationToken)
-    //     {
-    //         ILogger logger = _context.LogManager.GetClassLogger();
-    //         IInitConfig initConfig = _context.Config<IInitConfig>();
-    //         
-    //         switch (initConfig.DiagnosticMode)
-    //         {
-    //             case DiagnosticMode.VerifySupply:
-    //             {
-    //                 logger.Info("Genesis supply:");
-    //                 SupplyVerifier supplyVerifier = new SupplyVerifier(logger);
-    //                 _context.StateProvider!.Accept(supplyVerifier, _context.BlockTree!.Genesis.StateRoot);
-    //
-    //                 Block head = _context.BlockTree!.Head;
-    //                 logger.Info($"Head ({head.Number}) block supply:");
-    //                 supplyVerifier = new SupplyVerifier(logger);
-    //                 _context.StateProvider.Accept(supplyVerifier, head.StateRoot);
-    //                 break;
-    //             }
-    //             case DiagnosticMode.VerifyRewards:
-    //                 _context.BlockTree!.Accept(new RewardsVerifier(_context.LogManager), cancellationToken);
-    //                 break;
-    //         }
-    //
-    //         return Task.CompletedTask;
-    //     }
-    // }
+    [RunnerStepDependencies(typeof(ReviewBlockTree))]
+    public class RunCustomTools : IStep
+    {
+        private readonly EthereumRunnerContext _context;
+        
+        public RunCustomTools(EthereumRunnerContext context)
+        {
+            _context = context;
+        }
+    
+        public Task Execute(CancellationToken cancellationToken)
+        {
+            ILogger logger = _context.LogManager.GetClassLogger();
+            IInitConfig initConfig = _context.Config<IInitConfig>();
+            
+            switch (initConfig.DiagnosticMode)
+            {
+                case DiagnosticMode.VerifySupply:
+                {
+                    logger.Info("Genesis supply:");
+                    SupplyVerifier supplyVerifier = new SupplyVerifier(logger);
+                    _context.StateProvider!.Accept(supplyVerifier, _context.BlockTree!.Genesis.StateRoot);
+    
+                    Block head = _context.BlockTree!.Head;
+                    logger.Info($"Head ({head.Number}) block supply:");
+                    supplyVerifier = new SupplyVerifier(logger);
+                    _context.StateProvider.Accept(supplyVerifier, head.StateRoot);
+                    break;
+                }
+                case DiagnosticMode.VerifyRewards:
+                    _context.BlockTree!.Accept(new RewardsVerifier(_context.LogManager), cancellationToken);
+                    break;
+            }
+    
+            return Task.CompletedTask;
+        }
+    }
 }
