@@ -59,12 +59,14 @@ namespace Nethermind.Runner.Ethereum.Steps
             
             if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
 
-            
-            if (!syncConfig.FastSync && !syncConfig.BeamSync)
+            if (!syncConfig.FastSync || syncConfig.DownloadBodiesInFastSync)
             {
                 RewardsFun rewardsFun = new RewardsFun(_context.LogManager);
                 await _context.BlockTree.Accept(rewardsFun, cancellationToken);
-                
+            }
+
+            if (!syncConfig.FastSync && !syncConfig.BeamSync)
+            {
                 DbBlocksLoader loader = new DbBlocksLoader(_context.BlockTree, _logger);
                 await _context.BlockTree.Accept(loader, cancellationToken).ContinueWith(t =>
                 {
