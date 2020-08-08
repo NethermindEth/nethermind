@@ -60,12 +60,10 @@ namespace Nethermind.Blockchain
         public Block Load()
         {
             Block genesis = _chainSpec.Genesis;
-            UInt256 genesisAllocation = 0;
             foreach ((Address address, ChainSpecAllocation allocation) in _chainSpec.Allocations.OrderBy(a => a.Key))
             {
                 _stateProvider.CreateAccount(address, allocation.Balance);
-                genesisAllocation += allocation.Balance;
-                
+
                 if (allocation.Code != null)
                 {
                     Keccak codeHash = _stateProvider.UpdateCode(allocation.Code);
@@ -93,8 +91,6 @@ namespace Nethermind.Blockchain
                 }
             }
             
-            Console.WriteLine($"Genesis allocation: {genesisAllocation}");
-
             // we no longer need the allocations - 0.5MB RAM, 9000 objects for mainnet
             _chainSpec.Allocations = null;
 
