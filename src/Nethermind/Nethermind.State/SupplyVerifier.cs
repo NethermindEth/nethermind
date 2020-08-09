@@ -28,6 +28,7 @@ namespace Nethermind.State
     {
         private readonly ILogger _logger;
         private UInt256 _balance = UInt256.Zero;
+        private Keccak _ignoreThisOne;
         private int _accountsVisited;
         private int _nodesVisited;
         private int _missing;
@@ -36,10 +37,24 @@ namespace Nethermind.State
         {
             _logger = logger;
         }
-            
-        public bool ShouldVisit(Keccak nextNode) { return true; }
 
-        public void VisitTree(Keccak rootHash, TrieVisitContext trieVisitContext) { }
+        public bool ShouldVisit(Keccak nextNode)
+        {
+            if (_ignoreThisOne != null)
+            {
+                if (_ignoreThisOne == nextNode)
+                {
+                    _ignoreThisOne = null;
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        public void VisitTree(Keccak rootHash, TrieVisitContext trieVisitContext)
+        {
+        }
 
         public void VisitMissingNode(Keccak nodeHash, TrieVisitContext trieVisitContext)
         {
@@ -55,6 +70,10 @@ namespace Nethermind.State
         public void VisitExtension(TrieNode node, TrieVisitContext trieVisitContext)
         {
             _nodesVisited++;
+            if (trieVisitContext.IsStorage)
+            {
+                 _ignoreThisOne = node.GetChildHash(0);
+            }
         }
 
         public void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, byte[] value = null)
