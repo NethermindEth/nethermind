@@ -31,8 +31,11 @@ namespace Nethermind.JsonRpc.Modules
         private List<ModuleType> _modules = new List<ModuleType>();
         private List<ModuleType> _enabledModules = new List<ModuleType>();
         
-        private Dictionary<string, (ModuleType ModuleType, (MethodInfo MethodInfo, bool ReadOnly) Method)> _methods = new Dictionary<string, (ModuleType ModuleType, (MethodInfo MethodInfo, bool ReadOnly) Method)>(StringComparer.InvariantCultureIgnoreCase);
-        private Dictionary<ModuleType, (Func<bool, IModule> RentModule, Action<IModule> ReturnModule)> _pools = new Dictionary<ModuleType, (Func<bool, IModule> RentModule, Action<IModule> ReturnModule)>();
+        private Dictionary<string, ResolvedMethodInfo> _methods
+            = new Dictionary<string, ResolvedMethodInfo>(StringComparer.InvariantCultureIgnoreCase);
+        
+        private Dictionary<ModuleType, (Func<bool, IModule> RentModule, Action<IModule> ReturnModule)> _pools
+            = new Dictionary<ModuleType, (Func<bool, IModule> RentModule, Action<IModule> ReturnModule)>();
 
         public RpcModuleProvider(IJsonRpcConfig jsonRpcConfig, ILogManager logManager)
         {
@@ -55,7 +58,12 @@ namespace Nethermind.JsonRpc.Modules
 
             ((List<JsonConverter>) Converters).AddRange(pool.Factory.GetConverters());
 
-            foreach ((string name, (MethodInfo Info, bool ReadOnly) method) in GetMethodDict(typeof(T))) _methods[name] = (moduleType, method);
+            foreach ((string name, (MethodInfo Info, bool ReadOnly) method) in GetMethodDict(typeof(T)))
+            {
+                ResolvedMethodInfo resolvedMethodInfo
+                    = new ResolvedMethodInfo(moduleType, method.Info, method.ReadOnly);
+                _methods[name] = resolvedMethodInfo;
+            }
 
             if (_jsonRpcConfig.EnabledModules.Contains(moduleType.ToString(), StringComparer.InvariantCultureIgnoreCase)) _enabledModules.Add(moduleType);
         }
@@ -64,7 +72,7 @@ namespace Nethermind.JsonRpc.Modules
         {
             if (!_methods.ContainsKey(methodName)) return ModuleResolution.Unknown;
 
-            (ModuleType ModuleType, (MethodInfo MethodInfo, bool ReadOnly) Method) result = _methods[methodName];
+            ResolvedMethodInfo result = _methods[methodName];
             return _enabledModules.Contains(result.ModuleType) ? ModuleResolution.Enabled : ModuleResolution.Disabled;
         }
 
@@ -72,15 +80,15 @@ namespace Nethermind.JsonRpc.Modules
         {
             if (!_methods.ContainsKey(methodName)) return (null, false);
 
-            (ModuleType ModuleType, (MethodInfo MethodInfo, bool ReadOnly) Method) result = _methods[methodName];
-            return result.Method;
+            ResolvedMethodInfo result = _methods[methodName];
+            return (result.MethodInfo, result.ReadOnly);
         }
 
         public IModule Rent(string methodName, bool canBeShared)
         {
             if (!_methods.ContainsKey(methodName)) return null;
 
-            (ModuleType ModuleType, (MethodInfo MethodInfo, bool ReadOnly) Method) result = _methods[methodName];
+            ResolvedMethodInfo result = _methods[methodName];
             return _pools[result.ModuleType].RentModule(canBeShared);
         }
 
@@ -88,7 +96,7 @@ namespace Nethermind.JsonRpc.Modules
         {
             if (!_methods.ContainsKey(methodName)) throw new InvalidOperationException("Not possible to return an unresolved module");
 
-            (ModuleType ModuleType, (MethodInfo MethodInfo, bool ReadOnly) Method) result = _methods[methodName];
+            ResolvedMethodInfo result = _methods[methodName];
             _pools[result.ModuleType].ReturnModule(module);
         }
 
@@ -96,6 +104,23 @@ namespace Nethermind.JsonRpc.Modules
         {
             var methods = type.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly);
             return methods.ToDictionary(x => x.Name.Trim().ToLower(), x => (x, x.GetCustomAttribute<JsonRpcMethodAttribute>()?.IsReadOnly ?? true));
+        }
+        
+        private class ResolvedMethodInfo
+        {
+            public ResolvedMethodInfo(
+                ModuleType moduleType,
+                MethodInfo methodInfo,
+                bool readOnly)
+            {
+                ModuleType = moduleType;
+                MethodInfo = methodInfo;
+                ReadOnly = readOnly;
+            }
+            
+            public ModuleType ModuleType { get; }
+            public MethodInfo MethodInfo { get; }
+            public bool ReadOnly { get; }
         }
     }
 }
