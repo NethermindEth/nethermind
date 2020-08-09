@@ -15,12 +15,14 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
+using Org.BouncyCastle.Utilities.Collections;
 
 namespace Nethermind.State
 {
@@ -28,7 +30,7 @@ namespace Nethermind.State
     {
         private readonly ILogger _logger;
         private UInt256 _balance = UInt256.Zero;
-        private Keccak _ignoreThisOne;
+        private HashSet<Keccak> _ignoreThisOne = new HashSet<Keccak>();
         private int _accountsVisited;
         private int _nodesVisited;
         private int _missing;
@@ -40,13 +42,10 @@ namespace Nethermind.State
 
         public bool ShouldVisit(Keccak nextNode)
         {
-            if (_ignoreThisOne != null)
+            if (_ignoreThisOne.Contains(nextNode))
             {
-                if (_ignoreThisOne == nextNode)
-                {
-                    _ignoreThisOne = null;
-                    return false;
-                }
+                _ignoreThisOne.Remove(nextNode);
+                return false;
             }
 
             return true;
@@ -65,6 +64,18 @@ namespace Nethermind.State
         {
             _logger.Info($"Balance after visiting {_accountsVisited} accounts and {_nodesVisited} nodes: {_balance}");
             _nodesVisited++;
+            
+            if (trieVisitContext.IsStorage)
+            {
+                for (int i = 0; i < 16; i++)
+                {
+                    Keccak childHash = node.GetChildHash(i);
+                    if (childHash != null)
+                    {
+                        _ignoreThisOne.Add(childHash);
+                    }
+                }
+            }
         }
 
         public void VisitExtension(TrieNode node, TrieVisitContext trieVisitContext)
@@ -72,24 +83,24 @@ namespace Nethermind.State
             _nodesVisited++;
             if (trieVisitContext.IsStorage)
             {
-                 _ignoreThisOne = node.GetChildHash(0);
+                _ignoreThisOne.Add(node.GetChildHash(0));
             }
         }
 
         public void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, byte[] value = null)
         {
             _nodesVisited++;
-            
+
             if (trieVisitContext.IsStorage)
             {
                 return;
             }
-            
+
             AccountDecoder accountDecoder = new AccountDecoder();
             Account account = accountDecoder.Decode(node.Value.AsRlpStream());
             _balance += account.Balance;
             _accountsVisited++;
-                
+
             _logger.Info($"Balance after visiting {_accountsVisited} accounts and {_nodesVisited} nodes: {_balance}");
         }
 
