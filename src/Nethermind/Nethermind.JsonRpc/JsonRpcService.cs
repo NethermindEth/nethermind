@@ -35,8 +35,6 @@ namespace Nethermind.JsonRpc
     [Todo(Improve.Refactor, "Use JsonConverters and JSON serialization everywhere")]
     public class JsonRpcService : IJsonRpcService
     {
-        public const string JsonRpcVersion = "2.0";
-
         private readonly ILogger _logger;
         private readonly IRpcModuleProvider _rpcModuleProvider;
         private readonly JsonSerializer _serializer;
