@@ -29,9 +29,9 @@ namespace Nethermind.JsonRpc.Test.Modules
     {
         private const string FilePath = "path";
         
-        [TestCase("eth*", "eth_blocknumber", true)]
-        [TestCase("eth*", "debug_blocknumber", false)]
-        [TestCase("parity*", "parity_trace", true)]
+        [TestCase("eth_.*", "eth_blocknumber", true)]
+        [TestCase("eth_.*", "debug_blocknumber", false)]
+        [TestCase("parity_.*", "parity_trace", true)]
         public void Test(string regex, string methodName, bool expectedResult)
         {
             IFileSystem fileSystemSub = Substitute.For<IFileSystem>();

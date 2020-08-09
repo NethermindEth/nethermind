@@ -61,8 +61,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             Assert.AreEqual(ModuleResolution.Enabled, resolution);
         }
 
-        [TestCase("eth*", ModuleResolution.Unknown)]
-        [TestCase("net*", ModuleResolution.Enabled)]
+        [TestCase("eth_.*", ModuleResolution.Unknown)]
+        [TestCase("net_.*", ModuleResolution.Enabled)]
         public void With_filter_can_reject(string regex, ModuleResolution expectedResult)
         {
             JsonRpcConfig config = new JsonRpcConfig();
