@@ -332,6 +332,11 @@ namespace Nethermind.Trie
             }
         }
 
+        private void UnresolveChild(int i)
+        {
+            _data[i] = null; // unresolved
+        }
+        
         private void ResolveChild(int i)
         {
             if (_rlpStream == null)
@@ -456,6 +461,7 @@ namespace Nethermind.Trie
                         {
                             trieVisitContext.BranchChildIndex = i;
                             child.Accept(visitor, tree, trieVisitContext);
+                            UnresolveChild(i);
                         }
                     }
 
@@ -473,6 +479,7 @@ namespace Nethermind.Trie
                         trieVisitContext.Level++;
                         trieVisitContext.BranchChildIndex = null;
                         child.Accept(visitor, tree, trieVisitContext);
+                        UnresolveChild(0);
                         trieVisitContext.Level--;
                     }
 
