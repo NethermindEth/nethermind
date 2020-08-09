@@ -22,7 +22,6 @@ using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
-using Org.BouncyCastle.Utilities.Collections;
 
 namespace Nethermind.State
 {
@@ -42,6 +41,11 @@ namespace Nethermind.State
 
         public bool ShouldVisit(Keccak nextNode)
         {
+            if (_ignoreThisOne.Count > 16)
+            {
+                _logger.Warn($"Ignore count leak -> {_ignoreThisOne.Count}");
+            }
+
             if (_ignoreThisOne.Contains(nextNode))
             {
                 _ignoreThisOne.Remove(nextNode);
@@ -64,7 +68,7 @@ namespace Nethermind.State
         {
             _logger.Info($"Balance after visiting {_accountsVisited} accounts and {_nodesVisited} nodes: {_balance}");
             _nodesVisited++;
-            
+
             if (trieVisitContext.IsStorage)
             {
                 for (int i = 0; i < 16; i++)
