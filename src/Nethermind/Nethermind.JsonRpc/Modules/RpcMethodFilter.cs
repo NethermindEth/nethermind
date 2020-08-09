@@ -19,8 +19,12 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Abstractions;
+using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using Nethermind.Logging;
+
+[assembly:InternalsVisibleTo("Nethermind.JsonRpc.Test")]
 
 namespace Nethermind.JsonRpc.Modules
 {
@@ -32,15 +36,15 @@ namespace Nethermind.JsonRpc.Modules
         private readonly ConcurrentDictionary<string, bool> _methodsCache
             = new ConcurrentDictionary<string, bool>();
 
-        public RpcMethodFilter(string filePath, ILogger logger)
+        public RpcMethodFilter(string filePath, IFileSystem fileSystem, ILogger logger)
         {
-            if (!File.Exists(filePath))
+            if (!fileSystem.File.Exists(filePath))
             {
                 throw new ArgumentNullException(
                     $"{nameof(RpcMethodFilter)} cannot be initialized on a non-existing file {filePath}");
             }
 
-            foreach (string line in File.ReadLines(filePath))
+            foreach (string line in fileSystem.File.ReadLines(filePath))
             {
                 _filters.Add(line);
             }
@@ -62,7 +66,9 @@ namespace Nethermind.JsonRpc.Modules
         {
             foreach (string filter in _filters)
             {
-                if (Regex.IsMatch(methodName, filter))
+                if (Regex.IsMatch(methodName.ToLowerInvariant(), filter)
+                    || Regex.IsMatch(methodName, filter)
+                    || Regex.IsMatch(methodName.ToUpperInvariant(), filter))
                 {
                     if(_logger.IsDebug)
                         _logger.Debug($"{methodName} will be accepted by the JSON RPC filter because of {filter}.");

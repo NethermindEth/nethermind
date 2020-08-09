@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Abstractions;
 using System.Linq;
 using System.Reflection;
 using Nethermind.Logging;
@@ -40,14 +41,14 @@ namespace Nethermind.JsonRpc.Modules
         
         private IRpcMethodFilter _filter = NullRpcMethodFilter.Instance;
 
-        public RpcModuleProvider(IJsonRpcConfig jsonRpcConfig, ILogManager logManager)
+        public RpcModuleProvider(IFileSystem fileSystem, IJsonRpcConfig jsonRpcConfig, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
-            if (File.Exists(_jsonRpcConfig.CallsFilterFilePath))
+            if (fileSystem.File.Exists(_jsonRpcConfig.CallsFilterFilePath))
             {
                 if(_logger.IsWarn) _logger.Warn("Applying JSON RPC filter.");
-                _filter = new RpcMethodFilter(_jsonRpcConfig.CallsFilterFilePath, _logger);
+                _filter = new RpcMethodFilter(_jsonRpcConfig.CallsFilterFilePath, fileSystem, _logger);
             }
         }
 
