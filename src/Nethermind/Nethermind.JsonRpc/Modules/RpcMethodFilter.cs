@@ -66,9 +66,7 @@ namespace Nethermind.JsonRpc.Modules
         {
             foreach (string filter in _filters)
             {
-                if (Regex.IsMatch(methodName.ToLowerInvariant(), filter)
-                    || Regex.IsMatch(methodName, filter)
-                    || Regex.IsMatch(methodName.ToUpperInvariant(), filter))
+                if (Regex.IsMatch(methodName.ToLowerInvariant(), filter, RegexOptions.IgnoreCase))
                 {
                     if(_logger.IsDebug)
                         _logger.Debug($"{methodName} will be accepted by the JSON RPC filter because of {filter}.");
