@@ -16,6 +16,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.IO.Abstractions;
 using System.Linq;
 using System.Reflection;
 using Nethermind.Logging;
@@ -31,13 +33,23 @@ namespace Nethermind.JsonRpc.Modules
         private List<ModuleType> _modules = new List<ModuleType>();
         private List<ModuleType> _enabledModules = new List<ModuleType>();
         
-        private Dictionary<string, (ModuleType ModuleType, (MethodInfo MethodInfo, bool ReadOnly) Method)> _methods = new Dictionary<string, (ModuleType ModuleType, (MethodInfo MethodInfo, bool ReadOnly) Method)>(StringComparer.InvariantCultureIgnoreCase);
-        private Dictionary<ModuleType, (Func<bool, IModule> RentModule, Action<IModule> ReturnModule)> _pools = new Dictionary<ModuleType, (Func<bool, IModule> RentModule, Action<IModule> ReturnModule)>();
+        private Dictionary<string, ResolvedMethodInfo> _methods
+            = new Dictionary<string, ResolvedMethodInfo>(StringComparer.InvariantCultureIgnoreCase);
+        
+        private Dictionary<ModuleType, (Func<bool, IModule> RentModule, Action<IModule> ReturnModule)> _pools
+            = new Dictionary<ModuleType, (Func<bool, IModule> RentModule, Action<IModule> ReturnModule)>();
+        
+        private IRpcMethodFilter _filter = NullRpcMethodFilter.Instance;
 
-        public RpcModuleProvider(IJsonRpcConfig jsonRpcConfig, ILogManager logManager)
+        public RpcModuleProvider(IFileSystem fileSystem, IJsonRpcConfig jsonRpcConfig, ILogManager logManager)
         {
-            _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
+            if (fileSystem.File.Exists(_jsonRpcConfig.CallsFilterFilePath))
+            {
+                if(_logger.IsWarn) _logger.Warn("Applying JSON RPC filter.");
+                _filter = new RpcMethodFilter(_jsonRpcConfig.CallsFilterFilePath, fileSystem, _logger);
+            }
         }
 
         public IReadOnlyCollection<JsonConverter> Converters { get; } = new List<JsonConverter>();
@@ -48,23 +60,41 @@ namespace Nethermind.JsonRpc.Modules
 
         public void Register<T>(IRpcModulePool<T> pool) where T : IModule
         {
-            ModuleType moduleType = typeof(T).GetCustomAttribute<RpcModuleAttribute>().ModuleType;
+            RpcModuleAttribute attribute = typeof(T).GetCustomAttribute<RpcModuleAttribute>();
+            if (attribute == null)
+            {
+                if(_logger.IsWarn) _logger.Warn(
+                    $"Cannot register {typeof(T).Name} as a JSON RPC module because it does not have a {nameof(RpcModuleAttribute)} applied.");
+                return;
+            }
+            
+            ModuleType moduleType = attribute.ModuleType;
 
             _pools[moduleType] = (canBeShared => pool.GetModule(canBeShared), m => pool.ReturnModule((T) m));
             _modules.Add(moduleType);
 
             ((List<JsonConverter>) Converters).AddRange(pool.Factory.GetConverters());
 
-            foreach ((string name, (MethodInfo Info, bool ReadOnly) method) in GetMethodDict(typeof(T))) _methods[name] = (moduleType, method);
+            foreach ((string name, (MethodInfo info, bool readOnly)) in GetMethodDict(typeof(T)))
+            {
+                ResolvedMethodInfo resolvedMethodInfo = new ResolvedMethodInfo(moduleType, info, readOnly);
+                if (_filter.AcceptMethod(resolvedMethodInfo.ToString()))
+                {
+                    _methods[name] = resolvedMethodInfo;
+                }
+            }
 
-            if (_jsonRpcConfig.EnabledModules.Contains(moduleType.ToString(), StringComparer.InvariantCultureIgnoreCase)) _enabledModules.Add(moduleType);
+            if (_jsonRpcConfig.EnabledModules.Contains(moduleType.ToString(), StringComparer.InvariantCultureIgnoreCase))
+            {
+                _enabledModules.Add(moduleType);
+            }
         }
 
         public ModuleResolution Check(string methodName)
         {
             if (!_methods.ContainsKey(methodName)) return ModuleResolution.Unknown;
 
-            (ModuleType ModuleType, (MethodInfo MethodInfo, bool ReadOnly) Method) result = _methods[methodName];
+            ResolvedMethodInfo result = _methods[methodName];
             return _enabledModules.Contains(result.ModuleType) ? ModuleResolution.Enabled : ModuleResolution.Disabled;
         }
 
@@ -72,30 +102,55 @@ namespace Nethermind.JsonRpc.Modules
         {
             if (!_methods.ContainsKey(methodName)) return (null, false);
 
-            (ModuleType ModuleType, (MethodInfo MethodInfo, bool ReadOnly) Method) result = _methods[methodName];
-            return result.Method;
+            ResolvedMethodInfo result = _methods[methodName];
+            return (result.MethodInfo, result.ReadOnly);
         }
 
         public IModule Rent(string methodName, bool canBeShared)
         {
             if (!_methods.ContainsKey(methodName)) return null;
 
-            (ModuleType ModuleType, (MethodInfo MethodInfo, bool ReadOnly) Method) result = _methods[methodName];
+            ResolvedMethodInfo result = _methods[methodName];
             return _pools[result.ModuleType].RentModule(canBeShared);
         }
 
         public void Return(string methodName, IModule module)
         {
-            if (!_methods.ContainsKey(methodName)) throw new InvalidOperationException("Not possible to return an unresolved module");
+            if (!_methods.ContainsKey(methodName))
+                throw new InvalidOperationException("Not possible to return an unresolved module");
 
-            (ModuleType ModuleType, (MethodInfo MethodInfo, bool ReadOnly) Method) result = _methods[methodName];
+            ResolvedMethodInfo result = _methods[methodName];
             _pools[result.ModuleType].ReturnModule(module);
         }
 
-        private static IDictionary<string, (MethodInfo, bool)> GetMethodDict(Type type)
+        private IDictionary<string, (MethodInfo, bool)> GetMethodDict(Type type)
         {
             var methods = type.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly);
-            return methods.ToDictionary(x => x.Name.Trim().ToLower(), x => (x, x.GetCustomAttribute<JsonRpcMethodAttribute>()?.IsReadOnly ?? true));
+            return methods.ToDictionary(
+                x => x.Name.Trim().ToLower(),
+                x => (x, x.GetCustomAttribute<JsonRpcMethodAttribute>()?.IsReadOnly ?? true));
+        }
+        
+        private class ResolvedMethodInfo
+        {
+            public ResolvedMethodInfo(
+                ModuleType moduleType,
+                MethodInfo methodInfo,
+                bool readOnly)
+            {
+                ModuleType = moduleType;
+                MethodInfo = methodInfo;
+                ReadOnly = readOnly;
+            }
+            
+            public ModuleType ModuleType { get; }
+            public MethodInfo MethodInfo { get; }
+            public bool ReadOnly { get; }
+
+            public override string ToString()
+            {
+                return MethodInfo.Name.ToLowerInvariant();
+            }
         }
     }
 }
