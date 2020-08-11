@@ -55,7 +55,7 @@ namespace Nethermind.AuRa.Test.Contract
         public class TestGasLimitContractBlockchain : TestContractBlockchain
         {
             public IGasLimitCalculator GasLimitCalculator { get; private set; }
-            public AuRaContractGasLimitCalculator.Cache GasLimitOverrideCache { get; private set; }
+            public AuRaContractGasLimitOverride.Cache GasLimitOverrideCache { get; private set; }
             
             protected override BlockProcessor CreateBlockProcessor()
             {
@@ -69,8 +69,8 @@ namespace Nethermind.AuRa.Test.Contract
                 var gasLimitContract = new BlockGasLimitContract(new AbiEncoder(), blockGasLimitContractTransition.Value, blockGasLimitContractTransition.Key,
                     new ReadOnlyTxProcessorSource(DbProvider, BlockTree, SpecProvider, LimboLogs.Instance));
                 
-                GasLimitOverrideCache = new AuRaContractGasLimitCalculator.Cache();
-                GasLimitCalculator = new AuRaContractGasLimitCalculator(new[] {gasLimitContract}, GasLimitOverrideCache, false, FollowOtherMiners.Instance, LimboLogs.Instance);
+                GasLimitOverrideCache = new AuRaContractGasLimitOverride.Cache();
+                GasLimitCalculator = new AuRaContractGasLimitOverride(new[] {gasLimitContract}, GasLimitOverrideCache, false, FollowOtherMiners.Instance, LimboLogs.Instance);
 
                 return new AuRaBlockProcessor(
                     SpecProvider,

@@ -158,9 +158,9 @@ namespace Nethermind.Runner.Ethereum.Steps
             
             if (blockGasLimitContractTransitions?.Any() == true)
             {
-                _context.GasLimitCalculatorCache = new AuRaContractGasLimitCalculator.Cache();
+                _context.GasLimitCalculatorCache = new AuRaContractGasLimitOverride.Cache();
                 
-                IGasLimitCalculator gasLimitCalculator = new AuRaContractGasLimitCalculator(
+                IGasLimitCalculator gasLimitCalculator = new AuRaContractGasLimitOverride(
                     blockGasLimitContractTransitions.Select(blockGasLimitContractTransition =>
                         new BlockGasLimitContract(
                             _context.AbiEncoder,

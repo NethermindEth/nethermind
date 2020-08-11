@@ -241,8 +241,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                 new GasLimitCalculator(_context.SpecProvider, _context.Config<IMiningConfig>());
             if (blockGasLimitContractTransitions?.Any() == true)
             {
-                AuRaContractGasLimitCalculator auRaContractGasLimitCalculator =
-                    new AuRaContractGasLimitCalculator(
+                AuRaContractGasLimitOverride auRaContractGasLimitOverride =
+                    new AuRaContractGasLimitOverride(
                         blockGasLimitContractTransitions.Select(blockGasLimitContractTransition => 
                                 new BlockGasLimitContract(
                                     _context.AbiEncoder, 
@@ -255,7 +255,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                         gasLimitCalculator, 
                         _context.LogManager);
 
-                gasLimitCalculator = auRaContractGasLimitCalculator;
+                gasLimitCalculator = auRaContractGasLimitOverride;
             }
 
             return gasLimitCalculator;

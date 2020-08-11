@@ -26,7 +26,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Consensus.AuRa
 {
-    public class AuRaContractGasLimitCalculator : IGasLimitCalculator
+    public class AuRaContractGasLimitOverride : IGasLimitCalculator
     {
         private static UInt256? _minimalContractGasLimit;
 
@@ -49,7 +49,7 @@ namespace Nethermind.Consensus.AuRa
         private readonly IGasLimitCalculator _innerCalculator;
         private readonly ILogger _logger;
         
-        public AuRaContractGasLimitCalculator(
+        public AuRaContractGasLimitOverride(
             IList<IBlockGasLimitContract> contracts,
             Cache cache,
             bool minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract,
@@ -60,7 +60,7 @@ namespace Nethermind.Consensus.AuRa
             _cache = cache ?? throw new ArgumentNullException(nameof(cache));
             _minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract = minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract;
             _innerCalculator = innerCalculator ?? throw new ArgumentNullException(nameof(innerCalculator));
-            _logger = logManager?.GetClassLogger<AuRaContractGasLimitCalculator>() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<AuRaContractGasLimitOverride>() ?? throw new ArgumentNullException(nameof(logManager));
         }
         
         public long GetGasLimit(BlockHeader parentHeader)
