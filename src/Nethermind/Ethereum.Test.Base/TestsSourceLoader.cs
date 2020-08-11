@@ -27,8 +27,9 @@ namespace Ethereum.Test.Base
         private readonly ITestLoadStrategy _testLoadStrategy;
         private readonly string _path;
 
-        public TestsSourceLoader(ITestLoadStrategy testLoadStrategy, string path)
+        public TestsSourceLoader(ITestLoadStrategy testLoadStrategy, string path, string wildcard = null)
         {
+            // TODO: why is the wildcard ignored now?
             _testLoadStrategy = testLoadStrategy ?? throw new ArgumentNullException(nameof(testLoadStrategy));
             _path = path ?? throw new ArgumentNullException(nameof(path));
         }
