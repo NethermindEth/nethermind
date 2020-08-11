@@ -105,6 +105,13 @@ namespace Nethermind.Evm.Test
             return tracer;
         }
 
+        protected T Execute<T>(T tracer, params byte[] code) where T : ITxTracer
+        {
+            (var block, var transaction) = PrepareTx(BlockNumber, 100000, code);
+            _processor.Execute(transaction, block.Header, tracer);
+            return tracer;
+        }
+
         protected CallOutputTracer Execute(long blockNumber, long gasLimit, byte[] code)
         {
             (var block, var transaction) = PrepareTx(blockNumber, gasLimit, code);

@@ -240,6 +240,9 @@ jobs:
     - name: Ethereum.Trie.Test
       run: |
         dotnet test -c Release src/Nethermind/Ethereum.Trie.Test
+    - name: Nethermind.State.Test.Runner.Test
+      run : |
+	dotnet test -c Release src/Nethermind/Nethermind.State.Test.Runner.Test
 #  eth2-tests:
 #    name: Ethereum 2.0 Tests
 #    runs-on: ${{ matrix.os }}
