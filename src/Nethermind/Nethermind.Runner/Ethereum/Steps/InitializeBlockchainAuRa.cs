@@ -24,6 +24,7 @@ using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Rewards;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Evm;
 using Nethermind.Facade.Transactions;
 using Nethermind.Runner.Ethereum.Context;
@@ -34,7 +35,7 @@ namespace Nethermind.Runner.Ethereum.Steps
     public class InitializeBlockchainAuRa : InitializeBlockchain
     {
         private readonly AuRaEthereumRunnerContext _context;
-        private ReadOnlyTransactionProcessorSource? _readOnlyTransactionProcessorSource;
+        private ReadOnlyTxProcessorSource? _readOnlyTransactionProcessorSource;
         private AuRaSealValidator? _sealValidator;
 
         public InitializeBlockchainAuRa(AuRaEthereumRunnerContext context) : base(context)
@@ -125,15 +126,15 @@ namespace Nethermind.Runner.Ethereum.Steps
             return validator;
         }
 
-        private ITxPermissionFilter? GetTxPermissionFilter()
+        private ITxFilter? GetTxPermissionFilter()
         {
             if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
             
             if (_context.ChainSpec.Parameters.TransactionPermissionContract != null)
             {
-                _context.TxFilterCache = new ITxPermissionFilter.Cache();
+                _context.TxFilterCache = new PermissionBasedTxFilter.Cache();
                 
-                var txPermissionFilter = new TxPermissionFilter(
+                var txPermissionFilter = new PermissionBasedTxFilter(
                     new VersionedTransactionPermissionContract(_context.AbiEncoder,
                         _context.ChainSpec.Parameters.TransactionPermissionContract,
                         _context.ChainSpec.Parameters.TransactionPermissionContractTransition ?? 0, 
@@ -193,7 +194,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         }
 
         private IReadOnlyTransactionProcessorSource GetReadOnlyTransactionProcessorSource() => 
-            _readOnlyTransactionProcessorSource ??= new ReadOnlyTransactionProcessorSource(_context.DbProvider, _context.BlockTree, _context.SpecProvider, _context.LogManager);
+            _readOnlyTransactionProcessorSource ??= new ReadOnlyTxProcessorSource(_context.DbProvider, _context.BlockTree, _context.SpecProvider, _context.LogManager);
 
         protected override HeaderValidator CreateHeaderValidator()
         {

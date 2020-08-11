@@ -99,8 +99,9 @@ namespace Nethermind.AuRa.Test
                             Timestamper,
                             LimboLogs.Instance,
                             AuRaStepCalculator,
-                            NullReportingValidator.Instance, 
-                            auraConfig);
+                            NullReportingValidator.Instance,
+                            auraConfig,
+                            new MiningConfig());
                     }
         }
 

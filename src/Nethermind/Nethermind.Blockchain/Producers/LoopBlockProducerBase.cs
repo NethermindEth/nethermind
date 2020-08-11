@@ -28,16 +28,17 @@ using Nethermind.State;
 
 namespace Nethermind.Blockchain.Producers
 {
-    public abstract class BaseLoopBlockProducer : BaseBlockProducer
+    public abstract class LoopBlockProducerBase : BlockProducerBase
     {
         private const int ChainNotYetProcessedMillisecondsDelay = 100;
+        private readonly IMiningConfig _miningConfig;
         private readonly string _name;
         private Task _producerTask;
         
         protected CancellationTokenSource LoopCancellationTokenSource { get; } = new CancellationTokenSource();
         protected int _canProduce = 0;
 
-        protected BaseLoopBlockProducer(
+        protected LoopBlockProducerBase(
             ITxSource txSource,
             IBlockchainProcessor processor,
             ISealer sealer,
@@ -45,10 +46,12 @@ namespace Nethermind.Blockchain.Producers
             IBlockProcessingQueue blockProcessingQueue,
             IStateProvider stateProvider,
             ITimestamper timestamper,
+            IMiningConfig miningConfig,
             ILogManager logManager,
             string name) 
-            : base(txSource, processor, sealer, blockTree, blockProcessingQueue, stateProvider, timestamper, logManager)
+            : base(txSource, processor, sealer, blockTree, blockProcessingQueue, stateProvider, timestamper, miningConfig, logManager)
         {
+            _miningConfig = miningConfig;
             _name = name;
         }
 

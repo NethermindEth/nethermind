@@ -33,11 +33,12 @@ using Nethermind.State;
 
 namespace Nethermind.Consensus.AuRa
 {
-    public class AuRaBlockProducer : BaseLoopBlockProducer
+    public class AuRaBlockProducer : LoopBlockProducerBase
     {
         private readonly IAuRaStepCalculator _auRaStepCalculator;
         private readonly IReportingValidator _reportingValidator;
         private readonly IAuraConfig _config;
+        private readonly IMiningConfig _miningConfig;
         private readonly IGasLimitOverride _gasLimitOverride;
 
         public AuRaBlockProducer(
@@ -52,12 +53,14 @@ namespace Nethermind.Consensus.AuRa
             IAuRaStepCalculator auRaStepCalculator,
             IReportingValidator reportingValidator,
             IAuraConfig config,
+            IMiningConfig miningConfig,
             IGasLimitOverride gasLimitOverride = null) 
-            : base(new ValidatedTxSource(txSource, logManager), processor, sealer, blockTree, blockProcessingQueue, stateProvider, timestamper, logManager, "AuRa")
+            : base(new ValidatedTxSource(txSource, logManager), processor, sealer, blockTree, blockProcessingQueue, stateProvider, timestamper, miningConfig, logManager, "AuRa")
         {
             _auRaStepCalculator = auRaStepCalculator ?? throw new ArgumentNullException(nameof(auRaStepCalculator));
             _reportingValidator = reportingValidator ?? throw new ArgumentNullException(nameof(reportingValidator));
             _config = config ?? throw new ArgumentNullException(nameof(config));
+            _miningConfig = miningConfig;
             _canProduce = _config.AllowAuRaPrivateChains ? 1 : 0;
             _gasLimitOverride = gasLimitOverride;
         }

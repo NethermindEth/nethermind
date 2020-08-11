@@ -13,24 +13,28 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
 
-using Nethermind.Core;
-using Nethermind.Core.Caching;
-using Nethermind.Core.Crypto;
+using Nethermind.Config;
 using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Consensus.AuRa
+namespace Nethermind.Consensus
 {
-    public interface IGasLimitOverride
+    public interface IMiningConfig : IConfig
     {
-        long? GetGasLimit(BlockHeader parentHeader);
+        [ConfigItem(
+            Description = "Defines whether the blocks should be produced.",
+            DefaultValue = "false")]
+        bool Enabled { get; set; }
         
-        public class Cache
-        {
-            private const int MaxCacheSize = 10;
-
-            internal ICache<Keccak, long?> GasLimitCache { get; } = new LruCache<Keccak, long?>(MaxCacheSize, "BlockGasLimit");
-        }
+        [ConfigItem(
+            Description = "Block gas limit that the block producer should try to reach in the fastest possible way based on protocol rules." +
+                          " NULL value means that the miner should follow other miners.",
+            DefaultValue = "null")]
+        long? TargetBlockGasLimit { get; set; }
+        
+        [ConfigItem(
+            Description = "Minimum gas price for transactions accepted by the block producer.",
+            DefaultValue = "1000000000")]
+        UInt256 MinGasPrice{ get; set; }
     }
 }

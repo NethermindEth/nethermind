@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -16,21 +16,22 @@
 // 
 
 using Nethermind.Core;
-using Nethermind.Core.Caching;
-using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Consensus.AuRa
+namespace Nethermind.Consensus.Transactions
 {
-    public interface IGasLimitOverride
+    public class MinGasPriceTxFilter : ITxFilter
     {
-        long? GetGasLimit(BlockHeader parentHeader);
-        
-        public class Cache
-        {
-            private const int MaxCacheSize = 10;
+        private readonly UInt256 _minGasPrice;
 
-            internal ICache<Keccak, long?> GasLimitCache { get; } = new LruCache<Keccak, long?>(MaxCacheSize, "BlockGasLimit");
+        public MinGasPriceTxFilter(UInt256 minGasPrice)
+        {
+            _minGasPrice = minGasPrice;
+        }
+        
+        public bool IsAllowed(Transaction tx, BlockHeader parentHeader)
+        {
+            return tx.GasPrice >= _minGasPrice;
         }
     }
 }

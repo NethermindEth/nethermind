@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,22 +15,17 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Core;
-using Nethermind.Core.Caching;
-using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Consensus.AuRa
+namespace Nethermind.Consensus
 {
-    public interface IGasLimitOverride
+    public class MiningConfig : IMiningConfig
     {
-        long? GetGasLimit(BlockHeader parentHeader);
-        
-        public class Cache
-        {
-            private const int MaxCacheSize = 10;
+        public bool Enabled { get; set; } = false;
 
-            internal ICache<Keccak, long?> GasLimitCache { get; } = new LruCache<Keccak, long?>(MaxCacheSize, "BlockGasLimit");
-        }
+        public long? TargetBlockGasLimit { get; set; } = null;
+
+        public UInt256 MinGasPrice { get; set; } = 1.GWei();
     }
 }

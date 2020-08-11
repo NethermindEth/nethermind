@@ -62,7 +62,7 @@ namespace Nethermind.Core.Caching
 
             return default;
         }
-        
+
         [MethodImpl(MethodImplOptions.Synchronized)]
         public bool TryGet(TKey key, out TValue value)
         {
@@ -97,13 +97,15 @@ namespace Nethermind.Core.Caching
             {
                 if (_cacheMap.Count >= _maxCapacity)
                 {
-                    RemoveFirst();
+                    Replace(key, val);
                 }
-
-                LruCacheItem cacheItem = new LruCacheItem(key, val);
-                LinkedListNode<LruCacheItem> newNode = new LinkedListNode<LruCacheItem>(cacheItem);
-                _lruList.AddLast(newNode);
-                _cacheMap.Add(key, newNode);
+                else
+                {
+                    LruCacheItem cacheItem = new LruCacheItem(key, val);
+                    LinkedListNode<LruCacheItem> newNode = new LinkedListNode<LruCacheItem>(cacheItem);
+                    _lruList.AddLast(newNode);
+                    _cacheMap.Add(key, newNode);    
+                }
             }
         }
 
@@ -120,12 +122,16 @@ namespace Nethermind.Core.Caching
         [MethodImpl(MethodImplOptions.Synchronized)]
         public bool Contains(TKey key) => _cacheMap.ContainsKey(key);
 
-        private void RemoveFirst()
+        private void Replace(TKey key, TValue value)
         {
             LinkedListNode<LruCacheItem> node = _lruList.First;
             _lruList.RemoveFirst();
-
             _cacheMap.Remove(node.Value.Key);
+            
+            node.Value.Value = value;
+            node.Value.Key = key;
+            _lruList.AddLast(node);
+            _cacheMap.Add(key, node);
         }
 
         private class LruCacheItem
@@ -136,7 +142,7 @@ namespace Nethermind.Core.Caching
                 Value = v;
             }
 
-            public readonly TKey Key;
+            public TKey Key;
             public TValue Value;
         }
 

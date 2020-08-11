@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,23 +15,26 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Consensus.AuRa.Contracts;
-using Nethermind.Core;
-using Nethermind.Core.Caching;
-using Nethermind.Core.Crypto;
+using System.Threading;
+using System.Threading.Tasks;
+using Nethermind.Consensus;
+using Nethermind.Runner.Ethereum.Context;
 
-namespace Nethermind.Consensus.AuRa.Transactions
+namespace Nethermind.Runner.Ethereum.Steps
 {
-    public interface ITxPermissionFilter
+    public class MigrateConfigs : IStep
     {
-        bool IsAllowed(Transaction tx, BlockHeader parentHeader);
-        
-        public class Cache
+        private readonly EthereumRunnerContext _context;
+
+        public MigrateConfigs(EthereumRunnerContext context)
         {
-            public const int MaxCacheSize = 4096;
-            
-            internal ICache<(Keccak ParentHash, Address Sender), ITransactionPermissionContract.TxPermissions?> Permissions { get; } =
-                new LruCacheWithRecycling<(Keccak ParentHash, Address Sender), ITransactionPermissionContract.TxPermissions?>(MaxCacheSize, "TxPermissions");
+            _context = context;
+        }
+        
+        public Task Execute(CancellationToken cancellationToken)
+        {
+            _context.Config<IMiningConfig>().Enabled = _context.Config<IInitConfig>().IsMining;
+            return Task.CompletedTask;
         }
     }
 }

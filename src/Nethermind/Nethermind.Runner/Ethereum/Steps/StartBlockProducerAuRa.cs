@@ -34,11 +34,9 @@ using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
 using Nethermind.State;
-using Nethermind.Db.Blooms;
 using Nethermind.Facade.Transactions;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.TxPool;
-using Nethermind.Wallet;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
@@ -77,12 +75,13 @@ namespace Nethermind.Runner.Ethereum.Steps
                 stepCalculator,
                 _context.ReportingValidator,
                 _auraConfig,
-                GetGasLimitOverride(producerContext.ReadOnlyTxProcessingEnv, producerContext.ReadOnlyTransactionProcessorSource));
+                _context.Config<IMiningConfig>(),
+                GetGasLimitOverride(producerContext.ReadOnlyTxProcessingEnv, producerContext.ReadOnlyTxProcessorSource));
         }
 
         protected override BlockProcessor CreateBlockProcessor(
             ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv, 
-            ReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource, 
+            ReadOnlyTxProcessorSource readOnlyTxProcessorSource, 
             IReadOnlyDbProvider readOnlyDbProvider)
         {
             if (_context.RewardCalculatorSource == null) throw new StepDependencyException(nameof(_context.RewardCalculatorSource));
@@ -97,7 +96,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     readOnlyTxProcessingEnv.StateProvider,
                     _context.AbiEncoder,
                     readOnlyTxProcessingEnv.TransactionProcessor,
-                    readOnlyTransactionProcessorSource,
+                    readOnlyTxProcessorSource,
                     readOnlyTxProcessingEnv.BlockTree,
                     _context.ReceiptStorage,
                     _context.ValidatorStore,
@@ -129,14 +128,14 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.ReceiptStorage,
                 _context.LogManager,
                 readOnlyTxProcessingEnv.BlockTree,
-                GetTxPermissionFilter(readOnlyTxProcessingEnv, readOnlyTransactionProcessorSource),
-                GetGasLimitOverride(readOnlyTxProcessingEnv, readOnlyTransactionProcessorSource, readOnlyTxProcessingEnv.StateProvider))
+                GetTxPermissionFilter(readOnlyTxProcessingEnv, readOnlyTxProcessorSource),
+                GetGasLimitOverride(readOnlyTxProcessingEnv, readOnlyTxProcessorSource, readOnlyTxProcessingEnv.StateProvider))
             {
                 AuRaValidator = _validator
             };
         }
 
-        protected override ITxSource CreateTxSourceForProducer(ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv, ReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource)
+        protected override ITxSource CreateTxSourceForProducer(ReadOnlyTxProcessingEnv processingEnv, ReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
             bool CheckAddPosdaoTransactions(IList<ITxSource> list, long auRaPosdaoTransition)
             {
@@ -169,7 +168,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 {
                     var randomContractTxSource = new RandomContractTxSource(
                         GetRandomContracts(randomnessContractAddress, _context.AbiEncoder,
-                            readOnlyTransactionProcessorSource,
+                            readOnlyTxProcessorSource,
                             signer),
                         new EciesCipher(_context.CryptoRandom),
                         _context.NodeKey,
@@ -186,7 +185,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
             if (_context.Signer == null) throw new StepDependencyException(nameof(_context.Signer));
 
-            IList<ITxSource> txSources = new List<ITxSource> { base.CreateTxSourceForProducer(readOnlyTxProcessingEnv, readOnlyTransactionProcessorSource) };
+            IList<ITxSource> txSources = new List<ITxSource> { base.CreateTxSourceForProducer(processingEnv, readOnlyTxProcessorSource) };
             bool needSigner = false;
             
             needSigner |= CheckAddPosdaoTransactions(txSources, _context.ChainSpec.AuRa.PosdaoTransition);
@@ -197,32 +196,32 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (needSigner)
             {
                 TxSealer transactionSealer = new TxSealer(_context.Signer, _context.Timestamper); 
-                txSource = new GeneratedTxSourceSealer(txSource, transactionSealer, readOnlyTxProcessingEnv.StateReader, _context.LogManager);
+                txSource = new GeneratedTxSourceSealer(txSource, transactionSealer, processingEnv.StateReader, _context.LogManager);
             }
 
-            var txPermissionFilter = GetTxPermissionFilter(readOnlyTxProcessingEnv, readOnlyTransactionProcessorSource);
+            var txPermissionFilter = GetTxPermissionFilter(processingEnv, readOnlyTxProcessorSource);
             
             if (txPermissionFilter != null)
             {
-                txSource = new TxFilterTxSource(txSource, txPermissionFilter);
+                txSource = new FilteredTxSource(txSource, txPermissionFilter);
             }
 
             return txSource;
         }
 
-        private ITxPermissionFilter? GetTxPermissionFilter(
+        private ITxFilter? GetTxPermissionFilter(
             ReadOnlyTxProcessingEnv environment, 
-            ReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource)
+            ReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
             if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
             
             if (_context.ChainSpec.Parameters.TransactionPermissionContract != null)
             {
-                var txPermissionFilter = new TxPermissionFilter(
+                var txPermissionFilter = new PermissionBasedTxFilter(
                     new VersionedTransactionPermissionContract(_context.AbiEncoder,
                         _context.ChainSpec.Parameters.TransactionPermissionContract,
                         _context.ChainSpec.Parameters.TransactionPermissionContractTransition ?? 0, 
-                        readOnlyTransactionProcessorSource,
+                        readOnlyTxProcessorSource,
                         _context.TransactionPermissionContractVersions),
                     _context.TxFilterCache,
                     environment.StateProvider,
@@ -236,7 +235,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         
         private IGasLimitOverride? GetGasLimitOverride(
             ReadOnlyTxProcessingEnv environment, 
-            ReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource,
+            ReadOnlyTxProcessorSource readOnlyTxProcessorSource,
             IStateProvider? stateProvider = null)
         {
             if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
@@ -250,7 +249,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                             _context.AbiEncoder,
                             blockGasLimitContractTransition.Value,
                             blockGasLimitContractTransition.Key,
-                            readOnlyTransactionProcessorSource))
+                            readOnlyTxProcessorSource))
                         .ToArray<IBlockGasLimitContract>(),
                     _context.GasLimitOverrideCache,
                     _auraConfig?.Minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract == true,

@@ -258,7 +258,7 @@ namespace Nethermind.Db.Blooms
                 LevelElementSize = levelElementSize;
                 LevelMultiplier = levelMultiplier;
                 _migrationStatistics = migrationStatistics;
-                _cache = new LruCacheWithRecycling<long, Bloom>(levelMultiplier, levelMultiplier, "blooms");
+                _cache = new LruCache<long, Bloom>(levelMultiplier, levelMultiplier, "blooms");
             }
 
             public void Store(long blockNumber, Bloom bloom)

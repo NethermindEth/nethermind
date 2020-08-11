@@ -31,7 +31,7 @@ using Nethermind.State.Proofs;
 
 namespace Nethermind.Blockchain.Producers
 {
-    public abstract class BaseBlockProducer : IBlockProducer
+    public abstract class BlockProducerBase : IBlockProducer
     {
         private IBlockchainProcessor Processor { get; }
         protected IBlockTree BlockTree { get; }
@@ -40,10 +40,11 @@ namespace Nethermind.Blockchain.Producers
         private readonly ISealer _sealer;
         private readonly IStateProvider _stateProvider;
         private readonly ITimestamper _timestamper;
+        private readonly IMiningConfig _miningConfig;
         private readonly ITxSource _txSource;
         protected ILogger Logger { get; }
 
-        protected BaseBlockProducer(
+        protected BlockProducerBase(
             ITxSource txSource,
             IBlockchainProcessor processor,
             ISealer sealer,
@@ -51,6 +52,7 @@ namespace Nethermind.Blockchain.Producers
             IBlockProcessingQueue blockProcessingQueue,
             IStateProvider stateProvider,
             ITimestamper timestamper,
+            IMiningConfig miningConfig,
             ILogManager logManager)
         {
             _txSource = txSource ?? throw new ArgumentNullException(nameof(txSource));
@@ -60,6 +62,7 @@ namespace Nethermind.Blockchain.Producers
             BlockProcessingQueue = blockProcessingQueue ?? throw new ArgumentNullException(nameof(blockProcessingQueue));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
+            _miningConfig = miningConfig ?? throw new ArgumentNullException(nameof(miningConfig));
             Logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 

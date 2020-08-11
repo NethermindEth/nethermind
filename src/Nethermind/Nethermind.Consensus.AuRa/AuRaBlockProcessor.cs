@@ -23,6 +23,7 @@ using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -40,7 +41,7 @@ namespace Nethermind.Consensus.AuRa
     {
         private readonly IBlockTree _blockTree;
         private readonly IGasLimitOverride _gasLimitOverride;
-        private readonly ITxPermissionFilter _txFilter;
+        private readonly ITxFilter _txFilter;
         private readonly ILogger _logger;
         private IAuRaValidator _auRaValidator;
 
@@ -57,13 +58,13 @@ namespace Nethermind.Consensus.AuRa
             IReceiptStorage receiptStorage,
             ILogManager logManager,
             IBlockTree blockTree,
-            ITxPermissionFilter txFilter = null,
+            ITxFilter txFilter = null,
             IGasLimitOverride gasLimitOverride = null)
             : base(specProvider, blockValidator, rewardCalculator, transactionProcessor, stateDb, codeDb, stateProvider, storageProvider, txPool, receiptStorage, logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _logger = logManager?.GetClassLogger<AuRaBlockProcessor>() ?? throw new ArgumentNullException(nameof(logManager));
-            _txFilter = txFilter ?? NullTxPermissionFilter.Instance;
+            _txFilter = txFilter ?? NullTxFilter.Instance;
             _gasLimitOverride = gasLimitOverride;
         }
 

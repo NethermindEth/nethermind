@@ -28,7 +28,7 @@ using Nethermind.State;
 
 namespace Nethermind.Blockchain.Producers
 {
-    public class MinedBlockProducer : BaseBlockProducer
+    public class MinedBlockProducer : BlockProducerBase
     {
         private readonly IDifficultyCalculator _difficultyCalculator;
         private readonly object _syncToken = new object();
@@ -42,9 +42,10 @@ namespace Nethermind.Blockchain.Producers
             IBlockProcessingQueue blockProcessingQueue,
             IStateProvider stateProvider,
             ITimestamper timestamper,
+            IMiningConfig miningConfig,
             ILogManager logManager,
             IDifficultyCalculator difficultyCalculator) 
-            : base(txSource, processor, sealer, blockTree, blockProcessingQueue, stateProvider, timestamper, logManager)
+            : base(txSource, processor, sealer, blockTree, blockProcessingQueue, stateProvider, timestamper, miningConfig, logManager)
         {
             _difficultyCalculator = difficultyCalculator ?? throw new ArgumentNullException(nameof(difficultyCalculator));
         }

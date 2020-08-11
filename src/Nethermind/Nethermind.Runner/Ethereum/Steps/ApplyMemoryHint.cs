@@ -26,7 +26,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
-    [RunnerStepDependencies]
+    [RunnerStepDependencies(typeof(MigrateConfigs))]
     public sealed class ApplyMemoryHint : IStep
     {
         private readonly EthereumRunnerContext _context;

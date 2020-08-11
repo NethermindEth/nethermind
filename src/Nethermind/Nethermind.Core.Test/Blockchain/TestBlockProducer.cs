@@ -28,10 +28,28 @@ using Nethermind.State;
 
 namespace Nethermind.Core.Test.Blockchain
 {
-    public class TestBlockProducer : BaseLoopBlockProducer
+    public class TestBlockProducer : LoopBlockProducerBase
     {
-        public TestBlockProducer(ITxSource transactionSource, IBlockchainProcessor processor, IStateProvider stateProvider, ISealer sealer, IBlockTree blockTree, IBlockProcessingQueue blockProcessingQueue, ITimestamper timestamper, ILogManager logManager)
-            : base(transactionSource, processor, sealer, blockTree, blockProcessingQueue, stateProvider, timestamper, logManager, "a")
+        public TestBlockProducer(
+            ITxSource transactionSource,
+            IBlockchainProcessor processor,
+            IStateProvider stateProvider,
+            ISealer sealer,
+            IBlockTree blockTree,
+            IBlockProcessingQueue blockProcessingQueue,
+            ITimestamper timestamper,
+            ILogManager logManager)
+            : base(
+                transactionSource,
+                processor,
+                sealer,
+                blockTree,
+                blockProcessingQueue,
+                stateProvider,
+                timestamper,
+                new MiningConfig(),
+                logManager,
+                "test producer")
         {
         }
 

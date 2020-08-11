@@ -16,21 +16,11 @@
 // 
 
 using Nethermind.Core;
-using Nethermind.Core.Caching;
-using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Consensus.AuRa
+namespace Nethermind.Consensus.Transactions
 {
-    public interface IGasLimitOverride
+    public interface ITxFilter
     {
-        long? GetGasLimit(BlockHeader parentHeader);
-        
-        public class Cache
-        {
-            private const int MaxCacheSize = 10;
-
-            internal ICache<Keccak, long?> GasLimitCache { get; } = new LruCache<Keccak, long?>(MaxCacheSize, "BlockGasLimit");
-        }
+        bool IsAllowed(Transaction tx, BlockHeader parentHeader);
     }
 }
