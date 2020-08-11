@@ -303,6 +303,7 @@ namespace Nethermind.Synchronization.Test
                 txPool,
                 Timestamper.Default,
                 new MiningConfig(),
+                MainnetSpecProvider.Instance, 
                 logManager);
             
             SyncProgressResolver resolver = new SyncProgressResolver(tree, receiptStorage, stateDb, new MemDb(), syncConfig, logManager);

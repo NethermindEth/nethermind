@@ -22,6 +22,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -43,9 +44,20 @@ namespace Nethermind.Blockchain.Producers
             IStateProvider stateProvider,
             ITimestamper timestamper,
             IMiningConfig miningConfig,
+            ISpecProvider specProvider,
             ILogManager logManager,
             IDifficultyCalculator difficultyCalculator) 
-            : base(txSource, processor, sealer, blockTree, blockProcessingQueue, stateProvider, timestamper, miningConfig, logManager)
+            : base(
+                txSource,
+                processor,
+                sealer,
+                blockTree,
+                blockProcessingQueue,
+                stateProvider,
+                timestamper,
+                miningConfig,
+                specProvider,
+                logManager)
         {
             _difficultyCalculator = difficultyCalculator ?? throw new ArgumentNullException(nameof(difficultyCalculator));
         }
@@ -93,7 +105,8 @@ namespace Nethermind.Blockchain.Producers
         protected override UInt256 CalculateDifficulty(BlockHeader parent, UInt256 timestamp)
         {
             Block parentBlock = BlockTree.FindBlock(parent.Hash, BlockTreeLookupOptions.None);
-            return _difficultyCalculator.Calculate(parent.Difficulty, parent.Timestamp, timestamp, parent.Number + 1, parentBlock.Ommers.Length > 0);
+            return _difficultyCalculator.Calculate(
+                parent.Difficulty, parent.Timestamp, timestamp, parent.Number + 1, parentBlock.Ommers.Length > 0);
         }
     }
 }

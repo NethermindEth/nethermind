@@ -32,6 +32,8 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using Nethermind.State;
 using NSubstitute;
 using NSubstitute.ReceivedExtensions;
@@ -97,11 +99,13 @@ namespace Nethermind.AuRa.Test
                             BlockTree,
                             BlockProcessingQueue,
                             Timestamper,
-                            LimboLogs.Instance,
                             AuRaStepCalculator,
                             NullReportingValidator.Instance,
                             auraConfig,
-                            new MiningConfig());
+                            new MiningConfig(),
+                            new SingleReleaseSpecProvider(MuirGlacier.Instance, ChainId.Mainnet),
+                            null,
+                            LimboLogs.Instance);
                     }
         }
 

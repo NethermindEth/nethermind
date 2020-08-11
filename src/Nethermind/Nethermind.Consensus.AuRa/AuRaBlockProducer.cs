@@ -16,7 +16,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -26,7 +25,7 @@ using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -41,21 +40,32 @@ namespace Nethermind.Consensus.AuRa
         private readonly IMiningConfig _miningConfig;
         private readonly IGasLimitOverride _gasLimitOverride;
 
-        public AuRaBlockProducer(
-            ITxSource txSource,
+        public AuRaBlockProducer(ITxSource txSource,
             IBlockchainProcessor processor,
             IStateProvider stateProvider,
             ISealer sealer,
             IBlockTree blockTree,
             IBlockProcessingQueue blockProcessingQueue,
             ITimestamper timestamper,
-            ILogManager logManager,
             IAuRaStepCalculator auRaStepCalculator,
             IReportingValidator reportingValidator,
             IAuraConfig config,
             IMiningConfig miningConfig,
-            IGasLimitOverride gasLimitOverride = null) 
-            : base(new ValidatedTxSource(txSource, logManager), processor, sealer, blockTree, blockProcessingQueue, stateProvider, timestamper, miningConfig, logManager, "AuRa")
+            ISpecProvider specProvider,
+            IGasLimitOverride gasLimitOverride,
+            ILogManager logManager) 
+            : base(
+                new ValidatedTxSource(txSource, logManager),
+                processor,
+                sealer,
+                blockTree,
+                blockProcessingQueue,
+                stateProvider,
+                timestamper,
+                miningConfig,
+                specProvider,
+                logManager,
+                "AuRa")
         {
             _auRaStepCalculator = auRaStepCalculator ?? throw new ArgumentNullException(nameof(auRaStepCalculator));
             _reportingValidator = reportingValidator ?? throw new ArgumentNullException(nameof(reportingValidator));
@@ -80,7 +90,8 @@ namespace Nethermind.Consensus.AuRa
             return block;
         }
 
-        protected override long GetGasLimit(BlockHeader parent) => _gasLimitOverride?.GetGasLimit(parent) ?? base.GetGasLimit(parent);
+        protected override long GetGasLimit(BlockHeader parent)
+            => _gasLimitOverride?.GetGasLimit(parent) ?? base.GetGasLimit(parent);
 
         protected override UInt256 CalculateDifficulty(BlockHeader parent, UInt256 timestamp) 
             => AuraDifficultyCalculator.CalculateDifficulty(parent.AuRaStep.Value, _auRaStepCalculator.CurrentStep);
@@ -118,7 +129,9 @@ namespace Nethermind.Consensus.AuRa
             // b) Some transactions that call contracts can be added to block and we don't know how much gas they will use.
             if (processedBlock != null && processedBlock.GasUsed > processedBlock.GasLimit)
             {
-                if (Logger.IsError) Logger.Error($"Block produced used {processedBlock.GasUsed} gas and exceeded gas limit {processedBlock.GasLimit}.");
+                if (Logger.IsError)
+                    Logger.Error(
+                        $"Block produced used {processedBlock.GasUsed} gas and exceeded gas limit {processedBlock.GasLimit}.");
                 return null;
             }
             
@@ -137,7 +150,8 @@ namespace Nethermind.Consensus.AuRa
         {
             private readonly ITxSource _innerSource;
             private readonly ILogger _logger;
-            private readonly Dictionary<(Address, UInt256), Transaction> _senderNonces = new Dictionary<(Address, UInt256), Transaction>(250);
+            private readonly Dictionary<(Address, UInt256), Transaction> _senderNonces =
+                new Dictionary<(Address, UInt256), Transaction>(250);
 
             public ValidatedTxSource(ITxSource innerSource, ILogManager logManager)
             {
@@ -156,15 +170,18 @@ namespace Nethermind.Consensus.AuRa
                     var senderNonce = (tx.SenderAddress, tx.Nonce);
                     if (_senderNonces.TryGetValue(senderNonce, out var prevTx))
                     {
-                        if (_logger.IsError) _logger.Error($"Found transactions with same Sender and Nonce when producing block {parent.Number + 1}. " +
-                                                           $"Tx1: {prevTx.Hash}, from {prevTx.SenderAddress} to {prevTx.To} with nonce {prevTx.Nonce}. " +
-                                                           $"Tx2: {tx.Hash}, from {tx.SenderAddress} to {tx.To} with nonce {tx.Nonce}. " +
-                                                           "Skipping second one.");
+                        if (_logger.IsError)
+                            _logger.Error($"Found transactions with same Sender and Nonce when producing block {parent.Number + 1}. " + 
+                                          $"Tx1: {prevTx.Hash}, from {prevTx.SenderAddress} to {prevTx.To} with nonce {prevTx.Nonce}. " + 
+                                          $"Tx2: {tx.Hash}, from {tx.SenderAddress} to {tx.To} with nonce {tx.Nonce}. " + 
+                                          "Skipping second one.");
                     }
                     else
                     {
                         _senderNonces.Add(senderNonce, tx);
-                        if (_logger.IsDebug) _logger.Debug($"Adding transaction {index++}: {tx.ToShortString()} to block {parent.Number + 1}.");
+                        if (_logger.IsDebug)
+                            _logger.Debug(
+                                $"Adding transaction {index++}: {tx.ToShortString()} to block {parent.Number + 1}.");
                         yield return tx;
                     }
                 }

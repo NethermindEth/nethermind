@@ -71,12 +71,12 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.BlockTree,
                 _context.BlockProcessingQueue,
                 _context.Timestamper,
-                _context.LogManager,
                 stepCalculator,
                 _context.ReportingValidator,
                 _auraConfig,
                 _context.Config<IMiningConfig>(),
-                GetGasLimitOverride(producerContext.ReadOnlyTxProcessingEnv, producerContext.ReadOnlyTxProcessorSource));
+                _context.SpecProvider,
+                GetGasLimitOverride(producerContext.ReadOnlyTxProcessingEnv, producerContext.ReadOnlyTxProcessorSource), _context.LogManager);
         }
 
         protected override BlockProcessor CreateBlockProcessor(

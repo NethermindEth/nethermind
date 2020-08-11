@@ -26,6 +26,8 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using Nethermind.State;
 
 namespace Nethermind.JsonRpc.Test.Modules
@@ -42,7 +44,22 @@ namespace Nethermind.JsonRpc.Test.Modules
             ILogManager logManager,
             IAuRaStepCalculator auRaStepCalculator,
             IReportingValidator reportingValidator,
-            IAuraConfig config) : base(transactionSource, processor, stateProvider, sealer, blockTree, blockProcessingQueue, timestamper, logManager, auRaStepCalculator, reportingValidator, config, new MiningConfig())
+            IAuraConfig config) 
+            : base(
+                transactionSource,
+                processor,
+                stateProvider,
+                sealer,
+                blockTree,
+                blockProcessingQueue,
+                timestamper,
+                auRaStepCalculator,
+                reportingValidator,
+                config,
+                new MiningConfig(),
+                new SingleReleaseSpecProvider(MuirGlacier.Instance, ChainId.Mainnet),
+                null,
+                logManager)
         {
         }
 

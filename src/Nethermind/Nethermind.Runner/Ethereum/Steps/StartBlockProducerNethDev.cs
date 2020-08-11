@@ -22,6 +22,8 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
@@ -48,10 +50,13 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.TxPool,
                 _context.Timestamper,
                 _context.Config<IMiningConfig>(),
+                new SingleReleaseSpecProvider(MuirGlacier.Instance, ChainId.Mainnet), 
                 _context.LogManager);
         }
 
-        protected override ITxSource CreateTxSourceForProducer(ReadOnlyTxProcessingEnv processingEnv, ReadOnlyTxProcessorSource readOnlyTxProcessorSource) 
+        protected override ITxSource CreateTxSourceForProducer(
+            ReadOnlyTxProcessingEnv processingEnv,
+            ReadOnlyTxProcessorSource readOnlyTxProcessorSource) 
             => new SinglePendingTxSelector(base.CreateTxSourceForProducer(processingEnv, readOnlyTxProcessorSource));
     }
 }

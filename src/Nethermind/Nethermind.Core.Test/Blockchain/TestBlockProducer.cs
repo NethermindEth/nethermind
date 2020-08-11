@@ -48,6 +48,7 @@ namespace Nethermind.Core.Test.Blockchain
                 stateProvider,
                 timestamper,
                 new MiningConfig(),
+                null,
                 logManager,
                 "test producer")
         {
