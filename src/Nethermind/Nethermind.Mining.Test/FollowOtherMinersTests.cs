@@ -15,31 +15,27 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
+using FluentAssertions;
+using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Builders;
+using NUnit.Framework;
 
-namespace Nethermind.Consensus.Transactions
+namespace Nethermind.Mining.Test
 {
-    public class CompositeTxFilter : ITxFilter
+    [TestFixture]
+    public class FollowOtherMinersTests
     {
-        private readonly ITxFilter[] _txFilters;
-
-        public CompositeTxFilter(params ITxFilter[] txFilters)
+        [TestCase(1000000, 1000000)]
+        [TestCase(1999999, 1999999)]
+        [TestCase(2000000, 2000000)]
+        [TestCase(2000001, 2000001)]
+        [TestCase(3000000, 3000000)]
+        public void Test(long current, long expected)
         {
-            _txFilters = txFilters ?? throw new ArgumentNullException(nameof(txFilters));
-        }
-        
-        public bool IsAllowed(Transaction tx, BlockHeader parentHeader)
-        {
-            for (int i = 0; i < _txFilters.Length; i++)
-            {
-                if (!_txFilters[i].IsAllowed(tx, parentHeader))
-                {
-                    return false;
-                }
-            }
-
-            return true;
+            BlockHeader header = Build.A.BlockHeader.WithGasLimit(current).TestObject;
+            FollowOtherMiners.Instance.GetGasLimit(header).Should().Be(expected);
         }
     }
 }
