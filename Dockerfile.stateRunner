@@ -4,7 +4,7 @@ COPY src/ .
 
 
 
-RUN git submodule update --init src/Dirichlet && \
+RUN git submodule update --init Dirichlet && \
  dotnet publish Nethermind/Nethermind.State.Test.Runner -c release -o out
 
 FROM mcr.microsoft.com/dotnet/core/sdk:3.1-alpine
