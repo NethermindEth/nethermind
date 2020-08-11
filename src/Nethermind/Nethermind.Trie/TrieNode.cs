@@ -334,7 +334,14 @@ namespace Nethermind.Trie
 
         private void UnresolveChild(int i)
         {
-            _data[i] = null; // unresolved
+            TrieNode child = _data[i] as TrieNode;
+            if (child != null)
+            {
+                if (!child.IsDirty)
+                {
+                    _data[i] = null; // unresolved
+                }
+            }
         }
         
         private void ResolveChild(int i)
