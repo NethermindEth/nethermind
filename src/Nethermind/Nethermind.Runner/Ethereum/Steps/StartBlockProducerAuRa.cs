@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using MongoDB.Driver;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
@@ -33,7 +34,6 @@ using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
-using Nethermind.State;
 using Nethermind.Facade.Transactions;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.TxPool;
@@ -74,9 +74,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                 stepCalculator,
                 _context.ReportingValidator,
                 _auraConfig,
-                _context.Config<IMiningConfig>(),
-                _context.SpecProvider,
-                GetGasLimitOverride(producerContext.ReadOnlyTxProcessingEnv, producerContext.ReadOnlyTxProcessorSource), _context.LogManager);
+                CreateGasLimitCalculator(producerContext.ReadOnlyTxProcessorSource),
+                _context.LogManager);
         }
 
         protected override BlockProcessor CreateBlockProcessor(
@@ -129,7 +128,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.LogManager,
                 readOnlyTxProcessingEnv.BlockTree,
                 GetTxPermissionFilter(readOnlyTxProcessingEnv, readOnlyTxProcessorSource),
-                GetGasLimitOverride(readOnlyTxProcessingEnv, readOnlyTxProcessorSource, readOnlyTxProcessingEnv.StateProvider))
+                CreateGasLimitCalculator(readOnlyTxProcessorSource))
             {
                 AuRaValidator = _validator
             };
@@ -233,32 +232,33 @@ namespace Nethermind.Runner.Ethereum.Steps
             return null;
         }
         
-        private IGasLimitOverride? GetGasLimitOverride(
-            ReadOnlyTxProcessingEnv environment, 
-            ReadOnlyTxProcessorSource readOnlyTxProcessorSource,
-            IStateProvider? stateProvider = null)
+        private IGasLimitCalculator? CreateGasLimitCalculator(ReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
             if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
             var blockGasLimitContractTransitions = _context.ChainSpec.AuRa.BlockGasLimitContractTransitions;
-            
+
+            IGasLimitCalculator gasLimitCalculator =
+                new GasLimitCalculator(_context.SpecProvider, _context.Config<IMiningConfig>());
             if (blockGasLimitContractTransitions?.Any() == true)
             {
-                var gasLimitOverride = new AuRaContractGasLimitOverride(
-                    blockGasLimitContractTransitions.Select(blockGasLimitContractTransition =>
-                        new BlockGasLimitContract(
-                            _context.AbiEncoder,
-                            blockGasLimitContractTransition.Value,
-                            blockGasLimitContractTransition.Key,
-                            readOnlyTxProcessorSource))
-                        .ToArray<IBlockGasLimitContract>(),
-                    _context.GasLimitOverrideCache,
-                    _auraConfig?.Minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract == true,
-                    _context.LogManager);
-                
-                return gasLimitOverride;
+                AuRaContractGasLimitCalculator auRaContractGasLimitCalculator =
+                    new AuRaContractGasLimitCalculator(
+                        blockGasLimitContractTransitions.Select(blockGasLimitContractTransition => 
+                                new BlockGasLimitContract(
+                                    _context.AbiEncoder, 
+                                    blockGasLimitContractTransition.Value, 
+                                    blockGasLimitContractTransition.Key, 
+                                    readOnlyTxProcessorSource))
+                        .ToArray<IBlockGasLimitContract>(), 
+                        _context.GasLimitCalculatorCache, 
+                        _auraConfig?.Minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract == true, 
+                        gasLimitCalculator, 
+                        _context.LogManager);
+
+                gasLimitCalculator = auRaContractGasLimitCalculator;
             }
 
-            return null;
+            return gasLimitCalculator;
         }
     }
 }

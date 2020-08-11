@@ -56,9 +56,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 auRaStepCalculator,
                 reportingValidator,
                 config,
-                new MiningConfig(),
-                new SingleReleaseSpecProvider(MuirGlacier.Instance, ChainId.Mainnet),
-                null,
+                FollowOtherMiners.Instance, 
                 logManager)
         {
         }

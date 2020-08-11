@@ -102,9 +102,7 @@ namespace Nethermind.AuRa.Test
                             AuRaStepCalculator,
                             NullReportingValidator.Instance,
                             auraConfig,
-                            new MiningConfig(),
-                            new SingleReleaseSpecProvider(MuirGlacier.Instance, ChainId.Mainnet),
-                            null,
+                            FollowOtherMiners.Instance, 
                             LimboLogs.Instance);
                     }
         }

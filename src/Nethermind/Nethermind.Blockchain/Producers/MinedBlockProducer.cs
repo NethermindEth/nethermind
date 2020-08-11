@@ -35,16 +35,14 @@ namespace Nethermind.Blockchain.Producers
         private readonly object _syncToken = new object();
         private CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
 
-        public MinedBlockProducer(
-            ITxSource txSource,
+        public MinedBlockProducer(ITxSource txSource,
             IBlockchainProcessor processor,
             ISealer sealer,
             IBlockTree blockTree,
             IBlockProcessingQueue blockProcessingQueue,
             IStateProvider stateProvider,
+            IGasLimitCalculator gasLimitCalculator,
             ITimestamper timestamper,
-            IMiningConfig miningConfig,
-            ISpecProvider specProvider,
             ILogManager logManager,
             IDifficultyCalculator difficultyCalculator) 
             : base(
@@ -54,9 +52,8 @@ namespace Nethermind.Blockchain.Producers
                 blockTree,
                 blockProcessingQueue,
                 stateProvider,
+                gasLimitCalculator,
                 timestamper,
-                miningConfig,
-                specProvider,
                 logManager)
         {
             _difficultyCalculator = difficultyCalculator ?? throw new ArgumentNullException(nameof(difficultyCalculator));

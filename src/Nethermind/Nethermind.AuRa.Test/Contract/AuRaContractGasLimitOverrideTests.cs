@@ -22,6 +22,7 @@ using Nethermind.Abi;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Validators;
+using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Transactions;
@@ -47,14 +48,14 @@ namespace Nethermind.AuRa.Test.Contract
         public async Task can_read_block_gas_limit_from_contract()
         {
             var chain = await TestContractBlockchain.ForTest<TestGasLimitContractBlockchain, AuRaContractGasLimitOverrideTests>();
-            var gasLimit = chain.GasLimitOverride.GetGasLimit(chain.BlockTree.Head.Header);
+            var gasLimit = chain.GasLimitCalculator.GetGasLimit(chain.BlockTree.Head.Header);
             gasLimit.Should().Be(100000000);
         }
 
         public class TestGasLimitContractBlockchain : TestContractBlockchain
         {
-            public IGasLimitOverride GasLimitOverride { get; private set; }
-            public IGasLimitOverride.Cache GasLimitOverrideCache { get; private set; }
+            public IGasLimitCalculator GasLimitCalculator { get; private set; }
+            public AuRaContractGasLimitCalculator.Cache GasLimitOverrideCache { get; private set; }
             
             protected override BlockProcessor CreateBlockProcessor()
             {
@@ -68,8 +69,8 @@ namespace Nethermind.AuRa.Test.Contract
                 var gasLimitContract = new BlockGasLimitContract(new AbiEncoder(), blockGasLimitContractTransition.Value, blockGasLimitContractTransition.Key,
                     new ReadOnlyTxProcessorSource(DbProvider, BlockTree, SpecProvider, LimboLogs.Instance));
                 
-                GasLimitOverrideCache = new IGasLimitOverride.Cache();
-                GasLimitOverride = new AuRaContractGasLimitOverride(new[] {gasLimitContract}, GasLimitOverrideCache, false, LimboLogs.Instance);
+                GasLimitOverrideCache = new AuRaContractGasLimitCalculator.Cache();
+                GasLimitCalculator = new AuRaContractGasLimitCalculator(new[] {gasLimitContract}, GasLimitOverrideCache, false, FollowOtherMiners.Instance, LimboLogs.Instance);
 
                 return new AuRaBlockProcessor(
                     SpecProvider,
@@ -85,7 +86,7 @@ namespace Nethermind.AuRa.Test.Contract
                     LimboLogs.Instance,
                     BlockTree,
                     null,
-                    GasLimitOverride);
+                    GasLimitCalculator);
             }
 
             protected override Task AddBlocksOnStart() => Task.CompletedTask;

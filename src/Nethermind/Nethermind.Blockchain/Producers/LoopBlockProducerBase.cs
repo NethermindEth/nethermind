@@ -32,7 +32,6 @@ namespace Nethermind.Blockchain.Producers
     public abstract class LoopBlockProducerBase : BlockProducerBase
     {
         private const int ChainNotYetProcessedMillisecondsDelay = 100;
-        private readonly IMiningConfig _miningConfig;
         private readonly string _name;
         private Task _producerTask;
         
@@ -47,8 +46,7 @@ namespace Nethermind.Blockchain.Producers
             IBlockProcessingQueue blockProcessingQueue,
             IStateProvider stateProvider,
             ITimestamper timestamper,
-            IMiningConfig miningConfig,
-            ISpecProvider specProvider,
+            IGasLimitCalculator gasLimitCalculator,
             ILogManager logManager,
             string name) 
             : base(
@@ -58,12 +56,10 @@ namespace Nethermind.Blockchain.Producers
                 blockTree,
                 blockProcessingQueue,
                 stateProvider,
+                gasLimitCalculator,
                 timestamper,
-                miningConfig,
-                specProvider,
                 logManager)
         {
-            _miningConfig = miningConfig;
             _name = name;
         }
 

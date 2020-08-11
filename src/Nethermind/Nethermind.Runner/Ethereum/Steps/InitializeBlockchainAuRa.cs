@@ -18,6 +18,7 @@ using System;
 using System.Linq;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Validators;
+using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Contracts;
@@ -69,7 +70,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.LogManager,
                 _context.BlockTree,
                 GetTxPermissionFilter(),
-                GetGasLimitOverride());
+                GetGasLimitCalculator());
             
             var auRaValidator = CreateAuRaValidator(processor);
             processor.AuRaValidator = auRaValidator;
@@ -150,16 +151,16 @@ namespace Nethermind.Runner.Ethereum.Steps
             return null;
         }
         
-        private IGasLimitOverride? GetGasLimitOverride()
+        private IGasLimitCalculator? GetGasLimitCalculator()
         {
             if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
             var blockGasLimitContractTransitions = _context.ChainSpec.AuRa.BlockGasLimitContractTransitions;
             
             if (blockGasLimitContractTransitions?.Any() == true)
             {
-                _context.GasLimitOverrideCache = new IGasLimitOverride.Cache();
+                _context.GasLimitCalculatorCache = new AuRaContractGasLimitCalculator.Cache();
                 
-                var gasLimitOverride = new AuRaContractGasLimitOverride(
+                IGasLimitCalculator gasLimitCalculator = new AuRaContractGasLimitCalculator(
                     blockGasLimitContractTransitions.Select(blockGasLimitContractTransition =>
                         new BlockGasLimitContract(
                             _context.AbiEncoder,
@@ -167,11 +168,12 @@ namespace Nethermind.Runner.Ethereum.Steps
                             blockGasLimitContractTransition.Key,
                             GetReadOnlyTransactionProcessorSource()))
                         .ToArray<IBlockGasLimitContract>(),
-                    _context.GasLimitOverrideCache,
+                    _context.GasLimitCalculatorCache,
                     _context.Config<IAuraConfig>().Minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract,
+                    new GasLimitCalculator(_context.SpecProvider, _context.Config<IMiningConfig>()), 
                     _context.LogManager);
                 
-                return gasLimitOverride;
+                return gasLimitCalculator;
             }
 
             return null;

@@ -21,7 +21,6 @@ using Nethermind.Blockchain.Processing;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -42,8 +41,6 @@ namespace Nethermind.Blockchain.Producers
             IBlockProcessingQueue blockProcessingQueue,
             ITxPool txPool,
             ITimestamper timestamper,
-            IMiningConfig miningConfig,
-            ISpecProvider specProvider,
             ILogManager logManager) 
             : base(
                 txSource,
@@ -52,9 +49,8 @@ namespace Nethermind.Blockchain.Producers
                 blockTree,
                 blockProcessingQueue,
                 stateProvider,
+                FollowOtherMiners.Instance, 
                 timestamper,
-                miningConfig,
-                specProvider,
                 logManager)
         {
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));

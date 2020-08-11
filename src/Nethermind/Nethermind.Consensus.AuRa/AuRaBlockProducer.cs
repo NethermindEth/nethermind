@@ -37,8 +37,6 @@ namespace Nethermind.Consensus.AuRa
         private readonly IAuRaStepCalculator _auRaStepCalculator;
         private readonly IReportingValidator _reportingValidator;
         private readonly IAuraConfig _config;
-        private readonly IMiningConfig _miningConfig;
-        private readonly IGasLimitOverride _gasLimitOverride;
 
         public AuRaBlockProducer(ITxSource txSource,
             IBlockchainProcessor processor,
@@ -50,9 +48,7 @@ namespace Nethermind.Consensus.AuRa
             IAuRaStepCalculator auRaStepCalculator,
             IReportingValidator reportingValidator,
             IAuraConfig config,
-            IMiningConfig miningConfig,
-            ISpecProvider specProvider,
-            IGasLimitOverride gasLimitOverride,
+            IGasLimitCalculator gasLimitCalculator,
             ILogManager logManager) 
             : base(
                 new ValidatedTxSource(txSource, logManager),
@@ -62,17 +58,14 @@ namespace Nethermind.Consensus.AuRa
                 blockProcessingQueue,
                 stateProvider,
                 timestamper,
-                miningConfig,
-                specProvider,
+                gasLimitCalculator,
                 logManager,
                 "AuRa")
         {
             _auRaStepCalculator = auRaStepCalculator ?? throw new ArgumentNullException(nameof(auRaStepCalculator));
             _reportingValidator = reportingValidator ?? throw new ArgumentNullException(nameof(reportingValidator));
             _config = config ?? throw new ArgumentNullException(nameof(config));
-            _miningConfig = miningConfig;
             _canProduce = _config.AllowAuRaPrivateChains ? 1 : 0;
-            _gasLimitOverride = gasLimitOverride;
         }
         
         protected override async ValueTask ProducerLoopStep(CancellationToken cancellationToken)
@@ -89,9 +82,6 @@ namespace Nethermind.Consensus.AuRa
             block.Header.AuRaStep = _auRaStepCalculator.CurrentStep;
             return block;
         }
-
-        protected override long GetGasLimit(BlockHeader parent)
-            => _gasLimitOverride?.GetGasLimit(parent) ?? base.GetGasLimit(parent);
 
         protected override UInt256 CalculateDifficulty(BlockHeader parent, UInt256 timestamp) 
             => AuraDifficultyCalculator.CalculateDifficulty(parent.AuRaStep.Value, _auRaStepCalculator.CurrentStep);

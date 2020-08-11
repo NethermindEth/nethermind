@@ -40,7 +40,7 @@ namespace Nethermind.Consensus.AuRa
     public class AuRaBlockProcessor : BlockProcessor
     {
         private readonly IBlockTree _blockTree;
-        private readonly IGasLimitOverride _gasLimitOverride;
+        private readonly IGasLimitCalculator _gasLimitCalculator;
         private readonly ITxFilter _txFilter;
         private readonly ILogger _logger;
         private IAuRaValidator _auRaValidator;
@@ -59,13 +59,13 @@ namespace Nethermind.Consensus.AuRa
             ILogManager logManager,
             IBlockTree blockTree,
             ITxFilter txFilter = null,
-            IGasLimitOverride gasLimitOverride = null)
+            IGasLimitCalculator gasLimitCalculator = null)
             : base(specProvider, blockValidator, rewardCalculator, transactionProcessor, stateDb, codeDb, stateProvider, storageProvider, txPool, receiptStorage, logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _logger = logManager?.GetClassLogger<AuRaBlockProcessor>() ?? throw new ArgumentNullException(nameof(logManager));
             _txFilter = txFilter ?? NullTxFilter.Instance;
-            _gasLimitOverride = gasLimitOverride;
+            _gasLimitCalculator = gasLimitCalculator;
         }
 
         public IAuRaValidator AuRaValidator
@@ -98,7 +98,7 @@ namespace Nethermind.Consensus.AuRa
 
         private void ValidateGasLimit(BlockHeader header, BlockHeader parentHeader)
         {
-            var gasLimit = _gasLimitOverride?.GetGasLimit(parentHeader);
+            var gasLimit = _gasLimitCalculator?.GetGasLimit(parentHeader);
             if (gasLimit.HasValue && header.GasLimit != gasLimit)
             {
                 if (_logger.IsError) _logger.Error($"Invalid gas limit for block {header.Number}, hash {header.Hash}, expected value from contract {gasLimit.Value}, but found {header.GasLimit}.");

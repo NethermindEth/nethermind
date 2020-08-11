@@ -44,7 +44,7 @@ namespace Nethermind.Runner.Ethereum.Context
                 PermissionBasedTxFilter.Cache.MaxCacheSize,
                 nameof(TransactionPermissionContract));
         
-        public IGasLimitOverride.Cache? GasLimitOverrideCache { get; set; }
+        public AuRaContractGasLimitCalculator.Cache? GasLimitCalculatorCache { get; set; }
         
         public IReportingValidator? ReportingValidator { get; set; }
         

@@ -47,8 +47,7 @@ namespace Nethermind.Core.Test.Blockchain
                 blockProcessingQueue,
                 stateProvider,
                 timestamper,
-                new MiningConfig(),
-                null,
+                FollowOtherMiners.Instance, 
                 logManager,
                 "test producer")
         {

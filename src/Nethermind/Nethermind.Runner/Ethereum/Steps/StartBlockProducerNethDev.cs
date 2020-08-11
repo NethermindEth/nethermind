@@ -17,13 +17,9 @@
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
-using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
-using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
-using Nethermind.Specs;
-using Nethermind.Specs.Forks;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
@@ -48,9 +44,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.BlockTree,
                 _context.BlockProcessingQueue,
                 _context.TxPool,
-                _context.Timestamper,
-                _context.Config<IMiningConfig>(),
-                new SingleReleaseSpecProvider(MuirGlacier.Instance, ChainId.Mainnet), 
+                _context.Timestamper, 
                 _context.LogManager);
         }
 
