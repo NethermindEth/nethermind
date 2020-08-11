@@ -49,7 +49,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 {
                     logger.Info("Genesis supply:");
                     SupplyVerifier supplyVerifier = new SupplyVerifier(logger);
-                    StateDb stateDb = new StateDb(_context.DbProvider.StateDb.Innermost);
+                    StateDb stateDb = new StateDb(_context.DbProvider!.StateDb.Innermost);
                     StateDb codeDb = new StateDb(_context.DbProvider.StateDb.Innermost);
                     StateReader stateReader = new StateReader(stateDb, codeDb, _context.LogManager);
                     stateReader.RunTreeVisitor(supplyVerifier, _context.BlockTree!.Genesis.StateRoot);

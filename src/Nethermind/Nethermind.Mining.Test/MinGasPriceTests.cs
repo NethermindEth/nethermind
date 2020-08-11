@@ -13,21 +13,29 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using Nethermind.Blockchain.Processing;
-using Nethermind.Consensus;
+using FluentAssertions;
 using Nethermind.Consensus.Transactions;
-using Nethermind.Core;
-using Nethermind.State;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Dirichlet.Numerics;
+using NUnit.Framework;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Mining.Test
 {
-    public class BlockProducerContext
+    [TestFixture]
+    public class MinGasPriceTests
     {
-        public IBlockchainProcessor ChainProcessor { get; set; }
-        public IStateProvider ReadOnlyStateProvider { get; set; }
-        public ITxSource TxSource { get; set; }
-        public ReadOnlyTxProcessingEnv ReadOnlyTxProcessingEnv { get; set; }
-        public ReadOnlyTxProcessorSource ReadOnlyTxProcessorSource { get; set; }
+        [TestCase(0L, 0L, true)]
+        [TestCase(1L, 0L, false)]
+        [TestCase(1L, 1L, true)]
+        [TestCase(1L, 2L, true)]
+        [TestCase(2L, 1L, false)]
+        public void Test(long minimum, long actual, bool expectedResult)
+        {
+            MinGasPriceTxFilter _filter = new MinGasPriceTxFilter((UInt256)minimum);
+            var tx = Build.A.Transaction.WithGasPrice((UInt256)actual).TestObject;
+            _filter.IsAllowed(tx, null).Should().Be(expectedResult);
+        }
     }
 }

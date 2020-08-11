@@ -13,21 +13,19 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using Nethermind.Blockchain.Processing;
-using Nethermind.Consensus;
-using Nethermind.Consensus.Transactions;
-using Nethermind.Core;
-using Nethermind.State;
+using Nethermind.Core.Extensions;
+using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Consensus
 {
-    public class BlockProducerContext
+    public class MiningConfig : IMiningConfig
     {
-        public IBlockchainProcessor ChainProcessor { get; set; }
-        public IStateProvider ReadOnlyStateProvider { get; set; }
-        public ITxSource TxSource { get; set; }
-        public ReadOnlyTxProcessingEnv ReadOnlyTxProcessingEnv { get; set; }
-        public ReadOnlyTxProcessorSource ReadOnlyTxProcessorSource { get; set; }
+        public bool Enabled { get; set; } = false;
+
+        public long? TargetBlockGasLimit { get; set; } = null;
+
+        public UInt256 MinGasPrice { get; set; } = 1.GWei();
     }
 }

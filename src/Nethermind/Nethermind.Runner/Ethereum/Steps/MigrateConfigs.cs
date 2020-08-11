@@ -13,21 +13,28 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using Nethermind.Blockchain.Processing;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Transactions;
-using Nethermind.Core;
-using Nethermind.State;
+using Nethermind.Runner.Ethereum.Context;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Runner.Ethereum.Steps
 {
-    public class BlockProducerContext
+    public class MigrateConfigs : IStep
     {
-        public IBlockchainProcessor ChainProcessor { get; set; }
-        public IStateProvider ReadOnlyStateProvider { get; set; }
-        public ITxSource TxSource { get; set; }
-        public ReadOnlyTxProcessingEnv ReadOnlyTxProcessingEnv { get; set; }
-        public ReadOnlyTxProcessorSource ReadOnlyTxProcessorSource { get; set; }
+        private readonly EthereumRunnerContext _context;
+
+        public MigrateConfigs(EthereumRunnerContext context)
+        {
+            _context = context;
+        }
+        
+        public Task Execute(CancellationToken cancellationToken)
+        {
+            _context.Config<IMiningConfig>().Enabled = _context.Config<IInitConfig>().IsMining;
+            return Task.CompletedTask;
+        }
     }
 }
