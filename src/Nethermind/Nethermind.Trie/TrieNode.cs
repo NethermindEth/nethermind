@@ -339,7 +339,7 @@ namespace Nethermind.Trie
             {
                 if (!child.IsDirty)
                 {
-                    _data[i] = null; // unresolved
+                    _data[i] = new TrieNode(NodeType.Unknown, child.Keccak); // unresolved
                 }
             }
         }
