@@ -26,17 +26,18 @@ namespace Ethereum.Test.Base
     {
         private readonly ITestLoadStrategy _testLoadStrategy;
         private readonly string _path;
+        private readonly string _wildcard;
 
         public TestsSourceLoader(ITestLoadStrategy testLoadStrategy, string path, string wildcard = null)
         {
-            // TODO: why is the wildcard ignored now?
             _testLoadStrategy = testLoadStrategy ?? throw new ArgumentNullException(nameof(testLoadStrategy));
             _path = path ?? throw new ArgumentNullException(nameof(path));
+            _wildcard = wildcard;
         }
 
         public IEnumerable<IEthereumTest> LoadTests()
         {
-            return _testLoadStrategy.Load(_path);
+            return _testLoadStrategy.Load(_path, _wildcard);
         }
     }
 }
