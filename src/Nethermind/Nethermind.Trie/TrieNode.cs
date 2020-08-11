@@ -122,9 +122,9 @@ namespace Nethermind.Trie
         public bool IsBranch => NodeType == NodeType.Branch;
         public bool IsExtension => NodeType == NodeType.Extension;
 
-        public byte[] Path => Key.Path;
+        public byte[] Path => Key?.Path;
 
-        internal HexPrefix Key
+        internal HexPrefix? Key
         {
             get => _data[0] as HexPrefix;
             set
@@ -479,7 +479,7 @@ namespace Nethermind.Trie
                         trieVisitContext.Level++;
                         trieVisitContext.BranchChildIndex = null;
                         child.Accept(visitor, tree, trieVisitContext);
-                        UnresolveChild(0);
+                        UnresolveChild(1); // extension child index is 1
                         trieVisitContext.Level--;
                     }
 
