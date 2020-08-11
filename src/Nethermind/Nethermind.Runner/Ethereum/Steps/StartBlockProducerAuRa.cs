@@ -17,7 +17,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using MongoDB.Driver;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
@@ -238,7 +237,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             var blockGasLimitContractTransitions = _context.ChainSpec.AuRa.BlockGasLimitContractTransitions;
 
             IGasLimitCalculator gasLimitCalculator =
-                new GasLimitCalculator(_context.SpecProvider, _context.Config<IMiningConfig>());
+                new TargetAdjustedGasLimitCalculator(_context.SpecProvider, _context.Config<IMiningConfig>());
             if (blockGasLimitContractTransitions?.Any() == true)
             {
                 AuRaContractGasLimitOverride auRaContractGasLimitOverride =

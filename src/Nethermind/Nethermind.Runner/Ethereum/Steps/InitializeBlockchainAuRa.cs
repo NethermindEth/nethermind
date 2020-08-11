@@ -170,12 +170,13 @@ namespace Nethermind.Runner.Ethereum.Steps
                         .ToArray<IBlockGasLimitContract>(),
                     _context.GasLimitCalculatorCache,
                     _context.Config<IAuraConfig>().Minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract,
-                    new GasLimitCalculator(_context.SpecProvider, _context.Config<IMiningConfig>()), 
+                    new TargetAdjustedGasLimitCalculator(_context.SpecProvider, _context.Config<IMiningConfig>()), 
                     _context.LogManager);
                 
                 return gasLimitCalculator;
             }
 
+            // do not return target gas limit calculator here - this is used for validation to check if the override should have been used
             return null;
         }
 

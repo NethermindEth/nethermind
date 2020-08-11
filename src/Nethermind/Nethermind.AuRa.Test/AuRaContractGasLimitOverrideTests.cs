@@ -48,10 +48,10 @@ namespace Nethermind.AuRa.Test
             blockGasLimitContract2.BlockGasLimit(Arg.Any<BlockHeader>()).Returns(3000000u);
             
             var gasLimitOverride = new AuRaContractGasLimitOverride(
-                new List<IBlockGasLimitContract>() {blockGasLimitContract1, blockGasLimitContract2}, 
+                new List<IBlockGasLimitContract> {blockGasLimitContract1, blockGasLimitContract2}, 
                 new AuRaContractGasLimitOverride.Cache(), 
                 minimum2MlnGasPerBlockWhenUsingBlockGasLimit,
-                new GasLimitCalculator(MainnetSpecProvider.Instance, new MiningConfig()), 
+                new TargetAdjustedGasLimitCalculator(MainnetSpecProvider.Instance, new MiningConfig()), 
                 LimboLogs.Instance);
 
             var header = Build.A.BlockHeader.WithNumber(blockNumber - 1).TestObject;

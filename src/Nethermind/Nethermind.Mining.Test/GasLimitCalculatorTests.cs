@@ -37,11 +37,11 @@ namespace Nethermind.Mining.Test
             MiningConfig miningConfig = new MiningConfig();
             miningConfig.TargetBlockGasLimit = target;
             
-            GasLimitCalculator gasLimitCalculator = new GasLimitCalculator(
+            TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new TargetAdjustedGasLimitCalculator(
                 MainnetSpecProvider.Instance, miningConfig);
 
             BlockHeader header = Build.A.BlockHeader.WithGasLimit(current).TestObject;
-            gasLimitCalculator.GetGasLimit(header).Should().Be(expected);
+            targetAdjustedGasLimitCalculator.GetGasLimit(header).Should().Be(expected);
         }
     }
 }
