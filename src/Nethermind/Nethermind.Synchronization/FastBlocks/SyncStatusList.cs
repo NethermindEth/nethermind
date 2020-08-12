@@ -58,7 +58,7 @@ namespace Nethermind.Synchronization.FastBlocks
             long currentNumber = LowestInsertWithoutGaps;
             lock (_statuses)
             {
-                while (collected < blockInfos.Length && currentNumber != StartBlock)
+                while (collected < blockInfos.Length && currentNumber >= StartBlock)
                 {
                     if (blockInfos[collected] != null)
                     {
