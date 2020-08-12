@@ -67,6 +67,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 if (_syncStatusList.IsComplete)
                 {
                     _syncStatusList = null;
+                    FallAsleep();
                 }
             }
 
@@ -78,6 +79,7 @@ namespace Nethermind.Synchronization.FastBlocks
             if (_syncStatusList == null)
             {
                 _syncStatusList = new SyncStatusList(_blockTree, startBlockNumber, endBlockNumber, null);
+                Activate();
             }
             else
             {

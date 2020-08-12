@@ -28,8 +28,8 @@ namespace Nethermind.Synchronization.FastBlocks
         private readonly IBlockTree _blockTree;
         private FastBlockStatus[] _statuses;
         
-        public long StartBlock { get; private set; }
-        public long EndBlock { get; private set; }
+        public long StartBlock { get; }
+        public long EndBlock { get; }
         public bool IsComplete => StartBlock == LowestInsertWithoutGaps;
         
         public long LowestInsertWithoutGaps { get; private set; }
@@ -58,7 +58,7 @@ namespace Nethermind.Synchronization.FastBlocks
             long currentNumber = LowestInsertWithoutGaps;
             lock (_statuses)
             {
-                while (collected < blockInfos.Length && currentNumber != 0)
+                while (collected < blockInfos.Length && currentNumber != StartBlock)
                 {
                     if (blockInfos[collected] != null)
                     {
