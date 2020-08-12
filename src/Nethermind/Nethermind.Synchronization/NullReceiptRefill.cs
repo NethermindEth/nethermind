@@ -13,26 +13,20 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using Nethermind.Stats;
-using Nethermind.Synchronization.ParallelSync;
-using Nethermind.Synchronization.Peers.AllocationStrategies;
-
-namespace Nethermind.Synchronization.FastBlocks
+namespace Nethermind.Synchronization
 {
-    public class FastBlocksPeerAllocationStrategyFactory : IPeerAllocationStrategyFactory<FastBlocksBatch>
+    public class NullReceiptRefill : IReceiptRefill
     {
-        public IPeerAllocationStrategy Create(FastBlocksBatch request)
+        private NullReceiptRefill()
         {
-            TransferSpeedType speedType = request switch
-            {
-                HeadersSyncBatch _ => TransferSpeedType.Headers,
-                BodiesSyncBatch _ => TransferSpeedType.Bodies,
-                ReceiptsSyncBatch _ => TransferSpeedType.Receipts,
-                _ => TransferSpeedType.Latency
-            };
+        }
 
-            return new FastBlocksAllocationStrategy(speedType, request.MinNumber, request.Prioritized);
+        public static IReceiptRefill Instance { get; } = new NullReceiptRefill();
+
+        public void Refill(long startBlockNumber, long endBlockNumber)
+        {
         }
     }
 }

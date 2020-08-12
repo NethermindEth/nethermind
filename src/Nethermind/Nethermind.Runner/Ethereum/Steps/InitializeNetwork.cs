@@ -114,7 +114,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             _ctx.SyncModeSelector = syncModeSelector;
             _ctx.DisposeStack.Push(syncModeSelector);
 
-            _ctx.Synchronizer = new Synchronizer(
+            Synchronizer synchronizer = new Synchronizer(
                 _ctx.DbProvider,
                 _ctx.SpecProvider!,
                 _ctx.BlockTree!,
@@ -126,6 +126,9 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _ctx.SyncModeSelector,
                 _syncConfig,
                 _ctx.LogManager);
+            _ctx.Synchronizer = synchronizer;
+            _ctx.ReceiptRefill = synchronizer;
+            
             _ctx.DisposeStack.Push(_ctx.Synchronizer);
 
             _ctx.SyncServer = new SyncServer(

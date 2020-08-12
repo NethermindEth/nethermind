@@ -16,7 +16,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
@@ -27,6 +26,7 @@ using Nethermind.Config;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Synchronization;
 using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule
@@ -40,6 +40,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         private readonly IRewardCalculatorSource _rewardCalculatorSource;
         private readonly IReceiptStorage _receiptStorage;
         private readonly IReceiptsMigration _receiptsMigration;
+        private readonly IReceiptRefill _receiptRefill;
         private readonly IConfigProvider _configProvider;
         private readonly ISpecProvider _specProvider;
         private readonly ILogManager _logManager;
@@ -55,6 +56,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             IRewardCalculatorSource rewardCalculator,
             IReceiptStorage receiptStorage,
             IReceiptsMigration receiptsMigration,
+            IReceiptRefill receiptRefill,
             IConfigProvider configProvider,
             ISpecProvider specProvider,
             ILogManager logManager)
@@ -67,6 +69,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             _rewardCalculatorSource = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _receiptsMigration = receiptsMigration ?? throw new ArgumentNullException(nameof(receiptsMigration));
+            _receiptRefill = receiptRefill ?? throw new ArgumentNullException(nameof(receiptRefill));
             _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
@@ -77,12 +80,40 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         {
             IReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
             ReadOnlyBlockTree readOnlyTree = new ReadOnlyBlockTree(_blockTree);
-            ReadOnlyTxProcessingEnv txEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, readOnlyTree, _specProvider, _logManager);
-            ReadOnlyChainProcessingEnv readOnlyChainProcessingEnv = new ReadOnlyChainProcessingEnv(txEnv, _blockValidator, _recoveryStep, _rewardCalculatorSource.Get(txEnv.TransactionProcessor), _receiptStorage, readOnlyDbProvider, _specProvider, _logManager);
+            
+            ReadOnlyTxProcessingEnv txEnv =
+                new ReadOnlyTxProcessingEnv(
+                    readOnlyDbProvider,
+                    readOnlyTree,
+                    _specProvider,
+                    _logManager);
+            
+            ReadOnlyChainProcessingEnv readOnlyChainProcessingEnv =
+                new ReadOnlyChainProcessingEnv(
+                    txEnv,
+                    _blockValidator,
+                    _recoveryStep,
+                    _rewardCalculatorSource.Get(txEnv.TransactionProcessor),
+                    _receiptStorage,
+                    readOnlyDbProvider,
+                    _specProvider,
+                    _logManager);
 
-            IGethStyleTracer tracer = new GethStyleTracer(readOnlyChainProcessingEnv.ChainProcessor, _receiptStorage, new ReadOnlyBlockTree(_blockTree));
+            IGethStyleTracer tracer =
+                new GethStyleTracer(
+                    readOnlyChainProcessingEnv.ChainProcessor,
+                    _receiptStorage,
+                    new ReadOnlyBlockTree(_blockTree));
 
-            DebugBridge debugBridge = new DebugBridge(_configProvider, readOnlyDbProvider, tracer, readOnlyTree, _receiptsMigration);
+            DebugBridge debugBridge =
+                new DebugBridge(
+                    _configProvider,
+                    readOnlyDbProvider,
+                    tracer,
+                    readOnlyTree,
+                    _receiptsMigration,
+                    _receiptRefill);
+            
             return new DebugModule(_logManager, debugBridge, _jsonRpcConfig);
         }
 

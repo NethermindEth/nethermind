@@ -70,8 +70,7 @@ namespace Nethermind.Facade
             ITimestamper timestamper,
             ILogManager logManager,
             bool isMining,
-            int findLogBlockDepthLimit = 1000,
-            CancellationToken cancellationToken = default(CancellationToken))
+            int findLogBlockDepthLimit = 1000)
         {
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));

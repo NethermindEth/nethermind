@@ -98,6 +98,7 @@ namespace Nethermind.Runner.Ethereum.Context
         public ISyncPeerPool? SyncPeerPool { get; set; }
         public ISyncModeSelector? SyncModeSelector { get; set; }
         public ISynchronizer? Synchronizer { get; set; }
+        public IReceiptRefill? ReceiptRefill { get; set; }        
         public ISyncServer? SyncServer { get; set; }
         public IKeyStore? KeyStore { get; set; }
         public IPeerManager? PeerManager { get; set; }

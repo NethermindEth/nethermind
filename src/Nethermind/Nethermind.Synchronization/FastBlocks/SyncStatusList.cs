@@ -28,15 +28,27 @@ namespace Nethermind.Synchronization.FastBlocks
         private readonly IBlockTree _blockTree;
         private FastBlockStatus[] _statuses;
         
+        public long StartBlock { get; private set; }
+        public long EndBlock { get; private set; }
+        public bool IsComplete => StartBlock == LowestInsertWithoutGaps;
+        
         public long LowestInsertWithoutGaps { get; private set; }
         public long QueueSize => _queueSize;
 
-        public SyncStatusList(IBlockTree blockTree, long pivotNumber, long? lowestInserted)
+        public SyncStatusList(IBlockTree blockTree, long startBlock, long endBlock, long? lowestInserted)
         {
-            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _statuses = new FastBlockStatus[pivotNumber + 1];
+            if (endBlock < startBlock)
+            {
+                throw new ArgumentException($"{nameof(startBlock)} has to be less than {endBlock}");
+            }
+
+            StartBlock = startBlock;
+            EndBlock = endBlock;
             
-            LowestInsertWithoutGaps = lowestInserted ?? pivotNumber;
+            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _statuses = new FastBlockStatus[endBlock - startBlock + 1];
+            
+            LowestInsertWithoutGaps = lowestInserted ?? endBlock;
         }
 
         public void GetInfosForBatch(BlockInfo[] blockInfos)
