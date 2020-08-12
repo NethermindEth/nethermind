@@ -315,31 +315,31 @@ namespace Nethermind.Synchronization
                         }
                     });
                 }
-                
-                if (true)
+            }
+            
+            if (true)
+            {
+                _refillFeed = new ReceiptsRefillFeed(
+                    _specProvider,
+                    _blockTree,
+                    _receiptStorage,
+                    _syncPeerPool,
+                    _logManager);
+                    
+                ReceiptsSyncDispatcher receiptsDispatcher =
+                    new ReceiptsSyncDispatcher(_refillFeed!, _syncPeerPool, fastFactory, _logManager);
+                    
+                _ = receiptsDispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
                 {
-                    _refillFeed = new ReceiptsRefillFeed(
-                        _specProvider,
-                        _blockTree,
-                        _receiptStorage,
-                        _syncPeerPool,
-                        _logManager);
-                    
-                    ReceiptsSyncDispatcher receiptsDispatcher =
-                        new ReceiptsSyncDispatcher(_refillFeed!, _syncPeerPool, fastFactory, _logManager);
-                    
-                    _ = receiptsDispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
+                    if (t.IsFaulted)
                     {
-                        if (t.IsFaulted)
-                        {
-                            if (_logger.IsError) _logger.Error("Fast receipts sync failed", t.Exception);
-                        }
-                        else
-                        {
-                            if (_logger.IsInfo) _logger.Info("Fast blocks receipts task completed.");
-                        }
-                    });
-                }
+                        if (_logger.IsError) _logger.Error("Fast receipts sync failed", t.Exception);
+                    }
+                    else
+                    {
+                        if (_logger.IsInfo) _logger.Info("Fast blocks receipts task completed.");
+                    }
+                });
             }
         }
 
