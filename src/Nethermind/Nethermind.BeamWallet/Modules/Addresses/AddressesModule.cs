@@ -99,6 +99,7 @@ namespace Nethermind.BeamWallet.Modules.Addresses
 
         private async Task StartProcess()
         {
+            AddInfo();
             AddRunnerInfo("Launching Nethermind.Runner...");
 
             var runnerIsRunning = await CheckIsProcessRunning();
@@ -168,7 +169,36 @@ namespace Nethermind.BeamWallet.Modules.Addresses
             _runnerOnInfo = new Label(3, 1, "Nethermind Runner is running.");
             _mainWindow.Add(_runnerOnInfo);
         }
-
+        
+        private void AddInfo()
+        {
+            var beamWalletInfo = new Label(3, 1, "Hello, Welcome to Nethermind Beam Wallet - a simple " +
+                                                 "console application that allows you to easily" +
+                                                 $"{Environment.NewLine}"+
+                                                 "and quickly make transactions on Mainnet Ethereum." +
+                                                 $"{Environment.NewLine}"+
+                                                 "To get started you will need:" +
+                                                 $"{Environment.NewLine}"+
+                                                 "- your wallet address" +
+                                                 $"{Environment.NewLine}"+
+                                                 "- passphrase to your wallet" +
+                                                 $"{Environment.NewLine}"+
+                                                 "- keystore file" +
+                                                 $"{Environment.NewLine}"+
+                                                 "- and the address to which you want to transfer ETH." +
+                                                 $"{Environment.NewLine}{Environment.NewLine}"+
+                                                 "Before we start, please copy keystore file of your account into " +
+                                                 "folder 'keystore' - this is" +
+                                                 $"{Environment.NewLine}"+
+                                                 "necessary to properly unlock the account before making a transaction." +
+                                                 $"{Environment.NewLine}"+
+                                                 "This is a Beta version, so for your own safety " +
+                                                 "please, do not use an account with a high balance." +
+                                                 $"{Environment.NewLine}{Environment.NewLine}"+
+                                                 "To navigate through the application - use the TAB key or Up and Down arrows.");
+            _mainWindow.Add(beamWalletInfo);
+        }
+        
         private void AddRunnerInfo(string info)
         {
             if (_runnerOnInfo is {})
@@ -176,19 +206,19 @@ namespace Nethermind.BeamWallet.Modules.Addresses
                 _mainWindow.Remove(_runnerOnInfo);
             }
 
-            _runnerOnInfo = new Label(3, 1, $"{info}");
+            _runnerOnInfo = new Label(3, 16, $"{info}");
             _mainWindow.Add(_runnerOnInfo);
         }
 
         public Task<Window> InitAsync()
         {
-            var nodeAddressLabel = new Label(3, 3, "Enter node address:");
-            var nodeAddressTextField = new TextField(28, 3, 80, $"{DefaultUrl}");
-            var addressLabel = new Label(3, 5, "Enter account address:");
-            var addressTextField = new TextField(28, 5, 80, "");
+            var nodeAddressLabel = new Label(3, 18, "Enter node address:");
+            var nodeAddressTextField = new TextField(28, 18, 80, $"{DefaultUrl}");
+            var addressLabel = new Label(3, 20, "Enter account address:");
+            var addressTextField = new TextField(28, 20, 80, "");
 
-            var okButton = new Button(28, 7, "OK");
-            var quitButton = new Button(36, 7, "Quit");
+            var okButton = new Button(28, 22, "OK");
+            var quitButton = new Button(36, 22, "Quit");
             quitButton.Clicked = () =>
             {
                 if (!_externalRunnerIsRunning)
@@ -236,9 +266,9 @@ namespace Nethermind.BeamWallet.Modules.Addresses
 
                 AddressesSelected?.Invoke(this, (nodeAddressString, addressString, _process, _externalRunnerIsRunning));
             };
-            _mainWindow.Add(quitButton, nodeAddressLabel, nodeAddressTextField, addressLabel,
-                addressTextField, okButton);
-
+            _mainWindow.Add(addressLabel, nodeAddressLabel, nodeAddressTextField,
+                addressTextField, okButton, quitButton);
+            
             return Task.FromResult(_mainWindow);
         }
 

@@ -19,6 +19,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.BeamWallet.Modules.Events;
@@ -40,8 +41,6 @@ namespace Nethermind.BeamWallet.Modules.Data
         private Window _window;
         private Label _syncingInfoLabel;
         private Label _balanceValueLabel;
-        private CallTransactionModel _tokenTransaction;
-        private Label _tokenBalanceLabel;
         private readonly IEnumerable<Token> _tokens = InitTokens();
         private readonly Process _process;
         private bool _externalRunnerIsRunning;
@@ -75,7 +74,6 @@ namespace Nethermind.BeamWallet.Modules.Data
         private void Update(object state)
         {
             _ = UpdateBalanceAsync();
-            // _ = UpdateTokenBalanceAsync();
         }
 
         private async Task UpdateBalanceAsync()
@@ -94,10 +92,8 @@ namespace Nethermind.BeamWallet.Modules.Data
             _balance = balance.Value;
             _window.Remove(_balanceValueLabel);
             _balanceValueLabel = new Label(70, 1, $"{_balance} ETH (refreshing every 5s).");
-            
             _window.Remove(_syncingInfoLabel);
             _window.Add(_balanceValueLabel);
-            AddButtons();
         }
 
         private async Task<long?> GetLatestBlockNumber()
@@ -115,51 +111,54 @@ namespace Nethermind.BeamWallet.Modules.Data
             }
 
             return WeiToEth(result.Result);
-        }
-        
-        private async Task UpdateTokenBalanceAsync()
-        {
-            if (_tokenBalanceLabel is null)
-            {
-                return;
             }
         
-            var y = 1;
+        private async Task GetTokensBalanceAsync()
+        {
+            var position = 1;
+            var tasks = _tokens.Select(GetTokenBalanceAsync);
             foreach (var token in _tokens)
             {
-                y += 2;
-                _tokenTransaction.To = token.Address;
-                var tokenBalance = await GetTokenBalanceAsync();
-                if (!tokenBalance.HasValue)
+                if (token.Label is {})
                 {
-                    return;
+                    _window.Remove(token.Label);
                 }
-                token.Balance = tokenBalance.Value;
-                _window.Remove(_tokenBalanceLabel);
-                _tokenBalanceLabel = new Label(1, y, $"{token.Name}: {WeiToEth(token.Balance)}");
-                _window.Add(_tokenBalanceLabel);
+            }
+            var tokens = await Task.WhenAll(tasks);
+            foreach (var token in tokens.Where(t => t is {}))
+            {
+                position += 2;
+                if (token.Label is {})
+                {
+                    _window.Remove(token.Label);
+                }
+                token.Label = new Label(1, position, $"{token.Name}: {token.Balance}");
+                _window.Add(token.Label);
             }
         }
-        
-        private async Task<UInt256?> GetTokenBalanceAsync()
+
+        private async Task<Token> GetTokenBalanceAsync(Token token)
         {
-            var counter = 0;
             RpcResult<byte[]> result;
             do
             {
-                counter++;
-                result = await _ethJsonRpcClientProxy.eth_call(_tokenTransaction, BlockParameterModel.Latest);
+                result = await _ethJsonRpcClientProxy.eth_call(GetTransactionModel(token), BlockParameterModel.Latest);
+            } while (!result.IsValid);
 
-            } while (!result.IsValid && counter < 10);
-          
-            return UInt256.Parse(result.Result.ToHexString(), NumberStyles.HexNumber);
+            return result.IsValid
+                ? new Token(token.Name, token.Address)
+                {
+                    Balance = UInt256.Parse(result.Result.ToHexString(), NumberStyles.HexNumber)
+                }
+                : null;
         }
 
         private async Task RenderBalanceAsync()
         {
             var addressLabel = new Label(1, 1, $"Address: {_address}");
             var balanceLabel = new Label(60, 1, "Balance:");
-            _syncingInfoLabel = new Label(70, 1, "Syncing... Please wait for the updated balance.");
+            _syncingInfoLabel = new Label(70, 1, "Syncing... Please wait for the updated balance. " +
+                                                 "This may take up to 10min");
             _window.Add(addressLabel, balanceLabel, _syncingInfoLabel);
 
             decimal? balance;
@@ -172,7 +171,8 @@ namespace Nethermind.BeamWallet.Modules.Data
             _balance = balance.Value;
             if (await GetLatestBlockNumber() == 0)
             {
-                _balanceValueLabel = new Label(70, 1, "Syncing... Please wait for the updated balance.");
+                _balanceValueLabel = new Label(70, 1, "Syncing... Please wait for the updated balance." +
+                                                      "This may take up to 10min");
                 return;
             }
 
@@ -180,7 +180,10 @@ namespace Nethermind.BeamWallet.Modules.Data
 
             _window.Remove(_syncingInfoLabel);
             _window.Add(_balanceValueLabel);
-
+            var tokensSyncingInfoLabel = new Label(1, 3, "Tokens balance syncing...");
+            _window.Add(tokensSyncingInfoLabel);
+            await GetTokensBalanceAsync(); // add if - only when mainnet, admin.nodeInfo -> network - Mainnet: 1
+            _window.Remove(tokensSyncingInfoLabel);
             AddButtons();
         }
 
@@ -206,40 +209,26 @@ namespace Nethermind.BeamWallet.Modules.Data
             _window.Add(transferButton, quitButton);
         }
 
-        private async Task DisplayTokensBalance()
+        private CallTransactionModel GetTransactionModel(Token token)
         {
             var tokenTransaction = new CallTransactionModel();
             var tokenSignature = "0x70a08231";
             var tokenData = tokenSignature + "000000000000000000000000" + _address.ToString().Substring(2);
+            tokenTransaction.To = token.Address;
             tokenTransaction.Data = Bytes.FromHexString(tokenData);
-            _tokenTransaction = tokenTransaction;
-            
-            var y = 1;
-            foreach (var token in _tokens)
-            {
-                y += 2;
-                _tokenTransaction.To = token.Address;
-                var tokenBalance = await GetTokenBalanceAsync();
-                if (!tokenBalance.HasValue)
-                {
-                    return;
-                }
-                token.Balance = tokenBalance.Value;
-                _tokenBalanceLabel = new Label(1, y, $"{token.Name}: {WeiToEth(token.Balance)}");
-                _window.Add(_tokenBalanceLabel);
-            }
+
+            return tokenTransaction;
         }
 
         private static decimal WeiToEth(UInt256? result) => (decimal.Parse(result.ToString()) / 1000000000000000000);
 
-
         private static IEnumerable<Token> InitTokens()
             => new[]
             {
-                new Token("DAI", "0x6b175474e89094c44da98b954eedeac495271d0f"),
-                new Token("USDT", "0xdAC17F958D2ee523a2206206994597C13D831ec7"),
-                new Token("USDC", "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"),
-                new Token("BAT", "0x0D8775F648430679A709E98d2b0Cb6250d2887EF"),
+                new Token("DAI", new Address("0x6b175474e89094c44da98b954eedeac495271d0f")),
+                new Token("USDT", new Address("0xdAC17F958D2ee523a2206206994597C13D831ec7")),
+                new Token("USDC", new Address("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48")),
+                new Token("BAT", new Address("0x0D8775F648430679A709E98d2b0Cb6250d2887EF"))
             };
 
         private class Token
@@ -247,11 +236,12 @@ namespace Nethermind.BeamWallet.Modules.Data
             public string Name  { get; }
             public Address Address  { get; }
             public UInt256 Balance { get; set; }
+            public Label Label { get; set; }
 
-            public Token(string name, string address)
+            public Token(string name, Address address)
             {
                 Name = name;
-                Address = new Address(address);
+                Address = address;
             }
         }
         
