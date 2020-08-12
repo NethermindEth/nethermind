@@ -27,6 +27,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Synchronization;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule
 {
@@ -36,14 +37,22 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         private readonly IGethStyleTracer _tracer;
         private readonly IBlockTree _blockTree;
         private readonly IReceiptsMigration _receiptsMigration;
+        private readonly IReceiptRefill _receiptRefill;
         private readonly Dictionary<string, IDb> _dbMappings;
 
-        public DebugBridge(IConfigProvider configProvider, IReadOnlyDbProvider dbProvider, IGethStyleTracer tracer, IBlockTree blockTree, IReceiptsMigration receiptsMigration)
+        public DebugBridge(
+            IConfigProvider configProvider,
+            IReadOnlyDbProvider dbProvider,
+            IGethStyleTracer tracer,
+            IBlockTree blockTree,
+            IReceiptsMigration receiptsMigration,
+            IReceiptRefill receiptRefill)
         {
             _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));
             _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _receiptsMigration = receiptsMigration ?? throw new ArgumentNullException(nameof(receiptsMigration));
+            _receiptRefill = receiptRefill ?? throw new ArgumentNullException(nameof(receiptRefill));
             dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
             IDb blockInfosDb = dbProvider.BlockInfosDb ?? throw new ArgumentNullException(nameof(dbProvider.BlockInfosDb));
             IDb blocksDb = dbProvider.BlocksDb ?? throw new ArgumentNullException(nameof(dbProvider.BlocksDb));
@@ -85,39 +94,70 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             _blockTree.UpdateHeadBlock(blockHash);
         }
 
-        public Task<bool> MigrateReceipts(long blockNumber) => _receiptsMigration.Run(blockNumber + 1); // add 1 to make go from inclusive (better for API) to exclusive (better for internal)
+        public Task<bool> MigrateReceipts(long blockNumber)
+            => _receiptsMigration.Run(blockNumber + 1); // add 1 to make go from inclusive (better for API) to exclusive (better for internal)
 
-        public GethLikeTxTrace GetTransactionTrace(Keccak transactionHash, CancellationToken cancellationToken, GethTraceOptions gethTraceOptions = null)
+        public void RefillReceipts(long startBlockNumber, long endBlockNumber)
+        {
+            _receiptRefill.Refill(startBlockNumber, endBlockNumber);
+        }
+
+        public GethLikeTxTrace GetTransactionTrace(
+            Keccak transactionHash,
+            CancellationToken cancellationToken,
+            GethTraceOptions gethTraceOptions = null)
         {
             return _tracer.Trace(transactionHash, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
         }
 
-        public GethLikeTxTrace GetTransactionTrace(long blockNumber, int index, CancellationToken cancellationToken,GethTraceOptions gethTraceOptions = null)
+        public GethLikeTxTrace GetTransactionTrace(
+            long blockNumber,
+            int index,
+            CancellationToken cancellationToken,
+            GethTraceOptions gethTraceOptions = null)
         {
             return _tracer.Trace(blockNumber, index, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
         }
 
-        public GethLikeTxTrace GetTransactionTrace(Keccak blockHash, int index, CancellationToken cancellationToken, GethTraceOptions gethTraceOptions = null)
+        public GethLikeTxTrace GetTransactionTrace(
+            Keccak blockHash,
+            int index,
+            CancellationToken cancellationToken,
+            GethTraceOptions gethTraceOptions = null)
         {
             return _tracer.Trace(blockHash, index, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
         }
 
-        public GethLikeTxTrace GetTransactionTrace(Rlp blockRlp, Keccak transactionHash,CancellationToken cancellationToken, GethTraceOptions gethTraceOptions = null)
+        public GethLikeTxTrace GetTransactionTrace(
+            Rlp blockRlp,
+            Keccak transactionHash,
+            CancellationToken cancellationToken,
+            GethTraceOptions gethTraceOptions = null)
         {
-            return _tracer.Trace(blockRlp, transactionHash, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
+            return _tracer.Trace(
+                blockRlp, transactionHash, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
         }
 
-        public GethLikeTxTrace[] GetBlockTrace(Keccak blockHash,CancellationToken cancellationToken, GethTraceOptions gethTraceOptions = null)
+        public GethLikeTxTrace[] GetBlockTrace(
+            Keccak blockHash,
+            CancellationToken cancellationToken,
+            GethTraceOptions gethTraceOptions = null)
         {
-            return _tracer.TraceBlock(blockHash, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken); 
+            return _tracer.TraceBlock(blockHash, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
         }
 
-        public GethLikeTxTrace[] GetBlockTrace(long blockNumber, CancellationToken cancellationToken, GethTraceOptions gethTraceOptions = null)
+        public GethLikeTxTrace[] GetBlockTrace(
+            long blockNumber,
+            CancellationToken cancellationToken,
+            GethTraceOptions gethTraceOptions = null)
         {
-            return _tracer.TraceBlock(blockNumber, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken); 
+            return _tracer.TraceBlock(blockNumber, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
         }
 
-        public GethLikeTxTrace[] GetBlockTrace(Rlp blockRlp, CancellationToken cancellationToken,GethTraceOptions gethTraceOptions = null)
+        public GethLikeTxTrace[] GetBlockTrace(
+            Rlp blockRlp,
+            CancellationToken cancellationToken,
+            GethTraceOptions gethTraceOptions = null)
         {
             return _tracer.TraceBlock(blockRlp, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
         }

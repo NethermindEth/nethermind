@@ -16,7 +16,6 @@
 
 using System;
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -49,7 +48,6 @@ namespace Nethermind.JsonRpc.Test.Modules
             ISpecProvider specProvider = MainnetSpecProvider.Instance;
             ITxPool txPool = NullTxPool.Instance;
             MemDbProvider dbProvider = new MemDbProvider();
-            IJsonRpcConfig jsonRpcConfig = new JsonRpcConfig();
 
             BlockTree blockTree = new BlockTree(
                 dbProvider.BlocksDb,
@@ -67,8 +65,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 new EthModuleFactory(
                     dbProvider, 
                     txPool, 
-                    NullWallet.Instance, 
-                    jsonRpcConfig,
+                    NullWallet.Instance,
                     blockTree, 
                     new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance), 
                     NullBlockProcessor.Instance, 

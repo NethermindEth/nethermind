@@ -110,6 +110,12 @@ namespace Nethermind.Cli.Modules
         {
             return NodeManager.Post<bool>("debug_migrateReceipts", number).Result;
         }
+        
+        [CliFunction("debug", "refillReceipts")]
+        public bool RefillReceipts(long startBlockNumber, long endBlockNumber)
+        {
+            return NodeManager.Post<bool>("debug_refillReceipts", startBlockNumber, endBlockNumber).Result;
+        }
 
         public DebugCliModule(ICliEngine cliEngine, INodeManager nodeManager) : base(cliEngine, nodeManager)
         {

@@ -19,7 +19,6 @@ using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Infrastructure.Rlp;

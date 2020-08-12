@@ -131,6 +131,12 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         public async Task<ResultWrapper<bool>> debug_migrateReceipts(long blockNumber) => 
             ResultWrapper<bool>.Success(await _debugBridge.MigrateReceipts(blockNumber));
 
+        public ResultWrapper<bool> debug_refillReceipts(long startBlockNumber, long endBlockNumber)
+        {
+            _debugBridge.RefillReceipts(startBlockNumber, endBlockNumber);
+            return ResultWrapper<bool>.Success(true);
+        }
+
         public ResultWrapper<GethLikeTxTrace[]> debug_traceBlock(byte[] blockRlp, GethTraceOptions options = null)
         {
             CancellationToken cancellationToken = new CancellationTokenSource(_traceTimeout).Token;
