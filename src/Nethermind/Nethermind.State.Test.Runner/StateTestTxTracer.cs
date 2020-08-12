@@ -223,7 +223,6 @@ namespace Nethermind.State.Test.Runner
 
         public void ReportGasUpdateForVmTrace(long refund, long gasAvailable)
         {
-            throw new NotImplementedException();
         }
 
         public void ReportRefundForVmTrace(long refund, long gasAvailable)

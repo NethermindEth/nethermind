@@ -18,6 +18,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Abstractions;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -106,7 +107,7 @@ namespace Nethermind.Runner.Test
                 configProvider.GetConfig<IInitConfig>().BaseDbPath = tempPath;
 
                 EthereumRunner runner = new EthereumRunner(
-                    new RpcModuleProvider(new JsonRpcConfig(), LimboLogs.Instance),
+                    new RpcModuleProvider(new FileSystem(), new JsonRpcConfig(), LimboLogs.Instance),
                     configProvider,
                     NUnitLogManager.Instance,
                     Substitute.For<IGrpcServer>(),
@@ -162,7 +163,7 @@ namespace Nethermind.Runner.Test
                 configProvider.GetConfig<IInitConfig>().BaseDbPath = tempPath;
 
                 runner = new EthereumRunner(
-                    new RpcModuleProvider(new JsonRpcConfig(), LimboLogs.Instance),
+                    new RpcModuleProvider(new FileSystem(), new JsonRpcConfig(), LimboLogs.Instance),
                     configProvider,
                     NUnitLogManager.Instance,
                     Substitute.For<IGrpcServer>(),

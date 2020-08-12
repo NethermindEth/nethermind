@@ -20,8 +20,10 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Db;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Runner.Ethereum.Context;
 
 namespace Nethermind.Runner.Ethereum.Steps
@@ -61,32 +63,57 @@ namespace Nethermind.Runner.Ethereum.Steps
         {
             BlockProducerContext Create()
             {
-                ReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(_context.DbProvider, false);
-                ReadOnlyBlockTree readOnlyBlockTree = new ReadOnlyBlockTree(_context.BlockTree);
-                ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, readOnlyBlockTree, _context.SpecProvider, _context.LogManager);
-                var readOnlyTransactionProcessorSource = new ReadOnlyTransactionProcessorSource(readOnlyTxProcessingEnv);
-                BlockProcessor blockProcessor = CreateBlockProcessor(readOnlyTxProcessingEnv, readOnlyTransactionProcessorSource, readOnlyDbProvider);
-                OneTimeChainProcessor chainProcessor = new OneTimeChainProcessor(readOnlyDbProvider, new BlockchainProcessor(readOnlyBlockTree, blockProcessor, _context.RecoveryStep, _context.LogManager, BlockchainProcessor.Options.NoReceipts));
+                ReadOnlyDbProvider dbProvider = new ReadOnlyDbProvider(_context.DbProvider, false);
+                ReadOnlyBlockTree blockTree = new ReadOnlyBlockTree(_context.BlockTree);
+                ReadOnlyTxProcessingEnv txProcessingEnv =
+                    new ReadOnlyTxProcessingEnv(dbProvider, blockTree, _context.SpecProvider, _context.LogManager);
+                
+                ReadOnlyTxProcessorSource txProcessorSource =
+                    new ReadOnlyTxProcessorSource(txProcessingEnv);
+                
+                BlockProcessor blockProcessor =
+                    CreateBlockProcessor(txProcessingEnv, txProcessorSource, dbProvider);
+                
+                IBlockchainProcessor blockchainProcessor =
+                    new BlockchainProcessor(
+                        blockTree,
+                        blockProcessor,
+                        _context.RecoveryStep,
+                        _context.LogManager,
+                        BlockchainProcessor.Options.NoReceipts);
+                
+                OneTimeChainProcessor chainProcessor = new OneTimeChainProcessor(
+                    dbProvider,
+                    blockchainProcessor);
 
                 return new BlockProducerContext
                 {
                     ChainProcessor = chainProcessor,
-                    ReadOnlyStateProvider = readOnlyTxProcessingEnv.StateProvider,
-                    TxSource = CreateTxSourceForProducer(readOnlyTxProcessingEnv, readOnlyTransactionProcessorSource),
-                    ReadOnlyTxProcessingEnv = readOnlyTxProcessingEnv,
-                    ReadOnlyTransactionProcessorSource = readOnlyTransactionProcessorSource
+                    ReadOnlyStateProvider = txProcessingEnv.StateProvider,
+                    TxSource = CreateTxSourceForProducer(txProcessingEnv, txProcessorSource),
+                    ReadOnlyTxProcessingEnv = txProcessingEnv,
+                    ReadOnlyTxProcessorSource = txProcessorSource
                 };
             }
 
             return _blockProducerContext ??= Create();
         }
 
-        protected virtual ITxSource CreateTxSourceForProducer(ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv, ReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource) 
-            => new TxPoolTxSource(_context.TxPool, readOnlyTxProcessingEnv.StateReader, _context.LogManager);
+        protected virtual ITxSource CreateTxSourceForProducer(
+            ReadOnlyTxProcessingEnv processingEnv,
+            ReadOnlyTxProcessorSource readOnlyTxProcessorSource)
+        {
+            UInt256 minGasPrice = _context.Config<IMiningConfig>().MinGasPrice;
+            ITxFilter filter = new MinGasPriceTxFilter(minGasPrice);
+            ITxSource innerSource = new TxPoolTxSource(_context.TxPool, processingEnv.StateReader, _context.LogManager);
+            
+            ITxSource result = new FilteredTxSource(innerSource, filter);
+            return result;
+        }
 
         protected virtual BlockProcessor CreateBlockProcessor(
             ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv, 
-            ReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource, 
+            ReadOnlyTxProcessorSource readOnlyTxProcessorSource, 
             IReadOnlyDbProvider readOnlyDbProvider)
         {
             if (_context.SpecProvider == null) throw new StepDependencyException(nameof(_context.SpecProvider));

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,23 +15,27 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Consensus.AuRa.Contracts;
+using FluentAssertions;
+using Nethermind.Consensus;
 using Nethermind.Core;
-using Nethermind.Core.Caching;
-using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Builders;
+using NUnit.Framework;
 
-namespace Nethermind.Consensus.AuRa.Transactions
+namespace Nethermind.Mining.Test
 {
-    public interface ITxPermissionFilter
+    [TestFixture]
+    public class FollowOtherMinersTests
     {
-        bool IsAllowed(Transaction tx, BlockHeader parentHeader);
-        
-        public class Cache
+        [TestCase(1000000, 1000000)]
+        [TestCase(1999999, 1999999)]
+        [TestCase(2000000, 2000000)]
+        [TestCase(2000001, 2000001)]
+        [TestCase(3000000, 3000000)]
+        public void Test(long current, long expected)
         {
-            public const int MaxCacheSize = 4096;
-            
-            internal ICache<(Keccak ParentHash, Address Sender), ITransactionPermissionContract.TxPermissions?> Permissions { get; } =
-                new LruCacheWithRecycling<(Keccak ParentHash, Address Sender), ITransactionPermissionContract.TxPermissions?>(MaxCacheSize, "TxPermissions");
+            BlockHeader header = Build.A.BlockHeader.WithGasLimit(current).TestObject;
+            FollowOtherMiners.Instance.GetGasLimit(header).Should().Be(expected);
         }
     }
 }
