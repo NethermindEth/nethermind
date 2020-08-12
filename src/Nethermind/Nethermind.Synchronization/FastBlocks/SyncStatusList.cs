@@ -66,11 +66,11 @@ namespace Nethermind.Synchronization.FastBlocks
                         continue;
                     }
                     
-                    switch (_statuses[currentNumber])
+                    switch (_statuses[currentNumber - StartBlock])
                     {
                         case FastBlockStatus.Unknown:
                             blockInfos[collected] = _blockTree.FindCanonicalBlockInfo(currentNumber);
-                            _statuses[currentNumber] = FastBlockStatus.Sent;
+                            _statuses[currentNumber - StartBlock] = FastBlockStatus.Sent;
                             collected++;
                             break;
                         case FastBlockStatus.Inserted:
@@ -97,7 +97,7 @@ namespace Nethermind.Synchronization.FastBlocks
             Interlocked.Increment(ref _queueSize);
             lock (_statuses)
             {
-                _statuses[blockNumber] = FastBlockStatus.Inserted;
+                _statuses[blockNumber - StartBlock] = FastBlockStatus.Inserted;
             }
         }
 
@@ -105,7 +105,7 @@ namespace Nethermind.Synchronization.FastBlocks
         {
             lock (_statuses)
             {
-                _statuses[blockNumber] = FastBlockStatus.Unknown;
+                _statuses[blockNumber - StartBlock] = FastBlockStatus.Unknown;
             }
         }
         
