@@ -417,7 +417,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             await testRpc.AddBlock();
 
             await baselineModule.baseline_track(receipt.ContractAddress);
-            var result = await baselineModule.baseline_getLeaves(receipt.ContractAddress, 0, 1);
+            var result = await baselineModule.baseline_getLeaves(receipt.ContractAddress, new UInt256[] {0, 1});
             await testRpc.AddBlock();
 
             result.Result.ResultType.Should().Be(ResultType.Success);
@@ -451,7 +451,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             await baselineModule.baseline_insertLeaf(TestItem.Addresses[1], receipt.ContractAddress, TestItem.KeccakH);
             await testRpc.AddBlock();
 
-            var result = await baselineModule.baseline_getLeaves(receipt.ContractAddress, 0, 1);
+            var result = await baselineModule.baseline_getLeaves(receipt.ContractAddress, new UInt256[] {0, 1});
             await testRpc.AddBlock();
 
             result.Result.ResultType.Should().Be(ResultType.Failure);
@@ -483,7 +483,8 @@ namespace Nethermind.Baseline.Test.JsonRpc
             await baselineModule.baseline_insertLeaf(TestItem.Addresses[1], receipt.ContractAddress, TestItem.KeccakH);
             await testRpc.AddBlock();
 
-            var result = await baselineModule.baseline_getLeaves(receipt.ContractAddress, 0, (UInt256) uint.MaxValue + 1);
+            var result = await baselineModule.baseline_getLeaves(
+                receipt.ContractAddress, new UInt256[] {0, (UInt256) uint.MaxValue + 1});
             await testRpc.AddBlock();
 
             result.Result.ResultType.Should().Be(ResultType.Failure);
@@ -628,7 +629,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             Task task1 = new Task(trackAction);
             Task task2 = new Task(trackAction);
             Task task3 = new Task(trackAction);
-            
+
             task1.Start();
             task2.Start();
             task3.Start();
