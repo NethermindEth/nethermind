@@ -22,16 +22,16 @@ using Nethermind.Logging;
 
 namespace Nethermind.Blockchain.Processing
 {
-    public class ReadOnlyTransactionProcessorSource : IReadOnlyTransactionProcessorSource
+    public class ReadOnlyTxProcessorSource : IReadOnlyTransactionProcessorSource
     {
         private readonly ReadOnlyTxProcessingEnv _environment;
 
-        public ReadOnlyTransactionProcessorSource(IDbProvider dbProvider, IBlockTree blockTree, ISpecProvider specProvider, ILogManager logManager)
+        public ReadOnlyTxProcessorSource(IDbProvider dbProvider, IBlockTree blockTree, ISpecProvider specProvider, ILogManager logManager)
         {
             _environment = new ReadOnlyTxProcessingEnv(new ReadOnlyDbProvider(dbProvider, false), new ReadOnlyBlockTree(blockTree), specProvider, logManager);
         }
 
-        public ReadOnlyTransactionProcessorSource(ReadOnlyTxProcessingEnv environment)
+        public ReadOnlyTxProcessorSource(ReadOnlyTxProcessingEnv environment)
         {
             _environment = environment;
         }

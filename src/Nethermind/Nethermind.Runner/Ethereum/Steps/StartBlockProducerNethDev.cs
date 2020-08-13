@@ -17,9 +17,7 @@
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
-using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
-using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
 
@@ -46,11 +44,13 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.BlockTree,
                 _context.BlockProcessingQueue,
                 _context.TxPool,
-                _context.Timestamper,
+                _context.Timestamper, 
                 _context.LogManager);
         }
 
-        protected override ITxSource CreateTxSourceForProducer(ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv, ReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource) 
-            => new SinglePendingTxSelector(base.CreateTxSourceForProducer(readOnlyTxProcessingEnv, readOnlyTransactionProcessorSource));
+        protected override ITxSource CreateTxSourceForProducer(
+            ReadOnlyTxProcessingEnv processingEnv,
+            ReadOnlyTxProcessorSource readOnlyTxProcessorSource) 
+            => new SinglePendingTxSelector(base.CreateTxSourceForProducer(processingEnv, readOnlyTxProcessorSource));
     }
 }

@@ -18,12 +18,14 @@ using System;
 using System.Linq;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Validators;
+using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Rewards;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Evm;
 using Nethermind.Facade.Transactions;
 using Nethermind.Runner.Ethereum.Context;
@@ -34,7 +36,7 @@ namespace Nethermind.Runner.Ethereum.Steps
     public class InitializeBlockchainAuRa : InitializeBlockchain
     {
         private readonly AuRaEthereumRunnerContext _context;
-        private ReadOnlyTransactionProcessorSource? _readOnlyTransactionProcessorSource;
+        private ReadOnlyTxProcessorSource? _readOnlyTransactionProcessorSource;
         private AuRaSealValidator? _sealValidator;
 
         public InitializeBlockchainAuRa(AuRaEthereumRunnerContext context) : base(context)
@@ -68,7 +70,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.LogManager,
                 _context.BlockTree,
                 GetTxPermissionFilter(),
-                GetGasLimitOverride());
+                GetGasLimitCalculator());
             
             var auRaValidator = CreateAuRaValidator(processor);
             processor.AuRaValidator = auRaValidator;
@@ -125,15 +127,15 @@ namespace Nethermind.Runner.Ethereum.Steps
             return validator;
         }
 
-        private ITxPermissionFilter? GetTxPermissionFilter()
+        private ITxFilter? GetTxPermissionFilter()
         {
             if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
             
             if (_context.ChainSpec.Parameters.TransactionPermissionContract != null)
             {
-                _context.TxFilterCache = new ITxPermissionFilter.Cache();
+                _context.TxFilterCache = new PermissionBasedTxFilter.Cache();
                 
-                var txPermissionFilter = new TxPermissionFilter(
+                var txPermissionFilter = new PermissionBasedTxFilter(
                     new VersionedTransactionPermissionContract(_context.AbiEncoder,
                         _context.ChainSpec.Parameters.TransactionPermissionContract,
                         _context.ChainSpec.Parameters.TransactionPermissionContractTransition ?? 0, 
@@ -149,16 +151,16 @@ namespace Nethermind.Runner.Ethereum.Steps
             return null;
         }
         
-        private IGasLimitOverride? GetGasLimitOverride()
+        private IGasLimitCalculator? GetGasLimitCalculator()
         {
             if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
             var blockGasLimitContractTransitions = _context.ChainSpec.AuRa.BlockGasLimitContractTransitions;
             
             if (blockGasLimitContractTransitions?.Any() == true)
             {
-                _context.GasLimitOverrideCache = new IGasLimitOverride.Cache();
+                _context.GasLimitCalculatorCache = new AuRaContractGasLimitOverride.Cache();
                 
-                var gasLimitOverride = new AuRaContractGasLimitOverride(
+                IGasLimitCalculator gasLimitCalculator = new AuRaContractGasLimitOverride(
                     blockGasLimitContractTransitions.Select(blockGasLimitContractTransition =>
                         new BlockGasLimitContract(
                             _context.AbiEncoder,
@@ -166,13 +168,15 @@ namespace Nethermind.Runner.Ethereum.Steps
                             blockGasLimitContractTransition.Key,
                             GetReadOnlyTransactionProcessorSource()))
                         .ToArray<IBlockGasLimitContract>(),
-                    _context.GasLimitOverrideCache,
+                    _context.GasLimitCalculatorCache,
                     _context.Config<IAuraConfig>().Minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract,
+                    new TargetAdjustedGasLimitCalculator(_context.SpecProvider, _context.Config<IMiningConfig>()), 
                     _context.LogManager);
                 
-                return gasLimitOverride;
+                return gasLimitCalculator;
             }
 
+            // do not return target gas limit calculator here - this is used for validation to check if the override should have been used
             return null;
         }
 
@@ -193,7 +197,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         }
 
         private IReadOnlyTransactionProcessorSource GetReadOnlyTransactionProcessorSource() => 
-            _readOnlyTransactionProcessorSource ??= new ReadOnlyTransactionProcessorSource(_context.DbProvider, _context.BlockTree, _context.SpecProvider, _context.LogManager);
+            _readOnlyTransactionProcessorSource ??= new ReadOnlyTxProcessorSource(_context.DbProvider, _context.BlockTree, _context.SpecProvider, _context.LogManager);
 
         protected override HeaderValidator CreateHeaderValidator()
         {

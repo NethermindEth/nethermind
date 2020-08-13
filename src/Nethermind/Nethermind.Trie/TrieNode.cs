@@ -122,9 +122,9 @@ namespace Nethermind.Trie
         public bool IsBranch => NodeType == NodeType.Branch;
         public bool IsExtension => NodeType == NodeType.Extension;
 
-        public byte[] Path => Key.Path;
+        public byte[] Path => Key?.Path;
 
-        internal HexPrefix Key
+        internal HexPrefix? Key
         {
             get => _data[0] as HexPrefix;
             set
@@ -332,6 +332,18 @@ namespace Nethermind.Trie
             }
         }
 
+        private void UnresolveChild(int i)
+        {
+            TrieNode child = _data[i] as TrieNode;
+            if (child != null)
+            {
+                if (!child.IsDirty)
+                {
+                    _data[i] = new TrieNode(NodeType.Unknown, child.Keccak); // unresolved
+                }
+            }
+        }
+        
         private void ResolveChild(int i)
         {
             if (_rlpStream == null)
@@ -456,6 +468,7 @@ namespace Nethermind.Trie
                         {
                             trieVisitContext.BranchChildIndex = i;
                             child.Accept(visitor, tree, trieVisitContext);
+                            UnresolveChild(i);
                         }
                     }
 
@@ -473,6 +486,7 @@ namespace Nethermind.Trie
                         trieVisitContext.Level++;
                         trieVisitContext.BranchChildIndex = null;
                         child.Accept(visitor, tree, trieVisitContext);
+                        UnresolveChild(1); // extension child index is 1
                         trieVisitContext.Level--;
                     }
 

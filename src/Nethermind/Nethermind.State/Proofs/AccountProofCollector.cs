@@ -150,8 +150,6 @@ namespace Nethermind.State.Proofs
                     Keccak childHash = node.GetChildHash((byte) childIndex);
                     if (childHash == null)
                     {
-                        Console.WriteLine($"Empty at {storageIndex}");
-
                         AddEmpty(node, trieVisitContext);
                     }
                     else

@@ -16,27 +16,32 @@
 // 
 
 using System.Collections.Generic;
-using System.Linq;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 
-namespace Nethermind.Consensus.AuRa.Transactions
+namespace Nethermind.Consensus.Transactions
 {
-    public class TxFilterTxSource : ITxSource
+    public class FilteredTxSource : ITxSource
     {
         private readonly ITxSource _innerSource;
-        private readonly ITxPermissionFilter _txPermissionFilter;
+        private readonly ITxFilter _txFilter;
 
-        public TxFilterTxSource(ITxSource innerSource, ITxPermissionFilter txPermissionFilter)
+        public FilteredTxSource(ITxSource innerSource, ITxFilter txFilter)
         {
             _innerSource = innerSource;
-            _txPermissionFilter = txPermissionFilter;
+            _txFilter = txFilter;
         }
 
-        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit) => 
-            _innerSource.GetTransactions(parent, gasLimit).Where(tx => _txPermissionFilter.IsAllowed(tx, parent));
-        
-        public override string ToString() => $"{nameof(TxFilterTxSource)} [ {_innerSource} ]";
+        public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
+        {
+            foreach (Transaction transaction in _innerSource.GetTransactions(parent, gasLimit))
+            {
+                if (_txFilter.IsAllowed(transaction, parent))
+                {
+                    yield return transaction;
+                }
+            }
+        }
 
+        public override string ToString() => $"{nameof(FilteredTxSource)} [ {_innerSource} ]";
     }
 }

@@ -32,7 +32,7 @@ namespace Nethermind.Trie
     {
         private const int OneNodeAvgMemoryEstimate = 384;
         public static readonly ICache<Keccak, byte[]> NodeCache =
-            new LruCacheWithRecycling<Keccak, byte[]>(
+            new LruCache<Keccak, byte[]>(
                 (int)(MemoryAllowance.TrieNodeCacheMemory / OneNodeAvgMemoryEstimate), "trie nodes");
 
         /// <summary>

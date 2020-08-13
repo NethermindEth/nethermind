@@ -28,7 +28,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Blockchain.Producers
 {
-    public class DevBlockProducer : BaseBlockProducer
+    public class DevBlockProducer : BlockProducerBase
     {
         private readonly ITxPool _txPool;
         private readonly SemaphoreSlim _newBlockLock = new SemaphoreSlim(1, 1);
@@ -42,7 +42,16 @@ namespace Nethermind.Blockchain.Producers
             ITxPool txPool,
             ITimestamper timestamper,
             ILogManager logManager) 
-            : base(txSource, processor, new NethDevSealEngine(), blockTree, blockProcessingQueue, stateProvider, timestamper, logManager)
+            : base(
+                txSource,
+                processor,
+                new NethDevSealEngine(),
+                blockTree,
+                blockProcessingQueue,
+                stateProvider,
+                FollowOtherMiners.Instance, 
+                timestamper,
+                logManager)
         {
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
         }
@@ -79,7 +88,9 @@ namespace Nethermind.Blockchain.Producers
             }
             catch (Exception exception)
             {
-                if (Logger.IsError) Logger.Error($"Failed to produce block after receiving transaction {e.Transaction}", exception);
+                if (Logger.IsError)
+                    Logger.Error(
+                        $"Failed to produce block after receiving transaction {e.Transaction}", exception);
                 _newBlockLock.Release();
             }
         }

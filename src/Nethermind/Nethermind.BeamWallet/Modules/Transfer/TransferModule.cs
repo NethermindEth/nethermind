@@ -261,6 +261,7 @@ namespace Nethermind.BeamWallet.Modules.Transfer
             if (IncorrectData(_toAddress, _value, _passphrase))
             {
                 Application.Run(_transferWindow);
+                AddButtons();
                 return;
             }
 
@@ -309,13 +310,15 @@ namespace Nethermind.BeamWallet.Modules.Transfer
 
                 if (!unlockAccountResult.Result)
                 {
-                    MessageBox.ErrorQuery(40, 7, "Error",
-                        $" Unlocking account failed. {Environment.NewLine} Make sure you have pasted your Keystore File into keystore folder.");
+                    MessageBox.ErrorQuery(40, 8, "Error",
+                        $"Unlocking account failed." +
+                        $"{Environment.NewLine}Make sure you have pasted your Keystore File into keystore folder." +
+                        $"{Environment.NewLine}(ESC to close)");
                     DeleteLabels();
                     AddButtons();
                     Application.Run(_transferWindow);
                 }
-                
+
                 _unlockInfoLbl = new Label(1, 20, "Account unlocked.");
                 _transferWindow.Add(_unlockInfoLbl);
                 
@@ -421,7 +424,9 @@ namespace Nethermind.BeamWallet.Modules.Transfer
             if (string.IsNullOrEmpty(address) || string.IsNullOrEmpty(value) || string.IsNullOrEmpty(passphrase) ||
                 !decimal.TryParse(value, out _) || decimal.Parse(value) > _balanceEth)
             {
-                MessageBox.ErrorQuery(40, 7, "Error", "Incorrect data.");
+                MessageBox.ErrorQuery(40, 7, "Error", "Incorrect data." +
+                                                      $"{Environment.NewLine}(ESC to close)");
+                AddButtons();
                 return true;
             }
             return false;

@@ -23,12 +23,13 @@ using Nethermind.Blockchain.Processing;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.State;
 
 namespace Nethermind.Blockchain.Producers
 {
-    public abstract class BaseLoopBlockProducer : BaseBlockProducer
+    public abstract class LoopBlockProducerBase : BlockProducerBase
     {
         private const int ChainNotYetProcessedMillisecondsDelay = 100;
         private readonly string _name;
@@ -37,7 +38,7 @@ namespace Nethermind.Blockchain.Producers
         protected CancellationTokenSource LoopCancellationTokenSource { get; } = new CancellationTokenSource();
         protected int _canProduce = 0;
 
-        protected BaseLoopBlockProducer(
+        protected LoopBlockProducerBase(
             ITxSource txSource,
             IBlockchainProcessor processor,
             ISealer sealer,
@@ -45,9 +46,19 @@ namespace Nethermind.Blockchain.Producers
             IBlockProcessingQueue blockProcessingQueue,
             IStateProvider stateProvider,
             ITimestamper timestamper,
+            IGasLimitCalculator gasLimitCalculator,
             ILogManager logManager,
             string name) 
-            : base(txSource, processor, sealer, blockTree, blockProcessingQueue, stateProvider, timestamper, logManager)
+            : base(
+                txSource,
+                processor,
+                sealer,
+                blockTree,
+                blockProcessingQueue,
+                stateProvider,
+                gasLimitCalculator,
+                timestamper,
+                logManager)
         {
             _name = name;
         }
@@ -103,7 +114,9 @@ namespace Nethermind.Blockchain.Producers
                 }
                 else
                 {
-                    if (Logger.IsDebug) Logger.Debug($"Delaying producing block, chain not processed yet. BlockProcessingQueue count {BlockProcessingQueue.Count}.");
+                    if (Logger.IsDebug)
+                        Logger.Debug(
+                            $"Delaying producing block, chain not processed yet. BlockProcessingQueue count {BlockProcessingQueue.Count}.");
                     await Task.Delay(ChainNotYetProcessedMillisecondsDelay, LoopCancellationTokenSource.Token);
                 }
             }
@@ -120,12 +133,18 @@ namespace Nethermind.Blockchain.Producers
             {
                 Interlocked.Exchange(ref _canProduce, 0);
                 Interlocked.Exchange(ref Metrics.CanProduceBlocks, 0);
-                if (Logger.IsTrace) Logger.Trace($"Can not produce a block new best suggested {BlockTree.BestSuggestedHeader?.ToString(BlockHeader.Format.FullHashAndNumber)}{Environment.NewLine}{new StackTrace()}");
+                if (Logger.IsTrace)
+                    Logger.Trace(
+                        $"Can not produce a block new best suggested {BlockTree.BestSuggestedHeader?.ToString(BlockHeader.Format.FullHashAndNumber)}" +
+                        $"{Environment.NewLine}{new StackTrace()}");
             }
             else
             {
                 Interlocked.Exchange(ref Metrics.CanProduceBlocks, 1);
-                if (Logger.IsTrace) Logger.Trace($"Can produce blocks, a block new best suggested {BlockTree.BestSuggestedHeader?.ToString(BlockHeader.Format.FullHashAndNumber)}{Environment.NewLine}{new StackTrace()} is already processed.");
+                if (Logger.IsTrace)
+                    Logger.Trace(
+                        $"Can produce blocks, a block new best suggested {BlockTree.BestSuggestedHeader?.ToString(BlockHeader.Format.FullHashAndNumber)}" +
+                        $"{Environment.NewLine}{new StackTrace()} is already processed.");
             }
         }
 
@@ -133,7 +152,10 @@ namespace Nethermind.Blockchain.Producers
         {
             Interlocked.Exchange(ref _canProduce, 1);
             Interlocked.Exchange(ref Metrics.CanProduceBlocks, 1);
-            if (Logger.IsTrace) Logger.Trace($"Can produce blocks, current best suggested {BlockTree.BestSuggestedHeader}{Environment.NewLine}current head {BlockTree.Head}{Environment.NewLine}{new StackTrace()}");        
+            if (Logger.IsTrace)
+                Logger.Trace(
+                    $"Can produce blocks, current best suggested {BlockTree.BestSuggestedHeader}" +
+                    $"{Environment.NewLine}current head {BlockTree.Head}{Environment.NewLine}{new StackTrace()}");        
         }
     }
 }

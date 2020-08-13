@@ -5,6 +5,9 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.JsonRpc.Modules;
 using System.Text;
+using Nethermind.Core.Crypto;
+using Nethermind.Core;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.GitBook
 {
@@ -12,7 +15,7 @@ namespace Nethermind.GitBook
     {
         public static void Generate()
         {
-            string docsDir = DocsDirFinder.Find();
+            string docsDir = DocsDirFinder.FindJsonRpc();
             List<Type> rpcTypes = GetRpcModules();
             
             foreach(Type rpcType in rpcTypes)
@@ -50,32 +53,72 @@ namespace Nethermind.GitBook
             {
                 JsonRpcMethodAttribute attribute = method.GetCustomAttribute<JsonRpcMethodAttribute>();
                 bool isImplemented = attribute == null || attribute.IsImplemented;
+
+                if(!isImplemented)
+                {
+                    continue;
+                }
+
                 string methodName = method.Name.Substring(method.Name.IndexOf('_'));
-                docBuilder.AppendLine(@$"{moduleName}\{methodName}");
+                docBuilder.AppendLine(@$"##{moduleName}\{methodName}");
                 docBuilder.AppendLine();
                 docBuilder.AppendLine(@$"{attribute?.Description ?? "_description missing_"} ");
                 docBuilder.AppendLine();
-                docBuilder.AppendLine($"Is implemented : {isImplemented}");
+                docBuilder.AppendLine(@"#### **Parameters**");
                 docBuilder.AppendLine();
-                docBuilder.AppendLine(@"### **Parameters**");
-                docBuilder.AppendLine();
-                docBuilder.AppendLine("| Parameter name | Type |");
-                docBuilder.AppendLine("| :--- | :--- |");
         
-                foreach(ParameterInfo parameter in method.GetParameters())
-                {
-                    docBuilder.AppendLine($"| {parameter.Name} | {parameter.ParameterType.ToString()} |");
-                }
+                ParameterInfo[] parameters = method.GetParameters();
 
+                if(parameters.Length == 0)
+                {
+                    docBuilder.AppendLine("_None_");
+                }
+                else
+                {
+                    docBuilder.AppendLine("| Parameter name | Type |");
+                    docBuilder.AppendLine("| :--- | :--- |");
+                    string rpcParameterType;
+                    foreach (ParameterInfo parameter in method.GetParameters())
+                    {
+                        rpcParameterType = GetJsonRpcType(parameter.ParameterType);
+                        docBuilder.AppendLine($"| {parameter.Name} | `{rpcParameterType}` |");
+                    }
+                }
+                
+                docBuilder.AppendLine();
+                docBuilder.AppendLine(@$"Return type: `{attribute?.Returns}`");
                 docBuilder.AppendLine();
             }
 
             string rpcModuleFile = Directory.GetFiles(docsDir, $"{moduleName}.md", SearchOption.AllDirectories).First(); 
 
-            Console.WriteLine(rpcType);
-            Console.WriteLine(rpcModuleFile);
             string fileContent = docBuilder.ToString();
             File.WriteAllText(rpcModuleFile, fileContent);
+        }
+
+        private static string GetJsonRpcType(object parameter)
+        {
+            switch(parameter)
+            {
+                case Keccak _: 
+                    return "Hash";
+                case Address _:
+                    return  "Address";
+                case int _:
+                    return "Quantity";
+                case long _:
+                    return "Quantity";
+                case byte[] _:
+                    return "Data";
+                case string _:
+                    return "String";
+                case bool _:
+                    return "Boolean";
+                case UInt256 _: 
+                    return "Quantity";
+                default: 
+                    return "Object";
+            }
         }
     }
 }

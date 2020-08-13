@@ -31,7 +31,7 @@ namespace Nethermind.Consensus.Ethash
         private IEthash _ethash;
         private ILogger _logger;
 
-        private ICache<Keccak, bool> _sealCache = new LruCacheWithRecycling<Keccak, bool>(2048, 2048, "ethash seals");
+        private ICache<Keccak, bool> _sealCache = new LruCache<Keccak, bool>(2048, 2048, "ethash seals");
         private const int SealValidationIntervalConstantComponent = 1024;
         private int sealValidationInterval = SealValidationIntervalConstantComponent;
 

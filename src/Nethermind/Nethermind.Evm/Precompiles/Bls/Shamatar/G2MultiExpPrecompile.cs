@@ -42,7 +42,7 @@ namespace Nethermind.Evm.Precompiles.Bls.Shamatar
 
         public long DataGasCost(byte[] inputData, IReleaseSpec releaseSpec)
         {
-            int k = inputData.Length / 288;
+            int k = inputData.Length / ItemSize;
             return 55000L * k * Discount.For(k) / 1000;;
         }
         

@@ -114,7 +114,7 @@ namespace Nethermind.Baseline.JsonRpc
             {
                 return false;
             }
-            
+
             ShaBaselineTree tree = new ShaBaselineTree(_baselineDb, trackedTree.Bytes, TruncationLength);
             return _baselineTrees.TryAdd(trackedTree, tree);
         }
@@ -474,7 +474,11 @@ namespace Nethermind.Baseline.JsonRpc
             ResultWrapper<bool> result;
 
             // can potentially warn user if tree is not deployed at the address
-            if (TryAddTree(contractAddress))
+            if (contractAddress == null)
+            {
+                result = ResultWrapper<bool>.Fail("Contract address was NULL");
+            }
+            else if (TryAddTree(contractAddress))
             {
                 UpdateMetadata(contractAddress);
                 result = ResultWrapper<bool>.Success(true);
@@ -483,7 +487,7 @@ namespace Nethermind.Baseline.JsonRpc
             {
                 result = ResultWrapper<bool>.Fail(
                     $"{contractAddress} is already tracked or no contract at given address",
-                    ErrorCodes.InvalidInput);    
+                    ErrorCodes.InvalidInput);
             }
 
             return Task.FromResult(result);
@@ -491,36 +495,45 @@ namespace Nethermind.Baseline.JsonRpc
 
         public Task<ResultWrapper<Address[]>> baseline_getTracked()
         {
-            return Task.FromResult(ResultWrapper<Address[]>.Success(_metadata.TrackedTrees));
+            lock (_metadata)
+            {
+                return Task.FromResult(ResultWrapper<Address[]>.Success(_metadata.TrackedTrees));
+            }
         }
 
         private void UpdateMetadata(Address contractAddress)
         {
-            var list = _metadata.TrackedTrees.ToList();
-            list.Add(contractAddress);
-            _metadata.TrackedTrees = list.ToArray();
-
-            _baselineDb[_metadataKey] = SerializeMetadata();
+            lock (_metadata)
+            {
+                var list = _metadata.TrackedTrees.ToList();
+                list.Add(contractAddress);
+                _metadata.TrackedTrees = list.ToArray();
+                
+                _baselineDb[_metadataKey] = SerializeMetadata();
+            }
         }
 
         private byte[] SerializeMetadata()
         {
-            int contentLength = 0;
-            for (int i = 0; i < _metadata.TrackedTrees.Length; i++)
+            lock (_metadata)
             {
-                contentLength += Rlp.LengthOf(_metadata.TrackedTrees[i]);
+                int contentLength = 0;
+                for (int i = 0; i < _metadata.TrackedTrees.Length; i++)
+                {
+                    contentLength += Rlp.LengthOf(_metadata.TrackedTrees[i]);
+                }
+
+                int totalLength = Rlp.LengthOfSequence(contentLength);
+
+                RlpStream rlpStream = new RlpStream(totalLength);
+                rlpStream.StartSequence(contentLength);
+                for (int i = 0; i < _metadata.TrackedTrees.Length; i++)
+                {
+                    rlpStream.Encode(_metadata.TrackedTrees[i]);
+                }
+
+                return rlpStream.Data;
             }
-
-            int totalLength = Rlp.LengthOfSequence(contentLength);
-
-            RlpStream rlpStream = new RlpStream(totalLength);
-            rlpStream.StartSequence(contentLength);
-            for (int i = 0; i < _metadata.TrackedTrees.Length; i++)
-            {
-                rlpStream.Encode(_metadata.TrackedTrees[i]);
-            }
-
-            return rlpStream.Data;
         }
     }
 }

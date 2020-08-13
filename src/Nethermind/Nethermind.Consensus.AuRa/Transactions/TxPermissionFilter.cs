@@ -17,26 +17,32 @@
 
 using System;
 using Nethermind.Consensus.AuRa.Contracts;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.State;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
-    public class TxPermissionFilter : ITxPermissionFilter
+    public class PermissionBasedTxFilter : ITxFilter
     {
         private readonly VersionedContract<ITransactionPermissionContract> _contract;
-        private readonly ITxPermissionFilter.Cache _cache;
+        private readonly Cache _cache;
         private readonly IStateProvider _stateProvider;
         private readonly ILogger _logger;
 
-        public TxPermissionFilter(VersionedContract<ITransactionPermissionContract> contract, ITxPermissionFilter.Cache cache, IStateProvider stateProvider, ILogManager logManager)
+        public PermissionBasedTxFilter(
+            VersionedContract<ITransactionPermissionContract> contract,
+            Cache cache,
+            IStateProvider stateProvider,
+            ILogManager logManager)
         {
             _contract = contract ?? throw new ArgumentNullException(nameof(contract));
             _cache = cache ?? throw new ArgumentNullException(nameof(cache));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
-            _logger = logManager?.GetClassLogger<TxPermissionFilter>() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<PermissionBasedTxFilter>() ?? throw new ArgumentNullException(nameof(logManager));
         }
         
         public bool IsAllowed(Transaction tx, BlockHeader parentHeader)
@@ -49,7 +55,10 @@ namespace Nethermind.Consensus.AuRa.Transactions
             {
                 var txType = GetTxType(tx);
                 var txPermissions = GetPermissions(tx, parentHeader);
-                if (_logger.IsTrace) _logger.Trace($"Given transaction: {tx.Hash} sender: {tx.SenderAddress} to: {tx.To} value: {tx.Value}, gas_price: {tx.GasPrice}. Permissions required: {txType}, got: {txPermissions}.");
+                if (_logger.IsTrace)
+                    _logger.Trace(
+                        $"Given transaction: {tx.Hash} sender: {tx.SenderAddress} to: {tx.To} value: {tx.Value}, gas_price: {tx.GasPrice}. " +
+                        $"Permissions required: {txType}, got: {txPermissions}.");
                 return (txPermissions & txType) == txType;
             }
         }
@@ -61,7 +70,10 @@ namespace Nethermind.Consensus.AuRa.Transactions
             return txCachedPermissions ?? GetPermissionsFromContract(tx, parentHeader, key);
         }
 
-        private ITransactionPermissionContract.TxPermissions GetPermissionsFromContract(Transaction tx, BlockHeader parentHeader, in (Keccak Hash, Address SenderAddress) key)
+        private ITransactionPermissionContract.TxPermissions GetPermissionsFromContract(
+            Transaction tx,
+            BlockHeader parentHeader,
+            in (Keccak Hash, Address SenderAddress) key)
         {
             ITransactionPermissionContract.TxPermissions txPermissions = ITransactionPermissionContract.TxPermissions.None;
             bool shouldCache = true;
@@ -93,7 +105,8 @@ namespace Nethermind.Consensus.AuRa.Transactions
             return txPermissions;
         }
 
-        private ITransactionPermissionContract GetVersionedContract(BlockHeader blockHeader) => _contract.ResolveVersion(blockHeader);
+        private ITransactionPermissionContract GetVersionedContract(BlockHeader blockHeader)
+            => _contract.ResolveVersion(blockHeader);
 
         private ITransactionPermissionContract.TxPermissions GetTxType(Transaction tx) =>
             tx.IsContractCreation
@@ -101,5 +114,13 @@ namespace Nethermind.Consensus.AuRa.Transactions
                 : _stateProvider.GetCodeHash(tx.To) != Keccak.OfAnEmptyString
                     ? ITransactionPermissionContract.TxPermissions.Call
                     : ITransactionPermissionContract.TxPermissions.Basic;
+        
+        public class Cache
+        {
+            public const int MaxCacheSize = 4096;
+            
+            internal ICache<(Keccak ParentHash, Address Sender), ITransactionPermissionContract.TxPermissions?> Permissions { get; } =
+                new LruCache<(Keccak ParentHash, Address Sender), ITransactionPermissionContract.TxPermissions?>(MaxCacheSize, "TxPermissions");
+        }
     }
 }
