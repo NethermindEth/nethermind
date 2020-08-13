@@ -41,5 +41,6 @@ namespace Nethermind.Facade.Proxy
             bool returnFullTransactionObjects = false);
         Task<RpcResult<BlockModel<TransactionModel>>> eth_getBlockByNumberWithTransactionDetails(BlockParameterModel blockParameter,
             bool returnFullTransactionObjects = false);
+        Task<RpcResult<string>> net_version();
     }
 }
