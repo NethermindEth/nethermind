@@ -72,14 +72,14 @@ namespace Nethermind.Abi
                     return ((uint) value, length);
                 case { } n when n <= 64:
                     return ((ulong) value, length);
-                case { } n when n <= 256:
-                    return ((UInt256) value, length);
+                default:
+                    return (value, length);
             }
         }
 
-        public (BigInteger, int) DecodeUInt(byte[] data, int position, bool packed)
+        public (UInt256, int) DecodeUInt(byte[] data, int position, bool packed)
         {
-            BigInteger lengthData = data.Slice(position, (packed ? LengthInBytes : UInt256.LengthInBytes)).ToUnsignedBigInteger();
+            UInt256 lengthData = new UInt256(data.Slice(position, (packed ? LengthInBytes : UInt256.LengthInBytes)), true);
             return (lengthData, position + (packed ? LengthInBytes : UInt256.LengthInBytes));
         }
 
@@ -146,9 +146,7 @@ namespace Nethermind.Abi
                     return typeof(uint);
                 case { } n when n <= 64:
                     return typeof(ulong);
-                case { } n when n <= 128:
-                    return typeof(UInt256);
-                case { } n when n <= 256:
+                default:
                     return typeof(UInt256);
             }
         }

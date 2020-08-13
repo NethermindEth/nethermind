@@ -17,6 +17,7 @@
 using System;
 using System.Numerics;
 using Nethermind.Core.Extensions;
+using Nethermind.Int256;
 
 namespace Nethermind.Abi
 {
@@ -38,7 +39,7 @@ namespace Nethermind.Abi
 
         public override (object, int) Decode(byte[] data, int position, bool packed)
         {
-            BigInteger length;
+            UInt256 length;
             (length, position) = UInt256.DecodeUInt(data, position, packed);
 
             Array result = Array.CreateInstance(ElementType.CSharpType, (int)length);

@@ -32,15 +32,15 @@ namespace Nethermind.AuRa.Test
         {
             get
             {
-                yield return new TestCaseData(1, 0, 0).Returns(new UInt256(0, 0, ulong.MaxValue, ulong.MaxValue - 1));
-                yield return new TestCaseData(10, 0, 0).Returns(new UInt256(0, 0, ulong.MaxValue, ulong.MaxValue - 10));
-                yield return new TestCaseData(10, 9, 0).Returns(new UInt256(0, 0, ulong.MaxValue, ulong.MaxValue - 1));
-                yield return new TestCaseData(100, 10, 0).Returns(new UInt256(0, 0, ulong.MaxValue, ulong.MaxValue - 90));
+                yield return new TestCaseData(1, 0, 0).Returns(new UInt256(ulong.MaxValue - 1, ulong.MaxValue, 0, 0));
+                yield return new TestCaseData(10, 0, 0).Returns(new UInt256(ulong.MaxValue - 10, ulong.MaxValue, 0, 0));
+                yield return new TestCaseData(10, 9, 0).Returns(new UInt256(ulong.MaxValue - 1, ulong.MaxValue, 0, 0));
+                yield return new TestCaseData(100, 10, 0).Returns(new UInt256(ulong.MaxValue - 90, ulong.MaxValue, 0, 0));
 
-                yield return new TestCaseData(1, 0, 1).Returns(new UInt256(0, 0, ulong.MaxValue, ulong.MaxValue));
-                yield return new TestCaseData(10, 0, 5).Returns(new UInt256(0, 0, ulong.MaxValue, ulong.MaxValue - 5));
-                yield return new TestCaseData(10, 9, 3).Returns(new UInt256(0, 1, 0, 1));
-                yield return new TestCaseData(100, 10, 10).Returns(new UInt256(0, 0, ulong.MaxValue, ulong.MaxValue - 80));
+                yield return new TestCaseData(1, 0, 1).Returns(new UInt256(ulong.MaxValue, ulong.MaxValue, 0, 0));
+                yield return new TestCaseData(10, 0, 5).Returns(new UInt256(ulong.MaxValue - 5, ulong.MaxValue, 0, 0));
+                yield return new TestCaseData(10, 9, 3).Returns(new UInt256(1, 0, 1, 0));
+                yield return new TestCaseData(100, 10, 10).Returns(new UInt256(ulong.MaxValue - 80, ulong.MaxValue, 0, 0));
             }
         }
 
