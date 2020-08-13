@@ -17,8 +17,6 @@
 using System;
 using System.Numerics;
 using Nethermind.Core.Extensions;
-using Nethermind.Dirichlet.Numerics;
-using Nethermind.Int256;
 
 namespace Nethermind.Abi
 {
@@ -72,8 +70,6 @@ namespace Nethermind.Abi
                     return ((int) value, length);
                 case { } n when n <= 64:
                     return ((long) value, length);
-                case { } n when n <= 128:
-                    return ((Int128) value, length);
                 default:
                     return (value, length);
             }
@@ -109,8 +105,6 @@ namespace Nethermind.Abi
                     return typeof(int);
                 case { } n when n <= 64:
                     return typeof(long);
-                case { } n when n <= 128:
-                    return typeof(Int128);
                 default:
                     return typeof(BigInteger);
             }

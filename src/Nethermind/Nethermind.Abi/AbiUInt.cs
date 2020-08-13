@@ -18,8 +18,7 @@ using System;
 using System.Buffers.Binary;
 using System.Numerics;
 using Nethermind.Core.Extensions;
-using Nethermind.Dirichlet.Numerics;
-using UInt256 = Nethermind.Int256.UInt256;
+using Nethermind.Int256;
 
 namespace Nethermind.Abi
 {
@@ -73,12 +72,8 @@ namespace Nethermind.Abi
                     return ((uint) value, length);
                 case { } n when n <= 64:
                     return ((ulong) value, length);
-                case { } n when n <= 128:
-                    return ((UInt128) value, length);
                 case { } n when n <= 256:
                     return ((UInt256) value, length);
-                default:
-                    return (value, length);
             }
         }
 
@@ -152,11 +147,9 @@ namespace Nethermind.Abi
                 case { } n when n <= 64:
                     return typeof(ulong);
                 case { } n when n <= 128:
-                    return typeof(UInt128);
+                    return typeof(UInt256);
                 case { } n when n <= 256:
                     return typeof(UInt256);
-                default:
-                    return typeof(BigInteger);
             }
         }
     }
