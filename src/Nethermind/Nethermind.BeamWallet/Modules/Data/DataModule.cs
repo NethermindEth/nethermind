@@ -55,7 +55,7 @@ namespace Nethermind.BeamWallet.Modules.Data
             _ethJsonRpcClientProxy = ethJsonRpcClientProxy;
             _address = new Address(address);
             _process = process;
-            _timer = new Timer(Update, null, TimeSpan.Zero, TimeSpan.FromSeconds(5));
+            _timer = new Timer(Update, null, TimeSpan.Zero, TimeSpan.FromSeconds(2));
         }
 
         public async Task<Window> InitAsync()
@@ -202,13 +202,13 @@ namespace Nethermind.BeamWallet.Modules.Data
             _window.Add(_balanceValueLabel);
             var tokensSyncingInfoLabel = new Label(1, 3, "Tokens balance syncing...");
             var netVersionResult = await _ethJsonRpcClientProxy.net_version();
-            if (netVersionResult.Result == "1")
-            {
-                _window.Add(tokensSyncingInfoLabel);
-                await SetLatestBlockNumber();
-                await GetTokensBalanceAsync();
-                _window.Remove(tokensSyncingInfoLabel);
-            }
+            // if (netVersionResult.Result == "1")
+            // {
+            //     _window.Add(tokensSyncingInfoLabel);
+            //     await SetLatestBlockNumber();
+            //     await GetTokensBalanceAsync();
+            //     _window.Remove(tokensSyncingInfoLabel);
+            // }
 
             AddButtons();
         }

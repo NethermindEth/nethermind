@@ -267,7 +267,6 @@ namespace Nethermind.BeamWallet.Modules.Transfer
             {
                 return;
             }
-
             await GetAverageGasPriceAsync();
             await GetTransactionCountAsync();
             _transactionValue = decimal.Parse(_value);
@@ -451,11 +450,10 @@ namespace Nethermind.BeamWallet.Modules.Transfer
                 return false;
             }
 
-            var unlockInfoLbl = new Label(1, 14, "Account unlocked.");
-            _transferWindow.Add(unlockInfoLbl);
+            _unlockInfoLbl = new Label(1, 14, "Account unlocked.");
+            _transferWindow.Add(_unlockInfoLbl);
 
-            DeleteLabels();
-            AddButtons();
+            DeleteButtons();
             return true;
         }
 
