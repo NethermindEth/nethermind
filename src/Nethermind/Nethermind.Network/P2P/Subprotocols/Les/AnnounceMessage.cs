@@ -1,5 +1,5 @@
 ﻿using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using System;
 using System.Collections.Generic;
 using System.Text;

@@ -20,7 +20,7 @@ using System.Timers;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.TxPool;
 
@@ -76,7 +76,7 @@ namespace Nethermind.Blockchain.Test
             tx.GasPrice = 1;
             tx.GasLimit = 21000;
             tx.To = new Address(0x0f.ToBigEndianByteArray().PadLeft(20));
-            tx.Nonce = _nonce++;
+            tx.Nonce = _nonce + 1;
             tx.Value = 1;
             tx.Data = Array.Empty<byte>();
             tx.Nonce = _count++;

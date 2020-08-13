@@ -20,7 +20,7 @@ using Jint.Native;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.Cli.Modules
@@ -35,7 +35,7 @@ namespace Nethermind.Cli.Modules
             TransactionForRpc tx = new TransactionForRpc();
             tx.Value = amountInWei;
             tx.Gas = Transaction.BaseTxGasCost;
-            tx.GasPrice = (UInt256) Engine.JintEngine.GetValue("gasPrice").AsNumber();
+            tx.GasPrice = (UInt256)Engine.JintEngine.GetValue("gasPrice").AsNumber();
             tx.To = address;
             tx.Nonce = (ulong) NodeManager.Post<long>("eth_getTransactionCount", from, blockNumber).Result;
             tx.From = from;
@@ -83,7 +83,7 @@ namespace Nethermind.Cli.Modules
         [CliFunction("eth", "sendEth")]
         public string SendEth(string from, string to, decimal amountInEth)
         {
-            return SendEth(CliParseAddress(from), CliParseAddress(to), (UInt256) (amountInEth * (decimal) 1.Ether()));
+            return SendEth(CliParseAddress(from), CliParseAddress(to), (UInt256) (amountInEth * (decimal)(BigInteger) 1.Ether()));
         }
 
         [CliFunction("eth", "estimateGas")]

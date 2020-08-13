@@ -28,7 +28,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 
 namespace Nethermind.Core.Extensions
 {
@@ -416,8 +416,7 @@ namespace Nethermind.Core.Extensions
 
         public static UInt256 ToUInt256(this byte[] bytes)
         {
-            UInt256.CreateFromBigEndian(out UInt256 result, bytes);
-            return result;
+            return new UInt256(bytes, true);
         }
 
         private static byte Reverse(byte b)

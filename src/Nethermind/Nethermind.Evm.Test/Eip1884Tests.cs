@@ -20,7 +20,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.State;
 using Nethermind.Db.Blooms;
 using NUnit.Framework;

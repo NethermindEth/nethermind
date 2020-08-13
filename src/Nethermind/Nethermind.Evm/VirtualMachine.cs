@@ -24,7 +24,7 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Precompiles.Bls.Shamatar;
 using Nethermind.Evm.Precompiles.Snarks.Shamatar;
@@ -664,8 +664,8 @@ namespace Nethermind.Evm
 
                         stack.PopUInt256(out UInt256 b);
                         stack.PopUInt256(out UInt256 a);
-                        UInt256.Add(out UInt256 c, ref a, ref b, false);
-                        stack.PushUInt256(ref c);
+                        UInt256.Add(in a, in b, out UInt256 c);
+                        stack.PushUInt256(c);
 
                         break;
                     }
@@ -695,7 +695,7 @@ namespace Nethermind.Evm
                         stack.PopUInt256(out UInt256 b);
                         UInt256 result = a - b;
 
-                        stack.PushUInt256(ref result);
+                        stack.PushUInt256(in result);
                         break;
                     }
                     case Instruction.DIV:
@@ -1236,7 +1236,7 @@ namespace Nethermind.Evm
 
                         Address address = stack.PopAddress();
                         UInt256 balance = _state.GetBalance(address);
-                        stack.PushUInt256(ref balance);
+                        stack.PushUInt256(in balance);
                         break;
                     }
                     case Instruction.CALLER:
@@ -1259,7 +1259,7 @@ namespace Nethermind.Evm
                         }
 
                         UInt256 callValue = env.Value;
-                        stack.PushUInt256(ref callValue);
+                        stack.PushUInt256(in callValue);
                         break;
                     }
                     case Instruction.ORIGIN:
@@ -1354,7 +1354,7 @@ namespace Nethermind.Evm
                         }
 
                         UInt256 gasPrice = env.GasPrice;
-                        stack.PushUInt256(ref gasPrice);
+                        stack.PushUInt256(in gasPrice);
                         break;
                     }
                     case Instruction.EXTCODESIZE:
@@ -1368,7 +1368,7 @@ namespace Nethermind.Evm
                         Address address = stack.PopAddress();
                         byte[] accountCode = GetCachedCodeInfo(address, spec).MachineCode;
                         UInt256 codeSize = (UInt256)accountCode.Length;
-                        stack.PushUInt256(ref codeSize);
+                        stack.PushUInt256(in codeSize);
                         break;
                     }
                     case Instruction.EXTCODECOPY:
@@ -1428,7 +1428,7 @@ namespace Nethermind.Evm
 
                         UpdateMemoryCost(ref dest, length);
 
-                        if (UInt256.AddWouldOverflow(ref length, ref src) || length + src > _returnDataBuffer.Length)
+                        if (UInt256.AddOverflow(length, src, out UInt256 newLength) || newLength > _returnDataBuffer.Length)
                         {
                             return CallResult.AccessViolationException;
                         }
@@ -1483,7 +1483,7 @@ namespace Nethermind.Evm
                         }
 
                         UInt256 diff = env.CurrentBlock.Difficulty;
-                        stack.PushUInt256(ref diff);
+                        stack.PushUInt256(in diff);
                         break;
                     }
                     case Instruction.TIMESTAMP:
@@ -1495,7 +1495,7 @@ namespace Nethermind.Evm
                         }
 
                         UInt256 timestamp = env.CurrentBlock.Timestamp;
-                        stack.PushUInt256(ref timestamp);
+                        stack.PushUInt256(in timestamp);
                         break;
                     }
                     case Instruction.NUMBER:
@@ -1507,7 +1507,7 @@ namespace Nethermind.Evm
                         }
 
                         UInt256 blockNumber = (UInt256) env.CurrentBlock.Number;
-                        stack.PushUInt256(ref blockNumber);
+                        stack.PushUInt256(in blockNumber);
                         break;
                     }
                     case Instruction.GASLIMIT:
@@ -1519,7 +1519,7 @@ namespace Nethermind.Evm
                         }
 
                         UInt256 gasLimit = (UInt256) env.CurrentBlock.GasLimit;
-                        stack.PushUInt256(ref gasLimit);
+                        stack.PushUInt256(in gasLimit);
                         break;
                     }
                     case Instruction.CHAINID:
@@ -1554,7 +1554,7 @@ namespace Nethermind.Evm
                         }
 
                         UInt256 balance = _state.GetBalance(env.ExecutingAccount);
-                        stack.PushUInt256(ref balance);
+                        stack.PushUInt256(in balance);
                         break;
                     }
                     case Instruction.POP:
@@ -1849,7 +1849,7 @@ namespace Nethermind.Evm
                         }
 
                         UInt256 size = vmState.Memory.Size;
-                        stack.PushUInt256(ref size);
+                        stack.PushUInt256(in size);
                         break;
                     }
                     case Instruction.GAS:
@@ -1861,7 +1861,7 @@ namespace Nethermind.Evm
                         }
 
                         UInt256 gas = (UInt256) gasAvailable;
-                        stack.PushUInt256(ref gas);
+                        stack.PushUInt256(in gas);
                         break;
                     }
                     case Instruction.JUMPDEST:
@@ -2463,7 +2463,8 @@ namespace Nethermind.Evm
                         else
                         {
                             stack.PopUInt256(out UInt256 b);
-                            BigInteger res = b << (int) a.S0;
+                            // BigInteger res = b << (int) a.S0;
+                            BigInteger res = (BigInteger)(b << (int) a.u0);
                             stack.PushSignedInt(in res);
                         }
 
@@ -2492,8 +2493,8 @@ namespace Nethermind.Evm
                         else
                         {
                             stack.PopUInt256(out UInt256 b);
-                            UInt256 res = b >> (int) a.S0;
-                            stack.PushUInt256(ref res);
+                            UInt256 res = b >> (int) a.u0;
+                            stack.PushUInt256(in res);
                         }
 
                         break;

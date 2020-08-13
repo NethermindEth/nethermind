@@ -18,7 +18,7 @@ using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.State.Proofs;
 

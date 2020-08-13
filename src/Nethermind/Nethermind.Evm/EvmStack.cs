@@ -20,9 +20,8 @@ using System.Collections.Generic;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Evm.Tracing;
-using Org.BouncyCastle.Security;
 
 namespace Nethermind.Evm
 {
@@ -95,7 +94,7 @@ namespace Nethermind.Evm
 
         public void PushByte(byte value)
         {
-            if (_tracer.IsTracingInstructions) _tracer.ReportStackPush(new byte[] {value});
+            if (_tracer.IsTracingInstructions) _tracer.ReportStackPush(new [] {value});
             
             Span<byte> word = _bytes.Slice(Head * 32, 32);
             word.Clear();
@@ -154,7 +153,7 @@ namespace Nethermind.Evm
             }
         }
         
-        public void PushUInt256(ref UInt256 value)
+        public void PushUInt256(in UInt256 value)
         {
             Span<byte> word = _bytes.Slice(Head * 32, 32);
             value.ToBigEndian(word);
@@ -214,7 +213,7 @@ namespace Nethermind.Evm
 
         public void PopUInt256(out UInt256 result)
         {
-            UInt256.CreateFromBigEndian(out result, PopBytes());
+            result = new UInt256(PopBytes(), true);
         }
 
         public void PopUInt(out BigInteger result)

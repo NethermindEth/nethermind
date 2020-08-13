@@ -19,6 +19,7 @@ using System.Buffers.Binary;
 using System.Numerics;
 using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
+using UInt256 = Nethermind.Int256.UInt256;
 
 namespace Nethermind.Abi
 {

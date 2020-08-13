@@ -14,7 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 
 namespace Nethermind.Consensus.AuRa
 {
@@ -24,7 +24,7 @@ namespace Nethermind.Consensus.AuRa
 
         static AuraDifficultyCalculator()
         {
-            UInt256.Create(out MaxDifficulty, UInt128.MaxValue, UInt128.Zero);
+            MaxDifficulty = new UInt256(ulong.MaxValue, ulong.MaxValue, 0, 0);
         }
 
         public static UInt256 CalculateDifficulty(long parentStep, long currentStep, long emptyStepsCount = 0L) =>

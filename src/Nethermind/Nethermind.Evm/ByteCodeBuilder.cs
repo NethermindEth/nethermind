@@ -19,7 +19,7 @@ using System.Collections.Generic;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 
 namespace Nethermind.Evm
 {
@@ -189,6 +189,15 @@ namespace Nethermind.Evm
         public Prepare PushData(BigInteger data)
         {
             PushData(data.ToBigEndianByteArray());
+            return this;
+        }
+        
+        public Prepare PushData(UInt256 data)
+        {
+            Span<byte> bytes = stackalloc byte[32];
+            data.ToBigEndian(bytes);
+            
+            PushData(bytes.ToArray());
             return this;
         }
 

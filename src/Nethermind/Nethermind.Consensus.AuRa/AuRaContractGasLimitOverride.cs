@@ -21,7 +21,7 @@ using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Logging;
 
 namespace Nethermind.Consensus.AuRa
@@ -34,12 +34,7 @@ namespace Nethermind.Consensus.AuRa
         {
             get
             {
-                if (!_minimalContractGasLimit.HasValue)
-                {
-                    UInt256.Create(out var min, 2_000_000L);
-                    _minimalContractGasLimit = min;
-                }
-
+                _minimalContractGasLimit ??= 2_000_000L;
                 return _minimalContractGasLimit.Value;
             }
         }

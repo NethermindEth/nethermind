@@ -20,7 +20,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 
 namespace Nethermind.Consensus.AuRa.Validators
 {

@@ -17,7 +17,7 @@
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.DataMarketplace.Core.Domain;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 
 namespace Nethermind.DataMarketplace.Core.Services
 {

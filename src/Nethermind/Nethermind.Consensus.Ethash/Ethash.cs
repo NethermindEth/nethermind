@@ -168,7 +168,7 @@ namespace Nethermind.Consensus.Ethash
 
             ulong fullSize = GetDataSize(epoch);
             ulong nonce = startNonce ?? GetRandomNonce();
-            BigInteger target = BigInteger.Divide(_2To256, header.Difficulty);
+            BigInteger target = BigInteger.Divide(_2To256, (BigInteger)header.Difficulty);
             Keccak headerHashed = GetTruncatedHash(header);
 
             // parallel for (just with ulong...) - adjust based on the available mining threads, low priority
@@ -242,7 +242,7 @@ namespace Nethermind.Consensus.Ethash
                 return false;
             }
 
-            BigInteger threshold = BigInteger.Divide(BigInteger.Pow(2, 256), header.Difficulty);
+            BigInteger threshold = BigInteger.Divide(BigInteger.Pow(2, 256), (BigInteger)header.Difficulty);
             return IsLessThanTarget(result, threshold);
         }
 

@@ -19,7 +19,7 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.DataMarketplace.Core.Services;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Facade;
 using Nethermind.TxPool;
 using NSubstitute;

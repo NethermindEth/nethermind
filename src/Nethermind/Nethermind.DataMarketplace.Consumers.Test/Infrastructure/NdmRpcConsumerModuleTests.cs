@@ -40,7 +40,7 @@ using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Core.Services.Models;
 using Nethermind.DataMarketplace.Infrastructure.Rpc.Models;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Facade;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -433,7 +433,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         public async Task request_eth_should_return_true()
         {
             var address = TestItem.AddressA;
-            var value = 1.Ether();
+            UInt256 value = 1.Ether();
             _ethRequestService.TryRequestEthAsync(address, value).Returns(FaucetResponse.RequestCompleted(null));
             var result = await _rpc.ndm_requestEth(address);
             await _ethRequestService.Received().TryRequestEthAsync(address, value);

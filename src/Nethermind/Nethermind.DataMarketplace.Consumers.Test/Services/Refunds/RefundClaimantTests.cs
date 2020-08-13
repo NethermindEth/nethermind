@@ -27,7 +27,7 @@ using Nethermind.DataMarketplace.Consumers.Refunds.Services;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Test;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
