@@ -168,7 +168,6 @@ namespace Nethermind.BeamWallet.Modules.Addresses
             _runnerOnInfo = new Label(3, 1, "Nethermind Runner is running.");
             _mainWindow.Add(_runnerOnInfo);
         }
-
         private void AddInfo()
         {
             var beamWalletInfo = new Label(3, 1, "Hello, Welcome to Nethermind Beam Wallet - a simple " +
@@ -267,7 +266,6 @@ namespace Nethermind.BeamWallet.Modules.Addresses
             };
             _mainWindow.Add(addressLabel, nodeAddressLabel, nodeAddressTextField,
                 addressTextField, okButton, quitButton);
-
             return Task.FromResult(_mainWindow);
         }
 

@@ -135,7 +135,6 @@ namespace Nethermind.BeamWallet.Modules.Data
                     _window.Remove(token.Label);
                 }
             }
-
             var tokens = await Task.WhenAll(tasks);
             foreach (var token in tokens.Where(t => t is {}))
             {
@@ -144,7 +143,6 @@ namespace Nethermind.BeamWallet.Modules.Data
                 {
                     _window.Remove(token.Label);
                 }
-
                 token.Label = new Label(1, position, $"{token.Name}: {token.Balance}");
                 _window.Add(token.Label);
             }

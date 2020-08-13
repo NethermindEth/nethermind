@@ -241,7 +241,6 @@ namespace Nethermind.BeamWallet.Modules.Transfer
                 Application.Top.Running = false;
                 Application.RequestStop();
             };
-
             var versionInfo = new Label(1, 11, "Beta version, Please check our docs: " +
                                                "https://docs.nethermind.io/nethermind/guides-and-helpers/beam-wallet");
 
@@ -414,46 +413,49 @@ namespace Nethermind.BeamWallet.Modules.Transfer
                 return false;
             }
 
-            return await ValidatePassword(_passphrase);
+            return await ValidatePassword();
         }
 
-        private async Task<bool> ValidatePassword(string passphrase)
+        private async Task<bool> ValidatePassword()
         {
-            if (string.IsNullOrEmpty(passphrase))
+            if (string.IsNullOrEmpty(_passphrase))
             {
                 MessageBox.ErrorQuery(40, 7, "Error", "Passphrase can not be empty." +
                                                       $"{Environment.NewLine}(ESC to close)");
+                AddButtons();
                 return false;
             }
-
+            
             _unlockFailedLbl = new Label(1, 13, "personal_unlockAccount: fetching...");
             _transferWindow.Add(_unlockFailedLbl);
-
+            
             RpcResult<bool> unlockAccountResult;
             do
             {
                 unlockAccountResult = await _jsonRpcWalletClientProxy.personal_unlockAccount(_address, _passphrase);
                 if (!unlockAccountResult.IsValid)
                 {
-                    await Task.Delay(2000);
+                    await Task.Delay(3000);
                 }
             } while (!unlockAccountResult.IsValid);
-
-            _transferWindow.Remove(_unlockFailedLbl);
-
+            _transferWindow.Remove(_unlockFailedLbl);           
+            
             if (!unlockAccountResult.Result)
             {
                 MessageBox.ErrorQuery(40, 8, "Error",
                     $"Unlocking account failed." +
                     $"{Environment.NewLine}Make sure you have pasted your Keystore File into keystore folder." +
                     $"{Environment.NewLine}(ESC to close)");
+                DeleteLabels();
                 AddButtons();
                 return false;
             }
 
-            _unlockInfoLbl = new Label(1, 14, "Account unlocked.");
-            _transferWindow.Add(_unlockInfoLbl);
+            var unlockInfoLbl = new Label(1, 14, "Account unlocked.");
+            _transferWindow.Add(unlockInfoLbl);
 
+            DeleteLabels();
+            AddButtons();
             return true;
         }
 
