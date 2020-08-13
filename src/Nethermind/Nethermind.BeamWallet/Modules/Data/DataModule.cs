@@ -202,13 +202,13 @@ namespace Nethermind.BeamWallet.Modules.Data
             _window.Add(_balanceValueLabel);
             var tokensSyncingInfoLabel = new Label(1, 3, "Tokens balance syncing...");
             var netVersionResult = await _ethJsonRpcClientProxy.net_version();
-            // if (netVersionResult.Result == "1")
-            // {
-            //     _window.Add(tokensSyncingInfoLabel);
-            //     await SetLatestBlockNumber();
-            //     await GetTokensBalanceAsync();
-            //     _window.Remove(tokensSyncingInfoLabel);
-            // }
+            if (netVersionResult.Result == "1")
+            {
+                _window.Add(tokensSyncingInfoLabel);
+                await SetLatestBlockNumber();
+                await GetTokensBalanceAsync();
+                _window.Remove(tokensSyncingInfoLabel);
+            }
 
             AddButtons();
         }
