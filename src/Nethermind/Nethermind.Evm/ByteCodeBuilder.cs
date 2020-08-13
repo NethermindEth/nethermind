@@ -41,7 +41,7 @@ namespace Nethermind.Evm
             return this;
         }
 
-        public Prepare Create(byte[] code, BigInteger value)
+        public Prepare Create(byte[] code, UInt256 value)
         {
             StoreDataInMemory(0, code);
             PushData(code.Length);
@@ -51,7 +51,7 @@ namespace Nethermind.Evm
             return this;
         }
 
-        public Prepare Create2(byte[] code, byte[] salt, BigInteger value)
+        public Prepare Create2(byte[] code, byte[] salt, UInt256 value)
         {
             StoreDataInMemory(0, code);
             PushData(salt);
@@ -185,11 +185,15 @@ namespace Nethermind.Evm
             PushData(address.Bytes);
             return this;
         }
-
-        public Prepare PushData(BigInteger data)
+        
+        public Prepare PushData(int data)
         {
-            PushData(data.ToBigEndianByteArray());
-            return this;
+            return PushData((UInt256) data);
+        }
+        
+        public Prepare PushData(long data)
+        {
+            return PushData((UInt256) data);
         }
         
         public Prepare PushData(UInt256 data)

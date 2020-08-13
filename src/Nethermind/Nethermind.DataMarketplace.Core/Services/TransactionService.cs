@@ -82,7 +82,7 @@ namespace Nethermind.DataMarketplace.Core.Services
             
             var hash = await UpdateAsync(transactionHash, transaction =>
             {
-                gasPrice = new UInt256(multiplier * (BigInteger) transaction.GasPrice / 100);
+                gasPrice = multiplier * transaction.GasPrice / 100;
                 transaction.GasPrice = gasPrice;
                 transaction.GasLimit = gasLimit;
                 transaction.Data = null;

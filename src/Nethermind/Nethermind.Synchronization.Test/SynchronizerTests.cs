@@ -468,7 +468,7 @@ namespace Nethermind.Synchronization.Test
             public SyncingContext AfterNewBlockMessage(Block block, ISyncPeer peer)
             {
                 _logger.Info($"NEW BLOCK MESSAGE {block.Number}");
-                block.Header.TotalDifficulty = (UInt256) (block.Difficulty * ((BigInteger) block.Number + 1));
+                block.Header.TotalDifficulty = block.Difficulty * (ulong)(block.Number + 1);
                 SyncServer.AddNewBlock(block, peer);
                 return this;
             }

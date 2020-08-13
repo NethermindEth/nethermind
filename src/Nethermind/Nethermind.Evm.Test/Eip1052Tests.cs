@@ -212,7 +212,7 @@ namespace Nethermind.Evm.Test
 
             Execute(code);
 
-            AssertStorage(0, 0);
+            AssertStorage(UInt256.Zero, UInt256.Zero);
             Assert.False(TestState.AccountExists(TestItem.AddressC), "did not test the right thing - it was not an empty account + touch scenario");
         }
 

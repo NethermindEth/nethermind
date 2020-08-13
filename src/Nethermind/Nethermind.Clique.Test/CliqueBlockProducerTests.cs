@@ -404,7 +404,7 @@ namespace Nethermind.Clique.Test
                 transaction.To = TestItem.AddressC;
                 transaction.GasLimit = 30000;
                 transaction.GasPrice = 20.GWei();
-                transaction.Nonce = _currentNonce++;
+                transaction.Nonce = _currentNonce + 1;
                 transaction.SenderAddress = TestItem.PrivateKeyD.Address;
                 transaction.Hash = transaction.CalculateHash();
                 _ethereumEcdsa.Sign(TestItem.PrivateKeyD, transaction, true);

@@ -682,7 +682,7 @@ storage: 10075208144087594565017167249218046892267736431914869828855077415926031
                 for (int j = 0; j < i; j++)
                 {
                     byte[] storageIndex = random.GenerateRandomBytes(32);
-                    UInt256.CreateFromBigEndian(out UInt256 index, storageIndex);
+                    UInt256 index = new UInt256(storageIndex);
                     StorageCell storageCell = new StorageCell(addressWithStorage.Address, index);
                     addressWithStorage.StorageCells[j] = storageCell;
                 }

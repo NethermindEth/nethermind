@@ -184,7 +184,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             transaction.Value.Should().Be(0);
             transaction.GasLimit.Should().Be(21000);
             var expectedGasPrice = _config.CancelTransactionGasPricePercentageMultiplier * (BigInteger) gasPrice / 100;
-            transaction.GasPrice.Should().Be(new UInt256(expectedGasPrice));
+            transaction.GasPrice.Should().Be((UInt256)expectedGasPrice);
             await _blockchainBridge.Received().GetTransactionAsync(transactionHash);
             await _blockchainBridge.Received().GetNetworkIdAsync();
             await _blockchainBridge.Received().SendOwnTransactionAsync(transaction);
