@@ -1294,8 +1294,8 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        BigInteger callDataSize = env.InputData.Length;
-                        stack.PushUInt(ref callDataSize);
+                        UInt256 callDataSize = env.InputData.Length;
+                        stack.PushUInt256(in callDataSize);
                         break;
                     }
                     case Instruction.CALLDATACOPY:
