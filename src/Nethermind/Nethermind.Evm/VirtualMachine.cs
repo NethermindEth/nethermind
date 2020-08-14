@@ -2181,7 +2181,7 @@ namespace Nethermind.Evm
                             return CallResult.InvalidInstructionException;
                         }
 
-                        stack.PopUInt(out BigInteger gasLimit);
+                        stack.PopUInt256(out UInt256 gasLimit);
                         Address codeSource = stack.PopAddress();
                         UInt256 callValue;
                         switch (instruction)
@@ -2254,7 +2254,7 @@ namespace Nethermind.Evm
 
                         if (spec.IsEip150Enabled)
                         {
-                            gasLimit = BigInteger.Min(gasAvailable - gasAvailable / 64L, gasLimit);
+                            gasLimit = UInt256.Min((UInt256)(gasAvailable - gasAvailable / 64), gasLimit);
                         }
 
                         long gasLimitUl = (long) gasLimit;
