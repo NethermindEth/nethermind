@@ -878,7 +878,7 @@ namespace Nethermind.Evm
                         }
                         else
                         {
-                            UInt256.Exp(baseInt, new UInt256(exp), out UInt256 res);
+                            UInt256.Exp(baseInt, new UInt256(exp, true), out UInt256 res);
                             stack.PushUInt256(in res);
                         }
 
