@@ -9,7 +9,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Clone docker-compose 
-      run: git submodule update --init src/Dirichlet src/rocksdb-sharp
+      run: git submodule update --init src/Dirichlet src/int256 src/rocksdb-sharp
     - name: Installing Linux packages
       run: |
         sudo apt-get update
