@@ -849,7 +849,7 @@ namespace Nethermind.Evm
 
                         Metrics.ModExpOpcode++;
 
-                        stack.PopUInt(out BigInteger baseInt);
+                        stack.PopUInt256(out UInt256 baseInt);
                         Span<byte> exp = stack.PopBytes();
 
                         int leadingZeros = exp.LeadingZerosCount();
@@ -878,8 +878,8 @@ namespace Nethermind.Evm
                         }
                         else
                         {
-                            BigInteger res = BigInteger.ModPow(baseInt, exp.ToUnsignedBigInteger(), P256Int);
-                            stack.PushUInt(ref res);
+                            UInt256.Exp(baseInt, new UInt256(exp), out UInt256 res);
+                            stack.PushUInt256(in res);
                         }
 
                         break;
