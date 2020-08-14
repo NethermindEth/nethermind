@@ -69,7 +69,7 @@ namespace Nethermind.Evm
                 throw new EvmStackOverflowException();
             }
         }
-        
+
         public void PushBytes(in ZeroPaddedSpan value)
         {
             if (_tracer.IsTracingInstructions) _tracer.ReportStackPush(value.ToArray().AsSpan());
@@ -94,8 +94,8 @@ namespace Nethermind.Evm
 
         public void PushByte(byte value)
         {
-            if (_tracer.IsTracingInstructions) _tracer.ReportStackPush(new [] {value});
-            
+            if (_tracer.IsTracingInstructions) _tracer.ReportStackPush(new[] {value});
+
             Span<byte> word = _bytes.Slice(Head * 32, 32);
             word.Clear();
             word[31] = value;
@@ -140,10 +140,10 @@ namespace Nethermind.Evm
         {
             Span<byte> word = _bytes.Slice(Head * 32, 28);
             word.Clear();
-            
+
             Span<byte> intPlace = _bytes.Slice(Head * 32 + 28, 4);
             BinaryPrimitives.WriteInt32BigEndian(intPlace, value);
-            
+
             if (_tracer.IsTracingInstructions) _tracer.ReportStackPush(word);
 
             if (++Head >= MaxStackSize)
@@ -152,7 +152,7 @@ namespace Nethermind.Evm
                 throw new EvmStackOverflowException();
             }
         }
-        
+
         public void PushUInt256(in UInt256 value)
         {
             Span<byte> word = _bytes.Slice(Head * 32, 32);
@@ -165,6 +165,11 @@ namespace Nethermind.Evm
                 Metrics.EvmExceptions++;
                 throw new EvmStackOverflowException();
             }
+        }
+
+        public void PushSignedInt256(in Int256.Int256 value)
+        {
+            PushUInt256((UInt256) value);
         }
 
         public void PushSignedInt(in BigInteger value)
@@ -183,7 +188,7 @@ namespace Nethermind.Evm
             }
             else
             {
-                word.Fill(0xff);    
+                word.Fill(0xff);
             }
 
             Span<byte> fullBytes = stackalloc byte[33];
@@ -215,7 +220,7 @@ namespace Nethermind.Evm
         {
             result = new Int256.Int256(PopBytes(), true);
         }
-        
+
         public void PopUInt256(out UInt256 result)
         {
             result = new UInt256(PopBytes(), true);
@@ -358,8 +363,8 @@ namespace Nethermind.Evm
                 PushZero();
                 return;
             }
-            
-            Span<byte> word =  _bytes.Slice(Head * 32, 32);
+
+            Span<byte> word = _bytes.Slice(Head * 32, 32);
             Span<byte> test = stackalloc byte[32];
             value.TryWriteBytes(test, out int bytesWritten, true, true);
             if (bytesWritten == 32)
@@ -369,8 +374,8 @@ namespace Nethermind.Evm
             else
             {
                 word.Clear();
-                Span<byte> target =  word.Slice(32 - bytesWritten, bytesWritten);
-                test.Slice(0, bytesWritten).CopyTo(target);    
+                Span<byte> target = word.Slice(32 - bytesWritten, bytesWritten);
+                test.Slice(0, bytesWritten).CopyTo(target);
             }
 
             if (_tracer.IsTracingInstructions) _tracer.ReportStackPush(word);

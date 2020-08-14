@@ -41,9 +41,10 @@ namespace Nethermind.Evm
         public const int MaxCallDepth = 1024;
 
         private bool _simdOperationsEnabled = Vector<byte>.Count == 32;
-        private BigInteger P255Int = BigInteger.Pow(2, 255);
+        private UInt256 P255Int = (UInt256)BigInteger.Pow(2, 255);
         private BigInteger P256Int = BigInteger.Pow(2, 256);
-        private BigInteger P255 => P255Int;
+        private UInt256 P255 => P255Int;
+        private Int256.Int256 SignedP255 => new Int256.Int256(P255Int);
         private BigInteger BigInt256 = 256;
         // public BigInteger BigInt32 = 32;
         public UInt256 BigInt32 = 32;
@@ -729,21 +730,22 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        stack.PopInt(out BigInteger a);
-                        stack.PopInt(out BigInteger b);
+                        stack.PopUInt256(out UInt256 a);
+                        stack.PopSignedInt256(out Int256.Int256 b);
                         if (b.IsZero)
                         {
                             stack.PushZero();
                         }
-                        else if (b == BigInteger.MinusOne && a == P255Int)
+                        else if (b == Int256.Int256.MinusOne && a == P255)
                         {
-                            BigInteger res = P255;
-                            stack.PushUInt(ref res);
+                            UInt256 res = P255;
+                            stack.PushUInt256(in res);
                         }
                         else
                         {
-                            BigInteger res = BigInteger.Divide(a, b);
-                            stack.PushSignedInt(in res);
+                            Int256.Int256 signedA = new Int256.Int256(a);
+                            Int256.Int256.Divide(in signedA, in b, out Int256.Int256 res);
+                            stack.PushSignedInt256(in res);
                         }
 
                         break;
