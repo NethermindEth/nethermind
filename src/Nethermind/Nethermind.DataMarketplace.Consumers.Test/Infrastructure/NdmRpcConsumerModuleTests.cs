@@ -694,7 +694,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             deposit.Deposit.Should().NotBeNull();
             deposit.Deposit.Id.Should().Be(Keccak.OfAnEmptyString);
             deposit.Deposit.Units.Should().Be((uint?)1);
-            deposit.Deposit.Value.Should().Be((BigInteger?)BigInteger.One);
+            deposit.Deposit.Value.Should().Be((UInt256?)UInt256.One);
             deposit.Deposit.ExpiryTime.Should().Be((uint?)DepositExpiryTime);
             deposit.Timestamp.Should().Be(1);
             deposit.Transaction.Hash.Should().Be(TestItem.KeccakA);
@@ -718,7 +718,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             dataAsset.Id.Should().NotBeNull();
             dataAsset.Name.Should().Be("test");
             dataAsset.Description.Should().Be("test");
-            dataAsset.UnitPrice.Should().Be((BigInteger?)BigInteger.One);
+            dataAsset.UnitPrice.Should().Be((UInt256?)UInt256.One);
             dataAsset.UnitType.Should().Be(DataAssetUnitType.Unit.ToString().ToLowerInvariant());
             dataAsset.QueryType.Should().Be(QueryType.Stream.ToString().ToLowerInvariant());
             dataAsset.MinUnits.Should().Be(0);
@@ -753,7 +753,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
 
         private static DepositReportItem GetDepositReportItem()
             => new DepositReportItem(Keccak.Zero, TestItem.KeccakA, "test", TestItem.AddressA,
-                "test", 1, 1, TestItem.AddressB, 1, DepositExpiryTime, false, TestItem.KeccakA,
+                "test", 1, 2, TestItem.AddressB, 1, DepositExpiryTime, false, TestItem.KeccakA,
                 1, 1, 1, true, false, TestItem.KeccakB, false, 1, new[]
                 {
                     new DataDeliveryReceiptReportItem(Keccak.Zero, 1, TestItem.KeccakC, TestItem.PublicKeyA,

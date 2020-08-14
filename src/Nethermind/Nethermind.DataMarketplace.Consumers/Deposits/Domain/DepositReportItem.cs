@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Numerics;
 using Nethermind.Core;
@@ -102,7 +103,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Domain
             {
                 ClaimedUnits = 1 + Receipts.Max(r => r.Request.UnitsRange.To) -
                                Receipts.Min(r => r.Request.UnitsRange.From);
-                ClaimedValue = (UInt256) (ClaimedUnits * (BigInteger) Value / Units);
+                ClaimedValue = ClaimedUnits * Value / Units;
             }
 
             if (RefundClaimed)
@@ -111,6 +112,18 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Domain
                 RefundedValue = Value - ClaimedValue;
             }
 
+            if (Value < ClaimedValue + RefundedValue)
+            {
+                throw new InvalidDataException(
+                    $"Deposit {nameof(Value)} ({Value}) cannot be less than a sum of {nameof(ClaimedValue)} ({ClaimedValue}) and {nameof(RefundedValue)} ({RefundedValue})");
+            }
+            
+            if (Units < ConsumedUnits)
+            {
+                throw new InvalidDataException(
+                    $"Deposit {nameof(Units)} ({Units}) cannot be less than {nameof(ConsumedUnits)} ({ConsumedUnits})");
+            }
+            
             RemainingValue = Value - ClaimedValue - RefundedValue;
             RemainingUnits = Units - ConsumedUnits;
             Completed = ClaimedUnits + RefundedUnits >= Units;
