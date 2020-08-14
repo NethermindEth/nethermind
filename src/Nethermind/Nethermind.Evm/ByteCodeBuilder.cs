@@ -201,7 +201,7 @@ namespace Nethermind.Evm
             Span<byte> bytes = stackalloc byte[32];
             data.ToBigEndian(bytes);
             
-            PushData(bytes.ToArray());
+            PushData(bytes.WithoutLeadingZeros().ToArray());
             return this;
         }
 
