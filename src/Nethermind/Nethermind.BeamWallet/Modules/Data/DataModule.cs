@@ -41,10 +41,14 @@ namespace Nethermind.BeamWallet.Modules.Data
         private Window _window;
         private Label _syncingInfoLabel;
         private Label _balanceValueLabel;
+        private Button _skipTokensButton;
         private readonly IEnumerable<Token> _tokens = InitTokens();
         private readonly Process _process;
         private bool _externalRunnerIsRunning;
         private long? _lastBlockNumber;
+        private Button _quitButton;
+        private Button _transferButton;
+        private Label _tokensSyncingInfoLabel;
 
         public event EventHandler<TransferClickedEventArgs> TransferClicked;
 
@@ -68,6 +72,7 @@ namespace Nethermind.BeamWallet.Modules.Data
                 Height = Dim.Fill()
             };
             Application.Top.Add(_window);
+            InitButtons();
             RenderBalanceAsync();
 
             return _window;
@@ -96,6 +101,37 @@ namespace Nethermind.BeamWallet.Modules.Data
             _balanceValueLabel = new Label(70, 1, $"{_balance} ETH");
             _window.Remove(_syncingInfoLabel);
             _window.Add(_balanceValueLabel);
+        }
+
+        private void InitButtons()
+        {
+            _transferButton = new Button(10, 11, "Transfer");
+            _transferButton.Clicked = () =>
+            {
+                TransferClicked?.Invoke(this, new TransferClickedEventArgs(_address, _balance));
+            };
+            
+            _skipTokensButton = new Button(10, 11, "Skip getting token balance and transfer");
+            _skipTokensButton.Clicked = () =>
+            {
+                _window.Add(_transferButton);
+                _window.Remove(_skipTokensButton);
+                _window.Remove(_tokensSyncingInfoLabel);
+                TransferClicked?.Invoke(this, new TransferClickedEventArgs(_address, _balance));
+            };
+            
+            _quitButton = new Button(1, 11, "Quit");
+            _quitButton.Clicked = () =>
+            {
+                if (!_externalRunnerIsRunning)
+                {
+                    CloseAppWithRunner();
+                }
+
+                Application.Top.Running = false;
+                Application.RequestStop();
+            };
+            _window.Add(_quitButton);
         }
 
         private async Task SetLatestBlockNumber()
@@ -177,8 +213,8 @@ namespace Nethermind.BeamWallet.Modules.Data
         {
             var addressLabel = new Label(1, 1, $"Address: {_address}");
             var balanceLabel = new Label(60, 1, "Balance:");
-            _syncingInfoLabel = new Label(70, 1, "Syncing... Please wait for the updated balance. " +
-                                                 "This may take up to 10min");
+            _syncingInfoLabel = new Label(70, 1, "Syncing... Please wait for the balance. " +
+                                                 "This may take up to 10min.");
             _window.Add(addressLabel, balanceLabel, _syncingInfoLabel);
 
             decimal? balance;
@@ -200,39 +236,22 @@ namespace Nethermind.BeamWallet.Modules.Data
 
             _window.Remove(_syncingInfoLabel);
             _window.Add(_balanceValueLabel);
-            var tokensSyncingInfoLabel = new Label(1, 3, "Tokens balance syncing...");
+            _tokensSyncingInfoLabel = new Label(1, 3, "Tokens balance syncing...");
             var netVersionResult = await _ethJsonRpcClientProxy.net_version();
             if (netVersionResult.Result == "1")
             {
-                _window.Add(tokensSyncingInfoLabel);
+                _window.Add(_skipTokensButton);
+                _window.Add(_tokensSyncingInfoLabel);
                 await SetLatestBlockNumber();
                 await GetTokensBalanceAsync();
-                _window.Remove(tokensSyncingInfoLabel);
+                _window.Remove(_tokensSyncingInfoLabel);
             }
 
-            AddButtons();
-        }
-
-        private void AddButtons()
-        {
-            var transferButton = new Button(1, 11, "Transfer");
-            transferButton.Clicked = () =>
+            if (_skipTokensButton is {})
             {
-                TransferClicked?.Invoke(this, new TransferClickedEventArgs(_address, _balance));
-            };
-
-            var quitButton = new Button(15, 11, "Quit");
-            quitButton.Clicked = () =>
-            {
-                if (!_externalRunnerIsRunning)
-                {
-                    CloseAppWithRunner();
-                }
-
-                Application.Top.Running = false;
-                Application.RequestStop();
-            };
-            _window.Add(transferButton, quitButton);
+                _window.Remove(_skipTokensButton);
+            }
+            _window.Add(_transferButton);
         }
 
         private CallTransactionModel GetTransactionModel(Token token)
