@@ -772,16 +772,21 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        stack.PopInt(out BigInteger a);
-                        stack.PopInt(out BigInteger b);
+                        stack.PopSignedInt256(out Int256.Int256 a);
+                        stack.PopSignedInt256(out Int256.Int256 b);
                         if (b.IsZero)
                         {
                             stack.PushZero();
                         }
                         else
                         {
-                            BigInteger res = a.Sign * BigInteger.Remainder(BigInteger.Abs(a), BigInteger.Abs(b));
-                            stack.PushSignedInt(in res);
+                            a.Abs(out Int256.Int256 absA);
+                            b.Abs(out Int256.Int256 absB);
+                            absA.Mod(in absB, out Int256.Int256 mod);
+
+                            Int256.Int256 sign = a.Sign; // TODO: this is probably slow
+                            mod.Multiply(sign, out Int256.Int256 res);
+                            stack.PushSignedInt256(in res);
                         }
 
                         break;
