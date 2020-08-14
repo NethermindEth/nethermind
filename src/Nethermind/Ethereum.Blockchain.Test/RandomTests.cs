@@ -30,10 +30,7 @@ namespace Ethereum.Blockchain.Test
         [TestCaseSource(nameof(LoadTests))]
         public void Test(GeneralStateTest test)
         {
-            if (test.Name.Contains("randomStatetest124_d0g0v0") && test.Fork == Nethermind.Specs.Forks.Istanbul.Instance)
-            {
-                Assert.True(RunTest(test).Pass);
-            }
+            Assert.True(RunTest(test).Pass);
         }
 
         public static IEnumerable<GeneralStateTest> LoadTests()
