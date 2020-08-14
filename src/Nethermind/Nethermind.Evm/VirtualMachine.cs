@@ -755,10 +755,10 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        stack.PopUInt(out BigInteger a);
-                        stack.PopUInt(out BigInteger b);
-                        BigInteger res = b.IsZero ? BigInteger.Zero : BigInteger.Remainder(a, b);
-                        stack.PushUInt(ref res);
+                        stack.PopUInt256(out UInt256 a);
+                        stack.PopUInt256(out UInt256 b);
+                        UInt256.Mod(in a, in b, out UInt256 result);
+                        stack.PushUInt256(in result);
                         break;
                     }
                     case Instruction.SMOD:
