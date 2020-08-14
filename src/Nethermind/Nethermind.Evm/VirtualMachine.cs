@@ -791,9 +791,9 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        stack.PopUInt(out BigInteger a);
-                        stack.PopUInt(out BigInteger b);
-                        stack.PopUInt(out BigInteger mod);
+                        stack.PopUInt256(out UInt256 a);
+                        stack.PopUInt256(out UInt256 b);
+                        stack.PopUInt256(out UInt256 mod);
 
                         if (mod.IsZero)
                         {
@@ -801,8 +801,8 @@ namespace Nethermind.Evm
                         }
                         else
                         {
-                            BigInteger res = BigInteger.Remainder(a + b, mod);
-                            stack.PushUInt(ref res);
+                            UInt256.AddMod(a, b, mod, out UInt256 res);
+                            stack.PushUInt256(in res);
                         }
 
                         break;
