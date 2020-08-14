@@ -42,11 +42,8 @@ namespace Nethermind.Evm
 
         private bool _simdOperationsEnabled = Vector<byte>.Count == 32;
         private UInt256 P255Int = (UInt256)BigInteger.Pow(2, 255);
-        private BigInteger P256Int = BigInteger.Pow(2, 256);
         private UInt256 P255 => P255Int;
-        private Int256.Int256 SignedP255 => new Int256.Int256(P255Int);
         private BigInteger BigInt256 = 256;
-        // public BigInteger BigInt32 = 32;
         public UInt256 BigInt32 = 32;
 
         internal byte[] BytesZero = {0};
@@ -2537,8 +2534,8 @@ namespace Nethermind.Evm
                             }
                             else
                             {
-                                BigInteger res = BigInteger.MinusOne;
-                                stack.PushSignedInt(in res);
+                                Int256.Int256 res = Int256.Int256.MinusOne;
+                                stack.PushSignedInt256(in res);
                             }
                         }
                         else
