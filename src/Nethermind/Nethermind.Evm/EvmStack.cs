@@ -172,41 +172,6 @@ namespace Nethermind.Evm
             PushUInt256((UInt256) value);
         }
 
-        public void PushSignedInt(in BigInteger value)
-        {
-            int sign = value.Sign;
-            if (sign == 0)
-            {
-                PushZero();
-                return;
-            }
-
-            Span<byte> word = _bytes.Slice(Head * 32, 32);
-            if (sign > 0)
-            {
-                word.Clear();
-            }
-            else
-            {
-                word.Fill(0xff);
-            }
-
-            Span<byte> fullBytes = stackalloc byte[33];
-            value.TryWriteBytes(fullBytes, out int bytesWritten, false, true);
-            int fillCount = 32 - bytesWritten;
-            int start = bytesWritten == 33 ? 1 : 0;
-            int length = bytesWritten == 33 ? 32 : bytesWritten;
-            fullBytes.Slice(start, length).CopyTo(fillCount > 0 ? word.Slice(fillCount, 32 - fillCount) : word);
-
-            if (_tracer.IsTracingInstructions) _tracer.ReportStackPush(word);
-
-            if (++Head >= MaxStackSize)
-            {
-                Metrics.EvmExceptions++;
-                throw new EvmStackOverflowException();
-            }
-        }
-
         public void PopLimbo()
         {
             if (Head-- == 0)
@@ -224,16 +189,6 @@ namespace Nethermind.Evm
         public void PopUInt256(out UInt256 result)
         {
             result = new UInt256(PopBytes(), true);
-        }
-
-        public void PopUInt(out BigInteger result)
-        {
-            result = PopBytes().ToUnsignedBigInteger();
-        }
-
-        public void PopInt(out BigInteger result)
-        {
-            result = new BigInteger(PopBytes(), false, true);
         }
 
         public Address PopAddress()
@@ -348,43 +303,6 @@ namespace Nethermind.Evm
             }
 
             return stackTrace;
-        }
-
-        public void PushUInt(ref BigInteger value)
-        {
-            if (value.IsOne)
-            {
-                PushOne();
-                return;
-            }
-
-            if (value.IsZero)
-            {
-                PushZero();
-                return;
-            }
-
-            Span<byte> word = _bytes.Slice(Head * 32, 32);
-            Span<byte> test = stackalloc byte[32];
-            value.TryWriteBytes(test, out int bytesWritten, true, true);
-            if (bytesWritten == 32)
-            {
-                test.CopyTo(word);
-            }
-            else
-            {
-                word.Clear();
-                Span<byte> target = word.Slice(32 - bytesWritten, bytesWritten);
-                test.Slice(0, bytesWritten).CopyTo(target);
-            }
-
-            if (_tracer.IsTracingInstructions) _tracer.ReportStackPush(word);
-
-            if (++Head >= MaxStackSize)
-            {
-                Metrics.EvmExceptions++;
-                throw new EvmStackOverflowException();
-            }
         }
     }
 }
