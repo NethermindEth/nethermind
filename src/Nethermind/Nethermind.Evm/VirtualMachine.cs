@@ -1406,8 +1406,8 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        BigInteger res = _returnDataBuffer.Length;
-                        stack.PushUInt(ref res);
+                        UInt256 res = _returnDataBuffer.Length;
+                        stack.PushUInt256(in res);
                         break;
                     }
                     case Instruction.RETURNDATACOPY:
