@@ -2471,9 +2471,8 @@ namespace Nethermind.Evm
                         else
                         {
                             stack.PopUInt256(out UInt256 b);
-                            // BigInteger res = b << (int) a.S0;
-                            BigInteger res = (BigInteger)(b << (int) a.u0);
-                            stack.PushSignedInt(in res);
+                            UInt256 res = b << (int) a.u0;
+                            stack.PushUInt256(in res);
                         }
 
                         break;
