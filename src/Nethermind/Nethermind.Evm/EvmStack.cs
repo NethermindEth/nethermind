@@ -211,6 +211,11 @@ namespace Nethermind.Evm
             }
         }
 
+        public void PopSignedInt256(out Int256.Int256 result)
+        {
+            result = new Int256.Int256(PopBytes(), true);
+        }
+        
         public void PopUInt256(out UInt256 result)
         {
             result = new UInt256(PopBytes(), true);

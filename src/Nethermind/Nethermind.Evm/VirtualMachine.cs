@@ -958,10 +958,10 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        stack.PopInt(out BigInteger a);
-                        stack.PopInt(out BigInteger b);
+                        stack.PopSignedInt256(out Int256.Int256 a);
+                        stack.PopSignedInt256(out Int256.Int256 b);
 
-                        if (BigInteger.Compare(a, b) < 0)
+                        if (a.CompareTo(b) < 0)
                         {
                             stack.PushOne();
                         }
