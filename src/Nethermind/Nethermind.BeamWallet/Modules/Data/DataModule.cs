@@ -93,7 +93,7 @@ namespace Nethermind.BeamWallet.Modules.Data
 
             _balance = balance.Value;
             _window.Remove(_balanceValueLabel);
-            _balanceValueLabel = new Label(70, 1, $"{_balance} ETH (refreshing every 5s).");
+            _balanceValueLabel = new Label(70, 1, $"{_balance} ETH");
             _window.Remove(_syncingInfoLabel);
             _window.Add(_balanceValueLabel);
         }
@@ -191,12 +191,12 @@ namespace Nethermind.BeamWallet.Modules.Data
             _balance = balance.Value;
             if (await GetBlockNumber() == 0)
             {
-                _balanceValueLabel = new Label(70, 1, "Syncing... Please wait for the updated balance." +
-                                                      "This may take up to 10min");
+                _balanceValueLabel = new Label(70, 1, "Syncing... Please wait for the balance." +
+                                                      "This may take up to 10min.");
                 return;
             }
 
-            _balanceValueLabel = new Label(70, 1, $"{_balance} ETH (refreshing every 5s).");
+            _balanceValueLabel = new Label(70, 1, $"{_balance} ETH");
 
             _window.Remove(_syncingInfoLabel);
             _window.Add(_balanceValueLabel);
