@@ -302,7 +302,10 @@ namespace Nethermind.Evm
                 else
                 {
                     _stateProvider.AddToBalance(sender, senderReservedGasPayment, spec);
-                    _stateProvider.DecrementNonce(sender);    
+                    if (notSystemTransaction)
+                    {
+                        _stateProvider.DecrementNonce(sender);
+                    }
                 }
                 
                 _stateProvider.Commit(spec);
