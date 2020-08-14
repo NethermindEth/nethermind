@@ -1172,7 +1172,7 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        stack.PopUInt(out BigInteger position);
+                        stack.PopUInt256(out UInt256 position);
                         Span<byte> bytes = stack.PopBytes();
 
                         if (position >= BigInt32)
