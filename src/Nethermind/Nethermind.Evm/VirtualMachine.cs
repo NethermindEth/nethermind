@@ -1294,7 +1294,7 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        UInt256 callDataSize = env.InputData.Length;
+                        UInt256 callDataSize = (UInt256)env.InputData.Length;
                         stack.PushUInt256(in callDataSize);
                         break;
                     }
