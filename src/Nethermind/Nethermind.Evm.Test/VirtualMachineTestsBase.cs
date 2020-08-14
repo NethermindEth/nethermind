@@ -222,7 +222,8 @@ namespace Nethermind.Evm.Test
         protected void AssertStorage(UInt256 address, BigInteger expectedValue)
         {
             byte[] actualValue = Storage.Get(new StorageCell(Recipient, address));
-            Assert.AreEqual(expectedValue.ToBigEndianByteArray(), actualValue, "storage");
+            byte[] expected = expectedValue < 0 ? expectedValue.ToBigEndianByteArray(32) : expectedValue.ToBigEndianByteArray();  
+            Assert.AreEqual(expected, actualValue, "storage");
         }
         
         protected void AssertStorage(UInt256 address, UInt256 expectedValue)

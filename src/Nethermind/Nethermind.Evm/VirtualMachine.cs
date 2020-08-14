@@ -774,7 +774,7 @@ namespace Nethermind.Evm
 
                         stack.PopSignedInt256(out Int256.Int256 a);
                         stack.PopSignedInt256(out Int256.Int256 b);
-                        if (b.IsZero)
+                        if (b.IsZero || b.IsOne)
                         {
                             stack.PushZero();
                         }
@@ -784,9 +784,16 @@ namespace Nethermind.Evm
                             b.Abs(out Int256.Int256 absB);
                             absA.Mod(in absB, out Int256.Int256 mod);
 
-                            Int256.Int256 sign = a.Sign; // TODO: this is probably slow
-                            mod.Multiply(sign, out Int256.Int256 res);
-                            stack.PushSignedInt256(in res);
+                            int sign = a.Sign;
+                            if (sign < 0)
+                            {
+                                mod.Neg(out Int256.Int256 res);
+                                stack.PushSignedInt256(in res);
+                            }
+                            else
+                            {
+                                stack.PushSignedInt256(in mod);
+                            }
                         }
 
                         break;
