@@ -678,10 +678,10 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        stack.PopUInt(out BigInteger a);
-                        stack.PopUInt(out BigInteger b);
-                        BigInteger res = BigInteger.Remainder(a * b, P256Int);
-                        stack.PushUInt(ref res);
+                        stack.PopUInt256(out UInt256 a);
+                        stack.PopUInt256(out UInt256 b);
+                        UInt256.Multiply(in a, in b, out UInt256 res);
+                        stack.PushUInt256(in res);
                         break;
                     }
                     case Instruction.SUB:
