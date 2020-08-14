@@ -165,7 +165,7 @@ namespace Nethermind.Evm
 
                             if (currentState.IsTopLevel)
                             {
-                                return new TransactionSubstate(callResult.ExceptionType);
+                                return new TransactionSubstate(callResult.ExceptionType, _txTracer != NullTxTracer.Instance);
                             }
 
                             previousCallResult = StatusCode.FailureBytes;
@@ -213,7 +213,7 @@ namespace Nethermind.Evm
                             }
                         }
 
-                        return new TransactionSubstate(callResult.Output, currentState.Refund, currentState.DestroyList, currentState.Logs, callResult.ShouldRevert);
+                        return new TransactionSubstate(callResult.Output, currentState.Refund, currentState.DestroyList, currentState.Logs, callResult.ShouldRevert, _txTracer != NullTxTracer.Instance);
                     }
 
                     Address callCodeOwner = currentState.Env.ExecutingAccount;
@@ -349,7 +349,7 @@ namespace Nethermind.Evm
 
                     if (currentState.IsTopLevel)
                     {
-                        return new TransactionSubstate(ex is OverflowException ? EvmExceptionType.Other : (ex as EvmException).ExceptionType);
+                        return new TransactionSubstate(ex is OverflowException ? EvmExceptionType.Other : (ex as EvmException).ExceptionType, _txTracer != NullTxTracer.Instance);
                     }
 
                     previousCallResult = StatusCode.FailureBytes;

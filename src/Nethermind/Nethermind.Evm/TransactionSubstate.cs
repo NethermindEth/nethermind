@@ -28,10 +28,12 @@ namespace Nethermind.Evm
         private static List<Address> _emptyDestroyList = new List<Address>(0);
         private static List<LogEntry> _emptyLogs = new List<LogEntry>(0);
 
+        private const string SomeError = "error";
+        private const string Revert = "revert";
         
-        public TransactionSubstate(EvmExceptionType exceptionType)
+        public TransactionSubstate(EvmExceptionType exceptionType, bool isTracerConnected)
         {
-            Error = exceptionType.ToString();
+            Error = isTracerConnected ? exceptionType.ToString() : SomeError;
             Refund = 0;
             DestroyList = _emptyDestroyList;
             Logs = _emptyLogs;
@@ -43,7 +45,8 @@ namespace Nethermind.Evm
             long refund,
             IReadOnlyCollection<Address> destroyList,
             IReadOnlyCollection<LogEntry> logs,
-            bool shouldRevert)
+            bool shouldRevert,
+            bool isTracerConnected)
         {
             Output = output;
             Refund = refund;
@@ -52,24 +55,28 @@ namespace Nethermind.Evm
             ShouldRevert = shouldRevert;
             if (ShouldRevert)
             {
-                Error = "revert";
-                if (Output?.Length > 0)
+                // TODO: is this invoked even if there is no tracer? why would we construct error messages then?
+                Error = Revert;
+                if (isTracerConnected)
                 {
-                    try
-                    {
-                        BigInteger start = Output.AsSpan().Slice(4, 32).ToUnsignedBigInteger();
-                        BigInteger length = Output.Slice((int) start + 4, 32).ToUnsignedBigInteger();
-                        Error = "revert: " + Encoding.ASCII.GetString(Output.Slice((int) start + 32 + 4, (int) length));
-                    }
-                    catch (Exception)
+                    if (Output?.Length > 0)
                     {
                         try
                         {
-                            Error = "revert: " + Output.ToHexString(true);
+                            BigInteger start = Output.AsSpan().Slice(4, 32).ToUnsignedBigInteger();
+                            BigInteger length = Output.Slice((int) start + 4, 32).ToUnsignedBigInteger();
+                            Error = "revert: " + Encoding.ASCII.GetString(Output.Slice((int) start + 32 + 4, (int) length));
                         }
-                        catch
+                        catch (Exception)
                         {
-                            // ignore
+                            try
+                            {
+                                Error = "revert: " + Output.ToHexString(true);
+                            }
+                            catch
+                            {
+                                // ignore
+                            }
                         }
                     }
                 }
