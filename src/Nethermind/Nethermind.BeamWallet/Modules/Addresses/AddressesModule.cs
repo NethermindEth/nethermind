@@ -26,6 +26,7 @@ using Nethermind.Facade.Proxy;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Terminal.Gui;
+using Attribute = Terminal.Gui.Attribute;
 
 namespace Nethermind.BeamWallet.Modules.Addresses
 {
@@ -154,7 +155,7 @@ namespace Nethermind.BeamWallet.Modules.Addresses
                     _mainWindow.Remove(_runnerOnInfo);
                 }
 
-                _runnerOffInfo = new Label(3, 1, $"Nethermind Runner is stopped.. Please, wait for it to start.");
+                _runnerOffInfo = new Label(3, 20, $"Nethermind Runner is stopped.. Please, wait for it to start.");
                 _mainWindow.Add(_runnerOffInfo);
                 _process.Start();
                 _processId = _process.Id;
@@ -165,7 +166,7 @@ namespace Nethermind.BeamWallet.Modules.Addresses
                 _mainWindow.Remove(_runnerOffInfo);
             }
 
-            _runnerOnInfo = new Label(3, 1, "Nethermind Runner is running.");
+            _runnerOnInfo = new Label(3, 20, "Nethermind Runner is running.");
             _mainWindow.Add(_runnerOnInfo);
         }
         private void AddInfo()
@@ -189,12 +190,21 @@ namespace Nethermind.BeamWallet.Modules.Addresses
                                                  "folder 'keystore' - this is" +
                                                  $"{Environment.NewLine}" +
                                                  "necessary to properly unlock the account before making a transaction." +
-                                                 $"{Environment.NewLine}" +
-                                                 "This is a Beta version, so for your own safety " +
-                                                 "please, do not use an account with a high balance." +
                                                  $"{Environment.NewLine}{Environment.NewLine}" +
                                                  "To navigate through the application - use the TAB key or Up and Down arrows.");
-            _mainWindow.Add(beamWalletInfo);
+            
+            var betaVersionWarningInfo = new Label(3, 14, "This is a Beta version, so for your own safety please, do " +
+                                                         "not use an account with a high balance.");
+
+            var warningInfo = new Label(3, 16, "There are a few things that could have gone wrong:" +
+                                              $"{Environment.NewLine}" +
+                                              "- your balance may be incorrect" +
+                                              $"{Environment.NewLine}" +
+                                              "- the transaction fee may be charged incorrectly");
+            
+            betaVersionWarningInfo.TextColor = new Attribute();
+            
+            _mainWindow.Add(betaVersionWarningInfo, warningInfo, beamWalletInfo);
         }
 
         private void AddRunnerInfo(string info)
@@ -204,19 +214,19 @@ namespace Nethermind.BeamWallet.Modules.Addresses
                 _mainWindow.Remove(_runnerOnInfo);
             }
 
-            _runnerOnInfo = new Label(3, 16, $"{info}");
+            _runnerOnInfo = new Label(3, 20, $"{info}");
             _mainWindow.Add(_runnerOnInfo);
         }
 
         public Task<Window> InitAsync()
         {
-            var nodeAddressLabel = new Label(3, 18, "Enter node address:");
-            var nodeAddressTextField = new TextField(28, 18, 80, $"{DefaultUrl}");
-            var addressLabel = new Label(3, 20, "Enter account address:");
-            var addressTextField = new TextField(28, 20, 80, "");
+            var nodeAddressLabel = new Label(3, 22, "Enter node address:");
+            var nodeAddressTextField = new TextField(28, 22, 80, $"{DefaultUrl}");
+            var addressLabel = new Label(3, 24, "Enter account address:");
+            var addressTextField = new TextField(28, 24, 80, "");
 
-            var okButton = new Button(28, 22, "OK");
-            var quitButton = new Button(36, 22, "Quit");
+            var okButton = new Button(28, 26, "OK");
+            var quitButton = new Button(36, 26, "Quit");
             quitButton.Clicked = () =>
             {
                 if (!_externalRunnerIsRunning)
