@@ -693,7 +693,7 @@ namespace Nethermind.Evm
 
                         stack.PopUInt256(out UInt256 a);
                         stack.PopUInt256(out UInt256 b);
-                        UInt256 result = a - b;
+                        UInt256.Subtract(in a, in b, out UInt256 result);
 
                         stack.PushUInt256(in result);
                         break;

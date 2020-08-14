@@ -18,7 +18,7 @@
 
 using System.Diagnostics;
 using System.Numerics;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 
 namespace Ethereum.Difficulty.Test
 {
