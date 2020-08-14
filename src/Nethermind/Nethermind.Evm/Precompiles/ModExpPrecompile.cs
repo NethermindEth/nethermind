@@ -72,21 +72,13 @@ namespace Nethermind.Evm.Precompiles
         {
             Metrics.ModExpPrecompile++;
             
-            Span<byte> extendedInput = stackalloc byte[96];
-            inputData.Slice(0, Math.Min(96, inputData.Length))
-                .CopyTo(extendedInput.Slice(0, Math.Min(96, inputData.Length)));
-                
-            int baseLength = (int)new UInt256(extendedInput.Slice(0, 32));
-            UInt256 expLengthBig = new UInt256(extendedInput.Slice(32, 32));
-            int modulusLength = (int)new UInt256(extendedInput.Slice(64, 32));
+            int baseLength = (int)inputData.SliceWithZeroPaddingEmptyOnError(0, 32).ToUnsignedBigInteger();
+            BigInteger expLengthBig = inputData.SliceWithZeroPaddingEmptyOnError(32, 32).ToUnsignedBigInteger();
             int expLength = expLengthBig > int.MaxValue ? int.MaxValue : (int)expLengthBig;
-            
-            // int baseLength = (int)inputData.SliceWithZeroPaddingEmptyOnError(0, 32).ToUnsignedBigInteger();
-            // BigInteger expLengthBig = inputData.SliceWithZeroPaddingEmptyOnError(32, 32).ToUnsignedBigInteger();
-            // int expLength = expLengthBig > int.MaxValue ? int.MaxValue : (int)expLengthBig;
-            // int modulusLength = (int)inputData.SliceWithZeroPaddingEmptyOnError(64, 32).ToUnsignedBigInteger();
+            int modulusLength = (int)inputData.SliceWithZeroPaddingEmptyOnError(64, 32).ToUnsignedBigInteger();
             
             BigInteger modulusInt = inputData.SliceWithZeroPaddingEmptyOnError(96 + baseLength + expLength, modulusLength).ToUnsignedBigInteger();
+
             if (modulusInt.IsZero)
             {
                 return (new byte[modulusLength], true);
