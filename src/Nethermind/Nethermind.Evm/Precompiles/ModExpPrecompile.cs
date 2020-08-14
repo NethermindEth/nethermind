@@ -49,9 +49,9 @@ namespace Nethermind.Evm.Precompiles
                 inputData.Slice(0, Math.Min(96, inputData.Length))
                     .CopyTo(extendedInput.Slice(0, Math.Min(96, inputData.Length)));
                 
-                UInt256 baseLength = new UInt256(extendedInput.Slice(0, 32));
-                UInt256 expLength = new UInt256(extendedInput.Slice(32, 32));
-                UInt256 modulusLength = new UInt256(extendedInput.Slice(64, 32));
+                UInt256 baseLength = new UInt256(extendedInput.Slice(0, 32), true);
+                UInt256 expLength = new UInt256(extendedInput.Slice(32, 32), true);
+                UInt256 modulusLength = new UInt256(extendedInput.Slice(64, 32), true);
 
                 UInt256 complexity = MultComplexity(UInt256.Max(baseLength, modulusLength));
 
