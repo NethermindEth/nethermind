@@ -60,7 +60,7 @@ namespace Nethermind.Evm.Precompiles
                 UInt256 lengthOver32 = expLength <= 32 ? 0 : expLength - 32;
                 UInt256 adjusted = AdjustedExponentLength(lengthOver32, expSignificantBytes);
                 UInt256 gas = complexity * UInt256.Max(adjusted, UInt256.One) / 20;
-                return (long)gas;
+                return gas > long.MaxValue ? long.MaxValue : (long)gas;
             }
             catch (OverflowException)
             {
