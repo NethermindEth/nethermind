@@ -45,7 +45,8 @@ namespace Nethermind.Evm
         private BigInteger P256Int = BigInteger.Pow(2, 256);
         private BigInteger P255 => P255Int;
         private BigInteger BigInt256 = 256;
-        public BigInteger BigInt32 = 32;
+        // public BigInteger BigInt32 = 32;
+        public UInt256 BigInt32 = 32;
 
         internal byte[] BytesZero = {0};
 
@@ -884,7 +885,7 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        stack.PopUInt(out BigInteger a);
+                        stack.PopUInt256(out UInt256 a);
                         if (a >= BigInt32)
                         {
                             break;
