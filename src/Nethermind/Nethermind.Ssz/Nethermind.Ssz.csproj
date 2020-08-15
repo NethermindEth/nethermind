@@ -11,7 +11,6 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\..\Dirichlet\Nethermind.Dirichlet.Numerics\Nethermind.Dirichlet.Numerics.csproj" />
       <ProjectReference Include="..\Nethermind.Core2.Abstractions\Nethermind.Core2.Abstractions.csproj" />
       <ProjectReference Include="..\Nethermind.Core2\Nethermind.Core2.csproj" />
     </ItemGroup>
