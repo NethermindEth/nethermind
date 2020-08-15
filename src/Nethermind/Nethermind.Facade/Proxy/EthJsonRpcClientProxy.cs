@@ -82,6 +82,9 @@ namespace Nethermind.Facade.Proxy
             bool returnFullTransactionObjects = false)
             => _proxy.SendAsync<BlockModel<TransactionModel>>(nameof(eth_getBlockByNumber), MapBlockParameter(blockParameter),
                 returnFullTransactionObjects);
+        
+        public Task<RpcResult<string>> net_version()
+            => _proxy.SendAsync<string>(nameof(net_version));
 
         private static object MapBlockParameter(BlockParameterModel blockParameter)
         {

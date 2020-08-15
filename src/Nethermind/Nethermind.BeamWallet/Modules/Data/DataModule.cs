@@ -41,19 +41,25 @@ namespace Nethermind.BeamWallet.Modules.Data
         private Window _window;
         private Label _syncingInfoLabel;
         private Label _balanceValueLabel;
+        private Button _skipTokensButton;
         private readonly IEnumerable<Token> _tokens = InitTokens();
         private readonly Process _process;
         private bool _externalRunnerIsRunning;
+        private long? _lastBlockNumber;
+        private Button _quitButton;
+        private Button _transferButton;
+        private Label _tokensSyncingInfoLabel;
 
         public event EventHandler<TransferClickedEventArgs> TransferClicked;
-        
-        public DataModule(IEthJsonRpcClientProxy ethJsonRpcClientProxy, string address, Process process, bool externalRunnerIsRunning)
+
+        public DataModule(IEthJsonRpcClientProxy ethJsonRpcClientProxy, string address, Process process,
+            bool externalRunnerIsRunning)
         {
             _externalRunnerIsRunning = externalRunnerIsRunning;
             _ethJsonRpcClientProxy = ethJsonRpcClientProxy;
             _address = new Address(address);
             _process = process;
-            _timer = new Timer(Update, null, TimeSpan.Zero, TimeSpan.FromSeconds(5));
+            _timer = new Timer(Update, null, TimeSpan.Zero, TimeSpan.FromSeconds(2));
         }
 
         public async Task<Window> InitAsync()
@@ -66,6 +72,7 @@ namespace Nethermind.BeamWallet.Modules.Data
                 Height = Dim.Fill()
             };
             Application.Top.Add(_window);
+            InitButtons();
             RenderBalanceAsync();
 
             return _window;
@@ -84,22 +91,62 @@ namespace Nethermind.BeamWallet.Modules.Data
             }
 
             var balance = await GetBalanceAsync();
-            if (!balance.HasValue || balance.Value == 0)    
+            if (!balance.HasValue || balance.Value == 0)
             {
                 return;
             }
 
             _balance = balance.Value;
             _window.Remove(_balanceValueLabel);
-            _balanceValueLabel = new Label(70, 1, $"{_balance} ETH (refreshing every 5s).");
+            _balanceValueLabel = new Label(70, 1, $"{_balance} ETH");
             _window.Remove(_syncingInfoLabel);
             _window.Add(_balanceValueLabel);
         }
 
-        private async Task<long?> GetLatestBlockNumber()
+        private void InitButtons()
         {
-            var result = await _ethJsonRpcClientProxy.eth_blockNumber();
-            return result.Result;
+            _transferButton = new Button(10, 11, "Transfer");
+            _transferButton.Clicked = () =>
+            {
+                TransferClicked?.Invoke(this, new TransferClickedEventArgs(_address, _balance));
+            };
+            
+            _skipTokensButton = new Button(10, 11, "Skip getting token balance and transfer");
+            _skipTokensButton.Clicked = () =>
+            {
+                _window.Add(_transferButton);
+                _window.Remove(_skipTokensButton);
+                _window.Remove(_tokensSyncingInfoLabel);
+                TransferClicked?.Invoke(this, new TransferClickedEventArgs(_address, _balance));
+            };
+            
+            _quitButton = new Button(1, 11, "Quit");
+            _quitButton.Clicked = () =>
+            {
+                if (!_externalRunnerIsRunning)
+                {
+                    CloseAppWithRunner();
+                }
+
+                Application.Top.Running = false;
+                Application.RequestStop();
+            };
+            _window.Add(_quitButton);
+        }
+
+        private async Task SetLatestBlockNumber()
+        {
+            RpcResult<long?> result;
+            do
+            {
+                result = await _ethJsonRpcClientProxy.eth_blockNumber();
+                if (!result.IsValid)
+                {
+                    await Task.Delay(1000);
+                }
+            } while (!result.IsValid || !result.Result.HasValue || result.Result == 0);
+
+            _lastBlockNumber = result.Result.Value;
         }
 
         private async Task<decimal?> GetBalanceAsync()
@@ -111,8 +158,8 @@ namespace Nethermind.BeamWallet.Modules.Data
             }
 
             return WeiToEth(result.Result);
-            }
-        
+        }
+
         private async Task GetTokensBalanceAsync()
         {
             var position = 1;
@@ -142,7 +189,10 @@ namespace Nethermind.BeamWallet.Modules.Data
             RpcResult<byte[]> result;
             do
             {
-                result = await _ethJsonRpcClientProxy.eth_call(GetTransactionModel(token), BlockParameterModel.Latest);
+                result = await _ethJsonRpcClientProxy.eth_call(GetTransactionModel(token),
+                    _lastBlockNumber.HasValue
+                        ? BlockParameterModel.FromNumber(_lastBlockNumber.Value)
+                        : BlockParameterModel.Latest);
             } while (!result.IsValid);
 
             return result.IsValid
@@ -153,12 +203,18 @@ namespace Nethermind.BeamWallet.Modules.Data
                 : null;
         }
 
+        private async Task<long?> GetBlockNumber()
+        {
+            var result = await _ethJsonRpcClientProxy.eth_blockNumber();
+            return result.Result;
+        }
+
         private async Task RenderBalanceAsync()
         {
             var addressLabel = new Label(1, 1, $"Address: {_address}");
             var balanceLabel = new Label(60, 1, "Balance:");
-            _syncingInfoLabel = new Label(70, 1, "Syncing... Please wait for the updated balance. " +
-                                                 "This may take up to 10min");
+            _syncingInfoLabel = new Label(70, 1, "Syncing... Please wait for the balance. " +
+                                                 "This may take up to 10min.");
             _window.Add(addressLabel, balanceLabel, _syncingInfoLabel);
 
             decimal? balance;
@@ -169,44 +225,33 @@ namespace Nethermind.BeamWallet.Modules.Data
             } while (!balance.HasValue);
 
             _balance = balance.Value;
-            if (await GetLatestBlockNumber() == 0)
+            if (await GetBlockNumber() == 0)
             {
-                _balanceValueLabel = new Label(70, 1, "Syncing... Please wait for the updated balance." +
-                                                      "This may take up to 10min");
+                _balanceValueLabel = new Label(70, 1, "Syncing... Please wait for the balance." +
+                                                      "This may take up to 10min.");
                 return;
             }
 
-            _balanceValueLabel = new Label(70, 1, $"{_balance} ETH (refreshing every 5s).");
+            _balanceValueLabel = new Label(70, 1, $"{_balance} ETH");
 
             _window.Remove(_syncingInfoLabel);
             _window.Add(_balanceValueLabel);
-            var tokensSyncingInfoLabel = new Label(1, 3, "Tokens balance syncing...");
-            _window.Add(tokensSyncingInfoLabel);
-            await GetTokensBalanceAsync(); // add if - only when mainnet, admin.nodeInfo -> network - Mainnet: 1
-            _window.Remove(tokensSyncingInfoLabel);
-            AddButtons();
-        }
-
-        private void AddButtons()
-        {
-            var transferButton = new Button(1, 11, "Transfer");
-            transferButton.Clicked = () =>
+            _tokensSyncingInfoLabel = new Label(1, 3, "Tokens balance syncing...");
+            var netVersionResult = await _ethJsonRpcClientProxy.net_version();
+            if (netVersionResult.Result == "1")
             {
-                TransferClicked?.Invoke(this, new TransferClickedEventArgs(_address, _balance));
-            };
+                _window.Add(_skipTokensButton);
+                _window.Add(_tokensSyncingInfoLabel);
+                await SetLatestBlockNumber();
+                await GetTokensBalanceAsync();
+                _window.Remove(_tokensSyncingInfoLabel);
+            }
 
-            var quitButton = new Button(15, 11, "Quit");
-            quitButton.Clicked = () =>
+            if (_skipTokensButton is {})
             {
-                if (!_externalRunnerIsRunning)
-                {
-                    CloseAppWithRunner();
-                }
-
-                Application.Top.Running = false;
-                Application.RequestStop();
-            };
-            _window.Add(transferButton, quitButton);
+                _window.Remove(_skipTokensButton);
+            }
+            _window.Add(_transferButton);
         }
 
         private CallTransactionModel GetTransactionModel(Token token)
@@ -228,13 +273,13 @@ namespace Nethermind.BeamWallet.Modules.Data
                 new Token("DAI", new Address("0x6b175474e89094c44da98b954eedeac495271d0f")),
                 new Token("USDT", new Address("0xdAC17F958D2ee523a2206206994597C13D831ec7")),
                 new Token("USDC", new Address("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48")),
-                new Token("BAT", new Address("0x0D8775F648430679A709E98d2b0Cb6250d2887EF"))
+                // new Token("BAT", new Address("0x0D8775F648430679A709E98d2b0Cb6250d2887EF"))
             };
 
         private class Token
         {
-            public string Name  { get; }
-            public Address Address  { get; }
+            public string Name { get; }
+            public Address Address { get; }
             public UInt256 Balance { get; set; }
             public Label Label { get; set; }
 
@@ -244,7 +289,7 @@ namespace Nethermind.BeamWallet.Modules.Data
                 Address = address;
             }
         }
-        
+
         private void CloseAppWithRunner()
         {
             var confirmed = MessageBox.Query(80, 8, "Confirmation",

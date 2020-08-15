@@ -17,7 +17,7 @@
 
 using System;
 using System.Globalization;
-using System.Numerics;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.BeamWallet.Clients;
@@ -64,6 +64,8 @@ namespace Nethermind.BeamWallet.Modules.Transfer
         private UInt256 _averageGasPrice;
         private decimal _transactionValue;
         private TextField _toAddressTextField;
+        private Label _unlockInfoLbl;
+        private readonly Regex _addressRegex = new Regex("(0x)([0-9A-Fa-f]{40})", RegexOptions.Compiled);
 
         public TransferModule(IEthJsonRpcClientProxy ethJsonRpcClientProxy, IJsonRpcWalletClientProxy
             jsonRpcWalletClientProxy, Address address, decimal balanceEth)
@@ -134,8 +136,9 @@ namespace Nethermind.BeamWallet.Modules.Transfer
             {
                 _averageGasPrice = _gasPrice;
                 _transferWindow.Remove(_blockNumberLabel);
-                _blockNumberLabel = new Label(1, 16, $"Block number (latest): {_latestBlock.Number}, Average gas price: " +
-                                                     $"{_averageGasPrice} WEI");
+                _blockNumberLabel = new Label(1, 16,
+                    $"Block number (latest): {_latestBlock.Number}, Average gas price: " +
+                    $"{_averageGasPrice} WEI");
                 _transferWindow.Add(_blockNumberLabel);
             }
 
@@ -167,7 +170,7 @@ namespace Nethermind.BeamWallet.Modules.Transfer
                 result = await _ethJsonRpcClientProxy.eth_getTransactionCount(_address);
                 if (!result.IsValid)
                 {
-                    await Task.Delay(3000);
+                    await Task.Delay(2000);
                 }
             } while (!result.IsValid || !result.Result.HasValue);
 
@@ -189,7 +192,7 @@ namespace Nethermind.BeamWallet.Modules.Transfer
                     BlockParameterModel.FromNumber(_latestBlock.Number));
                 if (!result.IsValid)
                 {
-                    await Task.Delay(3000);
+                    await Task.Delay(1500);
                 }
             } while (!result.IsValid);
 
@@ -202,13 +205,13 @@ namespace Nethermind.BeamWallet.Modules.Transfer
 
         private void SetEstimateGas(decimal estimateGasResult)
         {
-            if (estimateGasResult > (decimal) (BigInteger) _gasLimit)
+            if (estimateGasResult > (decimal)_gasLimit)
             {
                 _estimateGas = estimateGasResult;
             }
             else
             {
-                _estimateGas = (decimal) (BigInteger) _gasLimit;
+                _estimateGas = (decimal)_gasLimit;
             }
         }
 
@@ -260,16 +263,11 @@ namespace Nethermind.BeamWallet.Modules.Transfer
         {
             DeleteButtons();
             DeleteLabels();
-
-            var correctPassword = await ValidatePassword(_passphrase);
-
-            if (IncorrectData(_toAddress, _value) || !correctPassword)
+            var correctData = await ValidateData(_toAddress, _value);
+            if (!correctData)
             {
-                Application.Run(_transferWindow);
-                AddButtons();
                 return;
             }
-
             await GetAverageGasPriceAsync();
             await GetTransactionCountAsync();
             _transactionValue = decimal.Parse(_value);
@@ -309,7 +307,7 @@ namespace Nethermind.BeamWallet.Modules.Transfer
                     sendTransactionResult = await _ethJsonRpcClientProxy.eth_sendTransaction(_transaction);
                     if (!sendTransactionResult.IsValid)
                     {
-                        await Task.Delay(3000);
+                        await Task.Delay(2000);
                     }
                 } while (!sendTransactionResult.IsValid);
 
@@ -319,7 +317,7 @@ namespace Nethermind.BeamWallet.Modules.Transfer
                     _newNonce = newNonceResult.Result;
                     if (!newNonceResult.IsValid)
                     {
-                        await Task.Delay(3000);
+                        await Task.Delay(2000);
                     }
                 } while (_newNonce == _currentNonce);
 
@@ -343,13 +341,18 @@ namespace Nethermind.BeamWallet.Modules.Transfer
                     lockAccountResult = await _jsonRpcWalletClientProxy.personal_lockAccount(_address);
                     if (!lockAccountResult.IsValid)
                     {
-                        await Task.Delay(3000);
+                        await Task.Delay(2000);
                     }
                 } while (!lockAccountResult.IsValid);
 
                 _transferWindow.Remove(_lockInfoLabel);
                 _lockInfoLabel = new Label(1, 26, "Account locked.");
                 _transferWindow.Add(_lockInfoLabel);
+            }
+            else
+            {
+                DeleteLabels();
+                AddButtons();
             }
         }
 
@@ -372,13 +375,15 @@ namespace Nethermind.BeamWallet.Modules.Transfer
             _transferWindow.Remove(_nonceLabel);
             _transferWindow.Remove(_estimateGasLabel);
             _transferWindow.Remove(_unlockFailedLbl);
+            _transferWindow.Remove(_unlockInfoLbl);
             _transferWindow.Remove(_sendingTransactionLabel);
             _transferWindow.Remove(_sentTransactionLabel);
             _transferWindow.Remove(_txHashLabel);
             _transferWindow.Remove(_lockInfoLabel);
         }
 
-        private static TransactionModel CreateTransaction(Address fromAddress, Address toAddress, UInt256 value, UInt256 gas,
+        private static TransactionModel CreateTransaction(Address fromAddress, Address toAddress, UInt256 value,
+            UInt256 gas,
             UInt256 averageGasPrice, UInt256 nonce) => new TransactionModel
         {
             From = fromAddress,
@@ -389,23 +394,30 @@ namespace Nethermind.BeamWallet.Modules.Transfer
             Nonce = nonce
         };
 
-        private bool IncorrectData(string address, string value)
+        private async Task<bool> ValidateData(string address, string value)
         {
-            if (string.IsNullOrEmpty(address) || string.IsNullOrEmpty(value) ||
-                !decimal.TryParse(value, out _) || decimal.Parse(value) > _balanceEth)
+            if (string.IsNullOrEmpty(address) || address.Length != 42 || !_addressRegex.IsMatch(address))
+            {
+                MessageBox.ErrorQuery(40, 7, "Error", "Address is invalid." +
+                                                      $"{Environment.NewLine}(ESC to close)");
+                AddButtons();
+                return false;
+            }
+
+            if (string.IsNullOrEmpty(value) || !decimal.TryParse(value, out _) || decimal.Parse(value) > _balanceEth)
             {
                 MessageBox.ErrorQuery(40, 7, "Error", "Incorrect data." +
                                                       $"{Environment.NewLine}(ESC to close)");
                 AddButtons();
-                return true;
+                return false;
             }
 
-            return false;
+            return await ValidatePassword();
         }
 
-        private async Task<bool> ValidatePassword(string passphrase)
+        private async Task<bool> ValidatePassword()
         {
-            if (string.IsNullOrEmpty(passphrase))
+            if (string.IsNullOrEmpty(_passphrase))
             {
                 MessageBox.ErrorQuery(40, 7, "Error", "Passphrase can not be empty." +
                                                       $"{Environment.NewLine}(ESC to close)");
@@ -439,11 +451,10 @@ namespace Nethermind.BeamWallet.Modules.Transfer
                 return false;
             }
 
-            var unlockInfoLbl = new Label(1, 14, "Account unlocked.");
-            _transferWindow.Add(unlockInfoLbl);
+            _unlockInfoLbl = new Label(1, 14, "Account unlocked.");
+            _transferWindow.Add(_unlockInfoLbl);
 
-            DeleteLabels();
-            AddButtons();
+            DeleteButtons();
             return true;
         }
 

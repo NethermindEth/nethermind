@@ -26,6 +26,7 @@ using Nethermind.Facade.Proxy;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Terminal.Gui;
+using Attribute = Terminal.Gui.Attribute;
 
 namespace Nethermind.BeamWallet.Modules.Addresses
 {
@@ -33,7 +34,6 @@ namespace Nethermind.BeamWallet.Modules.Addresses
     {
         private readonly Regex _urlRegex = new Regex(@"^http(s)?://([\w-]+.)+[\w-]+(/[\w- ./?%&=])?",
             RegexOptions.Compiled);
-
         private readonly Regex _addressRegex = new Regex("(0x)([0-9A-Fa-f]{40})", RegexOptions.Compiled);
         private Process _process;
         private Timer _timer;
@@ -155,7 +155,7 @@ namespace Nethermind.BeamWallet.Modules.Addresses
                     _mainWindow.Remove(_runnerOnInfo);
                 }
 
-                _runnerOffInfo = new Label(3, 1, $"Nethermind Runner is stopped.. Please, wait for it to start.");
+                _runnerOffInfo = new Label(3, 20, $"Nethermind Runner is stopped.. Please, wait for it to start.");
                 _mainWindow.Add(_runnerOffInfo);
                 _process.Start();
                 _processId = _process.Id;
@@ -166,39 +166,47 @@ namespace Nethermind.BeamWallet.Modules.Addresses
                 _mainWindow.Remove(_runnerOffInfo);
             }
 
-            _runnerOnInfo = new Label(3, 1, "Nethermind Runner is running.");
+            _runnerOnInfo = new Label(3, 20, "Nethermind Runner is running.");
             _mainWindow.Add(_runnerOnInfo);
         }
-        
         private void AddInfo()
         {
             var beamWalletInfo = new Label(3, 1, "Hello, Welcome to Nethermind Beam Wallet - a simple " +
                                                  "console application that allows you to easily" +
-                                                 $"{Environment.NewLine}"+
+                                                 $"{Environment.NewLine}" +
                                                  "and quickly make transactions on Mainnet Ethereum." +
-                                                 $"{Environment.NewLine}"+
+                                                 $"{Environment.NewLine}" +
                                                  "To get started you will need:" +
-                                                 $"{Environment.NewLine}"+
+                                                 $"{Environment.NewLine}" +
                                                  "- your wallet address" +
-                                                 $"{Environment.NewLine}"+
+                                                 $"{Environment.NewLine}" +
                                                  "- passphrase to your wallet" +
-                                                 $"{Environment.NewLine}"+
+                                                 $"{Environment.NewLine}" +
                                                  "- keystore file" +
-                                                 $"{Environment.NewLine}"+
+                                                 $"{Environment.NewLine}" +
                                                  "- and the address to which you want to transfer ETH." +
-                                                 $"{Environment.NewLine}{Environment.NewLine}"+
+                                                 $"{Environment.NewLine}{Environment.NewLine}" +
                                                  "Before we start, please copy keystore file of your account into " +
                                                  "folder 'keystore' - this is" +
-                                                 $"{Environment.NewLine}"+
+                                                 $"{Environment.NewLine}" +
                                                  "necessary to properly unlock the account before making a transaction." +
-                                                 $"{Environment.NewLine}"+
-                                                 "This is a Beta version, so for your own safety " +
-                                                 "please, do not use an account with a high balance." +
-                                                 $"{Environment.NewLine}{Environment.NewLine}"+
+                                                 $"{Environment.NewLine}{Environment.NewLine}" +
                                                  "To navigate through the application - use the TAB key or Up and Down arrows.");
-            _mainWindow.Add(beamWalletInfo);
+            
+            var betaVersionWarningInfo = new Label(3, 14, "This is a Beta version, so for your own safety please, do " +
+                                                         "not use an account with a high balance.");
+
+            var warningInfo = new Label(3, 16, "There are a few things that could have gone wrong:" +
+                                              $"{Environment.NewLine}" +
+                                              "- your balance may be incorrect" +
+                                              $"{Environment.NewLine}" +
+                                              "- the transaction fee may be charged incorrectly");
+            
+            betaVersionWarningInfo.TextColor = new Attribute();
+            
+            _mainWindow.Add(betaVersionWarningInfo, warningInfo, beamWalletInfo);
         }
-        
+
         private void AddRunnerInfo(string info)
         {
             if (_runnerOnInfo is {})
@@ -206,19 +214,19 @@ namespace Nethermind.BeamWallet.Modules.Addresses
                 _mainWindow.Remove(_runnerOnInfo);
             }
 
-            _runnerOnInfo = new Label(3, 16, $"{info}");
+            _runnerOnInfo = new Label(3, 20, $"{info}");
             _mainWindow.Add(_runnerOnInfo);
         }
 
         public Task<Window> InitAsync()
         {
-            var nodeAddressLabel = new Label(3, 18, "Enter node address:");
-            var nodeAddressTextField = new TextField(28, 18, 80, $"{DefaultUrl}");
-            var addressLabel = new Label(3, 20, "Enter account address:");
-            var addressTextField = new TextField(28, 20, 80, "");
+            var nodeAddressLabel = new Label(3, 22, "Enter node address:");
+            var nodeAddressTextField = new TextField(28, 22, 80, $"{DefaultUrl}");
+            var addressLabel = new Label(3, 24, "Enter account address:");
+            var addressTextField = new TextField(28, 24, 80, "");
 
-            var okButton = new Button(28, 22, "OK");
-            var quitButton = new Button(36, 22, "Quit");
+            var okButton = new Button(28, 26, "OK");
+            var quitButton = new Button(36, 26, "Quit");
             quitButton.Clicked = () =>
             {
                 if (!_externalRunnerIsRunning)
@@ -257,7 +265,7 @@ namespace Nethermind.BeamWallet.Modules.Addresses
                     return;
                 }
 
-                if (!_addressRegex.IsMatch(addressString))
+                if (addressString.Length != 42 || !_addressRegex.IsMatch(addressString))
                 {
                     MessageBox.ErrorQuery(40, 7, "Error", "Address is invalid." +
                                                           $"{Environment.NewLine}(ESC to close)");
@@ -268,7 +276,6 @@ namespace Nethermind.BeamWallet.Modules.Addresses
             };
             _mainWindow.Add(addressLabel, nodeAddressLabel, nodeAddressTextField,
                 addressTextField, okButton, quitButton);
-            
             return Task.FromResult(_mainWindow);
         }
 
