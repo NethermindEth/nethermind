@@ -83,7 +83,7 @@ namespace Nethermind.Cli.Modules
         [CliFunction("eth", "sendEth")]
         public string SendEth(string from, string to, decimal amountInEth)
         {
-            return SendEth(CliParseAddress(from), CliParseAddress(to), (UInt256) (amountInEth * (decimal)(BigInteger) 1.Ether()));
+            return SendEth(CliParseAddress(from), CliParseAddress(to), (UInt256) (amountInEth * (decimal) 1.Ether()));
         }
 
         [CliFunction("eth", "estimateGas")]
