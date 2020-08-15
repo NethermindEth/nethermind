@@ -17,7 +17,7 @@
 using System;
 using System.Globalization;
 using Nethermind.Core.Extensions;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Newtonsoft.Json;
 
 namespace Nethermind.Serialization.Json
@@ -65,7 +65,7 @@ namespace Nethermind.Serialization.Json
         {
             if (reader.Value is long || reader.Value is int)
             {
-                return new UInt256((long) reader.Value);
+                return (UInt256) (long) reader.Value;
             }
 
             string s = (string) reader.Value;
@@ -73,7 +73,7 @@ namespace Nethermind.Serialization.Json
             {
                 throw new JsonException($"{nameof(UInt256)} cannot be deserialized from null");
             }
-            
+
             if (s == "0x0")
             {
                 return UInt256.Zero;

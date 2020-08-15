@@ -21,7 +21,7 @@ using Nethermind.Blockchain.Processing;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.TxPool;

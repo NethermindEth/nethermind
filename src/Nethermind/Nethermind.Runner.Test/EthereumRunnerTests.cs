@@ -73,7 +73,7 @@ namespace Nethermind.Runner.Test
         }
 
         [TestCaseSource(nameof(ChainSpecRunnerTests))]
-        [Timeout(30000)] // just to make sure we are not on infinite loop on steps because of incorrect dependencies
+        // [Timeout(30000)] // just to make sure we are not on infinite loop on steps because of incorrect dependencies
         public async Task Smoke(string chainSpecPath)
         {
             Type type1 = typeof(ITxPoolConfig);

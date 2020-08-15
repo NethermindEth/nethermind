@@ -17,6 +17,7 @@
 using System.Numerics;
 using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Core.Domain;
+using Nethermind.Int256;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Rpc.Models
 {
@@ -25,7 +26,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rpc.Models
         public Keccak? Id { get; set; }
         public string? Name { get; set; }
         public string? Description { get; set; }
-        public BigInteger? UnitPrice { get; set; }
+        public UInt256? UnitPrice { get; set; }
         public string? UnitType { get; set; }
         public string? QueryType { get; set; }
         public uint MinUnits { get; set; }

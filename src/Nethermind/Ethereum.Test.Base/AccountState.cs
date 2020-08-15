@@ -17,7 +17,7 @@
  */
 
 using System.Collections.Generic;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 
 namespace Ethereum.Test.Base
 {

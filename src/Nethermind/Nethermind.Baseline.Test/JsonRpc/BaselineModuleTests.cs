@@ -12,7 +12,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Data;

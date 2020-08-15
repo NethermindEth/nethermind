@@ -21,6 +21,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.State;
 using Nethermind.Db.Blooms;
+using Nethermind.Int256;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
@@ -86,7 +87,7 @@ namespace Nethermind.Evm.Test
         public void Trace_memory_out_of_gas_exception()
         {
             byte[] code = Prepare.EvmCode
-                .PushData(10 * 1000 * 1000)
+                .PushData((UInt256)(10 * 1000 * 1000))
                 .Op(Instruction.MLOAD)
                 .Done;
             

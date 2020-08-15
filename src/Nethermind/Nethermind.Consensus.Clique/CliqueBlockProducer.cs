@@ -29,7 +29,7 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -403,11 +403,11 @@ namespace Nethermind.Consensus.Clique
             if (_snapshotManager.IsInTurn(snapshot, snapshot.Number + 1, signer))
             {
                 if (_logger.IsInfo) _logger.Info("Producing in turn block");
-                return new UInt256(Clique.DifficultyInTurn);
+                return Clique.DifficultyInTurn;
             }
 
             if (_logger.IsInfo) _logger.Info("Producing out of turn block");
-            return new UInt256(Clique.DifficultyNoTurn);
+            return Clique.DifficultyNoTurn;
         }
 
         public void Dispose()

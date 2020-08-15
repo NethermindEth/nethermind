@@ -17,7 +17,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Stats;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Peers.AllocationStrategies;

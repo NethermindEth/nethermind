@@ -20,7 +20,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 

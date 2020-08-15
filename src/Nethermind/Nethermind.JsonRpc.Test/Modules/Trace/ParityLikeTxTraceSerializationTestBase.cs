@@ -19,7 +19,7 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.JsonRpc.Test.Data;
 

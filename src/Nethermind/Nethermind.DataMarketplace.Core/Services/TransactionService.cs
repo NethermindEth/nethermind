@@ -21,7 +21,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Core.Configs;
 using Nethermind.DataMarketplace.Core.Services.Models;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Wallet;
 
@@ -82,7 +82,7 @@ namespace Nethermind.DataMarketplace.Core.Services
             
             var hash = await UpdateAsync(transactionHash, transaction =>
             {
-                gasPrice = new UInt256(multiplier * (BigInteger) transaction.GasPrice / 100);
+                gasPrice = multiplier * transaction.GasPrice / 100;
                 transaction.GasPrice = gasPrice;
                 transaction.GasLimit = gasLimit;
                 transaction.Data = null;

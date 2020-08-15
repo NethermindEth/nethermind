@@ -17,7 +17,7 @@
 using FluentAssertions;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Caching

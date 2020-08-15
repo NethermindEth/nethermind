@@ -24,7 +24,7 @@ using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Collections;
 using NUnit.Framework;
@@ -40,7 +40,7 @@ namespace Nethermind.Blockchain.Test.TxPools.Collections
         private static Transaction[] GenerateTransactions(int count = Capacity, UInt256? gasPrice = null, Address address = null, UInt256? nonce = null) =>
             Enumerable.Range(0, count).Select(i =>
             {
-                UInt256.Create(out UInt256 iUint256, i);
+                UInt256 iUint256 = (UInt256)i;
                 var transaction = Build.A.Transaction.WithGasPrice(gasPrice ?? iUint256).WithNonce(nonce ?? iUint256)
                     .WithSenderAddress(address ?? TestItem.Addresses[i]).TestObject;
                 transaction.Hash = Keccak.Compute(i.ToString());

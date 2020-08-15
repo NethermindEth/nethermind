@@ -19,7 +19,7 @@ using System;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts.Json;
 using Nethermind.Core;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Evm;
 
 namespace Nethermind.Consensus.AuRa.Contracts

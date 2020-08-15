@@ -23,7 +23,7 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Facade.Transactions;
 using Nethermind.Logging;
 using Nethermind.State;

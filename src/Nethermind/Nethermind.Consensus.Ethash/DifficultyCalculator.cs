@@ -16,7 +16,7 @@
 
 using System.Numerics;
 using Nethermind.Core.Specs;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 
 namespace Nethermind.Consensus.Ethash
 {
@@ -39,12 +39,12 @@ namespace Nethermind.Consensus.Ethash
             bool parentHasUncles)
         {
             IReleaseSpec spec = _specProvider.GetSpec(blockNumber);
-            BigInteger baseIncrease = BigInteger.Divide(parentDifficulty, spec.DifficultyBoundDivisor);
-            BigInteger timeAdjustment = TimeAdjustment(spec, parentTimestamp, currentTimestamp, parentHasUncles);
+            BigInteger baseIncrease = BigInteger.Divide((BigInteger)parentDifficulty, spec.DifficultyBoundDivisor);
+            BigInteger timeAdjustment = TimeAdjustment(spec, (BigInteger)parentTimestamp, (BigInteger)currentTimestamp, parentHasUncles);
             BigInteger timeBomb = TimeBomb(spec, blockNumber);
             return (UInt256)BigInteger.Max(
                 OfGenesisBlock,
-                parentDifficulty +
+                (BigInteger)parentDifficulty +
                 timeAdjustment * baseIncrease +
                 timeBomb);
         }
@@ -78,7 +78,7 @@ namespace Nethermind.Consensus.Ethash
             blockNumber = blockNumber - spec.DifficultyBombDelay;
 
             // Note: block 200000 is when the difficulty bomb was introduced but we did not spec it in any release info, just hardcoded it
-            return blockNumber < 200000 ? UInt256.Zero : BigInteger.Pow(2, (int)(BigInteger.Divide(blockNumber, 100000) - 2));
+            return blockNumber < 200000 ? BigInteger.Zero : BigInteger.Pow(2, (int)(BigInteger.Divide(blockNumber, 100000) - 2));
         }
     }
 }

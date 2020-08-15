@@ -19,7 +19,7 @@ using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Consumers.Deposits.Domain;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 
 namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
 {

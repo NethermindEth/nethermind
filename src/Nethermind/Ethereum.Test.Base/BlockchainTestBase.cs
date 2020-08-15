@@ -39,7 +39,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -342,8 +342,8 @@ namespace Ethereum.Test.Base
                 }
 
                 bool accountExists = stateProvider.AccountExists(accountState.Key);
-                BigInteger? balance = accountExists ? stateProvider.GetBalance(accountState.Key) : (BigInteger?) null;
-                BigInteger? nonce = accountExists ? stateProvider.GetNonce(accountState.Key) : (BigInteger?) null;
+                UInt256? balance = accountExists ? stateProvider.GetBalance(accountState.Key) : (UInt256?) null;
+                UInt256? nonce = accountExists ? stateProvider.GetNonce(accountState.Key) : (UInt256?) null;
 
                 if (accountState.Value.Balance != balance)
                 {

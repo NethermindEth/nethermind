@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.Numerics;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Int256;
 
 namespace Nethermind.Abi
 {
@@ -136,7 +137,7 @@ namespace Nethermind.Abi
                 if (type.IsDynamic)
                 {
                     // TODO: do not have to decode this - can just jump 32 and check if first call and use dynamic position
-                    (BigInteger offset, int nextPosition) = AbiType.UInt256.DecodeUInt(data, position, packed);
+                    (UInt256 offset, int nextPosition) = AbiType.UInt256.DecodeUInt(data, position, packed);
                     (arguments[i], dynamicPosition) = type.Decode(data, sigOffset + (int)offset, packed);
                     position = nextPosition;
                 }

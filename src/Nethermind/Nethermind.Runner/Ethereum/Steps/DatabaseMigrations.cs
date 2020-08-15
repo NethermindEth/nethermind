@@ -26,7 +26,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Runner.Ethereum.Steps.Migrations;
 using Nethermind.Db.Blooms;
