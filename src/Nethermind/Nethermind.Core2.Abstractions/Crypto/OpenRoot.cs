@@ -1,5 +1,5 @@
 using System;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 
 namespace Nethermind.Core2.Crypto
 {

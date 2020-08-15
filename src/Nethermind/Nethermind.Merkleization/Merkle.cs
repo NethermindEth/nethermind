@@ -21,8 +21,8 @@ using System.Runtime.Intrinsics.X86;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
-using Nethermind.Dirichlet.Numerics;
-using Chunk = Nethermind.Dirichlet.Numerics.UInt256;
+using Nethermind.Int256;
+using Chunk = Nethermind.Int256.UInt256;
 
 namespace Nethermind.Merkleization
 {
@@ -39,14 +39,14 @@ namespace Nethermind.Merkleization
                 var previous = ZeroHashes[i - 1];
                 MemoryMarshal.CreateSpan(ref previous, 1).CopyTo(concatenation.Slice(0, 1));
                 MemoryMarshal.CreateSpan(ref previous, 1).CopyTo(concatenation.Slice(1, 1));
-                UInt256.CreateFromLittleEndian(out ZeroHashes[i], Sha256.Compute(MemoryMarshal.Cast<UInt256, byte>(concatenation)).AsSpan().ToArray());
+                ZeroHashes[i] = new UInt256(Sha256.Compute(MemoryMarshal.Cast<UInt256, byte>(concatenation)).AsSpan().ToArray());
             }
         }
 
         static Merkle()
         {
             BuildZeroHashes();
-            UInt256.CreateFromBigEndian(out RootOfNull, Sha256.RootOfAnEmptyString.AsSpan().ToArray());
+            RootOfNull = new UInt256(Sha256.RootOfAnEmptyString.AsSpan().ToArray());
         }
 
         public static uint NextPowerOfTwo(uint v)
@@ -149,7 +149,7 @@ namespace Nethermind.Merkleization
 
         public static void MixIn(ref UInt256 root, int value)
         {
-            UInt256.Create(out UInt256 lengthPart, value);
+            UInt256 lengthPart = (UInt256)value;
             root = HashConcatenation(root, lengthPart, 0);
         }
 
@@ -160,33 +160,33 @@ namespace Nethermind.Merkleization
 
         public static void Ize(out UInt256 root, byte value)
         {
-            UInt256.Create(out root, value);
+            root = value;
         }
 
         public static void Ize(out UInt256 root, ushort value)
         {
-            UInt256.Create(out root, value);
+            root = value;
         }
 
         public static void Ize(out UInt256 root, int value)
         {
-            UInt256.Create(out root, value);
+            root = (UInt256)value;
         }
 
         public static void Ize(out UInt256 root, uint value)
         {
-            UInt256.Create(out root, value);
+            root = value;
         }
 
         public static void Ize(out UInt256 root, ulong value)
         {
-            UInt256.Create(out root, value);
+            root = value;
         }
 
-        public static void Ize(out UInt256 root, UInt128 value)
-        {
-            UInt256.Create(out root, value);
-        }
+        // public static void Ize(out UInt256 root, UInt128 value)
+        // {
+        //     UInt256.Create(out root, value);
+        // }
 
         public static void Ize(out UInt256 root, UInt256 value)
         {
@@ -201,7 +201,7 @@ namespace Nethermind.Merkleization
                 fixed (byte* buffer = &readOnlyBytes.GetPinnableReference())
                 {
                     Span<byte> apiNeedsWriteableEvenThoughOnlyReading = new Span<byte>(buffer, readOnlyBytes.Length);
-                    UInt256.CreateFromLittleEndian(out root, apiNeedsWriteableEvenThoughOnlyReading);
+                    root = new UInt256(apiNeedsWriteableEvenThoughOnlyReading);
                 }
             }
         }
@@ -214,7 +214,7 @@ namespace Nethermind.Merkleization
                 fixed (byte* buffer = &readOnlyBytes.GetPinnableReference())
                 {
                     Span<byte> apiNeedsWriteableEvenThoughOnlyReading = new Span<byte>(buffer, readOnlyBytes.Length);
-                    UInt256.CreateFromLittleEndian(out root, apiNeedsWriteableEvenThoughOnlyReading);
+                    root = new UInt256(apiNeedsWriteableEvenThoughOnlyReading);
                 }
             }
         }
@@ -402,22 +402,22 @@ namespace Nethermind.Merkleization
             }
         }
 
-        public static void Ize(out UInt256 root, Span<UInt128> value)
-        {
-            const int typeSize = 16;
-            int partialChunkLength = value.Length % (32 / typeSize);
-            if (partialChunkLength > 0)
-            {
-                Span<UInt128> fullChunks = value.Slice(0, value.Length - partialChunkLength);
-                Span<UInt128> lastChunk = stackalloc UInt128[32 / typeSize];
-                value.Slice(value.Length - partialChunkLength).CopyTo(lastChunk);
-                Ize(out root, MemoryMarshal.Cast<UInt128, Chunk>(fullChunks), MemoryMarshal.Cast<UInt128, Chunk>(lastChunk));
-            }
-            else
-            {
-                Ize(out root, MemoryMarshal.Cast<UInt128, Chunk>(value));
-            }
-        }
+        // public static void Ize(out UInt256 root, Span<UInt128> value)
+        // {
+        //     const int typeSize = 16;
+        //     int partialChunkLength = value.Length % (32 / typeSize);
+        //     if (partialChunkLength > 0)
+        //     {
+        //         Span<UInt128> fullChunks = value.Slice(0, value.Length - partialChunkLength);
+        //         Span<UInt128> lastChunk = stackalloc UInt128[32 / typeSize];
+        //         value.Slice(value.Length - partialChunkLength).CopyTo(lastChunk);
+        //         Ize(out root, MemoryMarshal.Cast<UInt128, Chunk>(fullChunks), MemoryMarshal.Cast<UInt128, Chunk>(lastChunk));
+        //     }
+        //     else
+        //     {
+        //         Ize(out root, MemoryMarshal.Cast<UInt128, Chunk>(value));
+        //     }
+        // }
 
         public static void Ize(out UInt256 root, ReadOnlySpan<UInt256> value, ReadOnlySpan<UInt256> lastChunk, ulong limit = 0)
         {

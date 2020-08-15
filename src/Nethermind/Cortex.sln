@@ -68,8 +68,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Core2.Json.Test"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Ssz.Test", "Nethermind.Ssz.Test\Nethermind.Ssz.Test.csproj", "{D013F1F4-1C24-4ED0-83A5-86E338746104}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Dirichlet.Numerics", "..\Dirichlet\Nethermind.Dirichlet.Numerics\Nethermind.Dirichlet.Numerics.csproj", "{42E89D09-C966-454D-917F-C9030422595F}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Core.Cryptography.Test", "Nethermind.Core.Cryptography.Test\Nethermind.Core.Cryptography.Test.csproj", "{5792C470-A4E7-447B-87DD-D7269723EB13}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Merkleization", "Nethermind.Merkleization\Nethermind.Merkleization.csproj", "{3C7CC06A-9FAE-4DE2-BF93-AC1D5EC633DD}"
@@ -77,6 +75,8 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Ssz.Benchmark", "Nethermind.Ssz.Benchmark\Nethermind.Ssz.Benchmark.csproj", "{CF819EE6-60D9-43FA-84A1-77D41FD20541}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Core2.Cryptography.Benchmark", "Nethermind.Core2.Cryptography.Benchmark\Nethermind.Core2.Cryptography.Benchmark.csproj", "{88DCDFAA-62D7-4E7D-9F02-D3F1F0328585}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Int256", "..\int256\src\Nethermind.Int256\Nethermind.Int256.csproj", "{CE024D37-157F-482E-AE3B-C01BE4475FD3}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -200,10 +200,6 @@ Global
 		{38D48822-B735-438D-AAEB-C9918A2C8C2E}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{38D48822-B735-438D-AAEB-C9918A2C8C2E}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{38D48822-B735-438D-AAEB-C9918A2C8C2E}.Release|Any CPU.Build.0 = Release|Any CPU
-		{42E89D09-C966-454D-917F-C9030422595F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{42E89D09-C966-454D-917F-C9030422595F}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{42E89D09-C966-454D-917F-C9030422595F}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{42E89D09-C966-454D-917F-C9030422595F}.Release|Any CPU.Build.0 = Release|Any CPU
 		{5792C470-A4E7-447B-87DD-D7269723EB13}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{5792C470-A4E7-447B-87DD-D7269723EB13}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{5792C470-A4E7-447B-87DD-D7269723EB13}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -230,6 +226,10 @@ Global
 		{88DCDFAA-62D7-4E7D-9F02-D3F1F0328585}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{88DCDFAA-62D7-4E7D-9F02-D3F1F0328585}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{88DCDFAA-62D7-4E7D-9F02-D3F1F0328585}.Release|Any CPU.Build.0 = Release|Any CPU
+		{CE024D37-157F-482E-AE3B-C01BE4475FD3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{CE024D37-157F-482E-AE3B-C01BE4475FD3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{CE024D37-157F-482E-AE3B-C01BE4475FD3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{CE024D37-157F-482E-AE3B-C01BE4475FD3}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{4FFCC84D-DC26-4429-84D4-8809DD52B851} = {0F737A2F-A2C5-4A7E-A225-27F093A4C105}

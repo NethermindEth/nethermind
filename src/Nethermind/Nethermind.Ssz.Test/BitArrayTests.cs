@@ -19,7 +19,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core2;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Merkleization;
 using NUnit.Framework;
 using Shouldly;

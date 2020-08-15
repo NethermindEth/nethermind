@@ -23,7 +23,7 @@
 // using System.Linq;
 // using System.Text.RegularExpressions;
 // using Nethermind.Core.Extensions;
-// using Nethermind.Dirichlet.Numerics;
+// using Nethermind.Int256;
 // using Nethermind.Merkleization;
 // using Nethermind.Ssz;
 // using NUnit.Framework;

@@ -21,7 +21,7 @@ using System.Runtime.InteropServices;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 
 namespace Nethermind.Merkleization
 {

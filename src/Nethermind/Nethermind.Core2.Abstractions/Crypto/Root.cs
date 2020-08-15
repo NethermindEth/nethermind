@@ -18,7 +18,7 @@ using System;
 using System.Buffers.Binary;
 using System.Linq;
 using System.Runtime.InteropServices;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 
 namespace Nethermind.Core2.Crypto
 {
@@ -45,7 +45,7 @@ namespace Nethermind.Core2.Crypto
 
         public void AsInt(out UInt256 intRoot)
         {
-            UInt256.CreateFromLittleEndian(out intRoot, Bytes.AsSpan());
+            intRoot = new UInt256(Bytes.AsSpan());
         }
         
         public static Root Wrap(byte[] bytes)

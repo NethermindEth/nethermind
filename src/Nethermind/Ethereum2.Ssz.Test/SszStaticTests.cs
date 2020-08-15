@@ -23,7 +23,7 @@
 // using Nethermind.Core.Extensions;
 // using Nethermind.Core2.Containers;
 // using Nethermind.Core2.Crypto;
-// using Nethermind.Dirichlet.Numerics;
+// using Nethermind.Int256;
 // using Nethermind.Merkleization;
 // using Nethermind.Ssz;
 // using NUnit.Framework;

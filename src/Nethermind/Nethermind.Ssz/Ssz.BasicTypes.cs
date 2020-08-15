@@ -19,7 +19,7 @@ using System.Buffers.Binary;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 
 namespace Nethermind.Ssz
 {
@@ -96,12 +96,12 @@ namespace Nethermind.Ssz
             BinaryPrimitives.WriteUInt64LittleEndian(span, value);
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void Encode(Span<byte> span, UInt128 value)
-        {
-            BinaryPrimitives.WriteUInt64LittleEndian(span.Slice(0, 8), value.S0);
-            BinaryPrimitives.WriteUInt64LittleEndian(span.Slice(8, 8), value.S1);
-        }
+        // [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        // public static void Encode(Span<byte> span, UInt128 value)
+        // {
+        //     BinaryPrimitives.WriteUInt64LittleEndian(span.Slice(0, 8), value.S0);
+        //     BinaryPrimitives.WriteUInt64LittleEndian(span.Slice(8, 8), value.S1);
+        // }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Encode(Span<byte> span, UInt256 value)
@@ -148,19 +148,19 @@ namespace Nethermind.Ssz
             }
         }
 
-        public static void Encode(Span<byte> span, UInt128[] value)
-        {
-            const int typeSize = 16;
-            if (span.Length != value.Length * typeSize)
-            {
-                ThrowTargetLength<UInt128[]>(span.Length, value.Length);
-            }
-
-            for (int i = 0; i < value.Length; i++)
-            {
-                Encode(span.Slice(i * typeSize, typeSize), value[i]);
-            }
-        }
+        // public static void Encode(Span<byte> span, UInt128[] value)
+        // {
+        //     const int typeSize = 16;
+        //     if (span.Length != value.Length * typeSize)
+        //     {
+        //         ThrowTargetLength<UInt128[]>(span.Length, value.Length);
+        //     }
+        //
+        //     for (int i = 0; i < value.Length; i++)
+        //     {
+        //         Encode(span.Slice(i * typeSize, typeSize), value[i]);
+        //     }
+        // }
 
         public static void Encode(Span<byte> span, Span<ulong> value)
         {
@@ -275,19 +275,19 @@ namespace Nethermind.Ssz
             return result;
         }
         
-        public static UInt128 DecodeUInt128(Span<byte> span)
-        {
-            const int expectedLength = 16;
-            if (span.Length != expectedLength)
-            {
-                throw new InvalidDataException($"{nameof(DecodeUInt128)} expects input of length {expectedLength} and received {span.Length}");
-            }
-            
-            ulong s0 = BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(0, 8));
-            ulong s1 = BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(8, 8));
-            UInt128.Create(out UInt128 result, s0, s1);
-            return result;
-        }
+        // public static UInt128 DecodeUInt128(Span<byte> span)
+        // {
+        //     const int expectedLength = 16;
+        //     if (span.Length != expectedLength)
+        //     {
+        //         throw new InvalidDataException($"{nameof(DecodeUInt128)} expects input of length {expectedLength} and received {span.Length}");
+        //     }
+        //     
+        //     ulong s0 = BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(0, 8));
+        //     ulong s1 = BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(8, 8));
+        //     UInt128.Create(out UInt128 result, s0, s1);
+        //     return result;
+        // }
 
         public static UInt256 DecodeUInt256(Span<byte> span)
         {
@@ -301,7 +301,7 @@ namespace Nethermind.Ssz
             ulong s1 = BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(8, 8));
             ulong s2 = BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(16, 8));
             ulong s3 = BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(24, 8));
-            UInt256.Create(out UInt256 result, s0, s1, s2, s3);
+            UInt256 result = new UInt256(s0, s1, s2, s3);
             return result;
         }
 
@@ -322,22 +322,22 @@ namespace Nethermind.Ssz
             return result;
         }
 
-        public static UInt128[] DecodeUInts128(Span<byte> span)
-        {
-            const int typeSize = 16;
-            if (span.Length % typeSize != 0)
-            {
-                throw new InvalidDataException($"{nameof(DecodeUInts128)} expects input in multiples of {typeSize} and received {span.Length}");
-            }
-            
-            UInt128[] result = new UInt128[span.Length / typeSize];
-            for (int i = 0; i < span.Length / typeSize; i++)
-            {
-                result[i] = DecodeUInt128(span.Slice(i * typeSize, typeSize));
-            }
-
-            return result;
-        }
+        // public static UInt128[] DecodeUInts128(Span<byte> span)
+        // {
+        //     const int typeSize = 16;
+        //     if (span.Length % typeSize != 0)
+        //     {
+        //         throw new InvalidDataException($"{nameof(DecodeUInts128)} expects input in multiples of {typeSize} and received {span.Length}");
+        //     }
+        //     
+        //     UInt128[] result = new UInt128[span.Length / typeSize];
+        //     for (int i = 0; i < span.Length / typeSize; i++)
+        //     {
+        //         result[i] = DecodeUInt128(span.Slice(i * typeSize, typeSize));
+        //     }
+        //
+        //     return result;
+        // }
 
         public static Span<ulong> DecodeULongs(Span<byte> span)
         {

@@ -26,7 +26,7 @@ using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using Microsoft.Extensions.Options;
 using Nethermind.Core2.Cryptography.Ssz;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Merkleization;
 using Nethermind.Ssz;
 
