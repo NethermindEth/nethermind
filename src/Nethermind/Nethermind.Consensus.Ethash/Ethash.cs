@@ -23,6 +23,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 
@@ -150,10 +151,11 @@ namespace Nethermind.Consensus.Ethash
             return BitConverter.ToUInt64(buffer, 0);
         }
 
-        private bool IsLessThanTarget(byte[] result, BigInteger target)
+        private bool IsLessThanTarget(byte[] result, UInt256 difficulty)
         {
-            BigInteger resultAsInteger = result.ToUnsignedBigInteger();
-            return resultAsInteger < target;
+            UInt256 resultAsInteger = new UInt256(result, true);
+            BigInteger threshold = BigInteger.Divide(_2To256, (BigInteger)difficulty);
+            return (BigInteger)resultAsInteger < threshold;
         }
 
         public (Keccak MixHash, ulong Nonce) Mine(BlockHeader header, ulong? startNonce = null)
@@ -168,7 +170,6 @@ namespace Nethermind.Consensus.Ethash
 
             ulong fullSize = GetDataSize(epoch);
             ulong nonce = startNonce ?? GetRandomNonce();
-            BigInteger target = BigInteger.Divide(_2To256, (BigInteger)header.Difficulty);
             Keccak headerHashed = GetTruncatedHash(header);
 
             // parallel for (just with ulong...) - adjust based on the available mining threads, low priority
@@ -177,7 +178,7 @@ namespace Nethermind.Consensus.Ethash
             {
                 byte[] result;
                 (mixHash, result, _) = Hashimoto(fullSize, dataSet, headerHashed, null, nonce);
-                if (IsLessThanTarget(result, target))
+                if (IsLessThanTarget(result, header.Difficulty))
                 {
                     break;
                 }
@@ -241,9 +242,8 @@ namespace Nethermind.Consensus.Ethash
             {
                 return false;
             }
-
-            BigInteger threshold = BigInteger.Divide(BigInteger.Pow(2, 256), (BigInteger)header.Difficulty);
-            return IsLessThanTarget(result, threshold);
+            
+            return IsLessThanTarget(result, header.Difficulty);
         }
 
         private readonly Stopwatch _cacheStopwatch = new Stopwatch();
