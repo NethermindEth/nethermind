@@ -12,7 +12,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Updating submodules
-      run: git submodule update --init src/rocksdb-sharp src/int256
+      run: git submodule update --init src/rocksdb-sharp src/int256 src/Dirichlet
     - name: Installing Linux packages
       if: matrix.os == 'ubuntu-latest'
       run: |
@@ -54,7 +54,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Updating submodules
-      run: git submodule update --init src/rocksdb-sharp src/int256
+      run: git submodule update --init src/rocksdb-sharp src/int256 src/Dirichlet
     - name: Installing Linux packages
       if: matrix.os == 'ubuntu-latest'
       run: |
@@ -99,7 +99,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Updating submodules
-      run: git submodule update --init src/rocksdb-sharp src/int256
+      run: git submodule update --init src/rocksdb-sharp src/int256 src/Dirichlet
     - name: Installing Linux packages
       if: matrix.os == 'ubuntu-latest'
       run: |
