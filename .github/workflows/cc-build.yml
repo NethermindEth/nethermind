@@ -16,7 +16,7 @@ jobs:
     - name: Unshallow fetching
       run: git fetch --unshallow --progress --prune origin +refs/heads/*:refs/remotes/origin/*
     - name: Updating submodules
-      run: git submodule update --init src/int256 src/rocksdb-sharp
+      run: git submodule update --init src/int256 src/rocksdb-sharp src/Dirichlet
     - name: Installing Linux packages
       run: |
         sudo apt-get update
