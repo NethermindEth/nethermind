@@ -24,7 +24,7 @@ namespace Nethermind.Consensus.AuRa
 
         static AuraDifficultyCalculator()
         {
-            MaxDifficulty = new UInt256(ulong.MaxValue, ulong.MaxValue, 0, 0);
+            MaxDifficulty = UInt256.UInt128MaxValue;
         }
 
         public static UInt256 CalculateDifficulty(long parentStep, long currentStep, long emptyStepsCount = 0L)
