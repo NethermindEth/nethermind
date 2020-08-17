@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj" />
+    <ProjectReference Include="..\..\Dirichlet\Nethermind.Dirichlet.Numerics\Nethermind.Dirichlet.Numerics.csproj" />
   </ItemGroup>
 
   <PropertyGroup>
