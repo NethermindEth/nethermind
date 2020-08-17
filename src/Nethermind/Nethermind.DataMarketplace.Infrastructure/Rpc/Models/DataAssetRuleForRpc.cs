@@ -16,12 +16,13 @@
 
 using System.Numerics;
 using Nethermind.DataMarketplace.Core.Domain;
+using Nethermind.Int256;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Rpc.Models
 {
     public class DataAssetRuleForRpc
     {
-        public BigInteger Value { get; set; }
+        public UInt256 Value { get; set; }
 
         public DataAssetRuleForRpc()
         {

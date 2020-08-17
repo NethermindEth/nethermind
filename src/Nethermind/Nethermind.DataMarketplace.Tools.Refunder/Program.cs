@@ -17,7 +17,7 @@ using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Services.Models;
 using Nethermind.DataMarketplace.Infrastructure.Rlp;
 using Nethermind.Db.Rocks.Config;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.KeyStore;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;

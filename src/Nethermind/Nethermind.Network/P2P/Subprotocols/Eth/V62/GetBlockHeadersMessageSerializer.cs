@@ -16,7 +16,7 @@
 
 using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
@@ -34,8 +34,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             }
             else
             {
-                UInt256.CreateFromBigEndian(out UInt256 result, startingBytes);
-                message.StartBlockNumber = (long)result;
+                message.StartBlockNumber = (long)new UInt256(startingBytes, true);
             }
 
             message.MaxHeaders = rlpStream.DecodeInt();

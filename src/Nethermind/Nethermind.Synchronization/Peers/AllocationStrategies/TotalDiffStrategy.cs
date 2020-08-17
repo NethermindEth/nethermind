@@ -19,7 +19,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
 using Nethermind.Blockchain;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Stats;
 
 namespace Nethermind.Synchronization.Peers.AllocationStrategies

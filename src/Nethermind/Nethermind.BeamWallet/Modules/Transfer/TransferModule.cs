@@ -24,7 +24,7 @@ using Nethermind.BeamWallet.Clients;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Facade.Proxy;
 using Nethermind.Facade.Proxy.Models;
 using Terminal.Gui;
@@ -152,7 +152,7 @@ namespace Nethermind.BeamWallet.Modules.Transfer
                 }
             }
 
-            _averageGasPriceNumber = transactionCount > 0 ? (long)sum / transactionCount : (long)sum;
+            _averageGasPriceNumber = transactionCount > 0 ? (long) sum / transactionCount : (long) sum;
             _transferWindow.Remove(_blockNumberLabel);
             _blockNumberLabel = new Label(1, 24, $"Block number (latest): {_latestBlock.Number}, Average gas price: " +
                                                  $"{_averageGasPriceNumber} WEI");
@@ -464,7 +464,7 @@ namespace Nethermind.BeamWallet.Modules.Transfer
             
             _unlockFailedLbl = new Label(1, 20, "personal_unlockAccount: fetching...");
             _transferWindow.Add(_unlockFailedLbl);
-            
+
             RpcResult<bool> unlockAccountResult;
             do
             {
@@ -474,8 +474,9 @@ namespace Nethermind.BeamWallet.Modules.Transfer
                     await Task.Delay(3000);
                 }
             } while (!unlockAccountResult.IsValid);
-            _transferWindow.Remove(_unlockFailedLbl);           
-            
+
+            _transferWindow.Remove(_unlockFailedLbl);
+
             if (!unlockAccountResult.Result)
             {
                 MessageBox.ErrorQuery(40, 8, "Error",

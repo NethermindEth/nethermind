@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Numerics;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -246,7 +247,7 @@ namespace Nethermind.Network
                     BestHash = typedArgs.BestHash,
                     GenesisHash = typedArgs.GenesisHash,
                     ProtocolVersion = typedArgs.ProtocolVersion,
-                    TotalDifficulty = typedArgs.TotalDifficulty
+                    TotalDifficulty = (BigInteger)typedArgs.TotalDifficulty
                 });
                 bool isValid = _protocolValidator.DisconnectOnInvalid(handler.ProtocolCode, session, args);
                 if (isValid)

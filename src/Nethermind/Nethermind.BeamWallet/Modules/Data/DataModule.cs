@@ -23,7 +23,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.BeamWallet.Modules.Events;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Facade.Proxy;
 using Terminal.Gui;
 using Nethermind.Core;
@@ -235,6 +235,10 @@ namespace Nethermind.BeamWallet.Modules.Data
                 await SetLatestBlockNumber();
                 await GetTokensBalanceAsync();
                 _window.Remove(_tokensSyncingInfoLabel);
+            }
+
+            if (_skipTokensButton is {})
+            {
                 _window.Remove(_skipTokensButton);
             }
             _window.Add(_transferButton);

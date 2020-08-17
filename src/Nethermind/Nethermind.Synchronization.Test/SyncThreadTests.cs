@@ -16,7 +16,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -25,14 +24,13 @@ using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Blockchain.Test.Validators;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Specs;
@@ -41,7 +39,6 @@ using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Stats;
 using Nethermind.Db.Blooms;
-using Nethermind.Synchronization.BeamSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.TxPool;
@@ -160,7 +157,9 @@ namespace Nethermind.Synchronization.Test
             for (int i = 0; i < chainLength; i++)
             {
                 Transaction transaction = new Transaction();
-                transaction.Value = (UInt256) BigInteger.Divide((BigInteger) 1.Ether(), _chainLength);
+                
+                1.Ether().Divide((UInt256)_chainLength, out UInt256 txValue);
+                transaction.Value = txValue;
                 transaction.SenderAddress = TestItem.AddressA;
                 transaction.To = TestItem.AddressB;
                 transaction.Nonce = (UInt256) i;
