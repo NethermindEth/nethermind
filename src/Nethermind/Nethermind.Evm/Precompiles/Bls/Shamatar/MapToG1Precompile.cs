@@ -47,6 +47,8 @@ namespace Nethermind.Evm.Precompiles.Bls.Shamatar
 
         public (byte[], bool) Run(byte[] inputData)
         {
+            throw new Exception();
+            
             Span<byte> inputDataSpan = stackalloc byte[64];
             inputData.PrepareEthInput(inputDataSpan);
 

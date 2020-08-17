@@ -501,7 +501,7 @@ namespace Nethermind.Evm
             }
             catch (Exception)
             {
-                CallResult callResult = new CallResult(Array.Empty<byte>(), false);
+                CallResult callResult = new CallResult(Array.Empty<byte>(), false, true);
                 return callResult;
             }
         }
