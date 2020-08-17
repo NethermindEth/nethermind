@@ -93,6 +93,9 @@ namespace Nethermind.BeamWallet.Modules.Addresses
             var confirmationPassphraseLabel = new Label(1, 16, "Confirm passphrase:");
             var confirmationPassphraseTextField = new TextField(25, 16, 80, "");
 
+            passphraseTextField.Secret = true;
+            confirmationPassphraseTextField.Secret = true;
+
             var okButton = new Button(25, 18, "OK");
             var quitButton = new Button(33, 18, "Quit");
             
