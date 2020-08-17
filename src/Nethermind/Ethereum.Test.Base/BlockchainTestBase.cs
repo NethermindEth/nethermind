@@ -104,7 +104,7 @@ namespace Ethereum.Test.Base
             }
         }
 
-        protected async Task RunTest(BlockchainTest test, Stopwatch stopwatch = null)
+        protected async Task<EthereumTestResult> RunTest(BlockchainTest test, Stopwatch stopwatch = null)
         {
             TestContext.Write($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
             Assert.IsNull(test.LoadFailure, "test data loading failure");
@@ -207,8 +207,20 @@ namespace Ethereum.Test.Base
 
             if (correctRlp.Count == 0)
             {
-                Assert.AreEqual(new Keccak(test.GenesisBlockHeader.Hash), test.LastBlockHash);
-                return;
+                var result = new EthereumTestResult(test.Name, null);
+                
+                try
+                {
+                    Assert.AreEqual(new Keccak(test.GenesisBlockHeader.Hash), test.LastBlockHash);
+                }
+                catch (AssertionException)
+                {
+                    result.Pass = false;
+                    return result;
+                }
+
+                result.Pass = true;
+                return result;
             }
 
             if (test.GenesisRlp == null)
@@ -279,6 +291,12 @@ namespace Ethereum.Test.Base
 //            }
 
             Assert.Zero(differences.Count, "differences");
+            
+            return new EthereumTestResult
+            {
+                Pass = differences.Count == 0,
+                Name = test.Name
+            };
         }
 
         private void InitializeTestState(BlockchainTest test, IStateProvider stateProvider, IStorageProvider storageProvider, ISpecProvider specProvider)
