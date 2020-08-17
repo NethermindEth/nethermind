@@ -15,16 +15,20 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Threading.Tasks;
+using System;
 using Nethermind.Core;
-using Nethermind.Facade.Proxy;
 
-namespace Nethermind.BeamWallet.Clients
+namespace Nethermind.BeamWallet.Modules.Events
 {
-    public interface IJsonRpcWalletClientProxy
+    public class AddressesSelectedEventArgs : EventArgs
     {
-        Task<RpcResult<bool>> personal_unlockAccount(Address address, string passphrase);
-        Task<RpcResult<bool>> personal_lockAccount(Address address);
-        Task<RpcResult<Address>> personal_newAccount(string passphrase);
+        public string NodeAddress { get; }
+        public string AccountAddress { get; }
+
+        public AddressesSelectedEventArgs(string nodeAddress, string accountAddress)
+        {
+            NodeAddress = nodeAddress;
+            AccountAddress = accountAddress;
+        }
     }
 }
