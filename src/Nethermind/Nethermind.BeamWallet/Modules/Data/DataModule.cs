@@ -93,7 +93,7 @@ namespace Nethermind.BeamWallet.Modules.Data
 
             _balance = balance.Value;
             _window.Remove(_balanceValueLabel);
-            _balanceValueLabel = new Label(70, 1, $"{_balance} ETH");
+            _balanceValueLabel = new Label(80, 1, $"{_balance} ETH");
             _window.Remove(_syncingInfoLabel);
             _window.Add(_balanceValueLabel);
         }
