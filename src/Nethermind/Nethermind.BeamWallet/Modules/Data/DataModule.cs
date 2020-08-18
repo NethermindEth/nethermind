@@ -202,10 +202,18 @@ namespace Nethermind.BeamWallet.Modules.Data
         private async Task RenderBalanceAsync()
         {
             var addressLabel = new Label(1, 1, $"Address: {_address}");
-            var balanceLabel = new Label(60, 1, "Balance:");
-            _syncingInfoLabel = new Label(70, 1, "Syncing... Please wait for the balance. " +
+            var copyAddressButton = new Button( 55, 1, "Copy");
+            var balanceLabel = new Label(70, 1, "Balance:");
+            _syncingInfoLabel = new Label(80, 1, "Syncing... Please wait for the balance. " +
                                                  "This may take up to 10min.");
-            _window.Add(addressLabel, balanceLabel, _syncingInfoLabel);
+
+            copyAddressButton.Clicked += () =>
+            {
+                var textCopy = new TextCopy.Clipboard();
+                textCopy.SetText(_address.ToString());
+            };
+            
+            _window.Add(addressLabel, copyAddressButton, balanceLabel, _syncingInfoLabel);
 
             decimal? balance;
             do
@@ -217,12 +225,12 @@ namespace Nethermind.BeamWallet.Modules.Data
             _balance = balance.Value;
             if (await GetBlockNumber() == 0)
             {
-                _balanceValueLabel = new Label(70, 1, "Syncing... Please wait for the balance." +
+                _balanceValueLabel = new Label(80, 1, "Syncing... Please wait for the balance." +
                                                       "This may take up to 10min.");
                 return;
             }
 
-            _balanceValueLabel = new Label(70, 1, $"{_balance} ETH");
+            _balanceValueLabel = new Label(80, 1, $"{_balance} ETH");
 
             _window.Remove(_syncingInfoLabel);
             _window.Add(_balanceValueLabel);
