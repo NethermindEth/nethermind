@@ -114,13 +114,13 @@ namespace Nethermind.State.Test.Runner
                 case EvmExceptionType.StackUnderflow:
                     return "StackUnderflow";
                 case EvmExceptionType.OutOfGas:
-                    return "gas uint64 overflow";
+                    return "OutOfGas";
                 case EvmExceptionType.InvalidJumpDestination:
                     return "BadJumpDestination";
                 case EvmExceptionType.AccessViolation:
                     return "AccessViolation";
                 case EvmExceptionType.StaticCallViolation:
-                    return "evm: write protection";
+                    return "StaticCallViolation";
                 default:
                     return "Error";
             }
