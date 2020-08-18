@@ -51,13 +51,13 @@ configs = {
         "blockReduced": 8192,
         "multiplierRequirement": 10000
     },
-    "volta": {
-        "url": "https://volta-rpc.energyweb.org",
+    "energyweb": {
+        "url": "https://rpc.energyweb.org",
         "blockReduced": 8192,
         "multiplierRequirement": 10000
     },
-    "energyweb": {
-        "url": "https://rpc.energyweb.org",
+    "volta": {
+        "url": "https://volta-rpc.energyweb.org",
         "blockReduced": 8192,
         "multiplierRequirement": 10000
     },
