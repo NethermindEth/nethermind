@@ -39,17 +39,27 @@ configs = {
     "poacore": {
         "url": "https://core.poa.network",
         "blockReduced": 8192,
-        "multiplierRequirement": 30000
+        "multiplierRequirement": 10000
     },
     "xdai": {
         "url": "https://dai.poa.network",
         "blockReduced": 8192,
-        "multiplierRequirement": 30000
+        "multiplierRequirement": 10000
     },
     "sokol": {
         "url": "https://sokol.poa.network",
         "blockReduced": 8192,
-        "multiplierRequirement": 30000
+        "multiplierRequirement": 10000
+    },
+    "volta": {
+        "url": "https://volta-rpc.energyweb.org",
+        "blockReduced": 8192,
+        "multiplierRequirement": 10000
+    },
+    "energyweb": {
+        "url": "https://rpc.energyweb.org",
+        "blockReduced": 8192,
+        "multiplierRequirement": 10000
     },
     # beam sections
     "mainnet_beam": {
@@ -75,7 +85,7 @@ configs = {
     "poacore_beam": {
         "url": "https://core.poa.network",
         "blockReduced": 8192,
-        "multiplierRequirement": 30000
+        "multiplierRequirement": 10000
     }
 }
 
