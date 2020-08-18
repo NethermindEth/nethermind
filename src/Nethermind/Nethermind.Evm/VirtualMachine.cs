@@ -496,7 +496,7 @@ namespace Nethermind.Evm
             try
             {
                 (byte[] output, bool success) = precompile.Run(callData);
-                CallResult callResult = new CallResult(output, success);
+                CallResult callResult = new CallResult(output, success, !success);
                 return callResult;
             }
             catch (Exception)
