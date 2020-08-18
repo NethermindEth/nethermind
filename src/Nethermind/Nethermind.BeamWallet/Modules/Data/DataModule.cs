@@ -43,22 +43,17 @@ namespace Nethermind.BeamWallet.Modules.Data
         private Label _balanceValueLabel;
         private Button _skipTokensButton;
         private readonly IEnumerable<Token> _tokens = InitTokens();
-        private readonly Process _process;
-        private bool _externalRunnerIsRunning;
         private long? _lastBlockNumber;
-        private Button _quitButton;
+        private Button _backButton;
         private Button _transferButton;
         private Label _tokensSyncingInfoLabel;
 
         public event EventHandler<TransferClickedEventArgs> TransferClicked;
 
-        public DataModule(IEthJsonRpcClientProxy ethJsonRpcClientProxy, string address, Process process,
-            bool externalRunnerIsRunning)
+        public DataModule(IEthJsonRpcClientProxy ethJsonRpcClientProxy, string address)
         {
-            _externalRunnerIsRunning = externalRunnerIsRunning;
             _ethJsonRpcClientProxy = ethJsonRpcClientProxy;
             _address = new Address(address);
-            _process = process;
             _timer = new Timer(Update, null, TimeSpan.Zero, TimeSpan.FromSeconds(2));
         }
 
@@ -120,18 +115,13 @@ namespace Nethermind.BeamWallet.Modules.Data
                 TransferClicked?.Invoke(this, new TransferClickedEventArgs(_address, _balance));
             };
             
-            _quitButton = new Button(1, 11, "Quit");
-            _quitButton.Clicked = () =>
+            _backButton = new Button(1, 11, "Back");
+            _backButton.Clicked = () =>
             {
-                if (!_externalRunnerIsRunning)
-                {
-                    CloseAppWithRunner();
-                }
-
                 Application.Top.Running = false;
                 Application.RequestStop();
             };
-            _window.Add(_quitButton);
+            _window.Add(_backButton);
         }
 
         private async Task SetLatestBlockNumber()
@@ -287,25 +277,6 @@ namespace Nethermind.BeamWallet.Modules.Data
             {
                 Name = name;
                 Address = address;
-            }
-        }
-
-        private void CloseAppWithRunner()
-        {
-            var confirmed = MessageBox.Query(80, 8, "Confirmation",
-                $"{Environment.NewLine}" +
-                "Nethermind.Runner is running in the background. Do you want to stop it?", "Yes", "No");
-
-            if (confirmed == 0)
-            {
-                try
-                {
-                    _process.Kill();
-                }
-                catch
-                {
-                    // ignored
-                }
             }
         }
     }

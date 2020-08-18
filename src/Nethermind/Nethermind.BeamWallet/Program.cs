@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Nethermind.BeamWallet.Clients;
 using Nethermind.BeamWallet.Modules.Addresses;
 using Nethermind.BeamWallet.Modules.Data;
+using Nethermind.BeamWallet.Modules.Init;
 using Nethermind.BeamWallet.Modules.Transfer;
 using Nethermind.Facade.Proxy;
 using Nethermind.Logging;
@@ -16,44 +17,56 @@ namespace Nethermind.BeamWallet
 {
     class Program
     {
+        private const string DefaultUrl = "http://localhost:8545";
+
         static async Task Main(string[] args)
         {
+
             AppDomain.CurrentDomain.UnhandledException += (_, e) =>
             {
                 Console.WriteLine($"There was an error.{Environment.NewLine}{e.ExceptionObject}");
             };
             Application.Init();
-            var addressesModule = new AddressesModule();
-
-            addressesModule.AddressesSelected += async (_, data) =>
+            var initModule = new InitModule();
+            initModule.OptionSelected += async (_, optionInfo) =>
             {
-                var urls = new[] {data.nodeAddress};
+                var urls = new[] {DefaultUrl};
                 var httpClient = new HttpClient();
-
-                AddAuthorizationHeader(httpClient, data.nodeAddress);
-                
                 var jsonRpcClientProxy = new JsonRpcClientProxy(new DefaultHttpClient(httpClient,
                     new EthereumJsonSerializer(), LimboLogs.Instance, int.MaxValue), urls, LimboLogs.Instance);
                 var jsonRpcWalletClientProxy = new JsonRpcWalletClientProxy(jsonRpcClientProxy);
                 var ethJsonRpcClientProxy = new EthJsonRpcClientProxy(jsonRpcClientProxy);
-                
-                var dataModule = new DataModule(ethJsonRpcClientProxy, data.address, data.process, data._externalRunnerIsRunning);
-                dataModule.TransferClicked += async (_, e) =>
+                var addressesModule = new AddressesModule(optionInfo.Item1, jsonRpcWalletClientProxy, optionInfo.Item2);
+
+                addressesModule.AddressesSelected += async (_, addressesEvent) =>
                 {
-                    var transferModule = new TransferModule(ethJsonRpcClientProxy, jsonRpcWalletClientProxy,
-                        e.Address, e.Balance);
-                    var transferWindow = await transferModule.InitAsync();
-                    Application.Top.Add(transferWindow);
-                    Application.Run(transferWindow);
+                    urls = new[] {addressesEvent.NodeAddress};
+
+                    AddAuthorizationHeader(httpClient, addressesEvent.NodeAddress);
+
+                    var dataModule = new DataModule(ethJsonRpcClientProxy, addressesEvent.AccountAddress);
+                    dataModule.TransferClicked += async (_, transferEvent) =>
+                    {
+                        var transferModule = new TransferModule(ethJsonRpcClientProxy, jsonRpcWalletClientProxy,
+                            transferEvent.Address, transferEvent.Balance);
+                        var transferWindow = await transferModule.InitAsync();
+                        Application.Top.Add(transferWindow);
+                        Application.Run(transferWindow);
+                    };
+                    var dataWindow = await dataModule.InitAsync();
+                    Application.Top.Add(dataWindow);
+                    Application.Run(dataWindow);
                 };
-                var dataWindow = await dataModule.InitAsync();
-                Application.Top.Add(dataWindow);
-                Application.Run(dataWindow);
+                var addressesWindow = await addressesModule.InitAsync();
+                Application.Top.Add(addressesWindow);
+                Application.Run(addressesWindow);
             };
-            Application.Top.Add(await addressesModule.InitAsync());
+            
+            var initWindow = await initModule.InitAsync();
+            Application.Top.Add(initWindow);
             Application.Run();
         }
-        
+
         private static void AddAuthorizationHeader(HttpClient httpClient, string url)
         {
             if (!url.Contains("@"))
