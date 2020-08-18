@@ -231,7 +231,7 @@ namespace Nethermind.BeamWallet.Modules.Init
             var quitButton = new Button(3, 26, "Quit");
             quitButton.Clicked = () =>
             {
-                if (_externalRunnerIsRunning)
+                if (!_externalRunnerIsRunning)
                 {
                     CloseAppWithRunner();
                 }
