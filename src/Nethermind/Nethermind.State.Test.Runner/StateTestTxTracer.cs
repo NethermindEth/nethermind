@@ -25,7 +25,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
-using Nethermind.State;
 
 namespace Nethermind.State.Test.Runner
 {
@@ -61,7 +60,6 @@ namespace Nethermind.State.Test.Runner
 
         public void StartOperation(int depth, long gas, Instruction opcode, int pc)
         {
-//            var previousTraceEntry = _traceEntry;
             _gasAlreadySetForCurrentOp = false;
             _traceEntry = new StateTestTxTraceEntry();
             _traceEntry.Pc = pc;
@@ -70,30 +68,6 @@ namespace Nethermind.State.Test.Runner
             _traceEntry.Gas = gas;
             _traceEntry.Depth = depth;
             _trace.Entries.Add(_traceEntry);
-            
-//            if (_traceEntry.Depth > (previousTraceEntry?.Depth ?? 0))
-//            {
-//                _traceEntry.Storage = new Dictionary<string, string>();
-//                _trace.StorageByDepth.Push(previousTraceEntry != null ? previousTraceEntry.Storage : new Dictionary<string, string>());
-//            }
-//            else if (_traceEntry.Depth < (previousTraceEntry?.Depth ?? 0))
-//            {
-//                if (previousTraceEntry == null)
-//                {
-//                    throw new InvalidOperationException("Unexpected missing previous trace when leaving a call.");
-//                }
-//                    
-//                _traceEntry.Storage = new Dictionary<string, string>(_trace.StorageByDepth.Pop());
-//            }
-//            else
-//            {
-//                if (previousTraceEntry == null)
-//                {
-//                    throw new InvalidOperationException("Unexpected missing previous trace on continuation.");
-//                }
-//                    
-//                _traceEntry.Storage = new Dictionary<string, string>(previousTraceEntry.Storage);    
-//            }
         }
 
         public void ReportOperationError(EvmExceptionType error)
@@ -101,29 +75,20 @@ namespace Nethermind.State.Test.Runner
             _traceEntry.Error = GetErrorDescription(error);
         }
         
-        private string GetErrorDescription(EvmExceptionType evmExceptionType)
+        private static string GetErrorDescription(EvmExceptionType evmExceptionType)
         {
-            switch (evmExceptionType)
+            return evmExceptionType switch
             {
-                case EvmExceptionType.None:
-                    return null;
-                case EvmExceptionType.BadInstruction:
-                    return "BadInstruction";
-                case EvmExceptionType.StackOverflow:
-                    return "StackOverflow";
-                case EvmExceptionType.StackUnderflow:
-                    return "StackUnderflow";
-                case EvmExceptionType.OutOfGas:
-                    return "OutOfGas";
-                case EvmExceptionType.InvalidJumpDestination:
-                    return "BadJumpDestination";
-                case EvmExceptionType.AccessViolation:
-                    return "AccessViolation";
-                case EvmExceptionType.StaticCallViolation:
-                    return "StaticCallViolation";
-                default:
-                    return "Error";
-            }
+                EvmExceptionType.None => null,
+                EvmExceptionType.BadInstruction => "BadInstruction",
+                EvmExceptionType.StackOverflow => "StackOverflow",
+                EvmExceptionType.StackUnderflow => "StackUnderflow",
+                EvmExceptionType.OutOfGas => "OutOfGas",
+                EvmExceptionType.InvalidJumpDestination => "BadJumpDestination",
+                EvmExceptionType.AccessViolation => "AccessViolation",
+                EvmExceptionType.StaticCallViolation => "StaticCallViolation",
+                _ => "Error"
+            };
         }
 
         public void ReportOperationRemainingGas(long gas)
@@ -156,9 +121,6 @@ namespace Nethermind.State.Test.Runner
 
         public void SetOperationStorage(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue)
         {
-//            byte[] bigEndian = new byte[32];
-//            storageIndex.ToBigEndian(bigEndian);
-//            _traceEntry.Storage[bigEndian.ToHexString(false)] = newValue.PadLeft(32).ToHexString(false);
         }
 
         public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)

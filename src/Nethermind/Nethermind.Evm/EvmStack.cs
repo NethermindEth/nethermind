@@ -245,11 +245,7 @@ namespace Nethermind.Evm
 
         public void Dup(in int depth)
         {
-            if (Head < depth)
-            {
-                Metrics.EvmExceptions++;
-                throw new EvmStackUnderflowException();
-            }
+            EnsureDepth(depth);
 
             _bytes.Slice((Head - depth) * 32, 32).CopyTo(_bytes.Slice(Head * 32, 32));
             if (_tracer.IsTracingInstructions)
@@ -266,16 +262,21 @@ namespace Nethermind.Evm
                 throw new EvmStackOverflowException();
             }
         }
-
-        public void Swap(int depth)
+        
+        public void EnsureDepth(int depth)
         {
-            Span<byte> buffer = stackalloc byte[32];
-
             if (Head < depth)
             {
                 Metrics.EvmExceptions++;
                 throw new EvmStackUnderflowException();
             }
+        }
+        
+        public void Swap(int depth)
+        {
+            Span<byte> buffer = stackalloc byte[32];
+
+            EnsureDepth(depth);
 
             Span<byte> bottomSpan = _bytes.Slice((Head - depth) * 32, 32);
             Span<byte> topSpan = _bytes.Slice((Head - 1) * 32, 32);
