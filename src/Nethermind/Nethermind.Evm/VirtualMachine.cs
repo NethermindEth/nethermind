@@ -898,6 +898,7 @@ namespace Nethermind.Evm
                         stack.PopUInt256(out UInt256 a);
                         if (a >= BigInt32)
                         {
+                            stack.EnsureDepth(1);
                             break;
                         }
 
@@ -1064,9 +1065,9 @@ namespace Nethermind.Evm
                         }
                         else
                         {
-                            ref var refA = ref MemoryMarshal.AsRef<ulong>(a);
-                            ref var refB = ref MemoryMarshal.AsRef<ulong>(b);
-                            ref var refBuffer = ref MemoryMarshal.AsRef<ulong>(stack.Register);
+                            ref ulong refA = ref MemoryMarshal.AsRef<ulong>(a);
+                            ref ulong refB = ref MemoryMarshal.AsRef<ulong>(b);
+                            ref ulong refBuffer = ref MemoryMarshal.AsRef<ulong>(stack.Register);
 
                             refBuffer = refA & refB;
                             Unsafe.Add(ref refBuffer, 1) = Unsafe.Add(ref refA, 1) & Unsafe.Add(ref refB, 1);
@@ -1097,9 +1098,9 @@ namespace Nethermind.Evm
                         }
                         else
                         {
-                            ref var refA = ref MemoryMarshal.AsRef<ulong>(a);
-                            ref var refB = ref MemoryMarshal.AsRef<ulong>(b);
-                            ref var refBuffer = ref MemoryMarshal.AsRef<ulong>(stack.Register);
+                            ref ulong refA = ref MemoryMarshal.AsRef<ulong>(a);
+                            ref ulong refB = ref MemoryMarshal.AsRef<ulong>(b);
+                            ref ulong refBuffer = ref MemoryMarshal.AsRef<ulong>(stack.Register);
 
                             refBuffer = refA | refB;
                             Unsafe.Add(ref refBuffer, 1) = Unsafe.Add(ref refA, 1) | Unsafe.Add(ref refB, 1);
@@ -1130,9 +1131,9 @@ namespace Nethermind.Evm
                         }
                         else
                         {
-                            ref var refA = ref MemoryMarshal.AsRef<ulong>(a);
-                            ref var refB = ref MemoryMarshal.AsRef<ulong>(b);
-                            ref var refBuffer = ref MemoryMarshal.AsRef<ulong>(stack.Register);
+                            ref ulong refA = ref MemoryMarshal.AsRef<ulong>(a);
+                            ref ulong refB = ref MemoryMarshal.AsRef<ulong>(b);
+                            ref ulong refBuffer = ref MemoryMarshal.AsRef<ulong>(stack.Register);
 
                             refBuffer = refA ^ refB;
                             Unsafe.Add(ref refBuffer, 1) = Unsafe.Add(ref refA, 1) ^ Unsafe.Add(ref refB, 1);
@@ -2328,28 +2329,7 @@ namespace Nethermind.Evm
                             outputOffset = 0;
                         }
 
-                        ExecutionType executionType;
-                        if (instruction == Instruction.CALL)
-                        {
-                            executionType = ExecutionType.Call;
-                        }
-                        else if (instruction == Instruction.DELEGATECALL)
-                        {
-                            executionType = ExecutionType.DelegateCall;
-                        }
-                        else if (instruction == Instruction.STATICCALL)
-                        {
-                            executionType = ExecutionType.StaticCall;
-                        }
-                        else if (instruction == Instruction.CALLCODE)
-                        {
-                            executionType = ExecutionType.CallCode;
-                        }
-                        else
-                        {
-                            throw new NotSupportedException($"Execution type is undefined for {Enum.GetName(typeof(Instruction), instruction)}");
-                        }
-
+                        ExecutionType executionType = GetCallExecutionType(instruction);
                         EvmState callState = new EvmState(
                             gasLimitUl,
                             callEnv,
@@ -2653,6 +2633,33 @@ namespace Nethermind.Evm
 
             UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
             return CallResult.Empty;
+        }
+
+        private static ExecutionType GetCallExecutionType(Instruction instruction)
+        {
+            ExecutionType executionType;
+            if (instruction == Instruction.CALL)
+            {
+                executionType = ExecutionType.Call;
+            }
+            else if (instruction == Instruction.DELEGATECALL)
+            {
+                executionType = ExecutionType.DelegateCall;
+            }
+            else if (instruction == Instruction.STATICCALL)
+            {
+                executionType = ExecutionType.StaticCall;
+            }
+            else if (instruction == Instruction.CALLCODE)
+            {
+                executionType = ExecutionType.CallCode;
+            }
+            else
+            {
+                throw new NotSupportedException($"Execution type is undefined for {Enum.GetName(typeof(Instruction), instruction)}");
+            }
+
+            return executionType;
         }
 
         internal readonly ref struct CallResult
