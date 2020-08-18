@@ -52,9 +52,8 @@ namespace Nethermind.Evm.Precompiles.Bls.Shamatar
         public (byte[], bool) Run(byte[] inputData)
         {
             inputData ??= Array.Empty<byte>();
-            if (inputData.Length % PairSize > 0)
+            if (inputData.Length % PairSize > 0 || inputData.Length == 0)
             {
-                // note that it will not happen in case of null / 0 length
                 return (Array.Empty<byte>(), false);
             }
 
