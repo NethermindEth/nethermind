@@ -481,7 +481,6 @@ namespace Nethermind.BeamWallet.Modules.Transfer
                 AddButtons();
                 return false;
             }
-
             _unlockFailedLbl = new Label(1, 22, "personal_unlockAccount: fetching...");
             _transferWindow.Add(_unlockFailedLbl);
 
