@@ -9,7 +9,7 @@ namespace Nethermind.Precompiles.Benchmark
     // [DryJob(RuntimeMoniker.NetCoreApp31)]
     [MemoryDiagnoser]
     // [NativeMemoryProfiler]
-    public class Bn256PairingBenchmark : PrecompileBenchmarkBase
+    public abstract class Bn256PairingBenchmark : PrecompileBenchmarkBase
     {
         protected override IPrecompile[] Precompiles => new[]
         {

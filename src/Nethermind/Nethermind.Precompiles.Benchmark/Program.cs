@@ -27,13 +27,13 @@ namespace Nethermind.Precompiles.Benchmark
 => BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args, new DebugInProcessConfig());
 #else
         {
-            // BenchmarkRunner.Run<Sha256Benchmark>();
-            // BenchmarkRunner.Run<RipEmdBenchmark>();
-            // BenchmarkRunner.Run<Blake2fBenchmark>();
-            // BenchmarkRunner.Run<KeccakBenchmark>();
-            // BenchmarkRunner.Run<BnPairBenchmark>();
-            // BenchmarkRunner.Run<Bn256PairingBenchmark>();
-            // BenchmarkRunner.Run<BnAddBenchmark>();
+            BenchmarkRunner.Run<Sha256Benchmark>();
+            BenchmarkRunner.Run<RipEmdBenchmark>();
+            BenchmarkRunner.Run<Blake2fBenchmark>();
+            BenchmarkRunner.Run<KeccakBenchmark>();
+            BenchmarkRunner.Run<Bn256PairingBenchmark>();
+            BenchmarkRunner.Run<Bn256PairingBenchmark>();
+            BenchmarkRunner.Run<Bn256AddBenchmark>();
             BenchmarkRunner.Run<Bn256AddBenchmark>();
             BenchmarkRunner.Run<Bn256MulBenchmark>();
             BenchmarkRunner.Run<Bn256PairingBenchmark>();
