@@ -17,7 +17,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
 using System.Threading;
@@ -120,6 +119,7 @@ namespace Nethermind.BeamWallet.Modules.Data
             {
                 Application.Top.Running = false;
                 Application.RequestStop();
+                Application.Shutdown();
             };
             _window.Add(_backButton);
         }
@@ -141,13 +141,22 @@ namespace Nethermind.BeamWallet.Modules.Data
 
         private async Task<decimal?> GetBalanceAsync()
         {
-            var result = await _ethJsonRpcClientProxy.eth_getBalance(_address);
-            if (!result.IsValid || !result.Result.HasValue)
+            try
             {
+                var result = await _ethJsonRpcClientProxy.eth_getBalance(_address);
+                if (!result.IsValid || !result.Result.HasValue)
+                {
+                    return null;
+                }
+
+                return WeiToEth(result.Result);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.ErrorQuery(50, 7, "Error", "There was an error while " +
+                                                      "getting a balance. (ESC to close)");
                 return null;
             }
-
-            return WeiToEth(result.Result);
         }
 
         private async Task GetTokensBalanceAsync()
@@ -176,21 +185,30 @@ namespace Nethermind.BeamWallet.Modules.Data
 
         private async Task<Token> GetTokenBalanceAsync(Token token)
         {
-            RpcResult<byte[]> result;
-            do
+            try
             {
-                result = await _ethJsonRpcClientProxy.eth_call(GetTransactionModel(token),
-                    _lastBlockNumber.HasValue
-                        ? BlockParameterModel.FromNumber(_lastBlockNumber.Value)
-                        : BlockParameterModel.Latest);
-            } while (!result.IsValid);
-
-            return result.IsValid
-                ? new Token(token.Name, token.Address)
+                RpcResult<byte[]> result;
+                do
                 {
-                    Balance = UInt256.Parse(result.Result.ToHexString(), NumberStyles.HexNumber)
-                }
-                : null;
+                    result = await _ethJsonRpcClientProxy.eth_call(GetTransactionModel(token),
+                        _lastBlockNumber.HasValue
+                            ? BlockParameterModel.FromNumber(_lastBlockNumber.Value)
+                            : BlockParameterModel.Latest);
+                } while (!result.IsValid);
+
+                return result.IsValid
+                    ? new Token(token.Name, token.Address)
+                    {
+                        Balance = UInt256.Parse(result.Result.ToHexString(), NumberStyles.HexNumber)
+                    }
+                    : null;
+            }
+            catch (Exception ex)
+            {
+                MessageBox.ErrorQuery(50, 7, "Error", "There was an error while " +
+                                                      "getting a token balance. (ESC to close)");
+                return null;
+            }
         }
 
         private async Task<long?> GetBlockNumber()
@@ -209,10 +227,9 @@ namespace Nethermind.BeamWallet.Modules.Data
 
             copyAddressButton.Clicked += () =>
             {
-                var textCopy = new TextCopy.Clipboard();
-                textCopy.SetText(_address.ToString());
+                CopyToClipboard(_address.ToString());
             };
-            
+
             _window.Add(addressLabel, copyAddressButton, balanceLabel, _syncingInfoLabel);
 
             decimal? balance;
@@ -250,6 +267,20 @@ namespace Nethermind.BeamWallet.Modules.Data
                 _window.Remove(_skipTokensButton);
             }
             _window.Add(_transferButton);
+        }
+
+        private void CopyToClipboard(string address)
+        {
+            try
+            {
+                var textCopy = new TextCopy.Clipboard();
+                textCopy.SetText(address);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.ErrorQuery(50, 7, "Error", "There was an error while " +
+                                                      "copying to clipboard. (ESC to close)");
+            }
         }
 
         private CallTransactionModel GetTransactionModel(Token token)

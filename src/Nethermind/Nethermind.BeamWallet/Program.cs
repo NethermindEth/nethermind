@@ -24,8 +24,12 @@ namespace Nethermind.BeamWallet
 
             AppDomain.CurrentDomain.UnhandledException += (_, e) =>
             {
+                Application.Top.Running = false;
+                Application.RequestStop();
+                Application.Shutdown();
                 Console.WriteLine($"There was an error.{Environment.NewLine}{e.ExceptionObject}");
             };
+
             Application.Init();
             var initModule = new InitModule();
             initModule.OptionSelected += async (_, optionInfo) =>
@@ -61,7 +65,7 @@ namespace Nethermind.BeamWallet
                 Application.Top.Add(addressesWindow);
                 Application.Run(addressesWindow);
             };
-            
+
             var initWindow = await initModule.InitAsync();
             Application.Top.Add(initWindow);
             Application.Run();
