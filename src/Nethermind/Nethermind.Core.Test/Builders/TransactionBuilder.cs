@@ -17,7 +17,6 @@
 using System;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
-using Nethermind.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
 

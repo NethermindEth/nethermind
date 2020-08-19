@@ -18,7 +18,7 @@ using System;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Running;
 using Nethermind.Core.Extensions;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 
 namespace Nethermind.JsonRpc.Benchmark
 {
@@ -32,10 +32,10 @@ namespace Nethermind.JsonRpc.Benchmark
 
         public UInt256ToHexStringBenchmark()
         {
-            UInt256.CreateFromBigEndian(out UInt256 a, Bytes.FromHexString("0xA0A1A2A3A4A5A6A7B0B1B2B3B4B5B6B7C0C1C2C3C4C5C6C7D0D1D2D3D4D5D6D7").AsSpan());
-            UInt256.CreateFromBigEndian(out UInt256 b, Bytes.FromHexString("0x0000000000000000000000000000000000000000000000000000000000000000").AsSpan());
-            UInt256.CreateFromBigEndian(out UInt256 c, Bytes.FromHexString("0x0000000000000000000000000000000000000000000000000000000000000001").AsSpan());
-            UInt256.CreateFromBigEndian(out UInt256 d, Bytes.FromHexString("0x0000000000000000000000000000000000000000000000000000000000000aaa").AsSpan());
+            var a = new UInt256(Bytes.FromHexString("0xA0A1A2A3A4A5A6A7B0B1B2B3B4B5B6B7C0C1C2C3C4C5C6C7D0D1D2D3D4D5D6D7").AsSpan());
+            var b = new UInt256(Bytes.FromHexString("0x0000000000000000000000000000000000000000000000000000000000000000").AsSpan());
+            var c = new UInt256(Bytes.FromHexString("0x0000000000000000000000000000000000000000000000000000000000000001").AsSpan());
+            var d = new UInt256(Bytes.FromHexString("0x0000000000000000000000000000000000000000000000000000000000000aaa").AsSpan());
 
             _scenarios[0] = a;
             _scenarios[1] = b;

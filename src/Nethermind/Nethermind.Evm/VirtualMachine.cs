@@ -607,9 +607,9 @@ namespace Nethermind.Evm
                 programCounter = jumpDestInt;
             }
 
-            void UpdateMemoryCost(ref UInt256 position, in UInt256 length)
+            void UpdateMemoryCost(in UInt256 position, in UInt256 length)
             {
-                long memoryCost = vmState.Memory.CalculateMemoryCost(ref position, length);
+                long memoryCost = vmState.Memory.CalculateMemoryCost(in position, length);
                 if (memoryCost != 0L)
                 {
                     if (!UpdateGas(memoryCost, ref gasAvailable))
@@ -630,8 +630,8 @@ namespace Nethermind.Evm
             if (previousCallOutput.Length > 0)
             {
                 UInt256 localPreviousDest = previousCallOutputDestination;
-                UpdateMemoryCost(ref localPreviousDest, (ulong) previousCallOutput.Length);
-                vmState.Memory.Save(ref localPreviousDest, previousCallOutput);
+                UpdateMemoryCost(in localPreviousDest, (ulong) previousCallOutput.Length);
+                vmState.Memory.Save(in localPreviousDest, previousCallOutput);
 //                if(_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long)localPreviousDest, previousCallOutput);
             }
 
@@ -1215,9 +1215,9 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        UpdateMemoryCost(ref memSrc, memLength);
+                        UpdateMemoryCost(in memSrc, memLength);
 
-                        Span<byte> memData = vmState.Memory.LoadSpan(ref memSrc, memLength);
+                        Span<byte> memData = vmState.Memory.LoadSpan(in memSrc, memLength);
                         stack.PushBytes(ValueKeccak.Compute(memData).BytesAsSpan);
                         break;
                     }
@@ -1321,10 +1321,10 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        UpdateMemoryCost(ref dest, length);
+                        UpdateMemoryCost(in dest, length);
 
                         ZeroPaddedSpan callDataSlice = env.InputData.SliceWithZeroPadding(src, (int) length);
-                        vmState.Memory.Save(ref dest, callDataSlice);
+                        vmState.Memory.Save(in dest, callDataSlice);
                         if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long) dest, callDataSlice.ToArray());
                         break;
                     }
@@ -1351,9 +1351,9 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        UpdateMemoryCost(ref dest, length);
+                        UpdateMemoryCost(in dest, length);
                         ZeroPaddedSpan codeSlice = code.SliceWithZeroPadding(src, (int) length);
-                        vmState.Memory.Save(ref dest, codeSlice);
+                        vmState.Memory.Save(in dest, codeSlice);
                         if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long) dest, codeSlice.ToArray());
                         break;
                     }
@@ -1396,10 +1396,10 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        UpdateMemoryCost(ref dest, length);
+                        UpdateMemoryCost(in dest, length);
                         byte[] externalCode = GetCachedCodeInfo(address, spec).MachineCode;
                         ZeroPaddedSpan callDataSlice = externalCode.SliceWithZeroPadding(src, (int) length);
-                        vmState.Memory.Save(ref dest, callDataSlice);
+                        vmState.Memory.Save(in dest, callDataSlice);
                         if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long) dest, callDataSlice.ToArray());
                         break;
                     }
@@ -1438,7 +1438,7 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        UpdateMemoryCost(ref dest, length);
+                        UpdateMemoryCost(in dest, length);
 
                         if (UInt256.AddOverflow(length, src, out UInt256 newLength) || newLength > _returnDataBuffer.Length)
                         {
@@ -1446,7 +1446,7 @@ namespace Nethermind.Evm
                         }
 
                         ZeroPaddedSpan returnDataSlice = _returnDataBuffer.SliceWithZeroPadding(src, (int) length);
-                        vmState.Memory.Save(ref dest, returnDataSlice);
+                        vmState.Memory.Save(in dest, returnDataSlice);
                         if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long) dest, returnDataSlice.ToArray());
                         break;
                     }
@@ -1589,8 +1589,8 @@ namespace Nethermind.Evm
                         }
 
                         stack.PopUInt256(out UInt256 memPosition);
-                        UpdateMemoryCost(ref memPosition, 32);
-                        Span<byte> memData = vmState.Memory.LoadSpan(ref memPosition);
+                        UpdateMemoryCost(in memPosition, 32);
+                        Span<byte> memData = vmState.Memory.LoadSpan(in memPosition);
                         if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long) memPosition, memData);
 
                         stack.PushBytes(memData);
@@ -1606,8 +1606,8 @@ namespace Nethermind.Evm
 
                         stack.PopUInt256(out UInt256 memPosition);
                         Span<byte> data = stack.PopBytes();
-                        UpdateMemoryCost(ref memPosition, 32);
-                        vmState.Memory.SaveWord(ref memPosition, data);
+                        UpdateMemoryCost(in memPosition, 32);
+                        vmState.Memory.SaveWord(in memPosition, data);
                         if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long) memPosition, data.PadLeft(32));
 
                         break;
@@ -1622,8 +1622,8 @@ namespace Nethermind.Evm
 
                         stack.PopUInt256(out UInt256 memPosition);
                         byte data = stack.PopByte();
-                        UpdateMemoryCost(ref memPosition, UInt256.One);
-                        vmState.Memory.SaveByte(ref memPosition, data);
+                        UpdateMemoryCost(in memPosition, UInt256.One);
+                        vmState.Memory.SaveByte(in memPosition, data);
                         if (_txTracer.IsTracingInstructions) _txTracer.ReportMemoryChange((long) memPosition, new[] {data});
 
                         break;
@@ -2021,7 +2021,7 @@ namespace Nethermind.Evm
                         stack.PopUInt256(out UInt256 memoryPos);
                         stack.PopUInt256(out UInt256 length);
                         long topicsCount = instruction - Instruction.LOG0;
-                        UpdateMemoryCost(ref memoryPos, length);
+                        UpdateMemoryCost(in memoryPos, length);
                         if (!UpdateGas(
                             GasCostOf.Log + topicsCount * GasCostOf.LogTopic +
                             (long) length * GasCostOf.LogData, ref gasAvailable))
@@ -2030,7 +2030,7 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        byte[] data = vmState.Memory.Load(ref memoryPos, length);
+                        byte[] data = vmState.Memory.Load(in memoryPos, length);
                         Keccak[] topics = new Keccak[topicsCount];
                         for (int i = 0; i < topicsCount; i++)
                         {
@@ -2081,7 +2081,7 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        UpdateMemoryCost(ref memoryPositionOfInitCode, initCodeLength);
+                        UpdateMemoryCost(in memoryPositionOfInitCode, initCodeLength);
 
                         // TODO: copy pasted from CALL / DELEGATECALL, need to move it outside?
                         if (env.CallDepth >= MaxCallDepth) // TODO: fragile ordering / potential vulnerability for different clients
@@ -2092,7 +2092,7 @@ namespace Nethermind.Evm
                             break;
                         }
 
-                        Span<byte> initCode = vmState.Memory.LoadSpan(ref memoryPositionOfInitCode, initCodeLength);
+                        Span<byte> initCode = vmState.Memory.LoadSpan(in memoryPositionOfInitCode, initCodeLength);
                         UInt256 balance = _state.GetBalance(env.ExecutingAccount);
                         if (value > balance)
                         {
@@ -2171,8 +2171,8 @@ namespace Nethermind.Evm
                         stack.PopUInt256(out UInt256 memoryPos);
                         stack.PopUInt256(out UInt256 length);
 
-                        UpdateMemoryCost(ref memoryPos, length);
-                        byte[] returnData = vmState.Memory.Load(ref memoryPos, length);
+                        UpdateMemoryCost(in memoryPos, length);
+                        byte[] returnData = vmState.Memory.Load(in memoryPos, length);
 
                         UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
                         EndInstructionTrace();
@@ -2255,8 +2255,8 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        UpdateMemoryCost(ref dataOffset, dataLength);
-                        UpdateMemoryCost(ref outputOffset, outputLength);
+                        UpdateMemoryCost(in dataOffset, dataLength);
+                        UpdateMemoryCost(in outputOffset, outputLength);
                         if (!UpdateGas(gasExtra, ref gasAvailable))
                         {
                             EndInstructionTraceError(EvmExceptionType.OutOfGas);
@@ -2289,7 +2289,7 @@ namespace Nethermind.Evm
                             if (_txTracer.IsTracingInstructions)
                             {
                                 // very specific for Parity trace, need to find generalization - very peculiar 32 length...
-                                byte[] memoryTrace = vmState.Memory.Load(ref dataOffset, 32);
+                                byte[] memoryTrace = vmState.Memory.Load(in dataOffset, 32);
                                 _txTracer.ReportMemoryChange((long) dataOffset, memoryTrace);
                             }
 
@@ -2302,7 +2302,7 @@ namespace Nethermind.Evm
                             break;
                         }
 
-                        byte[] callData = vmState.Memory.Load(ref dataOffset, dataLength);
+                        byte[] callData = vmState.Memory.Load(in dataOffset, dataLength);
 
                         int stateSnapshot = _state.TakeSnapshot();
                         int storageSnapshot = _storage.TakeSnapshot();
@@ -2358,8 +2358,8 @@ namespace Nethermind.Evm
                         stack.PopUInt256(out UInt256 memoryPos);
                         stack.PopUInt256(out UInt256 length);
 
-                        UpdateMemoryCost(ref memoryPos, length);
-                        byte[] errorDetails = vmState.Memory.Load(ref memoryPos, length);
+                        UpdateMemoryCost(in memoryPos, length);
+                        byte[] errorDetails = vmState.Memory.Load(in memoryPos, length);
 
                         UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
                         EndInstructionTrace();
