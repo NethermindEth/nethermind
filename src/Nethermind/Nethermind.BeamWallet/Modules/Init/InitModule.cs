@@ -96,13 +96,13 @@ namespace Nethermind.BeamWallet.Modules.Init
         private async Task StartProcess()
         {
             AddInfo();
-            AddRunnerInfo("Launching Nethermind.Runner...");
+            AddRunnerInfo("Launching Nethermind...");
 
             var runnerIsRunning = await CheckIsProcessRunning();
             if (runnerIsRunning)
             {
                 _externalRunnerIsRunning = true;
-                AddRunnerInfo("Nethermind Runner is already running.");
+                AddRunnerInfo("Nethermind is already running.");
                 return;
             }
 
@@ -115,7 +115,7 @@ namespace Nethermind.BeamWallet.Modules.Init
             }
             catch
             {
-                AddRunnerInfo("Error with starting a Nethermind.Runner process.");
+                AddRunnerInfo("Error with starting a Nethermind process.");
             }
         }
 
@@ -136,7 +136,7 @@ namespace Nethermind.BeamWallet.Modules.Init
             try
             {
                 process = Process.GetProcessById(_processId);
-                AddRunnerInfo("Nethermind Runner is running.");
+                AddRunnerInfo("Nethermind is running.");
                 return;
             }
             catch
@@ -151,7 +151,7 @@ namespace Nethermind.BeamWallet.Modules.Init
                     _mainWindow.Remove(_runnerOnInfo);
                 }
 
-                _runnerOffInfo = new Label(3, 20, $"Nethermind Runner is stopped.. Please, wait for it to start.");
+                _runnerOffInfo = new Label(3, 23, $"Nethermind is stopped.. Please, wait for it to start.");
                 _mainWindow.Add(_runnerOffInfo);
                 _process.Start();
                 _processId = _process.Id;
@@ -162,7 +162,7 @@ namespace Nethermind.BeamWallet.Modules.Init
                 _mainWindow.Remove(_runnerOffInfo);
             }
 
-            _runnerOnInfo = new Label(3, 20, "Nethermind Runner is running.");
+            _runnerOnInfo = new Label(3, 23, "Nethermind is running.");
             _mainWindow.Add(_runnerOnInfo);
         }
         private void AddInfo()
@@ -171,34 +171,38 @@ namespace Nethermind.BeamWallet.Modules.Init
                                                  "console application that allows you to easily" +
                                                  $"{Environment.NewLine}" +
                                                  "and quickly make transactions on Mainnet Ethereum." +
+                                                 $"{Environment.NewLine}{Environment.NewLine}" +
+                                                 "Already have a wallet?" +
                                                  $"{Environment.NewLine}" +
-                                                 "To get started you will need:" +
+                                                 "You can use your own wallet - in that case you will need your wallet data:" +
                                                  $"{Environment.NewLine}" +
-                                                 "- your wallet address" +
+                                                 "- address" +
                                                  $"{Environment.NewLine}" +
-                                                 "- passphrase to your wallet" +
+                                                 "- passphrase" +
                                                  $"{Environment.NewLine}" +
                                                  "- keystore file" +
                                                  $"{Environment.NewLine}" +
-                                                 "- and the address to which you want to transfer ETH." +
-                                                 $"{Environment.NewLine}{Environment.NewLine}" +
                                                  "Before we start, please copy keystore file of your account into " +
                                                  "folder 'keystore' - this is" +
                                                  $"{Environment.NewLine}" +
                                                  "necessary to properly unlock the account before making a transaction." +
                                                  $"{Environment.NewLine}{Environment.NewLine}" +
+                                                 "Don't have a wallet? " +
+                                                 $"{Environment.NewLine}" +
+                                                 "Create one using \"Create new wallet\" button." +
+                                                 $"{Environment.NewLine}{Environment.NewLine}" +
                                                  "To navigate through the application - use the TAB key or Up and Down arrows.");
             
-            var betaVersionWarningInfo = new Label(3, 14, "This is a Beta version, so for your own safety please, do " +
+            var betaVersionWarningInfo = new Label(3, 17, "This is a Beta version, so for your own safety please, do " +
                                                          "not use an account with a high balance.");
 
-            var warningInfo = new Label(3, 16, "There are a few things that could have gone wrong:" +
+            var warningInfo = new Label(3, 19, "There are a few things that can go wrong:" +
                                               $"{Environment.NewLine}" +
                                               "- your balance may be incorrect" +
                                               $"{Environment.NewLine}" +
                                               "- the transaction fee may be charged incorrectly");
             
-            betaVersionWarningInfo.TextColor = new Attribute();
+            betaVersionWarningInfo.TextColor = new Attribute(Color.White, Color.BrightRed);
             
             _mainWindow.Add(betaVersionWarningInfo, warningInfo, beamWalletInfo);
         }
@@ -210,7 +214,7 @@ namespace Nethermind.BeamWallet.Modules.Init
                 _mainWindow.Remove(_runnerOnInfo);
             }
 
-            _runnerOnInfo = new Label(3, 20, $"{info}");
+            _runnerOnInfo = new Label(3, 23, $"{info}");
             _mainWindow.Add(_runnerOnInfo);
         }
 
@@ -218,26 +222,26 @@ namespace Nethermind.BeamWallet.Modules.Init
         {
             _processInfo = new ProcessInfo(_process, _externalRunnerIsRunning);
             
-            var createAccountButton = new Button(3, 24, "Create new wallet");
+            var createAccountButton = new Button(3, 26, "Create new wallet");
             createAccountButton.Clicked = () =>
             {
                 OptionSelected?.Invoke(this, (Option.CreateNewWallet, _processInfo));
             };
-            var provideAccountButton = new Button(25, 24, "Provide address");
+            var provideAccountButton = new Button(25, 26, "Provide an address");
             provideAccountButton.Clicked = () =>
             {
                 OptionSelected?.Invoke(this, (Option.ProvideAddress, _processInfo));
             };
-            var quitButton = new Button(3, 26, "Quit");
+            var quitButton = new Button(3, 28, "Quit");
             quitButton.Clicked = () =>
             {
                 if (!_externalRunnerIsRunning)
                 {
                     CloseAppWithRunner();
                 }
-
                 Application.Top.Running = false;
                 Application.RequestStop();
+                Application.Shutdown();
             };
             _mainWindow.Add(createAccountButton, provideAccountButton, quitButton);
             return Task.FromResult(_mainWindow);
@@ -247,7 +251,7 @@ namespace Nethermind.BeamWallet.Modules.Init
         {
             var confirmed = MessageBox.Query(80, 8, "Confirmation",
                 $"{Environment.NewLine}" +
-                "Nethermind.Runner is running in the background. Do you want to stop it?", "Yes", "No");
+                "Nethermind is running in the background. Do you want to stop it?", "Yes", "No");
 
             if (confirmed == 0)
             {
@@ -255,9 +259,10 @@ namespace Nethermind.BeamWallet.Modules.Init
                 {
                     _process.Kill();
                 }
-                catch
+                catch(Exception ex)
                 {
-                    // ignored
+                    MessageBox.ErrorQuery(50, 7, "Error", "There was an error while " +
+                                                          "closing Nethermind. (ESC to close)");
                 }
             }
         }

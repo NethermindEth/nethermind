@@ -212,9 +212,9 @@ namespace Nethermind.BeamWallet.Modules.Addresses
             {
                 CloseAppWithRunner();
             }
-
             Application.Top.Running = false;
             Application.RequestStop();
+            Application.Shutdown();
         }
 
         private void CloseAppWithRunner()
