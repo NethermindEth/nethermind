@@ -8,16 +8,19 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.Precompiles.Benchmark
 {
     [HtmlExporter]
-    [NativeMemoryProfiler]
+    // [NativeMemoryProfiler]
     [MemoryDiagnoser]
     [ShortRunJob(RuntimeMoniker.NetCoreApp31)]
     public class KeccakBenchmark
     {
         public readonly struct Param
         {
+            private static Random _random = new Random(42);
+            
             public Param(byte[] bytes)
             {
                 Bytes = bytes;
+                _random.NextBytes(Bytes);
             }
             
             public byte[] Bytes { get; }
@@ -32,13 +35,10 @@ namespace Nethermind.Precompiles.Benchmark
         {
             get
             {
-                yield return new Param(new byte[0]);
-                yield return new Param(new byte[32]);
-                yield return new Param(new byte[64]);
-                yield return new Param(new byte[96]);
-                yield return new Param(new byte[128]);
-                yield return new Param(new byte[1024]);
-                yield return new Param(new byte[2048]);
+                for (int i = 0; i < 512; i += 4)
+                {
+                    yield return new Param(new byte[i]);    
+                }
             }
         }
 
