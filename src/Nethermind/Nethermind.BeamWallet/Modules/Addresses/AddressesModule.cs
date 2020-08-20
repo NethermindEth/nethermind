@@ -68,11 +68,11 @@ namespace Nethermind.BeamWallet.Modules.Addresses
         public Task<Window> InitAsync() => _option switch
         {
             Option.ProvideAddress => HandleProvidedAddress(),
-            Option.CreateNewWallet => HandleNewWallet(),
+            Option.CreateNewAccount => HandleNewAccount(),
             _ => default
         };
 
-        private Task<Window> HandleNewWallet()
+        private Task<Window> HandleNewAccount()
         {
             var passphraseInfo = new Label(1, 1, "Do not lose your passphrase." +
                                                  $"{Environment.NewLine}{Environment.NewLine}" +
