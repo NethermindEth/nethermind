@@ -9,8 +9,9 @@ namespace Nethermind.Precompiles.Benchmark
 {
     [HtmlExporter]
     // [NativeMemoryProfiler]
-    [MemoryDiagnoser]
-    [ShortRunJob(RuntimeMoniker.NetCoreApp31)]
+    // [MemoryDiagnoser]
+    // [ShortRunJob(RuntimeMoniker.NetCoreApp31)]
+    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
     public class KeccakBenchmark
     {
         public readonly struct Param
@@ -35,7 +36,7 @@ namespace Nethermind.Precompiles.Benchmark
         {
             get
             {
-                for (int i = 0; i < 512; i += 4)
+                for (int i = 0; i <= 512; i += 4)
                 {
                     yield return new Param(new byte[i]);    
                 }
