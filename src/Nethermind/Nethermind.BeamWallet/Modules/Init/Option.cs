@@ -19,7 +19,7 @@ namespace Nethermind.BeamWallet.Modules.Init
 {
     public enum Option
     {
-        CreateNewWallet,
+        CreateNewAccount,
         ProvideAddress
     }
 }

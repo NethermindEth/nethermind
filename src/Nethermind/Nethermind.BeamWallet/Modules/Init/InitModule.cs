@@ -42,6 +42,7 @@ namespace Nethermind.BeamWallet.Modules.Init
         private ProcessInfo _processInfo;
         private const string DefaultUrl = "http://localhost:8545";
         private const string FileName = "Nethermind.Runner";
+        private int x = 3;
 
         public event EventHandler<(Option, ProcessInfo)> OptionSelected;
 
@@ -151,7 +152,7 @@ namespace Nethermind.BeamWallet.Modules.Init
                     _mainWindow.Remove(_runnerOnInfo);
                 }
 
-                _runnerOffInfo = new Label(3, 23, $"Nethermind is stopped.. Please, wait for it to start.");
+                _runnerOffInfo = new Label(x, 26, "Nethermind is stopped.. Please, wait for it to start.");
                 _mainWindow.Add(_runnerOffInfo);
                 _process.Start();
                 _processId = _process.Id;
@@ -162,41 +163,46 @@ namespace Nethermind.BeamWallet.Modules.Init
                 _mainWindow.Remove(_runnerOffInfo);
             }
 
-            _runnerOnInfo = new Label(3, 23, "Nethermind is running.");
+            _runnerOnInfo = new Label(x, 26, "Nethermind is running.");
             _mainWindow.Add(_runnerOnInfo);
         }
         private void AddInfo()
         {
-            var beamWalletInfo = new Label(3, 1, "Hello, Welcome to Nethermind Beam Wallet - a simple " +
-                                                 "console application that allows you to easily" +
+            var beamWalletInfo = new Label(x, 1, "Hello, Welcome to Nethermind Beam Wallet - a simple " +
                                                  $"{Environment.NewLine}" +
-                                                 "and quickly make transactions on Mainnet Ethereum." +
+                                                 "console application that allows you to use the power of beam sync." +
+                                                 $"{Environment.NewLine}" +
+                                                 "Beam Wallet is running without external dependencies (automatically launches " +
+                                                 $"{Environment.NewLine}" +
+                                                 "a Nethermind Node in the background) and allows to check account balances " +
+                                                 $"{Environment.NewLine}" +
+                                                 "and make simple transactions on mainnet." +
                                                  $"{Environment.NewLine}{Environment.NewLine}" +
-                                                 "Already have a wallet?" +
+                                                 "Already have an account?" +
                                                  $"{Environment.NewLine}" +
-                                                 "You can use your own wallet - in that case you will need your wallet data:" +
+                                                 "If you already have an account, you can use it - in that case you will need:" +
                                                  $"{Environment.NewLine}" +
-                                                 "- address" +
+                                                 "- your address" +
                                                  $"{Environment.NewLine}" +
-                                                 "- passphrase" +
+                                                 "- your passphrase" +
                                                  $"{Environment.NewLine}" +
-                                                 "- keystore file" +
+                                                 "- your keystore file" +
                                                  $"{Environment.NewLine}" +
                                                  "Before we start, please copy keystore file of your account into " +
                                                  "folder 'keystore' - this is" +
                                                  $"{Environment.NewLine}" +
                                                  "necessary to properly unlock the account before making a transaction." +
                                                  $"{Environment.NewLine}{Environment.NewLine}" +
-                                                 "Don't have a wallet? " +
+                                                 "Don't have an account? " +
                                                  $"{Environment.NewLine}" +
-                                                 "Create one using \"Create new wallet\" button." +
+                                                 "Create one using \"Create new account\" button." +
                                                  $"{Environment.NewLine}{Environment.NewLine}" +
                                                  "To navigate through the application - use the TAB key or Up and Down arrows.");
             
-            var betaVersionWarningInfo = new Label(3, 17, "This is a Beta version, so for your own safety please, do " +
+            var betaVersionWarningInfo = new Label(x, 20, "This is a Beta version, so for your own safety please, do " +
                                                          "not use an account with a high balance.");
 
-            var warningInfo = new Label(3, 19, "There are a few things that can go wrong:" +
+            var warningInfo = new Label(x, 22, "There are a few things that can go wrong:" +
                                               $"{Environment.NewLine}" +
                                               "- your balance may be incorrect" +
                                               $"{Environment.NewLine}" +
@@ -214,7 +220,7 @@ namespace Nethermind.BeamWallet.Modules.Init
                 _mainWindow.Remove(_runnerOnInfo);
             }
 
-            _runnerOnInfo = new Label(3, 23, $"{info}");
+            _runnerOnInfo = new Label(x, 26, $"{info}");
             _mainWindow.Add(_runnerOnInfo);
         }
 
@@ -222,17 +228,17 @@ namespace Nethermind.BeamWallet.Modules.Init
         {
             _processInfo = new ProcessInfo(_process, _externalRunnerIsRunning);
             
-            var createAccountButton = new Button(3, 26, "Create new wallet");
+            var createAccountButton = new Button(x, 29, "Create new account");
             createAccountButton.Clicked = () =>
             {
-                OptionSelected?.Invoke(this, (Option.CreateNewWallet, _processInfo));
+                OptionSelected?.Invoke(this, (Option.CreateNewAccount, _processInfo));
             };
-            var provideAccountButton = new Button(25, 26, "Provide an address");
+            var provideAccountButton = new Button(27, 29, "Provide an address");
             provideAccountButton.Clicked = () =>
             {
                 OptionSelected?.Invoke(this, (Option.ProvideAddress, _processInfo));
             };
-            var quitButton = new Button(3, 28, "Quit");
+            var quitButton = new Button(x, 31, "Quit");
             quitButton.Clicked = () =>
             {
                 if (!_externalRunnerIsRunning)
