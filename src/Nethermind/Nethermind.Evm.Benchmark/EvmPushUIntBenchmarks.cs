@@ -16,15 +16,9 @@
 
 using System;
 using System.Collections.Generic;
-using System.Numerics;
 using BenchmarkDotNet.Attributes;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
-using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;
-using Nethermind.Logging;
+using Nethermind.Int256;
 
 namespace Nethermind.Evm.Benchmark
 {
@@ -32,10 +26,10 @@ namespace Nethermind.Evm.Benchmark
     public class EvmPushUIntBenchmarks
     {
         [ParamsSource(nameof(ValueSource))]
-        public BigInteger value;
+        public UInt256 value;
 
         // public property
-        public IEnumerable<BigInteger> ValueSource => new[] { BigInteger.Parse("125124123718263172357123"), BigInteger.Parse("0"), UInt256.MaxValue};
+        public IEnumerable<UInt256> ValueSource => new[] { UInt256.Parse("125124123718263172357123"), UInt256.Parse("0"), UInt256.MaxValue};
         
         private byte[] stackBytes;
         private ITxTracer _tracer = NullTxTracer.Instance;
@@ -50,7 +44,7 @@ namespace Nethermind.Evm.Benchmark
         public void Current()
         {
             EvmStack stack = new EvmStack(stackBytes.AsSpan(), 0, _tracer);
-            stack.PushUInt(ref value);
+            stack.PushUInt256(in value);
             stack.PopLimbo();
         }
     }

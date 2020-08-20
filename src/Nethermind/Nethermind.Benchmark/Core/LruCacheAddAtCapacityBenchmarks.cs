@@ -40,7 +40,7 @@ namespace Nethermind.Benchmarks.Core
         [Benchmark]
         public ICache<int, object> With_recycling()
         {
-            LruCacheWithRecycling<int, object> cache = new LruCacheWithRecycling<int, object>(16, 16, string.Empty);
+            LruCache<int, object> cache = new LruCache<int, object>(16, 16, string.Empty);
             for (int j = 0; j < 1024 * 64; j++)
             {
                 cache.Set(j, _object);

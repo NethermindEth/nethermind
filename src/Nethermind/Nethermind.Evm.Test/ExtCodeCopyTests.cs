@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,23 +14,26 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
-using System.Collections.Generic;
-using Nethermind.Int256;
+using FluentAssertions;
+using NUnit.Framework;
 
-namespace Nethermind.Evm
+namespace Nethermind.Evm.Test
 {
-    public interface IEvmMemory : IDisposable
+    public class ExtCodeCopyTests : VirtualMachineTestsBase
     {
-        ulong Size { get; }
-        void SaveWord(in UInt256 location, Span<byte> word);
-        void SaveByte(in UInt256 location, byte value);
-        void Save(in UInt256 location, Span<byte> value);
-        void Save(in UInt256 location, byte[] value);
-        Span<byte> LoadSpan(in UInt256 location);
-        Span<byte> LoadSpan(in UInt256 location, in UInt256 length);
-        byte[] Load(in UInt256 location, in UInt256 length);
-        long CalculateMemoryCost(in UInt256 location, in UInt256 length);
-        List<string> GetTrace();
+        [Test]
+        public void Ranges()
+        {
+            byte[] code = Prepare.EvmCode
+                .PushData(0)
+                .PushData(0)
+                .PushData("0x805e0d3cde3764a4d0a02f33cf624c8b7cfd911a")
+                .PushData("0x793d1e")
+                .Op(Instruction.EXTCODECOPY)
+                .Done;
+
+            var result = Execute(code);
+            result.Error.Should().BeNull();
+        }
     }
 }
