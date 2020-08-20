@@ -16,7 +16,6 @@
 // 
 
 using System;
-using Nethermind.Core;
 
 namespace Nethermind.BeamWallet.Modules.Events
 {
