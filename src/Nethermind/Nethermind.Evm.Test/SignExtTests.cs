@@ -61,7 +61,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.SIGNEXTEND)
                 .Done;
 
-            CallOutputTracer res = Execute(code);
+            TestAllTracerWithOutput res = Execute(code);
             res.Error.Should().Be(EvmExceptionType.StackUnderflow.ToString());
         }
     }

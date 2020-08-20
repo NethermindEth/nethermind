@@ -97,10 +97,10 @@ namespace Nethermind.Evm.Test
             return tracer.BuildResult();
         }
 
-        protected CallOutputTracer Execute(params byte[] code)
+        protected TestAllTracerWithOutput Execute(params byte[] code)
         {
             (var block, var transaction) = PrepareTx(BlockNumber, 100000, code);
-            CallOutputTracer tracer = new CallOutputTracer();
+            TestAllTracerWithOutput tracer = new TestAllTracerWithOutput();
             _processor.Execute(transaction, block.Header, tracer);
             return tracer;
         }
@@ -112,10 +112,10 @@ namespace Nethermind.Evm.Test
             return tracer;
         }
 
-        protected CallOutputTracer Execute(long blockNumber, long gasLimit, byte[] code)
+        protected TestAllTracerWithOutput Execute(long blockNumber, long gasLimit, byte[] code)
         {
             (var block, var transaction) = PrepareTx(blockNumber, gasLimit, code);
-            CallOutputTracer tracer = new CallOutputTracer();
+            TestAllTracerWithOutput tracer = new TestAllTracerWithOutput();
             _processor.Execute(transaction, block.Header, tracer);
             return tracer;
         }
@@ -199,7 +199,7 @@ namespace Nethermind.Evm.Test
             return Build.A.Block.WithNumber(blockNumber).WithTransactions(tx == null ? new Transaction[0] : new[] {tx}).WithGasLimit(8000000).WithBeneficiary(senderRecipientAndMiner.Miner).TestObject;
         }
 
-        protected void AssertGas(CallOutputTracer receipt, long gas)
+        protected void AssertGas(TestAllTracerWithOutput receipt, long gas)
         {
             Assert.AreEqual(gas, receipt.GasSpent, "gas");
         }
