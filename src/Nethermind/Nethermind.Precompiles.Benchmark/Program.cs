@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.Running;
 
 namespace Nethermind.Precompiles.Benchmark
@@ -27,16 +26,13 @@ namespace Nethermind.Precompiles.Benchmark
 => BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args, new DebugInProcessConfig());
 #else
         {
-            BenchmarkRunner.Run<Sha256Benchmark>();
-            BenchmarkRunner.Run<RipEmdBenchmark>();
-            BenchmarkRunner.Run<Blake2fBenchmark>();
+            // BenchmarkRunner.Run<Sha256Benchmark>();
+            // BenchmarkRunner.Run<RipEmdBenchmark>();
+            // BenchmarkRunner.Run<Blake2fBenchmark>();
             BenchmarkRunner.Run<KeccakBenchmark>();
-            BenchmarkRunner.Run<Bn256PairingBenchmark>();
-            BenchmarkRunner.Run<Bn256PairingBenchmark>();
-            BenchmarkRunner.Run<Bn256AddBenchmark>();
-            BenchmarkRunner.Run<Bn256AddBenchmark>();
-            BenchmarkRunner.Run<Bn256MulBenchmark>();
-            BenchmarkRunner.Run<Bn256PairingBenchmark>();
+            // BenchmarkRunner.Run<Bn256AddBenchmark>();
+            // BenchmarkRunner.Run<Bn256MulBenchmark>();
+            // BenchmarkRunner.Run<Bn256PairingBenchmark>();
             Console.ReadLine();
         }
 #endif
