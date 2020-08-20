@@ -29,17 +29,17 @@ namespace Nethermind.Evm.Test
         
         protected override ISpecProvider SpecProvider => RopstenSpecProvider.Instance;
 
-        private void AssertEip145(CallOutputTracer receipt, byte result)
+        private void AssertEip145(TestAllTracerWithOutput receipt, byte result)
         {
             AssertEip145(receipt, new[] {result});
         }
 
-        private void AssertEip145(CallOutputTracer receipt, string result)
+        private void AssertEip145(TestAllTracerWithOutput receipt, string result)
         {
             AssertEip145(receipt, Bytes.FromHexString(result));
         }
         
-        private void AssertEip145(CallOutputTracer receipt, byte[] result)
+        private void AssertEip145(TestAllTracerWithOutput receipt, byte[] result)
         {
             AssertStorage(0, result);
             AssertGas(receipt, result.IsZero() ? ZeroResultGas : NonZeroResultGas);
@@ -94,7 +94,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.SSTORE)
                 .Done;
 
-            CallOutputTracer receipt = Execute(code);
+            TestAllTracerWithOutput receipt = Execute(code);
             AssertEip145(receipt, result);
         }
         
@@ -124,7 +124,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.SSTORE)
                 .Done;
 
-            CallOutputTracer receipt = Execute(code);
+            TestAllTracerWithOutput receipt = Execute(code);
             AssertEip145(receipt, result);
         }
     }

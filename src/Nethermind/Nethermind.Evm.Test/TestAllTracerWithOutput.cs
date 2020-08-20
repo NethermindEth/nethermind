@@ -13,28 +13,30 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
 using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.State;
 
-namespace Nethermind.Evm.Tracing
+namespace Nethermind.Evm.Test
 {
-    public class CallOutputTracer : ITxTracer
+    public class TestAllTracerWithOutput : ITxTracer
     {
         public bool IsTracingReceipt => true;
-        public bool IsTracingActions => false;
-        public bool IsTracingOpLevelStorage => false;
-        public bool IsTracingMemory => false;
-        public bool IsTracingInstructions => false;
-        public bool IsTracingRefunds => false;
-        public bool IsTracingCode => false;
-        public bool IsTracingStack => false;
-        public bool IsTracingState => false;
-        public bool IsTracingBlockHash => false;
+        public bool IsTracingActions => true;
+        public bool IsTracingOpLevelStorage => true;
+        public bool IsTracingMemory => true;
+        public bool IsTracingInstructions => true;
+        public bool IsTracingRefunds => true;
+        public bool IsTracingCode => true;
+        public bool IsTracingStack => true;
+        public bool IsTracingState => true;
+        public bool IsTracingBlockHash => true;
 
         public byte[] ReturnValue { get; set; }
 
@@ -61,127 +63,102 @@ namespace Nethermind.Evm.Tracing
 
         public void StartOperation(int depth, long gas, Instruction opcode, int pc)
         {
-            throw new NotSupportedException();
         }
 
         public void ReportOperationError(EvmExceptionType error)
         {
-            throw new NotSupportedException();
         }
 
         public void ReportOperationRemainingGas(long gas)
         {
-            throw new NotSupportedException();
         }
 
         public void SetOperationStack(List<string> stackTrace)
         {
-            throw new NotSupportedException();
         }
 
         public void ReportStackPush(Span<byte> stackItem)
         {
-            throw new NotSupportedException();
         }
 
         public void SetOperationMemory(List<string> memoryTrace)
         {
-            throw new NotSupportedException();
         }
 
         public void SetOperationMemorySize(ulong newSize)
         {
-            throw new NotSupportedException();
         }
 
         public void ReportMemoryChange(long offset, Span<byte> data)
         {
-            throw new NotSupportedException();
         }
 
         public void ReportStorageChange(Span<byte> key, Span<byte> value)
         {
-            throw new NotSupportedException();
         }
 
         public void SetOperationStorage(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue)
         {
-            throw new NotSupportedException();
         }
 
         public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
         {
-            throw new NotSupportedException();
         }
 
         public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
         {
-            throw new NotSupportedException();
         }
 
         public void ReportCodeChange(Address address, byte[] before, byte[] after)
         {
-            throw new NotSupportedException();
         }
 
         public void ReportNonceChange(Address address, UInt256? before, UInt256? after)
         {
-            throw new NotSupportedException();
         }
 
         public void ReportAccountRead(Address address)
         {
-            throw new NotSupportedException();
         }
 
         public void ReportStorageChange(StorageCell storageCell, byte[] before, byte[] after)
         {
-            throw new NotSupportedException();
         }
 
         public void ReportAction(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType, bool isPrecompileCall = false)
         {
-            throw new NotSupportedException();
         }
 
         public void ReportActionEnd(long gas, byte[] output)
         {
-            throw new NotSupportedException();
         }
 
         public void ReportActionError(EvmExceptionType exceptionType)
         {
-            throw new NotSupportedException();
         }
 
         public void ReportActionEnd(long gas, Address deploymentAddress, byte[] deployedCode)
         {
-            throw new NotSupportedException();
         }
 
         public void ReportBlockHash(Keccak blockHash)
         {
-            throw new NotSupportedException();
         }
 
         public void ReportByteCode(byte[] byteCode)
         {
-            throw new NotSupportedException();
         }
 
         public void ReportGasUpdateForVmTrace(long refund, long gasAvailable)
         {
-            throw new NotSupportedException();
         }
 
         public void ReportRefund(long refund)
         {
-            throw new NotSupportedException();
         }
 
         public void ReportExtraGasPressure(long extraGasPressure)
         {
-            throw new NotImplementedException();
         }
     }
 }

@@ -6,7 +6,7 @@ using Nethermind.Evm.Precompiles;
 namespace Nethermind.Precompiles.Benchmark
 {
     [HtmlExporter]
-    [NativeMemoryProfiler]
+    // [NativeMemoryProfiler]
     [MemoryDiagnoser]
     [ShortRunJob(RuntimeMoniker.NetCoreApp31)]
     public class Sha256Benchmark : PrecompileBenchmarkBase
