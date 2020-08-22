@@ -16,7 +16,7 @@
 
 using System;
 using Nethermind.DataMarketplace.Core.Configs;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Rlp

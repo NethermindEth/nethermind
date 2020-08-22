@@ -60,7 +60,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.SSTORE)
                 .Done;
 
-            CallOutputTracer receipt = Execute(code);
+            var receipt = Execute(code);
             AssertSimd(receipt, result);
         }
         
@@ -84,7 +84,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.SSTORE)
                 .Done;
 
-            CallOutputTracer receipt = Execute(code);
+            var receipt = Execute(code);
             AssertSimd(receipt, result);
         }
         
@@ -108,7 +108,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.SSTORE)
                 .Done;
 
-            CallOutputTracer receipt = Execute(code);
+            var receipt = Execute(code);
             AssertSimd(receipt, result);
         }
         
@@ -131,16 +131,16 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.SSTORE)
                 .Done;
 
-            CallOutputTracer receipt = Execute(code);
+            TestAllTracerWithOutput receipt = Execute(code);
             AssertSimd(receipt, result);
         }
         
-        private void AssertSimd(CallOutputTracer receipt, string result)
+        private void AssertSimd(TestAllTracerWithOutput receipt, string result)
         {
             AssertSimd(receipt, Bytes.FromHexString(result));
         }
         
-        private void AssertSimd(CallOutputTracer receipt, byte[] result)
+        private void AssertSimd(TestAllTracerWithOutput receipt, byte[] result)
         {
             AssertStorage(0, result);
             AssertGas(receipt, result.IsZero() ? ZeroResultGas : NonZeroResultGas);

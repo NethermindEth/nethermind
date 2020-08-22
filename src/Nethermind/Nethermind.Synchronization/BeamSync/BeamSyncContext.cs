@@ -16,7 +16,7 @@
 
 using System;
 using System.Threading;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 
 namespace Nethermind.Synchronization.BeamSync
 {

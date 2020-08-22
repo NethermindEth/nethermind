@@ -60,6 +60,16 @@ namespace Nethermind.Dirichlet.Benchmark
         }
         
         [Benchmark]
+        public void Improved_Int256()
+        {
+            Span<byte> span = _stack.AsSpan();
+            var aInt = new Nethermind.Int256.UInt256(span.Slice(0, 32), true);
+            var bInt = new Nethermind.Int256.UInt256(span.Slice(32, 32), true);
+            var res = aInt / bInt;
+            res.ToBigEndian(span.Slice(0, 32));
+        }
+        
+        [Benchmark]
         public void Current()
         {
             Span<byte> span = _stack.AsSpan();

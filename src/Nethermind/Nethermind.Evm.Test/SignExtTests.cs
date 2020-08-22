@@ -14,7 +14,9 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Dirichlet.Numerics;
+using FluentAssertions;
+using Nethermind.Evm.Tracing;
+using Nethermind.Int256;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
@@ -35,7 +37,7 @@ namespace Nethermind.Evm.Test
             _ = Execute(code);
             AssertStorage(UInt256.Zero, UInt256.Zero);
         }
-        
+
         [Test]
         public void Sign_ext_max()
         {
@@ -49,6 +51,18 @@ namespace Nethermind.Evm.Test
 
             _ = Execute(code);
             AssertStorage(UInt256.Zero, UInt256.MaxValue);
+        }
+
+        [Test]
+        public void Sign_ext_underflow()
+        {
+            byte[] code = Prepare.EvmCode
+                .PushData(32)
+                .Op(Instruction.SIGNEXTEND)
+                .Done;
+
+            TestAllTracerWithOutput res = Execute(code);
+            res.Error.Should().Be(EvmExceptionType.StackUnderflow.ToString());
         }
     }
 }

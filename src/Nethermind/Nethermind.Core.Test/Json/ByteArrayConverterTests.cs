@@ -14,8 +14,12 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.IO;
+using System.Text;
+using FluentAssertions;
 using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Json;
+using Newtonsoft.Json;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Json
@@ -29,6 +33,18 @@ namespace Nethermind.Core.Test.Json
         public void Test_roundtrip(byte[] bytes)
         {
             TestConverter(bytes, (before, after) => Bytes.AreEqual(before, after), new ByteArrayConverter());
+        }
+        
+        [Test]
+        public void Direct_null()
+        {
+            ByteArrayConverter converter = new ByteArrayConverter();
+            StringBuilder sb = new StringBuilder();
+            JsonSerializer serializer = new JsonSerializer();
+            serializer.Converters.Add(converter);
+            converter.WriteJson(
+                new JsonTextWriter(new StringWriter(sb)), null, serializer);
+            sb.ToString().Should().Be("null");
         }
     }
 }

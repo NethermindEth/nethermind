@@ -85,7 +85,12 @@ namespace Nethermind.PerfTest
             public BlockHeader Genesis => _blockTree.Genesis;
             public BlockHeader BestSuggestedHeader => _blockTree.BestSuggestedHeader;
             public BlockHeader LowestInsertedHeader => _blockTree.LowestInsertedHeader;
-            public Block LowestInsertedBody => _blockTree.LowestInsertedBody;
+            public long? LowestInsertedBodyNumber
+            {
+                get => _blockTree.LowestInsertedBodyNumber;
+                set => _blockTree.LowestInsertedBodyNumber = value;
+            }
+
             public Block BestSuggestedBody => _blockTree.BestSuggestedBody;
             public long BestKnownNumber => _blockTree.BestKnownNumber;
             public Block Head => _blockTree.Head;
@@ -97,6 +102,10 @@ namespace Nethermind.PerfTest
             }
 
             public ChainLevelInfo FindLevel(long number) => _blockTree.FindLevel(number);
+            public BlockInfo FindCanonicalBlockInfo(long blockNumber)
+            {
+                throw new NotImplementedException();
+            }
 
             public AddBlockResult Insert(Block block)
             {
@@ -106,6 +115,11 @@ namespace Nethermind.PerfTest
             public void Insert(IEnumerable<Block> blocks)
             {
                 _blockTree.Insert(blocks);
+            }
+
+            public void UpdateHeadBlock(Keccak blockHash)
+            {
+                _blockTree.UpdateHeadBlock(blockHash);
             }
 
             public AddBlockResult SuggestBlock(Block block, bool shouldProcess = true)

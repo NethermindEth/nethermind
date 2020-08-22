@@ -27,7 +27,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
@@ -304,7 +304,7 @@ namespace Ethereum.VM.Test
             public string Name { get; set; }
             public Environment Environment { get; set; }
             public Execution Execution { get; set; }
-            public BigInteger? Gas { get; set; }
+            public UInt256? Gas { get; set; }
             public byte[] Logs { get; set; }
             public byte[] Out { get; set; }
             public Dictionary<Address, AccountState> Pre { get; set; }

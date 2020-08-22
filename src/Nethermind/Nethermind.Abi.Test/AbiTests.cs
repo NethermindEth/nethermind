@@ -21,7 +21,7 @@ using MathNet.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using NUnit.Framework;
 
 namespace Nethermind.Abi.Test

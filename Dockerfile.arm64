@@ -7,7 +7,7 @@ FROM mcr.microsoft.com/dotnet/core/sdk:3.1 AS build
 
 COPY . .
 RUN apt-get update && apt-get install -y libsnappy-dev libc6-dev libc6 libzstd1 libgflags-dev libssl1.0 --no-install-recommends && \
-    git submodule update --init src/Dirichlet src/rocksdb-sharp && \
+    git submodule update --init src/Dirichlet src/int256 src/rocksdb-sharp && \
     dotnet publish src/Nethermind/Nethermind.Runner --configuration Release --runtime linux-musl-arm64 --output out && \
     git describe --tags --always --long > out/git-hash
 

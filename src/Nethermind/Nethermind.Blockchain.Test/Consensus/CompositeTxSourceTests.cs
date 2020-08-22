@@ -22,7 +22,7 @@ using FluentAssertions;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using NSubstitute;
 using NUnit.Framework;
 

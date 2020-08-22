@@ -17,14 +17,13 @@
 
 using System;
 using System.Diagnostics;
-using System.Net.Http;
-using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
-using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.BeamWallet.Clients;
+using Nethermind.BeamWallet.Modules.Events;
+using Nethermind.BeamWallet.Modules.Init;
+using Nethermind.Core;
 using Nethermind.Facade.Proxy;
-using Nethermind.Logging;
-using Nethermind.Serialization.Json;
 using Terminal.Gui;
 
 namespace Nethermind.BeamWallet.Modules.Addresses
@@ -33,46 +32,27 @@ namespace Nethermind.BeamWallet.Modules.Addresses
     {
         private readonly Regex _urlRegex = new Regex(@"^http(s)?://([\w-]+.)+[\w-]+(/[\w- ./?%&=])?",
             RegexOptions.Compiled);
-
         private readonly Regex _addressRegex = new Regex("(0x)([0-9A-Fa-f]{40})", RegexOptions.Compiled);
-        private Process _process;
-        private Timer _timer;
-        private Window _mainWindow;
-        private int _processId;
-        private Label _runnerOnInfo;
-        private Label _runnerOffInfo;
-        private EthJsonRpcClientProxy _ethJsonRpcClientProxy;
-        private bool _externalRunnerIsRunning;
+        private readonly IJsonRpcWalletClientProxy _jsonRpcWalletClientProxy;
+        private readonly Option _option;
         private const string DefaultUrl = "http://localhost:8545";
-        private const string FileName = "Nethermind.Runner";
+        private Window _window;
+        public event EventHandler<AddressesSelectedEventArgs> AddressesSelected;
 
-        public event EventHandler<(string nodeAddress, string address, Process process, bool _externalRunnerIsRunning)>
-            AddressesSelected;
-
-        public AddressesModule()
+        public AddressesModule(Option option, IJsonRpcWalletClientProxy jsonRpcWalletClientProxy)
         {
             // if (!File.Exists(path))
             // {
             //     return;
             // }
-            InitData();
+            _option = option;
+            _jsonRpcWalletClientProxy = jsonRpcWalletClientProxy;
             CreateWindow();
-            CreateProcess();
-            StartProcess();
-        }
-
-        private void InitData()
-        {
-            var httpClient = new HttpClient();
-            var urls = new[] {DefaultUrl};
-            var jsonRpcClientProxy = new JsonRpcClientProxy(new DefaultHttpClient(httpClient,
-                new EthereumJsonSerializer(), LimboLogs.Instance, 0), urls, LimboLogs.Instance);
-            _ethJsonRpcClientProxy = new EthJsonRpcClientProxy(jsonRpcClientProxy);
         }
 
         private void CreateWindow()
         {
-            _mainWindow = new Window("Beam Wallet")
+            _window = new Window("Beam Wallet")
             {
                 X = 0,
                 Y = 0,
@@ -81,123 +61,105 @@ namespace Nethermind.BeamWallet.Modules.Addresses
             };
         }
 
-        private void CreateProcess()
+        public Task<Window> InitAsync() => _option switch
         {
-            _process = new Process
+            Option.ProvideAddress => HandleProvidedAddress(),
+            Option.CreateNewAccount => HandleNewAccount(),
+            _ => default
+        };
+
+        private Task<Window> HandleNewAccount()
+        {
+            var passphraseInfo = new Label(1, 1, "Do not lose your passphrase." +
+                                                 $"{Environment.NewLine}{Environment.NewLine}" +
+                                                 "We dont have an access to your " +
+                                                 "passphrase so there is no chance of getting it back." +
+                                                 $"{Environment.NewLine}{Environment.NewLine}" +
+                                                 "Never give your passphrase to anyone. Your founds can be stolen." +
+                                                 $"{Environment.NewLine}{Environment.NewLine}" +
+                                                 "Set a strong passphrase. We recommend writing it down on a paper." +
+                                                 $"{Environment.NewLine}{Environment.NewLine}" +
+                                                 "If you lose your passphrase we will not be able to help you." +
+                                                 $"{Environment.NewLine}{Environment.NewLine}" +
+                                                 "Your whole money will be gone.");
+            
+            var passphraseLabel = new Label(1, 14, "Enter passphrase:");
+            var passphraseTextField = new TextField(25, 14, 80, "");
+            
+            var confirmationPassphraseLabel = new Label(1, 16, "Confirm passphrase:");
+            var confirmationPassphraseTextField = new TextField(25, 16, 80, "");
+
+            passphraseTextField.Secret = true;
+            confirmationPassphraseTextField.Secret = true;
+
+            var okButton = new Button(25, 18, "OK");
+            var backButton = new Button(33, 18, "Back");
+            
+            backButton.Clicked = () =>
             {
-                StartInfo = new ProcessStartInfo
-                {
-                    FileName = GetFileName(),
-                    Arguments = "--config mainnet_beam --JsonRpc.Enabled true",
-                    RedirectStandardOutput = true
-                }
+                Back();
             };
-        }
 
-        private static string GetFileName()
-            => RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? $"{FileName}.exe" : $"./{FileName}";
-
-        private async Task StartProcess()
-        {
-            AddRunnerInfo("Launching Nethermind.Runner...");
-
-            var runnerIsRunning = await CheckIsProcessRunning();
-            if (runnerIsRunning)
+            okButton.Clicked = async () =>
             {
-                _externalRunnerIsRunning = true;
-                AddRunnerInfo("Nethermind Runner is already running.");
-                return;
-            }
+                var passphrase = passphraseTextField.Text.ToString();
+                var confirmationPassphrase = confirmationPassphraseTextField.Text.ToString();
 
-            try
-            {
-                _externalRunnerIsRunning = false;
-                _process.Start();
-                _processId = _process.Id;
-                _timer = new Timer(Update, null, TimeSpan.Zero, TimeSpan.FromSeconds(8));
-            }
-            catch
-            {
-                AddRunnerInfo("Error with starting a Nethermind.Runner process.");
-            }
-        }
-
-        private async Task<bool> CheckIsProcessRunning()
-        {
-            var result = await _ethJsonRpcClientProxy.eth_blockNumber();
-            return result?.IsValid is true;
-        }
-
-        private void Update(object state)
-        {
-            UpdateRunnerState();
-        }
-
-        private void UpdateRunnerState()
-        {
-            Process process = null;
-            try
-            {
-                process = Process.GetProcessById(_processId);
-                AddRunnerInfo("Nethermind Runner is running.");
-                return;
-            }
-            catch
-            {
-                // ignored
-            }
-
-            if (process is null)
-            {
-                if (_runnerOnInfo is {})
+                if (string.IsNullOrWhiteSpace(passphrase))
                 {
-                    _mainWindow.Remove(_runnerOnInfo);
+                    MessageBox.ErrorQuery(40, 7, "Error", "Passphrase can not be empty." +
+                                                          $"{Environment.NewLine}(ESC to close)");
+                    return;
+                }
+                
+                if (string.IsNullOrWhiteSpace(confirmationPassphrase))
+                {
+                    MessageBox.ErrorQuery(40, 7, "Error", "Confirmation passphrase can not be empty." +
+                                                          $"{Environment.NewLine}(ESC to close)");
+                    return;
+                }
+                
+                if (passphrase != confirmationPassphrase)
+                {
+                    MessageBox.ErrorQuery(40, 7, "Error", "Provided passphrases do not match." +
+                                                          $"{Environment.NewLine}(ESC to close)");
+                    return;
                 }
 
-                _runnerOffInfo = new Label(3, 1, $"Nethermind Runner is stopped.. Please, wait for it to start.");
-                _mainWindow.Add(_runnerOffInfo);
-                _process.Start();
-                _processId = _process.Id;
-            }
+                var address = await CreateAccountAsync(passphrase);
 
-            if (_runnerOffInfo is {})
-            {
-                _mainWindow.Remove(_runnerOffInfo);
-            }
-
-            _runnerOnInfo = new Label(3, 1, "Nethermind Runner is running.");
-            _mainWindow.Add(_runnerOnInfo);
+                AddressesSelected?.Invoke(this, new AddressesSelectedEventArgs(DefaultUrl, address.ToString()));
+            };
+            _window.Add(passphraseInfo, passphraseLabel, passphraseTextField, 
+                confirmationPassphraseLabel, confirmationPassphraseTextField, okButton, backButton);
+            return Task.FromResult(_window);
         }
 
-        private void AddRunnerInfo(string info)
+        private async Task<Address> CreateAccountAsync(string passphrase)
         {
-            if (_runnerOnInfo is {})
+            RpcResult<Address> result;
+            do
             {
-                _mainWindow.Remove(_runnerOnInfo);
-            }
+                result = await _jsonRpcWalletClientProxy.personal_newAccount(passphrase);
+                
+            } while (!result.IsValid);
 
-            _runnerOnInfo = new Label(3, 1, $"{info}");
-            _mainWindow.Add(_runnerOnInfo);
+            return result.Result;
         }
 
-        public Task<Window> InitAsync()
+        private Task<Window> HandleProvidedAddress()
         {
-            var nodeAddressLabel = new Label(3, 3, "Enter node address:");
-            var nodeAddressTextField = new TextField(28, 3, 80, $"{DefaultUrl}");
-            var addressLabel = new Label(3, 5, "Enter account address:");
-            var addressTextField = new TextField(28, 5, 80, "");
+            var nodeAddressLabel = new Label(3, 22, "Enter node address:");
+            var nodeAddressTextField = new TextField(28, 22, 80, $"{DefaultUrl}");
+            
+            var addressLabel = new Label(3, 1, "Enter account address:");
+            var addressTextField = new TextField(28, 1, 80, "");
 
-            var okButton = new Button(28, 7, "OK");
-            var quitButton = new Button(36, 7, "Quit");
-            quitButton.Clicked = () =>
+            var okButton = new Button(28, 3, "OK");
+            var backButton = new Button(36, 3, "Back");
+            backButton.Clicked = () =>
             {
-                if (!_externalRunnerIsRunning)
-                {
-                    CloseAppWithRunner();
-                }
-
-                Application.Top.Running = false;
-                Application.RequestStop();
+                Back();
             };
 
             okButton.Clicked = () =>
@@ -206,7 +168,7 @@ namespace Nethermind.BeamWallet.Modules.Addresses
 
                 if (string.IsNullOrWhiteSpace(nodeAddressString))
                 {
-                    MessageBox.ErrorQuery(40, 7, "Error", "Node address is empty." +
+                    MessageBox.ErrorQuery(40, 7, "Error", "Node address can not be empty." +
                                                           $"{Environment.NewLine}(ESC to close)");
                     return;
                 }
@@ -222,43 +184,29 @@ namespace Nethermind.BeamWallet.Modules.Addresses
 
                 if (string.IsNullOrWhiteSpace(addressString))
                 {
-                    MessageBox.ErrorQuery(40, 7, "Error", "Address is empty." +
+                    MessageBox.ErrorQuery(40, 7, "Error", "Address can not be empty." +
                                                           $"{Environment.NewLine}(ESC to close)");
                     return;
                 }
 
-                if (!_addressRegex.IsMatch(addressString))
+                if (addressString.Length != 42 || !_addressRegex.IsMatch(addressString))
                 {
                     MessageBox.ErrorQuery(40, 7, "Error", "Address is invalid." +
                                                           $"{Environment.NewLine}(ESC to close)");
                     return;
                 }
 
-                AddressesSelected?.Invoke(this, (nodeAddressString, addressString, _process, _externalRunnerIsRunning));
+                AddressesSelected?.Invoke(this, new AddressesSelectedEventArgs(nodeAddressString, addressString));
             };
-            _mainWindow.Add(quitButton, nodeAddressLabel, nodeAddressTextField, addressLabel,
-                addressTextField, okButton);
-
-            return Task.FromResult(_mainWindow);
+            _window.Add(addressLabel, addressTextField, okButton, backButton);
+            return Task.FromResult(_window);
         }
 
-        private void CloseAppWithRunner()
+        private void Back()
         {
-            var confirmed = MessageBox.Query(80, 8, "Confirmation",
-                $"{Environment.NewLine}" +
-                "Nethermind.Runner is running in the background. Do you want to stop it?", "Yes", "No");
-
-            if (confirmed == 0)
-            {
-                try
-                {
-                    _process.Kill();
-                }
-                catch
-                {
-                    // ignored
-                }
-            }
+            Application.Top.Running = false;
+            Application.RequestStop();
+            Application.Shutdown();
         }
     }
 }

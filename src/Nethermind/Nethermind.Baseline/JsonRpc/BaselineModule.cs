@@ -28,7 +28,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Facade;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -82,7 +82,7 @@ namespace Nethermind.Baseline.JsonRpc
             tx.To = contractAddress;
             tx.SenderAddress = address;
             tx.GasLimit = 1000000;
-            tx.GasPrice = 0.GWei();
+            tx.GasPrice = 20.GWei();
 
             Keccak txHash = _txPoolBridge.SendTransaction(tx, TxHandlingOptions.ManagedNonce);
             return Task.FromResult(ResultWrapper<Keccak>.Success(txHash));
@@ -113,7 +113,7 @@ namespace Nethermind.Baseline.JsonRpc
             tx.To = contractAddress;
             tx.SenderAddress = address;
             tx.GasLimit = 1000000;
-            tx.GasPrice = 0.GWei();
+            tx.GasPrice = 20.GWei();
 
             Keccak txHash = _txPoolBridge.SendTransaction(tx, TxHandlingOptions.ManagedNonce);
 

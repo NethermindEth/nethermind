@@ -21,7 +21,7 @@ using MongoDB.Driver;
 using MongoDB.Driver.Linq;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Repositories;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo.Repositories
 {

@@ -17,7 +17,7 @@
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.Blockchain.Synchronization
@@ -27,7 +27,7 @@ namespace Nethermind.Blockchain.Synchronization
         [ConfigItem(Description = "If 'false' then the node does not download/process new blocks..", DefaultValue = "true")]
         bool SynchronizationEnabled { get; set; }
         
-        [ConfigItem(Description = "Beam Sync - only for DEBUG / DEV - not working in prod yet.", DefaultValue = "false")]
+        [ConfigItem(Description = "Enables beam sync that can be useful to create some JSON RPC queries while the node is fast syncing in the background.", DefaultValue = "false")]
         bool BeamSync { get; set; }
 
         [ConfigItem(Description = "If set to 'true' then the Fast Sync (eth/63) synchronization algorithm will be used.", DefaultValue = "false")]

@@ -22,7 +22,7 @@ using Nethermind.DataMarketplace.Consumers.Deposits.Queries;
 using Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Infrastructure.Rpc.Models;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Personal;

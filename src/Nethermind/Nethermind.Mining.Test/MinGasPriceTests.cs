@@ -18,7 +18,7 @@
 using FluentAssertions;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using NUnit.Framework;
 
 namespace Nethermind.Mining.Test

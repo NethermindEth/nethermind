@@ -27,7 +27,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Proof;
@@ -740,7 +740,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             StorageProvider storageProvider = new StorageProvider(_dbProvider.StateDb, stateProvider, LimboLogs.Instance);
             for (int i = 0; i < 10000; i++)
             {
-                storageProvider.Set(new StorageCell(TestItem.AddressB, new UInt256(i)), i.ToBigEndianByteArray());
+                storageProvider.Set(new StorageCell(TestItem.AddressB, (UInt256)i), i.ToBigEndianByteArray());
             }
 
             storageProvider.Commit();

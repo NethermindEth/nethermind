@@ -18,7 +18,7 @@ using System;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Facade.Proxy.Models;
 
 namespace Nethermind.Facade.Proxy
@@ -82,6 +82,9 @@ namespace Nethermind.Facade.Proxy
             bool returnFullTransactionObjects = false)
             => _proxy.SendAsync<BlockModel<TransactionModel>>(nameof(eth_getBlockByNumber), MapBlockParameter(blockParameter),
                 returnFullTransactionObjects);
+        
+        public Task<RpcResult<string>> net_version()
+            => _proxy.SendAsync<string>(nameof(net_version));
 
         private static object MapBlockParameter(BlockParameterModel blockParameter)
         {

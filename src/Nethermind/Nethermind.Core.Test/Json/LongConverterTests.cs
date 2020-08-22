@@ -17,7 +17,7 @@
 using System;
 using System.Globalization;
 using System.IO;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Newtonsoft.Json;
 using NUnit.Framework;

@@ -19,7 +19,7 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Facade.Proxy;
 using Nethermind.Facade.Proxy.Models;
 using NSubstitute;

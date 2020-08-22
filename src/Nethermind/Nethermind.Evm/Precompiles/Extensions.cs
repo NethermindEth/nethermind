@@ -16,7 +16,7 @@
 
 using System;
 using Nethermind.Core.Extensions;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 
 namespace Nethermind.Evm.Precompiles
 {
@@ -27,13 +27,6 @@ namespace Nethermind.Evm.Precompiles
             inputData ??= Array.Empty<byte>();
             inputData.AsSpan(0, Math.Min(inputDataSpan.Length, inputData.Length))
                 .CopyTo(inputDataSpan.Slice(0, Math.Min(inputDataSpan.Length, inputData.Length)));
-        }
-        
-        public static UInt256 ReadMclScalar(in Span<byte> inputDataSpan, in int offset)
-        {
-            Span<byte> s = inputDataSpan.Slice(offset, 32);
-            UInt256.CreateFromBigEndian(out UInt256 scalar, s);
-            return scalar;
         }
     }
 }

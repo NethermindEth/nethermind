@@ -21,7 +21,7 @@ using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Evm;
 
 namespace Nethermind.Consensus.AuRa.Contracts

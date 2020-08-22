@@ -12,7 +12,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Updating submodules
-      run: git submodule update --init src/Dirichlet src/rocksdb-sharp
+      run: git submodule update --init src/rocksdb-sharp src/int256 src/Dirichlet
     - name: Installing Linux packages
       if: matrix.os == 'ubuntu-latest'
       run: |
@@ -54,7 +54,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Updating submodules
-      run: git submodule update --init src/Dirichlet src/rocksdb-sharp
+      run: git submodule update --init src/rocksdb-sharp src/int256 src/Dirichlet
     - name: Installing Linux packages
       if: matrix.os == 'ubuntu-latest'
       run: |
@@ -99,7 +99,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Updating submodules
-      run: git submodule update --init src/Dirichlet src/rocksdb-sharp
+      run: git submodule update --init src/rocksdb-sharp src/int256 src/Dirichlet
     - name: Installing Linux packages
       if: matrix.os == 'ubuntu-latest'
       run: |
@@ -129,7 +129,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Updating submodules
-      run: git submodule update --init src/Dirichlet src/rocksdb-sharp
+      run: git submodule update --init src/rocksdb-sharp src/int256
     - name: Installing Linux packages
       if: matrix.os == 'ubuntu-latest'
       run: |
@@ -159,7 +159,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Updating submodules
-      run: git submodule update --init src/Dirichlet src/rocksdb-sharp
+      run: git submodule update --init src/rocksdb-sharp src/int256 src/Dirichlet
     - name: Installing Linux packages
       if: matrix.os == 'ubuntu-latest'
       run: |
@@ -242,7 +242,7 @@ jobs:
         dotnet test -c Release src/Nethermind/Ethereum.Trie.Test
     - name: Nethermind.State.Test.Runner.Test
       run : |
-	dotnet test -c Release src/Nethermind/Nethermind.State.Test.Runner.Test
+        dotnet test -c Release src/Nethermind/Nethermind.State.Test.Runner.Test
 #  eth2-tests:
 #    name: Ethereum 2.0 Tests
 #    runs-on: ${{ matrix.os }}
