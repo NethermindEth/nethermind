@@ -33,15 +33,13 @@ namespace Nethermind.BeamWallet.Modules.Addresses
         private readonly Regex _urlRegex = new Regex(@"^http(s)?://([\w-]+.)+[\w-]+(/[\w- ./?%&=])?",
             RegexOptions.Compiled);
         private readonly Regex _addressRegex = new Regex("(0x)([0-9A-Fa-f]{40})", RegexOptions.Compiled);
-        private Window _mainWindow;
-        private const string DefaultUrl = "http://localhost:8545";
         private readonly IJsonRpcWalletClientProxy _jsonRpcWalletClientProxy;
         private readonly Option _option;
-        private readonly Process _process;
-        private readonly bool _externalRunnerIsRunning;
+        private const string DefaultUrl = "http://localhost:8545";
+        private Window _window;
         public event EventHandler<AddressesSelectedEventArgs> AddressesSelected;
 
-        public AddressesModule(Option option, IJsonRpcWalletClientProxy jsonRpcWalletClientProxy, ProcessInfo processInfo)
+        public AddressesModule(Option option, IJsonRpcWalletClientProxy jsonRpcWalletClientProxy)
         {
             // if (!File.Exists(path))
             // {
@@ -49,14 +47,12 @@ namespace Nethermind.BeamWallet.Modules.Addresses
             // }
             _option = option;
             _jsonRpcWalletClientProxy = jsonRpcWalletClientProxy;
-            _process = processInfo.Process;
-            _externalRunnerIsRunning = processInfo.ExternalRunnerIsRunning;
             CreateWindow();
         }
 
         private void CreateWindow()
         {
-            _mainWindow = new Window("Beam Wallet")
+            _window = new Window("Beam Wallet")
             {
                 X = 0,
                 Y = 0,
@@ -76,7 +72,7 @@ namespace Nethermind.BeamWallet.Modules.Addresses
         {
             var passphraseInfo = new Label(1, 1, "Do not lose your passphrase." +
                                                  $"{Environment.NewLine}{Environment.NewLine}" +
-                                                 "We dont have an access to your" +
+                                                 "We dont have an access to your " +
                                                  "passphrase so there is no chance of getting it back." +
                                                  $"{Environment.NewLine}{Environment.NewLine}" +
                                                  "Never give your passphrase to anyone. Your founds can be stolen." +
@@ -97,11 +93,11 @@ namespace Nethermind.BeamWallet.Modules.Addresses
             confirmationPassphraseTextField.Secret = true;
 
             var okButton = new Button(25, 18, "OK");
-            var quitButton = new Button(33, 18, "Quit");
+            var backButton = new Button(33, 18, "Back");
             
-            quitButton.Clicked = () =>
+            backButton.Clicked = () =>
             {
-                Quit();
+                Back();
             };
 
             okButton.Clicked = async () =>
@@ -130,16 +126,16 @@ namespace Nethermind.BeamWallet.Modules.Addresses
                     return;
                 }
 
-                var address = await CreateAccount(passphrase);
+                var address = await CreateAccountAsync(passphrase);
 
                 AddressesSelected?.Invoke(this, new AddressesSelectedEventArgs(DefaultUrl, address.ToString()));
             };
-            _mainWindow.Add(passphraseInfo, passphraseLabel, passphraseTextField, 
-                confirmationPassphraseLabel, confirmationPassphraseTextField, okButton, quitButton);
-            return Task.FromResult(_mainWindow);
+            _window.Add(passphraseInfo, passphraseLabel, passphraseTextField, 
+                confirmationPassphraseLabel, confirmationPassphraseTextField, okButton, backButton);
+            return Task.FromResult(_window);
         }
 
-        private async Task<Address> CreateAccount(string passphrase)
+        private async Task<Address> CreateAccountAsync(string passphrase)
         {
             RpcResult<Address> result;
             do
@@ -160,10 +156,10 @@ namespace Nethermind.BeamWallet.Modules.Addresses
             var addressTextField = new TextField(28, 1, 80, "");
 
             var okButton = new Button(28, 3, "OK");
-            var quitButton = new Button(36, 3, "Quit");
-            quitButton.Clicked = () =>
+            var backButton = new Button(36, 3, "Back");
+            backButton.Clicked = () =>
             {
-                Quit();
+                Back();
             };
 
             okButton.Clicked = () =>
@@ -202,38 +198,15 @@ namespace Nethermind.BeamWallet.Modules.Addresses
 
                 AddressesSelected?.Invoke(this, new AddressesSelectedEventArgs(nodeAddressString, addressString));
             };
-            _mainWindow.Add(addressLabel, addressTextField, okButton, quitButton);
-            return Task.FromResult(_mainWindow);
+            _window.Add(addressLabel, addressTextField, okButton, backButton);
+            return Task.FromResult(_window);
         }
 
-        private void Quit()
+        private void Back()
         {
-            if (_externalRunnerIsRunning)
-            {
-                CloseAppWithRunner();
-            }
             Application.Top.Running = false;
             Application.RequestStop();
             Application.Shutdown();
-        }
-
-        private void CloseAppWithRunner()
-        {
-            var confirmed = MessageBox.Query(80, 8, "Confirmation",
-                $"{Environment.NewLine}" +
-                "Nethermind.Runner is running in the background. Do you want to stop it?", "Yes", "No");
-
-            if (confirmed == 0)
-            {
-                try
-                {
-                    _process.Kill();
-                }
-                catch
-                {
-                    // ignored
-                }
-            }
         }
     }
 }

@@ -31,31 +31,29 @@ namespace Nethermind.BeamWallet.Modules.Init
 {
     internal class InitModule : IModule
     {
+        private const string DefaultUrl = "http://localhost:8545";
+        private const string FileName = "Nethermind.Runner";
         private Process _process;
         private Timer _timer;
-        private Window _mainWindow;
-        private int _processId;
+        private Window _window;
         private Label _runnerOnInfo;
         private Label _runnerOffInfo;
         private EthJsonRpcClientProxy _ethJsonRpcClientProxy;
-        private bool _externalRunnerIsRunning;
         private ProcessInfo _processInfo;
-        private const string DefaultUrl = "http://localhost:8545";
-        private const string FileName = "Nethermind.Runner";
+        private bool _backgroundRunnerIsRunning;
+        private int _processId;
         private int x = 3;
+        private string _network;
 
-        public event EventHandler<(Option, ProcessInfo)> OptionSelected;
+        public event EventHandler<Option> OptionSelected;
 
-        public InitModule()
+        public InitModule(string network)
         {
             // if (!File.Exists(path))
             // {
             //     return;
             // }
-            InitData();
-            CreateWindow();
-            CreateProcess();
-            StartProcess();
+            _network = network;
         }
 
         private void InitData()
@@ -66,10 +64,20 @@ namespace Nethermind.BeamWallet.Modules.Init
                 new EthereumJsonSerializer(), LimboLogs.Instance, 0), urls, LimboLogs.Instance);
             _ethJsonRpcClientProxy = new EthJsonRpcClientProxy(jsonRpcClientProxy);
         }
+        
+        public Task<Window> InitAsync()
+        {
+            InitData();
+            CreateWindow();
+            CreateProcess();
+            StartProcessAsync();
+            InitOptions();
+            return Task.FromResult(_window);
+        }
 
         private void CreateWindow()
         {
-            _mainWindow = new Window("Beam Wallet")
+            _window = new Window("Beam Wallet")
             {
                 X = 0,
                 Y = 0,
@@ -85,7 +93,7 @@ namespace Nethermind.BeamWallet.Modules.Init
                 StartInfo = new ProcessStartInfo
                 {
                     FileName = GetFileName(),
-                    Arguments = "--config mainnet_beam --JsonRpc.Enabled true",
+                    Arguments = $"--config {_network}_beam --JsonRpc.Enabled true",
                     RedirectStandardOutput = true
                 }
             };
@@ -94,33 +102,34 @@ namespace Nethermind.BeamWallet.Modules.Init
         private static string GetFileName()
             => RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? $"{FileName}.exe" : $"./{FileName}";
 
-        private async Task StartProcess()
+        private async Task StartProcessAsync()
         {
             AddInfo();
             AddRunnerInfo("Launching Nethermind...");
 
-            var runnerIsRunning = await CheckIsProcessRunning();
+            var runnerIsRunning = await CheckIsProcessRunningAsync();
             if (runnerIsRunning)
             {
-                _externalRunnerIsRunning = true;
+                _backgroundRunnerIsRunning = false;
                 AddRunnerInfo("Nethermind is already running.");
                 return;
             }
 
             try
             {
-                _externalRunnerIsRunning = false;
                 _process.Start();
                 _processId = _process.Id;
                 _timer = new Timer(Update, null, TimeSpan.Zero, TimeSpan.FromSeconds(8));
+                _backgroundRunnerIsRunning = true;
             }
             catch
             {
-                AddRunnerInfo("Error with starting a Nethermind process.");
+                AddRunnerInfo("Error with starting a Nethermind node.");
+                _backgroundRunnerIsRunning = false;
             }
         }
 
-        private async Task<bool> CheckIsProcessRunning()
+        private async Task<bool> CheckIsProcessRunningAsync()
         {
             var result = await _ethJsonRpcClientProxy.eth_blockNumber();
             return result?.IsValid is true;
@@ -137,7 +146,11 @@ namespace Nethermind.BeamWallet.Modules.Init
             try
             {
                 process = Process.GetProcessById(_processId);
-                AddRunnerInfo("Nethermind is running.");
+                AddRunnerInfo("Nethermind node is running.");
+                if (!string.IsNullOrEmpty(_network))
+                {
+                    AddNetworkInfo($"Network: {_network}");
+                }
                 return;
             }
             catch
@@ -149,23 +162,30 @@ namespace Nethermind.BeamWallet.Modules.Init
             {
                 if (_runnerOnInfo is {})
                 {
-                    _mainWindow.Remove(_runnerOnInfo);
+                    _window.Remove(_runnerOnInfo);
                 }
 
-                _runnerOffInfo = new Label(x, 26, "Nethermind is stopped.. Please, wait for it to start.");
-                _mainWindow.Add(_runnerOffInfo);
+                _runnerOffInfo = new Label(x, 26, "Nethermind node is stopped.. Please, wait for it to start.");
+                _window.Add(_runnerOffInfo);
                 _process.Start();
                 _processId = _process.Id;
             }
 
             if (_runnerOffInfo is {})
             {
-                _mainWindow.Remove(_runnerOffInfo);
+                _window.Remove(_runnerOffInfo);
             }
 
             _runnerOnInfo = new Label(x, 26, "Nethermind is running.");
-            _mainWindow.Add(_runnerOnInfo);
+            _window.Add(_runnerOnInfo);
         }
+
+        private void AddNetworkInfo(string info)
+        {
+            var networkInfo = new Label(x, 27, $"{info}");
+            _window.Add(networkInfo);
+        }
+
         private void AddInfo()
         {
             var beamWalletInfo = new Label(x, 1, "Hello, Welcome to Nethermind Beam Wallet - a simple " +
@@ -210,54 +230,56 @@ namespace Nethermind.BeamWallet.Modules.Init
             
             betaVersionWarningInfo.TextColor = new Attribute(Color.White, Color.BrightRed);
             
-            _mainWindow.Add(betaVersionWarningInfo, warningInfo, beamWalletInfo);
+            _window.Add(betaVersionWarningInfo, warningInfo, beamWalletInfo);
         }
 
         private void AddRunnerInfo(string info)
         {
             if (_runnerOnInfo is {})
             {
-                _mainWindow.Remove(_runnerOnInfo);
+                _window.Remove(_runnerOnInfo);
             }
 
             _runnerOnInfo = new Label(x, 26, $"{info}");
-            _mainWindow.Add(_runnerOnInfo);
+            _window.Add(_runnerOnInfo);
         }
 
-        public Task<Window> InitAsync()
+        private void InitOptions()
         {
-            _processInfo = new ProcessInfo(_process, _externalRunnerIsRunning);
-            
             var createAccountButton = new Button(x, 29, "Create new account");
             createAccountButton.Clicked = () =>
             {
-                OptionSelected?.Invoke(this, (Option.CreateNewAccount, _processInfo));
+                OptionSelected?.Invoke(this, Option.CreateNewAccount);
             };
             var provideAccountButton = new Button(27, 29, "Provide an address");
             provideAccountButton.Clicked = () =>
             {
-                OptionSelected?.Invoke(this, (Option.ProvideAddress, _processInfo));
+                OptionSelected?.Invoke(this, Option.ProvideAddress);
             };
             var quitButton = new Button(x, 31, "Quit");
             quitButton.Clicked = () =>
             {
-                if (!_externalRunnerIsRunning)
-                {
-                    CloseAppWithRunner();
-                }
-                Application.Top.Running = false;
-                Application.RequestStop();
-                Application.Shutdown();
+                Quit();
             };
-            _mainWindow.Add(createAccountButton, provideAccountButton, quitButton);
-            return Task.FromResult(_mainWindow);
+            _window.Add(createAccountButton, provideAccountButton, quitButton);
+        }
+
+        private void Quit()
+        {
+            if (_backgroundRunnerIsRunning)
+            {
+                CloseAppWithRunner();
+            }
+            Application.Top.Running = false;
+            Application.RequestStop();
+            Application.Shutdown();
         }
 
         private void CloseAppWithRunner()
         {
             var confirmed = MessageBox.Query(80, 8, "Confirmation",
                 $"{Environment.NewLine}" +
-                "Nethermind is running in the background. Do you want to stop it?", "Yes", "No");
+                "Nethermind node is running in the background. Do you want to stop it?", "Yes", "No");
 
             if (confirmed == 0)
             {
