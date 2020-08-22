@@ -15,19 +15,23 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Diagnostics;
+using Nethermind.Core;
+using Nethermind.Int256;
+using Terminal.Gui;
 
-namespace Nethermind.BeamWallet
+namespace Nethermind.BeamWallet.Modules.Balance
 {
-    public class ProcessInfo
+    public class Token
     {
-        public Process Process { get; }
-        public bool BackgroundRunnerIsRunning { get; }
-        
-        public ProcessInfo(Process process, bool backgroundRunnerIsRunning)
+        public string Name { get; }
+        public Address Address { get; }
+        public UInt256 Balance { get; set; }
+        public Label Label { get; set; }
+
+        public Token(string name, Address address)
         {
-            Process = process;
-            BackgroundRunnerIsRunning = backgroundRunnerIsRunning;
+            Name = name;
+            Address = address;
         }
     }
 }

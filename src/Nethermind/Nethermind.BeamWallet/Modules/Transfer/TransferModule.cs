@@ -33,6 +33,7 @@ namespace Nethermind.BeamWallet.Modules.Transfer
 {
     public class TransferModule : IModule
     {
+        private readonly Regex _addressRegex = new Regex("(0x)([0-9A-Fa-f]{40})", RegexOptions.Compiled);
         private readonly IEthJsonRpcClientProxy _ethJsonRpcClientProxy;
         private readonly IJsonRpcWalletClientProxy _jsonRpcWalletClientProxy;
         private readonly Address _address;
@@ -44,10 +45,12 @@ namespace Nethermind.BeamWallet.Modules.Transfer
         private string _value;
         private string _toAddress;
         private string _passphrase;
-        private Window _transferWindow;
+        private long _averageGasPriceNumber;
+        private decimal _transactionValue;
+        private decimal _transactionFee;
+        private Window _window;
         private UInt256 _currentNonce;
         private BlockModel<TransactionModel> _latestBlock;
-        private long _averageGasPriceNumber;
         private UInt256? _newNonce;
         private Button _backButton;
         private Button _transferButton;
@@ -62,11 +65,8 @@ namespace Nethermind.BeamWallet.Modules.Transfer
         private Label _sentTransactionLabel;
         private Label _lockInfoLabel;
         private UInt256 _averageGasPrice;
-        private decimal _transactionValue;
         private TextField _toAddressTextField;
         private Label _unlockInfoLbl;
-        private readonly Regex _addressRegex = new Regex("(0x)([0-9A-Fa-f]{40})", RegexOptions.Compiled);
-        private decimal _transactionFee;
 
         public TransferModule(IEthJsonRpcClientProxy ethJsonRpcClientProxy, IJsonRpcWalletClientProxy
             jsonRpcWalletClientProxy, Address address, decimal balanceEth)
@@ -98,10 +98,9 @@ namespace Nethermind.BeamWallet.Modules.Transfer
             }
 
             _balanceEth = balance.Value;
-            _transferWindow.Remove(_balanceLabel);
+            _window.Remove(_balanceLabel);
             _balanceLabel = new Label(65, 9, $"Balance: {_balanceEth} ETH");
-
-            _transferWindow.Add(_balanceLabel);
+            _window.Add(_balanceLabel);
         }
 
         private async Task<decimal?> GetBalanceAsync()
@@ -117,8 +116,8 @@ namespace Nethermind.BeamWallet.Modules.Transfer
 
         private async Task GetAverageGasPriceAsync()
         {
-            _blockNumberLabel = new Label(1, 23, "eth_getBlockByNumber: fetching...");
-            _transferWindow.Add(_blockNumberLabel);
+            _blockNumberLabel = new Label(1, 24, "eth_getBlockByNumber: fetching...");
+            _window.Add(_blockNumberLabel);
             RpcResult<BlockModel<TransactionModel>> result;
             do
             {
@@ -136,11 +135,11 @@ namespace Nethermind.BeamWallet.Modules.Transfer
             if (_latestBlock.Transactions.Count == 0)
             {
                 _averageGasPrice = _gasPrice;
-                _transferWindow.Remove(_blockNumberLabel);
+                _window.Remove(_blockNumberLabel);
                 _blockNumberLabel = new Label(1, 24,
                     $"Block number (latest): {_latestBlock.Number}, Average gas price: " +
                     $"{_averageGasPrice} WEI");
-                _transferWindow.Add(_blockNumberLabel);
+                _window.Add(_blockNumberLabel);
             }
 
             int transactionCount = 0;
@@ -154,17 +153,17 @@ namespace Nethermind.BeamWallet.Modules.Transfer
             }
 
             _averageGasPriceNumber = transactionCount > 0 ? (long)sum / transactionCount : (long)sum;
-            _transferWindow.Remove(_blockNumberLabel);
+            _window.Remove(_blockNumberLabel);
             _blockNumberLabel = new Label(1, 24, $"Block number (latest): {_latestBlock.Number}, Average gas price: " +
                                                  $"{_averageGasPriceNumber} WEI");
-            _transferWindow.Add(_blockNumberLabel);
+            _window.Add(_blockNumberLabel);
             _averageGasPrice = UInt256.Parse(_averageGasPriceNumber.ToString());
         }
 
         private async Task GetTransactionCountAsync()
         {
             _nonceLabel = new Label(1, 26, "eth_getTransactionCount: fetching...");
-            _transferWindow.Add(_nonceLabel);
+            _window.Add(_nonceLabel);
             RpcResult<UInt256?> result;
             do
             {
@@ -176,15 +175,15 @@ namespace Nethermind.BeamWallet.Modules.Transfer
             } while (!result.IsValid || !result.Result.HasValue);
 
             _currentNonce = result.Result.Value;
-            _transferWindow.Remove(_nonceLabel);
+            _window.Remove(_nonceLabel);
             _nonceLabel = new Label(1, 26, $"Nonce: {_currentNonce}");
-            _transferWindow.Add(_nonceLabel);
+            _window.Add(_nonceLabel);
         }
 
         private async Task GetEstimateGasAsync()
         {
             _estimateGasLabel = new Label(1, 28, "eth_estimateGas: fetching...");
-            _transferWindow.Add(_estimateGasLabel);
+            _window.Add(_estimateGasLabel);
 
             RpcResult<byte[]> result;
             do
@@ -199,9 +198,9 @@ namespace Nethermind.BeamWallet.Modules.Transfer
 
             var estimateGasResult = result.Result.ToHexString();
             SetEstimateGas(decimal.Parse(estimateGasResult));
-            _transferWindow.Remove(_estimateGasLabel);
+            _window.Remove(_estimateGasLabel);
             _estimateGasLabel = new Label(1, 28, $"Gas limit: {_estimateGas}");
-            _transferWindow.Add(_estimateGasLabel);
+            _window.Add(_estimateGasLabel);
         }
 
         private void SetEstimateGas(decimal estimateGasResult)
@@ -218,8 +217,7 @@ namespace Nethermind.BeamWallet.Modules.Transfer
 
         public Task<Window> InitAsync()
         {
-            _transferWindow = new Window("Transfer") {X = 0, Y = 0, Width = Dim.Fill(), Height = Dim.Fill()};
-
+            CreateWindow();
             AddInfo();
 
             var fromAddressLabel = new Label(1, 9, "From address:");
@@ -242,18 +240,33 @@ namespace Nethermind.BeamWallet.Modules.Transfer
             _backButton = new Button(35, 17, "Back");
             _backButton.Clicked = () =>
             {
-                Application.Top.Running = false;
-                Application.RequestStop();
-                Application.Shutdown();
+                Back();
             };
             var versionInfo = new Label(1, 19, "Beta version, Please check our docs: " +
-                                               "https://docs.nethermind.io/nethermind/guides-and-helpers/beam-wallet");
-
-            _transferWindow.Add(fromAddressLabel, fromAddressValueLabel, _balanceLabel, toAddressLabel,
+                                               "https://docs.nethermind.io/nethermind/nethermind-utilities/beam-wallet");
+            _window.Add(fromAddressLabel, fromAddressValueLabel, _balanceLabel, toAddressLabel,
                 _toAddressTextField, valueLabel, valueTextField, passphraseLabel, passphraseTextField, _transferButton,
                 _backButton, versionInfo);
 
-            return Task.FromResult(_transferWindow);
+            return Task.FromResult(_window);
+        }
+
+        private void Back()
+        {
+            Application.Top.Running = false;
+            Application.RequestStop();
+            Application.Shutdown();
+        }
+
+        private void CreateWindow()
+        {
+            _window = new Window("Beam Wallet")
+            {
+                X = 0,
+                Y = 0,
+                Width = Dim.Fill(),
+                Height = Dim.Fill()
+            };
         }
 
         private void AddInfo()
@@ -267,7 +280,7 @@ namespace Nethermind.BeamWallet.Modules.Transfer
                                                "- and in the last input enter the passphrase of your wallet." +
                                                $"{Environment.NewLine}{Environment.NewLine}" +
                                                "This is not the last step, you will be asked to confirm the transaction.");
-            _transferWindow.Add(transferInfo);
+            _window.Add(transferInfo);
         }
 
         private void SetData(TextField address, TextField value, TextField passphrase)
@@ -323,7 +336,7 @@ namespace Nethermind.BeamWallet.Modules.Transfer
                     return;
                 }
 
-                if (!EnoughFunds())
+                if (!EnoughFunds() || _balanceEth == 0)
                 {
                     MessageBox.ErrorQuery(40, 7, "Error", "You do not have enough funds." +
                                                           $"{Environment.NewLine}(ESC to close)");
@@ -333,7 +346,7 @@ namespace Nethermind.BeamWallet.Modules.Transfer
 
                 _sendingTransactionLabel =
                     new Label(1, 30, $"Sending transaction with nonce: {_transaction.Nonce}...");
-                _transferWindow.Add(_sendingTransactionLabel);
+                _window.Add(_sendingTransactionLabel);
 
                 RpcResult<Keccak> sendTransactionResult;
                 do
@@ -352,19 +365,19 @@ namespace Nethermind.BeamWallet.Modules.Transfer
                     await Task.Delay(2000);
                 } while (_newNonce == _currentNonce);
 
-                _transferWindow.Add(_transferButton, _backButton);
-                _transferWindow.Remove(_sendingTransactionLabel);
+                _window.Add(_transferButton, _backButton);
+                _window.Remove(_sendingTransactionLabel);
 
                 _sentTransactionLabel = new Label(1, 30, $"Transaction sent with nonce {_transaction.Nonce}.");
-                _transferWindow.Add(_sentTransactionLabel);
+                _window.Add(_sentTransactionLabel);
                 if (sendTransactionResult.IsValid)
                 {
                     _txHashLabel = new Label(1, 32, $"Transaction hash: {sendTransactionResult.Result}");
-                    _transferWindow.Add(_txHashLabel);
+                    _window.Add(_txHashLabel);
                 }
 
                 _lockInfoLabel = new Label(1, 34, "personal_lockAccount: fetching...");
-                _transferWindow.Add(_lockInfoLabel);
+                _window.Add(_lockInfoLabel);
 
                 RpcResult<bool> lockAccountResult;
                 do
@@ -376,15 +389,15 @@ namespace Nethermind.BeamWallet.Modules.Transfer
                     }
                 } while (!lockAccountResult.IsValid);
 
-                _transferWindow.Remove(_lockInfoLabel);
+                _window.Remove(_lockInfoLabel);
                 _lockInfoLabel = new Label(1, 34, "Account locked.");
-                _transferWindow.Add(_lockInfoLabel);
+                _window.Add(_lockInfoLabel);
             }
             catch (Exception ex)
             {
                 MessageBox.ErrorQuery(50, 7, "Error", "There was an error while " +
                                                       "making a transfer. (ESC to close)");
-                AddButtons();
+                Back();
             }
         }
 
@@ -416,28 +429,28 @@ namespace Nethermind.BeamWallet.Modules.Transfer
 
         private void AddButtons()
         {
-            _transferWindow.Add(_transferButton);
-            _transferWindow.Add(_backButton);
+            _window.Add(_transferButton);
+            _window.Add(_backButton);
         }
 
         private void DeleteButtons()
         {
-            _transferWindow.Remove(_backButton);
-            _transferWindow.Remove(_transferButton);
-            _transferWindow.SetFocus(_toAddressTextField);
+            _window.Remove(_backButton);
+            _window.Remove(_transferButton);
+            _window.SetFocus(_toAddressTextField);
         }
 
         private void DeleteLabels()
         {
-            _transferWindow.Remove(_blockNumberLabel);
-            _transferWindow.Remove(_nonceLabel);
-            _transferWindow.Remove(_estimateGasLabel);
-            _transferWindow.Remove(_unlockFailedLbl);
-            _transferWindow.Remove(_unlockInfoLbl);
-            _transferWindow.Remove(_sendingTransactionLabel);
-            _transferWindow.Remove(_sentTransactionLabel);
-            _transferWindow.Remove(_txHashLabel);
-            _transferWindow.Remove(_lockInfoLabel);
+            _window.Remove(_blockNumberLabel);
+            _window.Remove(_nonceLabel);
+            _window.Remove(_estimateGasLabel);
+            _window.Remove(_unlockFailedLbl);
+            _window.Remove(_unlockInfoLbl);
+            _window.Remove(_sendingTransactionLabel);
+            _window.Remove(_sentTransactionLabel);
+            _window.Remove(_txHashLabel);
+            _window.Remove(_lockInfoLabel);
         }
 
         private static TransactionModel CreateTransaction(Address fromAddress, Address toAddress, UInt256 value,
@@ -468,6 +481,14 @@ namespace Nethermind.BeamWallet.Modules.Transfer
                 AddButtons();
                 return false;
             }
+            
+            if (_balanceEth == 0)
+            {
+                MessageBox.ErrorQuery(40, 7, "Error", "You do not have enough funds." +
+                                                      $"{Environment.NewLine}(ESC to close)");
+                AddButtons();
+                return false;
+            }
 
             return await ValidatePassword();
         }
@@ -482,7 +503,7 @@ namespace Nethermind.BeamWallet.Modules.Transfer
                 return false;
             }
             _unlockFailedLbl = new Label(1, 22, "personal_unlockAccount: fetching...");
-            _transferWindow.Add(_unlockFailedLbl);
+            _window.Add(_unlockFailedLbl);
 
             RpcResult<bool> unlockAccountResult;
             do
@@ -494,7 +515,7 @@ namespace Nethermind.BeamWallet.Modules.Transfer
                 }
             } while (!unlockAccountResult.IsValid);
 
-            _transferWindow.Remove(_unlockFailedLbl);
+            _window.Remove(_unlockFailedLbl);
 
             if (!unlockAccountResult.Result)
             {
@@ -508,7 +529,7 @@ namespace Nethermind.BeamWallet.Modules.Transfer
             }
 
             _unlockInfoLbl = new Label(1, 22, "Account unlocked.");
-            _transferWindow.Add(_unlockInfoLbl);
+            _window.Add(_unlockInfoLbl);
 
             DeleteButtons();
             return true;

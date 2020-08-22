@@ -22,34 +22,34 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.BeamWallet.Modules.Events;
-using Nethermind.Int256;
-using Nethermind.Facade.Proxy;
-using Terminal.Gui;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Facade.Proxy;
 using Nethermind.Facade.Proxy.Models;
+using Nethermind.Int256;
+using Terminal.Gui;
 
-namespace Nethermind.BeamWallet.Modules.Data
+namespace Nethermind.BeamWallet.Modules.Balance
 {
-    public class DataModule : IModule
+    public class BalanceModule : IModule
     {
         private readonly IEthJsonRpcClientProxy _ethJsonRpcClientProxy;
         private readonly Address _address;
         private readonly Timer _timer;
+        private readonly IEnumerable<Token> _tokens = InitTokens();
+        private long? _lastBlockNumber;
         private decimal _balance;
         private Window _window;
         private Label _syncingInfoLabel;
         private Label _balanceValueLabel;
         private Button _skipTokensButton;
-        private readonly IEnumerable<Token> _tokens = InitTokens();
-        private long? _lastBlockNumber;
         private Button _backButton;
         private Button _transferButton;
         private Label _tokensSyncingInfoLabel;
 
         public event EventHandler<TransferClickedEventArgs> TransferClicked;
 
-        public DataModule(IEthJsonRpcClientProxy ethJsonRpcClientProxy, string address)
+        public BalanceModule(IEthJsonRpcClientProxy ethJsonRpcClientProxy, string address)
         {
             _ethJsonRpcClientProxy = ethJsonRpcClientProxy;
             _address = new Address(address);
@@ -58,18 +58,22 @@ namespace Nethermind.BeamWallet.Modules.Data
 
         public async Task<Window> InitAsync()
         {
-            _window = new Window("Data")
+            CreateWindow();
+            InitButtons();
+            RenderBalanceAsync();
+
+            return _window;
+        }
+
+        private void CreateWindow()
+        {
+            _window = new Window("Beam Wallet")
             {
                 X = 0,
                 Y = 0,
                 Width = Dim.Fill(),    
                 Height = Dim.Fill()
             };
-            Application.Top.Add(_window);
-            InitButtons();
-            RenderBalanceAsync();
-
-            return _window;
         }
 
         private void Update(object state)
@@ -92,20 +96,20 @@ namespace Nethermind.BeamWallet.Modules.Data
 
             _balance = balance.Value;
             _window.Remove(_balanceValueLabel);
-            _balanceValueLabel = new Label(80, 1, $"{_balance} ETH");
+            _balanceValueLabel = new Label(10, 3, $"{_balance} ETH");
             _window.Remove(_syncingInfoLabel);
             _window.Add(_balanceValueLabel);
         }
 
         private void InitButtons()
         {
-            _transferButton = new Button(10, 11, "Transfer");
+            _transferButton = new Button(10, 13, "Transfer");
             _transferButton.Clicked = () =>
             {
                 TransferClicked?.Invoke(this, new TransferClickedEventArgs(_address, _balance));
             };
             
-            _skipTokensButton = new Button(10, 11, "Skip getting token balance and transfer");
+            _skipTokensButton = new Button(10, 13, "Skip getting token balance and transfer");
             _skipTokensButton.Clicked = () =>
             {
                 _window.Add(_transferButton);
@@ -114,7 +118,7 @@ namespace Nethermind.BeamWallet.Modules.Data
                 TransferClicked?.Invoke(this, new TransferClickedEventArgs(_address, _balance));
             };
             
-            _backButton = new Button(1, 11, "Back");
+            _backButton = new Button(1, 13, "Back");
             _backButton.Clicked = () =>
             {
                 Application.Top.Running = false;
@@ -124,7 +128,7 @@ namespace Nethermind.BeamWallet.Modules.Data
             _window.Add(_backButton);
         }
 
-        private async Task SetLatestBlockNumber()
+        private async Task SetLatestBlockNumberAsync()
         {
             RpcResult<long?> result;
             do
@@ -143,7 +147,17 @@ namespace Nethermind.BeamWallet.Modules.Data
         {
             try
             {
-                var result = await _ethJsonRpcClientProxy.eth_getBalance(_address);
+                var blockNumberResult = await GetBlockNumberAsync();
+                var blockNumber = blockNumberResult ?? 0;
+                RpcResult<UInt256?> result;
+                if (blockNumber != 0)
+                {
+                    result = await _ethJsonRpcClientProxy.eth_getBalance(_address, BlockParameterModel.FromNumber(blockNumber));
+                }
+                else
+                {
+                    result = await _ethJsonRpcClientProxy.eth_getBalance(_address);
+                }
                 if (!result.IsValid || !result.Result.HasValue)
                 {
                     return null;
@@ -161,7 +175,7 @@ namespace Nethermind.BeamWallet.Modules.Data
 
         private async Task GetTokensBalanceAsync()
         {
-            var position = 1;
+            var position = 3;
             var tasks = _tokens.Select(GetTokenBalanceAsync);
             foreach (var token in _tokens)
             {
@@ -211,7 +225,7 @@ namespace Nethermind.BeamWallet.Modules.Data
             }
         }
 
-        private async Task<long?> GetBlockNumber()
+        private async Task<long?> GetBlockNumberAsync()
         {
             var result = await _ethJsonRpcClientProxy.eth_blockNumber();
             return result.Result;
@@ -221,8 +235,8 @@ namespace Nethermind.BeamWallet.Modules.Data
         {
             var addressLabel = new Label(1, 1, $"Address: {_address}");
             var copyAddressButton = new Button( 55, 1, "Copy");
-            var balanceLabel = new Label(70, 1, "Balance:");
-            _syncingInfoLabel = new Label(80, 1, "Syncing... Please wait for the balance. " +
+            var balanceLabel = new Label(1, 3, "Balance:");
+            _syncingInfoLabel = new Label(10, 3, "Syncing... Please wait for the balance. " +
                                                  "This may take up to 10min.");
 
             copyAddressButton.Clicked += () =>
@@ -240,24 +254,24 @@ namespace Nethermind.BeamWallet.Modules.Data
             } while (!balance.HasValue);
 
             _balance = balance.Value;
-            if (await GetBlockNumber() == 0)
+            if (await GetBlockNumberAsync() == 0)
             {
-                _balanceValueLabel = new Label(80, 1, "Syncing... Please wait for the balance." +
+                _balanceValueLabel = new Label(10, 3, "Syncing... Please wait for the balance." +
                                                       "This may take up to 10min.");
                 return;
             }
 
-            _balanceValueLabel = new Label(80, 1, $"{_balance} ETH");
+            _balanceValueLabel = new Label(10, 3, $"{_balance} ETH");
 
             _window.Remove(_syncingInfoLabel);
             _window.Add(_balanceValueLabel);
-            _tokensSyncingInfoLabel = new Label(1, 3, "Tokens balance syncing...");
+            _tokensSyncingInfoLabel = new Label(1, 5, "Tokens balance syncing...");
             var netVersionResult = await _ethJsonRpcClientProxy.net_version();
             if (netVersionResult.Result == "1")
             {
                 _window.Add(_skipTokensButton);
                 _window.Add(_tokensSyncingInfoLabel);
-                await SetLatestBlockNumber();
+                await SetLatestBlockNumberAsync();
                 await GetTokensBalanceAsync();
                 _window.Remove(_tokensSyncingInfoLabel);
             }
@@ -304,19 +318,5 @@ namespace Nethermind.BeamWallet.Modules.Data
                 new Token("USDC", new Address("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48")),
                 // new Token("BAT", new Address("0x0D8775F648430679A709E98d2b0Cb6250d2887EF"))
             };
-
-        private class Token
-        {
-            public string Name { get; }
-            public Address Address { get; }
-            public UInt256 Balance { get; set; }
-            public Label Label { get; set; }
-
-            public Token(string name, Address address)
-            {
-                Name = name;
-                Address = address;
-            }
-        }
     }
 }
