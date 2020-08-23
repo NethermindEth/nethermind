@@ -411,7 +411,7 @@ namespace Nethermind.Baseline.JsonRpc
                 }
             }
 
-            foreach (FilterLog filterLog in insertLeafLogs)
+            foreach (FilterLog filterLog in insertLeafLogs.OrderBy(fl => fl.BlockNumber).ThenBy(fl => fl.LogIndex))
             {
                 Keccak leafHash = new Keccak(filterLog.Data.Slice(32, 32).ToArray());
                 baselineTree.Insert(leafHash);

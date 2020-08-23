@@ -832,14 +832,23 @@ namespace Nethermind.Baseline.Test.JsonRpc
         {
             await baselineModule.baseline_track(contract);
             await baselineModule.baseline_insertLeaf(TestItem.Addresses[0], contract, TestItem.KeccakA);
-            // await testRpc.AddBlock();
-            // await baselineModule.baseline_insertLeaf(TestItem.Addresses[0], contract, TestItem.KeccakB);
             await testRpc.AddBlock();
-            var siblings = await baselineModule.baseline_getSiblings(contract, 0);
+            var siblings = (await baselineModule.baseline_getSiblings(contract, 0)).Data;
+            var root = (await baselineModule.baseline_getRoot(contract)).Data;
+            await baselineModule.baseline_insertLeaf(TestItem.Addresses[0], contract, TestItem.KeccakB);
             await testRpc.AddBlock();
-            var root = await baselineModule.baseline_getRoot(contract);
-            var result = await baselineModule.baseline_verify(contract, root.Data, TestItem.KeccakA, siblings.Data);
-            if (!result.Data)
+            var siblings2 = (await baselineModule.baseline_getSiblings(contract, 0)).Data;
+            var root2 = (await baselineModule.baseline_getRoot(contract)).Data;
+            await testRpc.AddBlock();
+            
+            var result = (await baselineModule.baseline_verify(contract, root, TestItem.KeccakA, siblings)).Data;
+            var result2 = (await baselineModule.baseline_verify(contract, root2, TestItem.KeccakA, siblings2)).Data;
+            if (!result)
+            {
+                throw new Exception();
+            }
+            
+            if (!result2)
             {
                 throw new Exception();
             }
