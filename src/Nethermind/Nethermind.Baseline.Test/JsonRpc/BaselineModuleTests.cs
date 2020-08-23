@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.IO.Abstractions;
 using System.Linq;
@@ -8,6 +9,7 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.Baseline.JsonRpc;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -24,6 +26,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
+using NUnit.Framework.Internal;
 
 namespace Nethermind.Baseline.Test.JsonRpc
 {
@@ -828,30 +831,34 @@ namespace Nethermind.Baseline.Test.JsonRpc
             result.Data.Should().BeNull();
         }
 
-        private async Task RunAll(TestRpcBlockchain testRpc, BaselineModule baselineModule, Address contract)
+        private async Task RunAll(TestRpcBlockchain testRpc, BaselineModule baselineModule, int taskId)
         {
+            Console.WriteLine($"RunAll {taskId}");
+            Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
+            await testRpc.AddBlock();
+
+            ReceiptForRpc receipt = (await testRpc.EthModule.eth_getTransactionReceipt(txHash)).Data;
+            Address contract = receipt.ContractAddress;
+            Console.WriteLine($"Task {taskId} operating on contract {contract}");
+            
             await baselineModule.baseline_track(contract);
-            await baselineModule.baseline_insertLeaf(TestItem.Addresses[0], contract, TestItem.KeccakA);
-            await testRpc.AddBlock();
-            var siblings = (await baselineModule.baseline_getSiblings(contract, 0)).Data;
-            var root = (await baselineModule.baseline_getRoot(contract)).Data;
-            await baselineModule.baseline_insertLeaf(TestItem.Addresses[0], contract, TestItem.KeccakB);
-            await testRpc.AddBlock();
-            var siblings2 = (await baselineModule.baseline_getSiblings(contract, 0)).Data;
-            var root2 = (await baselineModule.baseline_getRoot(contract)).Data;
-            await testRpc.AddBlock();
-            
-            var result = (await baselineModule.baseline_verify(contract, root, TestItem.KeccakA, siblings)).Data;
-            var result2 = (await baselineModule.baseline_verify(contract, root2, TestItem.KeccakA, siblings2)).Data;
-            if (!result)
+
+            for (int i = 0; i < 64; i++)
             {
-                throw new Exception();
+                Stopwatch stopwatch = Stopwatch.StartNew();
+                await baselineModule.baseline_insertLeaf(TestItem.Addresses[0], contract, TestItem.Keccaks[i % TestItem.Keccaks.Length]);
+                await testRpc.AddBlock();
+                var siblings = (await baselineModule.baseline_getSiblings(contract, 0)).Data;
+                var root = (await baselineModule.baseline_getRoot(contract)).Data;
+                var result = (await baselineModule.baseline_verify(contract, root, TestItem.Keccaks[0], siblings)).Data;
+                if (!result)
+                {
+                    throw new Exception();
+                }
+                Console.WriteLine($"Finished task {taskId}, iteration {i} | {stopwatch.ElapsedMilliseconds}");
             }
             
-            if (!result2)
-            {
-                throw new Exception();
-            }
+            Console.WriteLine($"Finishing task {taskId}");
         }
             
             
@@ -871,11 +878,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
                 LimboLogs.Instance);
 
             await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
-            Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
-            await testRpc.AddBlock();
 
-            ReceiptForRpc receipt = (await testRpc.EthModule.eth_getTransactionReceipt(txHash)).Data;
-            
             await testRpc.AddFunds(TestItem.Addresses[0], 10000.Ether());
             await testRpc.AddFunds(TestItem.Addresses[1], 10000.Ether());
             await testRpc.AddFunds(TestItem.Addresses[2], 10000.Ether());
@@ -886,19 +889,19 @@ namespace Nethermind.Baseline.Test.JsonRpc
             // ReceiptForRpc receipt = (await testRpc.EthModule.eth_getTransactionReceipt(txHash)).Data;
 
             List<Task> tasks = new List<Task>();
-            for (int i = 0; i < 1; i++)
+            for (int i = 0; i < 2; i++)
             {
-                Task task = RunAll(testRpc, baselineModule, receipt.ContractAddress);
+                Task task = RunAll(testRpc, baselineModule, i);
                 tasks.Add(task);
             }
 
-            await Task.WhenAll(tasks).ContinueWith(t =>
+            await Task.WhenAny(Task.Delay(50000), Task.WhenAll(tasks)).ContinueWith(t =>
             {
                 foreach (Task task in tasks)
                 {
                     if (task.IsFaulted)
                     {
-                        throw task.Exception;
+                        ExceptionHelper.Rethrow(task.Exception!.InnerException);
                     }
                 }
             });

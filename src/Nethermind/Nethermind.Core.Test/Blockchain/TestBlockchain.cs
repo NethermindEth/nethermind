@@ -62,7 +62,7 @@ namespace Nethermind.Core.Test.Blockchain
         public TestBlockProducer BlockProducer { get; private set; }
         public MemDbProvider DbProvider { get; set; }
         public ISpecProvider SpecProvider { get; set; }
-        
+
         protected TestBlockchain(SealEngineType sealEngineType)
         {
             _sealEngineType = sealEngineType;
@@ -71,7 +71,8 @@ namespace Nethermind.Core.Test.Blockchain
         public static Address AccountA = TestItem.AddressA;
         public static Address AccountB = TestItem.AddressB;
         public static Address AccountC = TestItem.AddressC;
-        private AutoResetEvent _resetEvent;
+        private SemaphoreSlim _resetEvent;
+        private AutoResetEvent _oneAtATime = new AutoResetEvent(true);
 
         public ManualTimestamper Timestamper { get; private set; }
 
@@ -122,17 +123,16 @@ namespace Nethermind.Core.Test.Blockchain
             BlockProducer = new TestBlockProducer(txPoolTxSource, chainProcessor, State, sealer, BlockTree, chainProcessor, Timestamper, LimboLogs.Instance);
             BlockProducer.Start();
 
-            _resetEvent = new AutoResetEvent(false);
+            _resetEvent = new SemaphoreSlim(0);
             BlockTree.NewHeadBlock += (s, e) =>
             {
-                Console.WriteLine(e.Block.Header.Hash);
-                _resetEvent.Set();
+                _resetEvent.Release(1);
             };
 
             var genesis = GetGenesisBlock();
             BlockTree.SuggestBlock(genesis);
-            await _resetEvent.WaitOneAsync(CancellationToken.None);
-            
+            await _resetEvent.WaitAsync(CancellationToken.None);
+
             await AddBlocksOnStart();
             return this;
         }
@@ -156,21 +156,24 @@ namespace Nethermind.Core.Test.Blockchain
             await AddBlock(BuildSimpleTransaction.WithNonce(1).TestObject, BuildSimpleTransaction.WithNonce(2).TestObject);
         }
 
-        protected virtual BlockProcessor CreateBlockProcessor() => 
+        protected virtual BlockProcessor CreateBlockProcessor() =>
             new BlockProcessor(SpecProvider, Always.Valid, new RewardCalculator(SpecProvider), TxProcessor, StateDb, CodeDb, State, Storage, TxPool, ReceiptStorage, LimboLogs.Instance);
 
         public async Task AddBlock(params Transaction[] transactions)
         {
+            await _oneAtATime.WaitOneAsync(CancellationToken.None);
             foreach (Transaction transaction in transactions)
             {
-                TxPool.AddTransaction(transaction, TxHandlingOptions.None);    
+                TxPool.AddTransaction(transaction, TxHandlingOptions.None);
             }
-            
+
             Timestamper.Add(TimeSpan.FromSeconds(1));
             BlockProducer.BuildNewBlock();
-            await _resetEvent.WaitOneAsync(CancellationToken.None);
+
+            await _resetEvent.WaitAsync(CancellationToken.None);
+            _oneAtATime.Set();
         }
-        
+
         public void AddTransaction(Transaction testObject)
         {
             TxPool.AddTransaction(testObject, TxHandlingOptions.None);
@@ -182,7 +185,7 @@ namespace Nethermind.Core.Test.Blockchain
             CodeDb?.Dispose();
             StateDb?.Dispose();
         }
-        
+
         /// <summary>
         /// Creates a simple transfer transaction with value defined by <paramref name="ether"/>
         /// from a rich account to <paramref name="address"/>
@@ -199,7 +202,7 @@ namespace Nethermind.Core.Test.Blockchain
                 .WithNonce(nonce)
                 .WithValue(ether)
                 .TestObject;
-            
+
             await AddBlock(tx);
         }
     }
