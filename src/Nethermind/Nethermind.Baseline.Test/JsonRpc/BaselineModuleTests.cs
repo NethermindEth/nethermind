@@ -857,7 +857,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             
             await baselineModule.baseline_track(contract);
 
-            for (int i = 0; i < 32; i++)
+            for (int i = 0; i < 16; i++)
             {
                 Stopwatch stopwatch = Stopwatch.StartNew();
                 await baselineModule.baseline_insertLeaf(TestItem.Addresses[taskId], contract, TestItem.Keccaks[i % TestItem.Keccaks.Length]);
