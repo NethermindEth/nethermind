@@ -1,12 +1,16 @@
 using System;
+using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.IO.Abstractions;
 using System.Linq;
 using System.Security;
+using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.Baseline.JsonRpc;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -23,6 +27,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
+using NUnit.Framework.Internal;
 
 namespace Nethermind.Baseline.Test.JsonRpc
 {
@@ -825,6 +830,108 @@ namespace Nethermind.Baseline.Test.JsonRpc
             result.Result.Error.Should().NotBeNull();
             result.ErrorCode.Should().Be(ErrorCodes.InvalidInput);
             result.Data.Should().BeNull();
+        }
+
+        private async Task RunAll(TestRpcBlockchain testRpc, BaselineModule baselineModule, int taskId)
+        {
+            Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
+            await testRpc.AddBlock();
+
+            ReceiptForRpc receipt;
+            int tries = 100;
+            do
+            {
+                receipt = (await testRpc.EthModule.eth_getTransactionReceipt(txHash)).Data;
+                await Task.Delay(10);
+                tries--;
+            } while (receipt != null && tries > 0);
+
+            if (receipt == null)
+            {
+                throw new InvalidOperationException($"Receipt is null in task {taskId}");
+            }
+            
+            Address contract = receipt.ContractAddress;
+            Console.WriteLine($"Task {taskId} operating on contract {contract}");
+            
+            await baselineModule.baseline_track(contract);
+
+            for (int i = 0; i < 32; i++)
+            {
+                Stopwatch stopwatch = Stopwatch.StartNew();
+                await baselineModule.baseline_insertLeaf(TestItem.Addresses[taskId], contract, TestItem.Keccaks[i % TestItem.Keccaks.Length]);
+                await testRpc.AddBlock();
+                var siblings = (await baselineModule.baseline_getSiblings(contract, 0)).Data;
+                var root = (await baselineModule.baseline_getRoot(contract)).Data;
+                var result = (await baselineModule.baseline_verify(contract, root, TestItem.Keccaks[0], siblings)).Data;
+                if (!result)
+                {
+                    throw new InvalidOperationException($"Failed to verify at {contract}, task {taskId}, iteration {i}, root {root}");
+                }
+                else
+                {
+                    Console.WriteLine($"Verified at {contract}, task {taskId}, iteration {i}, root {root}");
+                }
+            }
+            
+            Console.WriteLine($"Finishing task {taskId}");
+        }
+            
+            
+        [Test]
+        public async Task Parallel_calls()
+        {
+            SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
+            TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(
+                SealEngineType.NethDev).Build(spec, 100000.Ether());
+            BaselineModule baselineModule = new BaselineModule(
+                testRpc.TxPoolBridge,
+                testRpc.StateReader,
+                testRpc.LogFinder,
+                testRpc.BlockTree,
+                _abiEncoder,
+                _fileSystem,
+                new MemDb(),
+                LimboLogs.Instance);
+            
+            for (int i = 0; i < 255; i++)
+            {
+                testRpc.TestWallet.UnlockAccount(TestItem.Addresses[i], new SecureString());
+                await testRpc.AddFunds(TestItem.Addresses[i], 100.Ether());    
+            }
+
+            // Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
+            // await testRpc.AddBlock();
+            // ReceiptForRpc receipt = (await testRpc.EthModule.eth_getTransactionReceipt(txHash)).Data;
+
+            List<Task> tasks = new List<Task>();
+            for (int i = 0; i < 16; i++)
+            {
+                Task task = RunAll(testRpc, baselineModule, i);
+                tasks.Add(task);
+            }
+
+            await Task.WhenAny(Task.Delay(30000), Task.WhenAny(tasks)).ContinueWith(t =>
+            {
+                foreach (Task task in tasks)
+                {
+                    if (task.IsFaulted)
+                    {
+                        ExceptionHelper.Rethrow(task.Exception!.InnerException);
+                    }
+                }
+            });
+            
+            await Task.WhenAny(Task.Delay(30000), Task.WhenAll(tasks)).ContinueWith(t =>
+            {
+                foreach (Task task in tasks)
+                {
+                    if (task.IsFaulted)
+                    {
+                        ExceptionHelper.Rethrow(task.Exception!.InnerException);
+                    }
+                }
+            });
         }
     }
 }
