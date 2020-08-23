@@ -58,7 +58,7 @@ namespace Nethermind.Blockchain.Producers
                 logManager)
         {
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
-            _timer = new System.Timers.Timer(500);
+            _timer = new System.Timers.Timer(200);
             _timer.Elapsed += TimerOnElapsed;
         }
 
