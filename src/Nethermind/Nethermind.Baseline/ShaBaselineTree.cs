@@ -24,7 +24,6 @@ namespace Nethermind.Baseline
     public class ShaBaselineTree : BaselineTree
     {
         [ThreadStatic] private static HashAlgorithm? _hashAlgorithm;
-        // private static HashAlgorithm? _hashAlgorithm;
 
         public ShaBaselineTree(IKeyValueStore keyValueStore, byte[] dbPrefix, int truncationLength = 0)
             : base(keyValueStore, dbPrefix, truncationLength)
