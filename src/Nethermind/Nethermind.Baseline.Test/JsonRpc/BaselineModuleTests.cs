@@ -11,6 +11,7 @@ using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.Baseline.JsonRpc;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -862,9 +863,13 @@ namespace Nethermind.Baseline.Test.JsonRpc
                 Stopwatch stopwatch = Stopwatch.StartNew();
                 await baselineModule.baseline_insertLeaf(TestItem.Addresses[taskId], contract, TestItem.Keccaks[i % TestItem.Keccaks.Length]);
                 await testRpc.AddBlock();
-                var siblings = (await baselineModule.baseline_getSiblings(contract, 0)).Data;
-                var root = (await baselineModule.baseline_getRoot(contract)).Data;
-                var result = (await baselineModule.baseline_verify(contract, root, TestItem.Keccaks[0], siblings)).Data;
+                Block headBlock = testRpc.BlockTree.Head;
+                BaselineTreeNode[] siblings = (await baselineModule.baseline_getSiblings(
+                    contract, 0, new BlockParameter(headBlock.Number))).Data;
+                Keccak root = (await baselineModule.baseline_getRoot(
+                    contract, new BlockParameter(headBlock.Number))).Data;
+                bool result = (await baselineModule.baseline_verify(
+                    contract, root, TestItem.Keccaks[0], siblings, new BlockParameter(headBlock.Number))).Data;
                 if (!result)
                 {
                     throw new InvalidOperationException($"Failed to verify at {contract}, task {taskId}, iteration {i}, root {root}");
