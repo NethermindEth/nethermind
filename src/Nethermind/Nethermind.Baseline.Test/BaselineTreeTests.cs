@@ -330,5 +330,47 @@ namespace Nethermind.Baseline.Test
                 result[i].Hash.Should().NotBe(Keccak.Zero);
             }
         }
+        
+        [TestCase(uint.MinValue)]
+        [TestCase(1u)]
+        [TestCase(2u)]
+        [TestCase(23u)]
+        public void Can_get_root(uint nodesCount)
+        {
+            BaselineTree baselineTree = BuildATree();
+            Keccak root = baselineTree.Root;
+            Console.WriteLine(root);
+            for (int i = 0; i < nodesCount; i++)
+            {
+                baselineTree.Insert(_testLeaves[0]);
+                Keccak newRoot = baselineTree.Root;
+                Console.WriteLine(newRoot);
+                newRoot.Should().NotBeEquivalentTo(root);
+                root = newRoot;
+            }
+        }
+        
+        [TestCase(uint.MinValue)]
+        [TestCase(1u)]
+        [TestCase(2u)]
+        [TestCase(23u)]
+        public void Can_verify_zero_and_one_elements(uint nodesCount)
+        {
+            BaselineTree baselineTree = BuildATree();
+            Keccak root = baselineTree.Root;
+            Console.WriteLine(root);
+            for (int i = 0; i < nodesCount; i++)
+            {
+                baselineTree.Insert(_testLeaves[i]);
+                Keccak newRoot = baselineTree.Root;
+                Console.WriteLine(newRoot);
+                newRoot.Should().NotBeEquivalentTo(root);
+                root = newRoot;
+                var proof0 = baselineTree.GetProof(0);
+                var proof1 = baselineTree.GetProof(1);
+                baselineTree.Verify(root, _testLeaves[0], proof0).Should().BeTrue();
+                baselineTree.Verify(root, _testLeaves[1], proof1).Should().BeTrue();
+            }
+        }
     }
 }

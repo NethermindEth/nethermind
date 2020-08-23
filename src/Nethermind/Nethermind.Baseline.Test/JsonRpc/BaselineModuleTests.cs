@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.IO.Abstractions;
 using System.Linq;
@@ -825,6 +826,73 @@ namespace Nethermind.Baseline.Test.JsonRpc
             result.Result.Error.Should().NotBeNull();
             result.ErrorCode.Should().Be(ErrorCodes.InvalidInput);
             result.Data.Should().BeNull();
+        }
+
+        private async Task RunAll(TestRpcBlockchain testRpc, BaselineModule baselineModule, Address contract)
+        {
+            await baselineModule.baseline_track(contract);
+            await baselineModule.baseline_insertLeaf(TestItem.Addresses[0], contract, TestItem.KeccakA);
+            // await testRpc.AddBlock();
+            // await baselineModule.baseline_insertLeaf(TestItem.Addresses[0], contract, TestItem.KeccakB);
+            await testRpc.AddBlock();
+            var siblings = await baselineModule.baseline_getSiblings(contract, 0);
+            await testRpc.AddBlock();
+            var root = await baselineModule.baseline_getRoot(contract);
+            var result = await baselineModule.baseline_verify(contract, root.Data, TestItem.KeccakA, siblings.Data);
+            if (!result.Data)
+            {
+                throw new Exception();
+            }
+        }
+            
+            
+        [Test]
+        public async Task Parallel_calls()
+        {
+            SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
+            TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
+            BaselineModule baselineModule = new BaselineModule(
+                testRpc.TxPoolBridge,
+                testRpc.StateReader,
+                testRpc.LogFinder,
+                testRpc.BlockTree,
+                _abiEncoder,
+                _fileSystem,
+                new MemDb(),
+                LimboLogs.Instance);
+
+            await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
+            Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
+            await testRpc.AddBlock();
+
+            ReceiptForRpc receipt = (await testRpc.EthModule.eth_getTransactionReceipt(txHash)).Data;
+            
+            await testRpc.AddFunds(TestItem.Addresses[0], 10000.Ether());
+            await testRpc.AddFunds(TestItem.Addresses[1], 10000.Ether());
+            await testRpc.AddFunds(TestItem.Addresses[2], 10000.Ether());
+            await testRpc.AddFunds(TestItem.Addresses[3], 10000.Ether());
+
+            // Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
+            // await testRpc.AddBlock();
+            // ReceiptForRpc receipt = (await testRpc.EthModule.eth_getTransactionReceipt(txHash)).Data;
+
+            List<Task> tasks = new List<Task>();
+            for (int i = 0; i < 1; i++)
+            {
+                Task task = RunAll(testRpc, baselineModule, receipt.ContractAddress);
+                tasks.Add(task);
+            }
+
+            await Task.WhenAll(tasks).ContinueWith(t =>
+            {
+                foreach (Task task in tasks)
+                {
+                    if (task.IsFaulted)
+                    {
+                        throw task.Exception;
+                    }
+                }
+            });
         }
     }
 }
