@@ -42,7 +42,7 @@ namespace Nethermind.BeamWallet.Modules.Init
         private ProcessInfo _processInfo;
         private bool _backgroundRunnerIsRunning;
         private int _processId;
-        private int x = 3;
+        private int x = 1;
         private string _network;
 
         public event EventHandler<Option> OptionSelected;
@@ -165,7 +165,7 @@ namespace Nethermind.BeamWallet.Modules.Init
                     _window.Remove(_runnerOnInfo);
                 }
 
-                _runnerOffInfo = new Label(x, 26, "Nethermind node is stopped.. Please, wait for it to start.");
+                _runnerOffInfo = new Label(x, 18, "Nethermind node is stopped.. Please, wait for it to start.");
                 _window.Add(_runnerOffInfo);
                 _process.Start();
                 _processId = _process.Id;
@@ -176,42 +176,27 @@ namespace Nethermind.BeamWallet.Modules.Init
                 _window.Remove(_runnerOffInfo);
             }
 
-            _runnerOnInfo = new Label(x, 26, "Nethermind is running.");
+            _runnerOnInfo = new Label(x, 18, "Nethermind is running.");
             _window.Add(_runnerOnInfo);
         }
 
         private void AddNetworkInfo(string info)
         {
-            var networkInfo = new Label(x, 27, $"{info}");
+            var networkInfo = new Label(x, 19, $"{info}");
             _window.Add(networkInfo);
         }
 
         private void AddInfo()
         {
-            var beamWalletInfo = new Label(x, 1, "Hello, Welcome to Nethermind Beam Wallet - a simple " +
+            var beamWalletInfo = new Label(x, 1, "Hello, Welcome to Nethermind Beam Wallet! Beam Wallet is a console " +
                                                  $"{Environment.NewLine}" +
-                                                 "console application that allows you to use the power of beam sync." +
-                                                 $"{Environment.NewLine}" +
-                                                 "Beam Wallet is running without external dependencies (automatically launches " +
-                                                 $"{Environment.NewLine}" +
-                                                 "a Nethermind Node in the background) and allows to check account balances " +
-                                                 $"{Environment.NewLine}" +
-                                                 "and make simple transactions on mainnet." +
+                                                 "application which allows to check account balances and make simple transactions." +
                                                  $"{Environment.NewLine}{Environment.NewLine}" +
                                                  "Already have an account?" +
                                                  $"{Environment.NewLine}" +
-                                                 "If you already have an account, you can use it - in that case you will need:" +
+                                                 "You will need: your address, passphrase and your keystore file," +
                                                  $"{Environment.NewLine}" +
-                                                 "- your address" +
-                                                 $"{Environment.NewLine}" +
-                                                 "- your passphrase" +
-                                                 $"{Environment.NewLine}" +
-                                                 "- your keystore file" +
-                                                 $"{Environment.NewLine}" +
-                                                 "Before we start, please copy keystore file of your account into " +
-                                                 "folder 'keystore' - this is" +
-                                                 $"{Environment.NewLine}" +
-                                                 "necessary to properly unlock the account before making a transaction." +
+                                                 "Before we start, please copy your keystore file into 'keystore' folder." +
                                                  $"{Environment.NewLine}{Environment.NewLine}" +
                                                  "Don't have an account? " +
                                                  $"{Environment.NewLine}" +
@@ -219,14 +204,12 @@ namespace Nethermind.BeamWallet.Modules.Init
                                                  $"{Environment.NewLine}{Environment.NewLine}" +
                                                  "To navigate through the application - use the TAB key or Up and Down arrows.");
             
-            var betaVersionWarningInfo = new Label(x, 20, "This is a Beta version, so for your own safety please, do " +
+            var betaVersionWarningInfo = new Label(x, 13, "This is a Beta version, so for your own safety please, do " +
                                                          "not use an account with a high balance.");
 
-            var warningInfo = new Label(x, 22, "There are a few things that can go wrong:" +
-                                              $"{Environment.NewLine}" +
-                                              "- your balance may be incorrect" +
-                                              $"{Environment.NewLine}" +
-                                              "- the transaction fee may be charged incorrectly");
+            var warningInfo = new Label(x, 15, "There are a few things that can go wrong:" +
+                                               $"{Environment.NewLine}" +
+                                               "your balance may be incorrect and the transaction fee may be charged incorrectly");
             
             betaVersionWarningInfo.TextColor = new Attribute(Color.White, Color.BrightRed);
             
@@ -240,23 +223,23 @@ namespace Nethermind.BeamWallet.Modules.Init
                 _window.Remove(_runnerOnInfo);
             }
 
-            _runnerOnInfo = new Label(x, 26, $"{info}");
+            _runnerOnInfo = new Label(x, 18, $"{info}");
             _window.Add(_runnerOnInfo);
         }
 
         private void InitOptions()
         {
-            var createAccountButton = new Button(x, 29, "Create new account");
+            var createAccountButton = new Button(x, 21, "Create new account");
             createAccountButton.Clicked = () =>
             {
                 OptionSelected?.Invoke(this, Option.CreateNewAccount);
             };
-            var provideAccountButton = new Button(27, 29, "Provide an address");
+            var provideAccountButton = new Button(25, 21, "Provide an address");
             provideAccountButton.Clicked = () =>
             {
                 OptionSelected?.Invoke(this, Option.ProvideAddress);
             };
-            var quitButton = new Button(x, 31, "Quit");
+            var quitButton = new Button(x, 22, "Quit");
             quitButton.Clicked = () =>
             {
                 Quit();
