@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -53,19 +54,21 @@ namespace Nethermind.Core.Test.Blockchain
         {
         }
 
-        private AutoResetEvent _newBlockArrived = new AutoResetEvent(false);
+        private SemaphoreSlim _newBlockArrived = new SemaphoreSlim(0);
 
         public void BuildNewBlock()
         {
-            _newBlockArrived.Set();
+            _newBlockArrived.Release(1);
         }
 
         protected override async ValueTask ProducerLoop()
         {
             while (true)
             {
-                await _newBlockArrived.WaitOneAsync(LoopCancellationTokenSource.Token);
-                await TryProduceNewBlock(LoopCancellationTokenSource.Token);
+                await _newBlockArrived.WaitAsync(LoopCancellationTokenSource.Token);
+                // Console.WriteLine("Trying to produce a new block.");
+                bool result = await TryProduceNewBlock(LoopCancellationTokenSource.Token);
+                // Console.WriteLine($"Produce new block result -> {result}");
             }
             
             // ReSharper disable once FunctionNeverReturns

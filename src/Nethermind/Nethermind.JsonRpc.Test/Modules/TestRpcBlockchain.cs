@@ -29,6 +29,7 @@ using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.Db.Blooms;
 using Nethermind.Facade.Transactions;
+using Nethermind.Int256;
 using Nethermind.KeyStore;
 using Nethermind.Specs;
 using Nethermind.Wallet;
@@ -76,17 +77,17 @@ namespace Nethermind.JsonRpc.Test.Modules
                 return this;
             }
             
-            public async Task<TestRpcBlockchain> Build(ISpecProvider specProvider = null)
+            public async Task<TestRpcBlockchain> Build(ISpecProvider specProvider = null, UInt256? initialValues = null)
             {
-                return (TestRpcBlockchain)(await _blockchain.Build(specProvider));
+                return (TestRpcBlockchain)(await _blockchain.Build(specProvider, initialValues));
             }
         }
 
-        protected override async Task<TestBlockchain> Build(ISpecProvider specProvider = null)
+        protected override async Task<TestBlockchain> Build(ISpecProvider specProvider = null, UInt256? initialValues = null)
         {
             BloomStorage bloomStorage = new BloomStorage(new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
             specProvider ??= MainnetSpecProvider.Instance;
-            await base.Build(specProvider);
+            await base.Build(specProvider, initialValues);
             IFilterStore filterStore = new FilterStore();
             IFilterManager filterManager = new FilterManager(filterStore, BlockProcessor, TxPool, LimboLogs.Instance);
             

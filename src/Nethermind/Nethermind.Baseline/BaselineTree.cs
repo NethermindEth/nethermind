@@ -1,9 +1,6 @@
 using System;
-using System.Buffers.Binary;
-using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 
@@ -30,7 +27,7 @@ namespace Nethermind.Baseline
         }
 
         public uint Count { get; set; }
-        
+
         /* baseline does not use a sparse merkle tree - instead they use a single zero hash value
            does it expose any attack vectors? */
         internal static Keccak ZeroHash = Keccak.Zero;
@@ -43,13 +40,13 @@ namespace Nethermind.Baseline
             Count = LoadCount();
             Root = Keccak.Zero; // TODO: need to check what should be the initial root of an empty tree
         }
-        
+
         private uint LoadCount()
         {
             // this is an incorrect binary search approach
             // that will fail if any of the leaves are zero hashes
             // we should read count from the corresponding contract
-            
+
             ulong left = GetMinNodeIndex(LeafRow);
             ulong right = GetMaxNodeIndex(LeafRow);
             ulong? topIndex = Binary.Search(left, right, ni => !ZeroHash.Equals(LoadValue(new Index(ni))));
@@ -57,7 +54,7 @@ namespace Nethermind.Baseline
             {
                 return 0;
             }
-            
+
             return new Index(topIndex.Value).IndexAtRow + 1;
         }
 
@@ -81,7 +78,7 @@ namespace Nethermind.Baseline
 
             return new Keccak(nodeHashBytes);
         }
-        
+
         private static ulong GetMinNodeIndex(in uint row)
         {
             return (1ul << (int) row) - 1;
@@ -139,26 +136,27 @@ namespace Nethermind.Baseline
 
         public bool Verify(Keccak root, Keccak leaf, BaselineTreeNode[] siblingPath)
         {
-            byte[] value = leaf.Bytes;
+            Span<byte> value = stackalloc byte[32];
+            leaf.Bytes.AsSpan().CopyTo(value);
             for (int testDepth = 0; testDepth < TreeHeight; testDepth++)
             {
                 BaselineTreeNode branchValue = siblingPath[testDepth];
                 Index index = new Index(branchValue.NodeIndex);
                 if (index.IsLeftSibling())
                 {
-                    // Console.WriteLine($"Verify {branchValue}+{value} at level {testDepth} =>");
-                    Hash(branchValue.Hash.Bytes.AsSpan(), value.AsSpan(), value);
+                    // Console.WriteLine($"Verify {branchValue}+{value.ToArray()} at level {testDepth} =>");
+                    Hash(branchValue.Hash.Bytes.AsSpan(), value, value);
                     // Console.WriteLine($"  {value.ToHexString()}");
                 }
                 else
                 {
                     // Console.WriteLine($"Verify {value.ToHexString()}+{branchValue.Hash} at level {testDepth} =>");
-                    Hash(value.AsSpan(), branchValue.Hash.Bytes.AsSpan(), value);
+                    Hash(value, branchValue.Hash.Bytes.AsSpan(), value);
                     // Console.WriteLine($"  {value.ToHexString()}");
                 }
             }
-            
-            return value.AsSpan().SequenceEqual(root.Bytes.AsSpan());
+
+            return value.SequenceEqual(root.Bytes.AsSpan());
         }
 
         public BaselineTreeNode[] GetProof(in uint leafIndex)
@@ -194,7 +192,7 @@ namespace Nethermind.Baseline
 
             return leaves;
         }
-        
+
         public static ulong GetParentIndex(in ulong nodeIndex)
         {
             return new Index(nodeIndex).Parent().NodeIndex;
@@ -304,7 +302,7 @@ namespace Nethermind.Baseline
                     throw new ArgumentOutOfRangeException($"Tree level {row} should only have indices between 0 and {maxIndexAtRow}");
                 }
             }
-            
+
             private static void ValidateNodeIndex(ulong nodeIndex)
             {
                 if (nodeIndex > MaxNodeIndex)
@@ -312,7 +310,7 @@ namespace Nethermind.Baseline
                     throw new ArgumentOutOfRangeException($"Node index should be between 0 and {MaxNodeIndex}");
                 }
             }
-            
+
             private static void ValidateNodeIndex(in uint row, in ulong nodeIndex)
             {
                 ulong minNodeIndex = GetMinNodeIndex(row);
