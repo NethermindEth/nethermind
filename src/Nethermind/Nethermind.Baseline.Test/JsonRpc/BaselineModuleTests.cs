@@ -197,6 +197,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
                 LimboLogs.Instance);
 
             await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
+            await testRpc.AddFunds(TestItem.Addresses[1], 1.Ether());
             Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
             await testRpc.AddBlock();
 
@@ -232,6 +233,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
                 LimboLogs.Instance);
 
             await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
+            await testRpc.AddFunds(TestItem.Addresses[1], 1.Ether());
             Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
             await testRpc.AddBlock();
 
@@ -266,6 +268,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
                 LimboLogs.Instance);
 
             await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
+            await testRpc.AddFunds(TestItem.Addresses[1], 1.Ether());
             Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
             await testRpc.AddBlock();
 
@@ -374,6 +377,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
                 LimboLogs.Instance);
 
             await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
+            await testRpc.AddFunds(TestItem.Addresses[1], 1.Ether());
             Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
             await testRpc.AddBlock();
 
@@ -408,6 +412,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
                 LimboLogs.Instance);
 
             await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
+            await testRpc.AddFunds(TestItem.Addresses[1], 1.Ether());
             Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
             await testRpc.AddBlock();
 
@@ -506,6 +511,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
                 LimboLogs.Instance);
 
             await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
+            await testRpc.AddFunds(TestItem.Addresses[1], 1.Ether());
             Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
             Keccak txHash2 = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
             Keccak txHash3 = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
