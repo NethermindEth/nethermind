@@ -413,11 +413,8 @@ namespace Nethermind.Baseline.JsonRpc
 
             foreach (FilterLog filterLog in insertLeafLogs.OrderBy(fl => fl.BlockNumber).ThenBy(fl => fl.LogIndex))
             {
-                Console.WriteLine($"Root before insert is {baselineTree.Root} on tree {baselineTree.TruncationLength}");
                 Keccak leafHash = new Keccak(filterLog.Data.Slice(32, 32).ToArray());
-                Console.WriteLine($"Inserting hash {leafHash}");
                 baselineTree.Insert(leafHash);
-                Console.WriteLine($"Root is {baselineTree.Root}");
             }
 
             return baselineTree;
