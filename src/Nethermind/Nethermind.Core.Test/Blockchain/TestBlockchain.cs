@@ -78,7 +78,7 @@ namespace Nethermind.Core.Test.Blockchain
 
         public static TransactionBuilder<Transaction> BuildSimpleTransaction => Core.Test.Builders.Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).To(AccountB);
 
-        protected virtual async Task<TestBlockchain> Build(ISpecProvider specProvider = null)
+        protected virtual async Task<TestBlockchain> Build(ISpecProvider specProvider = null, UInt256? initialValues = null)
         {
             Timestamper = new ManualTimestamper(new DateTime(2020, 2, 15, 12, 50, 30, DateTimeKind.Utc));
             JsonSerializer = new EthereumJsonSerializer();
@@ -87,9 +87,9 @@ namespace Nethermind.Core.Test.Blockchain
             ITxStorage txStorage = new InMemoryTxStorage();
             DbProvider = new MemDbProvider();
             State = new StateProvider(StateDb, CodeDb, LimboLogs.Instance);
-            State.CreateAccount(TestItem.AddressA, 100000.Ether());
-            State.CreateAccount(TestItem.AddressB, 100000.Ether());
-            State.CreateAccount(TestItem.AddressC, 100000.Ether());
+            State.CreateAccount(TestItem.AddressA, (initialValues ?? 1000.Ether()));
+            State.CreateAccount(TestItem.AddressB, (initialValues ?? 1000.Ether()));
+            State.CreateAccount(TestItem.AddressC, (initialValues ?? 1000.Ether()));
             byte[] code = Bytes.FromHexString("0xabcd");
             Keccak codeHash = Keccak.Compute(code);
             State.UpdateCode(code);

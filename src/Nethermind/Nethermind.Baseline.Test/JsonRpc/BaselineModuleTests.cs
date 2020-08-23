@@ -882,7 +882,8 @@ namespace Nethermind.Baseline.Test.JsonRpc
         public async Task Parallel_calls()
         {
             SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
-            TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
+            TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(
+                SealEngineType.NethDev).Build(spec, 100000.Ether());
             BaselineModule baselineModule = new BaselineModule(
                 testRpc.TxPoolBridge,
                 testRpc.StateReader,
