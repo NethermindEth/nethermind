@@ -87,9 +87,9 @@ namespace Nethermind.Core.Test.Blockchain
             ITxStorage txStorage = new InMemoryTxStorage();
             DbProvider = new MemDbProvider();
             State = new StateProvider(StateDb, CodeDb, LimboLogs.Instance);
-            State.CreateAccount(TestItem.AddressA, 1000.Ether());
-            State.CreateAccount(TestItem.AddressB, 1000.Ether());
-            State.CreateAccount(TestItem.AddressC, 1000.Ether());
+            State.CreateAccount(TestItem.AddressA, 100000.Ether());
+            State.CreateAccount(TestItem.AddressB, 100000.Ether());
+            State.CreateAccount(TestItem.AddressC, 100000.Ether());
             byte[] code = Bytes.FromHexString("0xabcd");
             Keccak codeHash = Keccak.Compute(code);
             State.UpdateCode(code);
@@ -139,7 +139,7 @@ namespace Nethermind.Core.Test.Blockchain
 
         protected virtual Block GetGenesisBlock()
         {
-            var genesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.WithStateRoot(new Keccak("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"));
+            var genesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.WithStateRoot(State.StateRoot);
             if (_sealEngineType == SealEngineType.AuRa)
             {
                 genesisBlockBuilder.WithAura(0, new byte[65]);

@@ -5,6 +5,7 @@ using System.IO;
 using System.IO.Abstractions;
 using System.Linq;
 using System.Security;
+using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Abi;
@@ -833,11 +834,23 @@ namespace Nethermind.Baseline.Test.JsonRpc
 
         private async Task RunAll(TestRpcBlockchain testRpc, BaselineModule baselineModule, int taskId)
         {
-            Console.WriteLine($"RunAll {taskId}");
             Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
             await testRpc.AddBlock();
 
-            ReceiptForRpc receipt = (await testRpc.EthModule.eth_getTransactionReceipt(txHash)).Data;
+            ReceiptForRpc receipt;
+            int tries = 100;
+            do
+            {
+                receipt = (await testRpc.EthModule.eth_getTransactionReceipt(txHash)).Data;
+                await Task.Delay(10);
+                tries--;
+            } while (receipt != null && tries > 0);
+
+            if (receipt == null)
+            {
+                throw new InvalidOperationException($"Receipt is null in task {taskId}");
+            }
+            
             Address contract = receipt.ContractAddress;
             Console.WriteLine($"Task {taskId} operating on contract {contract}");
             
@@ -846,16 +859,19 @@ namespace Nethermind.Baseline.Test.JsonRpc
             for (int i = 0; i < 64; i++)
             {
                 Stopwatch stopwatch = Stopwatch.StartNew();
-                await baselineModule.baseline_insertLeaf(TestItem.Addresses[0], contract, TestItem.Keccaks[i % TestItem.Keccaks.Length]);
+                await baselineModule.baseline_insertLeaf(TestItem.Addresses[taskId], contract, TestItem.Keccaks[i % TestItem.Keccaks.Length]);
                 await testRpc.AddBlock();
                 var siblings = (await baselineModule.baseline_getSiblings(contract, 0)).Data;
                 var root = (await baselineModule.baseline_getRoot(contract)).Data;
                 var result = (await baselineModule.baseline_verify(contract, root, TestItem.Keccaks[0], siblings)).Data;
                 if (!result)
                 {
-                    throw new Exception();
+                    throw new InvalidOperationException($"Failed to verify at {contract}, task {taskId}, iteration {i}, root {root}");
                 }
-                Console.WriteLine($"Finished task {taskId}, iteration {i} | {stopwatch.ElapsedMilliseconds}");
+                else
+                {
+                    Console.WriteLine($"Verified at {contract}, task {taskId}, iteration {i}, root {root}");
+                }
             }
             
             Console.WriteLine($"Finishing task {taskId}");
@@ -876,26 +892,36 @@ namespace Nethermind.Baseline.Test.JsonRpc
                 _fileSystem,
                 new MemDb(),
                 LimboLogs.Instance);
-
-            await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
-
-            await testRpc.AddFunds(TestItem.Addresses[0], 10000.Ether());
-            await testRpc.AddFunds(TestItem.Addresses[1], 10000.Ether());
-            await testRpc.AddFunds(TestItem.Addresses[2], 10000.Ether());
-            await testRpc.AddFunds(TestItem.Addresses[3], 10000.Ether());
+            
+            for (int i = 0; i < 255; i++)
+            {
+                testRpc.TestWallet.UnlockAccount(TestItem.Addresses[i], new SecureString());
+                await testRpc.AddFunds(TestItem.Addresses[i], 100.Ether());    
+            }
 
             // Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
             // await testRpc.AddBlock();
             // ReceiptForRpc receipt = (await testRpc.EthModule.eth_getTransactionReceipt(txHash)).Data;
 
             List<Task> tasks = new List<Task>();
-            for (int i = 0; i < 2; i++)
+            for (int i = 0; i < 64; i++)
             {
                 Task task = RunAll(testRpc, baselineModule, i);
                 tasks.Add(task);
             }
 
-            await Task.WhenAny(Task.Delay(50000), Task.WhenAll(tasks)).ContinueWith(t =>
+            // await Task.WhenAny(Task.Delay(10000), Task.WhenAny(tasks)).ContinueWith(t =>
+            // {
+            //     foreach (Task task in tasks)
+            //     {
+            //         if (task.IsFaulted)
+            //         {
+            //             ExceptionHelper.Rethrow(task.Exception!.InnerException);
+            //         }
+            //     }
+            // });
+            
+            await Task.WhenAny(Task.Delay(10000), Task.WhenAll(tasks)).ContinueWith(t =>
             {
                 foreach (Task task in tasks)
                 {
