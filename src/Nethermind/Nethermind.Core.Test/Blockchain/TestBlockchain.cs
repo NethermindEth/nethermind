@@ -102,7 +102,14 @@ namespace Nethermind.Core.Test.Blockchain
             State.Commit(SpecProvider.GenesisSpec);
             State.CommitTree();
 
-            TxPool = new TxPool.TxPool(txStorage, Timestamper, EthereumEcdsa, SpecProvider, new TxPoolConfig(), State, LimboLogs.Instance);
+            TxPool = new TxPool.TxPool(
+                txStorage,
+                Timestamper,
+                EthereumEcdsa,
+                SpecProvider,
+                new TxPoolConfig(),
+                new StateProvider(StateDb, CodeDb, LimboLogs.Instance),
+                LimboLogs.Instance);
 
             IDb blockDb = new MemDb();
             IDb headerDb = new MemDb();

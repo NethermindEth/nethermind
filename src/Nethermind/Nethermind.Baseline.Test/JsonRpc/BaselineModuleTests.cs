@@ -856,7 +856,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             
             await baselineModule.baseline_track(contract);
 
-            for (int i = 0; i < 64; i++)
+            for (int i = 0; i < 32; i++)
             {
                 Stopwatch stopwatch = Stopwatch.StartNew();
                 await baselineModule.baseline_insertLeaf(TestItem.Addresses[taskId], contract, TestItem.Keccaks[i % TestItem.Keccaks.Length]);
@@ -904,24 +904,24 @@ namespace Nethermind.Baseline.Test.JsonRpc
             // ReceiptForRpc receipt = (await testRpc.EthModule.eth_getTransactionReceipt(txHash)).Data;
 
             List<Task> tasks = new List<Task>();
-            for (int i = 0; i < 64; i++)
+            for (int i = 0; i < 16; i++)
             {
                 Task task = RunAll(testRpc, baselineModule, i);
                 tasks.Add(task);
             }
 
-            // await Task.WhenAny(Task.Delay(10000), Task.WhenAny(tasks)).ContinueWith(t =>
-            // {
-            //     foreach (Task task in tasks)
-            //     {
-            //         if (task.IsFaulted)
-            //         {
-            //             ExceptionHelper.Rethrow(task.Exception!.InnerException);
-            //         }
-            //     }
-            // });
+            await Task.WhenAny(Task.Delay(30000), Task.WhenAny(tasks)).ContinueWith(t =>
+            {
+                foreach (Task task in tasks)
+                {
+                    if (task.IsFaulted)
+                    {
+                        ExceptionHelper.Rethrow(task.Exception!.InnerException);
+                    }
+                }
+            });
             
-            await Task.WhenAny(Task.Delay(10000), Task.WhenAll(tasks)).ContinueWith(t =>
+            await Task.WhenAny(Task.Delay(30000), Task.WhenAll(tasks)).ContinueWith(t =>
             {
                 foreach (Task task in tasks)
                 {
