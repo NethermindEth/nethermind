@@ -15,8 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Timers;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
@@ -25,6 +27,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.TxPool;
+using Timer = System.Timers.Timer;
 
 namespace Nethermind.Blockchain.Producers
 {
@@ -32,6 +35,7 @@ namespace Nethermind.Blockchain.Producers
     {
         private readonly ITxPool _txPool;
         private readonly SemaphoreSlim _newBlockLock = new SemaphoreSlim(1, 1);
+        private Timer _timer;
 
         public DevBlockProducer(
             ITxSource txSource,
@@ -54,17 +58,31 @@ namespace Nethermind.Blockchain.Producers
                 logManager)
         {
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
+            _timer = new System.Timers.Timer(500);
+            _timer.Elapsed += TimerOnElapsed;
+        }
+
+        private void TimerOnElapsed(object sender, ElapsedEventArgs e)
+        {
+            Transaction[] txs = _txPool.GetPendingTransactions();
+            Transaction tx = txs.FirstOrDefault();
+            if (tx != null)
+            {
+                OnNewPendingTxAsync(new TxEventArgs(tx));
+            }
         }
 
         public override void Start()
         {
             _txPool.NewPending += OnNewPendingTx;
             BlockTree.NewHeadBlock += OnNewHeadBlock;
+            _timer.Start();
         }
         
         public override async Task StopAsync()
         {
             _txPool.NewPending -= OnNewPendingTx;
+            _timer.Stop();
             BlockTree.NewHeadBlock -= OnNewHeadBlock;
             await Task.CompletedTask;
         }
