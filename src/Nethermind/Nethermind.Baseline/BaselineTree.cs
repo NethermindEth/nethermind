@@ -108,12 +108,12 @@ namespace Nethermind.Baseline
                 if (index.IsLeftSibling())
                 {
                     Hash(hash.AsSpan(), siblingHash.Bytes.AsSpan(), parentHash);
-                    // Console.WriteLine($"{hash.ToHexString()}+{siblingHash} at level {row - 1} => {parentHash.ToHexString()}");
+                    Console.WriteLine($"{hash.ToHexString()}+{siblingHash} at level {row - 1} => {parentHash.ToHexString()}");
                 }
                 else
                 {
                     Hash(siblingHash.Bytes.AsSpan(), hash.AsSpan(), parentHash);
-                    // Console.WriteLine($"{siblingHash}+{hash.ToHexString()} at level {row - 1} => {parentHash.ToHexString()}");
+                    Console.WriteLine($"{siblingHash}+{hash.ToHexString()} at level {row - 1} => {parentHash.ToHexString()}");
                 }
 
                 Index parentIndex = index.Parent();
@@ -139,26 +139,27 @@ namespace Nethermind.Baseline
 
         public bool Verify(Keccak root, Keccak leaf, BaselineTreeNode[] siblingPath)
         {
-            byte[] value = leaf.Bytes;
+            Span<byte> value = stackalloc byte[32];
+            leaf.Bytes.AsSpan().CopyTo(value);
             for (int testDepth = 0; testDepth < TreeHeight; testDepth++)
             {
                 BaselineTreeNode branchValue = siblingPath[testDepth];
                 Index index = new Index(branchValue.NodeIndex);
                 if (index.IsLeftSibling())
                 {
-                    // Console.WriteLine($"Verify {branchValue}+{value} at level {testDepth} =>");
-                    Hash(branchValue.Hash.Bytes.AsSpan(), value.AsSpan(), value);
-                    // Console.WriteLine($"  {value.ToHexString()}");
+                    Console.WriteLine($"Verify {branchValue}+{value.ToArray()} at level {testDepth} =>");
+                    Hash(branchValue.Hash.Bytes.AsSpan(), value, value);
+                    Console.WriteLine($"  {value.ToHexString()}");
                 }
                 else
                 {
-                    // Console.WriteLine($"Verify {value.ToHexString()}+{branchValue.Hash} at level {testDepth} =>");
-                    Hash(value.AsSpan(), branchValue.Hash.Bytes.AsSpan(), value);
-                    // Console.WriteLine($"  {value.ToHexString()}");
+                    Console.WriteLine($"Verify {value.ToHexString()}+{branchValue.Hash} at level {testDepth} =>");
+                    Hash(value, branchValue.Hash.Bytes.AsSpan(), value);
+                    Console.WriteLine($"  {value.ToHexString()}");
                 }
             }
             
-            return value.AsSpan().SequenceEqual(root.Bytes.AsSpan());
+            return value.SequenceEqual(root.Bytes.AsSpan());
         }
 
         public BaselineTreeNode[] GetProof(in uint leafIndex)

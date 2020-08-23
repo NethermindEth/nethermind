@@ -20,6 +20,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Trie;
 using NUnit.Framework;
@@ -49,7 +50,7 @@ namespace Nethermind.Baseline.Test
             for (int i = 0; i < _testLeaves.Length; i++)
             {
                 byte[] bytes = new byte[32];
-                bytes[i] = (byte) (i + 1);
+                bytes[i % (32 - _truncationLength) + _truncationLength] = (byte) (i + 1);
                 _testLeaves[i] = new Keccak(bytes);
             }
         }
@@ -330,7 +331,7 @@ namespace Nethermind.Baseline.Test
                 result[i].Hash.Should().NotBe(Keccak.Zero);
             }
         }
-        
+
         [TestCase(uint.MinValue)]
         [TestCase(1u)]
         [TestCase(2u)]
@@ -349,7 +350,7 @@ namespace Nethermind.Baseline.Test
                 root = newRoot;
             }
         }
-        
+
         [TestCase(uint.MinValue)]
         [TestCase(1u)]
         [TestCase(2u)]
@@ -368,9 +369,34 @@ namespace Nethermind.Baseline.Test
                 root = newRoot;
                 var proof0 = baselineTree.GetProof(0);
                 var proof1 = baselineTree.GetProof(1);
-                baselineTree.Verify(root, _testLeaves[0], proof0).Should().BeTrue();
-                baselineTree.Verify(root, _testLeaves[1], proof1).Should().BeTrue();
+                baselineTree.Verify(root, _testLeaves[0], proof0).Should().BeTrue("left in " + i);
+                if (i > 0)
+                {
+                    baselineTree.Verify(root, _testLeaves[1], proof1).Should().BeTrue("right in " + i);
+                }
             }
+        }
+
+        [Test]
+        public void Keccak_a_b_verify()
+        {
+            BaselineTree baselineTree = BuildATree();
+            Keccak root0 = baselineTree.Root;
+            Console.WriteLine("root0 " + root0);
+            Console.WriteLine("KeccakA " + TestItem.KeccakA);
+            baselineTree.Insert(TestItem.KeccakA);
+            var proof0_0 = baselineTree.GetProof(0);
+            Keccak root1 = baselineTree.Root;
+            Console.WriteLine("root1 " + root1);
+            Console.WriteLine("KeccakB " + TestItem.KeccakB);
+            baselineTree.Insert(TestItem.KeccakB);
+            Keccak root2 = baselineTree.Root;
+            Console.WriteLine("root2 " + root2);
+            var proof1_0 = baselineTree.GetProof(0);
+            var proof1_1 = baselineTree.GetProof(1);
+            baselineTree.Verify(root1, TestItem.KeccakA, proof0_0).Should().BeTrue();
+            baselineTree.Verify(root2, TestItem.KeccakA, proof1_0).Should().BeTrue();
+            baselineTree.Verify(root2, TestItem.KeccakB, proof1_1).Should().BeTrue();
         }
     }
 }
