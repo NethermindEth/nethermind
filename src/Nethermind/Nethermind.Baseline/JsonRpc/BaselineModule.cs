@@ -402,19 +402,23 @@ namespace Nethermind.Baseline.JsonRpc
             BaselineTree baselineTree = new ShaBaselineTree(new MemDb(), Array.Empty<byte>(), 5);
 
             // Keccak leafTopic = new Keccak("0x8ec50f97970775682a68d3c6f9caedf60fd82448ea40706b8b65d6c03648b922");
-            foreach (FilterLog filterLog in insertLeavesLogs)
+            foreach (FilterLog filterLog in insertLeavesLogs
+                .Union(insertLeafLogs)
+                .OrderBy(fl => fl.BlockNumber).ThenBy(fl => fl.LogIndex))
             {
-                for (int i = 0; i < (filterLog.Data.Length - 128) / 32; i++)
+                if (filterLog.Data.Length == 96)
                 {
-                    Keccak leafHash = new Keccak(filterLog.Data.Slice(128 + 32 * i, 32).ToArray());
+                    Keccak leafHash = new Keccak(filterLog.Data.Slice(32, 32).ToArray());
                     baselineTree.Insert(leafHash);
                 }
-            }
-
-            foreach (FilterLog filterLog in insertLeafLogs.OrderBy(fl => fl.BlockNumber).ThenBy(fl => fl.LogIndex))
-            {
-                Keccak leafHash = new Keccak(filterLog.Data.Slice(32, 32).ToArray());
-                baselineTree.Insert(leafHash);
+                else
+                {
+                    for (int i = 0; i < (filterLog.Data.Length - 128) / 32; i++)
+                    {
+                        Keccak leafHash = new Keccak(filterLog.Data.Slice(128 + 32 * i, 32).ToArray());
+                        baselineTree.Insert(leafHash);
+                    }
+                }
             }
 
             return baselineTree;
@@ -508,7 +512,7 @@ namespace Nethermind.Baseline.JsonRpc
                 var list = _metadata.TrackedTrees.ToList();
                 list.Add(contractAddress);
                 _metadata.TrackedTrees = list.ToArray();
-                
+
                 _baselineDb[_metadataKey] = SerializeMetadata();
             }
         }
