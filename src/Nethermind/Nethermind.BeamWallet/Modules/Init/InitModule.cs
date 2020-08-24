@@ -16,6 +16,7 @@
 // 
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Net.Http;
 using System.Runtime.InteropServices;
@@ -44,6 +45,14 @@ namespace Nethermind.BeamWallet.Modules.Init
         private int _processId;
         private int x = 1;
         private string _network;
+        private static Dictionary<string, string> _networks = new Dictionary<string, string>
+        {
+            ["1"] = "Mainnet",
+            ["3"] = "Ropsten",
+            ["4"] = "Rinkeby",
+            ["5"] = "Goerli",
+            ["99"] = "Unknown",
+        };
 
         public event EventHandler<Option> OptionSelected;
 
@@ -112,6 +121,7 @@ namespace Nethermind.BeamWallet.Modules.Init
             {
                 _backgroundRunnerIsRunning = false;
                 AddRunnerInfo("Nethermind is already running.");
+                await SetNetwork();
                 return;
             }
 
@@ -127,6 +137,15 @@ namespace Nethermind.BeamWallet.Modules.Init
                 AddRunnerInfo("Error with starting a Nethermind node.");
                 _backgroundRunnerIsRunning = false;
             }
+        }
+
+        private async Task SetNetwork()
+        {
+            var netVersionResult = await _ethJsonRpcClientProxy.net_version();
+            var network = _networks.TryGetValue(netVersionResult.Result, out var foundNetwork)
+                ? foundNetwork
+                : "unknown";
+            AddNetworkInfo(network);
         }
 
         private async Task<bool> CheckIsProcessRunningAsync()
@@ -182,7 +201,7 @@ namespace Nethermind.BeamWallet.Modules.Init
 
         private void AddNetworkInfo(string info)
         {
-            var networkInfo = new Label(x, 19, $"{info}");
+            var networkInfo = new Label(x, 19, $"Network: {info}");
             _window.Add(networkInfo);
         }
 
