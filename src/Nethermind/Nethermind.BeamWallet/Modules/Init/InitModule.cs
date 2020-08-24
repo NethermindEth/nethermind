@@ -34,18 +34,17 @@ namespace Nethermind.BeamWallet.Modules.Init
     {
         private const string DefaultUrl = "http://localhost:8545";
         private const string FileName = "Nethermind.Runner";
+        private const int PositionX = 1;
         private Process _process;
         private Timer _timer;
         private Window _window;
         private Label _runnerOnInfo;
         private Label _runnerOffInfo;
         private EthJsonRpcClientProxy _ethJsonRpcClientProxy;
-        private ProcessInfo _processInfo;
         private bool _backgroundRunnerIsRunning;
         private int _processId;
-        private int x = 1;
-        private string _network;
-        private static Dictionary<string, string> _networks = new Dictionary<string, string>
+        private readonly string _network;
+        private static readonly Dictionary<string, string> _networks = new Dictionary<string, string>
         {
             ["1"] = "Mainnet",
             ["3"] = "Ropsten",
@@ -53,27 +52,13 @@ namespace Nethermind.BeamWallet.Modules.Init
             ["5"] = "Goerli",
             ["99"] = "Unknown",
         };
-
         public event EventHandler<Option> OptionSelected;
 
         public InitModule(string network)
         {
-            // if (!File.Exists(path))
-            // {
-            //     return;
-            // }
             _network = network;
         }
 
-        private void InitData()
-        {
-            var httpClient = new HttpClient();
-            var urls = new[] {DefaultUrl};
-            var jsonRpcClientProxy = new JsonRpcClientProxy(new DefaultHttpClient(httpClient,
-                new EthereumJsonSerializer(), LimboLogs.Instance, 0), urls, LimboLogs.Instance);
-            _ethJsonRpcClientProxy = new EthJsonRpcClientProxy(jsonRpcClientProxy);
-        }
-        
         public Task<Window> InitAsync()
         {
             InitData();
@@ -84,15 +69,18 @@ namespace Nethermind.BeamWallet.Modules.Init
             return Task.FromResult(_window);
         }
 
+        private void InitData()
+        {
+            var httpClient = new HttpClient();
+            var urls = new[] {DefaultUrl};
+            var jsonRpcClientProxy = new JsonRpcClientProxy(new DefaultHttpClient(httpClient,
+                new EthereumJsonSerializer(), LimboLogs.Instance, 0), urls, LimboLogs.Instance);
+            _ethJsonRpcClientProxy = new EthJsonRpcClientProxy(jsonRpcClientProxy);
+        }
+
         private void CreateWindow()
         {
-            _window = new Window("Beam Wallet")
-            {
-                X = 0,
-                Y = 0,
-                Width = Dim.Fill(),
-                Height = Dim.Fill()
-            };
+            _window = new Window("Beam Wallet") {X = 0, Y = 0, Width = Dim.Fill(), Height = Dim.Fill()};
         }
 
         private void CreateProcess()
@@ -113,7 +101,7 @@ namespace Nethermind.BeamWallet.Modules.Init
 
         private async Task StartProcessAsync()
         {
-            AddInfo();
+            AddInitInfo();
             AddRunnerInfo("Launching Nethermind...");
 
             var runnerIsRunning = await CheckIsProcessRunningAsync();
@@ -138,6 +126,53 @@ namespace Nethermind.BeamWallet.Modules.Init
                 _backgroundRunnerIsRunning = false;
             }
         }
+        
+        private void AddInitInfo()
+        {
+            var beamWalletInfo = new Label(PositionX, 1, "Hello, Welcome to Nethermind Beam Wallet! Beam Wallet is a console " +
+                                                 $"{Environment.NewLine}" +
+                                                 "application which allows to check account balances and make simple transactions." +
+                                                 $"{Environment.NewLine}{Environment.NewLine}" +
+                                                 "Already have an account?" +
+                                                 $"{Environment.NewLine}" +
+                                                 "You will need: your address, passphrase and your keystore file," +
+                                                 $"{Environment.NewLine}" +
+                                                 "Before we start, please copy your keystore file into 'keystore' folder." +
+                                                 $"{Environment.NewLine}{Environment.NewLine}" +
+                                                 "Don't have an account? " +
+                                                 $"{Environment.NewLine}" +
+                                                 "Create one using \"Create new account\" button." +
+                                                 $"{Environment.NewLine}{Environment.NewLine}" +
+                                                 "To navigate through the application - use the TAB key or Up and Down arrows.");
+            
+            var betaVersionWarningInfo = new Label(PositionX, 13, "This is a Beta version, so for your own safety please, do " +
+                                                         "not use an account with a high balance.");
+
+            var warningInfo = new Label(PositionX, 15, "There are a few things that can go wrong:" +
+                                               $"{Environment.NewLine}" +
+                                               "your balance may be incorrect and the transaction fee may be charged incorrectly");
+            
+            betaVersionWarningInfo.TextColor = new Attribute(Color.White, Color.BrightRed);
+            
+            _window.Add(betaVersionWarningInfo, warningInfo, beamWalletInfo);
+        }
+        
+        private void AddRunnerInfo(string info)
+        {
+            if (_runnerOnInfo is {})
+            {
+                _window.Remove(_runnerOnInfo);
+            }
+
+            _runnerOnInfo = new Label(PositionX, 18, $"{info}");
+            _window.Add(_runnerOnInfo);
+        }
+        
+        private async Task<bool> CheckIsProcessRunningAsync()
+        {
+            var result = await _ethJsonRpcClientProxy.eth_blockNumber();
+            return result?.IsValid is true;
+        }
 
         private async Task SetNetwork()
         {
@@ -146,12 +181,6 @@ namespace Nethermind.BeamWallet.Modules.Init
                 ? foundNetwork
                 : "unknown";
             AddNetworkInfo(network);
-        }
-
-        private async Task<bool> CheckIsProcessRunningAsync()
-        {
-            var result = await _ethJsonRpcClientProxy.eth_blockNumber();
-            return result?.IsValid is true;
         }
 
         private void Update(object state)
@@ -170,6 +199,7 @@ namespace Nethermind.BeamWallet.Modules.Init
                 {
                     AddNetworkInfo($"Network: {_network}");
                 }
+
                 return;
             }
             catch
@@ -184,7 +214,7 @@ namespace Nethermind.BeamWallet.Modules.Init
                     _window.Remove(_runnerOnInfo);
                 }
 
-                _runnerOffInfo = new Label(x, 18, "Nethermind node is stopped.. Please, wait for it to start.");
+                _runnerOffInfo = new Label(PositionX, 18, "Nethermind node is stopped.. Please, wait for it to start.");
                 _window.Add(_runnerOffInfo);
                 _process.Start();
                 _processId = _process.Id;
@@ -195,60 +225,19 @@ namespace Nethermind.BeamWallet.Modules.Init
                 _window.Remove(_runnerOffInfo);
             }
 
-            _runnerOnInfo = new Label(x, 18, "Nethermind is running.");
+            _runnerOnInfo = new Label(PositionX, 18, "Nethermind is running.");
             _window.Add(_runnerOnInfo);
         }
 
         private void AddNetworkInfo(string info)
         {
-            var networkInfo = new Label(x, 19, $"Network: {info}");
+            var networkInfo = new Label(PositionX, 19, $"Network: {info}");
             _window.Add(networkInfo);
-        }
-
-        private void AddInfo()
-        {
-            var beamWalletInfo = new Label(x, 1, "Hello, Welcome to Nethermind Beam Wallet! Beam Wallet is a console " +
-                                                 $"{Environment.NewLine}" +
-                                                 "application which allows to check account balances and make simple transactions." +
-                                                 $"{Environment.NewLine}{Environment.NewLine}" +
-                                                 "Already have an account?" +
-                                                 $"{Environment.NewLine}" +
-                                                 "You will need: your address, passphrase and your keystore file," +
-                                                 $"{Environment.NewLine}" +
-                                                 "Before we start, please copy your keystore file into 'keystore' folder." +
-                                                 $"{Environment.NewLine}{Environment.NewLine}" +
-                                                 "Don't have an account? " +
-                                                 $"{Environment.NewLine}" +
-                                                 "Create one using \"Create new account\" button." +
-                                                 $"{Environment.NewLine}{Environment.NewLine}" +
-                                                 "To navigate through the application - use the TAB key or Up and Down arrows.");
-            
-            var betaVersionWarningInfo = new Label(x, 13, "This is a Beta version, so for your own safety please, do " +
-                                                         "not use an account with a high balance.");
-
-            var warningInfo = new Label(x, 15, "There are a few things that can go wrong:" +
-                                               $"{Environment.NewLine}" +
-                                               "your balance may be incorrect and the transaction fee may be charged incorrectly");
-            
-            betaVersionWarningInfo.TextColor = new Attribute(Color.White, Color.BrightRed);
-            
-            _window.Add(betaVersionWarningInfo, warningInfo, beamWalletInfo);
-        }
-
-        private void AddRunnerInfo(string info)
-        {
-            if (_runnerOnInfo is {})
-            {
-                _window.Remove(_runnerOnInfo);
-            }
-
-            _runnerOnInfo = new Label(x, 18, $"{info}");
-            _window.Add(_runnerOnInfo);
         }
 
         private void InitOptions()
         {
-            var createAccountButton = new Button(x, 21, "Create new account");
+            var createAccountButton = new Button(PositionX, 21, "Create new account");
             createAccountButton.Clicked = () =>
             {
                 OptionSelected?.Invoke(this, Option.CreateNewAccount);
@@ -258,7 +247,7 @@ namespace Nethermind.BeamWallet.Modules.Init
             {
                 OptionSelected?.Invoke(this, Option.ProvideAddress);
             };
-            var quitButton = new Button(x, 22, "Quit");
+            var quitButton = new Button(PositionX, 22, "Quit");
             quitButton.Clicked = () =>
             {
                 Quit();
