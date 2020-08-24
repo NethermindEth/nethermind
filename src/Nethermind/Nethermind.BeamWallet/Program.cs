@@ -9,6 +9,7 @@ using Nethermind.BeamWallet.Modules.Balance;
 using Nethermind.BeamWallet.Modules.Init;
 using Nethermind.BeamWallet.Modules.Network;
 using Nethermind.BeamWallet.Modules.Transfer;
+using Nethermind.BeamWallet.Services;
 using Nethermind.Facade.Proxy;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -31,30 +32,31 @@ namespace Nethermind.BeamWallet
                 Console.WriteLine($"There was an error.{Environment.NewLine}{e.ExceptionObject}");
             };
             Application.Init();
-            var networkModule = new NetworkModule();
+            
+            var httpClient = new HttpClient();
+            var urls = new[] {DefaultUrl};
+            var jsonRpcClientProxyMaxRetries = new JsonRpcClientProxy(new DefaultHttpClient(httpClient,
+                new EthereumJsonSerializer(), LimboLogs.Instance, int.MaxValue), urls, LimboLogs.Instance);
+            var ethJsonRpcClientProxyMaxRetries = new EthJsonRpcClientProxy(jsonRpcClientProxyMaxRetries);
+            var jsonRpcWalletClientProxyMaxRetries = new JsonRpcWalletClientProxy(jsonRpcClientProxyMaxRetries);
+            var runnerValidator = new RunnerValidator(httpClient, DefaultUrl);
+            var networkModule = new NetworkModule(runnerValidator);
             networkModule.NetworkSelected += async (_, network) =>
             {
-                var initModule = new InitModule(network);
+                var initModule = new InitModule(ethJsonRpcClientProxyMaxRetries, runnerValidator, network);
                 initModule.OptionSelected += async (_, optionInfo) =>
                 {
-                    var urls = new[] {DefaultUrl};
-                    var httpClient = new HttpClient();
-                    var jsonRpcClientProxy = new JsonRpcClientProxy(new DefaultHttpClient(httpClient,
-                        new EthereumJsonSerializer(), LimboLogs.Instance, int.MaxValue), urls, LimboLogs.Instance);
-                    var jsonRpcWalletClientProxy = new JsonRpcWalletClientProxy(jsonRpcClientProxy);
-                    var ethJsonRpcClientProxy = new EthJsonRpcClientProxy(jsonRpcClientProxy);
-                    var addressesModule = new AddressesModule(optionInfo, jsonRpcWalletClientProxy);
-
+                    var addressesModule = new AddressesModule(optionInfo, jsonRpcWalletClientProxyMaxRetries);
                     addressesModule.AddressesSelected += async (_, addressesEvent) =>
                     {
                         urls = new[] {addressesEvent.NodeAddress};
 
                         AddAuthorizationHeader(httpClient, addressesEvent.NodeAddress);
 
-                        var balanceModule = new BalanceModule(ethJsonRpcClientProxy, addressesEvent.AccountAddress);
+                        var balanceModule = new BalanceModule(ethJsonRpcClientProxyMaxRetries, addressesEvent.AccountAddress);
                         balanceModule.TransferClicked += async (_, transferEvent) =>
                         {
-                            var transferModule = new TransferModule(ethJsonRpcClientProxy, jsonRpcWalletClientProxy,
+                            var transferModule = new TransferModule(ethJsonRpcClientProxyMaxRetries, jsonRpcWalletClientProxyMaxRetries,
                                 transferEvent.Address, transferEvent.Balance);
                             var transferWindow = await transferModule.InitAsync();
                             Application.Top.Add(transferWindow);
