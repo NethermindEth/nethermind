@@ -16,67 +16,53 @@
 // 
 
 using System;
-using System.Net.Http;
 using System.Threading.Tasks;
-using Nethermind.Facade.Proxy;
-using Nethermind.Logging;
-using Nethermind.Serialization.Json;
+using Nethermind.BeamWallet.Services;
 using Terminal.Gui;
 
 namespace Nethermind.BeamWallet.Modules.Network
 {
     internal class NetworkModule : IModule
     {
+        private const int PositionX = 1;
         private Window _window;
-        private string _network; 
-        private EthJsonRpcClientProxy _ethJsonRpcClientProxy;
-        private const string DefaultUrl = "http://localhost:8545";
+        private string _network;
+        private readonly IRunnerValidator _runnerValidator;
         public event EventHandler<string> NetworkSelected;
+
+        public NetworkModule(IRunnerValidator runnerValidator)
+        {
+            _runnerValidator = runnerValidator;
+        }
 
         public Task<Window> InitAsync()
         {
-            InitData();
-            CheckRunnerStatus();
+            CheckRunnerStatusAsync();
             CreateWindow();
             InitNetworks();
 
             return Task.FromResult(_window);
         }
 
-        private async Task CheckRunnerStatus()
+        private async Task CheckRunnerStatusAsync()
         {
-            var runnerIsAlreadyRunning = await CheckIsProcessRunningAsync();
-            if (runnerIsAlreadyRunning)
+            var runnerRunning = await _runnerValidator.IsRunningAsync();
+            if (runnerRunning)
             {
                 NetworkSelected?.Invoke(this, string.Empty);
             }
         }
 
-        private void InitData()
-        {
-            var httpClient = new HttpClient();
-            var urls = new[] {DefaultUrl};
-            var jsonRpcClientProxy = new JsonRpcClientProxy(new DefaultHttpClient(httpClient,
-                new EthereumJsonSerializer(), LimboLogs.Instance, 0), urls, LimboLogs.Instance);
-            _ethJsonRpcClientProxy = new EthJsonRpcClientProxy(jsonRpcClientProxy);
-        }
-
         private void CreateWindow()
         {
-            _window = new Window("Beam Wallet")
-            {
-                X = 0,
-                Y = 0,
-                Width = Dim.Fill(),
-                Height = Dim.Fill()
-            };
+            _window = new Window("Beam Wallet") {X = 0, Y = 0, Width = Dim.Fill(), Height = Dim.Fill()};
         }
 
         private void InitNetworks()
         {
-            var mainnetButton = new Button(1, 1, "Mainnet");
-            var goerliButton = new Button(1, 2, "Goerli");
-            var quitButton = new Button(1, 4, "Quit");
+            var mainnetButton = new Button(PositionX, 1, "Mainnet");
+            var goerliButton = new Button(PositionX, 2, "Goerli");
+            var quitButton = new Button(PositionX, 4, "Quit");
             mainnetButton.Clicked = () =>
             {
                 _network = "mainnet";
@@ -93,12 +79,6 @@ namespace Nethermind.BeamWallet.Modules.Network
             };
             _window.Add(mainnetButton, goerliButton, quitButton);
         }
-        
-        private async Task<bool> CheckIsProcessRunningAsync()
-        {
-            var result = await _ethJsonRpcClientProxy.eth_blockNumber();
-            return result?.IsValid is true;
-        }
 
         private void Quit()
         {
@@ -106,6 +86,5 @@ namespace Nethermind.BeamWallet.Modules.Network
             Application.RequestStop();
             Application.Shutdown();
         }
-
     }
 }
