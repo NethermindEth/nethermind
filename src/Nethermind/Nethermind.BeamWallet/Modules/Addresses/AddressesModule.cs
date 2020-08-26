@@ -38,7 +38,6 @@ namespace Nethermind.BeamWallet.Modules.Addresses
         private readonly Option _option;
         private const string DefaultUrl = "http://localhost:8545";
         private Window _window;
-        private bool _canCreateAnAccount = true;
         private Button _okButton;
         private Button _backButton;
         public event EventHandler<AddressesSelectedEventArgs> AddressesSelected;
@@ -142,7 +141,7 @@ namespace Nethermind.BeamWallet.Modules.Addresses
             {
                 result = await _jsonRpcWalletClientProxy.personal_newAccount(passphrase);
 
-            } while (!result.IsValid && _canCreateAnAccount);
+            } while (!result.IsValid);
 
             return result.Result;
         }
