@@ -5,30 +5,23 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.JsonRpc.Modules;
 using System.Text;
-using Nethermind.Core.Crypto;
-using Nethermind.Core;
-<<<<<<< HEAD
-using Nethermind.Dirichlet.Numerics;
-=======
-using Nethermind.Int256;
->>>>>>> master
 
 namespace Nethermind.GitBook
 {
-    public static class JsonRpcGenerator
+    public class JsonRpcGenerator
     {
-        public static void Generate()
+        public void Generate()
         {
             string docsDir = DocsDirFinder.FindJsonRpc();
             List<Type> rpcTypes = GetRpcModules();
-            
-            foreach(Type rpcType in rpcTypes)
+
+            foreach (Type rpcType in rpcTypes)
             {
                 GenerateDocFileContent(rpcType, docsDir);
             }
         }
 
-        private static List<Type> GetRpcModules()
+        private List<Type> GetRpcModules()
         {
             Assembly assembly = Assembly.Load("Nethermind.JsonRpc");
             List<Type> jsonRpcModules = new List<Type>();
@@ -43,22 +36,23 @@ namespace Nethermind.GitBook
             return jsonRpcModules;
         }
 
-        private static void GenerateDocFileContent(Type rpcType, string docsDir)
+        private void GenerateDocFileContent(Type rpcType, string docsDir)
         {
             StringBuilder docBuilder = new StringBuilder();
 
             string moduleName = rpcType.Name.Substring(1).Replace("Module", "").ToLower();
             MethodInfo[] moduleMethods = rpcType.GetMethods(BindingFlags.Public | BindingFlags.Instance);
+            List<Type> rpcTypesToDescribe;
 
             docBuilder.AppendLine(@$"#{moduleName}");
             docBuilder.AppendLine();
 
-            foreach(MethodInfo method in moduleMethods)
+            foreach (MethodInfo method in moduleMethods)
             {
                 JsonRpcMethodAttribute attribute = method.GetCustomAttribute<JsonRpcMethodAttribute>();
                 bool isImplemented = attribute == null || attribute.IsImplemented;
 
-                if(!isImplemented)
+                if (!isImplemented)
                 {
                     continue;
                 }
@@ -70,10 +64,11 @@ namespace Nethermind.GitBook
                 docBuilder.AppendLine();
                 docBuilder.AppendLine(@"#### **Parameters**");
                 docBuilder.AppendLine();
-        
-                ParameterInfo[] parameters = method.GetParameters();
 
-                if(parameters.Length == 0)
+                ParameterInfo[] parameters = method.GetParameters();
+                rpcTypesToDescribe = new List<Type>();
+
+                if (parameters.Length == 0)
                 {
                     docBuilder.AppendLine("_None_");
                 }
@@ -84,44 +79,79 @@ namespace Nethermind.GitBook
                     string rpcParameterType;
                     foreach (ParameterInfo parameter in method.GetParameters())
                     {
-                        rpcParameterType = GetJsonRpcType(parameter.ParameterType);
+                        rpcParameterType = GetJsonRpcType(parameter.ParameterType, rpcTypesToDescribe);
                         docBuilder.AppendLine($"| {parameter.Name} | `{rpcParameterType}` |");
                     }
                 }
-                
+
                 docBuilder.AppendLine();
-                docBuilder.AppendLine(@$"Return type: `{attribute?.Returns}`");
+                docBuilder.AppendLine(@$"#### Return type");
+
+                //assume that there will be only one generic argument in each rpc method return type
+                Type returnType = method.ReturnType.GetGenericArguments()[0];
+                string returnRpcType = GetJsonRpcType(returnType, rpcTypesToDescribe);
+
+                docBuilder.AppendLine(@$"`{returnRpcType}`");
                 docBuilder.AppendLine();
+
+                if (rpcTypesToDescribe.Count != 0)
+                {
+                    AddRpcObjectsDescription(docBuilder, rpcTypesToDescribe);
+                }
+
             }
 
-            string rpcModuleFile = Directory.GetFiles(docsDir, $"{moduleName}.md", SearchOption.AllDirectories).First(); 
+            string rpcModuleFile = Directory.GetFiles(docsDir, $"{moduleName}.md", SearchOption.AllDirectories).First();
 
             string fileContent = docBuilder.ToString();
             File.WriteAllText(rpcModuleFile, fileContent);
         }
 
-        private static string GetJsonRpcType(object parameter)
+        private string GetJsonRpcType(Type type, List<Type> rpcTypesToDescribe)
         {
-            switch(parameter)
+            var rpcType = type.Name switch
             {
-                case Keccak _: 
-                    return "Hash";
-                case Address _:
-                    return  "Address";
-                case int _:
-                    return "Quantity";
-                case long _:
-                    return "Quantity";
-                case byte[] _:
-                    return "Data";
-                case string _:
-                    return "String";
-                case bool _:
-                    return "Boolean";
-                case UInt256 _: 
-                    return "Quantity";
-                default: 
-                    return "Object";
+                "Byte[]" => "Data",
+                "String" => "String",
+                "UInt256" => "Quantity",
+                "Address" => "Address",
+                "Boolean" => "Boolean",
+                "Int32" => "Quantity",
+                "Int64" => "Quantity",
+                "Keccak" => "Hash",
+                "String[]" => "Array",
+                _ => $"{type.Name} object",
+            };
+
+            if (rpcType.Equals($"{type.Name} object") && rpcTypesToDescribe != null)
+            {
+                rpcTypesToDescribe.Add(type);
+            }
+
+            return rpcType;
+        }
+
+        private void AddRpcObjectsDescription(StringBuilder rpcModuleBuilder, List<Type> rpcTypesToDescribe)
+        {
+            rpcModuleBuilder.AppendLine(@$"#### Objects definition");
+            rpcModuleBuilder.AppendLine();
+
+            foreach (Type rpcType in rpcTypesToDescribe)
+            {
+                rpcModuleBuilder.AppendLine(@$"`{rpcType.Name}`");
+                PropertyInfo[] properties = rpcType.GetProperties();
+
+                rpcModuleBuilder.AppendLine("| Fields name | Type |");
+                rpcModuleBuilder.AppendLine("| :--- | :--- |");
+
+                string propertyRpcType;
+                foreach (PropertyInfo property in properties)
+                {
+                    propertyRpcType = GetJsonRpcType(property.PropertyType, null);
+                    rpcModuleBuilder.AppendLine($"| {property.Name} | `{propertyRpcType}` |");
+                }
+
+                rpcModuleBuilder.AppendLine();
             }
         }
     }
