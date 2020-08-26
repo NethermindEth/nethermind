@@ -30,7 +30,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -62,7 +62,7 @@ namespace Nethermind.Core.Test.Blockchain
         public TestBlockProducer BlockProducer { get; private set; }
         public MemDbProvider DbProvider { get; set; }
         public ISpecProvider SpecProvider { get; set; }
-        
+
         protected TestBlockchain(SealEngineType sealEngineType)
         {
             _sealEngineType = sealEngineType;
@@ -71,13 +71,14 @@ namespace Nethermind.Core.Test.Blockchain
         public static Address AccountA = TestItem.AddressA;
         public static Address AccountB = TestItem.AddressB;
         public static Address AccountC = TestItem.AddressC;
-        private AutoResetEvent _resetEvent;
+        private SemaphoreSlim _resetEvent;
+        private AutoResetEvent _oneAtATime = new AutoResetEvent(true);
 
         public ManualTimestamper Timestamper { get; private set; }
 
         public static TransactionBuilder<Transaction> BuildSimpleTransaction => Core.Test.Builders.Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).To(AccountB);
 
-        protected virtual async Task<TestBlockchain> Build(ISpecProvider specProvider = null)
+        protected virtual async Task<TestBlockchain> Build(ISpecProvider specProvider = null, UInt256? initialValues = null)
         {
             Timestamper = new ManualTimestamper(new DateTime(2020, 2, 15, 12, 50, 30, DateTimeKind.Utc));
             JsonSerializer = new EthereumJsonSerializer();
@@ -86,9 +87,9 @@ namespace Nethermind.Core.Test.Blockchain
             ITxStorage txStorage = new InMemoryTxStorage();
             DbProvider = new MemDbProvider();
             State = new StateProvider(StateDb, CodeDb, LimboLogs.Instance);
-            State.CreateAccount(TestItem.AddressA, 1000.Ether());
-            State.CreateAccount(TestItem.AddressB, 1000.Ether());
-            State.CreateAccount(TestItem.AddressC, 1000.Ether());
+            State.CreateAccount(TestItem.AddressA, (initialValues ?? 1000.Ether()));
+            State.CreateAccount(TestItem.AddressB, (initialValues ?? 1000.Ether()));
+            State.CreateAccount(TestItem.AddressC, (initialValues ?? 1000.Ether()));
             byte[] code = Bytes.FromHexString("0xabcd");
             Keccak codeHash = Keccak.Compute(code);
             State.UpdateCode(code);
@@ -101,7 +102,14 @@ namespace Nethermind.Core.Test.Blockchain
             State.Commit(SpecProvider.GenesisSpec);
             State.CommitTree();
 
-            TxPool = new TxPool.TxPool(txStorage, Timestamper, EthereumEcdsa, SpecProvider, new TxPoolConfig(), State, LimboLogs.Instance);
+            TxPool = new TxPool.TxPool(
+                txStorage,
+                Timestamper,
+                EthereumEcdsa,
+                SpecProvider,
+                new TxPoolConfig(),
+                new StateProvider(StateDb, CodeDb, LimboLogs.Instance),
+                LimboLogs.Instance);
 
             IDb blockDb = new MemDb();
             IDb headerDb = new MemDb();
@@ -122,24 +130,23 @@ namespace Nethermind.Core.Test.Blockchain
             BlockProducer = new TestBlockProducer(txPoolTxSource, chainProcessor, State, sealer, BlockTree, chainProcessor, Timestamper, LimboLogs.Instance);
             BlockProducer.Start();
 
-            _resetEvent = new AutoResetEvent(false);
+            _resetEvent = new SemaphoreSlim(0);
             BlockTree.NewHeadBlock += (s, e) =>
             {
-                Console.WriteLine(e.Block.Header.Hash);
-                _resetEvent.Set();
+                _resetEvent.Release(1);
             };
 
             var genesis = GetGenesisBlock();
             BlockTree.SuggestBlock(genesis);
-            await _resetEvent.WaitOneAsync(CancellationToken.None);
-            
+            await _resetEvent.WaitAsync(CancellationToken.None);
+
             await AddBlocksOnStart();
             return this;
         }
 
         protected virtual Block GetGenesisBlock()
         {
-            var genesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.WithStateRoot(new Keccak("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"));
+            var genesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.WithStateRoot(State.StateRoot);
             if (_sealEngineType == SealEngineType.AuRa)
             {
                 genesisBlockBuilder.WithAura(0, new byte[65]);
@@ -156,21 +163,24 @@ namespace Nethermind.Core.Test.Blockchain
             await AddBlock(BuildSimpleTransaction.WithNonce(1).TestObject, BuildSimpleTransaction.WithNonce(2).TestObject);
         }
 
-        protected virtual BlockProcessor CreateBlockProcessor() => 
+        protected virtual BlockProcessor CreateBlockProcessor() =>
             new BlockProcessor(SpecProvider, Always.Valid, new RewardCalculator(SpecProvider), TxProcessor, StateDb, CodeDb, State, Storage, TxPool, ReceiptStorage, LimboLogs.Instance);
 
         public async Task AddBlock(params Transaction[] transactions)
         {
+            await _oneAtATime.WaitOneAsync(CancellationToken.None);
             foreach (Transaction transaction in transactions)
             {
-                TxPool.AddTransaction(transaction, TxHandlingOptions.None);    
+                TxPool.AddTransaction(transaction, TxHandlingOptions.None);
             }
-            
+
             Timestamper.Add(TimeSpan.FromSeconds(1));
             BlockProducer.BuildNewBlock();
-            await _resetEvent.WaitOneAsync(CancellationToken.None);
+
+            await _resetEvent.WaitAsync(CancellationToken.None);
+            _oneAtATime.Set();
         }
-        
+
         public void AddTransaction(Transaction testObject)
         {
             TxPool.AddTransaction(testObject, TxHandlingOptions.None);
@@ -182,7 +192,7 @@ namespace Nethermind.Core.Test.Blockchain
             CodeDb?.Dispose();
             StateDb?.Dispose();
         }
-        
+
         /// <summary>
         /// Creates a simple transfer transaction with value defined by <paramref name="ether"/>
         /// from a rich account to <paramref name="address"/>
@@ -199,7 +209,7 @@ namespace Nethermind.Core.Test.Blockchain
                 .WithNonce(nonce)
                 .WithValue(ether)
                 .TestObject;
-            
+
             await AddBlock(tx);
         }
     }

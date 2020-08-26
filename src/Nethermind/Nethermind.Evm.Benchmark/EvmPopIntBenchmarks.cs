@@ -16,15 +16,9 @@
 
 using System;
 using System.Collections.Generic;
-using System.Numerics;
 using BenchmarkDotNet.Attributes;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
-using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;
-using Nethermind.Logging;
+using Nethermind.Int256;
 
 namespace Nethermind.Evm.Benchmark
 {
@@ -32,7 +26,7 @@ namespace Nethermind.Evm.Benchmark
     public class EvmPopIntBenchmarks
     {
         // public property
-        public IEnumerable<BigInteger> ValueSource => new[] { BigInteger.Parse("125124123718263172357123"), BigInteger.Parse("0"), UInt256.MaxValue};
+        public IEnumerable<UInt256> ValueSource => new[] { UInt256.Parse("125124123718263172357123"), UInt256.Parse("0"), UInt256.MaxValue};
         
         private byte[] stackBytes;
         private ITxTracer _tracer = NullTxTracer.Instance;
@@ -42,19 +36,19 @@ namespace Nethermind.Evm.Benchmark
         {
             stackBytes = new byte[(EvmStack.MaxStackSize + EvmStack.RegisterLength) * 1024];
             EvmStack stack = new EvmStack(stackBytes, 0, _tracer);
-            foreach (BigInteger bigInteger in ValueSource)
+            foreach (UInt256 bigInteger in ValueSource)
             {
-                stack.PushSignedInt(in bigInteger);   
+                stack.PushUInt256(in bigInteger);   
             }
         }
 
         [Benchmark(Baseline = true)]
-        public (BigInteger, BigInteger, BigInteger)  Current()
+        public (UInt256, UInt256, UInt256)  Current()
         {
             EvmStack stack = new EvmStack(stackBytes.AsSpan(), 3, _tracer);
-            stack.PopInt(out BigInteger result1);
-            stack.PopInt(out BigInteger result2);
-            stack.PopInt(out BigInteger result3);
+            stack.PopUInt256(out UInt256 result1);
+            stack.PopUInt256(out UInt256 result2);
+            stack.PopUInt256(out UInt256 result3);
 
             return (result1, result2, result3);
         }

@@ -23,9 +23,8 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
@@ -173,19 +172,35 @@ namespace Nethermind.Facade
         public CallOutput Call(BlockHeader blockHeader, Transaction transaction)
         {
             CallOutputTracer callOutputTracer = new CallOutputTracer();
-            CallAndRestore(blockHeader, transaction, blockHeader.Timestamp, callOutputTracer);
-            return new CallOutput {Error = callOutputTracer.Error, GasSpent = callOutputTracer.GasSpent, OutputData = callOutputTracer.ReturnValue};
+            CallAndRestore(blockHeader, blockHeader.Number, blockHeader.Timestamp,  transaction, callOutputTracer);
+            return new CallOutput
+            {
+                Error = callOutputTracer.Error,
+                GasSpent = callOutputTracer.GasSpent,
+                OutputData = callOutputTracer.ReturnValue
+            };
         }
 
         public CallOutput EstimateGas(BlockHeader header, Transaction tx, CancellationToken cancellationToken)
         {
             EstimateGasTracer estimateGasTracer = new EstimateGasTracer(cancellationToken);
-            CallAndRestore(header, tx, UInt256.Max(header.Timestamp + 1, _timestamper.EpochSeconds), estimateGasTracer);
+            CallAndRestore(
+                header,
+                header.Number + 1,
+                UInt256.Max(header.Timestamp + 1, _timestamper.EpochSeconds),
+                tx,
+                estimateGasTracer);
+            
             long estimate = estimateGasTracer.CalculateEstimate(tx);
             return new CallOutput {Error = estimateGasTracer.Error, GasSpent = estimate};
         }
 
-        private void CallAndRestore(BlockHeader blockHeader, Transaction transaction, UInt256 timestamp, ITxTracer tracer)
+        private void CallAndRestore(
+            BlockHeader blockHeader,
+            long number,
+            UInt256 timestamp,
+            Transaction transaction,
+            ITxTracer tracer)
         {
             if (transaction.SenderAddress == null)
             {
@@ -205,7 +220,7 @@ namespace Nethermind.Facade
                     Keccak.OfAnEmptySequenceRlp,
                     Address.Zero,
                     0,
-                    blockHeader.Number + 1,
+                    number,
                     blockHeader.GasLimit,
                     timestamp,
                     Array.Empty<byte>());

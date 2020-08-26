@@ -210,7 +210,8 @@ namespace Nethermind.Runner.Ethereum.Steps
             ThisNodeInfo.AddInfo("Node address :", $"{_ctx.Enode.Address} (do not use as an account)");
         }
 
-        protected virtual MultiSyncModeSelector CreateMultiSyncModeSelector(SyncProgressResolver syncProgressResolver) => new MultiSyncModeSelector(syncProgressResolver, _ctx.SyncPeerPool, _syncConfig, _ctx.LogManager);
+        protected virtual MultiSyncModeSelector CreateMultiSyncModeSelector(SyncProgressResolver syncProgressResolver)
+            => new MultiSyncModeSelector(syncProgressResolver, _ctx.SyncPeerPool!, _syncConfig, _ctx.LogManager);
 
         private Task StartDiscovery()
         {

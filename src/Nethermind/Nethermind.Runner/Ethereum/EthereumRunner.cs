@@ -31,6 +31,7 @@ using Nethermind.Network.Config;
 using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Runner.Ethereum.Steps;
 using Nethermind.Serialization.Json;
+using Nethermind.State;
 using Nethermind.WebSockets;
 
 namespace Nethermind.Runner.Ethereum
@@ -80,7 +81,7 @@ namespace Nethermind.Runner.Ethereum
             EthereumStepsLoader stepsLoader = new EthereumStepsLoader(GetType().Assembly);
             EthereumStepsManager stepsManager = new EthereumStepsManager(stepsLoader, _context, _context.LogManager);
             await stepsManager.InitializeAll(cancellationToken);
-            
+
             string infoScreen = ThisNodeInfo.BuildNodeInfoScreen();
             if (_logger.IsInfo) _logger.Info(infoScreen);
         }

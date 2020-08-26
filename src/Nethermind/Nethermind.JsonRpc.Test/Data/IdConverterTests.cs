@@ -19,7 +19,7 @@ using System.IO;
 using System.Numerics;
 using System.Text;
 using FluentAssertions;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Newtonsoft.Json;
 using NUnit.Framework;

@@ -21,7 +21,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Evm.Precompiles;
 using NUnit.Framework;
 
@@ -212,7 +212,7 @@ namespace Nethermind.Evm.Test
 
             Execute(code);
 
-            AssertStorage(0, 0);
+            AssertStorage(UInt256.Zero, UInt256.Zero);
             Assert.False(TestState.AccountExists(TestItem.AddressC), "did not test the right thing - it was not an empty account + touch scenario");
         }
 

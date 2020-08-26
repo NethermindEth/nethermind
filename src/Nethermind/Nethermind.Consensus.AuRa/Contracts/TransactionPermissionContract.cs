@@ -20,7 +20,7 @@ using System.Collections.Generic;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Evm;
 
 namespace Nethermind.Consensus.AuRa.Contracts

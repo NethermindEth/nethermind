@@ -16,8 +16,8 @@
 
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
-using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
+using Nethermind.Int256;
 
 namespace Nethermind.Benchmarks.Evm
 {
@@ -52,14 +52,14 @@ namespace Nethermind.Benchmarks.Evm
         public long Improved()
         {
             UInt256 dest = _location;
-            return _improved.CalculateMemoryCost(ref dest, _length);
+            return _improved.CalculateMemoryCost(in dest, _length);
         }
 
         [Benchmark]
         public long Current()
         {
             UInt256 dest = _location;
-            return _current.CalculateMemoryCost(ref dest, _length);
+            return _current.CalculateMemoryCost(in dest, _length);
         }
     }
 }

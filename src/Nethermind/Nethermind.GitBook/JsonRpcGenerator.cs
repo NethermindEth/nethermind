@@ -7,7 +7,11 @@ using Nethermind.JsonRpc.Modules;
 using System.Text;
 using Nethermind.Core.Crypto;
 using Nethermind.Core;
+<<<<<<< HEAD
 using Nethermind.Dirichlet.Numerics;
+=======
+using Nethermind.Int256;
+>>>>>>> master
 
 namespace Nethermind.GitBook
 {

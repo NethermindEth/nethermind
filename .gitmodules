@@ -14,3 +14,6 @@
 [submodule "gitbook/docs"]
 	path = gitbook/docs
 	url = https://github.com/NethermindEth/docs.git
+[submodule "src/int256"]
+	path = src/int256
+	url = https://github.com/NethermindEth/int256.git

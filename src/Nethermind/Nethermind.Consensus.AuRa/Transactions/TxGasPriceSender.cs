@@ -20,7 +20,7 @@ using System.Linq;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa.Transactions

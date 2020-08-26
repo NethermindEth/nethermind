@@ -22,29 +22,39 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Core.Specs;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 
 namespace Nethermind.Blockchain.Producers
 {
-    public class MinedBlockProducer : BaseBlockProducer
+    public class MinedBlockProducer : BlockProducerBase
     {
         private readonly IDifficultyCalculator _difficultyCalculator;
         private readonly object _syncToken = new object();
         private CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
 
-        public MinedBlockProducer(
-            ITxSource txSource,
+        public MinedBlockProducer(ITxSource txSource,
             IBlockchainProcessor processor,
             ISealer sealer,
             IBlockTree blockTree,
             IBlockProcessingQueue blockProcessingQueue,
             IStateProvider stateProvider,
+            IGasLimitCalculator gasLimitCalculator,
             ITimestamper timestamper,
             ILogManager logManager,
             IDifficultyCalculator difficultyCalculator) 
-            : base(txSource, processor, sealer, blockTree, blockProcessingQueue, stateProvider, timestamper, logManager)
+            : base(
+                txSource,
+                processor,
+                sealer,
+                blockTree,
+                blockProcessingQueue,
+                stateProvider,
+                gasLimitCalculator,
+                timestamper,
+                logManager)
         {
             _difficultyCalculator = difficultyCalculator ?? throw new ArgumentNullException(nameof(difficultyCalculator));
         }
@@ -92,7 +102,8 @@ namespace Nethermind.Blockchain.Producers
         protected override UInt256 CalculateDifficulty(BlockHeader parent, UInt256 timestamp)
         {
             Block parentBlock = BlockTree.FindBlock(parent.Hash, BlockTreeLookupOptions.None);
-            return _difficultyCalculator.Calculate(parent.Difficulty, parent.Timestamp, timestamp, parent.Number + 1, parentBlock.Ommers.Length > 0);
+            return _difficultyCalculator.Calculate(
+                parent.Difficulty, parent.Timestamp, timestamp, parent.Number + 1, parentBlock.Ommers.Length > 0);
         }
     }
 }

@@ -26,7 +26,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
@@ -142,6 +142,22 @@ namespace Nethermind.Facade.Test
                 tx,
                 Arg.Is<BlockHeader>(bh => bh.Number == 11 && bh.Timestamp == ((ITimestamper)_timestamper).EpochSeconds),
                 Arg.Any<EstimateGasTracer>());
+        }
+        
+        [Test]
+        public void Call_uses_valid_block_number()
+        {
+            _timestamper.UtcNow = DateTime.MinValue;
+            _timestamper.Add(TimeSpan.FromDays(123));
+            BlockHeader header = Build.A.BlockHeader.WithNumber(10).TestObject;
+            Transaction tx = new Transaction();
+            tx.GasLimit = Transaction.BaseTxGasCost;
+            
+            _blockchainBridge.Call(header, tx);
+            _transactionProcessor.Received().CallAndRestore(
+                tx,
+                Arg.Is<BlockHeader>(bh => bh.Number == 10),
+                Arg.Any<ITxTracer>());
         }
 
         [Test]

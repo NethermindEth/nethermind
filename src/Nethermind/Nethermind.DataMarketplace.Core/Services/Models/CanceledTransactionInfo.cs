@@ -16,7 +16,7 @@
 
 using System;
 using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 
 namespace Nethermind.DataMarketplace.Core.Services.Models
 {

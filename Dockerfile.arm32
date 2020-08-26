@@ -5,7 +5,7 @@ ARG BUILDPLATFORM
 
 COPY . .
 
-RUN git submodule update --init src/Dirichlet src/rocksdb-sharp && \
+RUN git submodule update --init src/Dirichlet src/int256 src/rocksdb-sharp && \
     dotnet publish src/Nethermind/Nethermind.Runner -r linux-arm -c release -o out && \
     git describe --tags --always --long > out/git-hash
 

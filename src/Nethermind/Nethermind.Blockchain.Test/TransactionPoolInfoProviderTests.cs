@@ -20,7 +20,7 @@ using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.State;
 using Nethermind.TxPool;
 using NSubstitute;
@@ -48,7 +48,7 @@ namespace Nethermind.Blockchain.Test
         [Test]
         public void should_return_valid_pending_and_queued_transactions()
         {
-            var nonce = 3;
+            uint nonce = 3;
             _stateReader.GetNonce(Arg.Any<Keccak>(), _address).Returns(new UInt256(nonce));
             var transactions = GetTransactions();
             

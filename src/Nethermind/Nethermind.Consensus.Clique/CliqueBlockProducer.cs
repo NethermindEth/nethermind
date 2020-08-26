@@ -29,12 +29,11 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Proofs;
-using Nethermind.Db.Blooms;
 
 namespace Nethermind.Consensus.Clique
 {
@@ -50,6 +49,7 @@ namespace Nethermind.Consensus.Clique
         private readonly ITxSource _txSource;
         private readonly IBlockchainProcessor _processor;
         private readonly ISealer _sealer;
+        private readonly IGasLimitCalculator _gasLimitCalculator;
         private readonly ISnapshotManager _snapshotManager;
         private readonly ICliqueConfig _config;
         private readonly ConcurrentDictionary<Address, bool> _proposals = new ConcurrentDictionary<Address, bool>();
@@ -66,6 +66,7 @@ namespace Nethermind.Consensus.Clique
             ICryptoRandom cryptoRandom,
             ISnapshotManager snapshotManager,
             ISealer cliqueSealer,
+            IGasLimitCalculator gasLimitCalculator,
             ICliqueConfig config,
             ILogManager logManager)
         {
@@ -77,6 +78,7 @@ namespace Nethermind.Consensus.Clique
             _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
             _cryptoRandom = cryptoRandom ?? throw new ArgumentNullException(nameof(cryptoRandom));
             _sealer = cliqueSealer ?? throw new ArgumentNullException(nameof(cliqueSealer));
+            _gasLimitCalculator = gasLimitCalculator ?? throw new ArgumentNullException(nameof(gasLimitCalculator));
             _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
             _config = config ?? throw new ArgumentNullException(nameof(config));
             _wiggle = new WiggleRandomizer(_cryptoRandom, _snapshotManager);
@@ -323,7 +325,7 @@ namespace Nethermind.Consensus.Clique
                 Address.Zero,
                 1,
                 parentBlock.Number + 1,
-                parentBlock.GasLimit,
+                _gasLimitCalculator.GetGasLimit(parentBlock.Header),
                 timestamp > parentBlock.Timestamp ? timestamp : parentBlock.Timestamp + 1,
                 Array.Empty<byte>());
 
@@ -401,11 +403,11 @@ namespace Nethermind.Consensus.Clique
             if (_snapshotManager.IsInTurn(snapshot, snapshot.Number + 1, signer))
             {
                 if (_logger.IsInfo) _logger.Info("Producing in turn block");
-                return new UInt256(Clique.DifficultyInTurn);
+                return Clique.DifficultyInTurn;
             }
 
             if (_logger.IsInfo) _logger.Info("Producing out of turn block");
-            return new UInt256(Clique.DifficultyNoTurn);
+            return Clique.DifficultyNoTurn;
         }
 
         public void Dispose()

@@ -18,12 +18,10 @@ using System;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Specs;
-using Nethermind.Dirichlet.Numerics;
-using Nethermind.Evm.Precompiles;
+using Nethermind.Int256;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -304,7 +302,10 @@ namespace Nethermind.Evm
                 else
                 {
                     _stateProvider.AddToBalance(sender, senderReservedGasPayment, spec);
-                    _stateProvider.DecrementNonce(sender);    
+                    if (notSystemTransaction)
+                    {
+                        _stateProvider.DecrementNonce(sender);
+                    }
                 }
                 
                 _stateProvider.Commit(spec);

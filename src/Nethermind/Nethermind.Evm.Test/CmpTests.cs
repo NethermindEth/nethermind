@@ -60,7 +60,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.SSTORE)
                 .Done;
 
-            CallOutputTracer receipt = Execute(code);
+            TestAllTracerWithOutput receipt = Execute(code);
             AssertCmp(receipt, result);
         }
         
@@ -84,7 +84,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.SSTORE)
                 .Done;
 
-            CallOutputTracer receipt = Execute(code);
+            TestAllTracerWithOutput receipt = Execute(code);
             AssertCmp(receipt, result);
         }
         
@@ -108,16 +108,16 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.SSTORE)
                 .Done;
 
-            CallOutputTracer receipt = Execute(code);
+            TestAllTracerWithOutput receipt = Execute(code);
             AssertCmp(receipt, result);
         }
         
-        private void AssertCmp(CallOutputTracer receipt, string result)
+        private void AssertCmp(TestAllTracerWithOutput receipt, string result)
         {
             AssertCmp(receipt, Bytes.FromHexString(result));
         }
         
-        private void AssertCmp(CallOutputTracer receipt, byte[] result)
+        private void AssertCmp(TestAllTracerWithOutput receipt, byte[] result)
         {
             AssertStorage(0, result);
             AssertGas(receipt, result.IsZero() ? ZeroResultGas : NonZeroResultGas);

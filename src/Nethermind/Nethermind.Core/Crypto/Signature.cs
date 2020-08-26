@@ -18,7 +18,7 @@ using System;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Extensions;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 
 namespace Nethermind.Core.Crypto
 {

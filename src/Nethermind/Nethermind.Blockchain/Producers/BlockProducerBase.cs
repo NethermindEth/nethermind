@@ -23,7 +23,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -31,7 +31,7 @@ using Nethermind.State.Proofs;
 
 namespace Nethermind.Blockchain.Producers
 {
-    public abstract class BaseBlockProducer : IBlockProducer
+    public abstract class BlockProducerBase : IBlockProducer
     {
         private IBlockchainProcessor Processor { get; }
         protected IBlockTree BlockTree { get; }
@@ -39,17 +39,19 @@ namespace Nethermind.Blockchain.Producers
 
         private readonly ISealer _sealer;
         private readonly IStateProvider _stateProvider;
+        private readonly IGasLimitCalculator _gasLimitCalculator;
         private readonly ITimestamper _timestamper;
         private readonly ITxSource _txSource;
         protected ILogger Logger { get; }
 
-        protected BaseBlockProducer(
+        protected BlockProducerBase(
             ITxSource txSource,
             IBlockchainProcessor processor,
             ISealer sealer,
             IBlockTree blockTree,
             IBlockProcessingQueue blockProcessingQueue,
             IStateProvider stateProvider,
+            IGasLimitCalculator gasLimitCalculator,
             ITimestamper timestamper,
             ILogManager logManager)
         {
@@ -59,6 +61,7 @@ namespace Nethermind.Blockchain.Producers
             BlockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             BlockProcessingQueue = blockProcessingQueue ?? throw new ArgumentNullException(nameof(blockProcessingQueue));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
+            _gasLimitCalculator = gasLimitCalculator ?? throw new ArgumentNullException(nameof(gasLimitCalculator));
             _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
             Logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
@@ -171,14 +174,14 @@ namespace Nethermind.Blockchain.Producers
                 _sealer.Address,
                 difficulty,
                 parent.Number + 1,
-                GetGasLimit(parent),
+                _gasLimitCalculator.GetGasLimit(parent),
                 UInt256.Max(parent.Timestamp + 1, _timestamper.EpochSeconds),
                 Encoding.UTF8.GetBytes("Nethermind"))
             {
                 TotalDifficulty = parent.TotalDifficulty + difficulty,
                 Author = _sealer.Address
             };
-            
+
             if (Logger.IsDebug) Logger.Debug($"Setting total difficulty to {parent.TotalDifficulty} + {difficulty}.");
 
             var transactions = _txSource.GetTransactions(parent, header.GasLimit);
@@ -186,8 +189,6 @@ namespace Nethermind.Blockchain.Producers
             header.TxRoot = new TxTrie(block.Transactions).RootHash;
             return block;
         }
-
-        protected virtual long GetGasLimit(BlockHeader parent) => parent.GasLimit;
 
         protected abstract UInt256 CalculateDifficulty(BlockHeader parent, UInt256 timestamp);
     }

@@ -16,7 +16,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Evm;
 using Newtonsoft.Json;
 
@@ -74,7 +74,7 @@ namespace Nethermind.JsonRpc.Modules.Parity
             ChainId = transaction.Signature.ChainId;
             R = transaction.Signature.R;
             S = transaction.Signature.S;
-            V = new UInt256(transaction.Signature.V);
+            V = (UInt256)transaction.Signature.V;
             StandardV = transaction.Signature.RecoveryId;
             // TKS: it does not seem to work with CREATE2
             Creates = transaction.IsContractCreation ? ContractAddress.From(transaction.SenderAddress, transaction.Nonce) : null;

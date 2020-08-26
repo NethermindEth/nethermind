@@ -16,29 +16,23 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
 using System.Collections.Generic;
-using System.IO;
-using Ethereum.Test.Base.Interfaces;
+using System.Threading.Tasks;
+using Ethereum.Test.Base;
+using NUnit.Framework;
 
-namespace Ethereum.Test.Base
+namespace Ethereum.Blockchain.Test
 {
-    public class TestsSourceLoader : ITestSourceLoader
+    [TestFixture][Parallelizable(ParallelScope.All)]
+    public class StaticFlagEnabledTests : GeneralStateTestBase
     {
-        private readonly ITestLoadStrategy _testLoadStrategy;
-        private readonly string _path;
-        private readonly string _wildcard;
-
-        public TestsSourceLoader(ITestLoadStrategy testLoadStrategy, string path, string wildcard = null)
-        {
-            _testLoadStrategy = testLoadStrategy ?? throw new ArgumentNullException(nameof(testLoadStrategy));
-            _path = path ?? throw new ArgumentNullException(nameof(path));
-            _wildcard = wildcard;
+        [TestCaseSource(nameof(LoadTests))]
+        public void Test(GeneralStateTest test)
+        {    
+            Assert.True(RunTest(test).Pass);
         }
-
-        public IEnumerable<IEthereumTest> LoadTests()
-        {
-            return _testLoadStrategy.Load(_path);
-        }
+        
+        public static IEnumerable<GeneralStateTest> LoadTests() { var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stStaticFlagEnabled");
+            return (IEnumerable<GeneralStateTest>)loader.LoadTests(); }
     }
 }

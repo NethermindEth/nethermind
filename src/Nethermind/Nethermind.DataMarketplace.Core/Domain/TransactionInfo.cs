@@ -17,7 +17,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 
 [assembly:InternalsVisibleTo("Nethermind.DataMarketplace.Infrastructure")]
 [assembly:InternalsVisibleTo("Nethermind.DataMarketplace.Test")]

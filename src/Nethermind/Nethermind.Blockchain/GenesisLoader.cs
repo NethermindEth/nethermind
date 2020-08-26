@@ -24,7 +24,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Specs.ChainSpecStyle;
@@ -63,6 +63,7 @@ namespace Nethermind.Blockchain
             foreach ((Address address, ChainSpecAllocation allocation) in _chainSpec.Allocations.OrderBy(a => a.Key))
             {
                 _stateProvider.CreateAccount(address, allocation.Balance);
+
                 if (allocation.Code != null)
                 {
                     Keccak codeHash = _stateProvider.UpdateCode(allocation.Code);
@@ -89,7 +90,7 @@ namespace Nethermind.Blockchain
                     _transactionProcessor.Execute(constructorTransaction, genesis.Header, NullTxTracer.Instance);
                 }
             }
-
+            
             // we no longer need the allocations - 0.5MB RAM, 9000 objects for mainnet
             _chainSpec.Allocations = null;
 

@@ -29,7 +29,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
@@ -43,8 +43,8 @@ namespace Nethermind.Blockchain
     {
         private const long LowestInsertedBodyNumberDbEntryAddress = 0; 
         private const int CacheSize = 64;
-        private readonly ICache<Keccak, Block> _blockCache = new LruCacheWithRecycling<Keccak, Block>(CacheSize, CacheSize, "blocks");
-        private readonly ICache<Keccak, BlockHeader> _headerCache = new LruCacheWithRecycling<Keccak, BlockHeader>(CacheSize, CacheSize, "headers");
+        private readonly ICache<Keccak, Block> _blockCache = new LruCache<Keccak, Block>(CacheSize, CacheSize, "blocks");
+        private readonly ICache<Keccak, BlockHeader> _headerCache = new LruCache<Keccak, BlockHeader>(CacheSize, CacheSize, "headers");
 
         private const int BestKnownSearchLimit = 256_000_000;
 
@@ -54,7 +54,7 @@ namespace Nethermind.Blockchain
         private readonly IDb _headerDb;
         private readonly IDb _blockInfoDb;
 
-        private ICache<long, HashSet<Keccak>> _invalidBlocks = new LruCacheWithRecycling<long, HashSet<Keccak>>(128, 128, "invalid blocks");
+        private ICache<long, HashSet<Keccak>> _invalidBlocks = new LruCache<long, HashSet<Keccak>>(128, 128, "invalid blocks");
         private readonly BlockDecoder _blockDecoder = new BlockDecoder();
         private readonly HeaderDecoder _headerDecoder = new HeaderDecoder();
         private readonly ILogger _logger;

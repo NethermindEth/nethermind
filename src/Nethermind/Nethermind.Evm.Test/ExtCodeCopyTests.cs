@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,25 +13,27 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
 
-using Nethermind.Consensus.AuRa.Contracts;
-using Nethermind.Core;
-using Nethermind.Core.Caching;
-using Nethermind.Core.Crypto;
+using FluentAssertions;
+using NUnit.Framework;
 
-namespace Nethermind.Consensus.AuRa.Transactions
+namespace Nethermind.Evm.Test
 {
-    public interface ITxPermissionFilter
+    public class ExtCodeCopyTests : VirtualMachineTestsBase
     {
-        bool IsAllowed(Transaction tx, BlockHeader parentHeader);
-        
-        public class Cache
+        [Test]
+        public void Ranges()
         {
-            public const int MaxCacheSize = 4096;
-            
-            internal ICache<(Keccak ParentHash, Address Sender), ITransactionPermissionContract.TxPermissions?> Permissions { get; } =
-                new LruCacheWithRecycling<(Keccak ParentHash, Address Sender), ITransactionPermissionContract.TxPermissions?>(MaxCacheSize, "TxPermissions");
+            byte[] code = Prepare.EvmCode
+                .PushData(0)
+                .PushData(0)
+                .PushData("0x805e0d3cde3764a4d0a02f33cf624c8b7cfd911a")
+                .PushData("0x793d1e")
+                .Op(Instruction.EXTCODECOPY)
+                .Done;
+
+            var result = Execute(code);
+            result.Error.Should().BeNull();
         }
     }
 }

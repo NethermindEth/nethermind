@@ -28,6 +28,6 @@ namespace Nethermind.Blockchain
         public IStateProvider ReadOnlyStateProvider { get; set; }
         public ITxSource TxSource { get; set; }
         public ReadOnlyTxProcessingEnv ReadOnlyTxProcessingEnv { get; set; }
-        public ReadOnlyTransactionProcessorSource ReadOnlyTransactionProcessorSource { get; set; }
+        public ReadOnlyTxProcessorSource ReadOnlyTxProcessorSource { get; set; }
     }
 }

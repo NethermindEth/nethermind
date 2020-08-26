@@ -16,7 +16,7 @@ namespace Ethereum.Blockchain.Block.Legacy.Test
         }
         public static IEnumerable<BlockchainTest> LoadTests()
         {
-            var loader = new DirectoryTestsSourceLoader(new LoadLegacyBlockchainTestsStrategy(), "bcMultiChainTest");
+            var loader = new TestsSourceLoader(new LoadLegacyBlockchainTestsStrategy(), "bcMultiChainTest");
             return (IEnumerable<BlockchainTest>)loader.LoadTests();      
         }
     }

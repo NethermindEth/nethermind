@@ -20,7 +20,7 @@ using System.Linq;
 using System.Reflection;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 
 namespace Nethermind.Specs.ChainSpecStyle
 {

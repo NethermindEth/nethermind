@@ -15,9 +15,11 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Blockchain;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Clique;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
+using Nethermind.Specs;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
@@ -51,6 +53,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.CryptoRandom,
                 _context.SnapshotManager,
                 _context.Sealer,
+                new TargetAdjustedGasLimitCalculator(GoerliSpecProvider.Instance, new MiningConfig()), 
                 cliqueConfig,
                 _context.LogManager);
         }
