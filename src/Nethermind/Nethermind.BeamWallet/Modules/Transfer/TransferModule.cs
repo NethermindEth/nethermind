@@ -111,26 +111,18 @@ namespace Nethermind.BeamWallet.Modules.Transfer
                 return null;
             }
 
-            return WeiToEth(decimal.Parse(result.Result.ToString()));
+            return decimal.Parse(result.Result.ToString()).WeiToEth();
         }
 
         private async Task GetAverageGasPriceAsync()
         {
             _blockNumberLabel = new Label(PositionX, 19, "eth_getBlockByNumber: fetching...");
             _window.Add(_blockNumberLabel);
-            RpcResult<BlockModel<TransactionModel>> result;
-            do
-            {
-                result = await _ethJsonRpcClientProxy.eth_getBlockByNumberWithTransactionDetails(
-                    BlockParameterModel.Latest,
-                    true);
-                if (!result.IsValid)
-                {
-                    await Task.Delay(2000);
-                }
-            } while (!result.IsValid);
+            
+            _latestBlock = await Extensions.TryExecuteAsync(() =>
+                _ethJsonRpcClientProxy.eth_getBlockByNumberWithTransactionDetails(BlockParameterModel.Latest,
+                    true));
 
-            _latestBlock = result.Result;
             UInt256 sum = 0;
             if (_latestBlock.Transactions.Count == 0)
             {
@@ -164,16 +156,11 @@ namespace Nethermind.BeamWallet.Modules.Transfer
             _nonceLabel = new Label(PositionX, 20, "eth_getTransactionCount: fetching...");
             _window.Add(_nonceLabel);
             RpcResult<UInt256?> result;
-            do
-            {
-                result = await _ethJsonRpcClientProxy.eth_getTransactionCount(_address);
-                if (!result.IsValid)
-                {
-                    await Task.Delay(2000);
-                }
-            } while (!result.IsValid || !result.Result.HasValue);
 
-            _currentNonce = result.Result.Value;
+            var currentNonce = await Extensions.TryExecuteAsync(() =>
+                _ethJsonRpcClientProxy.eth_getTransactionCount(_address), rpcResult => !(rpcResult.Result.HasValue));
+
+            _currentNonce = currentNonce.Value;
             _window.Remove(_nonceLabel);
             _nonceLabel = new Label(PositionX, 20, $"Nonce: {_currentNonce}");
             _window.Add(_nonceLabel);
@@ -184,29 +171,22 @@ namespace Nethermind.BeamWallet.Modules.Transfer
             _estimateGasLabel = new Label(PositionX, 21, "eth_estimateGas: fetching...");
             _window.Add(_estimateGasLabel);
 
-            RpcResult<byte[]> result;
-            do
-            {
-                result = await _ethJsonRpcClientProxy.eth_estimateGas(_transaction,
-                    BlockParameterModel.FromNumber(_latestBlock.Number));
-                if (!result.IsValid)
-                {
-                    await Task.Delay(1500);
-                }
-            } while (!result.IsValid);
+            var gasLimit = await Extensions.TryExecuteAsync(() =>
+                _ethJsonRpcClientProxy.eth_estimateGas(_transaction,
+                    BlockParameterModel.FromNumber(_latestBlock.Number)));
 
-            var estimateGasResult = result.Result.ToHexString();
-            SetEstimateGas(decimal.Parse(estimateGasResult));
+            SetEstimateGas(gasLimit);
             _window.Remove(_estimateGasLabel);
             _estimateGasLabel = new Label(PositionX, 21, $"Gas limit: {_estimateGas}");
             _window.Add(_estimateGasLabel);
         }
 
-        private void SetEstimateGas(decimal estimateGasResult)
+        private void SetEstimateGas(byte[] gasLimit)
         {
-            if (estimateGasResult > (decimal)_gasLimit)
+            decimal gasLimitResult = decimal.Parse(gasLimit.ToHexString());
+            if (gasLimitResult > (decimal)_gasLimit)
             {
-                _estimateGas = estimateGasResult;
+                _estimateGas = gasLimitResult;
             }
             else
             {
@@ -259,13 +239,7 @@ namespace Nethermind.BeamWallet.Modules.Transfer
 
         private void CreateWindow()
         {
-            _window = new Window("Beam Wallet")
-            {
-                X = 0,
-                Y = 0,
-                Width = Dim.Fill(),
-                Height = Dim.Fill()
-            };
+            _window = new Window("Beam Wallet") {X = 0, Y = 0, Width = Dim.Fill(), Height = Dim.Fill()};
         }
 
         private void AddInfo()
@@ -306,7 +280,7 @@ namespace Nethermind.BeamWallet.Modules.Transfer
                 _transactionValue = decimal.Parse(_value);
                 Address from = _address;
                 Address to = new Address(_toAddress);
-                UInt256 value = EthToWei(_value);
+                UInt256 value = _value.EthToWei();
                 _transaction = CreateTransaction(from, to, value, _gasLimit, _averageGasPrice, _currentNonce);
                 await GetEstimateGasAsync();
                 _transactionFee = _estimateGas * _averageGasPriceNumber;
@@ -324,9 +298,9 @@ namespace Nethermind.BeamWallet.Modules.Transfer
                     $"{Environment.NewLine}" +
                     $"Gas limit: {_estimateGas}" +
                     $"{Environment.NewLine}" +
-                    $"Gas price: {WeiToEth(_averageGasPriceNumber)} ETH" +
+                    $"Gas price: {_averageGasPriceNumber.WeiToEth()} ETH" +
                     $"{Environment.NewLine}" +
-                    $"Transaction fee: {WeiToEth(_transactionFee)} ETH",
+                    $"Transaction fee: {_transactionFee.WeiToEth()} ETH",
                     "Yes", "No");
 
                 if (confirmed != 0)
@@ -347,15 +321,8 @@ namespace Nethermind.BeamWallet.Modules.Transfer
                     new Label(PositionX, 22, $"Sending transaction with nonce: {_transaction.Nonce}...");
                 _window.Add(_sendingTransactionLabel);
 
-                RpcResult<Keccak> sendTransactionResult;
-                do
-                {
-                    sendTransactionResult = await _ethJsonRpcClientProxy.eth_sendTransaction(_transaction);
-                    if (!sendTransactionResult.IsValid)
-                    {
-                        await Task.Delay(2000);
-                    }
-                } while (!sendTransactionResult.IsValid);
+                var transactionHash = await Extensions.TryExecuteAsync((() =>
+                    _ethJsonRpcClientProxy.eth_sendTransaction(_transaction)));
 
                 do
                 {
@@ -368,23 +335,17 @@ namespace Nethermind.BeamWallet.Modules.Transfer
                 _window.Remove(_sendingTransactionLabel);
 
                 _transactionHashLabel = new Label(PositionX, 22, "Transaction hash: " +
-                                                                 $"{sendTransactionResult.Result}.");
+                                                                 $"{transactionHash}.");
                 _window.Add(_transactionHashLabel);
                 _lockInfoLabel = new Label(PositionX, 23, "personal_lockAccount: fetching...");
                 _window.Add(_lockInfoLabel);
 
-                RpcResult<bool> lockAccountResult;
-                do
-                {
-                    lockAccountResult = await _jsonRpcWalletClientProxy.personal_lockAccount(_address);
-                    if (!lockAccountResult.IsValid)
-                    {
-                        await Task.Delay(2000);
-                    }
-                } while (!lockAccountResult.IsValid);
-
+                var accountLocked = await Extensions.TryExecuteAsync((() => 
+                    _jsonRpcWalletClientProxy.personal_lockAccount(_address)));
+                
                 _window.Remove(_lockInfoLabel);
-                _lockInfoLabel = new Label(PositionX, 23, "Account locked.");
+                var accountLockedText = accountLocked ? "Account locked." : "Account has not been locked.";
+                _lockInfoLabel = new Label(PositionX, 23, accountLockedText);
                 _window.Add(_lockInfoLabel);
             }
             catch (Exception ex)
@@ -397,28 +358,15 @@ namespace Nethermind.BeamWallet.Modules.Transfer
 
         private async Task CancelSendingTransaction()
         {
-            await LockAccount();
+            await Extensions.TryExecuteAsync((() => _jsonRpcWalletClientProxy.personal_lockAccount(_address)));
             DeleteLabels();
             AddButtons();
         }
 
         private bool EnoughFunds()
         {
-            var transactionCost = _transactionValue + WeiToEth(_transactionFee);
+            var transactionCost = _transactionValue + _transactionFee.WeiToEth();
             return _balanceEth >= transactionCost;
-        }
-
-        private async Task LockAccount()
-        {
-            RpcResult<bool> lockAccountResult;
-            do
-            {
-                lockAccountResult = await _jsonRpcWalletClientProxy.personal_lockAccount(_address);
-                if (!lockAccountResult.IsValid)
-                {
-                    await Task.Delay(2000);
-                }
-            } while (!lockAccountResult.IsValid);
         }
 
         private void AddButtons()
@@ -474,7 +422,7 @@ namespace Nethermind.BeamWallet.Modules.Transfer
                 AddButtons();
                 return false;
             }
-            
+
             if (_balanceEth == 0)
             {
                 MessageBox.ErrorQuery(40, 7, "Error", "You do not have enough funds." +
@@ -495,22 +443,16 @@ namespace Nethermind.BeamWallet.Modules.Transfer
                 AddButtons();
                 return false;
             }
+
             _unlockFailedLbl = new Label(PositionX, 18, "personal_unlockAccount: fetching...");
             _window.Add(_unlockFailedLbl);
 
-            RpcResult<bool> unlockAccountResult;
-            do
-            {
-                unlockAccountResult = await _jsonRpcWalletClientProxy.personal_unlockAccount(_address, _passphrase);
-                if (!unlockAccountResult.IsValid)
-                {
-                    await Task.Delay(3000);
-                }
-            } while (!unlockAccountResult.IsValid);
-
+            var accountUnlocked = await Extensions.TryExecuteAsync(() =>
+                _jsonRpcWalletClientProxy.personal_unlockAccount(_address, _passphrase));
+            
             _window.Remove(_unlockFailedLbl);
 
-            if (!unlockAccountResult.Result)
+            if (!accountUnlocked)
             {
                 MessageBox.ErrorQuery(40, 8, "Error",
                     "Unlocking account failed." +
@@ -527,14 +469,5 @@ namespace Nethermind.BeamWallet.Modules.Transfer
             DeleteButtons();
             return true;
         }
-
-        private static UInt256 EthToWei(string result)
-        {
-            var resultDecimal = decimal.Parse(result);
-            var resultRound = decimal.Round(resultDecimal * 1000000000000000000, 0);
-            return UInt256.Parse(resultRound.ToString(CultureInfo.InvariantCulture));
-        }
-
-        private static decimal WeiToEth(decimal result) => result / 1000000000000000000;
     }
 }
