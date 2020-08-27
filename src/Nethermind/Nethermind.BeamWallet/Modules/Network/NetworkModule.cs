@@ -82,10 +82,7 @@ namespace Nethermind.BeamWallet.Modules.Network
                 _network = "goerli";
                 NetworkSelected?.Invoke(this, _network);
             };
-            quitButton.Clicked = () =>
-            {
-                Quit();
-            };
+            quitButton.Clicked = Quit;
             _window.Add(mainnetButton, goerliButton, quitButton);
         }
 
