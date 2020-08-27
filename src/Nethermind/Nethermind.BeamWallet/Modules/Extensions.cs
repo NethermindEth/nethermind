@@ -18,11 +18,10 @@
 using System;
 using System.Globalization;
 using System.Threading.Tasks;
-using Nethermind.BeamWallet.Clients;
 using Nethermind.Facade.Proxy;
 using Nethermind.Int256;
 
-namespace Nethermind.BeamWallet.Modules.Transfer
+namespace Nethermind.BeamWallet.Modules
 {
     internal static class Extensions
     {
@@ -56,6 +55,23 @@ namespace Nethermind.BeamWallet.Modules.Transfer
             } while (!result.IsValid || (validator?.Invoke(result) ?? true));
 
             return default;
+        }
+        
+        public static async Task<T> TryExecuteAsync<T>(Func<Task<T>> request,
+            Func<T, bool> validator = null, TimeSpan? delay = null)
+        {
+            var interval = delay ?? TimeSpan.FromSeconds(2);
+            T result;
+            while (true)
+            {
+                result = await request();
+                if (result is {} && (validator?.Invoke(result) ?? true))
+                {
+                    return result;
+                }
+
+                await Task.Delay(interval);
+            }
         }
     }
 }
