@@ -19,6 +19,7 @@ namespace Nethermind.GitBook
                 if (Directory.GetDirectories(currentDir).Contains(Path.Combine(currentDir, "gitbook")))
                 {
                     char pathSeparator = Path.AltDirectorySeparatorChar;
+
                     return Path.Combine(currentDir, $"gitbook{pathSeparator}docs{pathSeparator}ethereum-client{pathSeparator}json-rpc");
                 }
 
