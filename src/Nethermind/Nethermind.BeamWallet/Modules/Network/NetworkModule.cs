@@ -16,8 +16,11 @@
 // 
 
 using System;
+using System.Net.Http;
 using System.Threading.Tasks;
-using Nethermind.BeamWallet.Services;
+using Nethermind.Facade.Proxy;
+using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 using Terminal.Gui;
 
 namespace Nethermind.BeamWallet.Modules.Network
@@ -27,31 +30,36 @@ namespace Nethermind.BeamWallet.Modules.Network
         private const int PositionX = 1;
         private Window _window;
         private string _network;
-        private readonly IRunnerValidator _runnerValidator;
+        private EthJsonRpcClientProxy _ethJsonRpcClientProxy;
+        private const string DefaultUrl = "http://localhost:8545";
         public event EventHandler<string> NetworkSelected;
-
-        public NetworkModule(IRunnerValidator runnerValidator)
-        {
-            _runnerValidator = runnerValidator;
-        }
 
         public Task<Window> InitAsync()
         {
-            UpdateRunnerStatusAsync();
+            InitData();
+            CheckRunnerStatus();
             CreateWindow();
             InitNetworks();
 
             return Task.FromResult(_window);
         }
 
-        private async Task UpdateRunnerStatusAsync()
+        private async Task CheckRunnerStatus()
         {
-            var runnerRunning = await Extensions.TryExecuteAsync(() => _runnerValidator.IsRunningAsync(),
-                validator: r => r is true);
-            if (runnerRunning)
+            var runnerIsAlreadyRunning = await CheckIsProcessRunningAsync();
+            if (runnerIsAlreadyRunning)
             {
                 NetworkSelected?.Invoke(this, string.Empty);
             }
+        }
+
+        private void InitData()
+        {
+            var httpClient = new HttpClient();
+            var urls = new[] {DefaultUrl};
+            var jsonRpcClientProxy = new JsonRpcClientProxy(new DefaultHttpClient(httpClient,
+                new EthereumJsonSerializer(), LimboLogs.Instance, 0), urls, LimboLogs.Instance);
+            _ethJsonRpcClientProxy = new EthJsonRpcClientProxy(jsonRpcClientProxy);
         }
 
         private void CreateWindow()
@@ -74,8 +82,17 @@ namespace Nethermind.BeamWallet.Modules.Network
                 _network = "goerli";
                 NetworkSelected?.Invoke(this, _network);
             };
-            quitButton.Clicked = Quit;
+            quitButton.Clicked = () =>
+            {
+                Quit();
+            };
             _window.Add(mainnetButton, goerliButton, quitButton);
+        }
+
+        private async Task<bool> CheckIsProcessRunningAsync()
+        {
+            var result = await _ethJsonRpcClientProxy.eth_blockNumber();
+            return result?.IsValid is true;
         }
 
         private static void Quit()
