@@ -17,6 +17,7 @@
 
 using System;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.BeamWallet.Clients;
 using Nethermind.BeamWallet.Modules.Events;
@@ -31,11 +32,14 @@ namespace Nethermind.BeamWallet.Modules.Addresses
     {
         private readonly Regex _urlRegex = new Regex(@"^http(s)?://([\w-]+.)+[\w-]+(/[\w- ./?%&=])?",
             RegexOptions.Compiled);
+
         private readonly Regex _addressRegex = new Regex("(0x)([0-9A-Fa-f]{40})", RegexOptions.Compiled);
         private readonly IJsonRpcWalletClientProxy _jsonRpcWalletClientProxy;
         private readonly Option _option;
         private const string DefaultUrl = "http://localhost:8545";
         private Window _window;
+        private Button _okButton;
+        private Button _backButton;
         public event EventHandler<AddressesSelectedEventArgs> AddressesSelected;
 
         public AddressesModule(Option option, IJsonRpcWalletClientProxy jsonRpcWalletClientProxy)
@@ -51,13 +55,7 @@ namespace Nethermind.BeamWallet.Modules.Addresses
 
         private void CreateWindow()
         {
-            _window = new Window("Beam Wallet")
-            {
-                X = 0,
-                Y = 0,
-                Width = Dim.Fill(),
-                Height = Dim.Fill()
-            };
+            _window = new Window("Beam Wallet") {X = 0, Y = 0, Width = Dim.Fill(), Height = Dim.Fill()};
         }
 
         public Task<Window> InitAsync() => _option switch
@@ -81,25 +79,21 @@ namespace Nethermind.BeamWallet.Modules.Addresses
                                                  "If you lose your passphrase we will not be able to help you." +
                                                  $"{Environment.NewLine}{Environment.NewLine}" +
                                                  "Your whole money will be gone.");
-            
+
             var passphraseLabel = new Label(1, 14, "Enter passphrase:");
             var passphraseTextField = new TextField(25, 14, 80, "");
-            
+
             var confirmationPassphraseLabel = new Label(1, 16, "Confirm passphrase:");
             var confirmationPassphraseTextField = new TextField(25, 16, 80, "");
 
             passphraseTextField.Secret = true;
             confirmationPassphraseTextField.Secret = true;
 
-            var okButton = new Button(25, 18, "OK");
-            var backButton = new Button(33, 18, "Back");
-            
-            backButton.Clicked = () =>
-            {
-                Back();
-            };
+            _okButton = new Button(35, 18, "OK");
+            _backButton = new Button(25, 18, "Back");
+            _backButton.Clicked = Back;
 
-            okButton.Clicked = async () =>
+            _okButton.Clicked = async () =>
             {
                 var passphrase = passphraseTextField.Text.ToString();
                 var confirmationPassphrase = confirmationPassphraseTextField.Text.ToString();
@@ -110,28 +104,34 @@ namespace Nethermind.BeamWallet.Modules.Addresses
                                                           $"{Environment.NewLine}(ESC to close)");
                     return;
                 }
-                
+
                 if (string.IsNullOrWhiteSpace(confirmationPassphrase))
                 {
                     MessageBox.ErrorQuery(40, 7, "Error", "Confirmation passphrase can not be empty." +
                                                           $"{Environment.NewLine}(ESC to close)");
                     return;
                 }
-                
+
                 if (passphrase != confirmationPassphrase)
                 {
                     MessageBox.ErrorQuery(40, 7, "Error", "Provided passphrases do not match." +
                                                           $"{Environment.NewLine}(ESC to close)");
                     return;
                 }
-
-                var address = await CreateAccountAsync(passphrase);
-
-                AddressesSelected?.Invoke(this, new AddressesSelectedEventArgs(DefaultUrl, address.ToString()));
+                _window.Remove(_okButton);
+                _window.SetFocus(_backButton);
+                await CreateAccount(passphrase);
+                _window.Add(_okButton);
             };
-            _window.Add(passphraseInfo, passphraseLabel, passphraseTextField, 
-                confirmationPassphraseLabel, confirmationPassphraseTextField, okButton, backButton);
+            _window.Add(passphraseInfo, passphraseLabel, passphraseTextField,
+                confirmationPassphraseLabel, confirmationPassphraseTextField, _backButton, _okButton);
             return Task.FromResult(_window);
+        }
+
+        private async Task CreateAccount(string passphrase)
+        {
+            var address = await CreateAccountAsync(passphrase);
+            AddressesSelected?.Invoke(this, new AddressesSelectedEventArgs(DefaultUrl, address.ToString()));
         }
 
         private async Task<Address> CreateAccountAsync(string passphrase)
@@ -140,7 +140,7 @@ namespace Nethermind.BeamWallet.Modules.Addresses
             do
             {
                 result = await _jsonRpcWalletClientProxy.personal_newAccount(passphrase);
-                
+
             } while (!result.IsValid);
 
             return result.Result;
@@ -150,18 +150,18 @@ namespace Nethermind.BeamWallet.Modules.Addresses
         {
             var nodeAddressLabel = new Label(3, 22, "Enter node address:");
             var nodeAddressTextField = new TextField(28, 22, 80, $"{DefaultUrl}");
-            
+
             var addressLabel = new Label(3, 1, "Enter account address:");
             var addressTextField = new TextField(28, 1, 80, "");
 
-            var okButton = new Button(28, 3, "OK");
+            _okButton = new Button(28, 3, "OK");
             var backButton = new Button(36, 3, "Back");
             backButton.Clicked = () =>
             {
                 Back();
             };
 
-            okButton.Clicked = () =>
+            _okButton.Clicked = () =>
             {
                 var nodeAddressString = nodeAddressTextField.Text.ToString();
 
@@ -197,7 +197,7 @@ namespace Nethermind.BeamWallet.Modules.Addresses
 
                 AddressesSelected?.Invoke(this, new AddressesSelectedEventArgs(nodeAddressString, addressString));
             };
-            _window.Add(addressLabel, addressTextField, okButton, backButton);
+            _window.Add(addressLabel, addressTextField, _okButton, backButton);
             return Task.FromResult(_window);
         }
 

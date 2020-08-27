@@ -42,7 +42,10 @@ namespace Nethermind.BeamWallet.Modules.Init
         private readonly IEthJsonRpcClientProxy _ethJsonRpcClientProxy;
         private readonly IRunnerValidator _runnerValidator;
         private readonly string _network;
-
+        private bool _nodeIsRunning;
+        private Button _createAccountButton;
+        private Button _provideAccountButton;
+        private Button _quitButton;
         private static readonly Dictionary<string, string> _networks = new Dictionary<string, string>
         {
             ["1"] = "Mainnet",
@@ -101,11 +104,13 @@ namespace Nethermind.BeamWallet.Modules.Init
             if (runnerIsRunning)
             {
                 _backgroundRunnerIsRunning = false;
+                _nodeIsRunning = true;
                 AddRunnerInfo("Nethermind is already running.");
+                AddButtons();
                 await SetNetwork();
                 return;
             }
-            
+
             try
             {
                 _timer = new Timer(Update, null, TimeSpan.Zero, TimeSpan.FromSeconds(8));
@@ -115,8 +120,8 @@ namespace Nethermind.BeamWallet.Modules.Init
             }
             catch
             {
-                AddRunnerInfo("Error with starting a Nethermind node.");
-                _backgroundRunnerIsRunning = false;
+                AddRunnerInfo("Error with starting a Nethermind node. Retrying...");
+                _nodeIsRunning = false;
             }
         }
 
@@ -191,8 +196,15 @@ namespace Nethermind.BeamWallet.Modules.Init
             Process process = null;
             try
             {
+                if (_processId == 0)
+                {
+                    RecreateProcess();
+                    return;
+                }
                 process = Process.GetProcessById(_processId);
                 AddRunnerInfo("Nethermind node is running.");
+                AddButtons();
+                
                 if (!string.IsNullOrEmpty(_network))
                 {
                     AddNetworkInfo(_network);
@@ -215,8 +227,9 @@ namespace Nethermind.BeamWallet.Modules.Init
                 _window.Remove(_runnerOffInfo);
             }
 
-            _runnerOnInfo = new Label(PositionX, 18, "Nethermind is running.");
+            _runnerOnInfo = new Label(PositionX, 18, "Nethermind node is running.");
             _window.Add(_runnerOnInfo);
+            AddButtons();
         }
 
         private void RecreateProcess()
@@ -225,37 +238,61 @@ namespace Nethermind.BeamWallet.Modules.Init
             {
                 _window.Remove(_runnerOnInfo);
             }
-
-            _runnerOffInfo = new Label(PositionX, 18, "Nethermind node is stopped.. Please, wait for it to start.");
-            _window.Add(_runnerOffInfo);
-            _process.Start();
-            _processId = _process.Id;
+            
+            try
+            {
+                AddRunnerInfo("Nethermind node is stopped.. Please, wait for it to start.");
+                _window.Add(_runnerOffInfo);
+                _process.Start();
+                _processId = _process.Id;
+                _backgroundRunnerIsRunning = true;
+            }
+            catch
+            {
+                AddRunnerInfo("Error with starting a Nethermind node. Retrying...");
+                _nodeIsRunning = false;
+            }
         }
 
         private void AddNetworkInfo(string info)
         {
+            if (!_nodeIsRunning)
+            {
+                return;
+            }
             var networkInfo = new Label(PositionX, 19, $"Network: {info}");
             _window.Add(networkInfo);
         }
 
         private void InitOptions()
         {
-            var createAccountButton = new Button(PositionX, 21, "Create new account");
-            createAccountButton.Clicked = () =>
+            _createAccountButton = new Button(PositionX, 21, "Create new account");
+            _createAccountButton.Clicked = () =>
             {
                 OptionSelected?.Invoke(this, Option.CreateNewAccount);
             };
-            var provideAccountButton = new Button(25, 21, "Provide an address");
-            provideAccountButton.Clicked = () =>
+            _provideAccountButton = new Button(25, 21, "Provide an address");
+            _provideAccountButton.Clicked = () =>
             {
                 OptionSelected?.Invoke(this, Option.ProvideAddress);
             };
-            var quitButton = new Button(PositionX, 22, "Quit");
-            quitButton.Clicked = () =>
+            _quitButton = new Button(PositionX, 22, "Quit");
+            _quitButton.Clicked = Quit;
+            if (_nodeIsRunning)
             {
-                Quit();
-            };
-            _window.Add(createAccountButton, provideAccountButton, quitButton);
+                AddButtons();
+            }
+            else
+            {
+                _window.Add(_quitButton);
+                Application.Refresh();
+            }
+        }
+
+        private void AddButtons()
+        {
+            _window.Add(_createAccountButton, _provideAccountButton, _quitButton);
+            Application.Refresh();
         }
 
         private void Quit()
@@ -274,7 +311,7 @@ namespace Nethermind.BeamWallet.Modules.Init
         {
             var confirmed = MessageBox.Query(80, 8, "Confirmation",
                 $"{Environment.NewLine}" +
-                "Nethermind node is running in the background. Do you want to stop it?", "Yes", "No");
+                "Nethermind running in the background. Do you want to stop it?", "Yes", "No");
 
             if (confirmed == 0)
             {

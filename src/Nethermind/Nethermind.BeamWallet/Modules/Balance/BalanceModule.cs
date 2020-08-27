@@ -42,7 +42,6 @@ namespace Nethermind.BeamWallet.Modules.Balance
         private Window _window;
         private Label _syncingInfoLabel;
         private Label _balanceValueLabel;
-        private Button _skipTokensButton;
         private Button _backButton;
         private Button _transferButton;
         private Label _tokensSyncingInfoLabel;
@@ -67,13 +66,7 @@ namespace Nethermind.BeamWallet.Modules.Balance
 
         private void CreateWindow()
         {
-            _window = new Window("Beam Wallet")
-            {
-                X = 0,
-                Y = 0,
-                Width = Dim.Fill(),    
-                Height = Dim.Fill()
-            };
+            _window = new Window("Beam Wallet") {X = 0, Y = 0, Width = Dim.Fill(), Height = Dim.Fill()};
         }
 
         private void Update(object state)
@@ -99,6 +92,8 @@ namespace Nethermind.BeamWallet.Modules.Balance
             _balanceValueLabel = new Label(10, 3, $"{_balance} ETH");
             _window.Remove(_syncingInfoLabel);
             _window.Add(_balanceValueLabel);
+            _window.Add(_transferButton);
+            Application.Refresh();
         }
 
         private void InitButtons()
@@ -108,16 +103,7 @@ namespace Nethermind.BeamWallet.Modules.Balance
             {
                 TransferClicked?.Invoke(this, new TransferClickedEventArgs(_address, _balance));
             };
-            
-            _skipTokensButton = new Button(10, 13, "Skip getting token balance and transfer");
-            _skipTokensButton.Clicked = () =>
-            {
-                _window.Add(_transferButton);
-                _window.Remove(_skipTokensButton);
-                _window.Remove(_tokensSyncingInfoLabel);
-                TransferClicked?.Invoke(this, new TransferClickedEventArgs(_address, _balance));
-            };
-            
+
             _backButton = new Button(1, 13, "Back");
             _backButton.Clicked = () =>
             {
@@ -152,12 +138,14 @@ namespace Nethermind.BeamWallet.Modules.Balance
                 RpcResult<UInt256?> result;
                 if (blockNumber != 0)
                 {
-                    result = await _ethJsonRpcClientProxy.eth_getBalance(_address, BlockParameterModel.FromNumber(blockNumber));
+                    result = await _ethJsonRpcClientProxy.eth_getBalance(_address,
+                        BlockParameterModel.FromNumber(blockNumber));
                 }
                 else
                 {
                     result = await _ethJsonRpcClientProxy.eth_getBalance(_address);
                 }
+
                 if (!result.IsValid || !result.Result.HasValue)
                 {
                     return null;
@@ -184,6 +172,7 @@ namespace Nethermind.BeamWallet.Modules.Balance
                     _window.Remove(token.Label);
                 }
             }
+
             var tokens = await Task.WhenAll(tasks);
             foreach (var token in tokens.Where(t => t is {}))
             {
@@ -192,6 +181,7 @@ namespace Nethermind.BeamWallet.Modules.Balance
                 {
                     _window.Remove(token.Label);
                 }
+
                 token.Label = new Label(1, position, $"{token.Name}: {token.Balance}");
                 _window.Add(token.Label);
             }
@@ -234,7 +224,7 @@ namespace Nethermind.BeamWallet.Modules.Balance
         private async Task RenderBalanceAsync()
         {
             var addressLabel = new Label(1, 1, $"Address: {_address}");
-            var copyAddressButton = new Button( 55, 1, "Copy");
+            var copyAddressButton = new Button(55, 1, "Copy");
             var balanceLabel = new Label(1, 3, "Balance:");
             _syncingInfoLabel = new Label(10, 3, "Syncing... Please wait for the balance. " +
                                                  "This may take up to 10min.");
@@ -269,18 +259,14 @@ namespace Nethermind.BeamWallet.Modules.Balance
             var netVersionResult = await _ethJsonRpcClientProxy.net_version();
             if (netVersionResult.Result == "1")
             {
-                _window.Add(_skipTokensButton);
                 _window.Add(_tokensSyncingInfoLabel);
                 await SetLatestBlockNumberAsync();
                 await GetTokensBalanceAsync();
                 _window.Remove(_tokensSyncingInfoLabel);
             }
 
-            if (_skipTokensButton is {})
-            {
-                _window.Remove(_skipTokensButton);
-            }
             _window.Add(_transferButton);
+            Application.Refresh();
         }
 
         private void CopyToClipboard(string address)
