@@ -22,8 +22,6 @@ using System.Threading.Tasks;
 using Nethermind.BeamWallet.Clients;
 using Nethermind.BeamWallet.Modules.Events;
 using Nethermind.BeamWallet.Modules.Init;
-using Nethermind.Core;
-using Nethermind.Facade.Proxy;
 using Terminal.Gui;
 
 namespace Nethermind.BeamWallet.Modules.Addresses
@@ -130,20 +128,9 @@ namespace Nethermind.BeamWallet.Modules.Addresses
 
         private async Task CreateAccount(string passphrase)
         {
-            var address = await CreateAccountAsync(passphrase);
+            var address = await Extensions.TryExecuteAsync(() =>
+                _jsonRpcWalletClientProxy.personal_newAccount(passphrase));
             AddressesSelected?.Invoke(this, new AddressesSelectedEventArgs(DefaultUrl, address.ToString()));
-        }
-
-        private async Task<Address> CreateAccountAsync(string passphrase)
-        {
-            RpcResult<Address> result;
-            do
-            {
-                result = await _jsonRpcWalletClientProxy.personal_newAccount(passphrase);
-
-            } while (!result.IsValid);
-
-            return result.Result;
         }
 
         private Task<Window> HandleProvidedAddress()
@@ -201,7 +188,7 @@ namespace Nethermind.BeamWallet.Modules.Addresses
             return Task.FromResult(_window);
         }
 
-        private void Back()
+        private static void Back()
         {
             Application.Top.Running = false;
             Application.RequestStop();

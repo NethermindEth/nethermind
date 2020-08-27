@@ -16,13 +16,11 @@
 // 
 
 using System;
-using System.Globalization;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.BeamWallet.Clients;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Facade.Proxy;

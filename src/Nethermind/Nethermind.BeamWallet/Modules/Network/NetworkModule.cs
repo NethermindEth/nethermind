@@ -37,16 +37,17 @@ namespace Nethermind.BeamWallet.Modules.Network
 
         public Task<Window> InitAsync()
         {
-            CheckRunnerStatusAsync();
+            UpdateRunnerStatusAsync();
             CreateWindow();
             InitNetworks();
 
             return Task.FromResult(_window);
         }
 
-        private async Task CheckRunnerStatusAsync()
+        private async Task UpdateRunnerStatusAsync()
         {
-            var runnerRunning = await _runnerValidator.IsRunningAsync();
+            var runnerRunning = await Extensions.TryExecuteAsync(() => _runnerValidator.IsRunningAsync(),
+                validator: r => r is true);
             if (runnerRunning)
             {
                 NetworkSelected?.Invoke(this, string.Empty);
@@ -73,14 +74,11 @@ namespace Nethermind.BeamWallet.Modules.Network
                 _network = "goerli";
                 NetworkSelected?.Invoke(this, _network);
             };
-            quitButton.Clicked = () =>
-            {
-                Quit();
-            };
+            quitButton.Clicked = Quit;
             _window.Add(mainnetButton, goerliButton, quitButton);
         }
 
-        private void Quit()
+        private static void Quit()
         {
             Application.Top.Running = false;
             Application.RequestStop();
