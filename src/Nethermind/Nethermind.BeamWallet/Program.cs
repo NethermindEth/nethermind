@@ -40,7 +40,7 @@ namespace Nethermind.BeamWallet
             var ethJsonRpcClientProxyMaxRetries = new EthJsonRpcClientProxy(jsonRpcClientProxyMaxRetries);
             var jsonRpcWalletClientProxyMaxRetries = new JsonRpcWalletClientProxy(jsonRpcClientProxyMaxRetries);
             var runnerValidator = new RunnerValidator(httpClient, DefaultUrl);
-            var networkModule = new NetworkModule(runnerValidator);
+            var networkModule = new NetworkModule();
             networkModule.NetworkSelected += async (_, network) =>
             {
                 var initModule = new InitModule(ethJsonRpcClientProxyMaxRetries, runnerValidator, network);
@@ -53,18 +53,23 @@ namespace Nethermind.BeamWallet
 
                         AddAuthorizationHeader(httpClient, addressesEvent.NodeAddress);
 
-                        var balanceModule = new BalanceModule(ethJsonRpcClientProxyMaxRetries, addressesEvent.AccountAddress);
-                        balanceModule.TransferClicked += async (_, transferEvent) =>
+                        Application.MainLoop.Invoke(async () =>
                         {
-                            var transferModule = new TransferModule(ethJsonRpcClientProxyMaxRetries, jsonRpcWalletClientProxyMaxRetries,
-                                transferEvent.Address, transferEvent.Balance);
-                            var transferWindow = await transferModule.InitAsync();
-                            Application.Top.Add(transferWindow);
-                            Application.Run(transferWindow);
-                        };
-                        var balanceWindow = await balanceModule.InitAsync();
-                        Application.Top.Add(balanceWindow);
-                        Application.Run(balanceWindow);
+                            var balanceModule = new BalanceModule(ethJsonRpcClientProxyMaxRetries,
+                                addressesEvent.AccountAddress);
+                            balanceModule.TransferClicked += async (_, transferEvent) =>
+                            {
+                                var transferModule = new TransferModule(ethJsonRpcClientProxyMaxRetries,
+                                    jsonRpcWalletClientProxyMaxRetries,
+                                    transferEvent.Address, transferEvent.Balance);
+                                var transferWindow = await transferModule.InitAsync();
+                                Application.Top.Add(transferWindow);
+                                Application.Run(transferWindow);
+                            };
+                            var balanceWindow = await balanceModule.InitAsync();
+                            Application.Top.Add(balanceWindow);
+                            Application.Run(balanceWindow);
+                        });
                     };
                     var addressesWindow = await addressesModule.InitAsync();
                     Application.Top.Add(addressesWindow);

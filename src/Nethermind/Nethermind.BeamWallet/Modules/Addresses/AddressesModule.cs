@@ -89,7 +89,10 @@ namespace Nethermind.BeamWallet.Modules.Addresses
 
             _okButton = new Button(35, 18, "OK");
             _backButton = new Button(25, 18, "Back");
-            _backButton.Clicked = Back;
+            _backButton.Clicked = () =>
+            {
+                Back();
+            };
 
             _okButton.Clicked = async () =>
             {

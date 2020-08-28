@@ -19,6 +19,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.BeamWallet.Modules.Events;
@@ -76,19 +77,22 @@ namespace Nethermind.BeamWallet.Modules.Balance
 
         private async Task UpdateBalanceAsync()
         {
-            if (_syncingInfoLabel is null || _balanceValueLabel is null || _address is null)
+            if (_syncingInfoLabel is null || _address is null)
             {
                 return;
             }
 
-            var balance = await GetBalanceAsync();
-            if (!balance.HasValue || balance.Value == 0)
+            var (balance, blockNumber) = await GetBalanceAsync();
+            if (!balance.HasValue || (balance.Value == 0 && blockNumber == 0))
             {
                 return;
             }
 
             _balance = balance.Value;
-            _window.Remove(_balanceValueLabel);
+            if (_balanceValueLabel is {})
+            {
+                _window.Remove(_balanceValueLabel);
+            }
             _balanceValueLabel = new Label(10, 3, $"{_balance} ETH");
             _window.Remove(_syncingInfoLabel);
             _window.Add(_balanceValueLabel);
@@ -129,37 +133,38 @@ namespace Nethermind.BeamWallet.Modules.Balance
             _lastBlockNumber = result.Result.Value;
         }
 
-        private async Task<decimal?> GetBalanceAsync()
-        {
-            try
+        private Task<(decimal? balance, long blockNumber)> GetBalanceAsync()
+            => Extensions.TryExecuteAsync<(decimal? balance, long blockNumber)>(async () =>
             {
-                var blockNumberResult = await GetBlockNumberAsync();
-                var blockNumber = blockNumberResult ?? 0;
-                RpcResult<UInt256?> result;
-                if (blockNumber != 0)
+                try
                 {
-                    result = await _ethJsonRpcClientProxy.eth_getBalance(_address,
-                        BlockParameterModel.FromNumber(blockNumber));
-                }
-                else
-                {
-                    result = await _ethJsonRpcClientProxy.eth_getBalance(_address);
-                }
+                    var blockNumberResult = await GetBlockNumberAsync();
+                    var blockNumber = blockNumberResult ?? 0;
+                    RpcResult<UInt256?> result;
+                    if (blockNumber != 0)
+                    {
+                        result = await _ethJsonRpcClientProxy.eth_getBalance(_address,
+                            BlockParameterModel.FromNumber(blockNumber));
+                    }
+                    else
+                    {
+                        result = await _ethJsonRpcClientProxy.eth_getBalance(_address);
+                    }
 
-                if (!result.IsValid || !result.Result.HasValue)
-                {
-                    return null;
-                }
+                    if (!result.IsValid || !result.Result.HasValue)
+                    {
+                        return (null, blockNumber);
+                    }
 
-                return WeiToEth(result.Result);
-            }
-            catch (Exception ex)
-            {
-                MessageBox.ErrorQuery(50, 7, "Error", "There was an error while " +
-                                                      "getting a balance. (ESC to close)");
-                return null;
-            }
-        }
+                    return (WeiToEth(result.Result), blockNumber);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.ErrorQuery(50, 7, "Error", "There was an error while " +
+                                                          "getting a balance. (ESC to close)");
+                    return (null, default);
+                }
+            });
 
         private async Task GetTokensBalanceAsync()
         {
@@ -191,21 +196,16 @@ namespace Nethermind.BeamWallet.Modules.Balance
         {
             try
             {
-                RpcResult<byte[]> result;
-                do
-                {
-                    result = await _ethJsonRpcClientProxy.eth_call(GetTransactionModel(token),
-                        _lastBlockNumber.HasValue
-                            ? BlockParameterModel.FromNumber(_lastBlockNumber.Value)
-                            : BlockParameterModel.Latest);
-                } while (!result.IsValid);
+                var result = await Extensions.TryExecuteAsync(() => 
+                    _ethJsonRpcClientProxy.eth_call(GetTransactionModel(token),
+                    _lastBlockNumber.HasValue
+                        ? BlockParameterModel.FromNumber(_lastBlockNumber.Value)
+                        : BlockParameterModel.Latest));
 
-                return result.IsValid
-                    ? new Token(token.Name, token.Address)
-                    {
-                        Balance = UInt256.Parse(result.Result.ToHexString(), NumberStyles.HexNumber)
-                    }
-                    : null;
+                return new Token(token.Name, token.Address)
+                {
+                    Balance = UInt256.Parse(result.ToHexString(), NumberStyles.HexNumber)
+                };
             }
             catch (Exception ex)
             {
@@ -234,16 +234,18 @@ namespace Nethermind.BeamWallet.Modules.Balance
                 CopyToClipboard(_address.ToString());
             };
 
-            _window.Add(addressLabel, copyAddressButton, balanceLabel, _syncingInfoLabel);
-
-            decimal? balance;
-            do
+            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
             {
-                balance = await GetBalanceAsync();
-                await Task.Delay(1000);
-            } while (!balance.HasValue);
+                _window.Add(copyAddressButton);
+            }
 
-            _balance = balance.Value;
+            _window.Add(addressLabel, balanceLabel, _syncingInfoLabel);
+
+            var (balance, blockNumber) = await GetBalanceAsync();
+            if (!balance.HasValue || (balance.Value == 0 && blockNumber == 0))
+            {
+                return;
+            }
             if (await GetBlockNumberAsync() == 0)
             {
                 _balanceValueLabel = new Label(10, 3, "Syncing... Please wait for the balance." +
@@ -256,6 +258,8 @@ namespace Nethermind.BeamWallet.Modules.Balance
             _window.Remove(_syncingInfoLabel);
             _window.Add(_balanceValueLabel);
             _tokensSyncingInfoLabel = new Label(1, 5, "Tokens balance syncing...");
+            _window.Add(_transferButton);
+            Application.Refresh();
             var netVersionResult = await _ethJsonRpcClientProxy.net_version();
             if (netVersionResult.Result == "1")
             {
@@ -264,12 +268,9 @@ namespace Nethermind.BeamWallet.Modules.Balance
                 await GetTokensBalanceAsync();
                 _window.Remove(_tokensSyncingInfoLabel);
             }
-
-            _window.Add(_transferButton);
-            Application.Refresh();
         }
 
-        private void CopyToClipboard(string address)
+        private static void CopyToClipboard(string address)
         {
             try
             {
