@@ -5,6 +5,8 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.JsonRpc.Modules;
 using System.Text;
+using System.Threading.Tasks;
+using Nethermind.GitBook.Extensions;
 
 namespace Nethermind.GitBook
 {
@@ -87,8 +89,7 @@ namespace Nethermind.GitBook
                 docBuilder.AppendLine();
                 docBuilder.AppendLine(@$"#### Return type");
 
-                //assume that there will be only one generic argument in each rpc method return type
-                Type returnType = method.ReturnType.GetGenericArguments()[0];
+                Type returnType = GetTypeFromWrapper(method.ReturnType);
                 string returnRpcType = GetJsonRpcType(returnType, rpcTypesToDescribe);
 
                 docBuilder.AppendLine(@$"`{returnRpcType}`");
@@ -109,6 +110,11 @@ namespace Nethermind.GitBook
 
         private string GetJsonRpcType(Type type, List<Type> rpcTypesToDescribe)
         {
+            if (type.IsNullable())
+            {
+                type = Nullable.GetUnderlyingType(type);
+            }
+
             var rpcType = type.Name switch
             {
                 "Byte[]" => "Data",
@@ -153,6 +159,31 @@ namespace Nethermind.GitBook
 
                 rpcModuleBuilder.AppendLine();
             }
+        }
+
+        private Type GetTypeFromWrapper(Type resultWrapper)
+        {
+            Type returnType;
+
+            //this is for situation when we have Task<ResultWrapper<T>> and we want to get T out of it 
+            if (resultWrapper.GetGenericTypeDefinition() == typeof(Task<>))
+            {
+                returnType = resultWrapper.GetGenericArguments()[0].GetGenericArguments()[0];
+            }
+            //when we know that there is only ResultWrapper<T> and we want to return T
+            else
+            {
+                returnType = resultWrapper.GetGenericArguments()[0];
+            }
+
+            bool isNullableType = returnType.IsNullable();
+
+            if(isNullableType)
+            {
+                return Nullable.GetUnderlyingType(returnType);
+            }
+
+            return returnType.IsArray ? returnType.GetElementType() : returnType;
         }
     }
 }
