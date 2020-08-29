@@ -13,6 +13,15 @@ namespace Nethermind.GasService
         /// <param name="broadcast"><value>True</value> if the wrapped transaction should be broadcast to the network by the subsidizer, otherwise <value>false</value></param>
         /// <returns>Status of the subsidy with a wrapped transaction or <value>null</value> if transaction not yet created.</returns>
         Task<SubsidyResult> Subsidize(Transaction signedTx, bool broadcast);
-        Task<SubsidyResult> Subsidize(Address recipient, UInt256 value, byte[]? callData = null);
+        
+        /// <summary>
+        /// Creates a subsidized transaction based on the parameters below and broadcasts it to the network.
+        /// </summary>
+        /// <param name="recipient">Transaction recipient address.</param>
+        /// <param name="value">Value in wei to send.</param>
+        /// <param name="callData">Call data for the transaction to send. Check target contract ABI for the format.</param>
+        /// <param name="broadcast"><value>True</value> if the wrapped transaction should be broadcast to the network by the subsidizer, otherwise <value>false</value></param>
+        /// <returns>Status of the subsidy with a wrapped transaction or <value>null</value> if transaction not yet created.</returns>
+        Task<SubsidyResult> Subsidize(Address recipient, UInt256 value, byte[]? callData = null, bool broadcast = true);
     }
 }
