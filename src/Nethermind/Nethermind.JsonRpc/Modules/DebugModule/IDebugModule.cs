@@ -17,9 +17,11 @@
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Evm.Tracing.GethStyle;
+using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule
 {
@@ -93,5 +95,8 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         
         [JsonRpcMethod(Description = "Sets the block number up to which receipts will be migrated to (Nethermind specific).")]
         Task<ResultWrapper<bool>> debug_migrateReceipts(long blockNumber);
+        
+        [JsonRpcMethod(Description = "Insert receipts for the block after verifying receipts root correctness.")]
+        Task<ResultWrapper<bool>> debug_insertReceipts(BlockParameter blockParameter, ReceiptForRpc[] receiptForRpc);
     }
 }
