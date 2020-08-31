@@ -4,7 +4,9 @@
     {
         static void Main(string[] args)
         {
-            JsonRpcGenerator rpcGenerator = new JsonRpcGenerator();
+            MarkdownGenerator markdownGenerator = new MarkdownGenerator();
+
+            JsonRpcGenerator rpcGenerator = new JsonRpcGenerator(markdownGenerator);
             rpcGenerator.Generate();
         }
     }
