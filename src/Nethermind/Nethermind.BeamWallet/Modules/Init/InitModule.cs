@@ -104,11 +104,11 @@ namespace Nethermind.BeamWallet.Modules.Init
                 AddRunnerInfo("Nethermind is already running.");
                 await SetNetwork();
                 return;
-            }
-            
+            }    
+            _timer = new Timer(Update, null, TimeSpan.Zero, TimeSpan.FromSeconds(8));
+
             try
             {
-                _timer = new Timer(Update, null, TimeSpan.Zero, TimeSpan.FromSeconds(8));
                 _process.Start();
                 _processId = _process.Id;
                 _backgroundRunnerIsRunning = true;

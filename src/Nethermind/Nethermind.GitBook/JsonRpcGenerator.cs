@@ -76,7 +76,6 @@ namespace Nethermind.GitBook
                 docBuilder.AppendLine(@"#### **Parameters**");
                 docBuilder.AppendLine();
 
-
                 ParameterInfo[] parameters = method.GetParameters();
                 rpcTypesToDescribe = new List<Type>();
 

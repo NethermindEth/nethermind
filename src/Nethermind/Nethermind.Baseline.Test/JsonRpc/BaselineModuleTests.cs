@@ -11,6 +11,7 @@ using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.Baseline.JsonRpc;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -427,7 +428,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             await testRpc.AddBlock();
 
             await baselineModule.baseline_track(receipt.ContractAddress);
-            var result = await baselineModule.baseline_getLeaves(receipt.ContractAddress, 0, 1);
+            var result = await baselineModule.baseline_getLeaves(receipt.ContractAddress, new UInt256[] {0, 1});
             await testRpc.AddBlock();
 
             result.Result.ResultType.Should().Be(ResultType.Success);
@@ -461,7 +462,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             await baselineModule.baseline_insertLeaf(TestItem.Addresses[1], receipt.ContractAddress, TestItem.KeccakH);
             await testRpc.AddBlock();
 
-            var result = await baselineModule.baseline_getLeaves(receipt.ContractAddress, 0, 1);
+            var result = await baselineModule.baseline_getLeaves(receipt.ContractAddress, new UInt256[] {0, 1});
             await testRpc.AddBlock();
 
             result.Result.ResultType.Should().Be(ResultType.Failure);
@@ -493,7 +494,8 @@ namespace Nethermind.Baseline.Test.JsonRpc
             await baselineModule.baseline_insertLeaf(TestItem.Addresses[1], receipt.ContractAddress, TestItem.KeccakH);
             await testRpc.AddBlock();
 
-            var result = await baselineModule.baseline_getLeaves(receipt.ContractAddress, 0, (UInt256) uint.MaxValue + 1);
+            var result = await baselineModule.baseline_getLeaves(
+                receipt.ContractAddress, new UInt256[] {0, (UInt256) uint.MaxValue + 1});
             await testRpc.AddBlock();
 
             result.Result.ResultType.Should().Be(ResultType.Failure);
@@ -639,7 +641,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             Task task1 = new Task(trackAction);
             Task task2 = new Task(trackAction);
             Task task3 = new Task(trackAction);
-            
+
             task1.Start();
             task2.Start();
             task3.Start();
@@ -856,14 +858,18 @@ namespace Nethermind.Baseline.Test.JsonRpc
             
             await baselineModule.baseline_track(contract);
 
-            for (int i = 0; i < 32; i++)
+            for (int i = 0; i < 16; i++)
             {
                 Stopwatch stopwatch = Stopwatch.StartNew();
                 await baselineModule.baseline_insertLeaf(TestItem.Addresses[taskId], contract, TestItem.Keccaks[i % TestItem.Keccaks.Length]);
                 await testRpc.AddBlock();
-                var siblings = (await baselineModule.baseline_getSiblings(contract, 0)).Data;
-                var root = (await baselineModule.baseline_getRoot(contract)).Data;
-                var result = (await baselineModule.baseline_verify(contract, root, TestItem.Keccaks[0], siblings)).Data;
+                Block headBlock = testRpc.BlockTree.Head;
+                BaselineTreeNode[] siblings = (await baselineModule.baseline_getSiblings(
+                    contract, 0, new BlockParameter(headBlock.Number))).Data;
+                Keccak root = (await baselineModule.baseline_getRoot(
+                    contract, new BlockParameter(headBlock.Number))).Data;
+                bool result = (await baselineModule.baseline_verify(
+                    contract, root, TestItem.Keccaks[0], siblings, new BlockParameter(headBlock.Number))).Data;
                 if (!result)
                 {
                     throw new InvalidOperationException($"Failed to verify at {contract}, task {taskId}, iteration {i}, root {root}");
