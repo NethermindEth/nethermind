@@ -12,6 +12,13 @@ namespace Nethermind.GitBook
 {
     public class JsonRpcGenerator
     {
+        private readonly MarkdownGenerator _markdownGenerator;
+
+        public JsonRpcGenerator(MarkdownGenerator markdownGenerator)
+        {
+           _markdownGenerator = markdownGenerator; 
+        }
+
         public void Generate()
         {
             string docsDir = DocsDirFinder.FindJsonRpc();
@@ -64,8 +71,11 @@ namespace Nethermind.GitBook
                 docBuilder.AppendLine();
                 docBuilder.AppendLine(@$"{attribute?.Description ?? "_description missing_"} ");
                 docBuilder.AppendLine();
+                _markdownGenerator.OpenTabs(docBuilder);
+                _markdownGenerator.CreateTab(docBuilder, "Request");
                 docBuilder.AppendLine(@"#### **Parameters**");
                 docBuilder.AppendLine();
+
 
                 ParameterInfo[] parameters = method.GetParameters();
                 rpcTypesToDescribe = new List<Type>();
@@ -86,6 +96,9 @@ namespace Nethermind.GitBook
                     }
                 }
 
+                _markdownGenerator.CloseTab(docBuilder);
+                _markdownGenerator.CreateTab(docBuilder, "Response");
+
                 docBuilder.AppendLine();
                 docBuilder.AppendLine(@$"#### Return type");
 
@@ -95,9 +108,13 @@ namespace Nethermind.GitBook
                 docBuilder.AppendLine(@$"`{returnRpcType}`");
                 docBuilder.AppendLine();
 
+                _markdownGenerator.CloseTab(docBuilder);
+
                 if (rpcTypesToDescribe.Count != 0)
                 {
+                    _markdownGenerator.CreateTab(docBuilder, "Object definitions");
                     AddRpcObjectsDescription(docBuilder, rpcTypesToDescribe);
+                    _markdownGenerator.CloseTab(docBuilder);
                 }
 
             }
