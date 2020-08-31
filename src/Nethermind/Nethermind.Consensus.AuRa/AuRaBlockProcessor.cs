@@ -40,7 +40,7 @@ namespace Nethermind.Consensus.AuRa
     public class AuRaBlockProcessor : BlockProcessor
     {
         private readonly IBlockTree _blockTree;
-        private readonly AuRaContractGasLimitOverride _gasLimitCalculator;
+        private readonly AuRaContractGasLimitOverride _gasLimitOverride;
         private readonly ITxFilter _txFilter;
         private readonly ILogger _logger;
         private IAuRaValidator _auRaValidator;
@@ -59,13 +59,13 @@ namespace Nethermind.Consensus.AuRa
             ILogManager logManager,
             IBlockTree blockTree,
             ITxFilter txFilter = null,
-            AuRaContractGasLimitOverride gasLimitCalculator = null)
+            AuRaContractGasLimitOverride gasLimitOverride = null)
             : base(specProvider, blockValidator, rewardCalculator, transactionProcessor, stateDb, codeDb, stateProvider, storageProvider, txPool, receiptStorage, logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _logger = logManager?.GetClassLogger<AuRaBlockProcessor>() ?? throw new ArgumentNullException(nameof(logManager));
             _txFilter = txFilter ?? NullTxFilter.Instance;
-            _gasLimitCalculator = gasLimitCalculator;
+            _gasLimitOverride = gasLimitOverride;
         }
 
         public IAuRaValidator AuRaValidator
@@ -99,7 +99,7 @@ namespace Nethermind.Consensus.AuRa
         private void ValidateGasLimit(BlockHeader header, BlockHeader parentHeader)
         {
             long? expectedGasLimit = null;
-            if (_gasLimitCalculator?.IsGasLimitValid(parentHeader, header.GasLimit, out expectedGasLimit) == false)
+            if (_gasLimitOverride?.IsGasLimitValid(parentHeader, header.GasLimit, out expectedGasLimit) == false)
             {
                 if (_logger.IsError) _logger.Error($"Invalid gas limit for block {header.Number}, hash {header.Hash}, expected value from contract {expectedGasLimit}, but found {header.GasLimit}.");
                 throw new InvalidBlockException(header.Hash);
