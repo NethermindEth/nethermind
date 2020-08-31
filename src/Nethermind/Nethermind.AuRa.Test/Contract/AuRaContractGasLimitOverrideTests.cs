@@ -86,7 +86,7 @@ namespace Nethermind.AuRa.Test.Contract
                     LimboLogs.Instance,
                     BlockTree,
                     null,
-                    GasLimitCalculator);
+                    GasLimitCalculator as AuRaContractGasLimitOverride);
             }
 
             protected override Task AddBlocksOnStart() => Task.CompletedTask;

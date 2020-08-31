@@ -70,7 +70,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.LogManager,
                 _context.BlockTree,
                 GetTxPermissionFilter(),
-                GetGasLimitCalculator());
+                GetGasLimitCalculator() as AuRaContractGasLimitOverride);
             
             var auRaValidator = CreateAuRaValidator(processor);
             processor.AuRaValidator = auRaValidator;
