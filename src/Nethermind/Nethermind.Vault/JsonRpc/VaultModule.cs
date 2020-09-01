@@ -18,8 +18,6 @@ using System;
 using Nethermind.Logging;
 using System.Threading.Tasks;
 using Nethermind.JsonRpc;
-using System.Collections.Generic;
-using Newtonsoft.Json;
 using Nethermind.Vault.Styles;
 using provide.Model.Vault;
 
@@ -43,161 +41,135 @@ namespace Nethermind.Vault.JsonRpc
             return ResultWrapper<Key>.Success(result);
         }
 
-        public async Task<ResultWrapper<object>> vault_createSecret(string vaultId, SecretArgs args)
+        public async Task<ResultWrapper<Secret>> vault_createSecret(string vaultId, Secret secret)
         {
             try
             {
-                var result = await _initVault.CreateVaultSecret(_vaultConfig.Token, vaultId, args.ToDictionary());
-
-                return ReturnResult(result);
+                Secret result = await _vaultService.CreateSecret(vaultId, secret);
+                return ResultWrapper<Secret>.Success(result);
             }
             catch (Exception e)
             {
-                return ResultWrapper<object>.Fail(e.ToString());
+                return ResultWrapper<Secret>.Fail(e.ToString());
             }
         }
 
-        public async Task<ResultWrapper<object>> vault_createVault(VaultArgs args)
+        public async Task<ResultWrapper<provide.Model.Vault.Vault>> vault_createVault(provide.Model.Vault.Vault vault)
         {
             try
             {
-                var result = await _initVault.CreateVault(_vaultConfig.Token, args.ToDictionary());
-
-                return ReturnResult(result);
+                provide.Model.Vault.Vault vaultId = await _vaultService.CreateVault(vault);
+                return ResultWrapper<provide.Model.Vault.Vault>.Success(vaultId);
             }
             catch (Exception e)
             {
-                return ResultWrapper<object>.Fail(e.ToString());
+                return ResultWrapper<provide.Model.Vault.Vault>.Fail(e.ToString());
             }
         }
 
-        public async Task<ResultWrapper<object>> vault_deleteVault(string vaultId)
+        public async Task<ResultWrapper<provide.Model.Vault.Vault>> vault_deleteVault(string vaultId)
         {
             try
             {
-                var result = await _initVault.DeleteVault(_vaultConfig.Token, vaultId);
-
-                return ReturnResult(result);
+                provide.Model.Vault.Vault result = await _vaultService.DeleteVault(vaultId);
+                return ResultWrapper<provide.Model.Vault.Vault>.Success(result);
             }
             catch (Exception e)
             {
-                return ResultWrapper<object>.Fail(e.ToString());
+                return ResultWrapper<provide.Model.Vault.Vault>.Fail(e.ToString());
             }
         }
 
-        public async Task<ResultWrapper<object>> vault_deleteKey(string vaultId, string keyId)
+        public async Task<ResultWrapper<Key>> vault_deleteKey(string vaultId, string keyId)
         {
             try
             {
-                var result = await _initVault.DeleteVaultKey(_vaultConfig.Token, vaultId, keyId);
-
-                return ReturnResult(result);
+                Key result = await _vaultService.DeleteKey(vaultId, keyId);
+                return ResultWrapper<Key>.Success(result);
             }
             catch (Exception e)
             {
-                return ResultWrapper<object>.Fail(e.ToString());
+                return ResultWrapper<Key>.Fail(e.ToString());
             }
         }
 
-        public async Task<ResultWrapper<object>> vault_deleteSecret(string vaultId, string secretId)
+        public async Task<ResultWrapper<Secret>> vault_deleteSecret(string vaultId, string secretId)
         {
             try
             {
-                var result = await _initVault.DeleteVaultSecret(_vaultConfig.Token, vaultId, secretId);
+                var result = await _vaultService.DeleteSecret(vaultId, secretId);
 
-                return ReturnResult(result);
+                return ResultWrapper<Secret>.Success(result);
             }
             catch (Exception e)
             {
-                return ResultWrapper<object>.Fail(e.ToString());
+                return ResultWrapper<Secret>.Fail(e.ToString());
             }
         }
 
-        public async Task<ResultWrapper<object>> vault_listKeys(string vaultId)
+        public async Task<ResultWrapper<Key[]>> vault_listKeys(string vaultId)
         {
             try
             {
-                var args = new Dictionary<string, object> { };
-                var result = await _initVault.ListVaultKeys(_vaultConfig.Token, vaultId, args);
-
-                return ReturnResult(result);
+                var result = await _vaultService.ListKeys(vaultId);
+                return ResultWrapper<Key[]>.Success(result);
             }
             catch (Exception e)
             {
-                return ResultWrapper<object>.Fail(e.ToString());
+                return ResultWrapper<Key[]>.Fail(e.ToString());
             }
         }
 
-        public async Task<ResultWrapper<object>> vault_listSecrets(string vaultId)
+        public async Task<ResultWrapper<Secret[]>> vault_listSecrets(string vaultId)
         {
             try
             {
-                var args = new Dictionary<string, object> { };
-                var result = await _initVault.ListVaultSecrets(_vaultConfig.Token, vaultId, args);
-
-                return ReturnResult(result);
+                Secret[] result = await _vaultService.ListSecrets(vaultId);
+                return ResultWrapper<Secret[]>.Success(result);
             }
             catch (Exception e)
             {
-                return ResultWrapper<object>.Fail(e.ToString());
+                return ResultWrapper<Secret[]>.Fail(e.ToString());
             }
         }
 
-        public async Task<ResultWrapper<object>> vault_listVaults()
+        public async Task<ResultWrapper<string[]>> vault_listVaults()
         {
             try
             {
-                var args = new Dictionary<string, object> { };
-                var result = await _initVault.ListVaults(_vaultConfig.Token, args);
+                var result = await _vaultService.ListVaultIds();
 
-                return ReturnResult(result);
+                return ResultWrapper<string[]>.Success(result);
             }
             catch (Exception e)
             {
-                return ResultWrapper<object>.Fail(e.ToString());
+                return ResultWrapper<string[]>.Fail(e.ToString());
             }
         }
 
-        public async Task<ResultWrapper<object>> vault_signMessage(string vaultId, string keyId, string message)
+        public async Task<ResultWrapper<string>> vault_signMessage(string vaultId, string keyId, string message)
         {
             try
             {
-                var args = new Dictionary<string, object> { };
-                var result = await _initVault.SignMessage(_vaultConfig.Token, vaultId, keyId, message);
-
-                return ReturnResult(result);
+                string result = await _vaultService.Sign(vaultId, keyId, message);
+                return ResultWrapper<string>.Success(result);
             }
             catch (Exception e)
             {
-                return ResultWrapper<object>.Fail(e.ToString());
+                return ResultWrapper<string>.Fail(e.ToString());
             }
         }
 
-        public async Task<ResultWrapper<object>> vault_verifySignature(string vaultId, string keyId, string message, string signature)
+        public async Task<ResultWrapper<bool>> vault_verifySignature(string vaultId, string keyId, string message, string signature)
         {
             try
             {
-                var args = new Dictionary<string, object> { };
-                var result = await _initVault.VerifySignature(_vaultConfig.Token, vaultId, keyId, message, signature);
-
-                return ReturnResult(result);
+                bool result = await _vaultService.Verify(vaultId, keyId, message, signature);
+                return ResultWrapper<bool>.Success(result);
             }
             catch (Exception e)
             {
-                return ResultWrapper<object>.Fail(e.ToString());
-            }
-        }
-
-        private ResultWrapper<object> ReturnResult((int, string) result)
-        {
-            if (result.Item1 == 200 || result.Item1 == 201)
-            {
-                dynamic jsonResult = JsonConvert.DeserializeObject(result.Item2);
-                return ResultWrapper<object>.Success(jsonResult);
-            }
-            else
-            {
-                return ResultWrapper<object>.Fail(result.Item2);
+                return ResultWrapper<bool>.Fail(e.ToString());
             }
         }
     }

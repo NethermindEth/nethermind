@@ -62,14 +62,14 @@ namespace Nethermind.Vault
                 .Select(v => v.Id.ToString()).ToArray();
         }
 
-        public async Task<string> CreateVault(provide.Model.Vault.Vault vault)
+        public async Task<provide.Model.Vault.Vault> CreateVault(provide.Model.Vault.Vault vault)
         {
             if(_logger.IsDebug) _logger.Debug($"Creating a vault {vault.Name} {vault.Description}");
             provide.Model.Vault.Vault result = await _vaultService.CreateVault(vault);
-            return result.Id?.ToString();
+            return result?.ToString();
         }
 
-        public async Task DeleteVault(string vaultId)
+        public async Task<provide.Model.Vault.Vault> DeleteVault(string vaultId)
         {
             if(_logger.IsDebug) _logger.Debug($"Deleting vault {vaultId}");
             await _vaultService.DeleteVault(vaultId);

@@ -23,11 +23,21 @@ namespace Nethermind.Vault
     {
         Task<string[]> ListVaultIds();
         
-        Task<string> CreateVault(provide.Model.Vault.Vault vault);
+        Task<Key[]> ListKeys(string vaultId);
+        
+        Task<Secret[]> ListSecrets(string vaultId);
 
-        Task DeleteVault(string vaultId);
+        Task<provide.Model.Vault.Vault> CreateVault(provide.Model.Vault.Vault vault);
+
+        Task<provide.Model.Vault.Vault> DeleteVault(string vaultId);
+        
+        Task Reset(string scheme, string host, string path, string token);
         
         Task ResetToken(string token);
+        
+        Task<Secret> CreateSecret(string vaultId, Secret secret);
+        
+        Task<Secret> DeleteSecret(string vaultId, string secretId);
 
         Task<Key> CreateKey(string vaultId, Key key);
 

@@ -14,11 +14,11 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Vault.Styles;
+using provide.Model.Vault;
 
 namespace Nethermind.Vault.JsonRpc
 {
@@ -29,66 +29,66 @@ namespace Nethermind.Vault.JsonRpc
             Description = "Creates a Vault",
             IsReadOnly = false,
             IsImplemented = true)]
-        Task<ResultWrapper<object>> vault_createVault(VaultArgs args);
+        Task<ResultWrapper<provide.Model.Vault.Vault>> vault_createVault(provide.Model.Vault.Vault args);
 
         [JsonRpcMethod(
             Description = "Deletes a Vault",
             IsReadOnly = false,
             IsImplemented = true)]
-        Task<ResultWrapper<object>> vault_deleteVault(string vaultId);
+        Task<ResultWrapper<provide.Model.Vault.Vault>> vault_deleteVault(string vaultId);
 
         [JsonRpcMethod(
             Description = "Displays a list of Vaults",
             IsReadOnly = false,
             IsImplemented = true)]
-        Task<ResultWrapper<object>> vault_listVaults();
+        Task<ResultWrapper<string[]>> vault_listVaults();
 
         [JsonRpcMethod(
             Description = "Displays a list of keys in a single Vault",
             IsReadOnly = false,
             IsImplemented = true)]
-        Task<ResultWrapper<object>> vault_listKeys(string vaultId);
+        Task<ResultWrapper<Key[]>> vault_listKeys(string vaultId);
 
         [JsonRpcMethod(
             Description = "Generates a new symmetric key or asymmetric keypair",
             IsReadOnly = false,
             IsImplemented = true)]
-        Task<ResultWrapper<object>> vault_createKey(string vaultId, KeyArgs args);
+        Task<ResultWrapper<Key>> vault_createKey(string vaultId, KeyArgs args);
 
         [JsonRpcMethod(
             Description = "Deletes a key from Vault",
             IsReadOnly = false,
             IsImplemented = true)]
-        Task<ResultWrapper<object>> vault_deleteKey(string vaultId, string keyId);
+        Task<ResultWrapper<Key>> vault_deleteKey(string vaultId, string keyId);
 
         [JsonRpcMethod(
             Description = "Retrieves a list of the secrets secured within the vault",
             IsReadOnly = false,
             IsImplemented = true)]
-        Task<ResultWrapper<object>> vault_listSecrets(string vaultId);
+        Task<ResultWrapper<Secret[]>> vault_listSecrets(string vaultId);
 
         [JsonRpcMethod(
             Description = "Creates a new secret within the vault",
             IsReadOnly = false,
             IsImplemented = true)]
-        Task<ResultWrapper<object>> vault_createSecret(string vaultId, SecretArgs args);
+        Task<ResultWrapper<Secret>> vault_createSecret(string vaultId, SecretArgs args);
 
         [JsonRpcMethod(
             Description = "Permanently removes the specified secret from the vault",
             IsReadOnly = false,
             IsImplemented = true)]
-        Task<ResultWrapper<object>> vault_deleteSecret(string vaultId, string secretId);
+        Task<ResultWrapper<Secret>> vault_deleteSecret(string vaultId, string secretId);
 
         [JsonRpcMethod(
             Description = "Securely signs the given message",
             IsReadOnly = false,
             IsImplemented = true)]
-        Task<ResultWrapper<object>> vault_signMessage(string vaultId, string keyId, string message);
+        Task<ResultWrapper<string>> vault_signMessage(string vaultId, string keyId, string message);
 
         [JsonRpcMethod(
             Description = "Verifies that a message was previously signed with a given key",
             IsReadOnly = false,
             IsImplemented = true)]
-        Task<ResultWrapper<object>> vault_verifySignature(string vaultId, string keyId, string message, string signature);
+        Task<ResultWrapper<bool>> vault_verifySignature(string vaultId, string keyId, string message, string signature);
     }
 }

@@ -22,7 +22,6 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
-using Nethermind.Vault.Config;
 using Nethermind.Vault.Styles;
 using Newtonsoft.Json;
 
@@ -111,9 +110,8 @@ namespace Nethermind.Vault
             }
 
             if (!parameters.ContainsKey("keyArgs")) throw new ArgumentNullException(nameof(parameters));
-
-            var vault = await SetWalletVault();
-            var result = await _initVault.CreateVaultKey(_vaultConfig.Token, vault, keyArgs.ToDictionary());
+            
+            var result = await _vaultService.CreateKey(vault, keyArgs.ToDictionary());
             dynamic key = JsonConvert.DeserializeObject(result.Item2);
             string address = Convert.ToString(key.address);
             var account = new Address(address);
