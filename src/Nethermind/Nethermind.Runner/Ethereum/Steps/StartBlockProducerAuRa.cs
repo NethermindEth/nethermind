@@ -128,7 +128,10 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.LogManager,
                 readOnlyTxProcessingEnv.BlockTree,
                 GetTxPermissionFilter(readOnlyTxProcessingEnv, readOnlyTxProcessorSource),
-                CreateGasLimitCalculator(readOnlyTxProcessorSource)) {AuRaValidator = _validator};
+                CreateGasLimitCalculator(readOnlyTxProcessorSource) as AuRaContractGasLimitOverride)
+            {
+                AuRaValidator = _validator
+            };
         }
 
         protected override ITxSource CreateTxSourceForProducer(ReadOnlyTxProcessingEnv processingEnv, ReadOnlyTxProcessorSource readOnlyTxProcessorSource)
