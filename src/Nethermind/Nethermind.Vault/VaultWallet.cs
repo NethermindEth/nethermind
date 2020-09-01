@@ -13,6 +13,7 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -27,49 +28,46 @@ using Newtonsoft.Json;
 
 namespace Nethermind.Vault
 {
-    public class VaultWallet: IVaultWallet
+    public class VaultWallet : IVaultWallet
     {
-        private readonly IVaultManager _vaultManager;
-        private readonly IVaultConfig _vaultConfig;
+        private readonly IVaultService _vaultService;
         private readonly ILogger _logger;
-        private readonly provide.Vault _initVault;
         private ConcurrentDictionary<Address, string> accounts;
-        // private string vault;
 
-
-        public VaultWallet(IVaultManager vaultManager, IVaultConfig vaultConfig, ILogManager logManager)
+        public VaultWallet(IVaultService vaultService, ILogManager logManager)
         {
-            _vaultConfig = vaultConfig ?? throw new ArgumentNullException(nameof(vaultConfig));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-
-            _vaultManager = new VaultManager(_vaultConfig, logManager);
-            _initVault = new provide.Vault(_vaultConfig.Host, _vaultConfig.Path, _vaultConfig.Scheme, _vaultConfig.Token);
+            _vaultService = vaultService;
             accounts = new ConcurrentDictionary<Address, string>();
         }
-        
+
         public async Task<Address[]> GetAccounts()
         {
             accounts = new ConcurrentDictionary<Address, string>();
-            var args = new Dictionary<string, object> {};
+            var args = new Dictionary<string, object>();
 
             var vault = await SetWalletVault();
 
-            var result = await _initVault.ListVaultKeys(_vaultConfig.Token, vault, args);
-            dynamic keys  = JsonConvert.DeserializeObject(result.Item2);
-            foreach(var key in keys)
+            var result = await _vaultService.ListVaultKeys(_vaultConfig.Token, vault, args);
+            dynamic keys = JsonConvert.DeserializeObject(result.Item2);
+            foreach (var key in keys)
             {
-                try 
+                try
                 {
                     string address = Convert.ToString(key.address);
                     // adds to accounts dict to have addresses assigned to key id's
                     string keyId = Convert.ToString(key.id);
                     accounts.TryAdd(new Address(address), keyId);
                     accounts.Keys.ToArray();
-                } 
-                catch (ArgumentNullException) {}
+                }
+                catch (ArgumentNullException)
+                {
+                }
             }
+
             return accounts.Keys.ToArray();
         }
+
         public async Task DeleteAccount(Address address)
         {
             var vault = await SetWalletVault();
@@ -81,10 +79,10 @@ namespace Nethermind.Vault
         {
             var vault = await SetWalletVault();
             string keyId = await GetKeyIdByAddress(address);
-            var result = await _initVault.SignMessage(_vaultConfig.Token, vault, keyId, message.ToString());   
-            dynamic sig  = JsonConvert.DeserializeObject(result.Item2);
+            var result = await _initVault.SignMessage(_vaultConfig.Token, vault, keyId, message.ToString());
+            dynamic sig = JsonConvert.DeserializeObject(result.Item2);
             string signature = Convert.ToString(sig.signature);
-            
+
             return new Signature(signature);
         }
 
@@ -92,9 +90,9 @@ namespace Nethermind.Vault
         {
             var vault = await SetWalletVault();
             string keyId = await GetKeyIdByAddress(address);
-            string sig = Convert.ToString(signature).Remove(0,2);
-            var result = await _initVault.VerifySignature(_vaultConfig.Token, vault, keyId, message.ToString(), sig);   
-            dynamic isVerified  = JsonConvert.DeserializeObject(result.Item2);
+            string sig = Convert.ToString(signature).Remove(0, 2);
+            var result = await _initVault.VerifySignature(_vaultConfig.Token, vault, keyId, message.ToString(), sig);
+            dynamic isVerified = JsonConvert.DeserializeObject(result.Item2);
             return isVerified.verified;
         }
 
@@ -102,7 +100,7 @@ namespace Nethermind.Vault
         {
             KeyArgs keyArgs = parameters["keyArgs"] as KeyArgs;
 
-            if (keyArgs == null) 
+            if (keyArgs == null)
             {
                 keyArgs = new KeyArgs();
                 keyArgs.Name = "name";
@@ -111,35 +109,22 @@ namespace Nethermind.Vault
                 keyArgs.Spec = "secp256k1";
                 keyArgs.Usage = "sign/verify";
             }
+
             if (!parameters.ContainsKey("keyArgs")) throw new ArgumentNullException(nameof(parameters));
 
             var vault = await SetWalletVault();
             var result = await _initVault.CreateVaultKey(_vaultConfig.Token, vault, keyArgs.ToDictionary());
-            dynamic key  = JsonConvert.DeserializeObject(result.Item2);
+            dynamic key = JsonConvert.DeserializeObject(result.Item2);
             string address = Convert.ToString(key.address);
             var account = new Address(address);
             accounts.TryAdd(account, Convert.ToString(key.id));
             return account;
         }
 
-        public async Task<string> GetKeyIdByAddress(Address address) 
+        public async Task<string> GetKeyIdByAddress(Address address)
         {
             await GetAccounts();
             return accounts.FirstOrDefault(acc => acc.Key.Equals(address)).Value;
-        }
-
-        public async Task<string> SetWalletVault()
-        {
-            if (_vaultConfig.VaultId != null) 
-            {
-                return _vaultConfig.VaultId;
-            }
-            else
-            {
-                // sets latest vault as default
-                string[] vaults = await _vaultManager.GetVaults();
-                return vaults[^1];
-            }
         }
     }
 }

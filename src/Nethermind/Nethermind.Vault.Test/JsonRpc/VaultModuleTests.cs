@@ -25,7 +25,7 @@ namespace Nethermind.Vault.Test.JsonRpc
         private KeyArgs _keyArgs;
         private VaultArgs _vaultArgs;
         private SecretArgs _secretArgs;
-        private VaultManager _vaultManager;
+        private VaultService _vaultService;
 
         [OneTimeSetUp]
         public async Task SetUp()

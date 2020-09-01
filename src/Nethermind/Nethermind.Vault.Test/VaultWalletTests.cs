@@ -16,7 +16,7 @@ namespace Nethermind.Vault.Test
     {
         private IVaultConfig _config;
         private VaultWallet _wallet;
-        private VaultManager _vaultManager;
+        private VaultService _vaultService;
         private string _vaultId;
 
         public TestContext TestContext { get; set; }
@@ -30,13 +30,13 @@ namespace Nethermind.Vault.Test
             _config.Path = "api/v1";
             _config.Token = $"bearer  {TestContext.Parameters["token"]}";
             
-            _vaultManager = new VaultManager(
+            _vaultService = new VaultService(
                 _config,
                 LimboLogs.Instance
             );
             
             _wallet = new VaultWallet(
-                _vaultManager,
+                _vaultService,
                 _config,
                 LimboLogs.Instance
             );
@@ -49,7 +49,7 @@ namespace Nethermind.Vault.Test
                 }
             };
             // Create a single Vault instance
-            _vaultId = await _vaultManager.NewVault(parameters);
+            _vaultId = await _vaultService.CreateVault(parameters);
         }
 
         [OneTimeTearDown]
@@ -60,7 +60,7 @@ namespace Nethermind.Vault.Test
             {
                 await _wallet.DeleteAccount(acc);
             }
-            await _vaultManager.DeleteVault(_vaultId);     
+            await _vaultService.DeleteVault(_vaultId);     
         }
 
         [Test]

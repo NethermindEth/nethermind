@@ -12,7 +12,7 @@ namespace Nethermind.Vault.Test
     public class VaultManagerTests
     {
         private IVaultConfig _config;
-        private VaultManager _vaultManager;
+        private VaultService _vaultService;
 
         public TestContext TestContext { get; set; }
 
@@ -24,7 +24,7 @@ namespace Nethermind.Vault.Test
             _config.Scheme = "http";
             _config.Path = "api/v1";
             _config.Token = $"bearer  {TestContext.Parameters["token"]}";
-            _vaultManager = new VaultManager(
+            _vaultService = new VaultService(
                 _config,
                 LimboLogs.Instance
             );
@@ -33,10 +33,10 @@ namespace Nethermind.Vault.Test
         [TearDown]
         public async Task TearDown()
         {
-            var vaults = await _vaultManager.GetVaults();
+            var vaults = await _vaultService.ListVaultIds();
             foreach (var vault in vaults)
             {
-                await _vaultManager.DeleteVault(vault);
+                await _vaultService.DeleteVault(vault);
             }      
         }
 
@@ -50,9 +50,9 @@ namespace Nethermind.Vault.Test
                     "vaultArgs", args
                 }
             };
-            var vault = await _vaultManager.NewVault(parameters);
+            var vault = await _vaultService.CreateVault(parameters);
 
-            var result = await _vaultManager.GetVaults();
+            var result = await _vaultService.ListVaultIds();
 
             result.Should().NotBeNull();
             result.Should().Contain(vault);
@@ -73,7 +73,7 @@ namespace Nethermind.Vault.Test
                 }
             };
 
-            var result = await _vaultManager.NewVault(parameters);
+            var result = await _vaultService.CreateVault(parameters);
 
             result.Should().NotBeNull();
         }
@@ -89,11 +89,11 @@ namespace Nethermind.Vault.Test
                     "vaultArgs", args
                 }
             };
-            var vaultId = await _vaultManager.NewVault(parameters);
+            var vaultId = await _vaultService.CreateVault(parameters);
 
-            await _vaultManager.DeleteVault(vaultId);
+            await _vaultService.DeleteVault(vaultId);
 
-            var vaults = await _vaultManager.GetVaults();
+            var vaults = await _vaultService.ListVaultIds();
 
             vaults.Should().NotContain(vaultId);
         }
