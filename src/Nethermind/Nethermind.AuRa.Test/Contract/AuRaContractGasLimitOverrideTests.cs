@@ -59,13 +59,7 @@ namespace Nethermind.AuRa.Test.Contract
             
             protected override BlockProcessor CreateBlockProcessor()
             {
-                var validator = new AuRaParameters.Validator()
-                {
-                    Addresses = TestItem.Addresses,
-                    ValidatorType = AuRaParameters.ValidatorType.List
-                };
-
-                var blockGasLimitContractTransition = this.ChainSpec.AuRa.BlockGasLimitContractTransitions.First();
+                var blockGasLimitContractTransition = ChainSpec.AuRa.BlockGasLimitContractTransitions.First();
                 var gasLimitContract = new BlockGasLimitContract(new AbiEncoder(), blockGasLimitContractTransition.Value, blockGasLimitContractTransition.Key,
                     new ReadOnlyTxProcessorSource(DbProvider, BlockTree, SpecProvider, LimboLogs.Instance));
                 

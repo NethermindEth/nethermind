@@ -103,12 +103,14 @@ namespace Nethermind.Runner.Ethereum.Steps
             ReadOnlyTxProcessingEnv processingEnv,
             ReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
-            UInt256 minGasPrice = _context.Config<IMiningConfig>().MinGasPrice;
-            ITxFilter filter = new MinGasPriceTxFilter(minGasPrice);
             ITxSource innerSource = new TxPoolTxSource(_context.TxPool, processingEnv.StateReader, _context.LogManager);
-            
-            ITxSource result = new FilteredTxSource(innerSource, filter);
-            return result;
+            return new FilteredTxSource(innerSource, CreateGasPriceTxFilter(readOnlyTxProcessorSource));
+        }
+
+        protected virtual ITxFilter CreateGasPriceTxFilter(ReadOnlyTxProcessorSource readOnlyTxProcessorSource)
+        {
+            UInt256 minGasPrice = _context.Config<IMiningConfig>().MinGasPrice;
+            return new MinGasPriceTxFilter(minGasPrice);
         }
 
         protected virtual BlockProcessor CreateBlockProcessor(
