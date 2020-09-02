@@ -84,8 +84,13 @@ namespace Nethermind.Vault
 
         public async Task DeleteAccount(Address address)
         {
-            Guid keyId = await RetrieveId(address);
-            Key deletedKey = await _vaultService.DeleteKey(_vaultId, keyId);
+            Guid? keyId = await RetrieveId(address);
+            if (keyId is null)
+            {
+                throw new KeyNotFoundException($"Account with the given address {address} could not be found");
+            }
+            
+            Key deletedKey = await _vaultService.DeleteKey(_vaultId, keyId.Value);
             if (deletedKey is null)
             {
                 throw new ApplicationException("Failed to delete vault account.");
@@ -100,8 +105,13 @@ namespace Nethermind.Vault
 
         public async Task<Signature> Sign(Address address, Keccak message)
         {
-            Guid keyId = await RetrieveId(address);
-            string signature = await _vaultService.Sign(_vaultId, keyId, message.ToString());
+            Guid? keyId = await RetrieveId(address);
+            if (keyId is null)
+            {
+                throw new KeyNotFoundException($"Account with the given address {address} could not be found");
+            }
+            
+            string signature = await _vaultService.Sign(_vaultId, keyId.Value, message.ToString());
             return new Signature(signature);
         }
 
@@ -117,15 +127,25 @@ namespace Nethermind.Vault
                 throw new ArgumentNullException(nameof(signature));
             }
 
-            Guid keyId = await RetrieveId(address);
+            Guid? keyId = await RetrieveId(address);
+            if (keyId is null)
+            {
+                throw new KeyNotFoundException($"Account with the given address {address} could not be found");
+            }
+            
             string sig = Convert.ToString(signature)!.Remove(0, 2);
-            bool result = await _vaultService.Verify(_vaultId, keyId, message.ToString(), sig);
+            bool result = await _vaultService.Verify(_vaultId, keyId.Value, message.ToString(), sig);
             return result;
         }
 
-        public async Task<Guid> RetrieveId(Address address)
+        public async Task<Guid?> RetrieveId(Address address)
         {
             await GetAccounts();
+            if (!_accounts.ContainsKey(address))
+            {
+                return null;
+            }
+            
             return _accounts[address];
         }
 
