@@ -41,6 +41,6 @@ namespace Nethermind.Consensus.AuRa.Contracts
         }
 
         public bool Certified(BlockHeader parentHeader, Address sender) => 
-            Constant.Call<bool>(parentHeader, nameof(Certified), sender);
+            Constant.Call<bool>(parentHeader, nameof(Certified), Address.Zero, sender);
     }
 }
