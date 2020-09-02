@@ -218,7 +218,7 @@ namespace Nethermind.Vault.Test.JsonRpc
         public async Task can_sign_a_message_with_a_given_key()
         {
             // string _message = "Test message";
-            string _message = Keccak.OfAnEmptyString.ToString();
+            string _message = Keccak.OfAnEmptyString.ToString(false);
 
             Key key = new Key();
             key.Name = "Test Key for Signature test";
@@ -247,7 +247,7 @@ namespace Nethermind.Vault.Test.JsonRpc
         public async Task can_verify_a_message_with_a_given_key_and_signature()
         {
             // string _message = "Test message";
-            string _message = Keccak.OfAnEmptyString.ToString();
+            string _message = Keccak.OfAnEmptyString.ToString(false);
             Key key = new Key();
             key.Name = "Test Key for Signature test";
             key.Description = "Test Key used for Signature test";
