@@ -173,5 +173,31 @@ namespace Nethermind.Vault.JsonRpc
                 return ResultWrapper<bool>.Fail(e);
             }
         }
+
+        public async Task<ResultWrapper<bool>> vault_setToken(string token)
+        {
+            try
+            {
+                await _vaultService.ResetToken(token);
+                return ResultWrapper<bool>.Success(true);
+            }
+            catch (Exception e)
+            {
+                return ResultWrapper<bool>.Fail(e);
+            }
+        }
+        
+        public async Task<ResultWrapper<bool>> vault_configure(string scheme, string host, string path, string token)
+        {
+            try
+            {
+                await _vaultService.Reset(scheme, host, path, token);
+                return ResultWrapper<bool>.Success(true);
+            }
+            catch (Exception e)
+            {
+                return ResultWrapper<bool>.Fail(e);
+            }
+        }
     }
 }

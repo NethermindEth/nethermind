@@ -24,6 +24,7 @@ using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Vault.Config;
 using Nethermind.Vault.JsonRpc;
+using NSubstitute;
 using NUnit.Framework;
 using provide.Model.Vault;
 
@@ -319,6 +320,21 @@ namespace Nethermind.Vault.Test.JsonRpc
 
             ResultWrapper<Key[]> listKeysResponse = await _vaultModule.vault_listKeys(_vaultId.ToString());
             listKeysResponse.Data.Select(k => k.Id).Should().NotContain(lastKeyId);
+        }
+        
+        [Test]
+        public async Task can_configure()
+        {
+            string host = "localhost:8082";
+            string scheme = "http";
+            string path = "api/v1";
+            string token = $"bearer  {TestContext.Parameters["token"]}";
+
+            var setTokenResponse = await _vaultModule.vault_setToken(token);
+            setTokenResponse.Result.ResultType.Should().Be(ResultType.Success);
+            
+            var configureResponse = await _vaultModule.vault_configure(scheme, host, path, token);
+            configureResponse.Result.ResultType.Should().Be(ResultType.Success);
         }
     }
 }

@@ -89,5 +89,17 @@ namespace Nethermind.Vault.JsonRpc
             IsReadOnly = false,
             IsImplemented = true)]
         Task<ResultWrapper<bool>> vault_verifySignature(string vaultId, string keyId, string message, string signature);
+        
+        [JsonRpcMethod(
+            Description = "Sets the API token used when talking to the Vault Service",
+            IsReadOnly = false,
+            IsImplemented = true)]
+        Task<ResultWrapper<bool>> vault_setToken(string token);
+
+        [JsonRpcMethod(
+            Description = "Sets the API token and Vault Service configuration to use",
+            IsReadOnly = false,
+            IsImplemented = true)]
+        Task<ResultWrapper<bool>> vault_configure(string scheme, string host, string path, string token);
     }
 }
