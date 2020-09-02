@@ -1,7 +1,23 @@
+//  Copyright (c) 2020 Demerzel Solutions Limited
+//  This file is part of the Nethermind library.
+// 
+//  The Nethermind library is free software: you can redistribute it and/or modify
+//  it under the terms of the GNU Lesser General Public License as published by
+//  the Free Software Foundation, either version 3 of the License, or
+//  (at your option) any later version.
+// 
+//  The Nethermind library is distributed in the hope that it will be useful,
+//  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+//  GNU Lesser General Public License for more details.
+// 
+//  You should have received a copy of the GNU Lesser General Public License
+//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+
+using System;
 using FluentAssertions;
 using Nethermind.Logging;
 using Nethermind.Vault.Config;
-using Nethermind.Vault.Styles;
 using NUnit.Framework;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -14,9 +30,7 @@ namespace Nethermind.Vault.Test
         private IVaultConfig _config;
         private VaultService _vaultService;
 
-        public TestContext TestContext { get; set; }
-
-        [OneTimeSetUp]
+        [SetUp]
         public void SetUp()
         {
             _config = new VaultConfig();
@@ -24,78 +38,55 @@ namespace Nethermind.Vault.Test
             _config.Scheme = "http";
             _config.Path = "api/v1";
             _config.Token = $"bearer  {TestContext.Parameters["token"]}";
-            _vaultService = new VaultService(
-                _config,
-                LimboLogs.Instance
-            );
+            _vaultService = new VaultService(_config, LimboLogs.Instance);
         }
 
         [TearDown]
         public async Task TearDown()
         {
             var vaults = await _vaultService.ListVaultIds();
-            foreach (var vault in vaults)
+            foreach (Guid vault in vaults)
             {
                 await _vaultService.DeleteVault(vault);
-            }      
+            }
         }
 
         [Test]
         public async Task can_return_a_list_of_vaults()
         {
-            VaultArgs args = null;
-            Dictionary<string, object> parameters = new Dictionary<string,object> 
-            {
-                {
-                    "vaultArgs", args
-                }
-            };
-            var vault = await _vaultService.CreateVault(parameters);
-
-            var result = await _vaultService.ListVaultIds();
-
-            result.Should().NotBeNull();
-            result.Should().Contain(vault);
+            provide.Model.Vault.Vault vault = new provide.Model.Vault.Vault();
+            vault.Name = "Wallet Vault Test";
+            vault.Description = "Test Vault used for test purposes";
+            provide.Model.Vault.Vault createdVault = await _vaultService.CreateVault(vault);
+            createdVault.Id.Should().NotBeNull();
+            
+            IEnumerable<Guid> result = await _vaultService.ListVaultIds();
+            result.Should().Contain(createdVault.Id!.Value);
         }
 
 
         [Test]
         public async Task can_create_a_new_vault()
         {
-            VaultArgs args = new VaultArgs();
-            args.Name = "Wallet Vault Test";
-            args.Description = "Test Vault used for test purposes";
-
-            Dictionary<string, object> parameters = new Dictionary<string,object> 
-            {
-                {
-                    "vaultArgs", args
-                }
-            };
-
-            var result = await _vaultService.CreateVault(parameters);
-
+            provide.Model.Vault.Vault vault = new provide.Model.Vault.Vault();
+            vault.Name = "Wallet Vault Test";
+            vault.Description = "Test Vault used for test purposes";
+            provide.Model.Vault.Vault result = await _vaultService.CreateVault(vault);
             result.Should().NotBeNull();
+            result.Id.Should().NotBeNull();
         }
 
 
         [Test]
         public async Task can_delete_vault()
         {
-            VaultArgs args = null;
-            Dictionary<string, object> parameters = new Dictionary<string,object> 
-            {
-                {
-                    "vaultArgs", args
-                }
-            };
-            var vaultId = await _vaultService.CreateVault(parameters);
+            provide.Model.Vault.Vault vault = new provide.Model.Vault.Vault();
+            provide.Model.Vault.Vault createdVault = await _vaultService.CreateVault(vault);
+            createdVault.Id.Should().NotBeNull();
 
-            await _vaultService.DeleteVault(vaultId);
-
-            var vaults = await _vaultService.ListVaultIds();
-
-            vaults.Should().NotContain(vaultId);
+            await _vaultService.DeleteVault(createdVault.Id!.Value);
+            IEnumerable<Guid> vaults = await _vaultService.ListVaultIds();
+            vaults.Should().NotContain(createdVault.Id.Value);
         }
     }
 }
