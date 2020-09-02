@@ -81,6 +81,18 @@ namespace Nethermind.Vault
 
         public async Task<provide.Model.Vault.Vault> CreateVault(provide.Model.Vault.Vault vault)
         {
+            if (vault.Name == null)
+            {
+                throw new ArgumentException(
+                    $"{nameof(provide.Model.Vault.Vault)} has to have a non-NULL {vault.Name}");
+            }
+            
+            if (vault.Description == null)
+            {
+                throw new ArgumentException(
+                    $"{nameof(provide.Model.Vault.Vault)} has to have a non-NULL {vault.Description}");
+            }
+
             if(_logger.IsDebug) _logger.Debug($"Creating a vault {vault.Name} {vault.Description}");
             provide.Model.Vault.Vault result = await _vaultService.CreateVault(vault);
             return result;
@@ -100,6 +112,18 @@ namespace Nethermind.Vault
 
         public async Task<Key> CreateKey(Guid vaultId, Key key)
         {
+            if (key.Name == null)
+            {
+                throw new ArgumentException(
+                    $"{nameof(Key)} has to have a non-NULL {key.Name}");
+            }
+            
+            if (key.Description == null)
+            {
+                throw new ArgumentException(
+                    $"{nameof(Key)} has to have a non-NULL {key.Description}");
+            }
+            
             if(_logger.IsDebug) _logger.Debug($"Creating a key named {key.Name} in the vault {vaultId}");
             Key vaultKey = await _vaultService.CreateVaultKey(vaultId.ToString(), key);
             return vaultKey;
@@ -120,6 +144,18 @@ namespace Nethermind.Vault
 
         public async Task<Secret> CreateSecret(Guid vaultId, Secret secret)
         {
+            if (secret.Name == null)
+            {
+                throw new ArgumentException(
+                    $"{nameof(Secret)} has to have a non-NULL {secret.Name}");
+            }
+            
+            if (secret.Description == null)
+            {
+                throw new ArgumentException(
+                    $"{nameof(Secret)} has to have a non-NULL {secret.Description}");
+            }
+            
             if(_logger.IsDebug) _logger.Debug($"Creating a secret in the vault {vaultId}");
             return await _vaultService.CreateVaultSecret(
                 vaultId.ToString(), secret);

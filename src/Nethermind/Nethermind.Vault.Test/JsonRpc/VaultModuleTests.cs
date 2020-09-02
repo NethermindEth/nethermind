@@ -78,9 +78,8 @@ namespace Nethermind.Vault.Test.JsonRpc
             key.Usage = "sign/verify";
 
             ResultWrapper<Key> createKeyResponse = await _vaultModule.vault_createKey(_vaultId.ToString(), key);
-
-            createKeyResponse.ErrorCode.Should().Be(0);
             createKeyResponse.Result.Error.Should().Be(null);
+            createKeyResponse.ErrorCode.Should().Be(0);
             createKeyResponse.Data.Should().NotBeNull();
             createKeyResponse.Result.ResultType.Should().Be(ResultType.Success);
         }
@@ -96,8 +95,8 @@ namespace Nethermind.Vault.Test.JsonRpc
 
             ResultWrapper<Secret> createSecretResponse
                 = await _vaultModule.vault_createSecret(_vaultId.ToString(), secret);
-            createSecretResponse.ErrorCode.Should().Be(0);
             createSecretResponse.Result.Error.Should().Be(null);
+            createSecretResponse.ErrorCode.Should().Be(0);
             createSecretResponse.Data.Should().NotBeNull();
             createSecretResponse.Result.ResultType.Should().Be(ResultType.Success);
         }
@@ -111,8 +110,8 @@ namespace Nethermind.Vault.Test.JsonRpc
 
             ResultWrapper<provide.Model.Vault.Vault> createVaultResponse
                 = await _vaultModule.vault_createVault(vault);
-            createVaultResponse.ErrorCode.Should().Be(0);
             createVaultResponse.Result.Error.Should().Be(null);
+            createVaultResponse.ErrorCode.Should().Be(0);
             createVaultResponse.Data.Should().NotBeNull();
             createVaultResponse.Result.ResultType.Should().Be(ResultType.Success);
         }
@@ -174,8 +173,8 @@ namespace Nethermind.Vault.Test.JsonRpc
             createKeyResponse.Result.ResultType.Should().Be(ResultType.Success);
 
             ResultWrapper<Key[]> listKeysResponse = await _vaultModule.vault_listKeys(_vaultId.ToString());
-            listKeysResponse.ErrorCode.Should().Be(0);
             listKeysResponse.Result.Error.Should().Be(null);
+            listKeysResponse.ErrorCode.Should().Be(0);
             listKeysResponse.Data.Should().NotBeNull();
             listKeysResponse.Data.Should().HaveCount(1);
             listKeysResponse.Result.ResultType.Should().Be(ResultType.Success);
@@ -195,8 +194,8 @@ namespace Nethermind.Vault.Test.JsonRpc
             createSecretResponse.Result.ResultType.Should().Be(ResultType.Success);
 
             var listSecretsResponse = await _vaultModule.vault_listSecrets(_vaultId.ToString());
-            listSecretsResponse.ErrorCode.Should().Be(0);
             listSecretsResponse.Result.Error.Should().Be(null);
+            listSecretsResponse.ErrorCode.Should().Be(0);
             listSecretsResponse.Data.Should().NotBeNull();
             listSecretsResponse.Data.Should().HaveCount(1);
             listSecretsResponse.Result.ResultType.Should().Be(ResultType.Success);
@@ -206,8 +205,8 @@ namespace Nethermind.Vault.Test.JsonRpc
         public async Task list_vaults_can_display_a_list_of_owned_vaults()
         {
             ResultWrapper<string[]> listVaultsResponse = await _vaultModule.vault_listVaults();
-            listVaultsResponse.ErrorCode.Should().Be(0);
             listVaultsResponse.Result.Error.Should().Be(null);
+            listVaultsResponse.ErrorCode.Should().Be(0);
             listVaultsResponse.Data.Should().NotBeNull();
             listVaultsResponse.Data.Should().HaveCount(1);
             listVaultsResponse.Result.ResultType.Should().Be(ResultType.Success);
@@ -226,8 +225,8 @@ namespace Nethermind.Vault.Test.JsonRpc
             key.Usage = "sign/verify";
 
             var createKeyResponse = await _vaultModule.vault_createKey(_vaultId.ToString(), key);
-            createKeyResponse.ErrorCode.Should().Be(0);
             createKeyResponse.Result.Error.Should().Be(null);
+            createKeyResponse.ErrorCode.Should().Be(0);
             createKeyResponse.Data.Should().NotBeNull();
             createKeyResponse.Result.ResultType.Should().Be(ResultType.Success);
             createKeyResponse.Data.Id.Should().NotBeNull();
@@ -235,8 +234,8 @@ namespace Nethermind.Vault.Test.JsonRpc
             Guid keyId = createKeyResponse.Data.Id!.Value;
             ResultWrapper<string> signMessageResponse
                 = await _vaultModule.vault_signMessage(_vaultId.ToString(), keyId.ToString(), _message);
-            signMessageResponse.ErrorCode.Should().Be(0);
             signMessageResponse.Result.Error.Should().Be(null);
+            signMessageResponse.ErrorCode.Should().Be(0);
             signMessageResponse.Data.Should().NotBeNull();
             signMessageResponse.Result.ResultType.Should().Be(ResultType.Success);
         }
@@ -261,10 +260,10 @@ namespace Nethermind.Vault.Test.JsonRpc
 
             var verifySignatureResponse = await _vaultModule.vault_verifySignature(
                 _vaultId.ToString(), keyId.ToString(), _message, signature);
-            verifySignatureResponse.ErrorCode.Should().Be(0);
-            verifySignatureResponse.Result.ResultType.Should().Be(ResultType.Success);
             verifySignatureResponse.Result.Error.Should().Be(null);
+            verifySignatureResponse.ErrorCode.Should().Be(0);
             verifySignatureResponse.Data.Should().Be(true);
+            verifySignatureResponse.Result.ResultType.Should().Be(ResultType.Success);
         }
 
         [Test]
@@ -282,6 +281,7 @@ namespace Nethermind.Vault.Test.JsonRpc
             ResultWrapper<provide.Model.Vault.Vault> deleteVaultResponse
                 = await _vaultModule.vault_deleteVault(vaultId.ToString());
             deleteVaultResponse.Result.Error.Should().BeEmpty();
+            deleteVaultResponse.ErrorCode.Should().Be(0);
             deleteVaultResponse.Data.Should().BeNull();
             deleteVaultResponse.Result.ResultType.Should().Be(ResultType.Success);
 
@@ -313,6 +313,7 @@ namespace Nethermind.Vault.Test.JsonRpc
             ResultWrapper<Key> deleteKeyResponse
                 = await _vaultModule.vault_deleteKey(_vaultId.ToString(), lastKeyId!.Value.ToString());
             deleteKeyResponse.Result.Error.Should().BeEmpty();
+            deleteKeyResponse.ErrorCode.Should().Be(0);
             deleteKeyResponse.Data.Should().BeNull();
             deleteKeyResponse.Result.ResultType.Should().Be(ResultType.Success);
 
