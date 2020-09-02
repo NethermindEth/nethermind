@@ -25,7 +25,7 @@ using System.Threading.Tasks;
 namespace Nethermind.Vault.Test
 {
     [TestFixture]
-    public class VaultManagerTests
+    public class VaultServiceTests
     {
         private IVaultConfig _config;
         private VaultService _vaultService;
