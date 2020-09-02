@@ -16,14 +16,24 @@
 // 
 
 using System.Linq;
+using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Abi;
+using Nethermind.AuRa.Test.Contract;
+using Nethermind.Blockchain.Processing;
+using Nethermind.Blockchain.Rewards;
+using Nethermind.Blockchain.Validators;
+using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Specs.ChainSpecStyle;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -81,6 +91,42 @@ namespace Nethermind.AuRa.Test.Transactions
             _filter.IsAllowed(
                 Build.A.Transaction.WithGasPrice(gasPrice).WithSenderAddress(address).TestObject,
                 Build.A.BlockHeader.TestObject).Should().Be(expected);
+        }
+
+        [Test]
+        public async Task should_allow_addresses_from_contract_on_chain()
+        {
+            var chain = await TestContractBlockchain.ForTest<TestTxPermissionsBlockchain, TxCertifierFilterTests>();
+            chain.CertifierContract.Certified(chain.BlockTree.Head.Header, TestItem.AddressA).Should().BeFalse();
+        }
+        
+        public class TestTxPermissionsBlockchain : TestContractBlockchain
+        {
+            public CertifierContract CertifierContract { get; private set; }
+            
+            protected override BlockProcessor CreateBlockProcessor()
+            {
+                CertifierContract = new CertifierContract(
+                    new AbiEncoder(), 
+                    ChainSpec.Parameters.Registrar, 
+                    new ReadOnlyTxProcessorSource(DbProvider, BlockTree, SpecProvider, LimboLogs.Instance));
+                
+                return new AuRaBlockProcessor(
+                    SpecProvider,
+                    Always.Valid,
+                    new RewardCalculator(SpecProvider),
+                    TxProcessor,
+                    StateDb,
+                    CodeDb,
+                    State,
+                    Storage,
+                    TxPool,
+                    ReceiptStorage,
+                    LimboLogs.Instance,
+                    BlockTree);
+            }
+
+            protected override Task AddBlocksOnStart() => Task.CompletedTask;
         }
     }
 }
