@@ -147,7 +147,7 @@ namespace Nethermind.Vault.Test.JsonRpc
 
             ResultWrapper<Secret> response =
                 await _vaultModule.vault_deleteSecret(_vaultId.ToString(), secretId.ToString());
-            response.Result.Error.Should().BeEmpty();
+            response.Result.Error.Should().BeNull();
             response.Data.Should().BeNull();
             response.Result.ResultType.Should().Be(ResultType.Success);
 
@@ -281,7 +281,7 @@ namespace Nethermind.Vault.Test.JsonRpc
 
             ResultWrapper<provide.Model.Vault.Vault> deleteVaultResponse
                 = await _vaultModule.vault_deleteVault(vaultId.ToString());
-            deleteVaultResponse.Result.Error.Should().BeEmpty();
+            deleteVaultResponse.Result.Error.Should().BeNull();
             deleteVaultResponse.ErrorCode.Should().Be(0);
             deleteVaultResponse.Data.Should().BeNull();
             deleteVaultResponse.Result.ResultType.Should().Be(ResultType.Success);
@@ -313,7 +313,7 @@ namespace Nethermind.Vault.Test.JsonRpc
             lastKeyId.Should().NotBeNull();
             ResultWrapper<Key> deleteKeyResponse
                 = await _vaultModule.vault_deleteKey(_vaultId.ToString(), lastKeyId!.Value.ToString());
-            deleteKeyResponse.Result.Error.Should().BeEmpty();
+            deleteKeyResponse.Result.Error.Should().BeNull();
             deleteKeyResponse.ErrorCode.Should().Be(0);
             deleteKeyResponse.Data.Should().BeNull();
             deleteKeyResponse.Result.ResultType.Should().Be(ResultType.Success);
