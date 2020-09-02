@@ -84,13 +84,13 @@ namespace Nethermind.Vault
             if (vault.Name == null)
             {
                 throw new ArgumentException(
-                    $"{nameof(provide.Model.Vault.Vault)} has to have a non-NULL {vault.Name}");
+                    $"{nameof(provide.Model.Vault.Vault)} has to have a non-NULL {nameof(vault.Name)}");
             }
             
             if (vault.Description == null)
             {
                 throw new ArgumentException(
-                    $"{nameof(provide.Model.Vault.Vault)} has to have a non-NULL {vault.Description}");
+                    $"{nameof(provide.Model.Vault.Vault)} has to have a non-NULL {nameof(vault.Description)}");
             }
 
             if(_logger.IsDebug) _logger.Debug($"Creating a vault {vault.Name} {vault.Description}");
@@ -115,16 +115,16 @@ namespace Nethermind.Vault
             if (key.Name == null)
             {
                 throw new ArgumentException(
-                    $"{nameof(Key)} has to have a non-NULL {key.Name}");
+                    $"{nameof(Key)} has to have a non-NULL {nameof(key.Name)}");
             }
             
             if (key.Description == null)
             {
                 throw new ArgumentException(
-                    $"{nameof(Key)} has to have a non-NULL {key.Description}");
+                    $"{nameof(Key)} has to have a non-NULL {nameof(key.Description)}");
             }
             
-            if(_logger.IsDebug) _logger.Debug($"Creating a key named {key.Name} in the vault {vaultId}");
+            if(_logger.IsDebug) _logger.Debug($"Creating a key named {nameof(key.Name)} in the vault {vaultId}");
             Key vaultKey = await _vaultService.CreateVaultKey(vaultId.ToString(), key);
             return vaultKey;
         }
@@ -147,13 +147,13 @@ namespace Nethermind.Vault
             if (secret.Name == null)
             {
                 throw new ArgumentException(
-                    $"{nameof(Secret)} has to have a non-NULL {secret.Name}");
+                    $"{nameof(Secret)} has to have a non-NULL {nameof(secret.Name)}");
             }
             
             if (secret.Description == null)
             {
                 throw new ArgumentException(
-                    $"{nameof(Secret)} has to have a non-NULL {secret.Description}");
+                    $"{nameof(Secret)} has to have a non-NULL {nameof(secret.Description)}");
             }
             
             if(_logger.IsDebug) _logger.Debug($"Creating a secret in the vault {vaultId}");

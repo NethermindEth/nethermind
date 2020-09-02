@@ -57,6 +57,7 @@ namespace Nethermind.Vault.Test
             provide.Model.Vault.Vault vault = new provide.Model.Vault.Vault();
             vault.Name = "Wallet Vault Test";
             vault.Description = "Test Vault used for test purposes";
+            
             provide.Model.Vault.Vault createdVault = await _vaultService.CreateVault(vault);
             createdVault.Id.Should().NotBeNull();
             
@@ -71,6 +72,7 @@ namespace Nethermind.Vault.Test
             provide.Model.Vault.Vault vault = new provide.Model.Vault.Vault();
             vault.Name = "Wallet Vault Test";
             vault.Description = "Test Vault used for test purposes";
+            
             provide.Model.Vault.Vault result = await _vaultService.CreateVault(vault);
             result.Should().NotBeNull();
             result.Id.Should().NotBeNull();
@@ -81,6 +83,9 @@ namespace Nethermind.Vault.Test
         public async Task can_delete_vault()
         {
             provide.Model.Vault.Vault vault = new provide.Model.Vault.Vault();
+            vault.Name = "Wallet Vault Test";
+            vault.Description = "Test Vault used for test purposes";
+            
             provide.Model.Vault.Vault createdVault = await _vaultService.CreateVault(vault);
             createdVault.Id.Should().NotBeNull();
 
