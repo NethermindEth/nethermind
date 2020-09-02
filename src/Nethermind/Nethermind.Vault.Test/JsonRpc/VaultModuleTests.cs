@@ -171,7 +171,7 @@ namespace Nethermind.Vault.Test.JsonRpc
             key.Usage = "sign/verify";
 
             ResultWrapper<Key> createKeyResponse = await _vaultModule.vault_createKey(_vaultId.ToString(), key);
-            createKeyResponse.Result.Should().Be(ResultType.Success);
+            createKeyResponse.Result.ResultType.Should().Be(ResultType.Success);
 
             ResultWrapper<Key[]> listKeysResponse = await _vaultModule.vault_listKeys(_vaultId.ToString());
             listKeysResponse.ErrorCode.Should().Be(0);
@@ -192,7 +192,7 @@ namespace Nethermind.Vault.Test.JsonRpc
 
             ResultWrapper<Secret> createSecretResponse =
                 await _vaultModule.vault_createSecret(_vaultId.ToString(), secret);
-            createSecretResponse.Should().Be(ResultType.Success);
+            createSecretResponse.Result.ResultType.Should().Be(ResultType.Success);
 
             var listSecretsResponse = await _vaultModule.vault_listSecrets(_vaultId.ToString());
             listSecretsResponse.ErrorCode.Should().Be(0);
