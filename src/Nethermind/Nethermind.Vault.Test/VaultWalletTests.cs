@@ -133,7 +133,7 @@ namespace Nethermind.Vault.Test
 
             await _wallet.DeleteAccount(acc);
 
-            var accountId = await _wallet.GetKeyIdByAddress(acc);
+            var accountId = await _wallet.RetrieveId(acc);
 
             Assert.IsNull(accountId);
         }

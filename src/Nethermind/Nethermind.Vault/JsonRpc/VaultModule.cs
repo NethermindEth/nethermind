@@ -15,19 +15,19 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Linq;
 using Nethermind.Logging;
 using System.Threading.Tasks;
 using Nethermind.JsonRpc;
-using Nethermind.Vault.Styles;
 using provide.Model.Vault;
 
 namespace Nethermind.Vault.JsonRpc
 {
     public class VaultModule : IVaultModule
     {
-        private readonly IVaultService _vaultService;
-
         private readonly ILogger _logger;
+        
+        private readonly IVaultService _vaultService;
 
         public VaultModule(IVaultService vaultService, ILogManager logManager)
         {
@@ -37,7 +37,7 @@ namespace Nethermind.Vault.JsonRpc
 
         public async Task<ResultWrapper<Key>> vault_createKey(string vaultId, Key key)
         {
-            Key result = await _vaultService.CreateKey(vaultId, key);
+            Key result = await _vaultService.CreateKey(Guid.Parse(vaultId), key);
             return ResultWrapper<Key>.Success(result);
         }
 
@@ -45,12 +45,12 @@ namespace Nethermind.Vault.JsonRpc
         {
             try
             {
-                Secret result = await _vaultService.CreateSecret(vaultId, secret);
+                Secret result = await _vaultService.CreateSecret(Guid.Parse(vaultId), secret);
                 return ResultWrapper<Secret>.Success(result);
             }
             catch (Exception e)
             {
-                return ResultWrapper<Secret>.Fail(e.ToString());
+                return ResultWrapper<Secret>.Fail(e);
             }
         }
 
@@ -63,7 +63,7 @@ namespace Nethermind.Vault.JsonRpc
             }
             catch (Exception e)
             {
-                return ResultWrapper<provide.Model.Vault.Vault>.Fail(e.ToString());
+                return ResultWrapper<provide.Model.Vault.Vault>.Fail(e);
             }
         }
 
@@ -71,12 +71,12 @@ namespace Nethermind.Vault.JsonRpc
         {
             try
             {
-                provide.Model.Vault.Vault result = await _vaultService.DeleteVault(vaultId);
+                provide.Model.Vault.Vault result = await _vaultService.DeleteVault(Guid.Parse(vaultId));
                 return ResultWrapper<provide.Model.Vault.Vault>.Success(result);
             }
             catch (Exception e)
             {
-                return ResultWrapper<provide.Model.Vault.Vault>.Fail(e.ToString());
+                return ResultWrapper<provide.Model.Vault.Vault>.Fail(e);
             }
         }
 
@@ -84,12 +84,12 @@ namespace Nethermind.Vault.JsonRpc
         {
             try
             {
-                Key result = await _vaultService.DeleteKey(vaultId, keyId);
+                Key result = await _vaultService.DeleteKey(Guid.Parse(vaultId), Guid.Parse(keyId));
                 return ResultWrapper<Key>.Success(result);
             }
             catch (Exception e)
             {
-                return ResultWrapper<Key>.Fail(e.ToString());
+                return ResultWrapper<Key>.Fail(e);
             }
         }
 
@@ -97,13 +97,27 @@ namespace Nethermind.Vault.JsonRpc
         {
             try
             {
-                var result = await _vaultService.DeleteSecret(vaultId, secretId);
+                var result = await _vaultService.DeleteSecret(Guid.Parse(vaultId), Guid.Parse(secretId));
 
                 return ResultWrapper<Secret>.Success(result);
             }
             catch (Exception e)
             {
-                return ResultWrapper<Secret>.Fail(e.ToString());
+                return ResultWrapper<Secret>.Fail(e);
+            }
+        }
+        
+        public async Task<ResultWrapper<string[]>> vault_listVaults()
+        {
+            try
+            {
+                var result = await _vaultService.ListVaultIds();
+
+                return ResultWrapper<string[]>.Success(result.Select(id => id.ToString()).ToArray());
+            }
+            catch (Exception e)
+            {
+                return ResultWrapper<string[]>.Fail(e);
             }
         }
 
@@ -111,12 +125,12 @@ namespace Nethermind.Vault.JsonRpc
         {
             try
             {
-                var result = await _vaultService.ListKeys(vaultId);
-                return ResultWrapper<Key[]>.Success(result);
+                var keys = await _vaultService.ListKeys(Guid.Parse(vaultId));
+                return ResultWrapper<Key[]>.Success(keys.ToArray());
             }
             catch (Exception e)
             {
-                return ResultWrapper<Key[]>.Fail(e.ToString());
+                return ResultWrapper<Key[]>.Fail(e);
             }
         }
 
@@ -124,26 +138,12 @@ namespace Nethermind.Vault.JsonRpc
         {
             try
             {
-                Secret[] result = await _vaultService.ListSecrets(vaultId);
-                return ResultWrapper<Secret[]>.Success(result);
+                var secrets = await _vaultService.ListSecrets(Guid.Parse(vaultId));
+                return ResultWrapper<Secret[]>.Success(secrets.ToArray());
             }
             catch (Exception e)
             {
-                return ResultWrapper<Secret[]>.Fail(e.ToString());
-            }
-        }
-
-        public async Task<ResultWrapper<string[]>> vault_listVaults()
-        {
-            try
-            {
-                var result = await _vaultService.ListVaultIds();
-
-                return ResultWrapper<string[]>.Success(result);
-            }
-            catch (Exception e)
-            {
-                return ResultWrapper<string[]>.Fail(e.ToString());
+                return ResultWrapper<Secret[]>.Fail(e);
             }
         }
 
@@ -151,25 +151,26 @@ namespace Nethermind.Vault.JsonRpc
         {
             try
             {
-                string result = await _vaultService.Sign(vaultId, keyId, message);
+                string result = await _vaultService.Sign(Guid.Parse(vaultId), Guid.Parse(keyId), message);
                 return ResultWrapper<string>.Success(result);
             }
             catch (Exception e)
             {
-                return ResultWrapper<string>.Fail(e.ToString());
+                return ResultWrapper<string>.Fail(e);
             }
         }
 
-        public async Task<ResultWrapper<bool>> vault_verifySignature(string vaultId, string keyId, string message, string signature)
+        public async Task<ResultWrapper<bool>> vault_verifySignature(
+            string vaultId, string keyId, string message, string signature)
         {
             try
             {
-                bool result = await _vaultService.Verify(vaultId, keyId, message, signature);
+                bool result = await _vaultService.Verify(Guid.Parse(vaultId), Guid.Parse(keyId), message, signature);
                 return ResultWrapper<bool>.Success(result);
             }
             catch (Exception e)
             {
-                return ResultWrapper<bool>.Fail(e.ToString());
+                return ResultWrapper<bool>.Fail(e);
             }
         }
     }

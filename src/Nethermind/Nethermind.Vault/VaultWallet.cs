@@ -22,107 +22,123 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
-using Nethermind.Vault.Styles;
-using Newtonsoft.Json;
+using provide.Model.Vault;
 
 namespace Nethermind.Vault
 {
     public class VaultWallet : IVaultWallet
     {
-        private readonly IVaultService _vaultService;
-        private readonly ILogger _logger;
-        private ConcurrentDictionary<Address, string> accounts;
+        private ConcurrentDictionary<Address, Guid> _accounts;
 
-        public VaultWallet(IVaultService vaultService, ILogManager logManager)
+        private readonly IVaultService _vaultService;
+
+        private readonly Guid _vaultId;
+
+        private readonly ILogger _logger;
+
+        public VaultWallet(IVaultService vaultService, string vaultId, ILogManager logManager)
         {
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _vaultService = vaultService;
-            accounts = new ConcurrentDictionary<Address, string>();
+            _vaultId = Guid.Parse(vaultId ?? throw new ArgumentNullException(nameof(vaultId)));
+            _accounts = new ConcurrentDictionary<Address, Guid>();
         }
 
         public async Task<Address[]> GetAccounts()
         {
-            accounts = new ConcurrentDictionary<Address, string>();
-            var args = new Dictionary<string, object>();
+            IEnumerable<Key> keys = await _vaultService.ListKeys(_vaultId);
+            _accounts = new ConcurrentDictionary<Address, Guid>(
+                keys.Where(k => k.Id != null).Select(ToKeyValuePair));
 
-            var vault = await SetWalletVault();
+            return _accounts.Keys.ToArray();
+        }
+        
+        public async Task<Address> CreateAccount()
+        {
+            Key key = new Key();
+            key.Name = "name";
+            key.Description = "description";
+            key.Type = "asymmetric";
+            key.Spec = "secp256k1";
+            key.Usage = "sign/verify";
 
-            var result = await _vaultService.ListVaultKeys(_vaultConfig.Token, vault, args);
-            dynamic keys = JsonConvert.DeserializeObject(result.Item2);
-            foreach (var key in keys)
+            Key createdKey = await _vaultService.CreateKey(_vaultId, key);
+            if (createdKey is null)
             {
-                try
-                {
-                    string address = Convert.ToString(key.address);
-                    // adds to accounts dict to have addresses assigned to key id's
-                    string keyId = Convert.ToString(key.id);
-                    accounts.TryAdd(new Address(address), keyId);
-                    accounts.Keys.ToArray();
-                }
-                catch (ArgumentNullException)
-                {
-                }
+                throw new ApplicationException("Failed to create vault key.");
             }
 
-            return accounts.Keys.ToArray();
+            if (createdKey.Id is null)
+            {
+                throw new ApplicationException($"Failed to create vault key with a valid {nameof(key.Id)}.");
+            }
+
+            Address account = new Address(createdKey.Address);
+            if (!_accounts.TryAdd(account, createdKey.Id.Value))
+            {
+                throw new ApplicationException("New key created with an address collision.");
+            }
+
+            return account;
         }
 
         public async Task DeleteAccount(Address address)
         {
-            var vault = await SetWalletVault();
-            string keyId = await GetKeyIdByAddress(address);
-            var result = await _initVault.DeleteVaultKey(_vaultConfig.Token, vault, keyId);
+            Guid keyId = await RetrieveId(address);
+            Key deletedKey = await _vaultService.DeleteKey(_vaultId, keyId);
+            if (deletedKey is null)
+            {
+                throw new ApplicationException("Failed to delete vault account.");
+            }
+
+            if (new Address(deletedKey.Address) != address)
+            {
+                throw new ApplicationException(
+                    $"Deleted key address mismatch - requested {address}, deleted {deletedKey.Address}");
+            }
         }
 
         public async Task<Signature> Sign(Address address, Keccak message)
         {
-            var vault = await SetWalletVault();
-            string keyId = await GetKeyIdByAddress(address);
-            var result = await _initVault.SignMessage(_vaultConfig.Token, vault, keyId, message.ToString());
-            dynamic sig = JsonConvert.DeserializeObject(result.Item2);
-            string signature = Convert.ToString(sig.signature);
-
+            Guid keyId = await RetrieveId(address);
+            string signature = await _vaultService.Sign(_vaultId, keyId, message.ToString());
             return new Signature(signature);
         }
 
         public async Task<bool> Verify(Address address, Keccak message, Signature signature)
         {
-            var vault = await SetWalletVault();
-            string keyId = await GetKeyIdByAddress(address);
-            string sig = Convert.ToString(signature).Remove(0, 2);
-            var result = await _initVault.VerifySignature(_vaultConfig.Token, vault, keyId, message.ToString(), sig);
-            dynamic isVerified = JsonConvert.DeserializeObject(result.Item2);
-            return isVerified.verified;
-        }
-
-        public async Task<Address> NewAccount(Dictionary<string, object> parameters)
-        {
-            KeyArgs keyArgs = parameters["keyArgs"] as KeyArgs;
-
-            if (keyArgs == null)
+            if (address is null)
             {
-                keyArgs = new KeyArgs();
-                keyArgs.Name = "name";
-                keyArgs.Description = "description";
-                keyArgs.Type = "asymmetric";
-                keyArgs.Spec = "secp256k1";
-                keyArgs.Usage = "sign/verify";
+                throw new ArgumentNullException(nameof(address));
             }
 
-            if (!parameters.ContainsKey("keyArgs")) throw new ArgumentNullException(nameof(parameters));
-            
-            var result = await _vaultService.CreateKey(vault, keyArgs.ToDictionary());
-            dynamic key = JsonConvert.DeserializeObject(result.Item2);
-            string address = Convert.ToString(key.address);
-            var account = new Address(address);
-            accounts.TryAdd(account, Convert.ToString(key.id));
-            return account;
+            if (signature is null)
+            {
+                throw new ArgumentNullException(nameof(signature));
+            }
+
+            Guid keyId = await RetrieveId(address);
+            string sig = Convert.ToString(signature)!.Remove(0, 2);
+            bool result = await _vaultService.Verify(_vaultId, keyId, message.ToString(), sig);
+            return result;
         }
 
-        public async Task<string> GetKeyIdByAddress(Address address)
+        public async Task<Guid> RetrieveId(Address address)
         {
             await GetAccounts();
-            return accounts.FirstOrDefault(acc => acc.Key.Equals(address)).Value;
+            return _accounts[address];
+        }
+
+        private static KeyValuePair<Address, Guid> ToKeyValuePair(Key key)
+        {
+            if (key.Id == null)
+            {
+                throw new ArgumentException($"Can only convert keys with {nameof(key.Id)} that is not NULL");
+            }
+
+            Address address = new Address(key.Address);
+            Guid id = key.Id.Value;
+            return new KeyValuePair<Address, Guid>(address, id);
         }
     }
 }

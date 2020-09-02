@@ -42,6 +42,7 @@ using Nethermind.State;
 using Nethermind.Vault.JsonRpc;
 using Nethermind.Vault.Config;
 using Nethermind.Runner.Ethereum.Steps.Migrations;
+using Nethermind.Vault;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
@@ -158,9 +159,11 @@ namespace Nethermind.Runner.Ethereum.Steps
             TxPoolModule txPoolModule = new TxPoolModule(_context.BlockTree, _context.TxPoolInfoProvider, _context.LogManager);
             _context.RpcModuleProvider.Register(new SingletonModulePool<ITxPoolModule>(txPoolModule, true));
 
+            
             if (vaultConfig.Enabled)
             {
-                VaultModule vaultModule = new VaultModule(vaultConfig, _context.LogManager);
+                VaultService vaultService = new VaultService(vaultConfig, _context.LogManager);
+                VaultModule vaultModule = new VaultModule(vaultService, _context.LogManager);
                 _context.RpcModuleProvider.Register(new SingletonModulePool<IVaultModule>(vaultModule, true));
                 if (logger?.IsInfo ?? false) logger!.Info($"Vault RPC Module has been enabled");
             }

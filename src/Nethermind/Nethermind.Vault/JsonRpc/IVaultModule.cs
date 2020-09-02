@@ -17,7 +17,6 @@
 using System.Threading.Tasks;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
-using Nethermind.Vault.Styles;
 using provide.Model.Vault;
 
 namespace Nethermind.Vault.JsonRpc
@@ -25,6 +24,12 @@ namespace Nethermind.Vault.JsonRpc
     [RpcModule(ModuleType.Vault)]
     public interface IVaultModule: IModule
     {
+        [JsonRpcMethod(
+            Description = "Displays a list of Vaults",
+            IsReadOnly = false,
+            IsImplemented = true)]
+        Task<ResultWrapper<string[]>> vault_listVaults();
+        
         [JsonRpcMethod(
             Description = "Creates a Vault",
             IsReadOnly = false,
@@ -38,12 +43,6 @@ namespace Nethermind.Vault.JsonRpc
         Task<ResultWrapper<provide.Model.Vault.Vault>> vault_deleteVault(string vaultId);
 
         [JsonRpcMethod(
-            Description = "Displays a list of Vaults",
-            IsReadOnly = false,
-            IsImplemented = true)]
-        Task<ResultWrapper<string[]>> vault_listVaults();
-
-        [JsonRpcMethod(
             Description = "Displays a list of keys in a single Vault",
             IsReadOnly = false,
             IsImplemented = true)]
@@ -53,7 +52,7 @@ namespace Nethermind.Vault.JsonRpc
             Description = "Generates a new symmetric key or asymmetric keypair",
             IsReadOnly = false,
             IsImplemented = true)]
-        Task<ResultWrapper<Key>> vault_createKey(string vaultId, KeyArgs args);
+        Task<ResultWrapper<Key>> vault_createKey(string vaultId, Key args);
 
         [JsonRpcMethod(
             Description = "Deletes a key from Vault",
@@ -71,7 +70,7 @@ namespace Nethermind.Vault.JsonRpc
             Description = "Creates a new secret within the vault",
             IsReadOnly = false,
             IsImplemented = true)]
-        Task<ResultWrapper<Secret>> vault_createSecret(string vaultId, SecretArgs args);
+        Task<ResultWrapper<Secret>> vault_createSecret(string vaultId, Secret args);
 
         [JsonRpcMethod(
             Description = "Permanently removes the specified secret from the vault",
