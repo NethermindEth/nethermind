@@ -209,7 +209,7 @@ namespace Nethermind.Vault.Test.JsonRpc
             listVaultsResponse.Result.Error.Should().Be(null);
             listVaultsResponse.ErrorCode.Should().Be(0);
             listVaultsResponse.Data.Should().NotBeNull();
-            listVaultsResponse.Data.Should().HaveCount(1);
+            listVaultsResponse.Data.Should().HaveCount(2);
             listVaultsResponse.Result.ResultType.Should().Be(ResultType.Success);
         }
 
