@@ -211,15 +211,14 @@ namespace Nethermind.Runner.Ethereum.Steps
         {
             ITxFilter gasPriceTxFilter = base.CreateGasPriceTxFilter(readOnlyTxProcessorSource);
             Address? registrar = _context.ChainSpec?.Parameters.Registrar;
-            return registrar != null 
-                ? new TxCertifierFilter(
-                    new CertifierContract(
-                        _context.AbiEncoder, 
-                        new RegisterContract(_context.AbiEncoder, registrar, readOnlyTxProcessorSource), 
-                        readOnlyTxProcessorSource),
-                    gasPriceTxFilter,
-                    _context.LogManager) 
-                : gasPriceTxFilter;
+            if (registrar != null)
+            {
+                RegisterContract registerContract = new RegisterContract(_context.AbiEncoder, registrar, readOnlyTxProcessorSource);
+                CertifierContract certifierContract = new CertifierContract(_context.AbiEncoder, registerContract, readOnlyTxProcessorSource);
+                return new TxCertifierFilter(certifierContract, gasPriceTxFilter, _context.LogManager);
+            }
+
+            return gasPriceTxFilter;
         }
         
         private ITxFilter? GetTxPermissionFilter(

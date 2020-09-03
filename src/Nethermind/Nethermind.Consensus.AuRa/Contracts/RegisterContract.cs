@@ -28,9 +28,15 @@ namespace Nethermind.Consensus.AuRa.Contracts
         Address GetAddress(BlockHeader header, string key);
     }
 
+    /// <summary>
+    /// Contract for registry of values (dictionary) on chain
+    /// </summary>
     public class RegisterContract : Contract, IRegisterContract
     {
-        private const string DnsARecord = "A";
+        /// <summary>
+        /// Category of domain name service addresses
+        /// </summary>
+        private const string DnsAddressRecord = "A";
         private ConstantContract Constant { get; }
         
         public RegisterContract(
@@ -43,6 +49,6 @@ namespace Nethermind.Consensus.AuRa.Contracts
         }
 
         public Address GetAddress(BlockHeader header, string key) => 
-            Constant.Call<Address>(header, nameof(GetAddress), Address.Zero, Keccak.Compute(key).Bytes, DnsARecord);
+            Constant.Call<Address>(header, nameof(GetAddress), Address.Zero, Keccak.Compute(key).Bytes, DnsAddressRecord); // 2 arguments: name and key (category)
     }
 }
