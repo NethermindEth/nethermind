@@ -57,18 +57,6 @@ namespace Nethermind.Network.Test
         private const string enode2String = "enode://1111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111b@52.141.78.53:30303";
 
         [Test]
-        public void Can_load_trusted_nodes()
-        {
-            _networkConfig.TrustedPeers = enodesString;
-            List<Peer> peers = _loader.LoadPeers();
-            Assert.AreEqual(2, peers.Count);
-            foreach (Peer peer in peers)
-            {
-                Assert.True(peer.Node.IsTrusted);
-            }
-        }
-
-        [Test]
         public void Can_load_static_nodes()
         {
             _networkConfig.StaticPeers = enodesString;
@@ -102,7 +90,6 @@ namespace Nethermind.Network.Test
             {
                 Assert.False(peer.Node.IsBootnode);
                 Assert.False(peer.Node.IsStatic);
-                Assert.False(peer.Node.IsTrusted);
             }
         }
     }
