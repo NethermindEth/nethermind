@@ -58,9 +58,15 @@ namespace Nethermind.Consensus.AuRa
             _logger = logManager?.GetClassLogger<AuRaContractGasLimitOverride>() ?? throw new ArgumentNullException(nameof(logManager));
         }
         
-        public long GetGasLimit(BlockHeader parentHeader)
+        public long GetGasLimit(BlockHeader parentHeader) => GetGasLimitFromContract(parentHeader) ?? _innerCalculator.GetGasLimit(parentHeader);
+
+        private long? GetGasLimitFromContract(BlockHeader parentHeader)
         {
-            _cache.GasLimitCache.TryGet(parentHeader.Hash, out long? gasLimit);
+            if (_cache.GasLimitCache.TryGet(parentHeader.Hash, out long? gasLimit))
+            {
+                return gasLimit;
+            }
+            
             if (_contracts.TryGetForBlock(parentHeader.Number + 1, out IBlockGasLimitContract contract))
             {
                 UInt256? contractLimit = GetContractGasLimit(parentHeader, contract);
@@ -80,8 +86,8 @@ namespace Nethermind.Consensus.AuRa
                         _logger.Trace("Contract call returned nothing. Not changing the block gas limit.");
                 }
             }
-            
-            return gasLimit ?? _innerCalculator.GetGasLimit(parentHeader);
+
+            return gasLimit;
         }
 
         private UInt256? GetContractGasLimit(BlockHeader parent, IBlockGasLimitContract contract)
@@ -105,6 +111,12 @@ namespace Nethermind.Consensus.AuRa
             private const int MaxCacheSize = 10;
 
             internal ICache<Keccak, long?> GasLimitCache { get; } = new LruCache<Keccak, long?>(MaxCacheSize, "BlockGasLimit");
+        }
+
+        public bool IsGasLimitValid(BlockHeader parentHeader, in long gasLimit, out long? expectedGasLimit)
+        {
+            expectedGasLimit = GetGasLimitFromContract(parentHeader);
+            return expectedGasLimit == null || expectedGasLimit == gasLimit;
         }
     }
 }
