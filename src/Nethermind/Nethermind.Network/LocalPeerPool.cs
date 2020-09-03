@@ -59,9 +59,9 @@ namespace Nethermind.Network
 
         public Peer GetOrAdd(Node node)
         {
-            if (node.IsBootnode || node.IsStatic || node.IsTrusted)
+            if (node.IsBootnode || node.IsStatic)
             {
-                if (_logger.IsDebug) _logger.Debug($"Adding a {(node.IsTrusted ? "trusted" : node.IsBootnode ? "bootnode" : "stored")} candidate peer {node:s}");
+                if (_logger.IsDebug) _logger.Debug($"Adding a {(node.IsBootnode ? "bootnode" : "stored")} candidate peer {node:s}");
             }
 
             static Peer CreateNew(PublicKey key, (Node Node, ConcurrentDictionary<PublicKey, Peer> Statics) arg)

@@ -38,23 +38,6 @@ namespace Nethermind.Network.Test
         }
 
         [Test]
-        public void Can_sort_by_trusted()
-        {
-            Node a = new Node(TestItem.PublicKeyA, "127.0.0.1", 30303);
-            a.IsTrusted = true;
-            Peer peerA = new Peer(a);
-
-            Node b = new Node(TestItem.PublicKeyB, "127.0.0.1", 30303);
-            Peer peerB = new Peer(b);
-
-            Node c = new Node(TestItem.PublicKeyC, "127.0.0.1", 30303);
-            Peer peerC = new Peer(c);
-
-            Assert.AreEqual(-1, _comparer.Compare(peerA, peerB));
-            Assert.AreEqual(0, _comparer.Compare(peerB, peerC));
-        }
-
-        [Test]
         public void Can_sort_by_Reputation()
         {
             Node a = new Node(TestItem.PublicKeyA, "127.0.0.1", 30303);
@@ -84,14 +67,13 @@ namespace Nethermind.Network.Test
             Node a = new Node(TestItem.PublicKeyA, "127.0.0.1", 30303);
             Peer peerA = new Peer(a);
 
-            Node b = new Node(TestItem.PublicKeyB, "127.0.0.1", 30303);
+            Node b = new Node(TestItem.PublicKeyB, "127.0.0.1", 30304);
             Peer peerB = new Peer(b);
 
-            Node c = new Node(TestItem.PublicKeyC, "127.0.0.1", 30303);
+            Node c = new Node(TestItem.PublicKeyC, "127.0.0.1", 30305);
             Peer peerC = new Peer(c);
             
-            Node d = new Node(TestItem.PublicKeyD, "127.0.0.1", 30303);
-            d.IsTrusted = true;
+            Node d = new Node(TestItem.PublicKeyD, "127.0.0.1", 30306);
             Peer peerD = new Peer(d);
             Peer peerE = null;
 
@@ -103,11 +85,11 @@ namespace Nethermind.Network.Test
             List<Peer> peers = new List<Peer> {peerA, peerB, peerC, peerD, peerE};
             peers.Sort(_comparer);
             
-            Assert.AreEqual(peers[0], peerD);
-            Assert.AreEqual(peers[1], peerC);
-            Assert.AreEqual(peers[2], peerA);
-            Assert.AreEqual(peers[3], peerB);
-            Assert.AreEqual(peers[4], peerE);
+            Assert.AreEqual(peerC, peers[0]);
+            Assert.AreEqual(peerD, peers[1]);
+            Assert.AreEqual(peerA, peers[2]);
+            Assert.AreEqual(peerB, peers[3]);
+            Assert.AreEqual(peerE, peers[4]);
         }
     }
 }
