@@ -15,10 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
@@ -41,6 +39,66 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Network.P2P
 {
+    public class MessageQueue<TMsg, TData> where TMsg : MessageBase
+    {
+        private bool _isClosed;
+        private readonly Action<TMsg> _send;
+        private Request<TMsg, TData> _currentRequest;
+        
+        private Queue<Request<TMsg, TData>> _requestQueue = new Queue<Request<TMsg, TData>>();
+
+        public MessageQueue(Action<TMsg> send)
+        {
+            _send = send;
+        }
+        
+        public void Send(Request<TMsg, TData> request)
+        {
+            if (_isClosed)
+            {
+                return;
+            }
+            
+            lock (_requestQueue)
+            {
+                if (_currentRequest == null)
+                {
+                    _currentRequest = request;
+                    _currentRequest.StartMeasuringTime();
+                    _send(_currentRequest.Message);
+                }
+                else
+                {
+                    _requestQueue.Enqueue(request);
+                }
+            }
+        }
+        
+        public void Handle(TData data, long size)
+        {
+            lock (_requestQueue)
+            {
+                if (_currentRequest == null)
+                {
+                    throw new SubprotocolException($"Received a response to {nameof(TMsg)} that has not been requested");
+                }
+
+                _currentRequest.ResponseSize = size;
+                _currentRequest.CompletionSource.SetResult(data);
+                if (_requestQueue.TryDequeue(out _currentRequest))
+                {
+                    _currentRequest.StartMeasuringTime();
+                    _send(_currentRequest.Message);
+                }
+            }
+        }
+
+        public void CompleteAdding()
+        {
+            _isClosed = true;
+        }
+    }
+    
     public abstract class SyncPeerProtocolHandlerBase : ProtocolHandlerBase, ISyncPeer
     {
         public static readonly ulong SoftOutgoingMessageSizeLimit = 2.MB();
@@ -64,11 +122,8 @@ namespace Nethermind.Network.P2P
         protected ITxPool _txPool;
         protected ITimestamper _timestamper;
 
-        protected readonly BlockingCollection<Request<GetBlockHeadersMessage, BlockHeader[]>> _headersRequests
-            = new BlockingCollection<Request<GetBlockHeadersMessage, BlockHeader[]>>();
-
-        protected readonly BlockingCollection<Request<GetBlockBodiesMessage, BlockBody[]>> _bodiesRequests
-            = new BlockingCollection<Request<GetBlockBodiesMessage, BlockBody[]>>();
+        protected readonly MessageQueue<GetBlockHeadersMessage, BlockHeader[]> _headersRequests;
+        protected readonly MessageQueue<GetBlockBodiesMessage, BlockBody[]> _bodiesRequests;
 
         protected SyncPeerProtocolHandlerBase(ISession session,
             IMessageSerializationService serializer,
@@ -80,6 +135,8 @@ namespace Nethermind.Network.P2P
             SyncServer = syncServer ?? throw new ArgumentNullException(nameof(syncServer));
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _timestamper = Timestamper.Default;
+            _headersRequests = new MessageQueue<GetBlockHeadersMessage, BlockHeader[]>(Send);
+            _bodiesRequests = new MessageQueue<GetBlockBodiesMessage, BlockBody[]>(Send);
         }
 
         public void Disconnect(DisconnectReason reason, string details)
@@ -104,11 +161,6 @@ namespace Nethermind.Network.P2P
         [Todo(Improve.Refactor, "Generic approach to requests")]
         private async Task<BlockBody[]> SendRequest(GetBlockBodiesMessage message, CancellationToken token)
         {
-            if (_headersRequests.IsAddingCompleted || _isDisposed == 1)
-            {
-                return Array.Empty<BlockBody>();
-            }
-
             if (Logger.IsTrace)
             {
                 Logger.Trace("Sending bodies request:");
@@ -116,11 +168,9 @@ namespace Nethermind.Network.P2P
             }
 
             Request<GetBlockBodiesMessage, BlockBody[]> request = new Request<GetBlockBodiesMessage, BlockBody[]>(message);
-            _bodiesRequests.Add(request, token);
-            request.StartMeasuringTime();
+            _bodiesRequests.Send(request);
 
             // Logger.Warn($"Sending bodies request of length {request.Message.BlockHashes.Count} to {this}");
-            Send(request.Message);
 
             Task<BlockBody[]> task = request.CompletionSource.Task;
             using CancellationTokenSource delayCancellation = new CancellationTokenSource();
@@ -168,11 +218,6 @@ namespace Nethermind.Network.P2P
 
         private async Task<BlockHeader[]> SendRequest(GetBlockHeadersMessage message, CancellationToken token)
         {
-            if (_headersRequests.IsAddingCompleted || _isDisposed == 1)
-            {
-                return Array.Empty<BlockHeader>();
-            }
-
             if (Logger.IsTrace)
             {
                 Logger.Trace($"Sending headers request to {Session.Node:c}:");
@@ -184,10 +229,8 @@ namespace Nethermind.Network.P2P
             }
 
             Request<GetBlockHeadersMessage, BlockHeader[]> request = new Request<GetBlockHeadersMessage, BlockHeader[]>(message);
-            _headersRequests.Add(request, token);
-            request.StartMeasuringTime();
+            _headersRequests.Send(request);
 
-            Send(request.Message);
             Task<BlockHeader[]> task = request.CompletionSource.Task;
             using CancellationTokenSource delayCancellation = new CancellationTokenSource();
             using CancellationTokenSource compositeCancellation = CancellationTokenSource.CreateLinkedTokenSource(token, delayCancellation.Token);
@@ -209,6 +252,7 @@ namespace Nethermind.Network.P2P
             }
 
             StatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.Headers, 0);
+            Logger.Warn("TIMED OUT");
             throw new TimeoutException($"{Session} Request timeout in {nameof(GetBlockHeadersMessage)} with {message.MaxHeaders} max headers");
         }
 
@@ -351,37 +395,17 @@ namespace Nethermind.Network.P2P
         protected void Handle(BlockHeadersMessage message, long size)
         {
             Metrics.Eth62BlockHeadersReceived++;
-            if (_headersRequests.TryTake(
-                out Request<GetBlockHeadersMessage, BlockHeader[]> request,
-                TimeSpan.FromSeconds(1)))
-            {
-                request.ResponseSize = size;
-                request.CompletionSource.SetResult(message.BlockHeaders);
-            }
-            else
-            {
-                throw new SubprotocolException($"Received a {nameof(BlockHeadersMessage)} that has not been requested");
-            }
+            ReportIn(message);
+            _headersRequests.Handle(message.BlockHeaders, size);
         }
 
         protected void HandleBodies(IByteBuffer buffer, long size)
         {
             Metrics.Eth62BlockBodiesReceived++;
 
-            if (_bodiesRequests.TryTake(
-                out Request<GetBlockBodiesMessage, BlockBody[]> request,
-                TimeSpan.FromSeconds(1)))
-            {
-                BlockBodiesMessage message = Deserialize<BlockBodiesMessage>(buffer);
-                ReportIn(message);
-                // Logger.Warn($"Bodies message of size {size} from {this}");
-                request.ResponseSize = size;
-                request.CompletionSource.SetResult(message.Bodies);
-            }
-            else
-            {
-                throw new SubprotocolException($"Received a {nameof(BlockBodiesMessage)} that has not been requested");
-            }
+            BlockBodiesMessage message = Deserialize<BlockBodiesMessage>(buffer);
+            ReportIn(message);
+            _bodiesRequests.Handle(message.Bodies, size);
         }
 
         protected void Handle(GetReceiptsMessage msg)
@@ -479,30 +503,5 @@ namespace Nethermind.Network.P2P
         }
 
         #endregion
-
-        protected class Request<TMsg, TResult>
-        {
-            public Request(TMsg message)
-            {
-                CompletionSource = new TaskCompletionSource<TResult>();
-                Message = message;
-            }
-
-            public void StartMeasuringTime()
-            {
-                Stopwatch = Stopwatch.StartNew();
-            }
-
-            public long FinishMeasuringTime()
-            {
-                Stopwatch.Stop();
-                return Stopwatch.ElapsedMilliseconds;
-            }
-
-            private Stopwatch Stopwatch { get; set; }
-            public long ResponseSize { get; set; }
-            public TMsg Message { get; }
-            public TaskCompletionSource<TResult> CompletionSource { get; }
-        }
     }
 }

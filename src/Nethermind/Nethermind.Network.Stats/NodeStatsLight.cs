@@ -258,6 +258,7 @@ namespace Nethermind.Stats
         
         private int GetDisconnectDelay()
         {
+            int disconnectDelay;
             int disconnectCount;
             lock (_statCountersArray)
             {
@@ -266,15 +267,19 @@ namespace Nethermind.Stats
 
             if (disconnectCount == 0)
             {
-                return 100;
+                disconnectDelay = 100;
             }
-
-            if (disconnectCount > _statsConfig.DisconnectDelays.Length)
+            else if (disconnectCount > _statsConfig.DisconnectDelays.Length)
             {
-                return _statsConfig.DisconnectDelays.Last();
+                disconnectDelay = _statsConfig.DisconnectDelays[^1];
+            }
+            else
+            {
+                disconnectDelay = _statsConfig.DisconnectDelays[disconnectCount - 1];
             }
 
-            return _statsConfig.DisconnectDelays[disconnectCount - 1];
+            Console.WriteLine($"DISCONNECT DELAY on {Node.Host} is {disconnectDelay}");
+            return disconnectDelay;
         }
 
 

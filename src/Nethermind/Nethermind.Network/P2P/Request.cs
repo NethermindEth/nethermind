@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,22 +13,35 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using Nethermind.Core;
+using System.Diagnostics;
+using System.Threading.Tasks;
 
-namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
+namespace Nethermind.Network.P2P
 {
-    public class ReceiptsMessage : P2PMessage
+    public class Request<TMsg, TResult>
     {
-        public TxReceipt[][] TxReceipts { get; }
-        public override int PacketType { get; } = Eth63MessageCode.Receipts;
-        public override string Protocol { get; } = "eth";
-
-        public ReceiptsMessage(TxReceipt[][] txReceipts)
+        public Request(TMsg message)
         {
-            TxReceipts = txReceipts ?? new TxReceipt[0][];
+            CompletionSource = new TaskCompletionSource<TResult>();
+            Message = message;
         }
-        
-        public override string ToString() => $"{nameof(ReceiptsMessage)}({TxReceipts?.Length ?? 0})";
+
+        public void StartMeasuringTime()
+        {
+            Stopwatch = Stopwatch.StartNew();
+        }
+
+        public long FinishMeasuringTime()
+        {
+            Stopwatch.Stop();
+            return Stopwatch.ElapsedMilliseconds;
+        }
+
+        private Stopwatch Stopwatch { get; set; }
+        public long ResponseSize { get; set; }
+        public TMsg Message { get; }
+        public TaskCompletionSource<TResult> CompletionSource { get; }
     }
 }

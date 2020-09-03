@@ -16,6 +16,7 @@
 
 using System;
 using System.Globalization;
+using System.Net;
 using Nethermind.Network;
 
 namespace Nethermind.JsonRpc.Modules.Admin
@@ -39,7 +40,7 @@ namespace Nethermind.JsonRpc.Modules.Admin
         {
         }
 
-        public PeerInfo(Peer peer)
+        public PeerInfo(Peer peer, bool includeDetails)
         {
             if (peer.Node == null)
             {
@@ -48,18 +49,14 @@ namespace Nethermind.JsonRpc.Modules.Admin
             }
             
             ClientId = peer.Node.ClientId;
-            Host = peer.Node.Host;
+            Host = peer.Node.Host == null ? null : IPAddress.Parse(peer.Node.Host).MapToIPv4().ToString();
             Port = peer.Node.Port;
             Address = peer.Node.Address.ToString();
             IsBootnode = peer.Node.IsBootnode;
             IsTrusted = peer.Node.IsTrusted;
             IsStatic = peer.Node.IsStatic;
             Enode = peer.Node.ToString("e");
-        }
-
-        public PeerInfo(Peer peer, bool includeDetails)
-            : this(peer)
-        {
+            
             if (includeDetails)
             {
                 ClientType = peer.Node.ClientType.ToString();
