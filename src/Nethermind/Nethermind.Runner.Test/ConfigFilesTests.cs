@@ -139,7 +139,7 @@ namespace Nethermind.Runner.Test
                     actualValue = value.ToString();
                 }
 
-                Assert.AreEqual(expectedValue, actualValue);
+                Assert.AreEqual(expectedValue, actualValue, $"Property: {property.Name}, expected value: <{expectedValue}> but was <{actualValue}>");
             }
         }
 

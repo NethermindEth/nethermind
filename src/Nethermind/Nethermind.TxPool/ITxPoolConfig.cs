@@ -26,7 +26,7 @@ namespace Nethermind.TxPool
         [ConfigItem(DefaultValue = "2048", Description = "Max number of transactions held in mempool (more transactions in mempool mean more memory used")]
         int Size { get; set; }
         
-        [ConfigItem(DefaultValue = "512 * 1024",
+        [ConfigItem(DefaultValue = "524288",
             Description = "Max number of cached hashes of already known transactions." +
                           "It is set automatically by the memory hint.")]
         int HashCacheSize { get; set; }
