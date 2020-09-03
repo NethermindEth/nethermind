@@ -86,9 +86,9 @@ namespace Nethermind.Network.Test
             peers.Sort(_comparer);
             
             Assert.AreEqual(peerC, peers[0]);
-            Assert.AreEqual(peerD, peers[1]);
-            Assert.AreEqual(peerA, peers[2]);
-            Assert.AreEqual(peerB, peers[3]);
+            Assert.AreEqual(peerA, peers[1]);
+            Assert.AreEqual(peerB, peers[2]);
+            Assert.AreEqual(peerD, peers[3]);
             Assert.AreEqual(peerE, peers[4]);
         }
     }
