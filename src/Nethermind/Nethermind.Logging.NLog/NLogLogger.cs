@@ -46,7 +46,7 @@ namespace Nethermind.Logging.NLog
 
         private void Init(string fileName, string logDirectory)
         {
-            var logsDir = string.IsNullOrEmpty(logDirectory) ? "logs".GetApplicationResourcePath() : logDirectory;
+            var logsDir = (string.IsNullOrEmpty(logDirectory) ? "logs" : logDirectory).GetApplicationResourcePath();
             if (!Directory.Exists(logsDir))
             {
                 Directory.CreateDirectory(logsDir);
