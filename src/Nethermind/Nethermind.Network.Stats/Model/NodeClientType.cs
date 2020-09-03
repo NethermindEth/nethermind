@@ -13,10 +13,11 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-namespace Nethermind.Synchronization.Peers
+namespace Nethermind.Stats.Model
 {
-    public enum PeerClientType
+    public enum NodeClientType
     {
         BeSu,
         Geth,

@@ -45,7 +45,7 @@ namespace Nethermind.Network.P2P
     {
         public static readonly ulong SoftOutgoingMessageSizeLimit = 2.MB();
         public Node Node => Session?.Node;
-        public string ClientId => Session?.Node?.ClientId;
+        public string ClientId => Node?.ClientId;
         public UInt256 TotalDifficulty { get; set; }
         public PublicKey Id => Node.Id;
 
