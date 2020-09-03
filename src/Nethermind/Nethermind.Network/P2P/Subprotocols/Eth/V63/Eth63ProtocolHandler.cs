@@ -188,8 +188,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                 = new Request<GetReceiptsMessage, TxReceipt[][]>(message);
             _receiptsRequests.Send(request);
 
-            Send(request.Message);
-
             Task<TxReceipt[][]> task = request.CompletionSource.Task;
             using CancellationTokenSource delayCancellation = new CancellationTokenSource();
             using CancellationTokenSource compositeCancellation 
