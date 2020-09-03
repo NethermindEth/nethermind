@@ -26,7 +26,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
     {
         private readonly IRegisterContract _registerContract;
         private readonly string _registryKey;
-        private Keccak _currentHashAddress;
+        private Keccak _currentHashAddress = Keccak.Zero;
 
         public RegisterBasedContract(
             IAbiEncoder abiEncoder,
@@ -41,18 +41,37 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
         protected override Transaction GenerateTransaction<T>(byte[] transactionData, Address sender, long gasLimit = DefaultContractGasLimit, BlockHeader header = null)
         {
-            if (header != null && _currentHashAddress != header.Hash)
+            Address contractAddress = GetContractAddress(header);
+            return GenerateTransaction<T>(transactionData, sender, contractAddress, gasLimit);
+        }
+
+        private Address GetContractAddress(BlockHeader header)
+        {
+            bool needUpdate = false;
+            lock (_currentHashAddress)
+            {
+                needUpdate = header != null && _currentHashAddress != header.Hash; 
+            }
+            
+            if (needUpdate)
             {
                 Address contractAddress = _registerContract.GetAddress(header, _registryKey);
                 if (contractAddress == Address.Zero)
                 {
                     throw new AbiException($"Contract {GetType().Name} is not configured in Register Contract under key {_registryKey}.");
                 }
-                ContractAddress = contractAddress;
-                _currentHashAddress = header.Hash;
+
+                lock (_currentHashAddress)
+                {
+                    ContractAddress = contractAddress;
+                    _currentHashAddress = header.Hash;
+                }
+                
+                return contractAddress;
             }
 
-            return base.GenerateTransaction<T>(transactionData, sender, gasLimit, header);
+            return ContractAddress;
+
         }
     }
 }
