@@ -36,10 +36,12 @@ namespace Nethermind.RocksDbExtractor.Modules.Main
                 Width = Dim.Fill(),
                 Height = 10
             };
-            var pathLbl = new Label(3, 3, "Enter DB path: ");
-            var pathTxtField = new TextField(20, 3, 70, "");
-            var okBtn = new Button(90, 3, "OK");
+            var examplePathLabel = new Label(3, 3, "Example path: \"Users/Desktop/nethermind_db/ndm_consumer/local\"");
+            var pathLbl = new Label(3, 5, "Enter DB path: ");
+            var pathTxtField = new TextField(20, 5, 70, "");
+            var okBtn = new Button(90, 5, "OK");
             var quitBtn = new Button(3, 1, "Quit");
+            var backLabel = new Label(15, 1, "(Back: press \"q\" button)");
             quitBtn.Clicked = () =>
             {
                 Application.Top.Running = false;
@@ -62,16 +64,24 @@ namespace Nethermind.RocksDbExtractor.Modules.Main
                     return;
                 }
 
-                if (!System.IO.Directory.GetDirectories(pathString, "*").Any())
+                try
                 {
-                    MessageBox.ErrorQuery(40, 7, "Error", "Directory is empty.");
+                    if (!System.IO.Directory.GetDirectories(pathString, "*").Any())
+                    {
+                        MessageBox.ErrorQuery(40, 7, "Error", "Directory is empty.");
+                        return;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.ErrorQuery(50, 7, "Error", "There was an error while getting a path.");
                     return;
                 }
 
                 PathSelected?.Invoke(this, pathString);
             };
             
-            window.Add(quitBtn, pathLbl, pathTxtField, okBtn);
+            window.Add(examplePathLabel, quitBtn, backLabel, pathLbl, pathTxtField, okBtn);
 
             return window;
         }

@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Linq;
 using Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.Databases;
 using Nethermind.DataMarketplace.Infrastructure.Rlp;
@@ -49,7 +50,8 @@ namespace Nethermind.RocksDbExtractor.Modules.Data.Providers
             };
             if (!depositApprovals.Any())
             {
-                MessageBox.Query(40, 7, "Info", "No data.");
+                MessageBox.Query(40, 7, "Consumer deposit approvals", "No data." +
+                                                                      $"{Environment.NewLine}(ESC to close)");
                 window.FocusPrev();
                 return;
             }

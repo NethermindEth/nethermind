@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Linq;
 using Nethermind.DataMarketplace.Infrastructure.Rlp;
 using Nethermind.Db.Rocks.Config;
@@ -49,7 +50,8 @@ namespace Nethermind.RocksDbExtractor.Modules.Data.Providers
             };
             if (!dataAssets.Any())
             {
-                MessageBox.Query(40, 7, "Info", "No data.");
+                MessageBox.Query(40, 7, "Data assets", "No data." +
+                                                       $"{Environment.NewLine}(ESC to close)");
                 window.FocusPrev();
                 return;
             }

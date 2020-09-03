@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Linq;
 using Nethermind.DataMarketplace.Providers.Infrastructure.Rlp;
 using Nethermind.Db.Rocks.Config;
@@ -50,7 +51,8 @@ namespace Nethermind.RocksDbExtractor.Modules.Data.Providers
             
             if (!providerSessions.Any())
             {
-                MessageBox.Query(40, 7, "Info", "No data.");
+                MessageBox.Query(40, 7, "Provider sessions", "No data." +
+                                                             $"{Environment.NewLine}(ESC to close)");
                 window.FocusPrev();
                 return;
             }

@@ -52,7 +52,8 @@ namespace Nethermind.RocksDbExtractor.Modules.Data.Providers
             };
             if (!deposits.Any())
             {
-                MessageBox.Query(40, 7, "Info", "No data.");
+                MessageBox.Query(40, 7, "Deposits", "No data." +
+                                                    $"{Environment.NewLine}(ESC to close)");
                 window.FocusPrev();
                 return;
             }
