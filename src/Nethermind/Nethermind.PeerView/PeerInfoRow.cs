@@ -27,7 +27,7 @@ namespace Nethermind.PeerView
 
         public override string ToString()
         {
-            return $"{Host.PadLeft(15)} {ClientType.PadLeft(12)} {EthDetails} {LastSignal} {Reputation.ToString().PadLeft(6)}";
+            return $"{Host.PadLeft(15)} {ClientType.PadLeft(12)} {EthDetails.PadLeft(5)} {LastSignal} {Reputation.ToString().PadLeft(6)}";
         }
     }
 }
