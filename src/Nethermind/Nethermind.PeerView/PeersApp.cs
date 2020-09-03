@@ -32,9 +32,11 @@ namespace Nethermind.PeerView
         private PeerInfoRow ToPeerInfoRow(PeerInfoModel model)
         {
             PeerInfoRow row = new PeerInfoRow();
-            row.Client = model.ClientId;
+            row.ClientType = model.ClientType;
             row.Reputation = 100;
-            row.IP = model.Host;
+            row.Host = model.Host;
+            row.LastSignal = model.LastSignal;
+            row.EthDetails = model.EthDetails;
             return row;
         }
 
@@ -76,7 +78,7 @@ namespace Nethermind.PeerView
 
             bool UpdateTimer(MainLoop mainLoop)
             {
-                _adminRpc.admin_peers().ContinueWith(
+                _adminRpc.admin_peers(true).ContinueWith(
                     t => Application.MainLoop.Invoke(() =>
                     {
                         Title = $"Last Peers Update {DateTime.Now}";

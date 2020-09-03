@@ -19,14 +19,15 @@ namespace Nethermind.PeerView
 {
     public class PeerInfoRow
     {
-        public string IP { get; set; } = "94.130.12.34";
-        public string Client { get; set; } = "Parity";
-        public string PublicKey { get; set; } = "0xabcd1234";
+        public string ClientType { get; set; }
+        public string Host { get; set; }
+        public string LastSignal { get; set; }
+        public string EthDetails { get; set; }
         public int Reputation { get; set; } = 100;
 
         public override string ToString()
         {
-            return $"{IP.PadLeft(15)} {Reputation.ToString().PadLeft(6)} {Client} ";
+            return $"{Host.PadLeft(15)} {ClientType.PadLeft(12)} {EthDetails} {LastSignal} {Reputation.ToString().PadLeft(6)}";
         }
     }
 }

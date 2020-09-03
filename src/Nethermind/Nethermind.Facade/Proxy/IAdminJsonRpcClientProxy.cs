@@ -24,6 +24,6 @@ namespace Nethermind.Facade.Proxy
 {
     public interface IAdminJsonRpcClientProxy
     {
-        Task<RpcResult<PeerInfoModel[]>> admin_peers();
+        Task<RpcResult<PeerInfoModel[]>> admin_peers(bool includeDetails);
     }
 }
