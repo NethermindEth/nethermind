@@ -16,17 +16,21 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State.Proofs;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule
 {
@@ -35,15 +39,26 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         private readonly IConfigProvider _configProvider;
         private readonly IGethStyleTracer _tracer;
         private readonly IBlockTree _blockTree;
+        private readonly IReceiptStorage _receiptStorage;
         private readonly IReceiptsMigration _receiptsMigration;
+        private readonly ISpecProvider _specProvider;
         private readonly Dictionary<string, IDb> _dbMappings;
 
-        public DebugBridge(IConfigProvider configProvider, IReadOnlyDbProvider dbProvider, IGethStyleTracer tracer, IBlockTree blockTree, IReceiptsMigration receiptsMigration)
+        public DebugBridge(
+            IConfigProvider configProvider,
+            IReadOnlyDbProvider dbProvider,
+            IGethStyleTracer tracer,
+            IBlockTree blockTree,
+            IReceiptStorage receiptStorage,
+            IReceiptsMigration receiptsMigration,
+            ISpecProvider specProvider)
         {
             _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));
             _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _receiptsMigration = receiptsMigration ?? throw new ArgumentNullException(nameof(receiptsMigration));
+            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
             IDb blockInfosDb = dbProvider.BlockInfosDb ?? throw new ArgumentNullException(nameof(dbProvider.BlockInfosDb));
             IDb blocksDb = dbProvider.BlocksDb ?? throw new ArgumentNullException(nameof(dbProvider.BlocksDb));
@@ -85,7 +100,27 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             _blockTree.UpdateHeadBlock(blockHash);
         }
 
-        public Task<bool> MigrateReceipts(long blockNumber) => _receiptsMigration.Run(blockNumber + 1); // add 1 to make go from inclusive (better for API) to exclusive (better for internal)
+        public Task<bool> MigrateReceipts(long blockNumber)
+            => _receiptsMigration.Run(blockNumber + 1); // add 1 to make go from inclusive (better for API) to exclusive (better for internal)
+
+        public void InsertReceipts(BlockParameter blockParameter, TxReceipt[] txReceipts)
+        {
+            SearchResult<Block> searchResult = _blockTree.SearchForBlock(blockParameter);
+            if (searchResult.IsError)
+            {
+                throw new InvalidDataException(searchResult.Error);
+            }
+
+            Block block = searchResult.Object;
+            ReceiptTrie receiptTrie = new ReceiptTrie(block.Number, _specProvider, txReceipts);
+            receiptTrie.UpdateRootHash();
+            if (block.ReceiptsRoot != receiptTrie.RootHash)
+            {
+                throw new InvalidDataException("Receipts root mismatch");
+            }
+            
+            _receiptStorage.Insert(block, txReceipts);
+        }
 
         public GethLikeTxTrace GetTransactionTrace(Keccak transactionHash, CancellationToken cancellationToken, GethTraceOptions gethTraceOptions = null)
         {

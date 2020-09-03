@@ -26,7 +26,9 @@
         <None Remove="Contracts\TransactionPermissionContractV2.json" />
         <None Remove="Contracts\TransactionPermissionContractV3.json" />
         <None Remove="Contracts\BlockGasLimitContract.json" />
+        <EmbeddedResource Include="Contracts\CertifierContract.json" />
         <EmbeddedResource Include="Contracts\RandomContract.json" />
+        <EmbeddedResource Include="Contracts\RegisterContract.json" />
         <EmbeddedResource Include="Contracts\ReportingValidatorContract.json" />
         <EmbeddedResource Include="Contracts\RewardContract.json" />
         <EmbeddedResource Include="Contracts\ValidatorContract.json" />

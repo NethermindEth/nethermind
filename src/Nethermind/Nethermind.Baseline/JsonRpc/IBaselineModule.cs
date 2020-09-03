@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -45,13 +46,18 @@ namespace Nethermind.Baseline.JsonRpc
             Description = "Gets a single leaf from a tree at the given 'address'",
             IsReadOnly = true,
             IsImplemented = true)]
-        Task<ResultWrapper<BaselineTreeNode>> baseline_getLeaf(Address contractAddress, UInt256 leafIndex);
+        Task<ResultWrapper<BaselineTreeNode>> baseline_getLeaf(
+            Address contractAddress,
+            UInt256 leafIndex,
+            BlockParameter? blockParameter = null);
         
         [JsonRpcMethod(
             Description = "Gets root of a tree at the given 'address'",
             IsReadOnly = true,
             IsImplemented = true)]
-        Task<ResultWrapper<Keccak>> baseline_getRoot(Address contractAddress);
+        Task<ResultWrapper<Keccak>> baseline_getRoot(
+            Address contractAddress,
+            BlockParameter? blockParameter = null);
 
         [JsonRpcMethod(
             Description = "Gets multiple leaves from a tree at the given 'address'",
@@ -59,7 +65,8 @@ namespace Nethermind.Baseline.JsonRpc
             IsImplemented = true)]
         Task<ResultWrapper<BaselineTreeNode[]>> baseline_getLeaves(
             Address contractAddress,
-            params UInt256[] leafIndexes);
+            UInt256[] leafIndexes,
+            BlockParameter? blockParameter = null);
 
         [JsonRpcMethod(
             Description = "Deploys a contract with the given 'contract type'. Requires the account to be unlocked.",
@@ -77,7 +84,10 @@ namespace Nethermind.Baseline.JsonRpc
             Description = "Gets siblings path / proof of the given leaf.",
             IsReadOnly = true,
             IsImplemented = true)]
-        Task<ResultWrapper<BaselineTreeNode[]>> baseline_getSiblings(Address contractAddress, long leafIndex);
+        Task<ResultWrapper<BaselineTreeNode[]>> baseline_getSiblings(
+            Address contractAddress,
+            long leafIndex,
+            BlockParameter? blockParameter = null);
         
         [JsonRpcMethod(
             Description = "Verifies a sibling path for a given root and leaf value.",
@@ -87,7 +97,8 @@ namespace Nethermind.Baseline.JsonRpc
             Address contractAddress,
             Keccak root,
             Keccak leaf,
-            BaselineTreeNode[] siblingsPath);
+            BaselineTreeNode[] siblingsPath,
+            BlockParameter? blockParameter = null);
 
         [JsonRpcMethod(
             Description = "Starts tracking a tree at the given address.",

@@ -47,5 +47,10 @@ namespace Nethermind.JsonRpc.Data
         public Address Address { get; set; }
         public byte[] Data { get; set; }
         public Keccak[] Topics { get; set; }
+
+        public LogEntry ToLogEntry()
+        {
+            return new LogEntry(Address, Data, Topics);
+        }
     }
 }
