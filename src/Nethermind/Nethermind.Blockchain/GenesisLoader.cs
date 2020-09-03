@@ -87,7 +87,13 @@ namespace Nethermind.Blockchain
                         GasLimit = genesis.GasLimit
                     };
 
-                    _transactionProcessor.Execute(constructorTransaction, genesis.Header, NullTxTracer.Instance);
+                    CallOutputTracer outputTracer = new CallOutputTracer();
+                    _transactionProcessor.Execute(constructorTransaction, genesis.Header, outputTracer);
+
+                    if (outputTracer.StatusCode != StatusCode.Success)
+                    {
+                        throw new InvalidOperationException($"Failed to initialize constructor for address {address}. Error: {outputTracer.Error}");
+                    }
                 }
             }
             

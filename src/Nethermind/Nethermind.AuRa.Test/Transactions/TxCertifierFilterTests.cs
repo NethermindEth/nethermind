@@ -94,10 +94,11 @@ namespace Nethermind.AuRa.Test.Transactions
         }
 
         [Test]
-        public async Task should_allow_addresses_from_contract_on_chain()
+        public async Task should_only_allow_addresses_from_contract_on_chain()
         {
             var chain = await TestContractBlockchain.ForTest<TestTxPermissionsBlockchain, TxCertifierFilterTests>();
             chain.CertifierContract.Certified(chain.BlockTree.Head.Header, TestItem.AddressA).Should().BeFalse();
+            chain.CertifierContract.Certified(chain.BlockTree.Head.Header, new Address("0xbbcaa8d48289bb1ffcf9808d9aa4b1d215054c78")).Should().BeTrue();
         }
         
         public class TestTxPermissionsBlockchain : TestContractBlockchain
@@ -106,10 +107,12 @@ namespace Nethermind.AuRa.Test.Transactions
             
             protected override BlockProcessor CreateBlockProcessor()
             {
+                AbiEncoder abiEncoder = new AbiEncoder();
+                ReadOnlyTxProcessorSource readOnlyTransactionProcessorSource = new ReadOnlyTxProcessorSource(DbProvider, BlockTree, SpecProvider, LimboLogs.Instance);
                 CertifierContract = new CertifierContract(
-                    new AbiEncoder(), 
-                    ChainSpec.Parameters.Registrar, 
-                    new ReadOnlyTxProcessorSource(DbProvider, BlockTree, SpecProvider, LimboLogs.Instance));
+                    abiEncoder, 
+                    new RegisterContract(abiEncoder, ChainSpec.Parameters.Registrar, readOnlyTransactionProcessorSource),
+                    readOnlyTransactionProcessorSource);
                 
                 return new AuRaBlockProcessor(
                     SpecProvider,

@@ -210,7 +210,10 @@ namespace Nethermind.Runner.Ethereum.Steps
             Address? registrar = _context.ChainSpec?.Parameters.Registrar;
             return registrar != null 
                 ? new TxCertifierFilter(
-                    new CertifierContract(_context.AbiEncoder, registrar, readOnlyTxProcessorSource),
+                    new CertifierContract(
+                        _context.AbiEncoder, 
+                        new RegisterContract(_context.AbiEncoder, registrar, readOnlyTxProcessorSource), 
+                        readOnlyTxProcessorSource),
                     gasPriceTxFilter,
                     _context.LogManager) 
                 : gasPriceTxFilter;
