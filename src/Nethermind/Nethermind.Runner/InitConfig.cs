@@ -28,6 +28,7 @@ namespace Nethermind.Runner
         public bool PeerManagerEnabled { get; set; } = true;
         public bool IsMining { get; set; } = false;
         public string ChainSpecPath { get; set; } = "chainspec/foundation.json";
+        public string HiveChainSpecPath { get; set; } = "chainspec/test.json";
         public string PluginsDirectory { get; set; } = "plugins";
         public string BaseDbPath { get; set; } = "db";
         public string LogFileName { get; set; } = "log.txt";
@@ -38,6 +39,7 @@ namespace Nethermind.Runner
         public bool ReceiptsMigration { get; set; } = false;
         public DiagnosticMode DiagnosticMode { get; set; } = DiagnosticMode.None;
         public string RpcDbUrl { get; set; } = String.Empty;
+        public long? MemoryHint { get; set; }
 
         [Obsolete("Use DiagnosticMode with MemDb instead")]
         public bool UseMemDb

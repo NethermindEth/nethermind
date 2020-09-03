@@ -26,14 +26,14 @@ namespace Nethermind.Network.Config
         public bool IsPeersPersistenceOn { get; set; } = true;
         public int ActivePeersMaxCount { get; set; } = 50;
         public int PeersPersistenceInterval { get; set; } = 1000 * 5;
-        public int PeersUpdateInterval { get; set; } = 100;
+        public int PeersUpdateInterval { get; set; } = 250;
         public int P2PPingInterval { get; set; } = 1000 * 10;
         public int MaxPersistedPeerCount { get; set; } = 2000;
         public int PersistedPeerCountCleanupThreshold { get; set; } = 2200;
         public int MaxCandidatePeerCount { get; set; } = 10000;
         public int CandidatePeerCountCleanupThreshold { get; set; } = 11000;
         public bool DiagTracerEnabled { get; set; } = false;
-        public int NettyArenaOrder { get; set; } = 11;
+        public int NettyArenaOrder { get; set; } = INetworkConfig.DefaultNettyArenaOrder;
         public int DiscoveryPort { get; set; } = 30303;
         public int P2PPort { get; set; } = 30303;
     }

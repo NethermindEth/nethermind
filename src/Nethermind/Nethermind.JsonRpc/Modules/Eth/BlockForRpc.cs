@@ -19,7 +19,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
@@ -35,7 +35,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         public BlockForRpc(Block block, bool includeFullTransactionData)
         {
             _isAuRaBlock = block.Header.AuRaSignature != null;
-            Author = block.Author;
+            Author = block.Author ?? block.Beneficiary;
             Difficulty = block.Difficulty;
             ExtraData = block.ExtraData;
             GasLimit = block.GasLimit;

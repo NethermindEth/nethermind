@@ -22,8 +22,8 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Specs;
-using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 
@@ -70,7 +70,7 @@ namespace Nethermind.Evm.Benchmark
             _environment.TransferValue = 0;
             _environment.CurrentBlock = _header;
             
-            _evmState = new EvmState(long.MaxValue, _environment, ExecutionType.Transaction, false, true, false);
+            _evmState = new EvmState(long.MaxValue, _environment, ExecutionType.Transaction, true, false);
         }
 
         [Benchmark]

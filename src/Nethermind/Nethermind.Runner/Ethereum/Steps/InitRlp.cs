@@ -15,28 +15,27 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Reflection;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Attributes;
-using Nethermind.Evm.Tracing;
-using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Network;
 using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
-    [RunnerStepDependencies]
+    [RunnerStepDependencies(typeof(ApplyMemoryHint))]
     public class InitRlp : IStep
     {
-        public InitRlp(EthereumRunnerContext context)
+        public InitRlp(EthereumRunnerContext _)
         {
         }
 
         [Todo(Improve.Refactor, "Automatically scan all the references solutions?")]
-        public virtual Task Execute()
+        public virtual Task Execute(CancellationToken _)
         {
-            Rlp.RegisterDecoders(Assembly.GetAssembly(typeof(NetworkNodeDecoder)));
-            return Task.CompletedTask;
+           Rlp.RegisterDecoders(Assembly.GetAssembly(typeof(NetworkNodeDecoder)));
+           return Task.CompletedTask;
         }
     }
 }

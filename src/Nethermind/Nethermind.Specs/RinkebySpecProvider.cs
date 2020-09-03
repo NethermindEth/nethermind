@@ -60,19 +60,25 @@ namespace Nethermind.Specs
             {
                 return ConstantinopleFix.Instance;
             }
+            
+            if (blockNumber < BerlinBlockNumber)
+            {
+                return Istanbul.Instance;
+            }
 
-            return Istanbul.Instance;
+            return Berlin.Instance;
         }
 
         public long? DaoBlockNumber { get; } = null;
 
-        public static long HomesteadBlockNumber { get; } = 1;
-        public static long TangerineWhistleBlockNumber { get; } = 2;
-        public static long SpuriousDragonBlockNumber { get; } = 3;
-        public static long ByzantiumBlockNumber { get; } = 1035301;
-        public static long ConstantinopleBlockNumber { get; } = 3660663;
-        public static long ConstantinopleFixBlockNumber { get; } = 4321234;
-        public static long IstanbulBlockNumber { get; } = 5435345;
+        public const long HomesteadBlockNumber  = 1;
+        public const long TangerineWhistleBlockNumber  = 2;
+        public const long SpuriousDragonBlockNumber  = 3;
+        public const long ByzantiumBlockNumber  = 1035301;
+        public const long ConstantinopleBlockNumber  = 3660663;
+        public const long ConstantinopleFixBlockNumber  = 4321234;
+        public const long IstanbulBlockNumber  = 5435345;
+        public const long BerlinBlockNumber  = long.MaxValue - 1;
 
         public int ChainId => 4;
 
@@ -84,7 +90,8 @@ namespace Nethermind.Specs
             ByzantiumBlockNumber,
             ConstantinopleBlockNumber,
             ConstantinopleFixBlockNumber,
-            IstanbulBlockNumber
+            IstanbulBlockNumber,
+            BerlinBlockNumber
         };
 
         private RinkebySpecProvider()

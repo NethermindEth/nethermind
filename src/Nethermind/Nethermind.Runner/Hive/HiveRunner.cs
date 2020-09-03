@@ -18,6 +18,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Config;
@@ -33,34 +34,32 @@ namespace Nethermind.Runner.Hive
     {
         private readonly IJsonSerializer _jsonSerializer;
         private readonly IBlockTree _blockTree;
-        private readonly IWallet _wallet;
         private readonly ILogger _logger;
         private readonly IConfigProvider _configurationProvider;
 
         public HiveRunner(IBlockTree blockTree,
-            IWallet wallet,
             IJsonSerializer jsonSerializer,
             IConfigProvider configurationProvider,
             ILogger logger)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _jsonSerializer = jsonSerializer ?? throw new ArgumentNullException(nameof(jsonSerializer));
             _configurationProvider = configurationProvider ?? throw new ArgumentNullException(nameof(configurationProvider));
         }
 
-        public Task Start()
+        public Task Start(CancellationToken cancellationToken)
         {
-            _logger.Info("HIVE initialization starting");
+            if(_logger.IsInfo) _logger.Info("HIVE initialization starting");
             _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
             var hiveConfig = _configurationProvider.GetConfig<IHiveConfig>();
+
             ListEnvironmentVariables();
-            InitializeKeys(hiveConfig.KeysDir);
-            InitializeChain(hiveConfig.ChainFile);
-            InitializeBlocks(hiveConfig.BlocksDir);
+            InitializeBlocks(hiveConfig.BlocksDir, cancellationToken);
+
             _blockTree.NewHeadBlock -= BlockTreeOnNewHeadBlock;
-            _logger.Info("HIVE initialization completed");
+
+            if(_logger.IsInfo) _logger.Info("HIVE initialization completed");
             return Task.CompletedTask;
         }
 
@@ -101,36 +100,7 @@ namespace Nethermind.Runner.Hive
             await Task.CompletedTask;
         }
 
-        private void InitializeChain(string chainFile)
-        {
-            if (!File.Exists(chainFile))
-            {
-                if (_logger.IsInfo) _logger.Info($"HIVE Chain file does not exist: {chainFile}, skipping");
-                return;
-            }
-
-            var chainFileContent = File.ReadAllBytes(chainFile);
-            var rlpStream = new RlpStream(chainFileContent);
-            var blocks = new List<Block>();
-            
-            if (_logger.IsInfo) _logger.Info($"HIVE Loading blocks from {chainFile}");
-            while (rlpStream.ReadNumberOfItemsRemaining() > 0)
-            {
-                rlpStream.PeekNextItem();
-                Block block = Rlp.Decode<Block>(rlpStream);
-                if (_logger.IsInfo) _logger.Info($"HIVE Reading a chain.rlp block {block.ToString(Block.Format.Short)}");
-                blocks.Add(block);
-            }
-
-            for (int i = 0; i < blocks.Count; i++)
-            {
-                Block block = blocks[i];
-                if (_logger.IsInfo) _logger.Info($"HIVE Processing a chain.rlp block {block.ToString(Block.Format.Short)}");
-                ProcessBlock(block);
-            }
-        }
-
-        private void InitializeBlocks(string blocksDir)
+        private void InitializeBlocks(string blocksDir, CancellationToken cancellationToken)
         {
             if (!Directory.Exists(blocksDir))
             {
@@ -139,10 +109,17 @@ namespace Nethermind.Runner.Hive
             }
 
             if (_logger.IsInfo) _logger.Info($"HIVE Loading blocks from {blocksDir}");
+
             var files = Directory.GetFiles(blocksDir).OrderBy(x => x).ToArray();
             var blocks = files.Select(x => new {File = x, Block = DecodeBlock(x)}).OrderBy(x => x.Block.Header.Number).ToArray();
+
             foreach (var block in blocks)
             {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    break;
+                }
+                
                 if (_logger.IsInfo) _logger.Info($"HIVE Processing block file: {block.File} - {block.Block.ToString(Block.Format.Short)}");
                 ProcessBlock(block.Block);
             }
@@ -161,33 +138,13 @@ namespace Nethermind.Runner.Hive
             try
             {
                 _blockTree.SuggestBlock(block);
+
                 if (_logger.IsInfo) _logger.Info($"HIVE suggested {block.ToString(Block.Format.Short)}, now best suggested header {_blockTree.BestSuggestedHeader}, head {_blockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}");
             }
             catch (InvalidBlockException e)
             {
                 _logger.Error($"HIVE Invalid block: {block.Hash}, ignoring", e);
             }
-        }
-
-        private void InitializeKeys(string keysDir)
-        {
-            // TODO: this should be written properly and should work with actual wallets
-            
-            // if (!Directory.Exists(keysDir))
-            // {
-            //     if (_logger.IsInfo) _logger.Info($"HIVE Keys dir does not exist: {keysDir}, skipping");
-            //     return;
-            // }
-            //
-            // if (_logger.IsInfo) _logger.Info($"HIVE Loading keys from {keysDir}");
-            // var files = Directory.GetFiles(keysDir);
-            // foreach (var file in files)
-            // {
-            //     if (_logger.IsInfo) _logger.Info($"HIVE Processing key file: {file}");
-            //     var fileContent = File.ReadAllText(file);
-            //     var keyStoreItem = _jsonSerializer.Deserialize<KeyStoreItem>(fileContent);
-            //     _wallet.Add(new Address(keyStoreItem.Address));
-            // }
         }
     }
 }

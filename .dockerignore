@@ -4,3 +4,9 @@
 **/tests
 **/ndm_db
 **/nethermind_db
+.config
+.github
+benchmarking
+scripts
+wasm
+src/tests

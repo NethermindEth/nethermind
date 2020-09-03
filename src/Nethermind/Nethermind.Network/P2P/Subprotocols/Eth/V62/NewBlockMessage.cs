@@ -15,7 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Core;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 {
@@ -26,5 +26,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         public Block Block { get; set; }
         public UInt256 TotalDifficulty { get; set; }
+
+        public override string ToString() => $"{nameof(NewBlockMessage)}({Block?.Number ?? -1})";
     }
 }

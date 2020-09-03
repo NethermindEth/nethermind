@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Numerics;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Validators;
@@ -24,7 +25,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
@@ -104,7 +105,7 @@ namespace Nethermind.Blockchain.Processing
                 for (int i = 0; i < suggestedBlocks.Count; i++)
                 {
                     processedBlocks[i] = ProcessOne(suggestedBlocks[i], options, blockTracer);
-                    
+
                     // be cautious here as AuRa depends on processing
                     PreCommitBlock(newBranchStateRoot); // only needed if we plan to read state root?
                     if (!readOnly)
@@ -124,7 +125,7 @@ namespace Nethermind.Blockchain.Processing
 
                 return processedBlocks;
             }
-            catch (InvalidBlockException)
+            catch (Exception) // try to restore for all cost
             {
                 RestoreBranch(previousBranchStateRoot);
                 throw;
@@ -175,7 +176,7 @@ namespace Nethermind.Blockchain.Processing
 
         private void RestoreBranch(Keccak branchingPointStateRoot)
         {
-            if (_logger.IsTrace) _logger.Trace($"Restoring the branch checkpoint - {branchingPointStateRoot} | {_stateProvider.StateRoot}");
+            if (_logger.IsTrace) _logger.Trace($"Restoring the branch checkpoint - {branchingPointStateRoot}");
             _stateDb.Restore(ISnapshotableDb.NoChangesCheckpoint);
             _codeDb.Restore(ISnapshotableDb.NoChangesCheckpoint);
             _storageProvider.Reset();
@@ -252,7 +253,7 @@ namespace Nethermind.Blockchain.Processing
 
         private void StoreTxReceipts(Block block, TxReceipt[] txReceipts)
         {
-            _receiptStorage.Insert(block, false, txReceipts);
+            _receiptStorage.Insert(block, txReceipts);
             for (int i = 0; i < block.Transactions.Length; i++)
             {
                 _txPool.RemoveTransaction(txReceipts[i].TxHash, block.Number);
@@ -274,7 +275,7 @@ namespace Nethermind.Blockchain.Processing
                 bh.Timestamp,
                 bh.ExtraData)
             {
-                Bloom = Core.Bloom.Empty,
+                Bloom = Bloom.Empty,
                 Author = bh.Author,
                 Hash = bh.Hash,
                 MixHash = bh.MixHash,
@@ -319,7 +320,7 @@ namespace Nethermind.Blockchain.Processing
 
         private void ApplyMinerReward(Block block, BlockReward reward)
         {
-            if (_logger.IsTrace) _logger.Trace($"  {(decimal) reward.Value / (decimal) Unit.Ether:N3}{Unit.EthSymbol} for account at {reward.Address}");
+            if (_logger.IsTrace) _logger.Trace($"  {(BigInteger) reward.Value / (BigInteger) Unit.Ether:N3}{Unit.EthSymbol} for account at {reward.Address}");
 
             if (!_stateProvider.AccountExists(reward.Address))
             {

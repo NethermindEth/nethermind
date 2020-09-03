@@ -35,6 +35,12 @@ namespace Ethereum.Test.Base
             LoadFailure = loadFailure;
         }
         
+        public EthereumTestResult(string name, string loadFailure)
+        {
+            Pass = false; 
+            Name = name; 
+            LoadFailure = loadFailure;
+        }
         public string LoadFailure { get; set; }
         public string Name { get; set; }
         public bool Pass { get; set; }

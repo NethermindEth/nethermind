@@ -5,6 +5,7 @@
     <LangVersion>8.0</LangVersion>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Abi\Nethermind.Abi.csproj" />
     <ProjectReference Include="..\Nethermind.Consensus.Ethash\Nethermind.Consensus.Ethash.csproj" />
     <ProjectReference Include="..\Nethermind.Consensus\Nethermind.Consensus.csproj" />
     <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj">
@@ -20,5 +21,8 @@
     <ProjectReference Include="..\Nethermind.Specs\Nethermind.Specs.csproj" />
     <ProjectReference Include="..\Nethermind.State\Nethermind.State.csproj" />
     <ProjectReference Include="..\Nethermind.TxPool\Nethermind.TxPool.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="System.IO.Abstractions" Version="11.0.7" />
   </ItemGroup>
 </Project>

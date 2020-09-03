@@ -32,9 +32,9 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         protected override void InitSealEngine()
         {
-            _context.RewardCalculatorSource = RewardCalculator.GetSource(_context.SpecProvider);
+            _context.RewardCalculatorSource = new RewardCalculator(_context.SpecProvider);
             DifficultyCalculator difficultyCalculator = new DifficultyCalculator(_context.SpecProvider);
-            _context.Sealer = _context.Config<IInitConfig>().IsMining ? (ISealer) new EthashSealer(new Ethash(_context.LogManager), _context.LogManager) : NullSealEngine.Instance;
+            _context.Sealer = _context.Config<IInitConfig>().IsMining ? (ISealer) new EthashSealer(new Ethash(_context.LogManager), _context.Signer, _context.LogManager) : NullSealEngine.Instance;
             _context.SealValidator = new EthashSealValidator(_context.LogManager, difficultyCalculator, _context.CryptoRandom, new Ethash(_context.LogManager));
         }
     }

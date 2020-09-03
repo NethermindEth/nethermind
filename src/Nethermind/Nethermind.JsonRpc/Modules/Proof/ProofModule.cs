@@ -78,7 +78,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
                 sourceHeader.Number + 1,
                 sourceHeader.GasLimit,
                 sourceHeader.Timestamp,
-                Bytes.Empty);
+                Array.Empty<byte>());
 
             callHeader.TxRoot = Keccak.EmptyTreeHash;
             callHeader.ReceiptsRoot = Keccak.EmptyTreeHash;

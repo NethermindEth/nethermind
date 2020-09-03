@@ -83,11 +83,10 @@ namespace Nethermind.Runner.Ethereum.Context
         public IGrpcServer? GrpcServer { get; set; }
         public IRpcModuleProvider? RpcModuleProvider { get; set; }
         public IIPResolver? IpResolver { get; set; }
-        public PrivateKey? NodeKey { get; set; }
+        public ProtectedPrivateKey? NodeKey { get; set; }
         public ChainSpec? ChainSpec { get; set; }
         public ICryptoRandom CryptoRandom { get; }
         public IJsonSerializer? EthereumJsonSerializer { get; set; }
-        public CancellationTokenSource? RunnerCancellation { get; set; }
         public IBlockchainProcessor? BlockchainProcessor { get; set; }
         public IDiscoveryApp? DiscoveryApp { get; set; }
         public IMessageSerializationService _messageSerializationService { get; } = new MessageSerializationService();
@@ -137,5 +136,7 @@ namespace Nethermind.Runner.Ethereum.Context
         public INdmInitializer? NdmInitializer { get; set; }
         public IBloomStorage? BloomStorage { get; set; }
         public AbiEncoder AbiEncoder { get; } = new AbiEncoder();
+        public Signer? Signer { get; set; }
+        public ProtectedPrivateKey? OriginalSignerKey { get; set; }
     }
 }

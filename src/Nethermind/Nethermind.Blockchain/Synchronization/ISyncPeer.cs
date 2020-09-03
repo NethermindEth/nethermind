@@ -19,7 +19,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Stats.Model;
 using Nethermind.TxPool;
 
@@ -37,11 +37,9 @@ namespace Nethermind.Blockchain.Synchronization
         
         void Disconnect(DisconnectReason reason, string details);
         Task<BlockBody[]> GetBlockBodies(IList<Keccak> blockHashes, CancellationToken token);
-        Task<BlockHeader[]> GetBlockHeaders(Keccak blockHash, int maxBlocks, int skip, CancellationToken token);
         Task<BlockHeader[]> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token);
         Task<BlockHeader> GetHeadBlockHeader(Keccak hash, CancellationToken token);
-        void SendNewBlock(Block block);
-        void HintNewBlock(Keccak blockHash, long number);
+        void NotifyOfNewBlock(Block block, SendBlockPriority priority);
         Task<TxReceipt[][]> GetReceipts(IList<Keccak> blockHash, CancellationToken token);
         Task<byte[][]> GetNodeData(IList<Keccak> hashes, CancellationToken token);
     }

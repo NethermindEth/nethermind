@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
+using System.IO;
 using System.Security;
 using Nethermind.Core;
 using Nethermind.Crypto;
@@ -25,9 +26,11 @@ namespace Nethermind.KeyStore
     {
         (KeyStoreItem KeyData, Result Result) Verify(string keyJson);
         (PrivateKey PrivateKey, Result Result) GetKey(Address address, SecureString password);
+        (ProtectedPrivateKey PrivateKey, Result Result) GetProtectedKey(Address address, SecureString password);
         (KeyStoreItem KeyData, Result Result) GetKeyData(Address address);
         (IReadOnlyCollection<Address> Addresses, Result Result) GetKeyAddresses();
         (PrivateKey PrivateKey, Result Result) GenerateKey(SecureString password);
+        (ProtectedPrivateKey PrivateKey, Result Result) GenerateProtectedKey(SecureString password);
         Result StoreKey(Address address, KeyStoreItem keyStoreItem);
         Result StoreKey(PrivateKey key, SecureString password);
         Result DeleteKey(Address address);

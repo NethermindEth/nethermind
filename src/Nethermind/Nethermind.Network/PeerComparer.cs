@@ -46,12 +46,6 @@ namespace Nethermind.Network
                 return staticValue;
             }
 
-            int trust = -x.Node.IsTrusted.CompareTo(y.Node.IsTrusted);
-            if (trust != 0)
-            {
-                return trust;
-            }
-
             int reputation = -_stats.GetCurrentReputation(x.Node).CompareTo(_stats.GetCurrentReputation(y.Node));
             return reputation;
         }

@@ -17,9 +17,11 @@
 
 using System;
 using System.Security;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
+using Nethermind.Facade.Transactions;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 
@@ -28,22 +30,22 @@ namespace Nethermind.Facade
     public class TxPoolBridge : ITxPoolBridge
     {
         private readonly ITxPool _txPool;
-        private readonly IWallet _wallet;
-        private readonly ITimestamper _timestamper;
-        private readonly int _chainId;
+        private readonly ITxSender _txSender;
 
         /// <summary>
         /// </summary>
         /// <param name="txPool">TX pool / mempool that stores all pending transactions.</param>
-        /// <param name="wallet">Wallet for new transactions signing</param>
-        /// <param name="timestamper">Timestamper for stamping the arrinving transactions.</param>
-        /// <param name="chainId">Chain ID to signing transactions for.</param>
-        public TxPoolBridge(ITxPool txPool, IWallet wallet, ITimestamper timestamper, int chainId)
+        /// <param name="txSigner">Transaction signer</param>
+        /// <param name="timestamper">Timestamper for stamping the arriving transactions.</param>
+        public TxPoolBridge(ITxPool txPool, ITxSigner txSigner, ITimestamper timestamper) 
+            : this(txPool, new TxPoolSender(txPool, txSigner, timestamper))
+        {
+        }
+
+        public TxPoolBridge(ITxPool txPool, ITxSender txSender)
         {
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
-            _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
-            _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
-            _chainId = chainId;
+            _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
         }
 
         public Transaction GetPendingTransaction(Keccak txHash)
@@ -56,38 +58,14 @@ namespace Nethermind.Facade
 
         public Keccak SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
-            if (tx.Signature == null)
+            try
             {
-                if (_wallet.IsUnlocked(tx.SenderAddress))
-                {
-                    Sign(tx);
-                }
-                else
-                {
-                    throw new SecurityException("Your account is locked. Unlock the account via CLI, personal_unlockAccount or use Trusted Signer.");
-                }
+                return _txSender.SendTransaction(tx, txHandlingOptions);
             }
-
-            tx.Hash = tx.CalculateHash();
-            tx.Timestamp = _timestamper.EpochSeconds;
-
-            AddTxResult result = _txPool.AddTransaction(tx, txHandlingOptions);
-
-            if (result == AddTxResult.OwnNonceAlreadyUsed && (txHandlingOptions & TxHandlingOptions.ManagedNonce) == TxHandlingOptions.ManagedNonce)
+            catch (SecurityException e)
             {
-                // below the temporary NDM support - needs some review
-                tx.Nonce = _txPool.ReserveOwnTransactionNonce(tx.SenderAddress);
-                Sign(tx);
-                tx.Hash = tx.CalculateHash();
-                _txPool.AddTransaction(tx, txHandlingOptions);
+                throw new SecurityException("Your account is locked. Unlock the account via CLI, personal_unlockAccount or use Trusted Signer.", e);
             }
-
-            return tx.Hash;
-        }
-        
-        private void Sign(Transaction tx)
-        {
-            _wallet.Sign(tx, _chainId);
         }
     }
 }

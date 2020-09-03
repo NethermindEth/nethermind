@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -23,9 +24,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
-using Nethermind.Specs;
 using Nethermind.Serialization.Rlp;
-using Nethermind.State;
 #pragma warning disable 618
 
 namespace Nethermind.Blockchain.Receipts
@@ -43,7 +42,7 @@ namespace Nethermind.Blockchain.Receipts
         private static readonly ReceiptStorageDecoder StorageDecoder = ReceiptStorageDecoder.Instance;
         
         private const int CacheSize = 64;
-        private readonly ICache<Keccak, TxReceipt[]> _receiptsCache = new LruCacheWithRecycling<Keccak, TxReceipt[]>(CacheSize, CacheSize, "receipts");
+        private readonly ICache<Keccak, TxReceipt[]> _receiptsCache = new LruCache<Keccak, TxReceipt[]>(CacheSize, CacheSize, "receipts");
 
         public PersistentReceiptStorage(IColumnsDb<ReceiptsColumns> receiptsDb, ISpecProvider specProvider, IReceiptsRecovery receiptsRecovery)
         {
@@ -215,13 +214,15 @@ namespace Nethermind.Blockchain.Receipts
             return result;
         }
 
-        public void Insert(Block block, bool updateLowestInserted, params TxReceipt[] txReceipts)
+        public void Insert(Block block, params TxReceipt[] txReceipts)
         {
             txReceipts ??= Array.Empty<TxReceipt>();
             
             if (block.Transactions.Length != txReceipts.Length)
             {
-                throw new ArgumentException($"Block {block.ToString(Block.Format.FullHashAndNumber)} has different number of transactions than receipts.");
+                throw new InvalidDataException(
+                    $"Block {block.ToString(Block.Format.FullHashAndNumber)} has different numbers " +
+                    $"of transactions {block.Transactions.Length} and receipts {txReceipts.Length}.");
             }
 
             _receiptsRecovery.TryRecover(block, txReceipts);
@@ -237,11 +238,6 @@ namespace Nethermind.Blockchain.Receipts
                 _transactionDb.Set(txHash, block.Hash.Bytes);
             }
 
-            if (updateLowestInserted && blockNumber < (LowestInsertedReceiptBlock ?? long.MaxValue))
-            {
-                LowestInsertedReceiptBlock = blockNumber;
-            }
-
             if (blockNumber < MigratedBlockNumber)
             {
                 MigratedBlockNumber = blockNumber;
@@ -250,7 +246,7 @@ namespace Nethermind.Blockchain.Receipts
             _receiptsCache.Set(block.Hash, txReceipts);
         }
 
-        public long? LowestInsertedReceiptBlock
+        public long? LowestInsertedReceiptBlockNumber
         {
             get => _lowestInsertedReceiptBlock;
             set

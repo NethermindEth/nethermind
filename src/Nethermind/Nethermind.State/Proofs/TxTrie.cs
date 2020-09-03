@@ -36,12 +36,16 @@ namespace Nethermind.State.Proofs
                 return;
             }
 
+            // 3% allocations (2GB) on a Goerli 3M blocks fast sync due to calling transaction encoder hee
+            // avoiding it would require pooling byte arrays and passing them as Spans to temporary trees
+            // a temporary trie would be a trie that exists to create a state root only and then be disposed of
             for (int i = 0; i < txs.Length; i++)
             {
                 Rlp transactionRlp = _txDecoder.Encode(txs[i]);
                 Set(Rlp.Encode(i).Bytes, transactionRlp.Bytes);
             }
 
+            // additional 3% 2GB is used here for trie nodes creation and root calculation
             UpdateRootHash();
         }
 

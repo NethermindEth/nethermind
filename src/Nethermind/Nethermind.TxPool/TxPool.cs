@@ -16,7 +16,6 @@
 
 using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Timers;
@@ -25,7 +24,7 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.TxPool.Collections;
@@ -80,23 +79,12 @@ namespace Nethermind.TxPool
         private readonly ConcurrentDictionary<Keccak, (Transaction tx, long blockNumber)> _fadingOwnTransactions
             = new ConcurrentDictionary<Keccak, (Transaction tx, long blockNumber)>();
 
-        /// <summary>
-        /// Filters defining which transactions should be ignored before storing them in persistent storage.
-        /// </summary>
-        private readonly ConcurrentDictionary<Type, ITxFilter> _filters =
-            new ConcurrentDictionary<Type, ITxFilter>();
-
         private readonly ITimestamper _timestamper;
 
         /// <summary>
         /// Long term storage for pending transactions.
         /// </summary>
         private readonly ITxStorage _txStorage;
-
-        /// <summary>
-        /// Defines which of the pending transactions can be removed and should not be broadcast or included in blocks any more. 
-        /// </summary>
-        private readonly IPendingTxThresholdValidator _pendingTxThresholdValidator;
 
         /// <summary>
         /// Connected peers that can be notified about transactions.
@@ -107,11 +95,6 @@ namespace Nethermind.TxPool
         /// Timer for rebroadcasting pending own transactions.
         /// </summary>
         private readonly Timer _ownTimer;
-
-        /// <summary>
-        /// Timer for removing obsolete transactions.
-        /// </summary>
-        private Timer _txRemovalTimer;
 
         /// <summary>
         /// Defines the percentage of peers that will be notified about pending transactions on average.
@@ -146,7 +129,7 @@ namespace Nethermind.TxPool
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
 
             MemoryAllowance.MemPoolSize = txPoolConfig.Size;
-            ThisNodeInfo.AddInfo("Mem est tx   :", $"{(LruCache<Keccak, object>.CalculateMemorySize(32, MemoryAllowance.TxHashCacheSize) + LruCache<Keccak, Transaction>.CalculateMemorySize(4096, MemoryAllowance.MemPoolSize)) / 1024 / 1024}MB".PadLeft(8));
+            ThisNodeInfo.AddInfo("Mem est tx   :", $"{(LruCache<Keccak, object>.CalculateMemorySize(32, MemoryAllowance.TxHashCacheSize) + LruCache<Keccak, Transaction>.CalculateMemorySize(4096, MemoryAllowance.MemPoolSize)) / 1000 / 1000}MB".PadLeft(8));
             _transactions = new DistinctValueSortedPool<Keccak, Transaction>(MemoryAllowance.MemPoolSize, (t1, t2) => t1.GasPrice.CompareTo(t2.GasPrice), PendingTransactionComparer.Default);
             _peerNotificationThreshold = txPoolConfig.PeerNotificationThreshold;
 
@@ -154,26 +137,11 @@ namespace Nethermind.TxPool
             _ownTimer.Elapsed += OwnTimerOnElapsed;
             _ownTimer.AutoReset = false;
             _ownTimer.Start();
-
-            _pendingTxThresholdValidator = new PendingTxThresholdValidator(txPoolConfig);
-            int removeIntervalInSeconds = txPoolConfig.RemovePendingTransactionInterval;
-            if (removeIntervalInSeconds <= 0)
-            {
-                return;
-            }
-
-            _txRemovalTimer = new Timer(removeIntervalInSeconds * 1000);
-            _txRemovalTimer.Elapsed += RemovalTimerElapsed;
-            _txRemovalTimer.AutoReset = false;
-            _txRemovalTimer.Start();
         }
 
         public Transaction[] GetPendingTransactions() => _transactions.GetSnapshot();
 
         public Transaction[] GetOwnPendingTransactions() => _ownTransactions.Values.ToArray();
-
-        public void AddFilter<T>(T filter) where T : ITxFilter
-            => _filters.TryAdd(filter.GetType(), filter);
 
         public void AddPeer(ITxPoolPeer peer)
         {
@@ -316,8 +284,8 @@ namespace Nethermind.TxPool
 
                 if (!(nonce.TransactionHash is null && nonce.TransactionHash != transaction.Hash))
                 {
-                    // Nonce conflicteth
-                    if (_logger.IsWarn) _logger.Warn($"Nonce: {nonce.Value} was already used in transaction: '{nonce.TransactionHash}' and cannot be reused by transaction: '{transaction.Hash}'.");
+                    // Nonce conflict
+                    if (_logger.IsDebug) _logger.Debug($"Nonce: {nonce.Value} was already used in transaction: '{nonce.TransactionHash}' and cannot be reused by transaction: '{transaction.Hash}'.");
 
                     return true;
                 }
@@ -421,7 +389,6 @@ namespace Nethermind.TxPool
         public void Dispose()
         {
             _ownTimer?.Dispose();
-            _txRemovalTimer?.Dispose();
         }
 
         public event EventHandler<TxEventArgs> NewPending;
@@ -429,12 +396,6 @@ namespace Nethermind.TxPool
 
         private void Notify(ITxPoolPeer peer, Transaction tx, bool isPriority)
         {
-            UInt256 timestamp = new UInt256(_timestamper.EpochSeconds);
-            if (_pendingTxThresholdValidator.IsObsolete(timestamp, tx.Timestamp))
-            {
-                return;
-            }
-
             Metrics.PendingTransactionsSent++;
             peer.SendNewTransaction(tx, isPriority);
 
@@ -475,12 +436,6 @@ namespace Nethermind.TxPool
 
         private void FilterAndStoreTx(Transaction tx)
         {
-            var filters = _filters.Values;
-            if (filters.Any(filter => !filter.IsValid(tx)))
-            {
-                return;
-            }
-
             _txStorage.Add(tx);
             if (_logger.IsTrace) _logger.Trace($"Added a transaction: {tx.Hash}");
         }
@@ -497,38 +452,6 @@ namespace Nethermind.TxPool
                 // we only reenable the timer if there are any transaction pending
                 // otherwise adding own transaction will reenable the timer anyway
                 _ownTimer.Enabled = true;
-            }
-        }
-
-        private void RemovalTimerElapsed(object sender, ElapsedEventArgs eventArgs)
-        {
-            if (_transactions.Count == 0)
-            {
-                return;
-            }
-
-            List<Keccak> hashes = new List<Keccak>();
-            UInt256 timestamp = new UInt256(_timestamper.EpochSeconds);
-            foreach (Transaction tx in _transactions.GetSnapshot())
-            {
-                if (_ownTransactions.ContainsKey(tx.Hash))
-                {
-                    if (_logger.IsDebug) _logger.Debug($"Pending own transaction: {tx.Hash} will not be removed.");
-                    continue;
-                }
-
-                if (_pendingTxThresholdValidator.IsRemovable(timestamp, tx.Timestamp))
-                {
-                    hashes.Add(tx.Hash);
-                }
-            }
-
-            for (int i = 0; i < hashes.Count; i++)
-            {
-                if (_transactions.TryRemove(hashes[i], out Transaction tx))
-                {
-                    RemovedPending?.Invoke(this, new TxEventArgs(tx));
-                }
             }
         }
 

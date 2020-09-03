@@ -44,10 +44,10 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context = context;
         }
 
-        public async Task Execute()
+        public async Task Execute(CancellationToken _)
         {
             ILogger logger = _context.LogManager.GetClassLogger();
-            
+
             /* sync */
             IDbConfig dbConfig = _context.Config<IDbConfig>();
             ISyncConfig syncConfig = _context.Config<ISyncConfig>();
@@ -58,12 +58,20 @@ namespace Nethermind.Runner.Ethereum.Steps
                 if (logger.IsDebug) logger.Debug($"DB {propertyInfo.Name}: {propertyInfo.GetValue(dbConfig)}");
             }
 
-            _context.DbProvider = await GetDbProvider(initConfig, dbConfig, initConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync);
-            if (syncConfig.BeamSync)
+            try
             {
-                _context.SyncModeSelector = new PendingSyncModeSelector();
-                BeamSyncDbProvider beamSyncProvider = new BeamSyncDbProvider(_context.SyncModeSelector, _context.DbProvider, _context.LogManager);
-                _context.DbProvider = beamSyncProvider;
+                _context.DbProvider = await GetDbProvider(initConfig, dbConfig, initConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync);
+                if (syncConfig.BeamSync)
+                {
+                    _context.SyncModeSelector = new PendingSyncModeSelector();
+                    BeamSyncDbProvider beamSyncProvider = new BeamSyncDbProvider(_context.SyncModeSelector, _context.DbProvider, _context.Config<ISyncConfig>(), _context.LogManager);
+                    _context.DbProvider = beamSyncProvider;
+                }
+            }
+            catch(TypeInitializationException)
+            {
+                if(logger.IsError)
+                    logger.Error("RocksDb was not found, please make sure it is installed on your machine. \n On macOs : 'brew install rocksdb'");
             }
         }
 
@@ -87,6 +95,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         private async Task<RocksDbProvider> GetRocksDbProvider(IDbConfig dbConfig, string basePath, bool useReceiptsDb)
         {
+            IInitConfig initConfig = _context.Config<IInitConfig>();
             RocksDbProvider debugRecorder = new RocksDbProvider(_context.LogManager, _context.Config<INdmConfig>().Enabled);
             ThisNodeInfo.AddInfo("DB location  :", $"{basePath}");
             await debugRecorder.Init(basePath, dbConfig, useReceiptsDb);

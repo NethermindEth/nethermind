@@ -29,7 +29,11 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
     public interface IPeerAllocationStrategy
     {
         bool CanBeReplaced { get; }
-        PeerInfo Allocate(PeerInfo currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree);
+        PeerInfo? Allocate(
+            PeerInfo? currentPeer,
+            IEnumerable<PeerInfo> peers,
+            INodeStatsManager nodeStatsManager,
+            IBlockTree blockTree);
 
         public void CheckAsyncState(PeerInfo info)
         {

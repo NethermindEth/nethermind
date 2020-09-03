@@ -61,10 +61,7 @@ namespace Nethermind.Stats.Model
 
         public override int GetHashCode()
         {
-            unchecked
-            {
-                return ((ProtocolCode != null ? ProtocolCode.GetHashCode() : 0) * 397) ^ Version;
-            }
+            return HashCode.Combine(ProtocolCode, Version);
         }
 
         public override string ToString()

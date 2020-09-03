@@ -18,11 +18,12 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Analytics;
 using Nethermind.Grpc;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
-using Nethermind.TxPool.Analytics;
 using YamlDotNet.Serialization.TypeInspectors;
 
 namespace Nethermind.Runner.Ethereum.Steps
@@ -48,14 +49,14 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _logger = logManager.GetClassLogger();
             }
 
-            public void Publish<T>(T data) where T : class
+            public Task PublishAsync<T>(T data) where T : class
             {
-                if (data == null)
+                if (data != null)
                 {
-                    return;
+                    if (_logger.IsInfo) _logger.Info(data.ToString());
                 }
 
-                if (_logger.IsInfo) _logger.Info(data.ToString());
+                return Task.CompletedTask;
             }
         }
 
@@ -68,14 +69,14 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _grpcServer = grpcServer ?? throw new ArgumentNullException(nameof(grpcServer));
             }
 
-            public void Publish<T>(T data) where T : class
+            public Task PublishAsync<T>(T data) where T : class
             {
                 if (data == null)
                 {
-                    return;
+                    return Task.CompletedTask;
                 }
                 
-                _grpcServer.PublishAsync(data, null);
+                return _grpcServer.PublishAsync(data, null);
             }
         }
         
@@ -88,16 +89,19 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _dataPublisher = dataPublisher;
             }
 
-            public void Publish<T>(T data) where T : class
+            public async Task PublishAsync<T>(T data) where T : class
             {
-                foreach (IDataPublisher dataPublisher in _dataPublisher)
+                Task[] tasks = new Task[_dataPublisher.Length];
+                for (int i = 0; i < _dataPublisher.Length; i++)
                 {
-                    dataPublisher.Publish(data);
+                    tasks[i] = _dataPublisher[i].PublishAsync(data);
                 }
+
+                await Task.WhenAll(tasks);
             }
         }
 
-        public virtual Task Execute()
+        public virtual Task Execute(CancellationToken cancellationToken)
         {
             IInitConfig initConfig = _context.Config<IInitConfig>();
             IGrpcConfig grpcConfig = _context.Config<IGrpcConfig>();
@@ -118,6 +122,11 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             foreach (string path in pluginFiles)
             {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    break;
+                }
+                
                 if (_logger.IsInfo) _logger.Warn($"Loading assembly {path}");
                 Assembly assembly = Assembly.LoadFile(Path.Combine(fullPluginsDir, path));
                 foreach (Type type in assembly.GetTypes())
@@ -127,15 +136,15 @@ namespace Nethermind.Runner.Ethereum.Steps
                     {
                         if(_logger.IsWarn) _logger.Warn($"Activating plugin {type.Name} from {path} {new FileInfo(path).CreationTime}");
                         IAnalyticsPluginLoader? pluginLoader = Activator.CreateInstance(type) as IAnalyticsPluginLoader;
-                        if (grpcConfig.Enabled && grpcConfig.ProducerEnabled)
+                        if (grpcConfig.Enabled)
                         {
                             if(_logger.IsWarn) _logger.Warn($"Initializing gRPC for {type.Name}");
-                            pluginLoader?.Init(_context.FileSystem, _context.TxPool, new GrpcPublisher(_context.GrpcServer!), _context.LogManager);
+                            pluginLoader?.Init(_context.FileSystem, _context.TxPool, _context.BlockTree, _context.MainBlockProcessor, new GrpcPublisher(_context.GrpcServer!), _context.LogManager);
                         }
                         else
                         {
                             if(_logger.IsWarn) _logger.Warn($"Initializing log publisher for {type.Name}");
-                            pluginLoader?.Init(_context.FileSystem, _context.TxPool, new LogDataPublisher(_context.LogManager), _context.LogManager);
+                            pluginLoader?.Init(_context.FileSystem, _context.TxPool, _context.BlockTree, _context.MainBlockProcessor, new LogDataPublisher(_context.LogManager), _context.LogManager);
                         }
                     }
                 }

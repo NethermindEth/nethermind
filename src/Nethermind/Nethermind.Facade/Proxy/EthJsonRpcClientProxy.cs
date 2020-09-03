@@ -18,7 +18,7 @@ using System;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Facade.Proxy.Models;
 
 namespace Nethermind.Facade.Proxy
@@ -63,14 +63,28 @@ namespace Nethermind.Facade.Proxy
         public Task<RpcResult<Keccak>> eth_sendRawTransaction(byte[] transaction)
             => _proxy.SendAsync<Keccak>(nameof(eth_sendRawTransaction), transaction);
 
-        public Task<RpcResult<BlockModel>> eth_getBlockByHash(Keccak blockHash,
-            bool returnFullTransactionObjects = false)
-            => _proxy.SendAsync<BlockModel>(nameof(eth_getBlockByHash), blockHash, returnFullTransactionObjects);
+        public Task<RpcResult<Keccak>> eth_sendTransaction(TransactionModel transaction)
+            => _proxy.SendAsync<Keccak>(nameof(eth_sendTransaction), transaction);
+        
+        public Task<RpcResult<byte[]>> eth_estimateGas(TransactionModel transaction,  BlockParameterModel blockParameter = null)
+            => _proxy.SendAsync<byte[]>(nameof(eth_estimateGas), transaction);
 
-        public Task<RpcResult<BlockModel>> eth_getBlockByNumber(BlockParameterModel blockParameter,
+        public Task<RpcResult<BlockModel<Keccak>>> eth_getBlockByHash(Keccak blockHash,
             bool returnFullTransactionObjects = false)
-            => _proxy.SendAsync<BlockModel>(nameof(eth_getBlockByNumber), MapBlockParameter(blockParameter),
+            => _proxy.SendAsync<BlockModel<Keccak>>(nameof(eth_getBlockByHash), blockHash, returnFullTransactionObjects);
+
+        public Task<RpcResult<BlockModel<Keccak>>> eth_getBlockByNumber(BlockParameterModel blockParameter,
+            bool returnFullTransactionObjects = false)
+            => _proxy.SendAsync<BlockModel<Keccak>>(nameof(eth_getBlockByNumber), MapBlockParameter(blockParameter),
                 returnFullTransactionObjects);
+        
+        public Task<RpcResult<BlockModel<TransactionModel>>> eth_getBlockByNumberWithTransactionDetails(BlockParameterModel blockParameter,
+            bool returnFullTransactionObjects = false)
+            => _proxy.SendAsync<BlockModel<TransactionModel>>(nameof(eth_getBlockByNumber), MapBlockParameter(blockParameter),
+                returnFullTransactionObjects);
+        
+        public Task<RpcResult<string>> net_version()
+            => _proxy.SendAsync<string>(nameof(net_version));
 
         private static object MapBlockParameter(BlockParameterModel blockParameter)
         {

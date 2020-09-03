@@ -16,18 +16,18 @@
 
 using System;
 using System.Linq;
-using Nethermind.Abi;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Validators;
+using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Rewards;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
-using Nethermind.Core;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Evm;
+using Nethermind.Facade.Transactions;
 using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Wallet;
 
@@ -36,7 +36,8 @@ namespace Nethermind.Runner.Ethereum.Steps
     public class InitializeBlockchainAuRa : InitializeBlockchain
     {
         private readonly AuRaEthereumRunnerContext _context;
-        private ReadOnlyTransactionProcessorSource? _readOnlyTransactionProcessorSource;
+        private ReadOnlyTxProcessorSource? _readOnlyTransactionProcessorSource;
+        private AuRaSealValidator? _sealValidator;
 
         public InitializeBlockchainAuRa(AuRaEthereumRunnerContext context) : base(context)
         {
@@ -69,8 +70,17 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.LogManager,
                 _context.BlockTree,
                 GetTxPermissionFilter(),
-                GetGasLimitOverride());
-            processor.AuRaValidator = CreateAuRaValidator(processor);
+                GetGasLimitCalculator());
+            
+            var auRaValidator = CreateAuRaValidator(processor);
+            processor.AuRaValidator = auRaValidator;
+            var reportingValidator = auRaValidator.GetReportingValidator();
+            _context.ReportingValidator = reportingValidator;
+            if (_sealValidator != null)
+            {
+                _sealValidator.ReportingValidator = reportingValidator;
+            }
+            
             return processor;
         }
 
@@ -78,6 +88,9 @@ namespace Nethermind.Runner.Ethereum.Steps
         {
             if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
             if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
+            if (_context.Signer == null) throw new StepDependencyException(nameof(_context.Signer));
+
+            var chainSpecAuRa = _context.ChainSpec.AuRa;
             
             _context.FinalizationManager = new AuRaBlockFinalizationManager(
                 _context.BlockTree, 
@@ -86,7 +99,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.ValidatorStore, 
                 new ValidSealerStrategy(), 
                 _context.LogManager, 
-                _context.ChainSpec.AuRa.TwoThirdsMajorityTransition);
+                chainSpecAuRa.TwoThirdsMajorityTransition);
             
             IAuRaValidator validator = new AuRaValidatorFactory(
                     _context.StateProvider, 
@@ -97,9 +110,14 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _context.ReceiptStorage, 
                     _context.ValidatorStore,
                     _context.FinalizationManager,
+                    new TxPoolSender(_context.TxPool, new TxNonceTxPoolReserveSealer(_context.Signer, _context.Timestamper, _context.TxPool)), 
+                    _context.TxPool,
                     _context.LogManager,
+                    _context.Signer,
+                    _context.ReportingContractValidatorCache,
+                    chainSpecAuRa.PosdaoTransition,
                     false)
-                .CreateValidatorProcessor(_context.ChainSpec.AuRa.Validators, _context.BlockTree.Head?.Header);
+                .CreateValidatorProcessor(chainSpecAuRa.Validators, _context.BlockTree.Head?.Header);
 
             if (validator is IDisposable disposableValidator)
             {
@@ -109,21 +127,20 @@ namespace Nethermind.Runner.Ethereum.Steps
             return validator;
         }
 
-        private ITxPermissionFilter? GetTxPermissionFilter()
+        private ITxFilter? GetTxPermissionFilter()
         {
             if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
             
             if (_context.ChainSpec.Parameters.TransactionPermissionContract != null)
             {
-                _context.TxFilterCache = new ITxPermissionFilter.Cache();
+                _context.TxFilterCache = new PermissionBasedTxFilter.Cache();
                 
-                var txPermissionFilter = new TxPermissionFilter(
-                    new TransactionPermissionContract(
-                        _context.TransactionProcessor,
-                        _context.AbiEncoder,
+                var txPermissionFilter = new PermissionBasedTxFilter(
+                    new VersionedTransactionPermissionContract(_context.AbiEncoder,
                         _context.ChainSpec.Parameters.TransactionPermissionContract,
                         _context.ChainSpec.Parameters.TransactionPermissionContractTransition ?? 0, 
-                        GetReadOnlyTransactionProcessorSource()),
+                        GetReadOnlyTransactionProcessorSource(), 
+                        _context.TransactionPermissionContractVersions),
                     _context.TxFilterCache,
                     _context.StateProvider,
                     _context.LogManager);
@@ -134,30 +151,32 @@ namespace Nethermind.Runner.Ethereum.Steps
             return null;
         }
         
-        private IGasLimitOverride? GetGasLimitOverride()
+        private AuRaContractGasLimitOverride? GetGasLimitCalculator()
         {
             if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
             var blockGasLimitContractTransitions = _context.ChainSpec.AuRa.BlockGasLimitContractTransitions;
             
             if (blockGasLimitContractTransitions?.Any() == true)
             {
-                _context.GasLimitOverrideCache = new IGasLimitOverride.Cache();
+                _context.GasLimitCalculatorCache = new AuRaContractGasLimitOverride.Cache();
                 
-                var gasLimitOverride = new AuRaContractGasLimitOverride(
+                AuRaContractGasLimitOverride gasLimitCalculator = new AuRaContractGasLimitOverride(
                     blockGasLimitContractTransitions.Select(blockGasLimitContractTransition =>
                         new BlockGasLimitContract(
-                            _context.TransactionProcessor,
                             _context.AbiEncoder,
                             blockGasLimitContractTransition.Value,
                             blockGasLimitContractTransition.Key,
-                            GetReadOnlyTransactionProcessorSource())).ToArray(),
-                    _context.GasLimitOverrideCache,
+                            GetReadOnlyTransactionProcessorSource()))
+                        .ToArray<IBlockGasLimitContract>(),
+                    _context.GasLimitCalculatorCache,
                     _context.Config<IAuraConfig>().Minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract,
+                    new TargetAdjustedGasLimitCalculator(_context.SpecProvider, _context.Config<IMiningConfig>()), 
                     _context.LogManager);
                 
-                return gasLimitOverride;
+                return gasLimitCalculator;
             }
 
+            // do not return target gas limit calculator here - this is used for validation to check if the override should have been used
             return null;
         }
 
@@ -166,19 +185,19 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_context.DbProvider == null) throw new StepDependencyException(nameof(_context.DbProvider));
             if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
             if (_context.EthereumEcdsa == null) throw new StepDependencyException(nameof(_context.EthereumEcdsa));
-            if (_context.NodeKey == null) throw new StepDependencyException(nameof(_context.NodeKey));
-            
+            if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
             
             _context.ValidatorStore = new ValidatorStore(_context.DbProvider.BlockInfosDb);
 
+            ValidSealerStrategy validSealerStrategy = new ValidSealerStrategy();
             AuRaStepCalculator auRaStepCalculator = new AuRaStepCalculator(_context.ChainSpec.AuRa.StepDuration, _context.Timestamper, _context.LogManager);
-            _context.SealValidator = new AuRaSealValidator(_context.ChainSpec.AuRa, auRaStepCalculator, _context.ValidatorStore, _context.EthereumEcdsa, _context.LogManager);
+            _context.SealValidator = _sealValidator = new AuRaSealValidator(_context.ChainSpec.AuRa, auRaStepCalculator, _context.BlockTree, _context.ValidatorStore, validSealerStrategy, _context.EthereumEcdsa, _context.LogManager);
             _context.RewardCalculatorSource = AuRaRewardCalculator.GetSource(_context.ChainSpec.AuRa, _context.AbiEncoder);
-            _context.Sealer = new AuRaSealer(_context.BlockTree, _context.ValidatorStore, auRaStepCalculator, _context.NodeKey.Address, new BasicWallet(_context.NodeKey), new ValidSealerStrategy(), _context.LogManager);
+            _context.Sealer = new AuRaSealer(_context.BlockTree, _context.ValidatorStore, auRaStepCalculator, _context.Signer, validSealerStrategy, _context.LogManager);
         }
 
         private IReadOnlyTransactionProcessorSource GetReadOnlyTransactionProcessorSource() => 
-            _readOnlyTransactionProcessorSource ??= new ReadOnlyTransactionProcessorSource(_context.DbProvider, _context.BlockTree, _context.SpecProvider, _context.LogManager);
+            _readOnlyTransactionProcessorSource ??= new ReadOnlyTxProcessorSource(_context.DbProvider, _context.BlockTree, _context.SpecProvider, _context.LogManager);
 
         protected override HeaderValidator CreateHeaderValidator()
         {

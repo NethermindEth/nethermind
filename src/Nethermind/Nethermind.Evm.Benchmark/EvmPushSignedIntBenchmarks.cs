@@ -32,10 +32,19 @@ namespace Nethermind.Evm.Benchmark
     public class EvmPushSignedIntBenchmarks
     {
         [ParamsSource(nameof(ValueSource))]
-        public BigInteger value;
+        // ReSharper disable once UnassignedField.Global
+        // ReSharper disable once MemberCanBePrivate.Global
+        public Int256.Int256 Value;
 
         // public property
-        public IEnumerable<BigInteger> ValueSource => new[] { BigInteger.Parse("-125124123718263172357123"), BigInteger.Parse("-1"), BigInteger.Parse("1"), UInt256.MaxValue, UInt256.MinValue};
+        public IEnumerable<Int256.Int256> ValueSource => new[]
+        {
+            new Int256.Int256(UInt256.Parse("-125124123718263172357123")),
+            new Int256.Int256(UInt256.Parse("-1")),
+            new Int256.Int256(UInt256.Parse("1")),
+            Int256.Int256.Max,
+            Int256.Int256.MinusOne
+        };
         
         private byte[] stackBytes;
         private ITxTracer _tracer = NullTxTracer.Instance;
@@ -50,7 +59,7 @@ namespace Nethermind.Evm.Benchmark
         public void Current()
         {
             EvmStack stack = new EvmStack(stackBytes.AsSpan(), 0, _tracer);
-            stack.PushSignedInt(in value);
+            stack.PushSignedInt256(in Value);
             stack.PopLimbo();
         }
     }

@@ -38,6 +38,7 @@ namespace Nethermind.Core.Extensions
                 tokenRegistration = cancellationToken.Register(
                     state => ((TaskCompletionSource<bool>)state).TrySetCanceled(),
                     tcs);
+                
                 return await tcs.Task;
             }
             finally

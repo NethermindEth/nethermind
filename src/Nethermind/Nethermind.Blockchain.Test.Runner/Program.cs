@@ -20,7 +20,9 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Threading.Tasks;
 using Ethereum.Test.Base;
+using Ethereum.Test.Base.Interfaces;
 
 namespace Nethermind.Blockchain.Test.Runner
 {
@@ -29,17 +31,17 @@ namespace Nethermind.Blockchain.Test.Runner
         private static readonly List<string> AllFailingTests = new List<string>();
         private static long _totalMs;
 
-        public static void Main(params string[] args)
+        public static async Task Main(params string[] args)
         {
-            Run();
+            await Run();
         }
 
-        private static void Run()
+        private static async Task Run()
         {
-            RunManualTestingLoop();
+            await RunManualTestingLoop();
         }
 
-        private static void RunManualTestingLoop()
+        private static async Task RunManualTestingLoop()
         {
             while (true)
             {
@@ -58,10 +60,11 @@ namespace Nethermind.Blockchain.Test.Runner
                     RunAllStateTests(testWildcard, s => new PerfStateTest(s));
 #endif
                 }
-                else if(command == "b")
+                else if (command == "b")
                 {
                     stopwatch.Start();
-                    RunAllStateTests(testWildcard, s => new BugHunter(s));
+                    RunAllStateTests(testWildcard, s => new StateTestsBugHunter(s));
+                    await RunAllBlockchainTestAsync(testWildcard, b => new BlockchainTestsBugHunter(b));
                 }
                 else
                 {
@@ -86,7 +89,7 @@ namespace Nethermind.Blockchain.Test.Runner
             }
         }
 
-        private static void WrapAndRunDirectoryTests(IStateTestRunner stateTest)
+        private static void WrapAndRunDirectoryStateTests(IStateTestRunner stateTest)
         {
             var result = stateTest.RunTests().ToList();
             var failedTestsInCategory = result.Where(r => !r.Pass).Select(t => t.Name + " " + t.LoadFailure).ToArray();
@@ -100,70 +103,72 @@ namespace Nethermind.Blockchain.Test.Runner
             Console.WriteLine();
         }
 
-        private static void RunAllStateTests(string testWildcard, Func<IBlockchainTestsSource, IStateTestRunner> testRunnerBuilder)
+        private static async Task WrapAndRunDirectoryBlockchainTestsAsync(IBlockchainTestRunner blockchainTestRunner)
+        {
+            var result = await blockchainTestRunner.RunTestsAsync();
+            var testResults = result.ToList();
+
+            var failedTestsInCategory = testResults.Where(r => !r.Pass).Select(t => t.Name + " " + t.LoadFailure).ToArray();
+            AllFailingTests.AddRange(failedTestsInCategory);
+            long categoryTimeInMs = testResults.Sum(t => t.TimeInMs);
+            _totalMs += testResults.Sum(t => t.TimeInMs);
+
+            Console.WriteLine($"CATEGORY {categoryTimeInMs}ms, FAILURES {failedTestsInCategory.Length}");
+            Console.WriteLine();
+            Console.WriteLine();
+            Console.WriteLine();
+        }
+
+        private static void RunAllStateTests(string testWildcard, Func<ITestSourceLoader, IStateTestRunner> testRunnerBuilder)
         {
             // do not loop over a list of directories so it is more convenient to rapidly comment out / comment in
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("stArgsZeroOneBalance", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("stAttackTest", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("stBadOpcode", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("stBugs", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("stCallCodes", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("stCallCreateCallCodeTest", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("stCallDelegateCodesCallCodeHomestead", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("stCallDelegateCodesHomestead", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("stChangedEIP150", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("stCodeCopyTest", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("stCodeSizeLimit", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("stCreate2", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("stCreateTest", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("stDelegatecallTestHomestead", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("stEIP150singleCodeGasPrices", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("stEIP150Specific", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("stEIP158Specific", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("stExample", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("stHomesteadSpecific", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("stInitCodeTest", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("stLogTests", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("stMemExpandingEIP150Calls", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("stMemoryStressTest", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("stMemoryTest", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("stNonZeroCallsTest", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("stPreCompiledContracts", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("stPreCompiledContracts2", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("stQuadraticComplexityTest", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("stRandom", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("stRandom2", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("stRecursiveCreate", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("stRefundTest", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("stReturnDataTest", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("stRevertTest", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("stShift", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("stSolidityTest", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("stSpecialTest", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("stStackTests", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("stStaticCall", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("stSystemOperationsTest", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("stTransactionTest", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("stTransitionTest", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("stWalletTest", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("stZeroCallsRevert", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("stZeroCallsTest", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("stZeroKnowledge", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("stZeroKnowledge2", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("bcBlockGasLimitTest", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("bcExploitTest", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("bcForgedTest", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("bcForkStressTest", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("bcGasPricerTest", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("bcInvalidHeaderTest", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("bcMultiChainTestTest", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("bcRandomBlockhashTest", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("bcStateTests", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("bcTotalDifficultyTest", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("bcUncleHeaderValidity", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("bcUncleTest", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("bcValidBlockTest", testWildcard)));
-            WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("bcWalletTest", testWildcard)));
+            WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stArgsZeroOneBalance", testWildcard)));
+            WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stAttackTest", testWildcard)));
+            WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stBadOpcode", testWildcard)));
+            WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stBugs", testWildcard)));
+            WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stCallCodes", testWildcard)));
+            WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stCallCreateCallCodeTest", testWildcard)));
+            WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stCallDelegateCodesCallCodeHomestead", testWildcard)));
+            WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stCallDelegateCodesHomestead", testWildcard)));
+            WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stChangedEIP150", testWildcard)));
+            WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stCodeCopyTest", testWildcard)));
+            WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stCodeSizeLimit", testWildcard)));
+            WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stCreate2", testWildcard)));
+            WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stCreateTest", testWildcard)));
+            WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stDelegatecallTestHomestead", testWildcard)));
+            WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stEIP150singleCodeGasPrices", testWildcard)));
+            WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stEIP150Specific", testWildcard)));
+            WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stEIP158Specific", testWildcard)));
+            WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stExample", testWildcard)));
+            WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stHomesteadSpecific", testWildcard)));
+            WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stInitCodeTest", testWildcard)));
+            WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stLogTests", testWildcard)));
+            WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stMemExpandingEIP150Calls", testWildcard)));
+            WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stMemoryStressTest", testWildcard)));
+            WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stMemoryTest", testWildcard)));
+            WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stNonZeroCallsTest", testWildcard)));
+            WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stPreCompiledContracts", testWildcard)));
+            WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stPreCompiledContracts2", testWildcard)));
+            WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stQuadraticComplexityTest", testWildcard)));
+            WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stRandom", testWildcard)));
+            WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stRandom2", testWildcard)));
+            WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stRecursiveCreate", testWildcard)));
+            WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stRefundTest", testWildcard)));
+            WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stReturnDataTest", testWildcard)));
+            WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stRevertTest", testWildcard)));
+            WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stShift", testWildcard)));
+            WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stSolidityTest", testWildcard)));
+            WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stSpecialTest", testWildcard)));
+            WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stStackTests", testWildcard)));
+            WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stStaticCall", testWildcard)));
+            WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stSystemOperationsTest", testWildcard)));
+            WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stTransactionTest", testWildcard)));
+            WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stTransitionTest", testWildcard)));
+            WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stWalletTest", testWildcard)));
+            WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stZeroCallsRevert", testWildcard)));
+            WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stZeroCallsTest", testWildcard)));
+            WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stZeroKnowledge", testWildcard)));
+            WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stZeroKnowledge2", testWildcard)));
 
             /* 
             await Run(testRunnerBuilder(new DirectoryTestsSource("bcEIP158ToByzantium", testWildcard));
@@ -171,6 +176,24 @@ namespace Nethermind.Blockchain.Test.Runner
             await Run(testRunnerBuilder(new DirectoryTestsSource("bcHomesteadToDao", testWildcard));
             await Run(testRunnerBuilder(new DirectoryTestsSource("bcHomesteadToEIP150", testWildcard));
             */
+        }
+
+        private static async Task RunAllBlockchainTestAsync(string testWildcard, Func<ITestSourceLoader, IBlockchainTestRunner> testRunnerBuilder)
+        {
+            await WrapAndRunDirectoryBlockchainTestsAsync(testRunnerBuilder(new TestsSourceLoader(new LoadBlockchainTestsStrategy(), "bcBlockGasLimitTest", testWildcard)));
+            await WrapAndRunDirectoryBlockchainTestsAsync(testRunnerBuilder(new TestsSourceLoader(new LoadBlockchainTestsStrategy(), "bcExploitTest", testWildcard)));
+            await WrapAndRunDirectoryBlockchainTestsAsync(testRunnerBuilder(new TestsSourceLoader(new LoadBlockchainTestsStrategy(), "bcForgedTest", testWildcard)));
+            await WrapAndRunDirectoryBlockchainTestsAsync(testRunnerBuilder(new TestsSourceLoader(new LoadBlockchainTestsStrategy(), "bcForkStressTest", testWildcard)));
+            await WrapAndRunDirectoryBlockchainTestsAsync(testRunnerBuilder(new TestsSourceLoader(new LoadBlockchainTestsStrategy(), "bcGasPricerTest", testWildcard)));
+            await WrapAndRunDirectoryBlockchainTestsAsync(testRunnerBuilder(new TestsSourceLoader(new LoadBlockchainTestsStrategy(), "bcInvalidHeaderTest", testWildcard)));
+            await WrapAndRunDirectoryBlockchainTestsAsync(testRunnerBuilder(new TestsSourceLoader(new LoadBlockchainTestsStrategy(), "bcMultiChainTestTest", testWildcard)));
+            await WrapAndRunDirectoryBlockchainTestsAsync(testRunnerBuilder(new TestsSourceLoader(new LoadBlockchainTestsStrategy(), "bcRandomBlockhashTest", testWildcard)));
+            await WrapAndRunDirectoryBlockchainTestsAsync(testRunnerBuilder(new TestsSourceLoader(new LoadBlockchainTestsStrategy(), "bcStateTests", testWildcard)));
+            await WrapAndRunDirectoryBlockchainTestsAsync(testRunnerBuilder(new TestsSourceLoader(new LoadBlockchainTestsStrategy(), "bcTotalDifficultyTest", testWildcard)));
+            await WrapAndRunDirectoryBlockchainTestsAsync(testRunnerBuilder(new TestsSourceLoader(new LoadBlockchainTestsStrategy(), "bcUncleHeaderValidity", testWildcard)));
+            await WrapAndRunDirectoryBlockchainTestsAsync(testRunnerBuilder(new TestsSourceLoader(new LoadBlockchainTestsStrategy(), "bcUncleTest", testWildcard)));
+            await WrapAndRunDirectoryBlockchainTestsAsync(testRunnerBuilder(new TestsSourceLoader(new LoadBlockchainTestsStrategy(), "bcValidBlockTest", testWildcard)));
+            await WrapAndRunDirectoryBlockchainTestsAsync(testRunnerBuilder(new TestsSourceLoader(new LoadBlockchainTestsStrategy(), "bcWalletTest", testWildcard)));
         }
     }
 }

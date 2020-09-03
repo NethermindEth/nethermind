@@ -21,7 +21,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
@@ -168,5 +168,8 @@ namespace Nethermind.Blockchain.Producers
 
             return selected;
         }
+        
+        public override string ToString() => $"{nameof(TxPoolTxSource)}";
+
     }
 }

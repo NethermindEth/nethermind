@@ -18,15 +18,17 @@ using System;
 using System.Buffers.Binary;
 using System.Collections;
 using System.Collections.Generic;
+using System.ComponentModel.Design;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Numerics;
+using System.Reflection.Metadata;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 
 namespace Nethermind.Core.Extensions
 {
@@ -116,6 +118,7 @@ namespace Nethermind.Core.Extensions
 
         public static bool AreEqual(Span<byte> a1, Span<byte> a2)
         {
+            // this works for nulls
             return a1.SequenceEqual(a2);
         }
 
@@ -413,8 +416,7 @@ namespace Nethermind.Core.Extensions
 
         public static UInt256 ToUInt256(this byte[] bytes)
         {
-            UInt256.CreateFromBigEndian(out UInt256 result, bytes);
-            return result;
+            return new UInt256(bytes, true);
         }
 
         private static byte Reverse(byte b)
@@ -787,6 +789,23 @@ namespace Nethermind.Core.Extensions
             }
 
             return (fnvPrime * bytes.Length * (((fnvPrime * (bytes[0] + 7)) ^ (bytes[^1] + 23)) + 11)) ^ (bytes[(bytes.Length - 1) / 2] + 53);
+        }
+
+        public static void ChangeEndianness8(Span<byte> bytes)
+        {
+            if (bytes.Length % 16 != 0)
+            {
+                throw new NotImplementedException("Has to be a multiple of 16");
+            }
+
+            Span<ulong> ulongs = MemoryMarshal.Cast<byte, ulong>(bytes);
+            for (int i = 0; i < ulongs.Length / 2; i++)
+            {
+                ulong ith = ulongs[i];
+                ulong endIth = ulongs[^(i + 1)];
+                (ulongs[i], ulongs[^(i + 1)]) =
+                    (BinaryPrimitives.ReverseEndianness(endIth), BinaryPrimitives.ReverseEndianness(ith));
+            }
         }
     }
 }

@@ -36,8 +36,7 @@ namespace Nethermind.Synchronization.FastBlocks
         /// </summary>
         public bool Prioritized { get; set; }
 
-        public abstract bool IsResponseEmpty { get; }
-        public PeerInfo ResponseSourcePeer { get; set; }
+        public PeerInfo? ResponseSourcePeer { get; set; }
 
         protected FastBlocksBatch()
         {
@@ -60,6 +59,7 @@ namespace Nethermind.Synchronization.FastBlocks
             _requestSentTime = _stopwatch.ElapsedMilliseconds;
             
         }
+        
         public void MarkValidation()
         {
             _validationStartTime = _stopwatch.ElapsedMilliseconds;
@@ -73,11 +73,7 @@ namespace Nethermind.Synchronization.FastBlocks
         public void MarkHandlingStart()
         {
             _handlingStartTime = _stopwatch.ElapsedMilliseconds;
-            
-            if (_validationStartTime == null)
-            {
-                _validationStartTime = _handlingStartTime;
-            }
+            _validationStartTime ??= _handlingStartTime;
         }
         
         public void MarkHandlingEnd()
@@ -85,13 +81,18 @@ namespace Nethermind.Synchronization.FastBlocks
             _handlingEndTime = _stopwatch.ElapsedMilliseconds;
         }
         
-        protected int Retries { get; set; }
+        public int Retries { get; private set; }
         public double? AgeInMs => _stopwatch.ElapsedMilliseconds;
-        public double? SchedulingTime => (_requestSentTime ?? _stopwatch.ElapsedMilliseconds) - (_scheduledLastTime ?? _stopwatch.ElapsedMilliseconds);
-        public double? RequestTime => (_validationStartTime ?? _stopwatch.ElapsedMilliseconds) - (_requestSentTime ?? _stopwatch.ElapsedMilliseconds);
-        public double? ValidationTime => (_waitingStartTime ?? _stopwatch.ElapsedMilliseconds) - (_validationStartTime ?? _handlingStartTime ?? _stopwatch.ElapsedMilliseconds);
-        public double? WaitingTime => (_handlingStartTime ?? _stopwatch.ElapsedMilliseconds) - (_waitingStartTime ?? _handlingStartTime ?? _stopwatch.ElapsedMilliseconds);
-        public double? HandlingTime => (_handlingEndTime ?? _stopwatch.ElapsedMilliseconds) - (_handlingStartTime ?? _stopwatch.ElapsedMilliseconds);
+        public double? SchedulingTime
+            => (_requestSentTime ?? _stopwatch.ElapsedMilliseconds) - (_scheduledLastTime ?? _stopwatch.ElapsedMilliseconds);
+        public double? RequestTime
+            => (_validationStartTime ?? _stopwatch.ElapsedMilliseconds) - (_requestSentTime ?? _stopwatch.ElapsedMilliseconds);
+        public double? ValidationTime
+            => (_waitingStartTime ?? _stopwatch.ElapsedMilliseconds) - (_validationStartTime ?? _handlingStartTime ?? _stopwatch.ElapsedMilliseconds);
+        public double? WaitingTime
+            => (_handlingStartTime ?? _stopwatch.ElapsedMilliseconds) - (_waitingStartTime ?? _handlingStartTime ?? _stopwatch.ElapsedMilliseconds);
+        public double? HandlingTime
+            => (_handlingEndTime ?? _stopwatch.ElapsedMilliseconds) - (_handlingStartTime ?? _stopwatch.ElapsedMilliseconds);
         public long? MinNumber { get; set; }
     }
 }

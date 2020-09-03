@@ -15,7 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
@@ -30,7 +30,7 @@ namespace Nethermind.Evm.Test
         {
             IEvmMemory memory = CreateEvmMemory();
             UInt256 dest = (UInt256) int.MaxValue + 1;
-            memory.Save(ref dest, new byte[0]);
+            memory.Save(in dest, new byte[0]);
         }
 
         [Test]
@@ -38,7 +38,7 @@ namespace Nethermind.Evm.Test
         {
             IEvmMemory memory = CreateEvmMemory();
             UInt256 dest = UInt256.Zero;
-            memory.SaveWord(ref dest, new byte[EvmPooledMemory.WordSize]);
+            memory.SaveWord(in dest, new byte[EvmPooledMemory.WordSize]);
             List<string> trace = memory.GetTrace();
             Assert.AreEqual(1, trace.Count);
         }
@@ -48,7 +48,7 @@ namespace Nethermind.Evm.Test
         {
             IEvmMemory memory = CreateEvmMemory();
             UInt256 dest = EvmPooledMemory.WordSize;
-            memory.SaveWord(ref dest, new byte[EvmPooledMemory.WordSize]);
+            memory.SaveWord(in dest, new byte[EvmPooledMemory.WordSize]);
             List<string> trace = memory.GetTrace();
             Assert.AreEqual(2, trace.Count);
         }
@@ -58,8 +58,8 @@ namespace Nethermind.Evm.Test
         {
             IEvmMemory memory = CreateEvmMemory();
             UInt256 dest = EvmPooledMemory.WordSize;
-            memory.SaveWord(ref dest, new byte[EvmPooledMemory.WordSize]);
-            memory.SaveWord(ref dest, new byte[EvmPooledMemory.WordSize]);
+            memory.SaveWord(in dest, new byte[EvmPooledMemory.WordSize]);
+            memory.SaveWord(in dest, new byte[EvmPooledMemory.WordSize]);
             List<string> trace = memory.GetTrace();
             Assert.AreEqual(2, trace.Count);
         }
@@ -69,7 +69,7 @@ namespace Nethermind.Evm.Test
         {
             IEvmMemory memory = CreateEvmMemory();
             UInt256 dest = EvmPooledMemory.WordSize / 2;
-            memory.SaveByte(ref dest, 1);
+            memory.SaveByte(in dest, 1);
             List<string> trace = memory.GetTrace();
             Assert.AreEqual(1, trace.Count);
         }
@@ -79,8 +79,8 @@ namespace Nethermind.Evm.Test
         {
             IEvmMemory memory = CreateEvmMemory();
             UInt256 dest = UInt256.One;
-            long cost1 = memory.CalculateMemoryCost(ref dest, UInt256.One);
-            long cost2 = memory.CalculateMemoryCost(ref dest, UInt256.One);
+            long cost1 = memory.CalculateMemoryCost(in dest, UInt256.One);
+            long cost2 = memory.CalculateMemoryCost(in dest, UInt256.One);
             Assert.AreEqual(0L, cost2);
         }
         
@@ -89,7 +89,7 @@ namespace Nethermind.Evm.Test
         {
             IEvmMemory memory = CreateEvmMemory();
             UInt256 dest = long.MaxValue;
-            long cost = memory.CalculateMemoryCost(ref dest, UInt256.Zero);
+            long cost = memory.CalculateMemoryCost(in dest, UInt256.Zero);
             Assert.AreEqual(0L, cost);
         }
     }

@@ -130,11 +130,13 @@ namespace Nethermind.Synchronization.Test
             syncConfig.PivotNumber = "1";
 
             SyncProgressResolver syncProgressResolver = new SyncProgressResolver(blockTree, receiptStorage, stateDb, new MemDb(), syncConfig, LimboLogs.Instance);
-            Assert.True(syncProgressResolver.IsFastBlocksFinished());
+            Assert.True(syncProgressResolver.IsFastBlocksHeadersFinished());
+            Assert.True(syncProgressResolver.IsFastBlocksBodiesFinished());
+            Assert.True(syncProgressResolver.IsFastBlocksReceiptsFinished());
         }
 
         [Test]
-        public void Is_fast_block_finished_returns_false_when_headers_not_downloaded()
+        public void Is_fast_block_headers_finished_returns_false_when_headers_not_downloaded()
         {
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
@@ -148,11 +150,11 @@ namespace Nethermind.Synchronization.Test
             blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(2).WithStateRoot(TestItem.KeccakA).TestObject);
 
             SyncProgressResolver syncProgressResolver = new SyncProgressResolver(blockTree, receiptStorage, stateDb, new MemDb(), syncConfig, LimboLogs.Instance);
-            Assert.False(syncProgressResolver.IsFastBlocksFinished());
+            Assert.False(syncProgressResolver.IsFastBlocksHeadersFinished());
         }
 
         [Test]
-        public void Is_fast_block_finished_returns_false_when_blocks_not_downloaded()
+        public void Is_fast_block_bodies_finished_returns_false_when_blocks_not_downloaded()
         {
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
@@ -164,14 +166,14 @@ namespace Nethermind.Synchronization.Test
             syncConfig.PivotNumber = "1";
 
             blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject);
-            blockTree.LowestInsertedBody.Returns(Build.A.Block.WithNumber(2).WithStateRoot(TestItem.KeccakB).TestObject);
+            blockTree.LowestInsertedBodyNumber.Returns(2);
 
             SyncProgressResolver syncProgressResolver = new SyncProgressResolver(blockTree, receiptStorage, stateDb, new MemDb(), syncConfig, LimboLogs.Instance);
-            Assert.False(syncProgressResolver.IsFastBlocksFinished());
+            Assert.False(syncProgressResolver.IsFastBlocksBodiesFinished());
         }
 
         [Test]
-        public void Is_fast_block_finished_returns_false_when_receipts_not_downloaded()
+        public void Is_fast_block_receipts_finished_returns_false_when_receipts_not_downloaded()
         {
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
@@ -183,15 +185,15 @@ namespace Nethermind.Synchronization.Test
             syncConfig.PivotNumber = "1";
 
             blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject);
-            blockTree.LowestInsertedBody.Returns(Build.A.Block.WithNumber(1).WithStateRoot(TestItem.KeccakB).TestObject);
-            receiptStorage.LowestInsertedReceiptBlock.Returns(2);
+            blockTree.LowestInsertedBodyNumber.Returns(1);
+            receiptStorage.LowestInsertedReceiptBlockNumber.Returns(2);
 
             SyncProgressResolver syncProgressResolver = new SyncProgressResolver(blockTree, receiptStorage, stateDb, new MemDb(), syncConfig, LimboLogs.Instance);
-            Assert.False(syncProgressResolver.IsFastBlocksFinished());
+            Assert.False(syncProgressResolver.IsFastBlocksReceiptsFinished());
         }
 
         [Test]
-        public void Is_fast_block_finished_returns_true_when_bodies_not_downloaded_and_we_do_not_want_to_download_bodies()
+        public void Is_fast_block_bodies_finished_returns_true_when_bodies_not_downloaded_and_we_do_not_want_to_download_bodies()
         {
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
@@ -203,15 +205,15 @@ namespace Nethermind.Synchronization.Test
             syncConfig.PivotNumber = "1";
 
             blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject);
-            blockTree.LowestInsertedBody.Returns(Build.A.Block.WithNumber(2).WithStateRoot(TestItem.KeccakB).TestObject);
-            receiptStorage.LowestInsertedReceiptBlock.Returns(1);
+            blockTree.LowestInsertedBodyNumber.Returns(2);
+            receiptStorage.LowestInsertedReceiptBlockNumber.Returns(1);
 
             SyncProgressResolver syncProgressResolver = new SyncProgressResolver(blockTree, receiptStorage, stateDb, new MemDb(), syncConfig, LimboLogs.Instance);
-            Assert.True(syncProgressResolver.IsFastBlocksFinished());
+            Assert.True(syncProgressResolver.IsFastBlocksBodiesFinished());
         }
 
         [Test]
-        public void Is_fast_block_finished_returns_true_when_receipts_not_downloaded_and_we_do_not_want_to_download_receipts()
+        public void Is_fast_block_receipts_finished_returns_true_when_receipts_not_downloaded_and_we_do_not_want_to_download_receipts()
         {
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
@@ -223,11 +225,11 @@ namespace Nethermind.Synchronization.Test
             syncConfig.PivotNumber = "1";
 
             blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject);
-            blockTree.LowestInsertedBody.Returns(Build.A.Block.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject);
-            receiptStorage.LowestInsertedReceiptBlock.Returns(2);
+            blockTree.LowestInsertedBodyNumber.Returns(1);
+            receiptStorage.LowestInsertedReceiptBlockNumber.Returns(2);
 
             SyncProgressResolver syncProgressResolver = new SyncProgressResolver(blockTree, receiptStorage, stateDb, new MemDb(), syncConfig, LimboLogs.Instance);
-            Assert.True(syncProgressResolver.IsFastBlocksFinished());
+            Assert.True(syncProgressResolver.IsFastBlocksReceiptsFinished());
         }
     }
 }

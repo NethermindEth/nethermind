@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -424,19 +424,36 @@ namespace Nethermind.Network
             }
         }
 
-        private void SelectAndRankCandidates()
+        private static ActivePeerSelectionCounter[] _enumValues = InitEnumValues();
+
+        private static ActivePeerSelectionCounter[] InitEnumValues()
         {
-            _currentSelection.PreCandidates.Clear();
-            _currentSelection.Candidates.Clear();
-            _currentSelection.Incompatible.Clear();
-            foreach (ActivePeerSelectionCounter value in Enum.GetValues(typeof(ActivePeerSelectionCounter)))
+            Array values = Enum.GetValues(typeof(ActivePeerSelectionCounter));
+            ActivePeerSelectionCounter[] result = new ActivePeerSelectionCounter[values.Length];
+
+            int index = 0;
+            foreach (ActivePeerSelectionCounter value in values)
             {
-                _currentSelection.Counters[value] = 0;
+                result[index++] = value;
             }
 
+            return result;
+        }
+        
+        private void SelectAndRankCandidates()
+        {
             if (AvailableActivePeersCount <= 0)
             {
                 return;
+            }
+            
+            _currentSelection.PreCandidates.Clear();
+            _currentSelection.Candidates.Clear();
+            _currentSelection.Incompatible.Clear();
+
+            for (int i = 0; i < _enumValues.Length; i++)
+            {
+                _currentSelection.Counters[_enumValues[i]] = 0;
             }
 
             foreach ((_, Peer peer) in _peerPool.AllPeers)
@@ -920,6 +937,11 @@ namespace Nethermind.Network
             NetworkNode[] storedNodes = _peerStorage.GetPersistedNodes();
             foreach (NetworkNode node in storedNodes)
             {
+                if (node.Port < 0 || node.Port > ushort.MaxValue)
+                {
+                    continue;
+                }
+                
                 Peer peer = _peerPool.GetOrAdd(node, false);
                 long newRep = _stats.GetNewPersistedReputation(peer.Node);
                 if (newRep != node.Reputation)
@@ -943,12 +965,16 @@ namespace Nethermind.Network
             NetworkNode[] nonActiveNodes = storedNodes.Where(x => !activeNodeIds.Contains(x.NodeId))
                 .OrderBy(x => x.Reputation).ToArray();
             int countToRemove = storedNodes.Length - _networkConfig.MaxPersistedPeerCount;
-            NetworkNode[] nodesToRemove = nonActiveNodes.Take(countToRemove).ToArray();
-            if (nodesToRemove.Length > 0)
+            var nodesToRemove = nonActiveNodes.Take(countToRemove);
+
+            int removedNodes = 0;
+            foreach (var item in nodesToRemove)
             {
-                _peerStorage.RemoveNodes(nodesToRemove);
-                if (_logger.IsDebug) _logger.Debug($"Removing persisted peers: {nodesToRemove.Length}, prevPersistedCount: {storedNodes.Length}, newPersistedCount: {_peerStorage.GetPersistedNodes().Length}, PersistedPeerCountCleanupThreshold: {_networkConfig.PersistedPeerCountCleanupThreshold}, MaxPersistedPeerCount: {_networkConfig.MaxPersistedPeerCount}");
+                _peerStorage.RemoveNode(item.NodeId);
+                removedNodes++;
             }
+
+            if (_logger.IsDebug) _logger.Debug($"Removing persisted peers: {removedNodes}, prevPersistedCount: {storedNodes.Length}, newPersistedCount: {_peerStorage.PersistedNodesCount}, PersistedPeerCountCleanupThreshold: {_networkConfig.PersistedPeerCountCleanupThreshold}, MaxPersistedPeerCount: {_networkConfig.MaxPersistedPeerCount}");
         }
 
         private void CleanupCandidatePeers()

@@ -16,11 +16,15 @@
 // 
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Specs.ChainSpecStyle;
@@ -56,13 +60,22 @@ namespace Nethermind.Blockchain
         public Block Load()
         {
             Block genesis = _chainSpec.Genesis;
-            foreach ((Address address, ChainSpecAllocation allocation) in _chainSpec.Allocations)
+            foreach ((Address address, ChainSpecAllocation allocation) in _chainSpec.Allocations.OrderBy(a => a.Key))
             {
                 _stateProvider.CreateAccount(address, allocation.Balance);
+
                 if (allocation.Code != null)
                 {
                     Keccak codeHash = _stateProvider.UpdateCode(allocation.Code);
                     _stateProvider.UpdateCodeHash(address, codeHash, _specProvider.GenesisSpec);
+                }
+
+                if (allocation.Storage != null)
+                {
+                    foreach (KeyValuePair<UInt256, byte[]> storage in allocation.Storage)
+                    {
+                        _storageProvider.Set(new StorageCell(address, storage.Key), storage.Value.WithoutLeadingZeros().ToArray());
+                    }
                 }
 
                 if (allocation.Constructor != null)
@@ -74,10 +87,16 @@ namespace Nethermind.Blockchain
                         GasLimit = genesis.GasLimit
                     };
 
-                    _transactionProcessor.Execute(constructorTransaction, genesis.Header, NullTxTracer.Instance);
+                    CallOutputTracer outputTracer = new CallOutputTracer();
+                    _transactionProcessor.Execute(constructorTransaction, genesis.Header, outputTracer);
+
+                    if (outputTracer.StatusCode != StatusCode.Success)
+                    {
+                        throw new InvalidOperationException($"Failed to initialize constructor for address {address}. Error: {outputTracer.Error}");
+                    }
                 }
             }
-
+            
             // we no longer need the allocations - 0.5MB RAM, 9000 objects for mainnet
             _chainSpec.Allocations = null;
 

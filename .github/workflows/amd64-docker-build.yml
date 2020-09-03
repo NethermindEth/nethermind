@@ -1,8 +1,8 @@
-name: Publish Debian amd64 image to docker registry
+name: Publish AMD64 image to docker registry
 
 on:
   repository_dispatch:
-    types: docker_amd64_debian_custom
+    types: docker_amd64
 
 jobs:
   amd64-build:
@@ -17,11 +17,12 @@ jobs:
         run: |
           echo "Event '${{ github.event.action }}' with tag: '${{ github.event.client_payload.tag }}'"
           echo ::set-output name=TAG::${{ github.event.client_payload.tag }}
+          echo ::set-output name=TAG_FROM_REPO::$(git describe --tags $(git rev-list --tags --max-count=1))
           echo ::set-output name=docker_username::${{ secrets.DOCKER_USERNAME }}
           echo ::set-output name=docker_image::nethermind/nethermind
       - name: Set up docker buildx
         id: buildx
-        uses: crazy-max/ghaction-docker-buildx@v1
+        uses: crazy-max/ghaction-docker-buildx@v3.1.0
         with:
           version: latest
       - name: Docker Login
@@ -30,9 +31,18 @@ jobs:
           DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
         run: |
           echo "${DOCKER_PASSWORD}" | docker login --username "${{ steps.settings.outputs.docker_username }}" --password-stdin
-      - name: Build & Push image to docker registry
+      - name: Build & Push image to docker registry (major) / trigger DAppNode Build
+        if: steps.settings.outputs.TAG == steps.settings.outputs.TAG_FROM_REPO
+        run: |
+          docker buildx build --platform=linux/amd64 -t "${{ steps.settings.outputs.docker_image }}:latest" -t "${{ steps.settings.outputs.docker_image }}:${{ steps.settings.outputs.TAG }}" -f Dockerfile --build-arg GIT_COMMIT=$(git log -1 --format=%h) . --push
+          curl -v -X POST -u "${{ secrets.PAT_GITHUB }}" -H "Accept: application/vnd.github.everest-preview+json" -H "Content-Type: application/json" --data '{"event_type":"dappnode", "client_payload": { "tag":"${{ steps.settings.outputs.TAG }}"}}' https://api.github.com/repos/nethermindeth/nethermind/dispatches
+      - name: Build & Push image to docker registry  (patch)
+        if: steps.settings.outputs.TAG != steps.settings.outputs.TAG_FROM_REPO
         run: |
           docker buildx build --platform=linux/amd64 -t "${{ steps.settings.outputs.docker_image }}:${{ steps.settings.outputs.TAG }}" -f Dockerfile --build-arg GIT_COMMIT=$(git log -1 --format=%h) . --push
+      - name: Trigger docker smoke test
+        run: |
+          curl ${{ secrets.BUILD_SERVER }}/smoke-docker
       - name: Clear
         if: always()
         run: |

@@ -19,6 +19,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using FluentAssertions;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
@@ -71,6 +72,12 @@ namespace Nethermind.Blockchain.Test
 
                 public Block[] Process(Keccak newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer)
                 {
+                    if (blockTracer != NullBlockTracer.Instance)
+                    {
+                        // this is for block reruns on failure for diag tracing
+                        throw new InvalidBlockException(Keccak.Zero);
+                    }
+                    
                     _logger.Info($"Processing {suggestedBlocks.Last().ToString(Block.Format.Short)}");
                     while (true)
                     {
@@ -415,6 +422,18 @@ namespace Nethermind.Blockchain.Test
                 .FullyProcessed(_block2D4).BecomesNewHead()
                 .FullyProcessed(_block3D6).BecomesNewHead()
                 .FullyProcessed(_block4D8).BecomesNewHead();
+        }
+        
+        [Test]
+        [Ignore("Does not work on CI")]
+        public void Will_update_metrics_on_processing()
+        {
+            long metricsBefore = Metrics.LastBlockProcessingTimeInMs;
+            When.ProcessingBlocks
+                .FullyProcessed(_block0).BecomesGenesis();
+            
+            long metricsAfter = Metrics.LastBlockProcessingTimeInMs;
+            metricsAfter.Should().NotBe(metricsBefore);
         }
         
         [Test]

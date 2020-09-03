@@ -24,7 +24,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -82,17 +82,17 @@ namespace Nethermind.Synchronization.Test
 
             public Task<BlockBody[]> GetBlockBodies(IList<Keccak> blockHashes, CancellationToken token)
             {
-                return Task.FromResult(new BlockBody[0]);
+                return Task.FromResult(Array.Empty<BlockBody>());
             }
 
             public Task<BlockHeader[]> GetBlockHeaders(Keccak blockHash, int maxBlocks, int skip, CancellationToken token)
             {
-                return Task.FromResult(new BlockHeader[0]);
+                return Task.FromResult(Array.Empty<BlockHeader>());
             }
 
             public Task<BlockHeader[]> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
             {
-                return Task.FromResult(new BlockHeader[0]);
+                return Task.FromResult(Array.Empty<BlockHeader>());
             }
 
             public async Task<BlockHeader> GetHeadBlockHeader(Keccak hash, CancellationToken token)
@@ -116,11 +116,7 @@ namespace Nethermind.Synchronization.Test
                 return await Task.FromResult(Build.A.BlockHeader.TestObject);
             }
 
-            public void SendNewBlock(Block block)
-            {
-            }
-
-            public void HintNewBlock(Keccak blockHash, long number)
+            public void NotifyOfNewBlock(Block block, SendBlockPriority priority)
             {
             }
 
@@ -132,12 +128,12 @@ namespace Nethermind.Synchronization.Test
 
             public Task<TxReceipt[][]> GetReceipts(IList<Keccak> blockHash, CancellationToken token)
             {
-                return Task.FromResult(new TxReceipt[0][]);
+                return Task.FromResult(Array.Empty<TxReceipt[]>());
             }
 
             public Task<byte[][]> GetNodeData(IList<Keccak> hashes, CancellationToken token)
             {
-                return Task.FromResult(new byte[0][]);
+                return Task.FromResult(Array.Empty<byte[]>());
             }
 
             private int? _headerResponseTime;

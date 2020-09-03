@@ -19,7 +19,7 @@ using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp
 {
@@ -358,7 +358,7 @@ namespace Nethermind.Serialization.Rlp
 
         public void Encode(ulong value)
         {
-            Encode(value, 8);
+            Encode((UInt256)value, 8);
         }
 
         public void Encode(UInt256 value, int length = -1)
@@ -679,8 +679,7 @@ namespace Nethermind.Serialization.Rlp
                 throw new ArgumentException();
             }
 
-            UInt256.CreateFromBigEndian(out UInt256 result, byteSpan);
-            return result;
+            return new UInt256(byteSpan, true);
         }
 
         public UInt256? DecodeNullableUInt256()
@@ -929,7 +928,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (prefix == 128)
             {
-                return Bytes.Empty;
+                return Array.Empty<byte>();
             }
 
             if (prefix <= 183)

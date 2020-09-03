@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
+using System.Threading;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -34,16 +35,18 @@ namespace Nethermind.JsonRpc.Test.Modules
     [TestFixture]
     public class DebugModuleTests
     {
+        private IJsonRpcConfig jsonRpcConfig = new JsonRpcConfig();
+        private IDebugBridge debugBridge = Substitute.For<IDebugBridge>();
+
         [Test]
         public void Get_from_db()
         {
-            IDebugBridge debugBridge = Substitute.For<IDebugBridge>();
             byte[] key = new byte[] {1, 2, 3};
             byte[] value = new byte[] {4, 5, 6};
             debugBridge.GetDbValue(Arg.Any<string>(), Arg.Any<byte[]>()).Returns(value);
 
             IConfigProvider configProvider = Substitute.For<IConfigProvider>();
-            DebugModule module = new DebugModule(LimboLogs.Instance, debugBridge);
+            DebugModule module = new DebugModule(LimboLogs.Instance, debugBridge, jsonRpcConfig);
             JsonRpcSuccessResponse response = RpcTest.TestRequest<IDebugModule>(module, "debug_getFromDb", "STATE", key.ToHexString(true)) as JsonRpcSuccessResponse;
 
             byte[] result = response.Result as byte[];
@@ -52,12 +55,11 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void Get_from_db_null_value()
         {
-            IDebugBridge debugBridge = Substitute.For<IDebugBridge>();
             byte[] key = new byte[] {1, 2, 3};
             debugBridge.GetDbValue(Arg.Any<string>(), Arg.Any<byte[]>()).Returns((byte[]) null);
 
             IConfigProvider configProvider = Substitute.For<IConfigProvider>();
-            DebugModule module = new DebugModule(LimboLogs.Instance, debugBridge);
+            DebugModule module = new DebugModule(LimboLogs.Instance, debugBridge, jsonRpcConfig);
             JsonRpcSuccessResponse response = RpcTest.TestRequest<IDebugModule>(module, "debug_getFromDb", "STATE", key.ToHexString(true)) as JsonRpcSuccessResponse;
 
             Assert.NotNull(response);
@@ -67,17 +69,16 @@ namespace Nethermind.JsonRpc.Test.Modules
         [TestCase("0x1")]
         public void Get_chain_level(string parameter)
         {
-            IDebugBridge debugBridge = Substitute.For<IDebugBridge>();
             debugBridge.GetLevelInfo(1).Returns(
                 new ChainLevelInfo(
                     true,
                     new[]
-                {
-                    new BlockInfo(TestItem.KeccakA, 1000),
-                    new BlockInfo(TestItem.KeccakB, 1001),
-                }));
+                    {
+                        new BlockInfo(TestItem.KeccakA, 1000),
+                        new BlockInfo(TestItem.KeccakB, 1001),
+                    }));
 
-            DebugModule module = new DebugModule(LimboLogs.Instance, debugBridge);
+            DebugModule module = new DebugModule(LimboLogs.Instance, debugBridge, jsonRpcConfig);
             JsonRpcSuccessResponse response = RpcTest.TestRequest<IDebugModule>(module, "debug_getChainLevel", parameter) as JsonRpcSuccessResponse;
             ChainLevelForRpc chainLevel = response?.Result as ChainLevelForRpc;
             Assert.NotNull(chainLevel);
@@ -89,11 +90,10 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void Get_block_rlp_by_hash()
         {
             BlockDecoder decoder = new BlockDecoder();
-            IDebugBridge debugBridge = Substitute.For<IDebugBridge>();
             Rlp rlp = decoder.Encode(Build.A.Block.WithNumber(1).TestObject);
             debugBridge.GetBlockRlp(Keccak.Zero).Returns(rlp.Bytes);
 
-            DebugModule module = new DebugModule(LimboLogs.Instance, debugBridge);
+            DebugModule module = new DebugModule(LimboLogs.Instance, debugBridge, jsonRpcConfig);
             JsonRpcSuccessResponse response = RpcTest.TestRequest<IDebugModule>(module, "debug_getBlockRlpByHash", $"{Keccak.Zero.Bytes.ToHexString()}") as JsonRpcSuccessResponse;
             Assert.AreEqual(rlp.Bytes, (byte[]) response?.Result);
         }
@@ -106,7 +106,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             Rlp rlp = decoder.Encode(Build.A.Block.WithNumber(1).TestObject);
             debugBridge.GetBlockRlp(1).Returns(rlp.Bytes);
 
-            DebugModule module = new DebugModule(LimboLogs.Instance, debugBridge);
+            DebugModule module = new DebugModule(LimboLogs.Instance, debugBridge, jsonRpcConfig);
             JsonRpcSuccessResponse response = RpcTest.TestRequest<IDebugModule>(module, "debug_getBlockRlp", "1") as JsonRpcSuccessResponse;
 
             Assert.AreEqual(rlp.Bytes, (byte[]) response?.Result);
@@ -115,10 +115,9 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void Get_block_rlp_when_missing()
         {
-            IDebugBridge debugBridge = Substitute.For<IDebugBridge>();
             debugBridge.GetBlockRlp(1).Returns((byte[]) null);
 
-            DebugModule module = new DebugModule(LimboLogs.Instance, debugBridge);
+            DebugModule module = new DebugModule(LimboLogs.Instance, debugBridge, jsonRpcConfig);
             JsonRpcErrorResponse response = RpcTest.TestRequest<IDebugModule>(module, "debug_getBlockRlp", "1") as JsonRpcErrorResponse;
 
             Assert.AreEqual(-32001, response?.Error.Code);
@@ -128,11 +127,10 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void Get_block_rlp_by_hash_when_missing()
         {
             BlockDecoder decoder = new BlockDecoder();
-            IDebugBridge debugBridge = Substitute.For<IDebugBridge>();
             Rlp rlp = decoder.Encode(Build.A.Block.WithNumber(1).TestObject);
             debugBridge.GetBlockRlp(Keccak.Zero).Returns((byte[]) null);
 
-            DebugModule module = new DebugModule(LimboLogs.Instance, debugBridge);
+            DebugModule module = new DebugModule(LimboLogs.Instance, debugBridge, jsonRpcConfig);
             JsonRpcErrorResponse response = RpcTest.TestRequest<IDebugModule>(module, "debug_getBlockRlpByHash", $"{Keccak.Zero.Bytes.ToHexString()}") as JsonRpcErrorResponse;
 
             Assert.AreEqual(-32001, response.Error.Code);
@@ -169,10 +167,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             trace.ReturnValue = Bytes.FromHexString("a2");
             trace.Entries.Add(entry);
 
-            IDebugBridge debugBridge = Substitute.For<IDebugBridge>();
-            debugBridge.GetTransactionTrace(Arg.Any<Keccak>(), Arg.Any<GethTraceOptions>()).Returns(trace);
+            debugBridge.GetTransactionTrace(Arg.Any<Keccak>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>()).Returns(trace);
 
-            DebugModule module = new DebugModule(LimboLogs.Instance, debugBridge);
+            DebugModule module = new DebugModule(LimboLogs.Instance, debugBridge, jsonRpcConfig);
             string response = RpcTest.TestSerializedRequest<IDebugModule>(DebugModuleFactory.Converters, module, "debug_traceTransaction", TestItem.KeccakA.ToString(true), "{}");
 
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":{\"gas\":\"0x0\",\"failed\":false,\"returnValue\":\"0xa2\",\"structLogs\":[{\"pc\":0,\"op\":\"STOP\",\"gas\":22000,\"gasCost\":1,\"depth\":1,\"error\":null,\"stack\":[\"0000000000000000000000000000000000000000000000000000000000000007\",\"0000000000000000000000000000000000000000000000000000000000000008\"],\"memory\":[\"0000000000000000000000000000000000000000000000000000000000000005\",\"0000000000000000000000000000000000000000000000000000000000000006\"],\"storage\":{\"0000000000000000000000000000000000000000000000000000000000000001\":\"0000000000000000000000000000000000000000000000000000000000000002\",\"0000000000000000000000000000000000000000000000000000000000000003\":\"0000000000000000000000000000000000000000000000000000000000000004\"}}]},\"id\":67}", response);
@@ -207,13 +204,30 @@ namespace Nethermind.JsonRpc.Test.Modules
             trace.ReturnValue = Bytes.FromHexString("a2");
             trace.Entries.Add(entry);
 
-            IDebugBridge debugBridge = Substitute.For<IDebugBridge>();
-            debugBridge.GetTransactionTrace(Arg.Any<Keccak>(), Arg.Any<GethTraceOptions>()).Returns(trace);
+            debugBridge.GetTransactionTrace(Arg.Any<Keccak>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>()).Returns(trace);
 
-            DebugModule module = new DebugModule(LimboLogs.Instance, debugBridge);
+            DebugModule module = new DebugModule(LimboLogs.Instance, debugBridge, jsonRpcConfig);
             string response = RpcTest.TestSerializedRequest<IDebugModule>(DebugModuleFactory.Converters, module, "debug_traceTransaction", TestItem.KeccakA.ToString(true), "{disableStack : true}");
 
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":{\"gas\":\"0x0\",\"failed\":false,\"returnValue\":\"0xa2\",\"structLogs\":[{\"pc\":0,\"op\":\"STOP\",\"gas\":22000,\"gasCost\":1,\"depth\":1,\"error\":null,\"stack\":[],\"memory\":[\"0000000000000000000000000000000000000000000000000000000000000005\",\"0000000000000000000000000000000000000000000000000000000000000006\"],\"storage\":{\"0000000000000000000000000000000000000000000000000000000000000001\":\"0000000000000000000000000000000000000000000000000000000000000002\",\"0000000000000000000000000000000000000000000000000000000000000003\":\"0000000000000000000000000000000000000000000000000000000000000004\"}}]},\"id\":67}", response);
+        }
+
+        [Test]
+        public void Migrate_receipts()
+        {
+            debugBridge.MigrateReceipts(Arg.Any<long>()).Returns(true);
+            IDebugModule module = new DebugModule(LimboLogs.Instance, debugBridge, jsonRpcConfig);
+            string response = RpcTest.TestSerializedRequest(module, "debug_migrateReceipts", "100");
+            Assert.NotNull(response);
+        }
+
+        [Test]
+        public void Update_head_block()
+        {
+            debugBridge.UpdateHeadBlock(Arg.Any<Keccak>());
+            IDebugModule module = new DebugModule(LimboLogs.Instance, debugBridge, jsonRpcConfig);
+            RpcTest.TestSerializedRequest(module, "debug_resetHead", TestItem.KeccakA.ToString());
+            debugBridge.Received().UpdateHeadBlock(TestItem.KeccakA);
         }
     }
 }

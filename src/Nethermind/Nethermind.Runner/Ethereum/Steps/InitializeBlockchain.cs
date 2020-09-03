@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
@@ -52,7 +53,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context = context;
         }
 
-        public async Task Execute()
+        public async Task Execute(CancellationToken _)
         {
             await InitBlockchain();
         }
@@ -74,6 +75,8 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
             
             Account.AccountStartNonce = _context.ChainSpec.Parameters.AccountStartNonce;
+            
+            _context.Signer = new Signer(_context.SpecProvider.ChainId, _context.OriginalSignerKey, _context.LogManager);
 
             _context.StateProvider = new StateProvider(
                 _context.DbProvider.StateDb,
@@ -184,8 +187,6 @@ namespace Nethermind.Runner.Ethereum.Steps
                 {
                     AutoProcess = !syncConfig.BeamSync,
                     StoreReceiptsByDefault = initConfig.StoreReceipts,
-                    RunGethTracer = initConfig.DiagnosticMode == DiagnosticMode.GethTrace,
-                    RunParityTracer = initConfig.DiagnosticMode == DiagnosticMode.ParityTrace,
                 });
 
             _context.BlockProcessingQueue = blockchainProcessor;
@@ -200,15 +201,12 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _context.LogManager,
                     _context.BlockValidator,
                     _context.RecoveryStep,
-                    _context.RewardCalculatorSource,
+                    _context.RewardCalculatorSource!,
                     _context.BlockProcessingQueue,
-                    _context.BlockchainProcessor,
-                    _context.SyncModeSelector);
+                    _context.SyncModeSelector!);
                 
                 _context.DisposeStack.Push(beamBlockchainProcessor);
             }
-
-            ThisNodeInfo.AddInfo("Mem est trie :", $"{LruCache<Keccak, byte[]>.CalculateMemorySize(52 + 320, Trie.MemoryAllowance.TrieNodeCacheSize) / 1024 / 1024}MB".PadLeft(8));
 
             return Task.CompletedTask;
         }
@@ -243,7 +241,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         {
             _context.Sealer = NullSealEngine.Instance;
             _context.SealValidator = NullSealEngine.Instance;
-            _context.RewardCalculatorSource = NoBlockRewards.Source;
+            _context.RewardCalculatorSource = NoBlockRewards.Instance;
         }
     }
 }

@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 
 namespace Nethermind.Consensus.Transactions
@@ -44,5 +45,9 @@ namespace Nethermind.Consensus.Transactions
                 }
             }
         }
+        
+        public override string ToString()
+            => $"{nameof(CompositeTxSource)} [ {(string.Join(", ", _transactionSources.Cast<object>()))} ]";
+
     }
 }

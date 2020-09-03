@@ -32,6 +32,12 @@ namespace Nethermind.Cli.Modules
         // {
         //     return NodeManager.PostJint("debug_deleteChainSlice", startNumber).Result;
         // }
+        
+        // [CliFunction("debug", "resetHead")]
+        // public JsValue ResetHead(string blockHash)
+        // {
+        //     return NodeManager.PostJint("debug_resetHead", CliParseHash(blockHash)).Result;
+        // }
 
         [CliFunction("debug", "traceBlock")]
         public JsValue TraceBlock(string rlp, object options)
@@ -97,6 +103,12 @@ namespace Nethermind.Cli.Modules
         public string GetBlockRlp(long number)
         {
             return NodeManager.Post<string>("debug_getBlockRlp", number).Result;
+        }
+        
+        [CliFunction("debug", "migrateReceipts")]
+        public bool MigrateReceipts(long number)
+        {
+            return NodeManager.Post<bool>("debug_migrateReceipts", number).Result;
         }
 
         public DebugCliModule(ICliEngine cliEngine, INodeManager nodeManager) : base(cliEngine, nodeManager)

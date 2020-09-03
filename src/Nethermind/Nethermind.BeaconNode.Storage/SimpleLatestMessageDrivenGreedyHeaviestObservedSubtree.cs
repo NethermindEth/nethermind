@@ -32,7 +32,7 @@ namespace Nethermind.BeaconNode.Storage
     {
         // See: https://blog.ethereum.org/2020/02/12/validated-staking-on-eth2-2-two-ghosts-in-a-trench-coat/
 
-        private readonly BeaconChainUtility _beaconChainUtility;
+        private readonly IBeaconChainUtility _beaconChainUtility;
         private readonly BeaconStateAccessor _beaconStateAccessor;
         private readonly ChainConstants _chainConstants;
         private readonly ILogger _logger;
@@ -40,7 +40,7 @@ namespace Nethermind.BeaconNode.Storage
         public SimpleLatestMessageDrivenGreedyHeaviestObservedSubtree(
             ILogger<SimpleLatestMessageDrivenGreedyHeaviestObservedSubtree> logger,
             ChainConstants chainConstants,
-            BeaconChainUtility beaconChainUtility,
+            IBeaconChainUtility beaconChainUtility,
             BeaconStateAccessor beaconStateAccessor)
         {
             _logger = logger;

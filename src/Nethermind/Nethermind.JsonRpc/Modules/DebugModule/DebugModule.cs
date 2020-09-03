@@ -17,13 +17,15 @@
 using System;
 using System.IO;
 using System.Linq;
-using Nethermind.Blockchain;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Evm.Tracing.GethStyle;
+using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 
@@ -33,11 +35,15 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
     {
         private readonly IDebugBridge _debugBridge;
         private readonly ILogger _logger;
-
-        public DebugModule(ILogManager logManager, IDebugBridge debugBridge)
+        private readonly TimeSpan _traceTimeout;
+        private readonly IJsonRpcConfig _jsonRpcConfig;
+         
+        public DebugModule(ILogManager logManager, IDebugBridge debugBridge, IJsonRpcConfig jsonRpcConfig)
         {
             _debugBridge = debugBridge ?? throw new ArgumentNullException(nameof(debugBridge));
+            _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
             _logger = logManager.GetClassLogger();
+            _traceTimeout = TimeSpan.FromMilliseconds(_jsonRpcConfig.TracerTimeout); 
         }
 
         public ResultWrapper<ChainLevelForRpc> debug_getChainLevel(in long number)
@@ -55,7 +61,8 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
 
         public ResultWrapper<GethLikeTxTrace> debug_traceTransaction(Keccak transactionHash, GethTraceOptions options = null)
         {
-            GethLikeTxTrace transactionTrace = _debugBridge.GetTransactionTrace(transactionHash, options);
+            CancellationToken cancellationToken = new CancellationTokenSource(_traceTimeout).Token;
+            GethLikeTxTrace transactionTrace = _debugBridge.GetTransactionTrace(transactionHash, cancellationToken, options);
             if (transactionTrace == null)
             {
                 return ResultWrapper<GethLikeTxTrace>.Fail($"Cannot find transactionTrace for hash: {transactionHash}", ErrorCodes.ResourceNotFound);
@@ -67,7 +74,8 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
 
         public ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockhashAndIndex(Keccak blockhash, int index, GethTraceOptions options = null)
         {
-            var transactionTrace = _debugBridge.GetTransactionTrace(blockhash, index, options);
+            CancellationToken cancellationToken = new CancellationTokenSource(_traceTimeout).Token;
+            var transactionTrace = _debugBridge.GetTransactionTrace(blockhash, index, cancellationToken, options);
             if (transactionTrace == null)
             {
                 return ResultWrapper<GethLikeTxTrace>.Fail($"Cannot find transactionTrace {blockhash}", ErrorCodes.ResourceNotFound);
@@ -79,13 +87,14 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
 
         public ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockAndIndex(BlockParameter blockParameter, int index, GethTraceOptions options = null)
         {
+            CancellationToken cancellationToken = new CancellationTokenSource(_traceTimeout).Token;
             long? blockNo = blockParameter.BlockNumber;
             if (!blockNo.HasValue)
             {
                 throw new InvalidDataException("Block number value incorrect");
             }
 
-            var transactionTrace = _debugBridge.GetTransactionTrace(blockNo.Value, index, options);
+            var transactionTrace = _debugBridge.GetTransactionTrace(blockNo.Value, index, cancellationToken, options);
             if (transactionTrace == null)
             {
                 return ResultWrapper<GethLikeTxTrace>.Fail($"Cannot find transactionTrace {blockNo}", ErrorCodes.ResourceNotFound);
@@ -97,7 +106,8 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
 
         public ResultWrapper<GethLikeTxTrace> debug_traceTransactionInBlockByHash(byte[] blockRlp, Keccak transactionHash, GethTraceOptions options = null)
         {
-            var transactionTrace = _debugBridge.GetTransactionTrace(new Rlp(blockRlp), transactionHash, options);
+            CancellationToken cancellationToken = new CancellationTokenSource(_traceTimeout).Token;
+            var transactionTrace = _debugBridge.GetTransactionTrace(new Rlp(blockRlp), transactionHash, cancellationToken, options);
             if (transactionTrace == null)
             {
                 return ResultWrapper<GethLikeTxTrace>.Fail($"Trace is null for RLP {blockRlp.ToHexString()} and transactionTrace hash {transactionHash}", ErrorCodes.ResourceNotFound);
@@ -108,7 +118,8 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         
         public ResultWrapper<GethLikeTxTrace> debug_traceTransactionInBlockByIndex(byte[] blockRlp, int txIndex, GethTraceOptions options = null)
         {
-            var blockTrace = _debugBridge.GetBlockTrace(new Rlp(blockRlp), options);
+            CancellationToken cancellationToken = new CancellationTokenSource(_traceTimeout).Token;
+            var blockTrace = _debugBridge.GetBlockTrace(new Rlp(blockRlp), cancellationToken, options);
             var transactionTrace = blockTrace?.ElementAtOrDefault(txIndex);
             if (transactionTrace == null)
             {
@@ -118,9 +129,19 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);            
         }
 
+        public async Task<ResultWrapper<bool>> debug_migrateReceipts(long blockNumber) => 
+            ResultWrapper<bool>.Success(await _debugBridge.MigrateReceipts(blockNumber));
+
+        public Task<ResultWrapper<bool>> debug_insertReceipts(BlockParameter blockParameter, ReceiptForRpc[] receiptForRpc)
+        {
+            _debugBridge.InsertReceipts(blockParameter, receiptForRpc.Select(r => r.ToReceipt()).ToArray());
+            return Task.FromResult(ResultWrapper<bool>.Success(true));
+        }
+
         public ResultWrapper<GethLikeTxTrace[]> debug_traceBlock(byte[] blockRlp, GethTraceOptions options = null)
         {
-            var blockTrace = _debugBridge.GetBlockTrace(new Rlp(blockRlp), options);
+            CancellationToken cancellationToken = new CancellationTokenSource(_traceTimeout).Token;
+            var blockTrace = _debugBridge.GetBlockTrace(new Rlp(blockRlp), cancellationToken, options);
             if (blockTrace == null)
             {
                 return ResultWrapper<GethLikeTxTrace[]>.Fail($"Trace is null for RLP {blockRlp.ToHexString()}", ErrorCodes.ResourceNotFound);
@@ -131,7 +152,8 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
 
         public ResultWrapper<GethLikeTxTrace[]> debug_traceBlockByNumber(UInt256 blockNumber, GethTraceOptions options = null)
         {
-            var blockTrace = _debugBridge.GetBlockTrace((long)blockNumber, options);
+            CancellationToken cancellationToken = new CancellationTokenSource(_traceTimeout).Token;
+            var blockTrace = _debugBridge.GetBlockTrace((long)blockNumber, cancellationToken, options);
             if (blockTrace == null)
             {
                 return ResultWrapper<GethLikeTxTrace[]>.Fail($"Trace is null for block {blockNumber}", ErrorCodes.ResourceNotFound);
@@ -143,7 +165,8 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
 
         public ResultWrapper<GethLikeTxTrace[]> debug_traceBlockByHash(Keccak blockHash, GethTraceOptions options = null)
         {
-            GethLikeTxTrace[] gethLikeBlockTrace = _debugBridge.GetBlockTrace(blockHash, options);
+            CancellationToken cancellationToken = new CancellationTokenSource(_traceTimeout).Token;
+            GethLikeTxTrace[] gethLikeBlockTrace = _debugBridge.GetBlockTrace(blockHash, cancellationToken, options);
             if (gethLikeBlockTrace == null)
             {
                 return ResultWrapper<GethLikeTxTrace[]>.Fail($"Trace is null for block {blockHash}", ErrorCodes.ResourceNotFound);
@@ -215,6 +238,12 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         {
             var configValue = _debugBridge.GetConfigValue(category, name);
             return ResultWrapper<object>.Success(configValue);
+        }
+        
+        public ResultWrapper<bool> debug_resetHead(Keccak blockHash)
+        {
+            _debugBridge.UpdateHeadBlock(blockHash);
+            return ResultWrapper<bool>.Success(true);
         }
     }
 }

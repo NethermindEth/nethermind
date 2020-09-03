@@ -82,7 +82,7 @@ namespace Nethermind.State.Proofs
             _pathIndex += node.Path.Length;
         }
 
-        private void AddProofBits(TrieNode node)
+        protected virtual void AddProofBits(TrieNode node)
         {
             _proofBits.Add(node.FullRlp);
         }

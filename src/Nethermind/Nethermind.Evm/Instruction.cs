@@ -89,6 +89,9 @@ namespace Nethermind.Evm
         MSIZE = 0x59,
         GAS = 0x5a,
         JUMPDEST = 0x5b,
+        BEGINSUB = 0x5c,
+        RETURNSUB = 0x5d,
+        JUMPSUB = 0x5e,
         
         PUSH1 = 0x60,
         PUSH2 = 0x61,

@@ -109,9 +109,10 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
                     object a = propertyInfo.GetValue(oldSpec.GetSpec(blockNumber));
                     object b = propertyInfo.GetValue(newSpec.GetSpec(blockNumber));
 
-                    Assert.AreEqual(a, b, propertyInfo.Name);
+                    Assert.AreEqual(a, b, blockNumber.ToString() + "." + propertyInfo.Name);
                 }
-                Assert.AreEqual(oldSpec.GetSpec(blockNumber).DifficultyBombDelay, newSpec.GetSpec(blockNumber).DifficultyBombDelay);    
+                
+                Assert.AreEqual(oldSpec.GetSpec(blockNumber).DifficultyBombDelay, newSpec.GetSpec(blockNumber).DifficultyBombDelay, blockNumber);    
             }
         }
 

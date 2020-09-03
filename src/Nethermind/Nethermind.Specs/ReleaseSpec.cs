@@ -16,7 +16,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 
 namespace Nethermind.Specs
 {
@@ -58,6 +58,8 @@ namespace Nethermind.Specs
         public bool IsEip1108Enabled { get; set; }
         public bool IsEip1884Enabled { get; set; }
         public bool IsEip2200Enabled { get; set; }
+        public bool IsEip2315Enabled { get; set; }
+        public bool IsEip2537Enabled { get; set; }
         public bool IsEip158IgnoredAccount(Address address) => address == Address.SystemUser;		
     }
 }

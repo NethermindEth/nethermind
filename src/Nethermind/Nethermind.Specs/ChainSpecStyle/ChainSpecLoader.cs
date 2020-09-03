@@ -22,7 +22,8 @@ using System.Linq;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Core.Extensions;
+using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle.Json;
 
@@ -112,12 +113,14 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         private static void ValidateParams(ChainSpecParamsJson parameters)
         {
-            if (parameters.Eip1283ReenableTransition != parameters.Eip1706Transition && parameters.Eip1283DisableTransition.HasValue)
+            if (parameters.Eip1283ReenableTransition != parameters.Eip1706Transition
+                && parameters.Eip1283DisableTransition.HasValue)
             {
                 throw new InvalidOperationException("When 'Eip1283ReenableTransition' or 'Eip1706Transition' are provided they have to have same value as they are both part of 'Eip2200Transition'.");
             }
 
-            if (parameters.Eip1706Transition.HasValue && parameters.Eip2200Transition.HasValue)
+            if (parameters.Eip1706Transition.HasValue
+                && parameters.Eip2200Transition.HasValue)
             {
                 throw new InvalidOperationException("Both 'Eip2200Transition' and 'Eip1706Transition' are provided. Please provide either 'Eip2200Transition' or pair of 'Eip1283ReenableTransition' and 'Eip1706Transition' as they have same meaning.");
             }
@@ -130,13 +133,25 @@ namespace Nethermind.Specs.ChainSpecStyle
                 chainSpec.HomesteadBlockNumber = chainSpecJson.Engine.Ethash.HomesteadTransition;
                 chainSpec.DaoForkBlockNumber = chainSpecJson.Engine.Ethash.DaoHardForkTransition;
             }
+            else
+            {
+                chainSpec.HomesteadBlockNumber = 0;
+            }
 
             chainSpec.TangerineWhistleBlockNumber = chainSpec.Parameters.Eip150Transition;
             chainSpec.SpuriousDragonBlockNumber = chainSpec.Parameters.Eip160Transition;
             chainSpec.ByzantiumBlockNumber = chainSpec.Parameters.Eip140Transition;
-            chainSpec.ConstantinopleBlockNumber = chainSpec.Parameters.Eip145Transition;
-            chainSpec.ConstantinopleFixBlockNumber = chainSpec.Parameters.Eip1283DisableTransition;
+            chainSpec.ConstantinopleBlockNumber =
+                chainSpec.Parameters.Eip1283DisableTransition == null
+                    ? null
+                    : chainSpec.Parameters.Eip145Transition;
+            chainSpec.ConstantinopleFixBlockNumber =
+                chainSpec.Parameters.Eip1283DisableTransition ?? chainSpec.Parameters.Eip145Transition;
             chainSpec.IstanbulBlockNumber = chainSpec.Parameters.Eip2200Transition;
+            chainSpec.MuirGlacierNumber = chainSpec.Ethash?.DifficultyBombDelays.Count > 2 ?
+                chainSpec.Ethash?.DifficultyBombDelays.Keys.ToArray()[2]
+                : null;
+            chainSpec.BerlinBlockNumber = long.MaxValue - 1;
         }
 
         private void LoadEngine(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
@@ -186,7 +201,8 @@ namespace Nethermind.Specs.ChainSpecStyle
                     Validators = LoadValidator(chainSpecJson.Engine.AuthorityRound.Validator),
                     RandomnessContractAddress = chainSpecJson.Engine.AuthorityRound.RandomnessContractAddress,
                     BlockGasLimitContractTransitions = chainSpecJson.Engine.AuthorityRound.BlockGasLimitContractTransitions,
-                    TwoThirdsMajorityTransition = chainSpecJson.Engine.AuthorityRound.TwoThirdsMajorityTransition ?? long.MaxValue,
+                    TwoThirdsMajorityTransition = chainSpecJson.Engine.AuthorityRound.TwoThirdsMajorityTransition ?? AuRaParameters.TransitionDisabled,
+                    PosdaoTransition = chainSpecJson.Engine.AuthorityRound.PosdaoTransition ?? AuRaParameters.TransitionDisabled,
                 };
             }
             else if (chainSpecJson.Engine?.Clique != null)
@@ -210,7 +226,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                     HomesteadTransition = chainSpecJson.Engine.Ethash.HomesteadTransition ?? 0,
                     DaoHardforkTransition = chainSpecJson.Engine.Ethash.DaoHardforkTransition,
                     DaoHardforkBeneficiary = chainSpecJson.Engine.Ethash.DaoHardforkBeneficiary,
-                    DaoHardforkAccounts = chainSpecJson.Engine.Ethash.DaoHardforkAccounts ?? new Address[0],
+                    DaoHardforkAccounts = chainSpecJson.Engine.Ethash.DaoHardforkAccounts ?? Array.Empty<Address>(),
                     Eip100bTransition = chainSpecJson.Engine.Ethash.Eip100bTransition ?? 0L,
                     BlockRewards = new Dictionary<long, UInt256>()
                 };
@@ -252,7 +268,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             var parentHash = chainSpecJson.Genesis.ParentHash ?? Keccak.Zero;
             var timestamp = chainSpecJson.Genesis.Timestamp;
             var difficulty = chainSpecJson.Genesis.Difficulty;
-            var extraData = chainSpecJson.Genesis.ExtraData ?? new byte[0];
+            var extraData = chainSpecJson.Genesis.ExtraData ?? Array.Empty<byte>();
             var gasLimit = chainSpecJson.Genesis.GasLimit;
             var beneficiary = chainSpecJson.Genesis.Author ?? Address.Zero;
 
@@ -296,11 +312,12 @@ namespace Nethermind.Specs.ChainSpecStyle
                 {
                     continue;
                 }
-
+                
                 chainSpec.Allocations[new Address(account.Key)] = new ChainSpecAllocation(
                     account.Value.Balance,
                     account.Value.Code,
-                    account.Value.Constructor);
+                    account.Value.Constructor,
+                    account.Value.GetConvertedStorage());
             }
         }
 
@@ -308,7 +325,7 @@ namespace Nethermind.Specs.ChainSpecStyle
         {
             if (chainSpecJson.Nodes == null)
             {
-                chainSpec.Bootnodes = new NetworkNode[0];
+                chainSpec.Bootnodes = Array.Empty<NetworkNode>();
                 return;
             }
 

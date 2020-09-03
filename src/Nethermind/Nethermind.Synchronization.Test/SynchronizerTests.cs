@@ -30,7 +30,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -214,13 +214,10 @@ namespace Nethermind.Synchronization.Test
                 return header;
             }
 
-            public void SendNewBlock(Block block)
+            public void NotifyOfNewBlock(Block block, SendBlockPriority priority)
             {
-                ReceivedBlocks.Push(block);
-            }
-
-            public void HintNewBlock(Keccak blockHash, long number)
-            {
+                if (priority == SendBlockPriority.High)
+                    ReceivedBlocks.Push(block);
             }
 
             public ConcurrentStack<Block> ReceivedBlocks { get; set; } = new ConcurrentStack<Block>();
@@ -247,7 +244,7 @@ namespace Nethermind.Synchronization.Test
                 Block block = Blocks.Last();
                 for (long j = block.Number; j < i; j++)
                 {
-                    block = Build.A.Block.WithDifficulty(1000000).WithParent(block).WithTotalDifficulty(block.TotalDifficulty + 1000000).WithExtraData(j < branchStart ? Bytes.Empty : new byte[] {branchIndex}).TestObject;
+                    block = Build.A.Block.WithDifficulty(1000000).WithParent(block).WithTotalDifficulty(block.TotalDifficulty + 1000000).WithExtraData(j < branchStart ? Array.Empty<byte>() : new byte[] {branchIndex}).TestObject;
                     Blocks.Add(block);
                 }
                 
@@ -259,7 +256,7 @@ namespace Nethermind.Synchronization.Test
                 Block block = Blocks.Last();
                 for (long j = block.Number; j < i; j++)
                 {
-                    block = Build.A.Block.WithParent(block).WithDifficulty(2000000).WithTotalDifficulty(block.TotalDifficulty + 2000000).WithExtraData(j < branchStart ? Bytes.Empty : new byte[] {branchIndex}).TestObject;
+                    block = Build.A.Block.WithParent(block).WithDifficulty(2000000).WithTotalDifficulty(block.TotalDifficulty + 2000000).WithExtraData(j < branchStart ? Array.Empty<byte>() : new byte[] {branchIndex}).TestObject;
                     Blocks.Add(block);
                 }
                 
@@ -471,7 +468,7 @@ namespace Nethermind.Synchronization.Test
             public SyncingContext AfterNewBlockMessage(Block block, ISyncPeer peer)
             {
                 _logger.Info($"NEW BLOCK MESSAGE {block.Number}");
-                block.Header.TotalDifficulty = (UInt256) (block.Difficulty * ((BigInteger) block.Number + 1));
+                block.Header.TotalDifficulty = block.Difficulty * (ulong)(block.Number + 1);
                 SyncServer.AddNewBlock(block, peer);
                 return this;
             }

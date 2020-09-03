@@ -38,7 +38,13 @@ namespace Nethermind.Blockchain
         public BlockHeader Genesis => _wrapped.Genesis;
         public BlockHeader BestSuggestedHeader => _wrapped.BestSuggestedHeader;
         public BlockHeader LowestInsertedHeader => _wrapped.LowestInsertedHeader;
-        public Block LowestInsertedBody => _wrapped.LowestInsertedBody;
+
+        public long? LowestInsertedBodyNumber
+        {
+          get => _wrapped.LowestInsertedBodyNumber;
+          set => _wrapped.LowestInsertedBodyNumber = value;
+        }
+        
         public Block BestSuggestedBody => _wrapped.BestSuggestedBody;
         public long BestKnownNumber => _wrapped.BestKnownNumber;
         public Block Head => _wrapped.Head;
@@ -50,10 +56,16 @@ namespace Nethermind.Blockchain
         }
 
         public ChainLevelInfo FindLevel(long number) => _wrapped.FindLevel(number);
+        public BlockInfo FindCanonicalBlockInfo(long blockNumber) => _wrapped.FindCanonicalBlockInfo(blockNumber);
 
         public AddBlockResult Insert(Block block) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(Insert)} calls");
 
         public void Insert(IEnumerable<Block> blocks) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(Insert)} calls");
+        public void UpdateHeadBlock(Keccak blockHash)
+        {
+            // hacky while there is not special tree for RPC 
+            _wrapped.UpdateHeadBlock(blockHash);
+        }
 
         public AddBlockResult SuggestBlock(Block block, bool shouldProcess = true) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(SuggestBlock)} calls");
 
@@ -77,6 +89,8 @@ namespace Nethermind.Blockchain
         public Keccak FindHash(long blockNumber) => _wrapped.FindHash(blockNumber);
 
         public BlockHeader[] FindHeaders(Keccak hash, int numberOfBlocks, int skip, bool reverse) => _wrapped.FindHeaders(hash, numberOfBlocks, skip, reverse);
+
+        public BlockHeader FindLowestCommonAncestor(BlockHeader firstDescendant, BlockHeader secondDescendant, long maxSearchDepth) => _wrapped.FindLowestCommonAncestor(firstDescendant, secondDescendant, maxSearchDepth);
 
         public Block FindBlock(long blockNumber, BlockTreeLookupOptions options) => _wrapped.FindBlock(blockNumber, options);
 

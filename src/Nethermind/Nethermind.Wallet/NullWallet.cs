@@ -44,12 +44,7 @@ namespace Nethermind.Wallet
             throw new NotImplementedException();
         }
 
-        public bool UnlockAccount(Address address, SecureString passphrase)
-        {
-            return true;
-        }
-
-        public bool UnlockAccount(Address address, SecureString passphrase, TimeSpan timeSpan)
+        public bool UnlockAccount(Address address, SecureString passphrase, TimeSpan? timeSpan)
         {
             AccountUnlocked?.Invoke(this, new AccountUnlockedEventArgs(address));
             return true;

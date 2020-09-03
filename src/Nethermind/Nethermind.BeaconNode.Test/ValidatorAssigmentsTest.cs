@@ -72,10 +72,10 @@ namespace Nethermind.BeaconNode.Test
         // TODO: Values not validated against manual check or another client; just set based on first run.
         // invalid tests (exception as epoch too far in future)
         [DataRow("0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb",
-            2uL, false, null, 0uL, null)]
+            2uL, false, null, null, null)]
         // invalid tests (return null duty)
         [DataRow("0x123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0",
-            0uL, true, null, 0uL, null)]
+            0uL, true, null, null, null)]
         // epoch 0 tests
         [DataRow("0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb",
             0uL, true, 3uL, 0uL, null)]
@@ -98,7 +98,7 @@ namespace Nethermind.BeaconNode.Test
         [DataRow("0x8515e7f61ca0470e165a44d247a23f17f24bf6e37185467bedb7981c1003ea70bbec875703f793dd8d11e56afa7f74ba",
             1uL, true, 15uL, 0uL, 9uL)]
         public async Task BasicValidatorDuty(string publicKey, ulong epoch, bool success, ulong? attestationSlot,
-            ulong attestationShard, ulong? blockProposalSlot)
+            ulong? attestationIndex, ulong? blockProposalSlot)
         {
             // Arrange
             IServiceCollection testServiceCollection = TestSystem.BuildTestServiceCollection(useStore: true);
@@ -122,17 +122,17 @@ namespace Nethermind.BeaconNode.Test
                 {
                     ValidatorDuty validatorDuty =
                         await validatorAssignments.GetValidatorDutyAsync(validatorPublicKey, targetEpoch);
-                    Console.WriteLine("Validator {0}, epoch {1}: attestation slot {2}, shard {3}, proposal slot {4}",
+                    Console.WriteLine("Validator {0}, epoch {1}: attestation slot {2}, attestation index {3}, proposal slot {4}",
                         validatorPublicKey, targetEpoch, validatorDuty.AttestationSlot,
-                        (ulong) validatorDuty.AttestationShard, validatorDuty.BlockProposalSlot);
+                        validatorDuty.AttestationIndex, validatorDuty.BlockProposalSlot);
                 });
                 return;
             }
 
             ValidatorDuty validatorDuty =
                 await validatorAssignments.GetValidatorDutyAsync(validatorPublicKey, targetEpoch);
-            Console.WriteLine("Validator {0}, epoch {1}: attestation slot {2}, shard {3}, proposal slot {4}",
-                validatorPublicKey, targetEpoch, validatorDuty.AttestationSlot, (ulong) validatorDuty.AttestationShard,
+            Console.WriteLine("Validator {0}, epoch {1}: attestation slot {2}, attestation index {3}, proposal slot {4}",
+                validatorPublicKey, targetEpoch, validatorDuty.AttestationSlot, validatorDuty.AttestationIndex,
                 validatorDuty.BlockProposalSlot);
 
             // Assert
@@ -140,11 +140,11 @@ namespace Nethermind.BeaconNode.Test
 
             Slot? expectedBlockProposalSlot = (Slot?) blockProposalSlot;
             Slot? expectedAttestationSlot = (Slot?) attestationSlot;
-            Shard expectedAttestationShard = new Shard(attestationShard);
+            CommitteeIndex? expectedAttestationIndex = (CommitteeIndex?) attestationIndex;
 
             validatorDuty.BlockProposalSlot.ShouldBe(expectedBlockProposalSlot);
             validatorDuty.AttestationSlot.ShouldBe(expectedAttestationSlot);
-            validatorDuty.AttestationShard.ShouldBe(expectedAttestationShard);
+            validatorDuty.AttestationIndex.ShouldBe(expectedAttestationIndex);
         }
 
         [TestMethod]
@@ -209,7 +209,7 @@ namespace Nethermind.BeaconNode.Test
                 ulong epoch = (ulong) dataRow[1]!;
                 bool success = (bool) dataRow[2]!;
                 ulong? attestationSlot = (ulong?) dataRow[3]!;
-                ulong attestationShard = (ulong) dataRow[4]!;
+                ulong? attestationIndex = (ulong?) dataRow[4]!;
                 ulong? blockProposalSlot = (ulong?) dataRow[5];
 
                 Console.WriteLine("** Test {0}, public key {1}, epoch {2}", dataIndex, publicKey, epoch);
@@ -227,18 +227,18 @@ namespace Nethermind.BeaconNode.Test
                         ValidatorDuty validatorDuty =
                             await validatorAssignments.GetValidatorDutyAsync(validatorPublicKey, targetEpoch);
                         Console.WriteLine(
-                            "Validator {0}, epoch {1}: attestation slot {2}, shard {3}, proposal slot {4}",
+                            "Validator {0}, epoch {1}: attestation slot {2}, attestation index {3}, proposal slot {4}",
                             validatorPublicKey, targetEpoch, validatorDuty.AttestationSlot,
-                            (ulong) validatorDuty.AttestationShard, validatorDuty.BlockProposalSlot);
+                            validatorDuty.AttestationIndex, validatorDuty.BlockProposalSlot);
                     }, $"Test {dataIndex}, public key {validatorPublicKey}, epoch {targetEpoch}");
                     continue;
                 }
 
                 ValidatorDuty validatorDuty =
                     await validatorAssignments.GetValidatorDutyAsync(validatorPublicKey, targetEpoch);
-                Console.WriteLine("Validator {0}, epoch {1}: attestation slot {2}, shard {3}, proposal slot {4}",
+                Console.WriteLine("Validator {0}, epoch {1}: attestation slot {2}, attestation index {3}, proposal slot {4}",
                     validatorPublicKey, targetEpoch, validatorDuty.AttestationSlot,
-                    (ulong) validatorDuty.AttestationShard, validatorDuty.BlockProposalSlot);
+                    validatorDuty.AttestationIndex, validatorDuty.BlockProposalSlot);
 
                 // Assert
                 validatorDuty.ValidatorPublicKey.ShouldBe(validatorPublicKey,
@@ -246,13 +246,13 @@ namespace Nethermind.BeaconNode.Test
 
                 Slot? expectedBlockProposalSlot = (Slot?) blockProposalSlot;
                 Slot? expectedAttestationSlot = (Slot?) attestationSlot;
-                Shard expectedAttestationShard = new Shard(attestationShard);
+                CommitteeIndex? expectedAttestationIndex = (CommitteeIndex?) attestationIndex;
 
                 validatorDuty.BlockProposalSlot.ShouldBe(expectedBlockProposalSlot,
                     $"Test {dataIndex}, public key {validatorPublicKey}, epoch {targetEpoch}");
                 validatorDuty.AttestationSlot.ShouldBe(expectedAttestationSlot,
                     $"Test {dataIndex}, public key {validatorPublicKey}, epoch {targetEpoch}");
-                validatorDuty.AttestationShard.ShouldBe(expectedAttestationShard,
+                validatorDuty.AttestationIndex.ShouldBe(expectedAttestationIndex,
                     $"Test {dataIndex}, public key {validatorPublicKey}, epoch {targetEpoch}");
             }
         }
@@ -274,7 +274,7 @@ namespace Nethermind.BeaconNode.Test
         // [DataRow(42uL, "0x8fe55d12257709ae842f8594f9a0a40de3d38dabdf82b21a60baac927e52ed00c5fd42f4c905410eacdaf8f8a9952490", 0uL, 5uL, 1uL, null)]
         // [DataRow(42uL, "0x95906ec0660892c205634e21ad540cbe0b6f7729d101d5c4639b864dea09be7f42a4252c675d46dd90a2661b3a94e8ca", 0uL, 5uL, 1uL, null)]
         public async Task ValidatorDutyAtSpecificTimeDuplicateProposal(ulong targetTime, string publicKey, ulong epoch,
-            ulong attestationSlot, ulong attestationShard, ulong? blockProposalSlot)
+            ulong attestationSlot, ulong attestationIndex, ulong? blockProposalSlot)
         {
             // NOTE: Current algorithm for GetBeaconProposerIndex() sometimes allocates multiple proposal slots in an epoch, e.g. above index 23 gets slot 2 and 6
             // It could be an error in the algorithm (need to check; domain type could be wrong), or due to the pre-shard algorithm.
@@ -322,20 +322,20 @@ namespace Nethermind.BeaconNode.Test
 
             ValidatorDuty validatorDuty =
                 await validatorAssignments.GetValidatorDutyAsync(validatorPublicKey, targetEpoch);
-            Console.WriteLine("Validator {0}, epoch {1}: attestation slot {2}, shard {3}, proposal slot {4}",
-                validatorPublicKey, targetEpoch, validatorDuty.AttestationSlot, (ulong) validatorDuty.AttestationShard,
+            Console.WriteLine("Validator {0}, epoch {1}: attestation slot {2}, attestation index {3}, proposal slot {4}",
+                validatorPublicKey, targetEpoch, validatorDuty.AttestationSlot, validatorDuty.AttestationIndex,
                 validatorDuty.BlockProposalSlot);
 
             // Assert
             validatorDuty.ValidatorPublicKey.ShouldBe(validatorPublicKey);
 
             Slot? expectedBlockProposalSlot = (Slot?) blockProposalSlot;
-            Slot expectedAttestationSlot = new Slot(attestationSlot);
-            Shard expectedAttestationShard = new Shard(attestationShard);
+            Slot? expectedAttestationSlot = (Slot?) attestationSlot;
+            CommitteeIndex? expectedAttestationIndex = (CommitteeIndex?) attestationIndex;
 
             validatorDuty.BlockProposalSlot.ShouldBe(expectedBlockProposalSlot);
             validatorDuty.AttestationSlot.ShouldBe(expectedAttestationSlot);
-            validatorDuty.AttestationShard.ShouldBe(expectedAttestationShard);
+            validatorDuty.AttestationIndex.ShouldBe(expectedAttestationIndex);
         }
 
         [DataTestMethod]
@@ -373,13 +373,13 @@ namespace Nethermind.BeaconNode.Test
             yield return new object?[]
             {
                 "0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb",
-                6uL, false, null, 0uL, null
+                6uL, false, null, null, null
             };
             // invalid tests (return a duty with null values)
             yield return new object?[]
             {
                 "0x123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0",
-                4uL, true, null, 0uL, null
+                4uL, true, null, null, null
             };
             // epoch 0 tests
             yield return new object?[]

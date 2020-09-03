@@ -30,7 +30,10 @@ namespace Nethermind.Trie
     [DebuggerDisplay("{RootHash}")]
     public class PatriciaTree
     {
-        public static readonly ICache<Keccak, byte[]> NodeCache = new LruCacheWithRecycling<Keccak, byte[]>(MemoryAllowance.TrieNodeCacheSize, MemoryAllowance.TrieNodeCacheSize, "trie nodes");
+        private const int OneNodeAvgMemoryEstimate = 384;
+        public static readonly ICache<Keccak, byte[]> NodeCache =
+            new LruCache<Keccak, byte[]>(
+                (int)(MemoryAllowance.TrieNodeCacheMemory / OneNodeAvgMemoryEstimate), "trie nodes");
 
         /// <summary>
         ///     0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421
@@ -46,7 +49,7 @@ namespace Nethermind.Trie
         
         private readonly ConcurrentQueue<TrieNode> _currentCommit;
 
-        private readonly IKeyValueStore _keyValueStore;
+        protected readonly IKeyValueStore _keyValueStore;
         private readonly bool _parallelBranches;
         private readonly bool _allowCommits;
 
@@ -66,7 +69,7 @@ namespace Nethermind.Trie
 
         public PatriciaTree(IKeyValueStore keyValueStore, Keccak rootHash, bool parallelBranches, bool allowCommits)
         {
-            _keyValueStore = keyValueStore;
+            _keyValueStore = keyValueStore ?? throw new ArgumentNullException(nameof(keyValueStore));
             _parallelBranches = parallelBranches;
             _allowCommits = allowCommits;
             RootHash = rootHash;
@@ -250,7 +253,7 @@ namespace Nethermind.Trie
         [DebuggerStepThrough]
         public void Set(Span<byte> rawKey, Rlp value)
         {
-            Set(rawKey, value == null ? new byte[0] : value.Bytes);
+            Set(rawKey, value == null ? Array.Empty<byte>() : value.Bytes);
         }
 
         internal byte[] GetNode(Keccak keccak, bool allowCaching)

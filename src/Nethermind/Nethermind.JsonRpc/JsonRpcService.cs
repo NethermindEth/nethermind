@@ -35,8 +35,6 @@ namespace Nethermind.JsonRpc
     [Todo(Improve.Refactor, "Use JsonConverters and JSON serialization everywhere")]
     public class JsonRpcService : IJsonRpcService
     {
-        public const string JsonRpcVersion = "2.0";
-
         private readonly ILogger _logger;
         private readonly IRpcModuleProvider _rpcModuleProvider;
         private readonly JsonSerializer _serializer;
@@ -179,6 +177,11 @@ namespace Nethermind.JsonRpc
             catch (TargetParameterCountException e)
             {
                 return GetErrorResponse(methodName, ErrorCodes.InvalidParams, e.Message, e.Data, request.Id);
+            }
+            catch (TargetInvocationException e) when (e.InnerException is OperationCanceledException operationCanceled)
+            {
+                string errorMessage = $"{methodName} request was canceled due to enabled timeout on tracers.";
+                return GetErrorResponse(methodName, ErrorCodes.TracerTimeout, errorMessage, null, request.Id);
             }
             catch (TargetInvocationException invocationException) when (invocationException.InnerException is BeamSyncException beamSyncException)
             {

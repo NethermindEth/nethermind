@@ -17,7 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Serialization.Json;
 using Newtonsoft.Json;

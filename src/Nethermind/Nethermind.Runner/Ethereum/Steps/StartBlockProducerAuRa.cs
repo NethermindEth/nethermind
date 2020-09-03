@@ -25,6 +25,7 @@ using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Transactions;
+using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Crypto;
@@ -32,9 +33,10 @@ using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
-using Nethermind.State;
-using Nethermind.Db.Blooms;
-using Nethermind.Wallet;
+using Nethermind.Facade.Transactions;
+using Nethermind.Int256;
+using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.TxPool;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
@@ -43,6 +45,7 @@ namespace Nethermind.Runner.Ethereum.Steps
     {
         private readonly AuRaEthereumRunnerContext _context;
         private IAuraConfig? _auraConfig;
+        private IAuRaValidator? _validator;
 
         public StartBlockProducerAuRa(AuRaEthereumRunnerContext context) : base(context)
         {
@@ -51,13 +54,13 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         protected override void BuildProducer()
         {
-            if (_context.NodeKey == null) throw new StepDependencyException(nameof(_context.NodeKey));
+            if (_context.Signer == null) throw new StepDependencyException(nameof(_context.Signer));
             if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
-            
+
             _auraConfig = _context.Config<IAuraConfig>();
             ILogger logger = _context.LogManager.GetClassLogger();
             if (logger.IsWarn) logger.Warn("Starting AuRa block producer & sealer");
-            
+
             IAuRaStepCalculator stepCalculator = new AuRaStepCalculator(_context.ChainSpec.AuRa.StepDuration, _context.Timestamper, _context.LogManager);
             BlockProducerContext producerContext = GetProducerChain();
             _context.BlockProducer = new AuRaBlockProducer(
@@ -68,37 +71,45 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.BlockTree,
                 _context.BlockProcessingQueue,
                 _context.Timestamper,
-                _context.LogManager,
                 stepCalculator,
+                _context.ReportingValidator,
                 _auraConfig,
-                _context.NodeKey.Address,
-                GetGasLimitOverride(producerContext.ReadOnlyTxProcessingEnv, producerContext.ReadOnlyTransactionProcessorSource));
+                CreateGasLimitCalculator(producerContext.ReadOnlyTxProcessorSource),
+                _context.LogManager);
         }
 
         protected override BlockProcessor CreateBlockProcessor(
-            ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv, 
-            ReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource, 
+            ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv,
+            ReadOnlyTxProcessorSource readOnlyTxProcessorSource,
             IReadOnlyDbProvider readOnlyDbProvider)
         {
             if (_context.RewardCalculatorSource == null) throw new StepDependencyException(nameof(_context.RewardCalculatorSource));
             if (_context.ValidatorStore == null) throw new StepDependencyException(nameof(_context.ValidatorStore));
             if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
             if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
-            
-            var validator = new AuRaValidatorFactory(
+            if (_context.Signer == null) throw new StepDependencyException(nameof(_context.Signer));
+
+            var chainSpecAuRa = _context.ChainSpec.AuRa;
+
+            _validator = new AuRaValidatorFactory(
                     readOnlyTxProcessingEnv.StateProvider,
                     _context.AbiEncoder,
                     readOnlyTxProcessingEnv.TransactionProcessor,
-                    readOnlyTransactionProcessorSource,
+                    readOnlyTxProcessorSource,
                     readOnlyTxProcessingEnv.BlockTree,
                     _context.ReceiptStorage,
                     _context.ValidatorStore,
                     _context.FinalizationManager,
+                    NullTxSender.Instance,
+                    NullTxPool.Instance,
                     _context.LogManager,
+                    _context.Signer,
+                    _context.ReportingContractValidatorCache,
+                    chainSpecAuRa.PosdaoTransition,
                     true)
-                .CreateValidatorProcessor(_context.ChainSpec.AuRa.Validators, _context.BlockTree.Head?.Header);
-            
-            if (validator is IDisposable disposableValidator)
+                .CreateValidatorProcessor(chainSpecAuRa.Validators, _context.BlockTree.Head?.Header);
+
+            if (_validator is IDisposable disposableValidator)
             {
                 _context.DisposeStack.Push(disposableValidator);
             }
@@ -116,122 +127,151 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.ReceiptStorage,
                 _context.LogManager,
                 readOnlyTxProcessingEnv.BlockTree,
-                GetTxPermissionFilter(readOnlyTxProcessingEnv, readOnlyTransactionProcessorSource, readOnlyTxProcessingEnv.StateProvider),
-                GetGasLimitOverride(readOnlyTxProcessingEnv, readOnlyTransactionProcessorSource, readOnlyTxProcessingEnv.StateProvider))
+                GetTxPermissionFilter(readOnlyTxProcessingEnv, readOnlyTxProcessorSource),
+                CreateGasLimitCalculator(readOnlyTxProcessorSource) as AuRaContractGasLimitOverride)
             {
-                AuRaValidator = validator
+                AuRaValidator = _validator
             };
         }
 
-        protected override ITxSource CreateTxSourceForProducer(ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv, ReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource)
+        protected override ITxSource CreateTxSourceForProducer(ReadOnlyTxProcessingEnv processingEnv, ReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
-            IList<RandomContract> GetRandomContracts(
-                IDictionary<long, Address> randomnessContractAddress, 
-                ITransactionProcessor transactionProcessor, 
-                IAbiEncoder abiEncoder,
-                IReadOnlyTransactionProcessorSource txProcessorSource, 
-                Address nodeAddress) =>
-                randomnessContractAddress
-                    .Select(kvp => new RandomContract(transactionProcessor, 
-                        abiEncoder, 
-                        kvp.Value, 
-                        txProcessorSource, 
-                        kvp.Key, 
-                        nodeAddress))
-                    .ToArray();
+            bool CheckAddPosdaoTransactions(IList<ITxSource> list, long auRaPosdaoTransition)
+            {
+                if (auRaPosdaoTransition < AuRaParameters.TransitionDisabled && _validator is ITxSource validatorSource)
+                {
+                    list.Insert(0, validatorSource);
+                    return true;
+                }
 
+                return false;
+            }
+
+            bool CheckAddRandomnessTransactions(IList<ITxSource> list, IDictionary<long, Address> randomnessContractAddress, ISigner signer)
+            {
+                IList<IRandomContract> GetRandomContracts(
+                    IDictionary<long, Address> randomnessContractAddressPerBlock,
+                    IAbiEncoder abiEncoder,
+                    IReadOnlyTransactionProcessorSource txProcessorSource,
+                    ISigner signer) =>
+                    randomnessContractAddressPerBlock
+                        .Select(kvp => new RandomContract(
+                            abiEncoder,
+                            kvp.Value,
+                            txProcessorSource,
+                            kvp.Key,
+                            signer))
+                        .ToArray<IRandomContract>();
+
+                if (randomnessContractAddress?.Any() == true)
+                {
+                    var randomContractTxSource = new RandomContractTxSource(
+                        GetRandomContracts(randomnessContractAddress, _context.AbiEncoder,
+                            readOnlyTxProcessorSource,
+                            signer),
+                        new EciesCipher(_context.CryptoRandom),
+                        _context.NodeKey,
+                        _context.CryptoRandom);
+
+                    list.Insert(0, randomContractTxSource);
+                    return true;
+                }
+
+                return false;
+            }
 
             if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
             if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
-            if (_context.NodeKey == null) throw new StepDependencyException(nameof(_context.NodeKey));
+            if (_context.Signer == null) throw new StepDependencyException(nameof(_context.Signer));
 
-            IList<ITxSource> txSources = new List<ITxSource> { base.CreateTxSourceForProducer(readOnlyTxProcessingEnv, readOnlyTransactionProcessorSource) };
+            IList<ITxSource> txSources = new List<ITxSource> {base.CreateTxSourceForProducer(processingEnv, readOnlyTxProcessorSource)};
             bool needSigner = false;
-            
-            if (_context.ChainSpec.AuRa.RandomnessContractAddress?.Any() == true)
-            {
-                var randomContractTxSource = new RandomContractTxSource(
-                    GetRandomContracts(_context.ChainSpec.AuRa.RandomnessContractAddress, 
-                        readOnlyTxProcessingEnv.TransactionProcessor, _context.AbiEncoder, 
-                        readOnlyTransactionProcessorSource, 
-                        _context.NodeKey.Address),
-                    new EciesCipher(_context.CryptoRandom),
-                    _context.NodeKey, 
-                    _context.CryptoRandom);
-                
-                txSources.Insert(0, randomContractTxSource);
-                needSigner = true;
-            }
+
+            needSigner |= CheckAddPosdaoTransactions(txSources, _context.ChainSpec.AuRa.PosdaoTransition);
+            needSigner |= CheckAddRandomnessTransactions(txSources, _context.ChainSpec.AuRa.RandomnessContractAddress, _context.Signer);
 
             ITxSource txSource = txSources.Count > 1 ? new CompositeTxSource(txSources.ToArray()) : txSources[0];
 
             if (needSigner)
             {
-                txSource = new GeneratedTxSourceApprover(txSource, new BasicWallet(_context.NodeKey), _context.Timestamper, readOnlyTxProcessingEnv.StateReader, _context.BlockTree.ChainId);
+                TxSealer transactionSealer = new TxSealer(_context.Signer, _context.Timestamper);
+                txSource = new GeneratedTxSourceSealer(txSource, transactionSealer, processingEnv.StateReader, _context.LogManager);
             }
 
-            var txPermissionFilter = GetTxPermissionFilter(readOnlyTxProcessingEnv, readOnlyTransactionProcessorSource);
-            
+            var txPermissionFilter = GetTxPermissionFilter(processingEnv, readOnlyTxProcessorSource);
             if (txPermissionFilter != null)
             {
-                txSource = new TxFilterTxSource(txSource, txPermissionFilter);
+                txSource = new FilteredTxSource(txSource, txPermissionFilter);
             }
-            
+
             return txSource;
         }
 
-        private ITxPermissionFilter? GetTxPermissionFilter(
-            ReadOnlyTxProcessingEnv environment, 
-            ReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource,
-            IStateProvider? stateProvider = null)
+        protected override ITxFilter CreateGasPriceTxFilter(ReadOnlyTxProcessorSource readOnlyTxProcessorSource)
+        {
+            ITxFilter gasPriceTxFilter = base.CreateGasPriceTxFilter(readOnlyTxProcessorSource);
+            Address? registrar = _context.ChainSpec?.Parameters.Registrar;
+            if (registrar != null)
+            {
+                RegisterContract registerContract = new RegisterContract(_context.AbiEncoder, registrar, readOnlyTxProcessorSource);
+                CertifierContract certifierContract = new CertifierContract(_context.AbiEncoder, registerContract, readOnlyTxProcessorSource);
+                return new TxCertifierFilter(certifierContract, gasPriceTxFilter, _context.LogManager);
+            }
+
+            return gasPriceTxFilter;
+        }
+        
+        private ITxFilter? GetTxPermissionFilter(
+            ReadOnlyTxProcessingEnv environment,
+            ReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
             if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
-            
+
             if (_context.ChainSpec.Parameters.TransactionPermissionContract != null)
             {
-                var txPermissionFilter = new TxPermissionFilter(
-                    new TransactionPermissionContract(
-                        environment.TransactionProcessor,
-                        _context.AbiEncoder,
+                var txPermissionFilter = new PermissionBasedTxFilter(
+                    new VersionedTransactionPermissionContract(_context.AbiEncoder,
                         _context.ChainSpec.Parameters.TransactionPermissionContract,
-                        _context.ChainSpec.Parameters.TransactionPermissionContractTransition ?? 0, 
-                        readOnlyTransactionProcessorSource),
+                        _context.ChainSpec.Parameters.TransactionPermissionContractTransition ?? 0,
+                        readOnlyTxProcessorSource,
+                        _context.TransactionPermissionContractVersions),
                     _context.TxFilterCache,
                     environment.StateProvider,
                     _context.LogManager);
-                
+
                 return txPermissionFilter;
             }
 
             return null;
         }
-        
-        private IGasLimitOverride? GetGasLimitOverride(
-            ReadOnlyTxProcessingEnv environment, 
-            ReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource,
-            IStateProvider? stateProvider = null)
+
+        private IGasLimitCalculator CreateGasLimitCalculator(ReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
             if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
             var blockGasLimitContractTransitions = _context.ChainSpec.AuRa.BlockGasLimitContractTransitions;
-            
+
+            IGasLimitCalculator gasLimitCalculator =
+                new TargetAdjustedGasLimitCalculator(_context.SpecProvider, _context.Config<IMiningConfig>());
             if (blockGasLimitContractTransitions?.Any() == true)
             {
-                var gasLimitOverride = new AuRaContractGasLimitOverride(
-                    blockGasLimitContractTransitions.Select(blockGasLimitContractTransition =>
-                        new BlockGasLimitContract(
-                            environment.TransactionProcessor,
-                            _context.AbiEncoder,
-                            blockGasLimitContractTransition.Value,
-                            blockGasLimitContractTransition.Key,
-                            readOnlyTransactionProcessorSource)).ToArray(),
-                    _context.GasLimitOverrideCache,
-                    _auraConfig?.Minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract == true,
-                    _context.LogManager);
-                
-                return gasLimitOverride;
+                AuRaContractGasLimitOverride auRaContractGasLimitOverride =
+                    new AuRaContractGasLimitOverride(
+                        blockGasLimitContractTransitions.Select(blockGasLimitContractTransition =>
+                                new BlockGasLimitContract(
+                                    _context.AbiEncoder,
+                                    blockGasLimitContractTransition.Value,
+                                    blockGasLimitContractTransition.Key,
+                                    readOnlyTxProcessorSource))
+                            .ToArray<IBlockGasLimitContract>(),
+                        _context.GasLimitCalculatorCache,
+                        _auraConfig?.Minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract == true,
+                        gasLimitCalculator,
+                        _context.LogManager);
+
+                gasLimitCalculator = auRaContractGasLimitOverride;
             }
 
-            return null;
+            return gasLimitCalculator;
         }
     }
 }

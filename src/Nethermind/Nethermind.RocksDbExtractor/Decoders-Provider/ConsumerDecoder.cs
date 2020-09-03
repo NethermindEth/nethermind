@@ -17,10 +17,10 @@
  */
 
 using Nethermind.DataMarketplace.Core.Domain;
-using Nethermind.DataMarketplace.Providers.Domain;
+using Nethermind.RocksDbExtractor.Domain;
 using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.DataMarketplace.Providers.Infrastructure.Rlp
+namespace Nethermind.RocksDbExtractor
 {
     internal class ConsumerDecoder : IRlpDecoder<Consumer>
     {
@@ -31,7 +31,7 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure.Rlp
 
         static ConsumerDecoder()
         {
-            Nethermind.Serialization.Rlp.Rlp.Decoders[typeof(Consumer)] = new ConsumerDecoder();
+            Rlp.Decoders[typeof(Consumer)] = new ConsumerDecoder();
         }
 
         public Consumer Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -39,21 +39,21 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure.Rlp
             _ = rlpStream.ReadSequenceLength();
             var depositId = rlpStream.DecodeKeccak();
             var verificationTimestamp = rlpStream.DecodeUInt();
-            var dataRequest = Nethermind.Serialization.Rlp.Rlp.Decode<DataRequest>(rlpStream);
-            var dataAsset = Nethermind.Serialization.Rlp.Rlp.Decode<DataAsset>(rlpStream);
+            var dataRequest = Rlp.Decode<DataRequest>(rlpStream);
+            var dataAsset = Rlp.Decode<DataAsset>(rlpStream);
             var hasAvailableUnits = rlpStream.DecodeBool();
 
             return new Consumer(depositId, verificationTimestamp, dataRequest, dataAsset, hasAvailableUnits);
         }
 
-        public Nethermind.Serialization.Rlp.Rlp Encode(Consumer item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Rlp Encode(Consumer item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            return Nethermind.Serialization.Rlp.Rlp.Encode(
-                Nethermind.Serialization.Rlp.Rlp.Encode(item.DepositId),
-                Nethermind.Serialization.Rlp.Rlp.Encode(item.VerificationTimestamp),
-                Nethermind.Serialization.Rlp.Rlp.Encode(item.DataRequest),
-                Nethermind.Serialization.Rlp.Rlp.Encode(item.DataAsset),
-                Nethermind.Serialization.Rlp.Rlp.Encode(item.HasAvailableUnits));
+            return Rlp.Encode(
+                Rlp.Encode(item.DepositId),
+                Rlp.Encode(item.VerificationTimestamp),
+                Rlp.Encode(item.DataRequest),
+                Rlp.Encode(item.DataAsset),
+                Rlp.Encode(item.HasAvailableUnits));
         }
 
         public int GetLength(Consumer item, RlpBehaviors rlpBehaviors)

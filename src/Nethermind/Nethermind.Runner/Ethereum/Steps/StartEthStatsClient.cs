@@ -15,9 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.EthStats;
@@ -27,12 +26,11 @@ using Nethermind.EthStats.Senders;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Runner.Ethereum.Context;
-using Nethermind.Runner.Ethereum.Subsystems;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
     [RunnerStepDependencies(typeof(StartBlockProcessor), typeof(InitializeNetwork), typeof(InitializeBlockchain))]
-    public class StartEthStatsClient : IStep, ISubsystemStateAware
+    public class StartEthStatsClient : IStep
     {
         private readonly EthereumRunnerContext _context;
         private ILogger _logger;
@@ -41,17 +39,11 @@ namespace Nethermind.Runner.Ethereum.Steps
         {
             _context = context;
             _logger = _context.LogManager.GetClassLogger();
-
-            EthereumSubsystemState newState = context.Config<IEthStatsConfig>().Enabled
-                ? EthereumSubsystemState.AwaitingInitialization
-                : EthereumSubsystemState.Disabled;
-
-            SubsystemStateChanged?.Invoke(this, new SubsystemStateEventArgs(newState));
         }
 
         bool IStep.MustInitialize => false;
         
-        public async Task Execute()
+        public async Task Execute(CancellationToken _)
         {
             IEthStatsConfig ethStatsConfig = _context.Config<IEthStatsConfig>();
             if (!ethStatsConfig.Enabled)
@@ -60,8 +52,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
             
             INetworkConfig networkConfig = _context.Config<INetworkConfig>();
-            SubsystemStateChanged?.Invoke(this, new SubsystemStateEventArgs(EthereumSubsystemState.Initializing));
-            
+
             if (_context.Enode == null) throw new StepDependencyException(nameof(_context.Enode));
             if (_context.SpecProvider == null) throw new StepDependencyException(nameof(_context.SpecProvider));
 
@@ -103,12 +94,6 @@ namespace Nethermind.Runner.Ethereum.Steps
             await ethStatsIntegration.InitAsync();
             _context.DisposeStack.Push(ethStatsIntegration);
             // TODO: handle failure
-            
-            SubsystemStateChanged?.Invoke(this, new SubsystemStateEventArgs(EthereumSubsystemState.Running));
         }
-
-        public event EventHandler<SubsystemStateEventArgs>? SubsystemStateChanged;
-        
-        public EthereumSubsystem MonitoredSubsystem => EthereumSubsystem.EthStats;
     }
 }

@@ -35,5 +35,8 @@ namespace Nethermind.Consensus.Transactions
                 .OrderBy(t => t.Nonce)
                 .ThenByDescending(t => t.Timestamp)
                 .Take(1);
+        
+        public override string ToString() => $"{nameof(SinglePendingTxSelector)} [ {_innerSource} ]";
+
     }
 }

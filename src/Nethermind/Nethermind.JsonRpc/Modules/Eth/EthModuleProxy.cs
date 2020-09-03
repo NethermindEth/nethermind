@@ -23,7 +23,7 @@ using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Facade.Proxy;
 using Nethermind.Facade.Proxy.Models;
 using Nethermind.JsonRpc.Data;
@@ -159,9 +159,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
             throw new NotSupportedException();
         }
 
-        public ResultWrapper<UInt256?> eth_estimateGas(TransactionForRpc transactionCall)
+        public ResultWrapper<UInt256?> eth_estimateGas(
+            TransactionForRpc transactionCall,
+            BlockParameter blockParameter = null)
         {
-            throw new NotSupportedException();
+            throw new NotImplementedException();
         }
 
         public ResultWrapper<BlockForRpc> eth_getBlockByHash(Keccak blockHash, bool returnFullTransactionObjects)

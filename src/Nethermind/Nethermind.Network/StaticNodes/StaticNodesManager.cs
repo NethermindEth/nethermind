@@ -55,7 +55,7 @@ namespace Nethermind.Network.StaticNodes
             }
 
             string data = await File.ReadAllTextAsync(_staticNodesPath);
-            string[] nodes = (JsonConvert.DeserializeObject<string[]>(data) ?? Array.Empty<string>()).Distinct().ToArray();
+            string[] nodes = GetNodes(data);
             if (_logger.IsInfo) _logger.Info($"Loaded {nodes.Length} static nodes from file: {Path.GetFullPath(_staticNodesPath)}");
             if (nodes.Length != 0)
             {
@@ -64,6 +64,21 @@ namespace Nethermind.Network.StaticNodes
             
             _nodes = new ConcurrentDictionary<PublicKey, NetworkNode>(nodes.Select(n => new NetworkNode(n))
                 .ToDictionary(n => n.NodeId, n => n));
+        }
+
+        private static string[] GetNodes(string data)
+        {
+            string[] nodes;
+            try
+            {
+                nodes = JsonConvert.DeserializeObject<string[]>(data) ?? Array.Empty<string>();
+            }
+            catch (JsonException)
+            {
+                nodes = data.Split(new[] {'\r', '\n'}, StringSplitOptions.RemoveEmptyEntries);
+            }
+            
+            return nodes.Distinct().ToArray();
         }
 
         public async Task<bool> AddAsync(string enode, bool updateFile = true)

@@ -35,6 +35,10 @@ namespace Nethermind.Trie
         private object[] _data;
         private bool _isDirty;
 
+        /// <summary>
+        /// This code is not used in production and has some issues (as pointed out in the article)
+        /// It is left here as an incentive to do some more detailed real-time memory analysis of the trie in memory
+        /// </summary>
         public int MemorySize
         {
             get
@@ -118,9 +122,9 @@ namespace Nethermind.Trie
         public bool IsBranch => NodeType == NodeType.Branch;
         public bool IsExtension => NodeType == NodeType.Extension;
 
-        public byte[] Path => Key.Path;
+        public byte[] Path => Key?.Path;
 
-        internal HexPrefix Key
+        internal HexPrefix? Key
         {
             get => _data[0] as HexPrefix;
             set
@@ -143,14 +147,14 @@ namespace Nethermind.Trie
                 if (!AllowBranchValues)
                 {
                     // branches that we use for state will never have value set as all the keys are equal length
-                    return new byte[0];
+                    return Array.Empty<byte>();
                 }
 
                 if (_data[16] == null)
                 {
                     if (_rlpStream == null)
                     {
-                        _data[16] = new byte[0];
+                        _data[16] = Array.Empty<byte>();
                     }
                     else
                     {
@@ -328,6 +332,18 @@ namespace Nethermind.Trie
             }
         }
 
+        private void UnresolveChild(int i)
+        {
+            TrieNode child = _data[i] as TrieNode;
+            if (child != null)
+            {
+                if (!child.IsDirty)
+                {
+                    _data[i] = new TrieNode(NodeType.Unknown, child.Keccak); // unresolved
+                }
+            }
+        }
+        
         private void ResolveChild(int i)
         {
             if (_rlpStream == null)
@@ -452,6 +468,7 @@ namespace Nethermind.Trie
                         {
                             trieVisitContext.BranchChildIndex = i;
                             child.Accept(visitor, tree, trieVisitContext);
+                            UnresolveChild(i);
                         }
                     }
 
@@ -469,6 +486,7 @@ namespace Nethermind.Trie
                         trieVisitContext.Level++;
                         trieVisitContext.BranchChildIndex = null;
                         child.Accept(visitor, tree, trieVisitContext);
+                        UnresolveChild(1); // extension child index is 1
                         trieVisitContext.Level--;
                     }
 

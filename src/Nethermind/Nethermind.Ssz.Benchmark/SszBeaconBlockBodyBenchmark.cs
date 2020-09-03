@@ -17,7 +17,6 @@
 using System.Collections;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
-using Nethermind.Core2;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
@@ -61,7 +60,7 @@ namespace Nethermind.Ssz.Benchmarks
 
             Deposit deposit = new Deposit(
                 new Bytes32[Ssz.DepositContractTreeDepth + 1],
-                depositData);
+                depositData.OrRoot);
 
             IndexedAttestation indexedAttestation1 = new IndexedAttestation(
                 new ValidatorIndex[8],
@@ -112,6 +111,13 @@ namespace Nethermind.Ssz.Benchmarks
         [Benchmark(Baseline = true)]
         public void Current()
         {
+            Ssz.Encode(_encoded, _body);
+        }
+        
+        [Benchmark(Baseline = true)]
+        public void Cortex()
+        {
+            
             Ssz.Encode(_encoded, _body);
         }
     }

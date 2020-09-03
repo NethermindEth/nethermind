@@ -2,15 +2,47 @@
 
     <PropertyGroup>
         <TargetFramework>netcoreapp3.1</TargetFramework>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     </PropertyGroup>
 
     <ItemGroup>
+        <ProjectReference Include="..\Nethermind.Native\Nethermind.Native.csproj" />
       <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
       <ProjectReference Include="..\Nethermind.Serialization.Rlp\Nethermind.Serialization.Rlp.csproj" />
     </ItemGroup>
 
     <ItemGroup>
-      <PackageReference Include="Portable.BouncyCastle" Version="1.8.6" />
+      <PackageReference Include="Microsoft.AspNetCore.DataProtection.Abstractions" Version="3.1.5" />
+      <PackageReference Include="Microsoft.AspNetCore.DataProtection.Extensions" Version="3.1.5" />
+      <PackageReference Include="Portable.BouncyCastle" Version="1.8.6.7" />
+      <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="4.7.0" />
+    </ItemGroup>
+    
+    <ItemGroup>
+        <Content Include="runtimes\linux-x64\native\libshamatar.so">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="runtimes\osx-x64\native\libshamatar.dylib">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="runtimes\win-x64\native\shamatar.dll">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+<!--        <Content Include="runtimes\win-x64\native\eth_196.dll">-->
+<!--            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>-->
+<!--        </Content>-->
+<!--        <Content Include="runtimes\win-x64\native\eth_pairings2537.dll">-->
+<!--            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>-->
+<!--        </Content>-->
+      <Reference Include="Microsoft.AspNetCore.DataProtection.Abstractions, Version=3.1.0.0, Culture=neutral, PublicKeyToken=adb9793829ddae60">
+        <HintPath>..\..\..\..\..\Program Files\dotnet\packs\Microsoft.AspNetCore.App.Ref\3.1.0\ref\netcoreapp3.1\Microsoft.AspNetCore.DataProtection.Abstractions.dll</HintPath>
+      </Reference>
+      <Reference Include="Microsoft.AspNetCore.DataProtection.Extensions, Version=3.1.0.0, Culture=neutral, PublicKeyToken=adb9793829ddae60">
+        <HintPath>..\..\..\..\..\Program Files\dotnet\packs\Microsoft.AspNetCore.App.Ref\3.1.0\ref\netcoreapp3.1\Microsoft.AspNetCore.DataProtection.Extensions.dll</HintPath>
+      </Reference>
+      <Reference Include="System.Security.Cryptography.ProtectedData, Version=4.0.2.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a">
+        <HintPath>..\Nethermind.Runner.Test\bin\Debug\netcoreapp3.1\System.Security.Cryptography.ProtectedData.dll</HintPath>
+      </Reference>
     </ItemGroup>
 
 </Project>

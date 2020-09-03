@@ -44,7 +44,7 @@ namespace Nethermind.Config.Test
         {
             ConfigProvider configProvider = new ConfigProvider();
             IStatsConfig statsConfig = configProvider.GetConfig<IStatsConfig>();
-            Assert.AreEqual(1000500L, statsConfig.PredefinedReputation);
+            Assert.AreEqual(10000, statsConfig.PenalizedReputationTooManyPeersTimeout);
         }
 
         public int DefaultTestProperty { get; set; } = 5;

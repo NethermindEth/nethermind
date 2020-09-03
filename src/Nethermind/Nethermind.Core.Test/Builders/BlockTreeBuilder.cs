@@ -155,7 +155,9 @@ namespace Nethermind.Core.Test.Builders
                     {
                         Logs = logEntries,
                         TxHash = transaction.Hash,
-                        Bloom = new Bloom(logEntries)
+                        Bloom = new Bloom(logEntries),
+                        BlockNumber = currentBlock.Number,
+                        BlockHash = currentBlock.Hash
                     };
 
                     receipts.Add(receipt);
@@ -171,7 +173,7 @@ namespace Nethermind.Core.Test.Builders
                     txReceipt.BlockHash = currentBlock.Hash;
                 }
 
-                _receiptStorage.Insert(currentBlock, false, txReceipts);
+                _receiptStorage.Insert(currentBlock, txReceipts);
             }
             else
             {

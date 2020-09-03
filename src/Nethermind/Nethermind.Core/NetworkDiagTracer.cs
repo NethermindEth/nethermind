@@ -18,6 +18,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
+using System.Net;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Timers;
@@ -29,6 +30,8 @@ namespace Nethermind.Core
     /// </summary>
     public static class NetworkDiagTracer
     {
+        public const string NetworkDiagTracerPath = @"network_diag.txt";
+        
         public static bool IsEnabled { get; set; }
 
         private static ConcurrentDictionary<string, List<string>> events = new ConcurrentDictionary<string, List<string>>();
@@ -53,44 +56,44 @@ namespace Nethermind.Core
                 }
             }
             
-            File.WriteAllText(@"network_diag.txt", stringBuilder.ToString());
+            File.WriteAllText(NetworkDiagTracerPath, stringBuilder.ToString());
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        private static void Add(string nodeInfo, string line)
+        private static void Add(IPEndPoint farAddress, string line)
         {
-            events.AddOrUpdate(nodeInfo, ni => new List<string>(), (s, list) =>
+            events.AddOrUpdate(farAddress.Address.MapToIPv4().ToString(), ni => new List<string>(), (s, list) =>
             {
                 list.Add(line);
                 return list;
             });
         }
         
-        public static void ReportOutgoingMessage(string nodeInfo, string protocol, string messageCode)
+        public static void ReportOutgoingMessage(IPEndPoint nodeInfo, string protocol, string messageCode)
         {
             if(!IsEnabled) return;
             Add(nodeInfo, $"{DateTime.UtcNow:HH:mm:ss.ffffff} <<< {protocol} {messageCode}");
         }
         
-        public static void ReportIncomingMessage(string nodeInfo, string protocol, string info)
+        public static void ReportIncomingMessage(IPEndPoint nodeInfo, string protocol, string info)
         {
             if(!IsEnabled) return;
             Add(nodeInfo, $"{DateTime.UtcNow:HH:mm:ss.ffffff} >>> {protocol} {info}");
         }
         
-        public static void ReportConnect(string nodeInfo, string clientId)
+        public static void ReportConnect(IPEndPoint nodeInfo, string clientId)
         {
             if(!IsEnabled) return;
             Add(nodeInfo, $"{DateTime.UtcNow:HH:mm:ss.ffffff} CONNECT {clientId}");
         }
         
-        public static void ReportDisconnect(string nodeInfo, string details)
+        public static void ReportDisconnect(IPEndPoint nodeInfo, string details)
         {
             if(!IsEnabled) return;
             Add(nodeInfo, $"{DateTime.UtcNow:HH:mm:ss.ffffff} DISCONNECT {details}");
         }
         
-        public static void ReportInterestingEvent(string nodeInfo, string details)
+        public static void ReportInterestingEvent(IPEndPoint nodeInfo, string details)
         {
             if(!IsEnabled) return;
             Add(nodeInfo, $"{DateTime.UtcNow:HH:mm:ss.ffffff} {details}");

@@ -29,8 +29,6 @@ namespace Nethermind.Synchronization.Reporting
 
         public MeasuredProgress FullSyncBlocksDownloaded { get; } = new MeasuredProgress();
         public long FullSyncBlocksKnown { get; set; }
-        public SyncMode CurrentSyncMode { get; set; }
-        public long FastBlocksPivotNumber { get; set; }
         public MeasuredProgress HeadersInQueue { get; } = new MeasuredProgress();
         public MeasuredProgress BodiesInQueue { get; } = new MeasuredProgress();
         public MeasuredProgress ReceiptsInQueue { get; } = new MeasuredProgress();

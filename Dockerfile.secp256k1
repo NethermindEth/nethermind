@@ -1,0 +1,14 @@
+FROM alpine:3.12 AS secp256k1
+WORKDIR /source
+
+RUN apk upgrade && apk add git build-base autoconf automake libtool
+RUN git clone https://github.com/bitcoin-core/secp256k1 .
+RUN ./autogen.sh
+RUN ./configure --enable-module-recovery --enable-experimental --enable-module-ecdh --enable-shared --with-bignum=no
+RUN make
+RUN strip .libs/libsecp256k1.so
+
+
+FROM alpine:3.12 AS libsecp256k1
+WORKDIR /nethermind
+COPY --from=secp256k1 /source/.libs/libsecp256k1.so .

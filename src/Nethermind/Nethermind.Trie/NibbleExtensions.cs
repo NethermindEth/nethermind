@@ -34,31 +34,6 @@ namespace Nethermind.Trie
             return nibbles;
         }
 
-        public class NibbleBytes
-        {
-            private readonly byte[] _byteArray;
-
-            public NibbleBytes(byte[] byteArray)
-            {
-                _byteArray = byteArray;
-            }
-
-            public byte this[int i]
-            {
-                get
-                {
-                    if (i % 2 == 0)
-                    {
-                        return (byte)((_byteArray[i / 2] & 240) >> 4);
-                    }
-
-                    return (byte)(_byteArray[i / 2] & 15);
-                }
-
-                set => throw new NotSupportedException();
-            }
-        }
-
         public static void BytesToNibbleBytes(Span<byte> bytes, Span<byte> nibbles)
         {
             Debug.Assert(nibbles.Length == 2 * bytes.Length);
@@ -69,11 +44,6 @@ namespace Nethermind.Trie
             }
         }
 
-        public static Nibble[] FromBytes(byte @byte)
-        {
-            return new[] { new Nibble((byte)(@byte & 240)), new Nibble((byte)(@byte & 15)) };
-        }
-        
         public static Nibble[] FromHexString(string hexString)
         {
             if (hexString == null)
@@ -91,17 +61,6 @@ namespace Nethermind.Trie
             }
 
             return nibbles;
-        }
-
-        public static byte[] ToLooseByteArray(this Nibble[] nibbles)
-        {
-            byte[] bytes = new byte[nibbles.Length];
-            for (int i = 0; i < nibbles.Length; i++)
-            {
-                bytes[i] = (byte)nibbles[i];
-            }
-
-            return bytes;
         }
 
         public static byte[] ToPackedByteArray(this Nibble[] nibbles)

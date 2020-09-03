@@ -26,7 +26,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 
@@ -41,13 +41,13 @@ namespace Nethermind.Consensus.Clique
         private readonly ICache<Keccak, Address> _signatures;
         private readonly IEthereumEcdsa _ecdsa;
         private IDb _blocksDb;
-        private ICache<Keccak, Snapshot> _snapshotCache = new LruCacheWithRecycling<Keccak, Snapshot>(Clique.InMemorySnapshots, "clique snapshots");
+        private ICache<Keccak, Snapshot> _snapshotCache = new LruCache<Keccak, Snapshot>(Clique.InMemorySnapshots, "clique snapshots");
 
         public SnapshotManager(ICliqueConfig cliqueConfig, IDb blocksDb, IBlockTree blockTree, IEthereumEcdsa ecdsa, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _cliqueConfig = cliqueConfig ?? throw new ArgumentNullException(nameof(cliqueConfig));
-            _signatures = new LruCacheWithRecycling<Keccak, Address>(Clique.InMemorySignatures, Clique.InMemorySignatures, "signatures");
+            _signatures = new LruCache<Keccak, Address>(Clique.InMemorySignatures, Clique.InMemorySignatures, "signatures");
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _blocksDb = blocksDb ?? throw new ArgumentNullException(nameof(blocksDb));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -67,11 +67,11 @@ namespace Nethermind.Consensus.Clique
                 throw new BlockchainException($"Clique block without sealer extra data{Environment.NewLine}{header.ToString(BlockHeader.Format.Full)}");
             }
 
-            var signatureBytes = header.ExtraData.AsSpan().Slice(header.ExtraData.Length - extraSeal, extraSeal);
+            Span<byte> signatureBytes = header.ExtraData.AsSpan().Slice(header.ExtraData.Length - extraSeal, extraSeal);
             Signature signature = new Signature(signatureBytes);
             signature.V += Signature.VOffset;
             Keccak message = CalculateCliqueHeaderHash(header);
-            Address address = _ecdsa.RecoverAddress(signature, message);
+            Address address = _ecdsa.RecoverAddress(signatureBytes, message);
             _signatures.Set(header.Hash, address);
             return address;
         }

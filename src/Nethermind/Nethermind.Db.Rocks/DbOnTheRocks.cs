@@ -21,6 +21,7 @@ using System.IO;
 using System.Reflection;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
 using RocksDbSharp;
@@ -41,6 +42,19 @@ namespace Nethermind.Db.Rocks
 
         private long _maxThisDbSize;
 
+        private static int _cacheInitialized;
+        
+        protected static IntPtr _cache;
+        
+        protected static void InitCache(IDbConfig dbConfig)
+        {
+            if (Interlocked.CompareExchange(ref _cacheInitialized, 1, 0) == 0)
+            {
+                _cache = RocksDbSharp.Native.Instance.rocksdb_cache_create_lru(new UIntPtr(dbConfig.BlockCacheSize));
+                Interlocked.Add(ref _maxRocksSize, (long)dbConfig.BlockCacheSize);
+            }
+        }
+        
         public DbOnTheRocks(string basePath, string dbPath, IDbConfig dbConfig, ILogManager logManager, ColumnFamilies columnFamilies = null, bool deleteOnStart = false)
         {
             static RocksDb Open(string path, (DbOptions Options, ColumnFamilies Families) db)
@@ -65,9 +79,10 @@ namespace Nethermind.Db.Rocks
                 // ReSharper disable once VirtualMemberCallInConstructor
                 if (_logger.IsDebug) _logger.Debug($"Building options for {Name} DB");
                 DbOptions options = BuildOptions(dbConfig);
+                InitCache(dbConfig);
 
                 // ReSharper disable once VirtualMemberCallInConstructor
-                if (_logger.IsDebug) _logger.Debug($"Loading DB {Name.PadRight(13)} from {_fullPath} with max memory footprint of {_maxThisDbSize / 1024 / 1024}MB");
+                if (_logger.IsDebug) _logger.Debug($"Loading DB {Name.PadRight(13)} from {_fullPath} with max memory footprint of {_maxThisDbSize / 1000 / 1000}MB");
                 Db = DbsByPath.GetOrAdd(_fullPath, Open, (options, columnFamilies));
             }
             catch (DllNotFoundException e) when (e.Message.Contains("libdl"))
@@ -116,10 +131,11 @@ namespace Nethermind.Db.Rocks
             tableOptions.SetFormatVersion(2);
 
             ulong blockCacheSize = ReadConfig<ulong>(dbConfig, nameof(dbConfig.BlockCacheSize));
-            _maxThisDbSize += (long) blockCacheSize;
 
-            IntPtr cache = Native.Instance.rocksdb_cache_create_lru(new UIntPtr(blockCacheSize));
-            tableOptions.SetBlockCache(cache);
+            tableOptions.SetBlockCache(_cache);
+            
+            // IntPtr cache = RocksDbSharp.Native.Instance.rocksdb_cache_create_lru(new UIntPtr(blockCacheSize));
+            // tableOptions.SetBlockCache(cache);
 
             DbOptions options = new DbOptions();
             options.SetCreateIfMissing(true);
@@ -149,9 +165,9 @@ namespace Nethermind.Db.Rocks
             {
                 _maxThisDbSize += (long) writeBufferSize * writeBufferNumber;
                 Interlocked.Add(ref _maxRocksSize, _maxThisDbSize);
-                if (_logger.IsDebug) _logger.Debug($"Expected max memory footprint of {Name} DB is {_maxThisDbSize / 1024 / 1024}MB ({writeBufferNumber} * {writeBufferSize / 1024 / 1024}MB + {blockCacheSize / 1024 / 1024}MB)");
-                if (_logger.IsDebug) _logger.Debug($"Total max DB footprint so far is {_maxRocksSize / 1024 / 1024}MB");
-                ThisNodeInfo.AddInfo("Mem est DB   :", $"{_maxRocksSize / 1024 / 1024}MB".PadLeft(8));
+                if (_logger.IsDebug) _logger.Debug($"Expected max memory footprint of {Name} DB is {_maxThisDbSize / 1000 / 1000}MB ({writeBufferNumber} * {writeBufferSize / 1000 / 1000}MB + {blockCacheSize / 1000 / 1000}MB)");
+                if (_logger.IsDebug) _logger.Debug($"Total max DB footprint so far is {_maxRocksSize / 1000 / 1000}MB");
+                ThisNodeInfo.AddInfo("Mem est DB   :", $"{_maxRocksSize / 1000 / 1000}MB".PadLeft(8));
             }
 
             options.SetBlockBasedTableFactory(tableOptions);
@@ -345,7 +361,7 @@ namespace Nethermind.Db.Rocks
                 throw new ObjectDisposedException($"Attempted to flush a disposed database {Name}");
             }
             
-            Native.Instance.rocksdb_flush(Db.Handle, FlushOptions.DefaultFlushOptions.Handle);
+            RocksDbSharp.Native.Instance.rocksdb_flush(Db.Handle, FlushOptions.DefaultFlushOptions.Handle);
         }
 
         public void Clear()
@@ -366,7 +382,7 @@ namespace Nethermind.Db.Rocks
 
             public FlushOptions()
             {
-                Handle = Native.Instance.rocksdb_flushoptions_create();
+                Handle = RocksDbSharp.Native.Instance.rocksdb_flushoptions_create();
             }
 
             public IntPtr Handle { get; protected set; }
@@ -375,7 +391,7 @@ namespace Nethermind.Db.Rocks
             {
                 if (Handle != IntPtr.Zero)
                 {
-                    Native.Instance.rocksdb_flushoptions_destroy(Handle);
+                    RocksDbSharp.Native.Instance.rocksdb_flushoptions_destroy(Handle);
                     Handle = IntPtr.Zero;
                 }
             }

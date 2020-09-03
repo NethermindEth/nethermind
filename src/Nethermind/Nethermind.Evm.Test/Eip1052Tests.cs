@@ -14,13 +14,14 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Evm.Precompiles;
 using NUnit.Framework;
 
@@ -69,8 +70,8 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Non_existing_precompile_returns_0()
         {
-            Address precompileAddress = Sha256PrecompiledContract.Instance.Address;
-            Assert.True(precompileAddress.IsPrecompiled(Spec));
+            Address precompileAddress = Sha256Precompile.Instance.Address;
+            Assert.True(precompileAddress.IsPrecompile(Spec));
 
             byte[] code = Prepare.EvmCode
                 .PushData(precompileAddress)
@@ -86,8 +87,8 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Existing_precompile_returns_empty_data_hash()
         {
-            Address precompileAddress = Sha256PrecompiledContract.Instance.Address;
-            Assert.True(precompileAddress.IsPrecompiled(Spec));
+            Address precompileAddress = Sha256Precompile.Instance.Address;
+            Assert.True(precompileAddress.IsPrecompile(Spec));
 
             TestState.CreateAccount(precompileAddress, 1.Wei());
 
@@ -211,7 +212,7 @@ namespace Nethermind.Evm.Test
 
             Execute(code);
 
-            AssertStorage(0, 0);
+            AssertStorage(UInt256.Zero, UInt256.Zero);
             Assert.False(TestState.AccountExists(TestItem.AddressC), "did not test the right thing - it was not an empty account + touch scenario");
         }
 
@@ -219,7 +220,7 @@ namespace Nethermind.Evm.Test
         public void Newly_created_empty_account_returns_empty_data_hash()
         {
             byte[] code = Prepare.EvmCode
-                .Create(Bytes.Empty, 0)
+                .Create(Array.Empty<byte>(), 0)
                 .PushData(ContractAddress.From(Recipient, 0))
                 .Op(Instruction.EXTCODEHASH)
                 .PushData(0)

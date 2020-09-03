@@ -20,6 +20,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using FluentAssertions;
+using Nethermind.Baseline.Config;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.DataMarketplace.Core.Configs;
@@ -30,6 +31,8 @@ using Nethermind.Monitoring.Config;
 using Nethermind.Network.Config;
 using Nethermind.PubSub.Kafka;
 using Nethermind.Db.Blooms;
+using Nethermind.Db.Rocks.Config;
+using Nethermind.Runner.Analytics;
 using Nethermind.TxPool;
 using NUnit.Framework;
 
@@ -59,6 +62,7 @@ namespace Nethermind.Runner.Test
         [TestCase("xdai_validator.cfg", true, true)]
         [TestCase("spaceneth", false, false)]
         [TestCase("archive", false, false, false)]
+        [TestCase("baseline", false, false, false)]
         [TestCase("beam", true, true, true)]
         [TestCase("fast", true, true)]
         public void Sync_defaults_are_correct(string configWildcard, bool fastSyncEnabled, bool fastBlocksEnabled, bool beamSyncEnabled = false)
@@ -72,6 +76,7 @@ namespace Nethermind.Runner.Test
         [TestCase("fast", true)]
         [TestCase("beam", true)]
         [TestCase("spaceneth", false)]
+        [TestCase("baseline", true)]
         [TestCase("ndm_consumer_goerli.cfg", true)]
         [TestCase("ndm_consumer_local.cfg", true)]
         [TestCase("ndm_consumer_mainnet_proxy.cfg", false)]
@@ -91,6 +96,7 @@ namespace Nethermind.Runner.Test
         [TestCase("xdai", "ws://localhost:3000/api")]
         [TestCase("spaceneth", "ws://localhost:3000/api")]
         [TestCase("volta", "ws://localhost:3000/api")]
+        [TestCase("baseline", "ws://localhost:3000/api")]
         public void Ethstats_values_are_correct(string configWildcard, string host)
         {
             Test<IEthStatsConfig, bool>(configWildcard, c => c.Enabled, false);
@@ -121,6 +127,7 @@ namespace Nethermind.Runner.Test
         }
 
         [TestCase("spaceneth", true)]
+        [TestCase("baseline", true)]
         [TestCase("validators", true)]
         [TestCase("^validators ^spaceneth", false)]
         public void Mining_defaults_are_correct(string configWildcard, bool defaultValue = false)
@@ -139,7 +146,6 @@ namespace Nethermind.Runner.Test
         public void Grpc_defaults(string configWildcard, bool expectedDefault)
         {
             Test<IGrpcConfig, bool>(configWildcard, c => c.Enabled, expectedDefault);
-            Test<IGrpcConfig, bool>(configWildcard, c => c.ProducerEnabled, expectedDefault);
         }
 
         [TestCase("ndm_consumer_local.cfg")]
@@ -147,12 +153,68 @@ namespace Nethermind.Runner.Test
         {
             Test<IInitConfig, bool>(configWildcard, c => c.IsMining, true);
         }
+        
+        [TestCase("baseline", true)]
+        [TestCase("spaceneth", true)]
+        [TestCase("^baseline ^spaceneth", false)]
+        public void Baseline_is_disabled_by_default(string configWildcard, bool enabled)
+        {
+            Test<IBaselineConfig, bool>(configWildcard, c => c.Enabled, enabled);
+        }
 
         [TestCase("ndm", true)]
         [TestCase("^ndm", false)]
         public void Ndm_enabled_only_for_ndm_configs(string configWildcard, bool ndmEnabled)
         {
             Test<INdmConfig, bool>(configWildcard, c => c.Enabled, ndmEnabled);
+        }
+        
+        [TestCase("*")]
+        public void Analytics_defaults(string configWildcard)
+        {
+            Test<IAnalyticsConfig, bool>(configWildcard, c => c.PluginsEnabled, false);
+            Test<IAnalyticsConfig, bool>(configWildcard, c => c.StreamBlocks, false);
+            Test<IAnalyticsConfig, bool>(configWildcard, c => c.StreamTransactions, false);
+            Test<IAnalyticsConfig, bool>(configWildcard, c => c.LogPublishedData, false);
+        }
+        
+        [TestCase("fast")]
+        public void Caches_in_fast_blocks(string configWildcard)
+        {
+            Test<IDbConfig, bool>(configWildcard, c => c.HeadersDbCacheIndexAndFilterBlocks, false);
+            Test<IDbConfig, bool>(configWildcard, c => c.ReceiptsDbCacheIndexAndFilterBlocks, false);
+            Test<IDbConfig, bool>(configWildcard, c => c.BlocksDbCacheIndexAndFilterBlocks, false);
+            Test<IDbConfig, bool>(configWildcard, c => c.BlockInfosDbCacheIndexAndFilterBlocks, false);
+        }
+        
+        [TestCase("^archive", false)]
+        [TestCase("archive", false)]
+        public void Cache_state_index(string configWildcard, bool expectedValue)
+        {
+            Test<IDbConfig, bool>(configWildcard, c => c.CacheIndexAndFilterBlocks, expectedValue);
+        }
+        
+        [TestCase("mainnet archive", 4096000000)]
+        [TestCase("mainnet ^archive", 2048000000)]
+        [TestCase("volta archive", 256000000)]
+        [TestCase("volta ^archive", 256000000)]
+        [TestCase("goerli archive", 768000000)]
+        [TestCase("goerli ^archive", 384000000)]
+        [TestCase("rinkeby archive", 1536000000)]
+        [TestCase("rinkeby ^archive", 1024000000)]
+        [TestCase("ropsten archive", 1536000000)]
+        [TestCase("ropsten ^archive", 1024000000)]
+        [TestCase("xdai archive", 1024000000)]
+        [TestCase("xdai ^archive", 768000000)]
+        [TestCase("poacore archive", 1024000000)]
+        [TestCase("poacore ^archive", 768000000)]
+        [TestCase("sokol archive", 768000000)]
+        [TestCase("sokol ^archive", 512000000)]
+        [TestCase("spaceneth.cfg", 64000000)]
+        [TestCase("spaceneth_persistent.cfg", 128000000)]
+        public void Memory_hint_values_are_correct(string configWildcard, long expectedValue)
+        {
+            Test<IInitConfig, long?>(configWildcard, c => c.MemoryHint, expectedValue);
         }
 
         [TestCase("*")]
@@ -164,7 +226,10 @@ namespace Nethermind.Runner.Test
             Test<IMetricsConfig, string>(configWildcard, c => c.PushGatewayUrl, "http://localhost:9091/metrics");
         }
 
-        [TestCase("^mainnet", 50)]
+        [TestCase("^mainnet ^spaceneth ^volta ^baseline", 50)]
+        [TestCase("spaceneth", 4)]
+        [TestCase("baseline", 25)]
+        [TestCase("volta", 25)]
         [TestCase("mainnet", 100)]
         public void Network_defaults_are_correct(string configWildcard, int activePeers = 50)
         {
@@ -174,19 +239,39 @@ namespace Nethermind.Runner.Test
             Test<INetworkConfig, string>(configWildcard, c => c.LocalIp, (string) null);
             Test<INetworkConfig, int>(configWildcard, c => c.ActivePeersMaxCount, activePeers);
         }
+        
+        [TestCase("*")]
+        public void Network_diag_tracer_disabled_by_default(string configWildcard)
+        {
+            Test<INetworkConfig, bool>(configWildcard, c => c.DiagTracerEnabled, false);
+        }
 
-        [TestCase("*", 2048)]
+        [TestCase("mainnet", 2048)]
+        [TestCase("^baseline ^mainnet ^spaceneth ^volta ^sokol ^poacore", 1024)]
+        [TestCase("baseline", 512)]
+        [TestCase("volta", 512)]
+        [TestCase("sokol", 512)]
+        [TestCase("poacore", 512)]
+        [TestCase("spaceneth", 128)]
         public void Tx_pool_defaults_are_correct(string configWildcard, int poolSize)
         {
             Test<ITxPoolConfig, int>(configWildcard, c => c.Size, poolSize);
         }
 
-        [TestCase("^spaceneth", false)]
+        [TestCase("baseline", true)]
+        [TestCase("spaceneth", true)]
+        [TestCase("^spaceneth ^baseline", false)]
         public void Json_defaults_are_correct(string configWildcard, bool jsonEnabled)
         {
             Test<IJsonRpcConfig, bool>(configWildcard, c => c.Enabled, jsonEnabled);
             Test<IJsonRpcConfig, int>(configWildcard, c => c.Port, 8545);
             Test<IJsonRpcConfig, string>(configWildcard, c => c.Host, "127.0.0.1");
+        }
+
+        [TestCase("*")]
+        public void Tracer_tmeout_default_is_correct(string configWildcard)
+        {
+            Test<IJsonRpcConfig, int>(configWildcard, c => c.TracerTimeout, 20000);
         }
 
         [TestCase("*")]
@@ -210,7 +295,7 @@ namespace Nethermind.Runner.Test
         [TestCase("aura ^archive", true)]
         public void Stays_on_full_sync(string configWildcard, bool stickToFullSyncAfterFastSync)
         {
-            Test<ISyncConfig, long?>(configWildcard, c => c.FastSyncCatchUpHeightDelta, stickToFullSyncAfterFastSync ? 10_000_000_000 : 1024);
+            Test<ISyncConfig, long?>(configWildcard, c => c.FastSyncCatchUpHeightDelta, stickToFullSyncAfterFastSync ? 10_000_000_000 : 8192);
         }
 
         [TestCase("^spaceneth.cfg")]
@@ -234,7 +319,8 @@ namespace Nethermind.Runner.Test
             Test<IInitConfig, string>(configWildcard, c => c.BaseDbPath, (cf, p) => p.Should().StartWith(startWith));
         }
 
-        [TestCase("*", "Data/static-nodes.json")]
+        [TestCase("^baseline", "Data/static-nodes.json")]
+        [TestCase("baseline", "Data/static-nodes-baseline.json")]
         public void Static_nodes_path_is_default(string configWildcard, string staticNodesPath)
         {
             Test<IInitConfig, string>(configWildcard, c => c.StaticNodesPath, staticNodesPath);
@@ -301,6 +387,18 @@ namespace Nethermind.Runner.Test
             Test<IBloomConfig, bool>(configWildcard, c => c.Migration, false);
             Test<IBloomConfig, bool>(configWildcard, c => c.MigrationStatistics, false);
             Test<IBloomConfig, int[]>(configWildcard, c => c.IndexLevelBucketSizes, (cf, p) => p.Should().BeEquivalentTo(levels ?? new BloomConfig().IndexLevelBucketSizes));
+        }
+        
+        [TestCase("*")]
+        public void BufferResponses_rpc_is_off(string configWildcard)
+        {
+            Test<IJsonRpcConfig, bool>(configWildcard, c => c.BufferResponses, false);
+        }
+        
+        [TestCase("*")]
+        public void Arena_order_is_default(string configWildcard)
+        {
+            Test<INetworkConfig, int>(configWildcard, c => c.NettyArenaOrder, 11);
         }
 
         private static ConfigProvider GetConfigProviderFromFile(string configFile)
@@ -400,6 +498,10 @@ namespace Nethermind.Runner.Test
         [ConfigFileGroup("spaceneth")]
         private IEnumerable<string> SpacenethConfigs
             => Configs.Where(config => config.Contains("spaceneth"));
+        
+        [ConfigFileGroup("baseline")]
+        private IEnumerable<string> BaselineConfigs
+            => Configs.Where(config => config.Contains("baseline"));
 
         [ConfigFileGroup("mainnet")]
         private IEnumerable<string> MainnetConfigs

@@ -14,11 +14,12 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.JsonRpc.Test.Data;
 
@@ -34,7 +35,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
                 CallType = "call",
                 From = TestItem.AddressC,
                 To = TestItem.AddressD,
-                Input = Bytes.Empty,
+                Input = Array.Empty<byte>(),
                 Gas = 10000,
                 TraceAddress = new int[] {0, 0}
             };

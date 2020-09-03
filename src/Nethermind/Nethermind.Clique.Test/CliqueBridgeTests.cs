@@ -27,6 +27,7 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Db.Blooms;
+using Nethermind.Specs;
 using Nethermind.Wallet;
 using NSubstitute;
 using NUnit.Framework;
@@ -42,6 +43,7 @@ namespace Nethermind.Clique.Test
         {
             CliqueConfig cliqueConfig = new CliqueConfig();
             IBlockTree blockTree = Substitute.For<IBlockTree>();
+            Signer signer = new Signer(ChainId.Ropsten, TestItem.PrivateKeyA, LimboLogs.Instance);
             CliqueBlockProducer producer = new CliqueBlockProducer(
                 Substitute.For<ITxSource>(),
                 Substitute.For<IBlockchainProcessor>(),
@@ -50,7 +52,10 @@ namespace Nethermind.Clique.Test
                 Substitute.For<ITimestamper>(),
                 Substitute.For<ICryptoRandom>(),
                 Substitute.For<ISnapshotManager>(),
-                new CliqueSealer(new BasicWallet(TestItem.PrivateKeyA), cliqueConfig, Substitute.For<ISnapshotManager>(), TestItem.PrivateKeyA.Address, LimboLogs.Instance), TestItem.AddressA, cliqueConfig, LimboLogs.Instance);
+                new CliqueSealer(signer, cliqueConfig, Substitute.For<ISnapshotManager>(), LimboLogs.Instance),
+                new TargetAdjustedGasLimitCalculator(GoerliSpecProvider.Instance, new MiningConfig()), 
+                cliqueConfig,
+                LimboLogs.Instance);
             
             SnapshotManager snapshotManager = new SnapshotManager(CliqueConfig.Default, new MemDb(), Substitute.For<IBlockTree>(), NullEthereumEcdsa.Instance, LimboLogs.Instance);
             

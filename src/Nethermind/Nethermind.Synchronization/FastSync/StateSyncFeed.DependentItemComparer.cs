@@ -28,7 +28,7 @@ namespace Nethermind.Synchronization.FastSync
             {
             }
 
-            private static DependentItemComparer _instance;
+            private static DependentItemComparer? _instance;
 
             public static DependentItemComparer Instance
             {

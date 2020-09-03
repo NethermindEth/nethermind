@@ -10,7 +10,6 @@ jobs:
     name:  Smoke Test
     runs-on: ubuntu-latest
     steps:
-    - name: Trigger Smoke Test on build server
+    - name: Trigger Smoke Tests on build server
       run: |
         curl ${{ secrets.BUILD_SERVER }}/smoke
-        curl ${{ secrets.BUILD_SERVER }}/smoke-spaceneth

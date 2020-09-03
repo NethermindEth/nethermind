@@ -113,6 +113,10 @@ namespace Nethermind.Db.Rocks.Config
         ulong ProviderDepositApprovalsDbBlockCacheSize { get; set; }
         ulong ProviderDepositApprovalsDbWriteBufferSize { get; set; }
         uint ProviderDepositApprovalsDbWriteBufferNumber { get; set; }
+        ulong CanonicalHashTrieDbWriteBufferSize { get; set; }
+        uint CanonicalHashTrieDbWriteBufferNumber { get; set; }
+        ulong CanonicalHashTrieDbBlockCacheSize { get; set; }
+        bool CanonicalHashTrieDbCacheIndexAndFilterBlocks { get; set; }
         
         bool ProviderReceiptsDbCacheIndexAndFilterBlocks { get; set; }
         ulong ProviderReceiptsDbBlockCacheSize { get; set; }

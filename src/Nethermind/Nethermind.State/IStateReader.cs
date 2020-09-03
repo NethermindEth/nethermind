@@ -16,7 +16,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Trie;
 
 namespace Nethermind.State
@@ -30,13 +30,13 @@ namespace Nethermind.State
         UInt256 GetBalance(Keccak stateRoot, Address address);
         
         Keccak GetStorageRoot(Keccak stateRoot, Address address);
-
-        Keccak GetCodeHash(Keccak stateRoot, Address address);
         
+        byte[] GetStorage(Keccak storageRoot, UInt256 index);
+
         byte[] GetCode(Keccak stateRoot, Address address);
 
         byte[] GetCode(Keccak codeHash);
-        
+
         void RunTreeVisitor(ITreeVisitor treeVisitor, Keccak stateRoot);
     }
 }

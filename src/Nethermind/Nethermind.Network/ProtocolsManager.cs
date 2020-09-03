@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Numerics;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -42,9 +43,8 @@ namespace Nethermind.Network
 {
     public class ProtocolsManager : IProtocolsManager
     {
-        private readonly ConcurrentDictionary<Guid, Eth62ProtocolHandler> _syncPeers =
-            new ConcurrentDictionary<Guid, Eth62ProtocolHandler>();
-
+        private readonly ConcurrentDictionary<Guid, SyncPeerProtocolHandlerBase> _syncPeers =
+            new ConcurrentDictionary<Guid, SyncPeerProtocolHandlerBase>();
         private readonly ConcurrentDictionary<Guid, ISession> _sessions = new ConcurrentDictionary<Guid, ISession>();
         private readonly ISyncPeerPool _syncPool;
         private readonly ISyncServer _syncServer;
@@ -105,7 +105,7 @@ namespace Nethermind.Network
             session.Initialized -= SessionInitialized;
             session.Disconnected -= SessionDisconnected;
 
-            if (_syncPeers.TryRemove(session.SessionId, out Eth62ProtocolHandler removed))
+            if (_syncPeers.TryRemove(session.SessionId, out var removed))
             {
                 _syncPool.RemovePeer(removed);
                 _txPool.RemovePeer(removed.Node.Id);
@@ -187,14 +187,14 @@ namespace Nethermind.Network
                         65 => new Eth65ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _specProvider, _logManager),
                         _ => throw new NotSupportedException($"Eth protocol version {version} is not supported.")
                     };
-                    
-                    InitEthProtocol(session, ethHandler);
+
+                    InitSyncPeerProtocol(session, ethHandler);
                     return ethHandler;
                 },
                 [Protocol.Les] = (session, version) =>
                 {
                     LesProtocolHandler handler = new LesProtocolHandler(session, _serializer, _stats, _syncServer, _logManager, _txPool);
-                    InitLesProtocol(session, handler);
+                    InitSyncPeerProtocol(session, handler);
 
                     return handler;
                 }
@@ -234,42 +234,28 @@ namespace Nethermind.Network
             };
         }
 
-        private void InitLesProtocol(ISession session, LesProtocolHandler handler)
-        {
-            handler.ProtocolInitialized += (sender, args) =>
-            {
-                //todo - add basic checks
-                if (!RunBasicChecks(session, handler.ProtocolCode, handler.ProtocolVersion)) return;
-                LesProtocolInitializedEventArgs typedArgs = (LesProtocolInitializedEventArgs) args;
-                _stats.ReportLesInitializeEvent(session.Node, new LesNodeDetails
-                {
-                });
-            };
-        }
-
-        private void InitEthProtocol(ISession session, Eth62ProtocolHandler handler)
+        private void InitSyncPeerProtocol(ISession session, SyncPeerProtocolHandlerBase handler)
         {
             session.Node.EthDetails = handler.Name;
             handler.ProtocolInitialized += (sender, args) =>
             {
                 if (!RunBasicChecks(session, handler.ProtocolCode, handler.ProtocolVersion)) return;
-                EthProtocolInitializedEventArgs typedArgs = (EthProtocolInitializedEventArgs) args;
-                _stats.ReportEthInitializeEvent(session.Node, new EthNodeDetails
+                SyncPeerProtocolInitializedEventArgs typedArgs = (SyncPeerProtocolInitializedEventArgs)args;
+                _stats.ReportSyncPeerInitializeEvent(handler.ProtocolCode, session.Node, new SyncPeerNodeDetails
                 {
                     ChainId = typedArgs.ChainId,
                     BestHash = typedArgs.BestHash,
                     GenesisHash = typedArgs.GenesisHash,
                     ProtocolVersion = typedArgs.ProtocolVersion,
-                    TotalDifficulty = typedArgs.TotalDifficulty
+                    TotalDifficulty = (BigInteger)typedArgs.TotalDifficulty
                 });
-
-                bool isValid = _protocolValidator.DisconnectOnInvalid(Protocol.Eth, session, args);
+                bool isValid = _protocolValidator.DisconnectOnInvalid(handler.ProtocolCode, session, args);
                 if (isValid)
                 {
                     if (_syncPeers.TryAdd(session.SessionId, handler))
                     {
                         _syncPool.AddPeer(handler);
-                        _txPool.AddPeer(handler);
+                        if (handler.IncludeInTxPool) _txPool.AddPeer(handler);
                         if (_logger.IsDebug) _logger.Debug($"{handler.ClientId} sync peer {session} created.");
                     }
                     else
@@ -278,7 +264,7 @@ namespace Nethermind.Network
                         session.InitiateDisconnect(DisconnectReason.AlreadyConnected, "sync peer");
                     }
 
-                    if (_logger.IsTrace) _logger.Trace($"Finalized ETH protocol initialization on {session} - adding sync peer {session.Node:s}");
+                    if (_logger.IsTrace) _logger.Trace($"Finalized {handler.ProtocolCode.ToUpper()} protocol initialization on {session} - adding sync peer {session.Node:s}");
 
                     //Add/Update peer to the storage and to sync manager
                     _peerStorage.UpdateNode(new NetworkNode(session.Node.Id, session.Node.Host, session.Node.Port, _stats.GetOrAdd(session.Node).NewPersistedNodeReputation));

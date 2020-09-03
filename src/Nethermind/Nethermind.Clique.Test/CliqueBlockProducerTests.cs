@@ -26,6 +26,7 @@ using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Validators;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Clique;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -35,7 +36,7 @@ using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -116,11 +117,10 @@ namespace Nethermind.Clique.Test
 
                 BlockhashProvider blockhashProvider = new BlockhashProvider(blockTree, LimboLogs.Instance);
                 _blockTrees.Add(privateKey, blockTree);
-
-                IBasicWallet wallet = new BasicWallet(privateKey);
+                
                 SnapshotManager snapshotManager = new SnapshotManager(_cliqueConfig, blocksDb, blockTree, _ethereumEcdsa, nodeLogManager);
                 _snapshotManager[privateKey] = snapshotManager;
-                CliqueSealer cliqueSealer = new CliqueSealer(wallet, _cliqueConfig, snapshotManager, privateKey.Address, nodeLogManager);
+                CliqueSealer cliqueSealer = new CliqueSealer(new Signer(ChainId.Goerli, privateKey, LimboLogs.Instance), _cliqueConfig, snapshotManager, nodeLogManager);
 
 
 
@@ -147,7 +147,18 @@ namespace Nethermind.Clique.Test
                 }
 
                 TxPoolTxSource txPoolTxSource = new TxPoolTxSource(txPool, stateReader, nodeLogManager);
-                CliqueBlockProducer blockProducer = new CliqueBlockProducer(txPoolTxSource, minerProcessor, minerStateProvider, blockTree, _timestamper, new CryptoRandom(), snapshotManager, cliqueSealer, privateKey.Address, _cliqueConfig, nodeLogManager);
+                CliqueBlockProducer blockProducer = new CliqueBlockProducer(
+                    txPoolTxSource,
+                    minerProcessor,
+                    minerStateProvider,
+                    blockTree,
+                    _timestamper,
+                    new CryptoRandom(),
+                    snapshotManager,
+                    cliqueSealer,
+                    new TargetAdjustedGasLimitCalculator(GoerliSpecProvider.Instance, new MiningConfig()), 
+                    _cliqueConfig,
+                    nodeLogManager);
                 blockProducer.Start();
 
                 _producers.Add(privateKey, blockProducer);
@@ -393,7 +404,7 @@ namespace Nethermind.Clique.Test
                 transaction.To = TestItem.AddressC;
                 transaction.GasLimit = 30000;
                 transaction.GasPrice = 20.GWei();
-                transaction.Nonce = _currentNonce++;
+                transaction.Nonce = _currentNonce + 1;
                 transaction.SenderAddress = TestItem.PrivateKeyD.Address;
                 transaction.Hash = transaction.CalculateHash();
                 _ethereumEcdsa.Sign(TestItem.PrivateKeyD, transaction, true);

@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections;
 using NUnit.Framework;
 using System.Collections.Generic;
@@ -22,6 +23,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
@@ -52,20 +54,19 @@ namespace Nethermind.AuRa.Test
         {
             _blockTree = Substitute.For<IBlockTree>();
             _headStep = 10;
-            _blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithHash(Keccak.Compute("hash")).WithAura(_headStep, Bytes.Empty).TestObject).TestObject);
+            _blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithHash(Keccak.Compute("hash")).WithAura(_headStep, Array.Empty<byte>()).TestObject).TestObject);
 
             _auRaStepCalculator = Substitute.For<IAuRaStepCalculator>();
             _validatorStore = Substitute.For<IValidatorStore>();
             _validSealerStrategy = Substitute.For<IValidSealerStrategy>();
-            var wallet = new DevWallet(new WalletConfig(), LimboLogs.Instance);
-            _address = wallet.NewAccount(new NetworkCredential(string.Empty, "AAA").SecurePassword);
+            var signer = new Signer(ChainId.Mainnet, Build.A.PrivateKey.TestObject, LimboLogs.Instance);
+            _address = signer.Address;
             
             _auRaSealer = new AuRaSealer(
                 _blockTree,
                 _validatorStore,
                 _auRaStepCalculator,
-                _address,
-                wallet,
+                signer,
                 _validSealerStrategy,
                 LimboLogs.Instance);
         }

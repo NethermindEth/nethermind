@@ -19,7 +19,7 @@ using System.Collections.Generic;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 
@@ -61,13 +61,15 @@ namespace Nethermind.State
 
             Span<byte> span = stackalloc byte[32];
             index.ToBigEndian(span);
+            
+            // (1% allocations on archive sync) this ToArray can be pooled or just directly converted to nibbles
             return ValueKeccak.Compute(span).BytesAsSpan.ToArray();
         }
-        
-        public byte[] Get(UInt256 index)
+
+        public byte[] Get(UInt256 index, Keccak storageRoot = null)
         {
             Span<byte> key = GetKey(index);
-            byte[] value = Get(key);
+            byte[] value = Get(key, storageRoot);
             if (value == null)
             {
                 return new byte[] {0};
@@ -81,7 +83,7 @@ namespace Nethermind.State
         {
             if (value.IsZero())
             {
-                Set(GetKey(index), Bytes.Empty);
+                Set(GetKey(index), Array.Empty<byte>());
             }
             else
             {

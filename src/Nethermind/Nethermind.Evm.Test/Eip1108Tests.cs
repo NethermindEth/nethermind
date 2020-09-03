@@ -15,7 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Specs;
-using Nethermind.Evm.Precompiles;
+using Nethermind.Evm.Precompiles.Snarks.Shamatar;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
@@ -38,7 +38,7 @@ namespace Nethermind.Evm.Test
         {
             _blockNumberAdjustment = -1;
             var code = Prepare.EvmCode
-                .CallWithInput(Bn128AddPrecompiledContract.Instance.Address, 1000L, new byte[128])
+                .CallWithInput(Bn256AddPrecompile.Instance.Address, 1000L, new byte[128])
                 .Done;
             var result = Execute(code);
             Assert.AreEqual(StatusCode.Success, result.StatusCode);
@@ -49,7 +49,7 @@ namespace Nethermind.Evm.Test
         public void Test_add_after_istanbul()
         {
             var code = Prepare.EvmCode
-                .CallWithInput(Bn128AddPrecompiledContract.Instance.Address, 1000L, new byte[128])
+                .CallWithInput(Bn256AddPrecompile.Instance.Address, 1000L, new byte[128])
                 .Done;
             var result = Execute(code);
             Assert.AreEqual(StatusCode.Success, result.StatusCode);
@@ -61,7 +61,7 @@ namespace Nethermind.Evm.Test
         {
             _blockNumberAdjustment = -1;
             var code = Prepare.EvmCode
-                .CallWithInput(Bn128MulPrecompiledContract.Instance.Address, 50000L, new byte[128])
+                .CallWithInput(Bn256MulPrecompile.Instance.Address, 50000L, new byte[128])
                 .Done;
             var result = Execute(code);
             Assert.AreEqual(StatusCode.Success, result.StatusCode);
@@ -72,7 +72,7 @@ namespace Nethermind.Evm.Test
         public void Test_mul_after_istanbul()
         {
             var code = Prepare.EvmCode
-                .CallWithInput(Bn128MulPrecompiledContract.Instance.Address, 10000L, new byte[128])
+                .CallWithInput(Bn256MulPrecompile.Instance.Address, 10000L, new byte[128])
                 .Done;
             var result = Execute(code);
             Assert.AreEqual(StatusCode.Success, result.StatusCode);
@@ -84,7 +84,7 @@ namespace Nethermind.Evm.Test
         {
             _blockNumberAdjustment = -1;
             var code = Prepare.EvmCode
-                .CallWithInput(Bn128PairingPrecompiledContract.Instance.Address, 200000L, new byte[192])
+                .CallWithInput(Bn256PairingPrecompile.Instance.Address, 200000L, new byte[192])
                 .Done;
             var result = Execute(BlockNumber, 1000000L, code);
             Assert.AreEqual(StatusCode.Success, result.StatusCode);
@@ -95,7 +95,7 @@ namespace Nethermind.Evm.Test
         public void Test_pairing_after_istanbul()
         {
             var code = Prepare.EvmCode
-                .CallWithInput(Bn128PairingPrecompiledContract.Instance.Address, 200000L, new byte[192])
+                .CallWithInput(Bn256PairingPrecompile.Instance.Address, 200000L, new byte[192])
                 .Done;
             var result = Execute(BlockNumber, 1000000L, code);
             Assert.AreEqual(StatusCode.Success, result.StatusCode);

@@ -24,7 +24,7 @@ using MongoDB.Driver.Core.Events;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo
 {

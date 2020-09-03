@@ -39,11 +39,18 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         }
 
         [Test]
-        public void Sets_values_from_contructor_argument()
+        public void Sets_values_from_constructor_argument()
         {
             byte[][] data = {new byte[] {1, 2, 3}, new byte[] {4, 5, 6}};
             NodeDataMessage message = new NodeDataMessage(data);
             Assert.AreSame(data, message.Data);
+        }
+
+        [Test]
+        public void To_string()
+        {
+            NodeDataMessage statusMessage = new NodeDataMessage(new byte[][] { });
+            _ = statusMessage.ToString();
         }
     }
 }

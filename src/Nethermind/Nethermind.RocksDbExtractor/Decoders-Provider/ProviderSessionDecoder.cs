@@ -18,10 +18,10 @@
 
 using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Core.Domain;
-using Nethermind.DataMarketplace.Providers.Domain;
+using Nethermind.RocksDbExtractor.Domain;
 using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.DataMarketplace.Providers.Infrastructure.Rlp
+namespace Nethermind.RocksDbExtractor
 {
     internal class ProviderSessionDecoder : IRlpDecoder<ProviderSession>
     {
@@ -32,7 +32,7 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure.Rlp
 
         static ProviderSessionDecoder()
         {
-            Nethermind.Serialization.Rlp.Rlp.Decoders[typeof(ProviderSession)] = new ProviderSessionDecoder();
+            Rlp.Decoders[typeof(ProviderSession)] = new ProviderSessionDecoder();
         }
 
         public ProviderSession Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -62,27 +62,27 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure.Rlp
                 consumedUnits, unpaidUnits, paidUnits, settledUnits, graceUnits, dataAvailability);
         }
 
-        public Nethermind.Serialization.Rlp.Rlp Encode(ProviderSession item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Rlp Encode(ProviderSession item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            return Nethermind.Serialization.Rlp.Rlp.Encode(
-                Nethermind.Serialization.Rlp.Rlp.Encode(item.Id),
-                Nethermind.Serialization.Rlp.Rlp.Encode(item.DepositId),
-                Nethermind.Serialization.Rlp.Rlp.Encode(item.DataAssetId),
-                Nethermind.Serialization.Rlp.Rlp.Encode(item.ConsumerAddress),
-                Nethermind.Serialization.Rlp.Rlp.Encode(item.ConsumerNodeId.Bytes),
-                Nethermind.Serialization.Rlp.Rlp.Encode(item.ProviderAddress),
-                Nethermind.Serialization.Rlp.Rlp.Encode(item.ProviderNodeId.Bytes),
-                Nethermind.Serialization.Rlp.Rlp.Encode((int) item.State),
-                Nethermind.Serialization.Rlp.Rlp.Encode(item.StartUnitsFromProvider),
-                Nethermind.Serialization.Rlp.Rlp.Encode(item.StartUnitsFromConsumer),
-                Nethermind.Serialization.Rlp.Rlp.Encode(item.StartTimestamp),
-                Nethermind.Serialization.Rlp.Rlp.Encode(item.FinishTimestamp),
-                Nethermind.Serialization.Rlp.Rlp.Encode(item.ConsumedUnits),
-                Nethermind.Serialization.Rlp.Rlp.Encode(item.UnpaidUnits),
-                Nethermind.Serialization.Rlp.Rlp.Encode(item.PaidUnits),
-                Nethermind.Serialization.Rlp.Rlp.Encode(item.SettledUnits),
-                Nethermind.Serialization.Rlp.Rlp.Encode(item.GraceUnits),
-                Nethermind.Serialization.Rlp.Rlp.Encode((int) item.DataAvailability));
+            return Rlp.Encode(
+                Rlp.Encode(item.Id),
+                Rlp.Encode(item.DepositId),
+                Rlp.Encode(item.DataAssetId),
+                Rlp.Encode(item.ConsumerAddress),
+                Rlp.Encode(item.ConsumerNodeId.Bytes),
+                Rlp.Encode(item.ProviderAddress),
+                Rlp.Encode(item.ProviderNodeId.Bytes),
+                Rlp.Encode((int) item.State),
+                Rlp.Encode(item.StartUnitsFromProvider),
+                Rlp.Encode(item.StartUnitsFromConsumer),
+                Rlp.Encode(item.StartTimestamp),
+                Rlp.Encode(item.FinishTimestamp),
+                Rlp.Encode(item.ConsumedUnits),
+                Rlp.Encode(item.UnpaidUnits),
+                Rlp.Encode(item.PaidUnits),
+                Rlp.Encode(item.SettledUnits),
+                Rlp.Encode(item.GraceUnits),
+                Rlp.Encode((int) item.DataAvailability));
         }
 
         public int GetLength(ProviderSession item, RlpBehaviors rlpBehaviors)

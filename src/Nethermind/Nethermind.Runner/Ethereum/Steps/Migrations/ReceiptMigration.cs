@@ -29,7 +29,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
 using Nethermind.State.Repositories;
@@ -39,11 +39,11 @@ using Timer = System.Timers.Timer;
 
 namespace Nethermind.Runner.Ethereum.Steps.Migrations
 {
-    public class ReceiptMigration : IDatabaseMigration
+    public class ReceiptMigration : IDatabaseMigration, IReceiptsMigration
     {
-        private static readonly Block EmptyBlock = new Block(new BlockHeader(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.Zero, 0L, 0L, UInt256.Zero, Bytes.Empty));
+        private static readonly Block EmptyBlock = new Block(new BlockHeader(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.Zero, 0L, 0L, UInt256.Zero, Array.Empty<byte>()));
 
-        private readonly EthereumRunnerContext _context;
+        //private readonly EthereumRunnerContext _context;
         private readonly ILogger _logger;
         private CancellationTokenSource? _cancellationTokenSource;
         private Task? _migrationTask;
@@ -51,22 +51,30 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
         private long _toBlock;
         private readonly MeasuredProgress _progress = new MeasuredProgress();
         [NotNull]
-        private IReceiptStorage? _receiptStorage;
+        private readonly IReceiptStorage? _receiptStorage;
         [NotNull]
-        private IDbProvider? _dbProvider;
+        private readonly IDbProvider? _dbProvider;
         [NotNull]
-        private DisposableStack? _disposeStack;
+        private readonly DisposableStack? _disposeStack;
         [NotNull]
-        private IBlockTree? _blockTree;
+        private readonly IBlockTree? _blockTree;
         [NotNull]
-        private ISyncModeSelector? _syncModeSelector;
+        private readonly ISyncModeSelector? _syncModeSelector;
         [NotNull]
-        private IChainLevelInfoRepository? _chainLevelInfoRepository;
+        private readonly IChainLevelInfoRepository? _chainLevelInfoRepository;
+
+        private readonly IInitConfig _initConfig;
 
         public ReceiptMigration(EthereumRunnerContext context)
         {
-            _context = context;
             _logger = context.LogManager.GetClassLogger<ReceiptMigration>();
+            _receiptStorage = context.ReceiptStorage ?? throw new StepDependencyException(nameof(context.ReceiptStorage));
+            _dbProvider = context.DbProvider ?? throw new StepDependencyException(nameof(context.DbProvider));
+            _disposeStack = context.DisposeStack ?? throw new StepDependencyException(nameof(context.DisposeStack));
+            _blockTree = context.BlockTree ?? throw new StepDependencyException(nameof(context.BlockTree));
+            _syncModeSelector = context.SyncModeSelector ?? throw new StepDependencyException(nameof(context.SyncModeSelector));
+            _chainLevelInfoRepository = context.ChainLevelInfoRepository ?? throw new StepDependencyException(nameof(context.ChainLevelInfoRepository));
+            _initConfig = context.Config<IInitConfig>() ?? throw new StepDependencyException("initConfig");
         }
 
         public async ValueTask DisposeAsync()
@@ -74,21 +82,21 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
             _cancellationTokenSource?.Cancel();
             await (_migrationTask ?? Task.CompletedTask);
         }
+        
+        public async Task<bool> Run(long blockNumber)
+        {
+            _cancellationTokenSource?.Cancel();
+            await (_migrationTask ?? Task.CompletedTask);
+            _receiptStorage.MigratedBlockNumber = Math.Min(Math.Max(_receiptStorage.MigratedBlockNumber, blockNumber), (_blockTree.Head?.Number ?? 0) + 1);
+            Run();
+            return _initConfig.StoreReceipts && _initConfig.ReceiptsMigration;
+        }
 
         public void Run()
         {
-            _receiptStorage = _context.ReceiptStorage ?? throw new StepDependencyException(nameof(_context.ReceiptStorage));
-            _dbProvider = _context.DbProvider ?? throw new StepDependencyException(nameof( _context.DbProvider));
-            _disposeStack = _context.DisposeStack ?? throw new StepDependencyException(nameof(_context.DisposeStack));
-            _blockTree = _context.BlockTree ?? throw new StepDependencyException(nameof(_context.BlockTree));
-            _syncModeSelector = _context.SyncModeSelector ?? throw new StepDependencyException(nameof(_context.SyncModeSelector));
-            _chainLevelInfoRepository = _context.ChainLevelInfoRepository ?? throw new StepDependencyException(nameof(_context.ChainLevelInfoRepository));
-            
-            var initConfig = _context.Config<IInitConfig>();
-
-            if (initConfig.StoreReceipts)
+            if (_initConfig.StoreReceipts)
             {
-                if (initConfig.ReceiptsMigration)
+                if (_initConfig.ReceiptsMigration)
                 {
                     if (CanMigrate(_syncModeSelector.Current))
                     {
@@ -96,12 +104,18 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
                     }
                     else
                     {
+                        _syncModeSelector.Changed -= OnSyncModeChanged;
                         _syncModeSelector.Changed += OnSyncModeChanged;
+                        if (_logger.IsInfo) _logger.Info($"ReceiptsDb migration will start after switching to full sync.");
                     }
                 }
-                else if (MigrateToBlockNumber != 0)
+                else
                 {
-                    if (_logger.IsInfo) _logger.Info($"ReceiptsDb migration disabled. Finding logs when multiple blocks receipts need to be scanned might be slow.");
+                    long migrateToBlockNumber = MigrateToBlockNumber;
+                    if (migrateToBlockNumber > 0)
+                    {
+                        if (_logger.IsInfo) _logger.Info($"ReceiptsDb migration disabled. Finding logs when multiple blocks receipts need to be scanned might be slow below {migrateToBlockNumber} block.");
+                    }
                 }
             }
         }
@@ -155,10 +169,10 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
                 return EmptyBlock;
             }
 
-            long synced = 0;
+            long synced = 1;
             IDb receiptsDb = _dbProvider.ReceiptsDb;
-
-            _progress.Update(synced);
+            
+            _progress.Reset(synced);
 
             if (_logger.IsInfo) _logger.Info(GetLogMessage("started"));
 
@@ -178,7 +192,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
 
                         if (receipts.Length == 0 || notNullReceipts.Length != 0) // if notNullReceipts.Length is 0 and receipts are not 0 - we are missing all receipts, they are not processed yet.
                         {
-                            _receiptStorage.Insert(block, false, notNullReceipts);
+                            _receiptStorage.Insert(block, notNullReceipts);
                             _receiptStorage.MigratedBlockNumber = block.Number;
                             
                             for (int i = 0; i < notNullReceipts.Length; i++)

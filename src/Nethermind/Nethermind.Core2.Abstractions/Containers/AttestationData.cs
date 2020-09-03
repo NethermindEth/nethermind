@@ -78,5 +78,10 @@ namespace Nethermind.Core2.Containers
         {
             return HashCode.Combine(BeaconBlockRoot, Index, Slot, Source, Target);
         }
+
+        public override string ToString()
+        {
+            return $"s={Slot}_i={Index}";
+        }
     }
 }

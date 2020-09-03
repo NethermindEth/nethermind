@@ -23,7 +23,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Repositories;
 using Nethermind.DataMarketplace.Core.Services;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Wallet;
 using NSubstitute;
@@ -61,6 +61,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             _enabled = true;
             _timestamper = new Timestamper();
             _wallet = Substitute.For<IWallet>();
+            _wallet.Sign(Arg.Any<Keccak>(), Arg.Any<Address>()).Returns(new Signature(new byte[65]));
             _logManager = LimboLogs.Instance;
             _host = "127.0.0.1";
             _address = Address.FromNumber(2);

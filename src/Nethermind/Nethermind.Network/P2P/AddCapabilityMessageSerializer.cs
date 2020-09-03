@@ -19,6 +19,9 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.P2P
 {
+    /// <summary>
+    /// This is probably used in NDM
+    /// </summary>
     public class AddCapabilityMessageSerializer : IMessageSerializer<AddCapabilityMessage>
     {
         public byte[] Serialize(AddCapabilityMessage message)

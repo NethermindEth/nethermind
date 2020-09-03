@@ -23,5 +23,9 @@ namespace Nethermind.Abi
         public AbiException(string message) : base(message)
         {
         }
+        
+        public AbiException(string message, Exception innerException) : base(message, innerException)
+        {
+        }
     }
 }

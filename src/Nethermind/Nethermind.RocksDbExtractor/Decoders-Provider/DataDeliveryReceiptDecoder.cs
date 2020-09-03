@@ -20,7 +20,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.DataMarketplace.Infrastructure.Rlp
+namespace Nethermind.RocksDbExtractor
 {
     public class DataDeliveryReceiptDecoder : IRlpDecoder<DataDeliveryReceipt>
     {
@@ -31,7 +31,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
         
         static DataDeliveryReceiptDecoder()
         {
-            Serialization.Rlp.Rlp.Decoders[typeof(DataDeliveryReceipt)] = new DataDeliveryReceiptDecoder();
+            Rlp.Decoders[typeof(DataDeliveryReceipt)] = new DataDeliveryReceiptDecoder();
         }
 
         public DataDeliveryReceipt Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -52,26 +52,26 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             }
         }
 
-        public Serialization.Rlp.Rlp Encode(DataDeliveryReceipt item,
+        public Rlp Encode(DataDeliveryReceipt item,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item == null)
             {
-                return Serialization.Rlp.Rlp.OfEmptySequence;
+                return Rlp.OfEmptySequence;
             }
 
-            return Serialization.Rlp.Rlp.Encode(
-                Serialization.Rlp.Rlp.Encode((int) item.StatusCode),
-                Serialization.Rlp.Rlp.Encode(item.ConsumedUnits),
-                Serialization.Rlp.Rlp.Encode(item.UnpaidUnits),
-                Serialization.Rlp.Rlp.Encode(item.Signature.V),
-                Serialization.Rlp.Rlp.Encode(item.Signature.R.WithoutLeadingZeros()),
-                Serialization.Rlp.Rlp.Encode(item.Signature.S.WithoutLeadingZeros()));
+            return Rlp.Encode(
+                Rlp.Encode((int) item.StatusCode),
+                Rlp.Encode(item.ConsumedUnits),
+                Rlp.Encode(item.UnpaidUnits),
+                Rlp.Encode(item.Signature.V),
+                Rlp.Encode(item.Signature.R.WithoutLeadingZeros()),
+                Rlp.Encode(item.Signature.S.WithoutLeadingZeros()));
         }
 
         public int GetLength(DataDeliveryReceipt item, RlpBehaviors rlpBehaviors)
         {
-            throw new System.NotImplementedException();
+            throw new NotImplementedException();
         }
     }
 }

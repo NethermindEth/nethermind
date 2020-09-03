@@ -17,8 +17,9 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie;
 using Metrics = Nethermind.Db.Metrics;
@@ -27,9 +28,10 @@ namespace Nethermind.State
 {
     public class StateReader : IStateReader
     {
-        private readonly ILogger _logger;
-        
         private readonly IDb _codeDb;
+        private readonly ILogger _logger;
+        private readonly StateTree _state;
+        private readonly StorageTree _storage;
 
         public StateReader(ISnapshotableDb stateDb, IDb codeDb, ILogManager logManager)
         {
@@ -37,80 +39,75 @@ namespace Nethermind.State
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
             _state = new StateTree(stateDb);
-        }
-        
-        private readonly StateTree _state;
-
-        public bool AccountExists(Keccak rootHash, Address address)
-        {
-            return GetState(rootHash, address) != null;
+            _storage = new StorageTree(stateDb);
         }
 
-        public bool IsEmptyAccount(Keccak rootHash, Address address)
+        public Account GetAccount(Keccak stateRoot, Address address)
         {
-            return GetState(rootHash, address).IsEmpty;
+            return GetState(stateRoot, address);
         }
 
-        public Account GetAccount(Keccak rootHash, Address address)
+        public UInt256 GetNonce(Keccak stateRoot, Address address)
         {
-            return GetState(rootHash, address);
+            return GetState(stateRoot, address)?.Nonce ?? UInt256.Zero;
         }
 
-        public bool IsDeadAccount(Keccak rootHash, Address address)
+        public Keccak GetStorageRoot(Keccak stateRoot, Address address)
         {
-            return GetState(rootHash, address)?.IsEmpty ?? true;
+            return GetState(stateRoot, address)?.StorageRoot;
         }
 
-        public UInt256 GetNonce(Keccak rootHash, Address address)
+        public byte[] GetStorage(Keccak storageRoot, UInt256 index)
         {
-            return GetState(rootHash, address)?.Nonce ?? UInt256.Zero;
+            if (storageRoot == Keccak.EmptyTreeHash)
+            {
+                return new byte[] {0};
+            }
+
+            Metrics.StorageTreeReads++;
+            return _storage.Get(index, storageRoot);
         }
 
-        public Keccak GetStorageRoot(Keccak rootHash, Address address)
+        public UInt256 GetBalance(Keccak stateRoot, Address address)
         {
-            return GetState(rootHash, address)?.StorageRoot;
-        }
-
-        public UInt256 GetBalance(Keccak rootHash, Address address)
-        {
-            return GetState(rootHash, address)?.Balance ?? UInt256.Zero;
-        }
-
-        public Keccak GetCodeHash(Keccak rootHash, Address address)
-        {
-            return GetState(rootHash, address)?.CodeHash ?? Keccak.OfAnEmptyString;
+            return GetState(stateRoot, address)?.Balance ?? UInt256.Zero;
         }
 
         public byte[] GetCode(Keccak codeHash)
         {
             if (codeHash == Keccak.OfAnEmptyString)
             {
-                return new byte[0];
+                return Array.Empty<byte>();
             }
 
             return _codeDb[codeHash.Bytes];
         }
 
-        public void RunTreeVisitor(ITreeVisitor treeVisitor, Keccak rootHash)	
+        public void RunTreeVisitor(ITreeVisitor treeVisitor, Keccak rootHash)
         {
-            _state.Accept(treeVisitor, rootHash, true);	
+            _state.Accept(treeVisitor, rootHash, true);
         }
 
-        public byte[] GetCode(Keccak rootHash, Address address)
+        public byte[] GetCode(Keccak stateRoot, Address address)
         {
-            Account account = GetState(rootHash, address);
+            Account account = GetState(stateRoot, address);
             if (account == null)
             {
-                return new byte[0];
+                return Array.Empty<byte>();
             }
 
             return GetCode(account.CodeHash);
         }
 
-        private Account GetState(Keccak rootHash, Address address)
+        private Account GetState(Keccak stateRoot, Address address)
         {
+            if (stateRoot == Keccak.EmptyTreeHash)
+            {
+                return null;
+            }
+
             Metrics.StateTreeReads++;
-            Account account = _state.Get(address, rootHash);
+            Account account = _state.Get(address, stateRoot);
             return account;
         }
     }

@@ -18,7 +18,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 
 namespace Nethermind.Specs.ChainSpecStyle.Json
 {
@@ -83,33 +83,21 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
         internal class AuraEngineParamsJson
         {
             public StepDurationJson StepDuration { get; set; }
-
             public UInt256 BlockReward { get; set; }
-
             public long MaximumUncleCountTransition { get; set; }
-        
             public int MaximumUncleCount { get; set; }
-            
             public Address BlockRewardContractAddress { get; set; }
-            
             public long? BlockRewardContractTransition { get; set; }
-            
             public IDictionary<long, Address> BlockRewardContractTransitions { get; set; } = new Dictionary<long, Address>();
-            
             public long ValidateScoreTransition { get; set; }
-        
             public long ValidateStepTransition { get; set; }
-		
             public AuRaValidatorJson Validators { get; set; }
-
             public IDictionary<long, Address> RandomnessContractAddress { get; set; } = new Dictionary<long, Address>();
-			
             public IDictionary<long, Address> BlockGasLimitContractTransitions { get; set; } = new Dictionary<long, Address>();
             public long? TwoThirdsMajorityTransition { get; set; }
+            public long? PosdaoTransition { get; set; }
 
-            public class StepDurationJson : SortedDictionary<long, long>
-            {
-            }
+            public class StepDurationJson : SortedDictionary<long, long> { }
         }
 
         internal class AuRaValidatorJson
@@ -163,6 +151,8 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
             public long ValidateScoreTransition => Params.ValidateScoreTransition;
 
             public long ValidateStepTransition => Params.ValidateStepTransition;
+
+            public long? PosdaoTransition => Params.PosdaoTransition;
 
             public long? TwoThirdsMajorityTransition => Params.TwoThirdsMajorityTransition;
 

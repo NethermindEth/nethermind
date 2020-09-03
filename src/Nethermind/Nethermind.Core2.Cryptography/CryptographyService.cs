@@ -27,6 +27,7 @@ using Nethermind.Core2.Types;
 using Microsoft.Extensions.Options;
 using Nethermind.Core2.Cryptography.Ssz;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Merkleization;
 using Nethermind.Ssz;
 
 namespace Nethermind.Core2.Cryptography
@@ -62,6 +63,23 @@ namespace Nethermind.Core2.Cryptography
             
             BLSParameters blsParameters = new BLSParameters();
             _bls = BLS.Create(blsParameters);
+            
+            Nethermind.Ssz.Ssz.Init(
+                chainConstants.DepositContractTreeDepth, 
+                chainConstants.JustificationBitsLength,
+                miscellaneousParameters.MaximumValidatorsPerCommittee,
+                timeParameters.SlotsPerEpoch,
+                timeParameters.SlotsPerEth1VotingPeriod,
+                timeParameters.SlotsPerHistoricalRoot,
+                stateListLengths.EpochsPerHistoricalVector,
+                stateListLengths.EpochsPerSlashingsVector,
+                stateListLengths.HistoricalRootsLimit,
+                stateListLengths.ValidatorRegistryLimit,
+                maxOperationsPerBlock.MaximumProposerSlashings,
+                maxOperationsPerBlock.MaximumAttesterSlashings,
+                maxOperationsPerBlock.MaximumAttestations,
+                maxOperationsPerBlock.MaximumDeposits,
+                maxOperationsPerBlock.MaximumVoluntaryExits);
             
             Nethermind.Ssz.Ssz.Init(
                 chainConstants.DepositContractTreeDepth, 
@@ -153,13 +171,13 @@ namespace Nethermind.Core2.Cryptography
 
         public Bytes32 Hash(ReadOnlySpan<byte> bytes)
         {
-            Span<byte> result = new Span<byte>(new byte[Bytes32.Length]);
+            byte[] result = new byte[Bytes32.Length];
             bool success = s_hashAlgorithm.TryComputeHash(bytes, result, out int bytesWritten);
             if (!success || bytesWritten != Bytes32.Length)
             {
                 throw new Exception("Error generating hash value.");
             }
-            return new Bytes32(result);
+            return Bytes32.Wrap(result);
         }
 
         Root ICryptographyService.HashTreeRoot(AttestationData attestationData)
@@ -230,7 +248,14 @@ namespace Nethermind.Core2.Cryptography
             return new Root(bytes);
         }
 
-        Root ICryptographyService.HashTreeRoot(IList<DepositData> depositData)
+        Root ICryptographyService.HashTreeRoot(List<DepositData> depositData)
+        {
+            Merkle.Ize(out UInt256 root, depositData);
+            Span<byte> bytes = MemoryMarshal.Cast<UInt256, byte>(MemoryMarshal.CreateSpan(ref root, 1));
+            return new Root(bytes);
+        }
+        
+        Root ICryptographyService.HashTreeRoot(List<Ref<DepositData>> depositData)
         {
             Merkle.Ize(out UInt256 root, depositData);
             Span<byte> bytes = MemoryMarshal.Cast<UInt256, byte>(MemoryMarshal.CreateSpan(ref root, 1));

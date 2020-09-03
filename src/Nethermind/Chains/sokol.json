@@ -1,5 +1,5 @@
 {
-  "name": "POA Sokol",
+  "name": "Sokol",
   "engine": {
     "authorityRound": {
       "params": {
@@ -24,7 +24,10 @@
           }
         },
         "blockRewardContractAddress": "0x3145197AD50D7083D0222DE4fCCf67d9BD05C30D",
-        "blockRewardContractTransition": 4639000
+        "blockRewardContractTransition": 4639000,
+        "randomnessContractAddress": {
+          "13391641": "0x8f2b78169B0970F11a762e56659Db52B59CBCf1B"
+        }
       }
     }
   },
@@ -91,7 +94,7 @@
             }
           },
           "12095200": {
-            "info": "EIP 1108 transition",
+            "info": "Istanbul HF",
             "price": {
               "alt_bn128_const_operations": {
                 "price": 150
@@ -113,7 +116,7 @@
             }
           },
           "12095200": {
-            "info": "EIP 1108 transition",
+            "info": "Istanbul HF",
             "price": {
               "alt_bn128_const_operations": {
                 "price": 6000
@@ -136,7 +139,7 @@
             }
           },
           "12095200": {
-            "info": "EIP 1108 transition",
+            "info": "Istanbul HF",
             "price": {
               "alt_bn128_pairing": {
                 "base": 45000,
@@ -152,7 +155,7 @@
         "name": "blake2_f",
         "pricing": {
           "12095200": {
-            "info": "EIP 1108 transition",
+            "info": "Istanbul HF",
             "price": {
               "blake2_f": {
                 "gas_per_round": 1

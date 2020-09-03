@@ -23,6 +23,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 
@@ -43,10 +44,10 @@ namespace Nethermind.Consensus.Ethash
         }
 
         public const int WordBytes = 4; // bytes in word
-        public static uint DataSetBytesInit = (uint) BigInteger.Pow(2, 30); // bytes in dataset at genesis
-        public static uint DataSetBytesGrowth = (uint) BigInteger.Pow(2, 23); // dataset growth per epoch
-        public static uint CacheBytesInit = (uint) BigInteger.Pow(2, 24); // bytes in cache at genesis
-        public static uint CacheBytesGrowth = (uint) BigInteger.Pow(2, 17); // cache growth per epoch
+        public static uint DataSetBytesInit = 1U << 30; // bytes in dataset at genesis
+        public static uint DataSetBytesGrowth = 1U << 23; // dataset growth per epoch
+        public static uint CacheBytesInit = 1U << 24; // bytes in cache at genesis
+        public static uint CacheBytesGrowth = 1U << 17; // cache growth per epoch
         public const int CacheMultiplier = 1024; // Size of the DAG relative to the cache
         public const long EpochLength = 30000; // blocks per epoch
         public const uint MixBytes = 128; // width of mix
@@ -60,60 +61,71 @@ namespace Nethermind.Consensus.Ethash
             return (uint) (blockNumber / EpochLength);
         }
 
+        /// Improvement from @AndreaLanfranchi
         public static ulong GetDataSize(uint epoch)
         {
-            ulong size = DataSetBytesInit + DataSetBytesGrowth * (ulong) epoch;
-            size -= MixBytes;
-            while (!IsPrime(size / MixBytes))
-            {
-                size -= 2 * MixBytes;
-            }
-
-            return size;
+            uint upperBound = (DataSetBytesInit / MixBytes) + (DataSetBytesGrowth / MixBytes) * epoch;
+            uint dataItems = FindLargestPrime(upperBound);
+            return dataItems * (ulong) MixBytes;
         }
 
+        /// Improvement from @AndreaLanfranchi
         public static uint GetCacheSize(uint epoch)
         {
-            uint size = CacheBytesInit + CacheBytesGrowth * epoch;
-            size -= HashBytes;
-            while (!IsPrime(size / HashBytes))
-            {
-                size -= 2 * HashBytes;
-            }
-
-            return size;
+            uint upperBound = (CacheBytesInit / HashBytes) + (CacheBytesGrowth / HashBytes) * epoch;
+            uint cacheItems = FindLargestPrime(upperBound);
+            return cacheItems * HashBytes;
         }
 
-        public static bool IsPrime(ulong number)
+        /// <summary>
+        /// Improvement from @AndreaLanfranchi
+        /// Finds the largest prime number given an upper limit
+        /// </summary>
+        /// <param name="upper">The upper boundary for prime search</param>
+        /// <returns>A prime number</returns>
+        /// <exception cref="ArgumentException">Thrown if boundary < 2</exception>
+        public static uint FindLargestPrime(uint upper)
         {
-            if (number == 1U)
+            if (upper < 2U) throw new ArgumentException("There are no prime numbers below 2");
+
+            // Only case for an even number
+            if (upper == 2U) return upper;
+
+            // If is even skip it
+            uint number = (upper % 2 == 0 ? upper - 1 : upper);
+
+            // Search odd numbers descending
+            for (; number > 5; number -= 2)
             {
-                return false;
+                if (IsPrime(number)) return number;
             }
 
-            if (number == 2U || number == 3U)
-            {
-                return true;
-            }
+            // Should we get here we have only number 3 left
+            return number;
+        }
 
-            if (number % 2U == 0U || number % 3U == 0U)
-            {
-                return false;
-            }
+        /// <summary>
+        /// Improvement from @AndreaLanfranchi 
+        /// </summary>
+        /// <param name="number"></param>
+        /// <returns></returns>
+        public static bool IsPrime(uint number)
+        {
+            if (number <= 1U) return false;
+            if (number == 2U) return true;
+            if (number % 2U == 0U) return false;
 
-            uint w = 2U;
-            uint i = 5U;
-            while (i * i <= number)
+            /* Check factors up to sqrt(number).
+               To avoid computing sqrt, compare d*d <= number with 64-bit
+               precision. Use only odd divisors as even ones are yet divisible
+               by 2 */
+            for (uint d = 3; d * (ulong) d <= number; d += 2)
             {
-                if (number % i == 0U)
-                {
+                if (number % d == 0)
                     return false;
-                }
-
-                i += w;
-                w = 6U - w;
             }
 
+            // No other divisors
             return true;
         }
 
@@ -139,10 +151,11 @@ namespace Nethermind.Consensus.Ethash
             return BitConverter.ToUInt64(buffer, 0);
         }
 
-        private bool IsLessThanTarget(byte[] result, BigInteger target)
+        private bool IsLessThanTarget(byte[] result, UInt256 difficulty)
         {
-            BigInteger resultAsInteger = result.ToUnsignedBigInteger();
-            return resultAsInteger < target;
+            UInt256 resultAsInteger = new UInt256(result, true);
+            BigInteger threshold = BigInteger.Divide(_2To256, (BigInteger)difficulty);
+            return (BigInteger)resultAsInteger < threshold;
         }
 
         public (Keccak MixHash, ulong Nonce) Mine(BlockHeader header, ulong? startNonce = null)
@@ -151,13 +164,12 @@ namespace Nethermind.Consensus.Ethash
             IEthashDataSet dataSet = _hintBasedCache.Get(epoch);
             if (dataSet == null)
             {
-                if(_logger.IsWarn) _logger.Warn($"Ethash cache miss for block {header.ToString(BlockHeader.Format.Short)}");
+                if (_logger.IsWarn) _logger.Warn($"Ethash cache miss for block {header.ToString(BlockHeader.Format.Short)}");
                 dataSet = BuildCache(epoch);
             }
-            
+
             ulong fullSize = GetDataSize(epoch);
             ulong nonce = startNonce ?? GetRandomNonce();
-            BigInteger target = BigInteger.Divide(_2To256, header.Difficulty);
             Keccak headerHashed = GetTruncatedHash(header);
 
             // parallel for (just with ulong...) - adjust based on the available mining threads, low priority
@@ -166,7 +178,7 @@ namespace Nethermind.Consensus.Ethash
             {
                 byte[] result;
                 (mixHash, result, _) = Hashimoto(fullSize, dataSet, headerHashed, null, nonce);
-                if (IsLessThanTarget(result, target))
+                if (IsLessThanTarget(result, header.Difficulty))
                 {
                     break;
                 }
@@ -206,23 +218,23 @@ namespace Nethermind.Consensus.Ethash
         }
 
         private Guid _hintBasedCacheUser = Guid.Empty;
-        
+
         public bool Validate(BlockHeader header)
         {
             uint epoch = GetEpoch(header.Number);
             IEthashDataSet dataSet = _hintBasedCache.Get(epoch);
             if (dataSet == null)
             {
-                if(_logger.IsWarn) _logger.Warn($"Ethash cache miss for block {header.ToString(BlockHeader.Format.Short)}");
+                if (_logger.IsWarn) _logger.Warn($"Ethash cache miss for block {header.ToString(BlockHeader.Format.Short)}");
                 _hintBasedCache.Hint(_hintBasedCacheUser, header.Number, header.Number);
                 dataSet = _hintBasedCache.Get(epoch);
                 if (dataSet == null)
                 {
-                    if(_logger.IsError) _logger.Error($"Hint based cache could not get data set for {header.ToString(BlockHeader.Format.Short)}");
+                    if (_logger.IsError) _logger.Error($"Hint based cache could not get data set for {header.ToString(BlockHeader.Format.Short)}");
                     return false;
                 }
             }
-            
+
             ulong fullSize = GetDataSize(epoch);
             Keccak headerHashed = GetTruncatedHash(header);
             (byte[] _, byte[] result, bool isValid) = Hashimoto(fullSize, dataSet, headerHashed, header.MixHash, header.Nonce);
@@ -231,8 +243,7 @@ namespace Nethermind.Consensus.Ethash
                 return false;
             }
             
-            BigInteger threshold = BigInteger.Divide(BigInteger.Pow(2, 256), header.Difficulty);
-            return IsLessThanTarget(result, threshold);
+            return IsLessThanTarget(result, header.Difficulty);
         }
 
         private readonly Stopwatch _cacheStopwatch = new Stopwatch();

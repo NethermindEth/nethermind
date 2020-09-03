@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Collections.Generic;
 using Nethermind.Core.Crypto;
 using Nethermind.Stats.Model;
 
@@ -31,11 +32,11 @@ namespace Nethermind.Network.Discovery.RoutingTable
         /// <summary>
         /// GetClosestNodes to MasterNode
         /// </summary>
-        Node[] GetClosestNodes();
+        IEnumerable<Node> GetClosestNodes();
 
         /// <summary>
         /// GetClosestNodes to provided Node
         /// </summary>
-        Node[] GetClosestNodes(byte[] nodeId);
+        IEnumerable<Node> GetClosestNodes(byte[] nodeId);
     }
 }

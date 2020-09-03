@@ -34,7 +34,7 @@ using Nethermind.DataMarketplace.Core.Configs;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Core.Services.Models;
 using Nethermind.Db;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
@@ -46,6 +46,7 @@ using Nethermind.TxPool.Storages;
 using Nethermind.Wallet;
 using NSubstitute;
 using NUnit.Framework;
+using System.Threading;
 
 namespace Nethermind.DataMarketplace.Test
 {
@@ -264,7 +265,7 @@ namespace Nethermind.DataMarketplace.Test
                 return new Facade.BlockchainBridge.CallOutput(tracer.ReturnValue, tracer.GasSpent, tracer.Error);
             }
 
-            public Facade.BlockchainBridge.CallOutput EstimateGas(BlockHeader header, Transaction tx)
+            public Facade.BlockchainBridge.CallOutput EstimateGas(BlockHeader header, Transaction tx, CancellationToken cancellationToken)
             {
                 throw new NotImplementedException();
             }

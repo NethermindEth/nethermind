@@ -15,10 +15,9 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 
 namespace Nethermind.TxPool
 {
@@ -26,7 +25,6 @@ namespace Nethermind.TxPool
     {
         Transaction[] GetPendingTransactions();
         Transaction[] GetOwnPendingTransactions();
-        void AddFilter<T>(T filter) where T : ITxFilter;
         void AddPeer(ITxPoolPeer peer);
         void RemovePeer(PublicKey nodeId);
         AddTxResult AddTransaction(Transaction tx, TxHandlingOptions handlingOptions);

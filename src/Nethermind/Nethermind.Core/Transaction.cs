@@ -16,9 +16,10 @@
 
 using System.Diagnostics;
 using System.Text;
+using System.Threading;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 
 namespace Nethermind.Core
 {

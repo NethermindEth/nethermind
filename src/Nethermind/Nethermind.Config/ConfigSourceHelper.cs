@@ -19,7 +19,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Newtonsoft.Json;
 
 namespace Nethermind.Config
@@ -51,7 +51,13 @@ namespace Nethermind.Config
                     var i = 0;
                     foreach (var valueItem in valueItems)
                     {
-                        var itemValue = GetValue(itemType, valueItem);
+                        string item = valueItem;
+                        if (valueItem.StartsWith('"') && valueItem.EndsWith('"'))
+                        {
+                            item = valueItem.Substring(1, valueItem.Length - 2);
+                        }
+                        
+                        var itemValue = GetValue(itemType, item);
                         if (valueType.IsGenericType)
                         {
                             collection.Add(itemValue);

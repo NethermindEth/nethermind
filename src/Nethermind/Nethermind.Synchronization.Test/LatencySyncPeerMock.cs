@@ -23,7 +23,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Stats.Model;
 using NUnit.Framework.Constraints;
 
@@ -91,13 +91,8 @@ namespace Nethermind.Synchronization.Test
         {
             throw new NotImplementedException();
         }
-        
-        public void SendNewBlock(Block block)
-        {
-            throw new NotImplementedException();
-        }
 
-        public void HintNewBlock(Keccak blockHash, long number)
+        public void NotifyOfNewBlock(Block block, SendBlockPriority priority)
         {
             throw new NotImplementedException();
         }

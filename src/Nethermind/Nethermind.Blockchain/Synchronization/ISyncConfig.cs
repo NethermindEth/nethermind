@@ -17,7 +17,7 @@
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.Blockchain.Synchronization
@@ -27,14 +27,14 @@ namespace Nethermind.Blockchain.Synchronization
         [ConfigItem(Description = "If 'false' then the node does not download/process new blocks..", DefaultValue = "true")]
         bool SynchronizationEnabled { get; set; }
         
-        [ConfigItem(Description = "Beam Sync - only for DEBUG / DEV - not working in prod yet.", DefaultValue = "false")]
+        [ConfigItem(Description = "Enables beam sync that can be useful to create some JSON RPC queries while the node is fast syncing in the background.", DefaultValue = "false")]
         bool BeamSync { get; set; }
 
         [ConfigItem(Description = "If set to 'true' then the Fast Sync (eth/63) synchronization algorithm will be used.", DefaultValue = "false")]
         bool FastSync { get; set; }
         
         // Minimum is taken from MultiSyncModeSelector.StickyStateNodesDelta
-        [ConfigItem(Description = "Relevant only if 'FastSync' is 'true'. If set to a value, then it will set a minimum height threshold limit up to which FullSync, if already on, will stay on when chain will be behind network. If this limit will be exceeded, it will switch back to FastSync. In normal usage we do not recommend setting this to less than 32 as this can cause issues with chain reorgs. Please note that last 2 blocks will always be processed in FullSync, so setting it to less than 2 will have no effect.", DefaultValue = "1024")]
+        [ConfigItem(Description = "Relevant only if 'FastSync' is 'true'. If set to a value, then it will set a minimum height threshold limit up to which FullSync, if already on, will stay on when chain will be behind network. If this limit will be exceeded, it will switch back to FastSync. In normal usage we do not recommend setting this to less than 32 as this can cause issues with chain reorgs. Please note that last 2 blocks will always be processed in FullSync, so setting it to less than 2 will have no effect.", DefaultValue = "8192")]
         long? FastSyncCatchUpHeightDelta { get; set; }
         
         [ConfigItem(Description = "If set to 'true' then in the Fast Sync mode blocks will be first downloaded from the provided PivotNumber downwards. This allows for parallelization of requests with many sync peers and with no need to worry about syncing a valid branch (syncing downwards to 0). You need to enter the pivot block number, hash and total difficulty from a trusted source (you can use etherscan and confirm with other sources if you wan to change it).", DefaultValue = "false")]
@@ -66,5 +66,17 @@ namespace Nethermind.Blockchain.Synchronization
         UInt256 PivotTotalDifficultyParsed => UInt256.Parse(PivotTotalDifficulty ?? "0x0");
 
         Keccak PivotHashParsed => PivotHash == null ? null : new Keccak(Bytes.FromHexString(PivotHash));
+        
+        [ConfigItem(Description = "Context timeout.", DefaultValue = "4")]
+        public int BeamSyncContextTimeout { get; set; }
+        
+        [ConfigItem(Description = "Beam sync pre processor timeout.", DefaultValue = "15")]
+        public int BeamSyncPreProcessorTimeout { get; set; }
+        
+        [ConfigItem(Description = "Should use beam sync to fix corrupted state DB (dev use).", DefaultValue = "false")]
+        public bool BeamSyncFixMode { get; set; }
+        
+        [ConfigItem(Description = "When beam syncing should verify each state item loaded from DB (dev use).", DefaultValue = "false")]
+        public bool BeamSyncVerifiedMode { get; set; }
     }
 }

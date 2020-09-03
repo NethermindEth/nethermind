@@ -20,7 +20,7 @@ using Jint.Native;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.Cli.Modules
@@ -35,7 +35,7 @@ namespace Nethermind.Cli.Modules
             TransactionForRpc tx = new TransactionForRpc();
             tx.Value = amountInWei;
             tx.Gas = Transaction.BaseTxGasCost;
-            tx.GasPrice = (UInt256) Engine.JintEngine.GetValue("gasPrice").AsNumber();
+            tx.GasPrice = (UInt256)Engine.JintEngine.GetValue("gasPrice").AsNumber();
             tx.To = address;
             tx.Nonce = (ulong) NodeManager.Post<long>("eth_getTransactionCount", from, blockNumber).Result;
             tx.From = from;
@@ -87,9 +87,9 @@ namespace Nethermind.Cli.Modules
         }
 
         [CliFunction("eth", "estimateGas")]
-        public string EstimateGas(object json)
+        public string EstimateGas(object json, string blockParameter = null)
         {
-            return NodeManager.Post<string>("eth_estimateGas", json).Result;
+            return NodeManager.Post<string>("eth_estimateGas", json, blockParameter ?? "latest").Result;
         }
 
         [CliFunction("eth", "sendWei")]
@@ -138,6 +138,18 @@ namespace Nethermind.Cli.Modules
         public long GetUncleCountByBlockNumber(string blockParameter)
         {
             return NodeManager.Post<long>("eth_getUncleCountByBlockNumber", blockParameter).Result;
+        }
+        
+        [CliFunction("eth", "getUncleByBlockNumberAndIndex")]
+        public JsValue GetUncleByBlockNumberAndIndex(string blockParameter, int index)
+        {
+            return NodeManager.PostJint("eth_getUncleByBlockNumberAndIndex", blockParameter, index).Result;
+        }
+        
+        [CliFunction("eth", "getUncleByBlockHashAndIndex")]
+        public JsValue GetUncleByBlockHashAndIndex(string hash, int index)
+        {
+            return NodeManager.PostJint("eth_getUncleByBlockHashAndIndex", CliParseHash(hash), index).Result;
         }
 
         [CliFunction("eth", "getTransactionByBlockNumberAndIndex")]

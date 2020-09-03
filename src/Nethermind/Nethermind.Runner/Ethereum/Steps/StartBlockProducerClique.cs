@@ -15,9 +15,11 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Blockchain;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Clique;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
+using Nethermind.Specs;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
@@ -34,7 +36,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         {
             if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
             if (_context.SnapshotManager == null) throw new StepDependencyException(nameof(_context.SnapshotManager));
-            if (_context.NodeKey == null) throw new StepDependencyException(nameof(_context.NodeKey));
+            if (_context.Signer == null) throw new StepDependencyException(nameof(_context.Signer));
             if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
             if (_context.Sealer == null) throw new StepDependencyException(nameof(_context.Sealer));
 
@@ -51,7 +53,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.CryptoRandom,
                 _context.SnapshotManager,
                 _context.Sealer,
-                _context.NodeKey.Address,
+                new TargetAdjustedGasLimitCalculator(GoerliSpecProvider.Instance, new MiningConfig()), 
                 cliqueConfig,
                 _context.LogManager);
         }

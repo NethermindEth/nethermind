@@ -120,7 +120,7 @@ namespace Nethermind.Evm.Test
             var receipt = Execute(code);
             byte[] result = Storage.Get(storageCell);
             Assert.AreEqual(new byte[] {0}, result, "storage reverted");
-            Assert.AreEqual(83136, receipt.GasSpent, "with refund");
+            Assert.AreEqual(83199, receipt.GasSpent, "with refund");
             
             byte[] returnData = Storage.Get(new StorageCell(TestItem.AddressC, 0));
             Assert.AreEqual(deployed.Bytes, returnData, "address returned");

@@ -16,10 +16,11 @@
 
 using System.Linq;
 using FluentAssertions;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
@@ -32,14 +33,14 @@ namespace Nethermind.Facade.Test
     {
         private TxPoolBridge _txPoolBridge;
         private ITxPool _txPool;
-        private IWallet _wallet;
+        private ITxSigner _txSigner;
 
         [SetUp]
         public void SetUp()
         {
             _txPool = Substitute.For<ITxPool>();
-            _wallet = Substitute.For<IWallet>();
-            _txPoolBridge = new TxPoolBridge(_txPool, _wallet, Timestamper.Default, ChainId.Mainnet);
+            _txSigner = Substitute.For<ITxSigner>();
+            _txPoolBridge = new TxPoolBridge(_txPool, _txSigner, Timestamper.Default);
         }
 
         [Test]

@@ -25,6 +25,7 @@ using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Evm;
 using Nethermind.Facade;
+using Nethermind.Facade.Transactions;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.State;
@@ -51,8 +52,8 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             VirtualMachine virtualMachine = new VirtualMachine(stateProvider, storageProvider, new BlockhashProvider(blockTree, LimboLogs.Instance), MainnetSpecProvider.Instance, LimboLogs.Instance);
             TransactionProcessor processor = new TransactionProcessor(MainnetSpecProvider.Instance, stateProvider, storageProvider, virtualMachine, LimboLogs.Instance);
 
-            BlockchainBridge blockchainBridge = new BlockchainBridge(stateReader, stateProvider, storageProvider, blockTree, txPool, new InMemoryReceiptStorage(), NullFilterStore.Instance, NullFilterManager.Instance, wallet, processor, ecdsa, NullBloomStorage.Instance, LimboLogs.Instance, false);
-            TxPoolBridge txPoolBridge = new TxPoolBridge(txPool, wallet, Timestamper.Default, ChainId.Mainnet);
+            BlockchainBridge blockchainBridge = new BlockchainBridge(stateReader, stateProvider, storageProvider, blockTree, txPool, new InMemoryReceiptStorage(), NullFilterStore.Instance, NullFilterManager.Instance, wallet, processor, ecdsa, NullBloomStorage.Instance, Timestamper.Default, LimboLogs.Instance, false);
+            TxPoolBridge txPoolBridge = new TxPoolBridge(txPool, new WalletTxSigner(wallet, ChainId.Mainnet), Timestamper.Default);
             return new NdmBlockchainBridge(txPoolBridge, blockchainBridge, txPool);
         }
     }

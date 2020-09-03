@@ -14,7 +14,6 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Specs.Forks;
 
@@ -36,17 +35,24 @@ namespace Nethermind.Specs
             {
                 return ConstantinopleFix.Instance;
             }
+            
+            if (blockNumber < BerlinBlockNumber)
+            {
+                return Istanbul.Instance;
+            }
 
-            return Istanbul.Instance;
+            return Berlin.Instance;
         }
 
         public long? DaoBlockNumber { get; } = null;
         public static long IstanbulBlockNumber => 0x17D433;
+        public static long BerlinBlockNumber => long.MaxValue - 1;
         public int ChainId => 0x5;
 
         public long[] TransitionBlocks { get; } =
         {
-            IstanbulBlockNumber
+            IstanbulBlockNumber,
+            BerlinBlockNumber
         };
     }
 }

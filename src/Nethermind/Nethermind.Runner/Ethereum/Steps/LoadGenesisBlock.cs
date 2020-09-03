@@ -45,7 +45,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             _logger = _context.LogManager.GetClassLogger();
         }
 
-        public async Task Execute()
+        public async Task Execute(CancellationToken _)
         {
             _initConfig = _context.Config<IInitConfig>();
             Keccak? expectedGenesisHash = string.IsNullOrWhiteSpace(_initConfig.GenesisHash) ? null : new Keccak(_initConfig.GenesisHash);
@@ -103,6 +103,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context.BlockTree.NewHeadBlock += GenesisProcessed;
             _context.BlockTree.SuggestBlock(genesis);
             genesisProcessedEvent.Wait(TimeSpan.FromSeconds(40));
+            
             if (!genesisLoaded)
             {
                 throw new BlockchainException("Genesis block processing failure");

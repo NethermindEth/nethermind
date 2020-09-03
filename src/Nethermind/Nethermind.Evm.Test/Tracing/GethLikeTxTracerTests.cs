@@ -14,7 +14,9 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Linq;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
@@ -22,6 +24,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing
@@ -39,7 +42,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Op(Instruction.STOP)
                 .Done;
 
-            int[] gasCosts = new int[] {3, 3, 3, 0};
+            int[] gasCosts = new int[] { 3, 3, 3, 0 };
 
             GethLikeTxTrace trace = ExecuteAndTrace(code);
 
@@ -80,7 +83,7 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.AreEqual(trace.Failed, true);
             Assert.AreEqual("StackOverflow", trace.Entries.Last().Error);
         }
-        
+
         [Test]
         [Todo("Verify the exact error string in Geth")]
         public void Can_trace_invalid_jump_failure()
@@ -94,7 +97,7 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.AreEqual(trace.Failed, true);
             Assert.AreEqual("BadJumpDestination", trace.Entries.Last().Error);
         }
-        
+
         [Test]
         [Todo("Verify the exact error string in Geth")]
         public void Can_trace_invalid_opcode_failure()
@@ -117,7 +120,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Op(Instruction.STOP)
                 .Done;
 
-            string[] opCodes = new[] {"PUSH3", "PUSH1", "STOP"};
+            string[] opCodes = new[] { "PUSH3", "PUSH1", "STOP" };
 
             GethLikeTxTrace trace = ExecuteAndTrace(code);
             for (int i = 0; i < opCodes.Length; i++)
@@ -125,7 +128,7 @@ namespace Nethermind.Evm.Test.Tracing
                 Assert.AreEqual(opCodes[i], trace.Entries[i].Operation);
             }
         }
-        
+
         [Test]
         public void Can_trace_call_depth()
         {
@@ -148,7 +151,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Call(TestItem.AddressC, 50000)
                 .Op(Instruction.STOP)
                 .Done;
-            
+
             GethLikeTxTrace trace = ExecuteAndTrace(code);
             int[] depths = new int[]
             {
@@ -158,14 +161,14 @@ namespace Nethermind.Evm.Test.Tracing
                   2, // STOP 
                 1, // STOP
             };
-            
+
             Assert.AreEqual(depths.Length, trace.Entries.Count);
             for (int i = 0; i < depths.Length; i++)
             {
                 Assert.AreEqual(depths[i], trace.Entries[i].Depth, $"entries[{i}]");
             }
         }
-        
+
         [Test]
         public void Stack_is_cleared_and_restored_when_moving_between_call_levels()
         {
@@ -190,7 +193,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Call(TestItem.AddressC, 50000)
                 .Op(Instruction.STOP)
                 .Done;
-            
+
             GethLikeTxTrace trace = ExecuteAndTrace(code);
             /* depths 
             {
@@ -200,7 +203,7 @@ namespace Nethermind.Evm.Test.Tracing
                 2, // STOP [26]
                 1, // STOP [27]
             }; */
-            
+
             Assert.AreEqual(0, trace.Entries[0].Stack.Count, "BEGIN 1");
             Assert.AreEqual(8, trace.Entries[8].Stack.Count, "CALL FROM 1");
             Assert.AreEqual(0, trace.Entries[9].Stack.Count, "BEGIN 2");
@@ -210,7 +213,7 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.AreEqual(2, trace.Entries[26].Stack.Count, "END 2");
             Assert.AreEqual(2, trace.Entries[27].Stack.Count, "END 1");
         }
-        
+
         [Test]
         public void Memory_is_cleared_and_restored_when_moving_between_call_levels()
         {
@@ -235,7 +238,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Call(TestItem.AddressC, 50000)
                 .Op(Instruction.STOP)
                 .Done;
-            
+
             GethLikeTxTrace trace = ExecuteAndTrace(code);
             /* depths 
             {
@@ -245,7 +248,7 @@ namespace Nethermind.Evm.Test.Tracing
                 2, // STOP [30]
                 1, // STOP [21]
             }; */
-            
+
             Assert.AreEqual(0, trace.Entries[0].Memory.Count, "BEGIN 1");
             Assert.AreEqual(3, trace.Entries[10].Memory.Count, "CALL FROM 1");
             Assert.AreEqual(0, trace.Entries[11].Memory.Count, "BEGIN 2");
@@ -255,7 +258,7 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.AreEqual(2, trace.Entries[30].Memory.Count, "END 2");
             Assert.AreEqual(3, trace.Entries[31].Memory.Count, "END 1");
         }
-        
+
         [Test]
         public void Storage_is_cleared_and_restored_when_moving_between_call_levels()
         {
@@ -281,7 +284,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Call(TestItem.AddressC, 70000)
                 .Op(Instruction.STOP)
                 .Done;
-            
+
             GethLikeTxTrace trace = ExecuteAndTrace(code);
             /* depths 
             {
@@ -291,7 +294,7 @@ namespace Nethermind.Evm.Test.Tracing
                 2, // STOP [33]
                 1, // STOP [34]
             }; */
-            
+
             Assert.AreEqual(0, trace.Entries[0].SortedStorage.Count, "BEGIN 1");
             Assert.AreEqual(2, trace.Entries[13].SortedStorage.Count, "CALL FROM 1");
             Assert.AreEqual(0, trace.Entries[14].SortedStorage.Count, "BEGIN 2");
@@ -318,7 +321,7 @@ namespace Nethermind.Evm.Test.Tracing
                 .Op(Instruction.STOP) // 13
                 .Done;
 
-            int[] pcs = new[] {0, 2, 3, 5, 6, 7, 9, 10, 12, 2, 3, 5, 6, 7, 9, 10, 12, 2, 3, 5, 6, 7, 9, 10, 12, 13};
+            int[] pcs = new[] { 0, 2, 3, 5, 6, 7, 9, 10, 12, 2, 3, 5, 6, 7, 9, 10, 12, 2, 3, 5, 6, 7, 9, 10, 12, 13 };
 
             GethLikeTxTrace trace = ExecuteAndTrace(code);
             Assert.AreEqual(pcs.Length, trace.Entries.Count);
@@ -327,7 +330,7 @@ namespace Nethermind.Evm.Test.Tracing
                 Assert.AreEqual(pcs[i], trace.Entries[i].Pc);
             }
         }
-        
+
         [Test]
         public void Can_trace_stack()
         {
@@ -390,6 +393,60 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.AreEqual(2, trace.Entries[6].Memory.Count, "entry[2] length");
             Assert.AreEqual(SampleHexData1.PadLeft(64, '0'), trace.Entries[6].Memory[0], "entry[6][0]");
             Assert.AreEqual(SampleHexData2.PadLeft(64, '0'), trace.Entries[6].Memory[1], "entry[6][1]");
+        }
+
+        [Test]
+        public void Throw_operation_canceled_after_given_timeout()
+        {
+            var timeout = TimeSpan.FromSeconds(1);
+            CancellationToken cancellationToken = new CancellationTokenSource(timeout).Token;
+            GethTraceOptions optionsMock = Substitute.For<GethTraceOptions>();
+            var tracer = new GethLikeTxTracer(optionsMock, cancellationToken);
+
+            Thread.Sleep(TimeSpan.FromSeconds(2));
+
+            Assert.Throws<OperationCanceledException>(() => tracer.ReportOperationRemainingGas(0));
+
+            Assert.Throws<OperationCanceledException>(() => tracer.SetOperationMemorySize(0));
+
+            Assert.Throws<OperationCanceledException>(() => tracer.StartOperation(0, 0, Instruction.ADD, 0));
+        }
+
+        [Test]
+        public void Tracers_cancellation_tokens_does_not_affect_each_other()
+        {
+            GethTraceOptions optionsMock = Substitute.For<GethTraceOptions>();
+            CancellationToken cancellationToken = new CancellationTokenSource(TimeSpan.FromMilliseconds(1)).Token;
+            var tracer = new GethLikeTxTracer(optionsMock, cancellationToken);
+
+            CancellationToken cancellationToken2 = new CancellationTokenSource().Token;
+            var tracer2 = new GethLikeTxTracer(optionsMock, cancellationToken2);;
+
+            Thread.Sleep(5);
+
+            Assert.AreNotEqual(cancellationToken, cancellationToken2); 
+        }
+
+        [Test]
+        public void Does_not_throw_operation_canceled_if_cancellation_token_is_default()
+        {
+            GethTraceOptions optionsMock = Substitute.For<GethTraceOptions>();
+            CancellationToken cancellationToken = default(CancellationToken);
+            var tracer = new GethLikeTxTracer(optionsMock, cancellationToken);
+
+            Thread.Sleep(TimeSpan.FromSeconds(2));
+
+            try 
+            {
+               tracer.StartOperation(0, 0, Instruction.ADD, 0); 
+            }
+            catch(Exception ex)
+            {
+                if(ex is OperationCanceledException)
+                    Assert.Fail("Tracer throw OperationCanceledException even when cancellation token is set to default.");
+                else
+                    Assert.Pass();
+            }
         }
     }
 }

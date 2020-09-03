@@ -2,7 +2,7 @@ FROM mcr.microsoft.com/dotnet/core/sdk:3.1 AS build
 
 COPY . .
 
-RUN git submodule update --init src/Dirichlet src/rocksdb-sharp && \
+RUN git submodule update --init src/Dirichlet src/int256 src/rocksdb-sharp && \
     dotnet publish src/Nethermind/Nethermind.Runner -c release -o out && \
     git describe --tags --always --long > out/git-hash
 

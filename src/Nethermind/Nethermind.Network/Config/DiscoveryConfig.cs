@@ -32,8 +32,8 @@ namespace Nethermind.Network.Config
         public int DiscoveryPersistenceInterval { get; set; } = 1000 * 180;
         public int DiscoveryNewCycleWaitTime { get; set; } = 50;
         public int UdpChannelCloseTimeout { get; set; } = 1000 * 5;
-        public int MaxNodeLifecycleManagersCount { get; set; } = 2000;
-        public int NodeLifecycleManagersCleanupCount { get; set; } = 200;
+        public int MaxNodeLifecycleManagersCount { get; set; } = 8000;
+        public int NodeLifecycleManagersCleanupCount { get; set; } = 4000;
         public string Bootnodes { get; set; } = string.Empty;
         public bool IsDiscoveryNodesPersistenceOn { get; set; } = true;
 

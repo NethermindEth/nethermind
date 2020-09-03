@@ -258,7 +258,7 @@ namespace Nethermind.Db.Blooms
                 LevelElementSize = levelElementSize;
                 LevelMultiplier = levelMultiplier;
                 _migrationStatistics = migrationStatistics;
-                _cache = new LruCacheWithRecycling<long, Bloom>(levelMultiplier, levelMultiplier, "blooms");
+                _cache = new LruCache<long, Bloom>(levelMultiplier, levelMultiplier, "blooms");
             }
 
             public void Store(long blockNumber, Bloom bloom)
@@ -283,7 +283,7 @@ namespace Nethermind.Db.Blooms
                 }
             }
             
-            private static uint CountBits(Bloom bloom) => (uint) bloom.Bytes.AsSpan().CountBits();
+            private static uint CountBits(Bloom bloom) => bloom.Bytes.AsSpan().CountBits();
 
             public long GetBucket(long blockNumber) => blockNumber / LevelElementSize;
 

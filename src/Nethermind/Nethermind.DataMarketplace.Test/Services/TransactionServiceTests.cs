@@ -18,12 +18,14 @@ using System;
 using System.Numerics;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.DataMarketplace.Core.Configs;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Services;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Wallet;
 using NSubstitute;
@@ -45,11 +47,11 @@ namespace Nethermind.DataMarketplace.Test.Services
         {
             _blockchainBridge = Substitute.For<INdmBlockchainBridge>();
             _wallet = Substitute.For<IWallet>();
+            _wallet.Sign(Arg.Any<Keccak>(), Arg.Any<Address>()).Returns(new Signature(new byte[65]));
             _configManager = Substitute.For<IConfigManager>();
             _config = new NdmConfig();
             _configManager.GetAsync(ConfigId).Returns(_config);
-            _transactionService = new TransactionService(_blockchainBridge, _wallet, _configManager, ConfigId,
-                LimboLogs.Instance);
+            _transactionService = new TransactionService(_blockchainBridge, _wallet, _configManager, ConfigId, LimboLogs.Instance);
         }
 
         [Test]
@@ -181,8 +183,8 @@ namespace Nethermind.DataMarketplace.Test.Services
             transaction.GasLimit.Should().Be(21000);
             transaction.Value.Should().Be(0);
             transaction.GasLimit.Should().Be(21000);
-            var expectedGasPrice = _config.CancelTransactionGasPricePercentageMultiplier * (BigInteger) gasPrice / 100;
-            transaction.GasPrice.Should().Be(new UInt256(expectedGasPrice));
+            var expectedGasPrice = _config.CancelTransactionGasPricePercentageMultiplier * gasPrice / 100;
+            transaction.GasPrice.Should().Be(expectedGasPrice);
             await _blockchainBridge.Received().GetTransactionAsync(transactionHash);
             await _blockchainBridge.Received().GetNetworkIdAsync();
             await _blockchainBridge.Received().SendOwnTransactionAsync(transaction);

@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
+using System.IO.Abstractions;
 using System.Linq;
 using System.Reflection;
 using FluentAssertions.Specialized;
@@ -24,7 +25,7 @@ using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
@@ -56,7 +57,7 @@ namespace Nethermind.JsonRpc.Test
 
         private JsonRpcResponse TestRequest<T>(T module, string method, params string[] parameters) where T : IModule
         {
-            RpcModuleProvider moduleProvider = new RpcModuleProvider(_configurationProvider.GetConfig<IJsonRpcConfig>(), LimboLogs.Instance);
+            RpcModuleProvider moduleProvider = new RpcModuleProvider(new FileSystem(), _configurationProvider.GetConfig<IJsonRpcConfig>(), LimboLogs.Instance);
             moduleProvider.Register(new SingletonModulePool<T>(new SingletonFactory<T>(module), true));
             _jsonRpcService = new JsonRpcService(moduleProvider, _logManager);
             JsonRpcRequest request = RpcTest.GetJsonRequest(method, parameters);

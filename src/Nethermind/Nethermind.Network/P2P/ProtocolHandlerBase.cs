@@ -64,7 +64,8 @@ namespace Nethermind.Network.P2P
         {
             Interlocked.Increment(ref Counter);
             if (Logger.IsTrace) Logger.Trace($"{Counter} Sending {typeof(T).Name}");
-            if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportOutgoingMessage(Session.Node.Host, Name, typeof(T).Name);
+            if(NetworkDiagTracer.IsEnabled)
+                NetworkDiagTracer.ReportOutgoingMessage(Session.Node.Address, Name, message.ToString());
             Session.DeliverMessage(message);
         }
 
@@ -78,7 +79,7 @@ namespace Nethermind.Network.P2P
             {
                 if (Logger.IsTrace)
                 {
-                    Logger.Trace($"Disconnecting due to timeout for protocol init message ({GetType().Name}): {Session.RemoteNodeId}");
+                    Logger.Trace($"Disconnecting due to timeout for protocol init message ({Name}): {Session.RemoteNodeId}");
                 }
                 
                 Session.InitiateDisconnect(DisconnectReason.ReceiveMessageTimeout, "protocol init timeout");
@@ -93,17 +94,31 @@ namespace Nethermind.Network.P2P
         {
             _initCompletionSource?.SetResult(msg);
         }
+        
+        protected void ReportIn(MessageBase messageBase)
+        {
+            ReportIn(messageBase.ToString());
+        }
+        
+        protected void ReportIn(string messageInfo)
+        {
+            if (NetworkDiagTracer.IsEnabled)
+                NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, messageInfo);
+        }
 
         public abstract void Dispose();
 
         public abstract byte ProtocolVersion { get; protected set; }
+        
         public abstract string ProtocolCode { get; }
+        
         public abstract int MessageIdSpaceSize { get; }
+        
         public abstract void Init();
 
         public abstract void HandleMessage(Packet message);
 
-        public abstract void InitiateDisconnect(DisconnectReason disconnectReason, string details);
+        public abstract void DisconnectProtocol(DisconnectReason disconnectReason, string details);
 
         public abstract bool HasAvailableCapability(Capability capability);
 
@@ -112,6 +127,7 @@ namespace Nethermind.Network.P2P
         public abstract void AddSupportedCapability(Capability capability);
 
         public abstract event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
+        
         public abstract event EventHandler<ProtocolEventArgs> SubprotocolRequested;
     }
 }

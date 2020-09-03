@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.IO.IsolatedStorage;
 using Nethermind.Core.Extensions;
 using Newtonsoft.Json;
 
@@ -22,14 +23,24 @@ namespace Nethermind.Serialization.Json
 {
     public class Bytes32Converter : JsonConverter<byte[]>
     {
-        public override void WriteJson(JsonWriter writer, byte[] value, Newtonsoft.Json.JsonSerializer serializer)
+        public override void WriteJson(JsonWriter writer, byte[] value, JsonSerializer serializer)
         {
             writer.WriteValue(string.Concat("0x", value.ToHexString(false).PadLeft(64, '0')));
         }
 
-        public override byte[] ReadJson(JsonReader reader, Type objectType, byte[] existingValue, bool hasExistingValue, Newtonsoft.Json.JsonSerializer serializer)
+        public override byte[] ReadJson(
+            JsonReader reader,
+            Type objectType,
+            byte[] existingValue,
+            bool hasExistingValue,
+            JsonSerializer serializer)
         {
             string s = (string) reader.Value;
+            if (s is null)
+            {
+                return null;
+            }
+            
             return Bytes.FromHexString(s);
         }
     }

@@ -23,7 +23,7 @@
     },
     "Goerli": {
       "commandName": "Project",
-      "commandLineArgs": "--config configs\\goerli.cfg --baseDbPath C:\\ --JsonRpc.Enabled true"
+      "commandLineArgs": "--config configs\\goerli.cfg --baseDbPath C:\\goerli_mem_fast --JsonRpc.Enabled true"
     },
     "Sokol": {
       "commandName": "Project",
@@ -39,15 +39,15 @@
     },
     "AuRaTestMiner": {
       "commandName": "Project",
-      "commandLineArgs": "--JsonRpc.Enabled true --config configs\\AuRaTest.cfg --baseDbPath C:\\nethermind_db\\nethermind_db\\AuRaTest\\Miner --KeyStore.TestNodeKey 0xcff9b5a51f50cfddbbd227a273c769164dfe6b6185b56f63e4eb2c545bf5ca38 --Init.IsMining true --Init.EnableUnsecuredDevWallet true --Init.LogFileName C:\\temp\\AuraMiner.log.txt"
+      "commandLineArgs": "--JsonRpc.Enabled true --config configs\\AuRaTest.cfg --baseDbPath C:\\nethermind_db\\nethermind_db\\AuRaTest\\Miner --KeyStore.TestNodeKey 0xcff9b5a51f50cfddbbd227a273c769164dfe6b6185b56f63e4eb2c545bf5ca38 --Init.IsMining true --Init.LogFileName C:\\temp\\AuraMiner.log.txt"
     },
     "AuRaTestMiner2": {
       "commandName": "Project",
-      "commandLineArgs": "--JsonRpc.Enabled true --config configs\\AuRaTest.cfg --baseDbPath C:\\nethermind_db\\nethermind_db\\AuRaTest\\Miner2 --KeyStore.TestNodeKey 0xcb807c162517bfb179adfeee0d440b81e0bba770e377be4f887e0a4e6c27575d --Init.IsMining true --Init.EnableUnsecuredDevWallet true --Network.DiscoveryPort 30305 --Network.P2PPort 30305 --JsonRpc.Port 8548 --Init.LogFileName C:\\temp\\AuraMiner2.log.txt"
+      "commandLineArgs": "--JsonRpc.Enabled true --config configs\\AuRaTest.cfg --baseDbPath C:\\nethermind_db\\nethermind_db\\AuRaTest\\Miner2 --KeyStore.TestNodeKey 0xcb807c162517bfb179adfeee0d440b81e0bba770e377be4f887e0a4e6c27575d --Init.IsMining true --Network.DiscoveryPort 30305 --Network.P2PPort 30305 --JsonRpc.Port 8548 --Init.LogFileName C:\\temp\\AuraMiner2.log.txt"
     },
     "AuRaTestDownloader": {
       "commandName": "Project",
-      "commandLineArgs": "--JsonRpc.Enabled true --config configs\\AuRaTest.cfg --baseDbPath C:\\nethermind_db\\nethermind_db\\AuRaTest\\Downloader --KeyStore.TestNodeKey 0x57e4b69f7ba48336b5669d17f5141b24ebcbf998fe2bc86bed2c673487d4b4ac --Init.IsMining false --Network.DiscoveryPort 30304 --Network.P2PPort 30304 --JsonRpc.Port 8547 --Init.EnableUnsecuredDevWallet true --Init.LogFileName C:\\temp\\AuraDownloader.log.txt --Sync.FastSync true"
+      "commandLineArgs": "--JsonRpc.Enabled true --config configs\\AuRaTest.cfg --baseDbPath C:\\nethermind_db\\nethermind_db\\AuRaTest\\Downloader --KeyStore.TestNodeKey 0x57e4b69f7ba48336b5669d17f5141b24ebcbf998fe2bc86bed2c673487d4b4ac --Init.IsMining false --Network.DiscoveryPort 30304 --Network.P2PPort 30304 --JsonRpc.Port 8547 --Init.LogFileName C:\\temp\\AuraDownloader.log.txt --Sync.FastSync true"
     },
     "Volta": {
       "commandName": "Project",
@@ -69,4 +69,3 @@
     }
   }
 }
-

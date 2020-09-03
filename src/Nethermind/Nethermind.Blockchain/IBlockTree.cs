@@ -53,9 +53,9 @@ namespace Nethermind.Blockchain
         BlockHeader LowestInsertedHeader { get; }
 
         /// <summary>
-        /// Lowest header added in reverse insert
+        /// Lowest body added in reverse insert
         /// </summary>
-        Block LowestInsertedBody { get; }
+        long? LowestInsertedBodyNumber { get; set; }
         
         /// <summary>
         /// Best downloaded block number (highest number of chain level on the chain)
@@ -77,6 +77,8 @@ namespace Nethermind.Blockchain
         AddBlockResult Insert(Block block);
         
         void Insert(IEnumerable<Block> blocks);
+        
+        void UpdateHeadBlock(Keccak blockHash);
 
         /// <summary>
         /// Suggests block for inclusion in the block tree.
@@ -121,10 +123,14 @@ namespace Nethermind.Blockchain
         Task Accept(IBlockTreeVisitor blockTreeVisitor, CancellationToken cancellationToken);
 
         ChainLevelInfo FindLevel(long number);
+        
+        BlockInfo FindCanonicalBlockInfo(long blockNumber);
 
         Keccak FindHash(long blockNumber);
 
         BlockHeader[] FindHeaders(Keccak hash, int numberOfBlocks, int skip, bool reverse);
+
+        BlockHeader FindLowestCommonAncestor(BlockHeader firstDescendant, BlockHeader secondDescendant, long maxSearchDepth);
         
         void DeleteInvalidBlock(Block invalidBlock);
 

@@ -17,28 +17,32 @@
 
 using System;
 using Nethermind.Consensus.AuRa.Contracts;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.State;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
-    public class TxPermissionFilter : ITxPermissionFilter
+    public class PermissionBasedTxFilter : ITxFilter
     {
-        private readonly TransactionPermissionContract _contract;
-        private readonly ITxPermissionFilter.Cache _cache;
+        private readonly VersionedContract<ITransactionPermissionContract> _contract;
+        private readonly Cache _cache;
         private readonly IStateProvider _stateProvider;
         private readonly ILogger _logger;
-        
-        public TxPermissionFilter(TransactionPermissionContract contract, ITxPermissionFilter.Cache cache, IStateProvider stateProvider, ILogManager logManager)
+
+        public PermissionBasedTxFilter(
+            VersionedContract<ITransactionPermissionContract> contract,
+            Cache cache,
+            IStateProvider stateProvider,
+            ILogManager logManager)
         {
             _contract = contract ?? throw new ArgumentNullException(nameof(contract));
             _cache = cache ?? throw new ArgumentNullException(nameof(cache));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
-            _logger = logManager?.GetClassLogger<TxPermissionFilter>() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<PermissionBasedTxFilter>() ?? throw new ArgumentNullException(nameof(logManager));
         }
         
         public bool IsAllowed(Transaction tx, BlockHeader parentHeader)
@@ -51,21 +55,27 @@ namespace Nethermind.Consensus.AuRa.Transactions
             {
                 var txType = GetTxType(tx);
                 var txPermissions = GetPermissions(tx, parentHeader);
-                if (_logger.IsTrace) _logger.Trace($"Given transaction data: sender: {tx.SenderAddress} to: {tx.To} value: {tx.Value}, gas_price: {tx.GasPrice}. Permissions required: {txType}, got: {txPermissions}.");
+                if (_logger.IsTrace)
+                    _logger.Trace(
+                        $"Given transaction: {tx.Hash} sender: {tx.SenderAddress} to: {tx.To} value: {tx.Value}, gas_price: {tx.GasPrice}. " +
+                        $"Permissions required: {txType}, got: {txPermissions}.");
                 return (txPermissions & txType) == txType;
             }
         }
 
-        private TransactionPermissionContract.TxPermissions GetPermissions(Transaction tx, BlockHeader parentHeader)
+        private ITransactionPermissionContract.TxPermissions GetPermissions(Transaction tx, BlockHeader parentHeader)
         {
             var key = (parentHeader.Hash, tx.SenderAddress);
             var txCachedPermissions = _cache.Permissions.Get(key);
             return txCachedPermissions ?? GetPermissionsFromContract(tx, parentHeader, key);
         }
 
-        private TransactionPermissionContract.TxPermissions GetPermissionsFromContract(Transaction tx, BlockHeader parentHeader, in (Keccak Hash, Address SenderAddress) key)
+        private ITransactionPermissionContract.TxPermissions GetPermissionsFromContract(
+            Transaction tx,
+            BlockHeader parentHeader,
+            in (Keccak Hash, Address SenderAddress) key)
         {
-            TransactionPermissionContract.TxPermissions txPermissions = TransactionPermissionContract.TxPermissions.None;
+            ITransactionPermissionContract.TxPermissions txPermissions = ITransactionPermissionContract.TxPermissions.None;
             bool shouldCache = true;
             
             var versionedContract = GetVersionedContract(parentHeader);
@@ -95,29 +105,22 @@ namespace Nethermind.Consensus.AuRa.Transactions
             return txPermissions;
         }
 
-        private TransactionPermissionContract.ITransactionPermissionVersionedContract GetVersionedContract(BlockHeader blockHeader)
-        {
-            TransactionPermissionContract.ITransactionPermissionVersionedContract versionedContract;
-            if (_cache.VersionedContracts.TryGet(blockHeader.Hash, out var version))
-            {
-                versionedContract = _contract.GetVersionedContract(version);
-            }
-            else
-            {
-                versionedContract = _contract.GetVersionedContract(blockHeader);
-                _cache.VersionedContracts.Set(blockHeader.Hash, versionedContract.Version);
-            }
+        private ITransactionPermissionContract GetVersionedContract(BlockHeader blockHeader)
+            => _contract.ResolveVersion(blockHeader);
 
-            return versionedContract;
-        }
-
-        private TransactionPermissionContract.TxPermissions GetTxType(Transaction tx)
-        {
-            return tx.IsContractCreation
-                ? TransactionPermissionContract.TxPermissions.Create
+        private ITransactionPermissionContract.TxPermissions GetTxType(Transaction tx) =>
+            tx.IsContractCreation
+                ? ITransactionPermissionContract.TxPermissions.Create
                 : _stateProvider.GetCodeHash(tx.To) != Keccak.OfAnEmptyString
-                    ? TransactionPermissionContract.TxPermissions.Call
-                    : TransactionPermissionContract.TxPermissions.Basic;
+                    ? ITransactionPermissionContract.TxPermissions.Call
+                    : ITransactionPermissionContract.TxPermissions.Basic;
+        
+        public class Cache
+        {
+            public const int MaxCacheSize = 4096;
+            
+            internal ICache<(Keccak ParentHash, Address Sender), ITransactionPermissionContract.TxPermissions?> Permissions { get; } =
+                new LruCache<(Keccak ParentHash, Address Sender), ITransactionPermissionContract.TxPermissions?>(MaxCacheSize, "TxPermissions");
         }
     }
 }

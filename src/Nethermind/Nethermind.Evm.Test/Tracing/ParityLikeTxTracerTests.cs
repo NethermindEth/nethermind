@@ -16,12 +16,13 @@
 
 using System;
 using System.Linq;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.ParityStyle;
@@ -560,7 +561,7 @@ namespace Nethermind.Evm.Test.Tracing
         public void Can_trace_precompile_calls()
         {
             byte[] code = Prepare.EvmCode
-                .Call(IdentityPrecompiledContract.Instance.Address, 50000)
+                .Call(IdentityPrecompile.Instance.Address, 50000)
                 .Op(Instruction.STOP)
                 .Done;
 
@@ -574,7 +575,7 @@ namespace Nethermind.Evm.Test.Tracing
             };
 
             Assert.AreEqual("call", trace.Action.Subtraces[0].CallType, "[0] type");
-            Assert.AreEqual(IdentityPrecompiledContract.Instance.Address, trace.Action.Subtraces[0].To, "[0] to");
+            Assert.AreEqual(IdentityPrecompile.Instance.Address, trace.Action.Subtraces[0].To, "[0] to");
         }
 
         [Test]
@@ -751,16 +752,16 @@ namespace Nethermind.Evm.Test.Tracing
         public void Cannot_mark_as_failed_when_actions_stacked()
         {
             ParityLikeTxTracer tracer = new ParityLikeTxTracer(Build.A.Block.TestObject, Build.A.Transaction.TestObject, ParityTraceTypes.All);
-            tracer.ReportAction(1000L, 10, Address.Zero, Address.Zero, Bytes.Empty, ExecutionType.Call, false);
-            Assert.Throws<InvalidOperationException>(() => tracer.MarkAsFailed(TestItem.AddressA, 21000, Bytes.Empty, "Error"));
+            tracer.ReportAction(1000L, 10, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.Call, false);
+            Assert.Throws<InvalidOperationException>(() => tracer.MarkAsFailed(TestItem.AddressA, 21000, Array.Empty<byte>(), "Error"));
         }
 
         [Test]
         public void Cannot_mark_as_success_when_actions_stacked()
         {
             ParityLikeTxTracer tracer = new ParityLikeTxTracer(Build.A.Block.TestObject, Build.A.Transaction.TestObject, ParityTraceTypes.All);
-            tracer.ReportAction(1000L, 10, Address.Zero, Address.Zero, Bytes.Empty, ExecutionType.Call, false);
-            Assert.Throws<InvalidOperationException>(() => tracer.MarkAsSuccess(TestItem.AddressA, 21000, Bytes.Empty, new LogEntry[] { }));
+            tracer.ReportAction(1000L, 10, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.Call, false);
+            Assert.Throws<InvalidOperationException>(() => tracer.MarkAsSuccess(TestItem.AddressA, 21000, Array.Empty<byte>(), new LogEntry[] { }));
         }
 
         [Test]
@@ -771,6 +772,29 @@ namespace Nethermind.Evm.Test.Tracing
 
             ParityLikeBlockTracer tracer2 = new ParityLikeBlockTracer(ParityTraceTypes.Rewards);
             Assert.True(tracer2.IsTracingRewards);
+        }
+
+        [Test]
+        public void Throws_operation_canceled_after_timeout()
+        {
+            CancellationToken cancellationToken = new CancellationTokenSource(TimeSpan.FromMilliseconds(300)).Token;
+
+            (var block, var transaction) = PrepareTx(BlockNumber, 100000, new byte[]{0,0,0});
+            ParityLikeTxTracer tracer = new ParityLikeTxTracer(block, transaction, ParityTraceTypes.Trace, cancellationToken);
+
+            try
+            {
+                tracer.StartOperation(0, 0, Instruction.ADD, 0);
+            }
+            catch(Exception ex)
+            {
+                if(ex is OperationCanceledException)
+                    Assert.Fail("Threw OperationCancelledException before timeout.");
+            }
+
+            Thread.Sleep(TimeSpan.FromMilliseconds(500));
+
+            Assert.Throws<OperationCanceledException>(() => tracer.StartOperation(0, 0, Instruction.ADD, 0));
         }
 
         private (ParityLikeTxTrace trace, Block block, Transaction tx) ExecuteInitAndTraceParityCall(params byte[] code)

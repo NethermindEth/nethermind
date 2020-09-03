@@ -15,7 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 
 namespace Nethermind.Core
 {
@@ -35,5 +35,10 @@ namespace Nethermind.Core
         public bool WasProcessed { get; set; }
         public Keccak BlockHash { get; set; }
         public bool IsFinalized { get; set; }
+        
+        /// <summary>
+        /// This property is not serialized
+        /// </summary>
+        public long BlockNumber { get; set; }
     }
 }

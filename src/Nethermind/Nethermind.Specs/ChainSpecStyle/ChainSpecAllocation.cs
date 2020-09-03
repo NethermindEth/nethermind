@@ -14,7 +14,10 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Dirichlet.Numerics;
+using System.Collections.Generic;
+using System.Linq;
+using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 
 namespace Nethermind.Specs.ChainSpecStyle
 {
@@ -28,12 +31,13 @@ namespace Nethermind.Specs.ChainSpecStyle
         {
             Balance = allocationValue;
         }
-        
-        public ChainSpecAllocation(UInt256 allocationValue, byte[] code, byte[] constructor)
+
+        public ChainSpecAllocation(UInt256 allocationValue, byte[] code, byte[] constructor, Dictionary<UInt256, byte[]> storage)
         {
             Balance = allocationValue;
             Code = code;
             Constructor = constructor;
+            Storage = storage;
         }
         
         public UInt256 Balance { get; set; }
@@ -41,5 +45,8 @@ namespace Nethermind.Specs.ChainSpecStyle
         public byte[] Code { get; set; }
         
         public byte[] Constructor { get; set; }
+
+        public Dictionary<UInt256, byte[]> Storage { get; set; }
+
     }
 }

@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Logging;
@@ -22,12 +23,11 @@ using Nethermind.PubSub;
 using Nethermind.PubSub.Kafka;
 using Nethermind.PubSub.Kafka.Avro;
 using Nethermind.Runner.Ethereum.Context;
-using Nethermind.Runner.Ethereum.Subsystems;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
     [RunnerStepDependencies(typeof(StartBlockProcessor))]
-    public class StartKafkaProducer : IStep, ISubsystemStateAware
+    public class StartKafkaProducer : IStep
     {
         private readonly EthereumRunnerContext _context;
         private ILogger _logger;
@@ -36,14 +36,9 @@ namespace Nethermind.Runner.Ethereum.Steps
         {
             _context = context;
             _logger = context.LogManager.GetClassLogger();
-            EthereumSubsystemState newState = _context.Config<IKafkaConfig>().Enabled
-                ? EthereumSubsystemState.AwaitingInitialization
-                : EthereumSubsystemState.Disabled;
-
-            SubsystemStateChanged?.Invoke(this, new SubsystemStateEventArgs(newState));
         }
 
-        public async Task Execute()
+        public async Task Execute(CancellationToken _)
         {
             if (_context.BlockTree == null)
             {
@@ -70,9 +65,5 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             return kafkaProducer;
         }
-        
-        public event EventHandler<SubsystemStateEventArgs>? SubsystemStateChanged;
-
-        public EthereumSubsystem MonitoredSubsystem => EthereumSubsystem.Kafka;
     }
 }

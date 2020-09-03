@@ -31,8 +31,6 @@ namespace Nethermind.Core
         public Address LoggersAddress { get; }
         public Keccak[] Topics { get; }
         public byte[] Data { get; }
-        
-        public static LogEntry[] EmptyLogs = new LogEntry[0];
     }
     
     public ref struct LogEntryStructRef

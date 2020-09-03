@@ -16,9 +16,12 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Synchronization.LesSync;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using System.Threading.Tasks;
+using Nethermind.Synchronization.FastSync;
 
 namespace Nethermind.Synchronization
 {
@@ -26,14 +29,17 @@ namespace Nethermind.Synchronization
     {
         void HintBlock(Keccak hash, long number, ISyncPeer receivedFrom);
         void AddNewBlock(Block block, ISyncPeer node);
-        TxReceipt[][] GetReceipts(IList<Keccak> blockHashes);
-        Block Find(Keccak hash);
-        Keccak FindHash(long number);
+        TxReceipt[] GetReceipts(Keccak blockHashes);
+        Block? Find(Keccak hash);
+        BlockHeader FindLowestCommonAncestor(BlockHeader firstDescendant, BlockHeader secondDescendant);
+        public Task BuildCHT();
+        public CanonicalHashTrie? GetCHT();
+        Keccak? FindHash(long number);
         BlockHeader[] FindHeaders(Keccak hash, int numberOfBlocks, int skip, bool reverse);
-        byte[][] GetNodeData(IList<Keccak> keys);
+        byte[]?[] GetNodeData(IList<Keccak> keys, NodeDataType includedTypes = NodeDataType.Code | NodeDataType.State);
         int GetPeerCount();
         int ChainId { get; }
         BlockHeader Genesis { get; }
-        BlockHeader Head { get; }
+        BlockHeader? Head { get; }
     }
 }

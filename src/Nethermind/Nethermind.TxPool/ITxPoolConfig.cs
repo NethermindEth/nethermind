@@ -20,16 +20,15 @@ namespace Nethermind.TxPool
 {
     public interface ITxPoolConfig : IConfig
     {
-        [ConfigItem(DefaultValue = "15")]
-        int ObsoletePendingTransactionInterval { get; set; }
-        
-        [ConfigItem(DefaultValue = "600")]
-        int RemovePendingTransactionInterval { get; set; }
-        
         [ConfigItem(DefaultValue = "5")]
         int PeerNotificationThreshold { get; set; }
         
         [ConfigItem(DefaultValue = "2048", Description = "Max number of transactions held in mempool (more transactions in mempool mean more memory used")]
         int Size { get; set; }
+        
+        [ConfigItem(DefaultValue = "512 * 1024",
+            Description = "Max number of cached hashes of already known transactions." +
+                          "It is set automatically by the memory hint.")]
+        int HashCacheSize { get; set; }
     }
 }

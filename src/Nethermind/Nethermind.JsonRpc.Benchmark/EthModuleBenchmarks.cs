@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using BenchmarkDotNet.Attributes;
+using Jint.Native;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
@@ -37,6 +38,7 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
+using Nethermind.Facade.Transactions;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using BlockTree = Nethermind.Blockchain.BlockTree;
@@ -109,10 +111,11 @@ namespace Nethermind.JsonRpc.Benchmark
                 transactionProcessor, 
                 new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance),
                 bloomStorage,
+                Timestamper.Default,
                 LimboLogs.Instance,
                 false);
             
-            TxPoolBridge txPoolBridge = new TxPoolBridge(NullTxPool.Instance, NullWallet.Instance, Timestamper.Default, specProvider.ChainId);
+            TxPoolBridge txPoolBridge = new TxPoolBridge(NullTxPool.Instance, new WalletTxSigner(NullWallet.Instance, specProvider.ChainId), Timestamper.Default);
             
             _ethModule = new EthModule(new JsonRpcConfig(), bridge, txPoolBridge, LimboLogs.Instance);
         }

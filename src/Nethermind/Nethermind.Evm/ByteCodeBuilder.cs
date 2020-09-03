@@ -19,7 +19,7 @@ using System.Collections.Generic;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 
 namespace Nethermind.Evm
 {
@@ -29,13 +29,19 @@ namespace Nethermind.Evm
         public static Prepare EvmCode => new Prepare();
         public byte[] Done => _byteCode.ToArray();
 
+        public Prepare Op(byte instruction)
+        {
+            _byteCode.Add(instruction);
+            return this;
+        }
+        
         public Prepare Op(Instruction instruction)
         {
             _byteCode.Add((byte) instruction);
             return this;
         }
 
-        public Prepare Create(byte[] code, BigInteger value)
+        public Prepare Create(byte[] code, UInt256 value)
         {
             StoreDataInMemory(0, code);
             PushData(code.Length);
@@ -45,7 +51,7 @@ namespace Nethermind.Evm
             return this;
         }
 
-        public Prepare Create2(byte[] code, byte[] salt, BigInteger value)
+        public Prepare Create2(byte[] code, byte[] salt, UInt256 value)
         {
             StoreDataInMemory(0, code);
             PushData(salt);
@@ -58,21 +64,47 @@ namespace Nethermind.Evm
 
         public Prepare ForInitOf(byte[] codeToBeDeployed)
         {
-            StoreDataInMemory(0, codeToBeDeployed.PadRight(32));
+            StoreDataInMemory(0, codeToBeDeployed);
             PushData(codeToBeDeployed.Length);
             PushData(0);
             Op(Instruction.RETURN);
 
             return this;
         }
+        
+        public Prepare ForCreate2Of(byte[] codeToBeDeployed)
+        {
+            StoreDataInMemory(0, codeToBeDeployed);
+            
+            PushData(0); // salt
+            PushData(codeToBeDeployed.Length);
+            PushData(0); // position in memory
+            Op(Instruction.CALLVALUE);
+            Op(Instruction.CREATE2);
 
+            return this;
+        }
+
+        public Prepare CallWithValue(Address address, long gasLimit)
+        {
+            PushData(0);
+            PushData(0);
+            PushData(0);
+            PushData(0);
+            Op(Instruction.CALLVALUE); // value
+            PushData(address);
+            PushData(gasLimit);
+            Op(Instruction.CALL);
+            return this;
+        }
+        
         public Prepare Call(Address address, long gasLimit)
         {
             PushData(0);
             PushData(0);
             PushData(0);
             PushData(0);
-            PushData(0);
+            PushData(0); // value
             PushData(address);
             PushData(gasLimit);
             Op(Instruction.CALL);
@@ -153,10 +185,23 @@ namespace Nethermind.Evm
             PushData(address.Bytes);
             return this;
         }
-
-        public Prepare PushData(BigInteger data)
+        
+        public Prepare PushData(int data)
         {
-            PushData(data.ToBigEndianByteArray());
+            return PushData((UInt256) data);
+        }
+        
+        public Prepare PushData(long data)
+        {
+            return PushData((UInt256) data);
+        }
+        
+        public Prepare PushData(UInt256 data)
+        {
+            Span<byte> bytes = stackalloc byte[32];
+            data.ToBigEndian(bytes);
+            
+            PushData(bytes.WithoutLeadingZeros().ToArray());
             return this;
         }
 
@@ -178,7 +223,13 @@ namespace Nethermind.Evm
             PushData(new[] {data});
             return this;
         }
-
+        
+        public Prepare FromCode(string data)
+        {
+            _byteCode.AddRange(Bytes.FromHexString(data));
+            return this;
+        }
+        
         public Prepare Data(string data)
         {
             _byteCode.AddRange(Bytes.FromHexString(data));
@@ -212,11 +263,6 @@ namespace Nethermind.Evm
 
         private Prepare StoreDataInMemory(int position, byte[] data)
         {
-            if (position % 32 != 0)
-            {
-                throw new NotSupportedException();
-            }
-
             for (int i = 0; i < data.Length; i += 32)
             {
                 PushData(data.Slice(i, data.Length - i).PadRight(32));

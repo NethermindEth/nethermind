@@ -22,7 +22,7 @@ using System.Reflection;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Rlp
 {
@@ -1033,8 +1033,7 @@ namespace Nethermind.Serialization.Rlp
                     throw new ArgumentException();
                 }
 
-                UInt256.CreateFromBigEndian(out UInt256 result, byteSpan);
-                return result;
+                return new UInt256(byteSpan, true);
             }
 
             public BigInteger DecodeUBigInt()
@@ -1163,7 +1162,7 @@ namespace Nethermind.Serialization.Rlp
 
                 if (prefix == 128)
                 {
-                    return Core.Extensions.Bytes.Empty;
+                    return Array.Empty<byte>();
                 }
 
                 if (prefix <= 183)

@@ -17,7 +17,7 @@
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Facade.Proxy.Models;
 
 namespace Nethermind.Facade.Proxy
@@ -34,11 +34,13 @@ namespace Nethermind.Facade.Proxy
         Task<RpcResult<TransactionModel>> eth_getTransactionByHash(Keccak transactionHash);
         Task<RpcResult<TransactionModel[]>> eth_pendingTransactions();
         Task<RpcResult<Keccak>> eth_sendRawTransaction(byte[] transaction);
-
-        Task<RpcResult<BlockModel>> eth_getBlockByHash(Keccak blockHash,
+        Task<RpcResult<Keccak>> eth_sendTransaction(TransactionModel transaction);
+        Task<RpcResult<byte[]>> eth_estimateGas(TransactionModel transaction,  BlockParameterModel blockParameter = null);
+        Task<RpcResult<BlockModel<Keccak>>> eth_getBlockByHash(Keccak blockHash, bool returnFullTransactionObjects = false);
+        Task<RpcResult<BlockModel<Keccak>>> eth_getBlockByNumber(BlockParameterModel blockParameter,
             bool returnFullTransactionObjects = false);
-
-        Task<RpcResult<BlockModel>> eth_getBlockByNumber(BlockParameterModel blockParameter,
+        Task<RpcResult<BlockModel<TransactionModel>>> eth_getBlockByNumberWithTransactionDetails(BlockParameterModel blockParameter,
             bool returnFullTransactionObjects = false);
+        Task<RpcResult<string>> net_version();
     }
 }

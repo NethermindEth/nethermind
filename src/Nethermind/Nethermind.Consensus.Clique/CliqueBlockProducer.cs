@@ -29,12 +29,11 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Proofs;
-using Nethermind.Db.Blooms;
 
 namespace Nethermind.Consensus.Clique
 {
@@ -50,9 +49,9 @@ namespace Nethermind.Consensus.Clique
         private readonly ITxSource _txSource;
         private readonly IBlockchainProcessor _processor;
         private readonly ISealer _sealer;
+        private readonly IGasLimitCalculator _gasLimitCalculator;
         private readonly ISnapshotManager _snapshotManager;
         private readonly ICliqueConfig _config;
-        private readonly Address _address;
         private readonly ConcurrentDictionary<Address, bool> _proposals = new ConcurrentDictionary<Address, bool>();
 
         private readonly CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
@@ -67,7 +66,7 @@ namespace Nethermind.Consensus.Clique
             ICryptoRandom cryptoRandom,
             ISnapshotManager snapshotManager,
             ISealer cliqueSealer,
-            Address address,
+            IGasLimitCalculator gasLimitCalculator,
             ICliqueConfig config,
             ILogManager logManager)
         {
@@ -79,9 +78,9 @@ namespace Nethermind.Consensus.Clique
             _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
             _cryptoRandom = cryptoRandom ?? throw new ArgumentNullException(nameof(cryptoRandom));
             _sealer = cliqueSealer ?? throw new ArgumentNullException(nameof(cliqueSealer));
+            _gasLimitCalculator = gasLimitCalculator ?? throw new ArgumentNullException(nameof(gasLimitCalculator));
             _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
             _config = config ?? throw new ArgumentNullException(nameof(config));
-            _address = address ?? throw new ArgumentNullException(nameof(address));
             _wiggle = new WiggleRandomizer(_cryptoRandom, _snapshotManager);
 
             _timer.AutoReset = false;
@@ -114,6 +113,11 @@ namespace Nethermind.Consensus.Clique
             }
 
             if (_logger.IsWarn) _logger.Warn($"Removed Clique vote for {signer}");
+        }
+
+        public void ProduceOnTopOf(Keccak hash)
+        {
+            _signalsQueue.Add(_blockTree.FindBlock(hash, BlockTreeLookupOptions.None));
         }
 
         private void TimerOnElapsed(object sender, ElapsedEventArgs e)
@@ -230,6 +234,7 @@ namespace Nethermind.Consensus.Clique
                     if (block is null)
                     {
                         if (_logger.IsTrace) _logger.Trace("Skipping block production or block production failed");
+                        Metrics.FailedBlockSeals++;
                         continue;
                     }
 
@@ -238,6 +243,7 @@ namespace Nethermind.Consensus.Clique
                     if (processedBlock == null)
                     {
                         if (_logger.IsInfo) _logger.Info($"Prepared block has lost the race");
+                        Metrics.FailedBlockSeals++;
                         continue;
                     }
 
@@ -251,25 +257,30 @@ namespace Nethermind.Consensus.Clique
                             {
                                 if (_logger.IsInfo) _logger.Info($"Sealed block {t.Result.ToString(Block.Format.HashNumberDiffAndTx)}");
                                 _scheduledBlock = t.Result;
+                                Metrics.BlocksSealed++;
                             }
                             else
                             {
                                 if (_logger.IsInfo) _logger.Info($"Failed to seal block {processedBlock.ToString(Block.Format.HashNumberDiffAndTx)} (null seal)");
+                                Metrics.FailedBlockSeals++;
                             }
                         }
                         else if (t.IsFaulted)
                         {
                             if (_logger.IsError) _logger.Error("Mining failed", t.Exception);
+                            Metrics.FailedBlockSeals++;
                         }
                         else if (t.IsCanceled)
                         {
                             if (_logger.IsInfo) _logger.Info($"Sealing block {processedBlock.Number} cancelled");
+                            Metrics.FailedBlockSeals++;
                         }
                     }, _cancellationTokenSource.Token);
                 }
                 catch (Exception e)
                 {
                     if (_logger.IsError) _logger.Error($"Block producer could not produce block on top of {parentBlock.ToString(Block.Format.Short)}", e);
+                    Metrics.FailedBlockSeals++;
                 }
             }
         }
@@ -314,9 +325,9 @@ namespace Nethermind.Consensus.Clique
                 Address.Zero,
                 1,
                 parentBlock.Number + 1,
-                parentBlock.GasLimit,
+                _gasLimitCalculator.GetGasLimit(parentBlock.Header),
                 timestamp > parentBlock.Timestamp ? timestamp : parentBlock.Timestamp + 1,
-                new byte[0]);
+                Array.Empty<byte>());
 
             // If the block isn't a checkpoint, cast a random vote (good enough for now)
             long number = header.Number;
@@ -346,7 +357,7 @@ namespace Nethermind.Consensus.Clique
             }
 
             // Set the correct difficulty
-            header.Difficulty = CalculateDifficulty(snapshot, _address);
+            header.Difficulty = CalculateDifficulty(snapshot, _sealer.Address);
             header.TotalDifficulty = parentBlock.TotalDifficulty + header.Difficulty;
             if (_logger.IsDebug) _logger.Debug($"Setting total difficulty to {parentBlock.TotalDifficulty} + {header.Difficulty}.");
 
@@ -381,9 +392,9 @@ namespace Nethermind.Consensus.Clique
             _stateProvider.StateRoot = parentHeader.StateRoot;
 
             var selectedTxs = _txSource.GetTransactions(parentBlock.Header, header.GasLimit);
-            Block block = new Block(header, selectedTxs, new BlockHeader[0]);
+            Block block = new Block(header, selectedTxs, Array.Empty<BlockHeader>());
             header.TxRoot = new TxTrie(block.Transactions).RootHash;
-            block.Header.Author = _address;
+            block.Header.Author = _sealer.Address;
             return block;
         }
 
@@ -392,11 +403,11 @@ namespace Nethermind.Consensus.Clique
             if (_snapshotManager.IsInTurn(snapshot, snapshot.Number + 1, signer))
             {
                 if (_logger.IsInfo) _logger.Info("Producing in turn block");
-                return new UInt256(Clique.DifficultyInTurn);
+                return Clique.DifficultyInTurn;
             }
 
             if (_logger.IsInfo) _logger.Info("Producing out of turn block");
-            return new UInt256(Clique.DifficultyNoTurn);
+            return Clique.DifficultyNoTurn;
         }
 
         public void Dispose()

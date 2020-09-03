@@ -17,6 +17,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 
 namespace Nethermind.Logging
@@ -44,7 +45,7 @@ namespace Nethermind.Logging
                 resourcePath = string.Empty;
             }
             
-            if (Path.IsPathRooted(resourcePath))
+            if (Path.IsPathRooted(resourcePath) || IsExplicitlyRelative(resourcePath))
             {
                 return resourcePath;
             }
@@ -54,9 +55,19 @@ namespace Nethermind.Logging
                 return Path.Combine(ExecutingDirectory, resourcePath);
             }
 
-            return Path.IsPathRooted(overridePrefixPath)
+            return Path.IsPathRooted(overridePrefixPath) || IsExplicitlyRelative(overridePrefixPath)
                 ? Path.Combine(overridePrefixPath, resourcePath)
                 : Path.Combine(ExecutingDirectory, overridePrefixPath, resourcePath);
         }
+        
+        static readonly string[] RelativePrefixes = new []
+        {
+            "." + Path.DirectorySeparatorChar,
+            "." + Path.AltDirectorySeparatorChar,
+            ".." + Path.DirectorySeparatorChar,
+            ".." + Path.AltDirectorySeparatorChar,
+        }.Distinct().ToArray();
+
+        public static bool IsExplicitlyRelative(string resourcePath) => RelativePrefixes.Any(resourcePath.StartsWith);
     }
 }

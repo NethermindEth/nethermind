@@ -47,6 +47,9 @@ namespace Nethermind.AuRa.Test
         private Address _address;
         private IEthereumEcdsa _ethereumEcdsa;
         private static int _currentStep;
+        private IReportingValidator _reportingValidator;
+        private IBlockTree _blockTree;
+        private IValidSealerStrategy _validSealerStrategy;
 
         [SetUp]
         public void SetUp()
@@ -60,12 +63,27 @@ namespace Nethermind.AuRa.Test
             _ethereumEcdsa = Substitute.For<IEthereumEcdsa>();
             _currentStep = 11;
             _auRaStepCalculator.CurrentStep.Returns(_currentStep);
-            
-            _sealValidator = new AuRaSealValidator(_auRaParameters, 
+
+            _reportingValidator = Substitute.For<IReportingValidator>();
+            _blockTree = Substitute.For<IBlockTree>();
+            _validSealerStrategy = Substitute.For<IValidSealerStrategy>();
+            _sealValidator = new AuRaSealValidator(_auRaParameters,
                 _auRaStepCalculator,
+                _blockTree,
                 Substitute.For<IValidatorStore>(),
-                _ethereumEcdsa, 
-                _logManager);
+                _validSealerStrategy,
+                _ethereumEcdsa,
+                _logManager)
+            {
+                ReportingValidator = _reportingValidator
+            };
+        }
+        
+        public enum Repeat
+        {
+            No,
+            Yes,
+            YesChangeHash
         }
         
         private static IEnumerable ValidateParamsTests
@@ -76,52 +94,100 @@ namespace Nethermind.AuRa.Test
                 long parentStep = 9;
                 
                 BlockHeaderBuilder GetBlock() => Build.A.BlockHeader
-                        .WithAura(10, Bytes.Empty)
+                        .WithAura(10, Array.Empty<byte>())
                         .WithBeneficiary(TestItem.AddressA)
                         .WithDifficulty(AuraDifficultyCalculator.CalculateDifficulty(parentStep, step));
 
                 BlockHeaderBuilder GetParentBlock() => Build.A.BlockHeader
-                    .WithAura(parentStep, Bytes.Empty)
+                    .WithAura(parentStep, Array.Empty<byte>())
                     .WithBeneficiary(TestItem.AddressB);
 
-                TestCaseData GetTestCaseData(BlockHeaderBuilder parent, BlockHeaderBuilder block, Action<AuRaParameters> paramAction = null) =>
-                    new TestCaseData(parent.TestObject, block.TestObject, paramAction);
+                TestCaseData GetTestCaseData(
+                    BlockHeaderBuilder parent,
+                    BlockHeaderBuilder block,
+                    Action<AuRaParameters> paramAction = null,
+                    Repeat repeat = Repeat.No,
+                    bool parentIsHead = true,
+                    bool isValidSealer = true) =>
+                    new TestCaseData(parent.TestObject, block.TestObject, paramAction, repeat, parentIsHead, isValidSealer);
                 
 
                 yield return GetTestCaseData(GetParentBlock(), GetBlock())
-                    .Returns(true).SetName("General valid.");
+                    .Returns((true, (object) null)).SetName("General valid.").SetCategory("ValidParams");
                 
                 yield return GetTestCaseData(GetParentBlock(), GetBlock().WithAura(step, null))
-                    .Returns(false).SetName("Missing AuRaSignature").SetCategory("ValidParams");
+                    .Returns((false, (object) null)).SetName("Missing AuRaSignature").SetCategory("ValidParams");
                 
-                yield return GetTestCaseData(GetParentBlock(), GetBlock().WithAura(parentStep, Bytes.Empty))
-                    .Returns(false).SetName("Duplicate block.").SetCategory("ValidParams");
+                yield return GetTestCaseData(GetParentBlock(), GetBlock().WithAura(parentStep, Array.Empty<byte>()))
+                    .Returns((false, IReportingValidator.MaliciousCause.DuplicateStep)).SetName("Duplicate block.").SetCategory("ValidParams");
                 
-                yield return GetTestCaseData(GetParentBlock(), GetBlock().WithAura(parentStep - 1, Bytes.Empty))
-                    .Returns(false).SetName("Past block.").SetCategory("ValidParams");
+                yield return GetTestCaseData(GetParentBlock(), GetBlock().WithAura(parentStep - 1, Array.Empty<byte>()))
+                    .Returns((false, IReportingValidator.MaliciousCause.DuplicateStep)).SetName("Past block.").SetCategory("ValidParams");
                 
-                yield return GetTestCaseData(GetParentBlock(), GetBlock().WithAura(_currentStep + 5, Bytes.Empty))
-                    .Returns(false).SetName("Future block.").SetCategory("ValidParams");
+                yield return GetTestCaseData(GetParentBlock(), GetBlock().WithAura(parentStep + 7, Array.Empty<byte>()))
+                    .Returns((false, IReportingValidator.BenignCause.FutureBlock)).SetName("Future block.").SetCategory("ValidParams");
+                
+                yield return GetTestCaseData(GetParentBlock(), GetBlock().WithAura(parentStep + 3, Array.Empty<byte>()))
+                    .Returns((false, IReportingValidator.BenignCause.SkippedStep)).SetName("Skipped steps.").SetCategory("ValidParams");
                 
                 yield return GetTestCaseData(GetParentBlock(), GetBlock().WithDifficulty(AuraDifficultyCalculator.MaxDifficulty))
-                    .Returns(false).SetName("Difficulty too large.").SetCategory("ValidParams");
+                    .Returns((false, (object) null)).SetName("Difficulty too large.").SetCategory("ValidParams");
                 
                 yield return GetTestCaseData(GetParentBlock(), GetBlock().WithDifficulty(1000))
-                    .Returns(false).SetName("Wrong difficulty.").SetCategory("ValidParams");
+                    .Returns((false, (object) null)).SetName("Wrong difficulty.").SetCategory("ValidParams");
 
                 yield return GetTestCaseData(GetParentBlock(), GetBlock().WithDifficulty(1000), a => a.ValidateScoreTransition = 100)
-                    .Returns(true).SetName("Skip difficulty validation due to ValidateScoreTransition.").SetCategory("ValidParams");
+                    .Returns((true, (object) null)).SetName("Skip difficulty validation due to ValidateScoreTransition.").SetCategory("ValidParams");
                 
-                yield return GetTestCaseData(GetParentBlock(), GetBlock().WithAura(parentStep - 1, Bytes.Empty), a => a.ValidateScoreTransition = a.ValidateStepTransition = 100)
-                    .Returns(true).SetName("Skip step validation due to ValidateStepTransition.").SetCategory("ValidParams");
+                yield return GetTestCaseData(GetParentBlock(), GetBlock().WithAura(parentStep - 1, Array.Empty<byte>()), a => a.ValidateScoreTransition = a.ValidateStepTransition = 100)
+                    .Returns((true, (object) null)).SetName("Skip step validation due to ValidateStepTransition.").SetCategory("ValidParams");
+                
+                yield return GetTestCaseData(GetParentBlock(), GetBlock(), repeat: Repeat.Yes)
+                    .Returns((true, (object) null)).SetName("Same block twice.").SetCategory("ValidParams");
+                
+                yield return GetTestCaseData(GetParentBlock(), GetBlock(), repeat: Repeat.YesChangeHash)
+                    .Returns((true, IReportingValidator.MaliciousCause.SiblingBlocksInSameStep)).SetName("Sibling in same step.").SetCategory("ValidParams");
+                
+                yield return GetTestCaseData(GetParentBlock(), GetBlock(), parentIsHead:false, isValidSealer:false)
+                    .Returns((true, (object) null)).SetName("Cannot validate sealer").SetCategory("ValidParams");
+                
+                yield return GetTestCaseData(GetParentBlock(), GetBlock(), parentIsHead:true, isValidSealer:false)
+                    .Returns((false, (object) null)).SetName("Wrong sealer").SetCategory("ValidParams");
             }
         }
 
         [TestCaseSource(nameof(ValidateParamsTests))]
-        public bool validate_params(BlockHeader parentBlock, BlockHeader block, Action<AuRaParameters> modifyParameters)
+        public (bool, object) validate_params(BlockHeader parentBlock, BlockHeader block, Action<AuRaParameters> modifyParameters, Repeat repeat, bool parentIsHead, bool isValidSealer)
         {
+            _blockTree.Head.Returns(parentIsHead ? new Block(parentBlock) : new Block(Build.A.BlockHeader.WithNumber(parentBlock.Number - 1).TestObject));
+            _validSealerStrategy.IsValidSealer(Arg.Any<IList<Address>>(), block.Beneficiary, block.AuRaStep.Value).Returns(isValidSealer);
+            
+            object cause = null;
+            
+            _reportingValidator.ReportBenign(Arg.Any<Address>(), Arg.Any<long>(), Arg.Do<IReportingValidator.BenignCause>(c => cause ??= c));
+            _reportingValidator.ReportMalicious(Arg.Any<Address>(), Arg.Any<long>(), Arg.Any<byte[]>(), Arg.Do<IReportingValidator.MaliciousCause>(c => cause ??= c));
+            BlockHeader header = null, parent = null;
+            _reportingValidator.TryReportSkipped(Arg.Do<BlockHeader>(h => header = h), Arg.Do<BlockHeader>(h => parent = h));
+            
             modifyParameters?.Invoke(_auRaParameters);
-            return _sealValidator.ValidateParams(parentBlock, block);
+            var validateParams = _sealValidator.ValidateParams(parentBlock, block);
+            
+            if (header?.AuRaStep > parent?.AuRaStep + 1)
+            {
+                _reportingValidator.ReportBenign(header.Beneficiary, header.Number, IReportingValidator.BenignCause.SkippedStep);
+            }
+
+            if (repeat != Repeat.No)
+            {
+                if (repeat == Repeat.YesChangeHash)
+                {
+                    block.Hash = Keccak.Compute("AAA");
+                }
+                
+                validateParams = _sealValidator.ValidateParams(parentBlock, block);
+            }
+           
+            return (validateParams, cause);
         }
 
         private static IEnumerable ValidateSealTests
@@ -141,7 +207,7 @@ namespace Nethermind.AuRa.Test
             recoveredAddress ??= _address;
             
             var block = Build.A.BlockHeader
-                .WithAura(10, Bytes.Empty)
+                .WithAura(10, Array.Empty<byte>())
                 .WithBeneficiary(_address)
                 .WithNumber(blockNumber)
                 .TestObject;

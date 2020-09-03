@@ -23,13 +23,12 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.BeamSync
 {
-    public class CompositeStateSyncFeed<T> : SyncFeed<T> where T : StateSyncBatch
+    public class CompositeStateSyncFeed<T> : SyncFeed<T> where T : StateSyncBatch?
     {
         private readonly ISyncFeed<T>[] _subFeeds;
         private ILogger _logger;
 
         public CompositeStateSyncFeed(ILogManager logManager, params ISyncFeed<T>[] subFeeds)
-            : base(logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _subFeeds = subFeeds;
@@ -39,9 +38,15 @@ namespace Nethermind.Synchronization.BeamSync
             }
         }
 
-        private void OnSubFeedStateChanged(object sender, EventArgs e)
+        private void OnSubFeedStateChanged(object? sender, EventArgs e)
         {
-            ISyncFeed<StateSyncBatch> child = (ISyncFeed<StateSyncBatch>) sender;
+            ISyncFeed<StateSyncBatch>? child = (ISyncFeed<StateSyncBatch>?) sender;
+            if (child == null)
+            {
+                if(_logger.IsDebug) _logger.Debug("Sub-feed state changed from a null feed");
+                return;
+            }
+            
             if (child.CurrentState == SyncFeedState.Active)
             {
                 Activate();
@@ -64,22 +69,22 @@ namespace Nethermind.Synchronization.BeamSync
             }
         }
 
-        public override Task<T> PrepareRequest()
+        public override async Task<T> PrepareRequest()
         {
             for (int subFeedIndex = 0; subFeedIndex < _subFeeds.Length; subFeedIndex++)
             {
                 ISyncFeed<T> subFeed = _subFeeds[subFeedIndex];
                 if (subFeed.CurrentState == SyncFeedState.Active)
                 {
-                    T batch = subFeed.PrepareRequest().Result;
+                    T batch = await subFeed.PrepareRequest();
                     if (batch != null)
                     {
-                        return Task.FromResult(batch);
+                        return batch;
                     }
                 }
             }
 
-            return null;
+            return null!;
         }
 
         public override SyncResponseHandlingResult HandleResponse(T batch)
@@ -87,7 +92,7 @@ namespace Nethermind.Synchronization.BeamSync
             for (int subFeedIndex = 0; subFeedIndex < _subFeeds.Length; subFeedIndex++)
             {
                 ISyncFeed<T> subFeed = _subFeeds[subFeedIndex];
-                if (subFeed.FeedId == batch.ConsumerId)
+                if (subFeed.FeedId == batch?.ConsumerId)
                 {
                     subFeed.HandleResponse(batch);
                 }

@@ -38,6 +38,16 @@ namespace Nethermind.Evm.Test
         }
 
         [Test]
+        public void TestHive()
+        {
+            byte[] code = Prepare.EvmCode
+                .FromCode("0x73095e7baea6a6c7c4c2dfeb977efac326af552d873173095e7baea6a6c7c4c2dfeb977efac326af552d873173095e7baea6a6c7c4c2dfeb977efac326af552d87313700")
+                .Done;
+            
+            Execute(code);
+        }
+        
+        [Test]
         public void Test()
         {
             byte[] salt = {4, 5, 6};
@@ -92,7 +102,7 @@ namespace Nethermind.Evm.Test
 
             TestState.GetAccount(expectedAddress).Should().NotBeNull();
             TestState.GetAccount(expectedAddress).Balance.Should().Be(1.Ether());
-            AssertEip1014(expectedAddress, Bytes.Empty);
+            AssertEip1014(expectedAddress, Array.Empty<byte>());
         }
 
         [Test]
@@ -133,7 +143,7 @@ namespace Nethermind.Evm.Test
             TestState.GetAccount(expectedAddress).Should().NotBeNull();
             TestState.GetAccount(expectedAddress).Balance.Should().Be(1.Ether());
             TestState.GetAccount(expectedAddress).StorageRoot.Should().Be(storageRoot);
-            AssertEip1014(expectedAddress, Bytes.Empty);
+            AssertEip1014(expectedAddress, Array.Empty<byte>());
         }
 
         [Test]
@@ -179,7 +189,7 @@ namespace Nethermind.Evm.Test
         {
             byte[] salt = Bytes.FromHexString(saltHex);
 
-            byte[] deployedCode = Bytes.Empty;
+            byte[] deployedCode = Array.Empty<byte>();
 
             byte[] initCode = Bytes.FromHexString(initCodeHex);
 

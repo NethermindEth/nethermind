@@ -1,5 +1,5 @@
 {
-  "name": "POA Core",
+  "name": "Core",
   "engine": {
     "authorityRound": {
       "params": {
@@ -21,7 +21,10 @@
           }
         },
         "blockRewardContractAddress": "0x4d0153D434384128D17243409e02fca1B3EE21D6",
-        "blockRewardContractTransition": 5761140
+        "blockRewardContractTransition": 5761140,
+        "randomnessContractAddress": {
+          "14350721": "0x67e90a54AeEA85f21949c645082FE95d77BC1E70"
+        }
       }
     }
   },
@@ -88,7 +91,7 @@
             }
           },
           "12598600": {
-            "info": "EIP 1108 transition",
+            "info": "Istanbul HF",
             "price": {
               "alt_bn128_const_operations": {
                 "price": 150
@@ -110,7 +113,7 @@
             }
           },
           "12598600": {
-            "info": "EIP 1108 transition",
+            "info": "Istanbul HF",
             "price": {
               "alt_bn128_const_operations": {
                 "price": 6000
@@ -133,7 +136,7 @@
             }
           },
           "12598600": {
-            "info": "EIP 1108 transition",
+            "info": "Istanbul HF",
             "price": {
               "alt_bn128_pairing": {
                 "base": 45000,
@@ -149,7 +152,7 @@
         "name": "blake2_f",
         "pricing": {
           "12598600": {
-            "info": "EIP 1108 transition",
+            "info": "Istanbul HF",
             "price": {
               "blake2_f": {
                 "gas_per_round": 1

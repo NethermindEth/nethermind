@@ -17,8 +17,7 @@
 using System;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
-using Nethermind.Specs;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Logging;
 
 namespace Nethermind.Core.Test.Builders
@@ -34,7 +33,7 @@ namespace Nethermind.Core.Test.Builders
                 To = Address.Zero,
                 Nonce = 0,
                 Value = 1,
-                Data = new byte[0],
+                Data = Array.Empty<byte>(),
                 Timestamp = 0
             };
         }
@@ -116,6 +115,7 @@ namespace Nethermind.Core.Test.Builders
         // TODO: auto create ecdsa here
         public TransactionBuilder<T> SignedAndResolved(IEthereumEcdsa ecdsa, PrivateKey privateKey, bool isEip155Enabled = true)
         {
+            // make sure that you do not change anything in the tx after signing as this will lead to a different recovered address
             ecdsa.Sign(privateKey, TestObjectInternal, isEip155Enabled);
             TestObjectInternal.SenderAddress = privateKey.Address;
             return this;

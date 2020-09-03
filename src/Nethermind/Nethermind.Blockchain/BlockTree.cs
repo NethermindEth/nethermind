@@ -29,9 +29,8 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
@@ -42,9 +41,10 @@ namespace Nethermind.Blockchain
     [Todo(Improve.Refactor, "After the fast sync work there are some duplicated code parts for the 'by header' and 'by block' approaches.")]
     public partial class BlockTree : IBlockTree
     {
+        private const long LowestInsertedBodyNumberDbEntryAddress = 0; 
         private const int CacheSize = 64;
-        private readonly ICache<Keccak, Block> _blockCache = new LruCacheWithRecycling<Keccak, Block>(CacheSize, CacheSize, "blocks");
-        private readonly ICache<Keccak, BlockHeader> _headerCache = new LruCacheWithRecycling<Keccak, BlockHeader>(CacheSize, CacheSize, "headers");
+        private readonly ICache<Keccak, Block> _blockCache = new LruCache<Keccak, Block>(CacheSize, CacheSize, "blocks");
+        private readonly ICache<Keccak, BlockHeader> _headerCache = new LruCache<Keccak, BlockHeader>(CacheSize, CacheSize, "headers");
 
         private const int BestKnownSearchLimit = 256_000_000;
 
@@ -54,7 +54,7 @@ namespace Nethermind.Blockchain
         private readonly IDb _headerDb;
         private readonly IDb _blockInfoDb;
 
-        private ICache<long, HashSet<Keccak>> _invalidBlocks = new LruCacheWithRecycling<long, HashSet<Keccak>>(128, 128, "invalid blocks");
+        private ICache<long, HashSet<Keccak>> _invalidBlocks = new LruCache<long, HashSet<Keccak>>(128, 128, "invalid blocks");
         private readonly BlockDecoder _blockDecoder = new BlockDecoder();
         private readonly HeaderDecoder _headerDecoder = new HeaderDecoder();
         private readonly ILogger _logger;
@@ -72,7 +72,21 @@ namespace Nethermind.Blockchain
         public BlockHeader BestSuggestedHeader { get; private set; }
         public Block BestSuggestedBody { get; private set; }
         public BlockHeader LowestInsertedHeader { get; private set; }
-        public Block LowestInsertedBody { get; private set; }
+
+        private long? _lowestInsertedReceiptBlock;
+        public long? LowestInsertedBodyNumber
+        {
+            get => _lowestInsertedReceiptBlock;
+            set
+            {
+                _lowestInsertedReceiptBlock = value;
+                if (value.HasValue)
+                {
+                    _blockDb.Set(LowestInsertedBodyNumberDbEntryAddress, Rlp.Encode(value.Value).Bytes);
+                }
+            }
+        }
+        
         public long BestKnownNumber { get; private set; }
         public int ChainId => _specProvider.ChainId;
 
@@ -140,22 +154,65 @@ namespace Nethermind.Blockchain
                 RecalculateTreeLevels();
             }
 
-            if (_logger.IsInfo) _logger.Info($"Block tree initialized, last processed is {Head?.Header?.ToString(BlockHeader.Format.Short) ?? "0"}, best queued is {BestSuggestedHeader?.Number.ToString() ?? "0"}, best known is {BestKnownNumber}, lowest inserted header {LowestInsertedHeader?.Number}, body {LowestInsertedBody?.Number}");
+            if (_logger.IsInfo)
+                _logger.Info($"Block tree initialized, " +
+                             $"last processed is {Head?.Header?.ToString(BlockHeader.Format.Short) ?? "0"}, " +
+                             $"best queued is {BestSuggestedHeader?.Number.ToString() ?? "0"}, " +
+                             $"best known is {BestKnownNumber}, " +
+                             $"lowest inserted header {LowestInsertedHeader?.Number}, " +
+                             $"body {LowestInsertedBodyNumber}");
             ThisNodeInfo.AddInfo("Chain ID     :", $"{Nethermind.Core.ChainId.GetChainName(ChainId)}");
             ThisNodeInfo.AddInfo("Chain head   :", $"{Head?.Header?.ToString(BlockHeader.Format.Short) ?? "0"}");
         }
 
         private void RecalculateTreeLevels()
         {
+            if (_syncConfig.BeamSyncFixMode)
+            {
+                BestKnownNumber = Head.Number;
+                BestSuggestedBody = Head;
+                BestSuggestedHeader = Head.Header;
+                return;
+            }
+
+            LoadLowestInsertedBodyNumber();
             LoadLowestInsertedHeader();
-            LoadLowestInsertedBody();
             LoadBestKnown();
+        }
+
+        private void LoadLowestInsertedBodyNumber()
+        {
+            LowestInsertedBodyNumber =
+                _blockDb.Get(LowestInsertedBodyNumberDbEntryAddress)?
+                .AsRlpValueContext().DecodeLong(); 
+        }
+        
+        private void LoadLowestInsertedHeader()
+        {
+            long left = 1L;
+            long right = _syncConfig.PivotNumberParsed;
+
+            bool HasLevel(long blockNumber)
+            {
+                ChainLevelInfo level = LoadLevel(blockNumber);
+                return level != null;
+            }
+
+            long? lowestInsertedHeader = BinarySearchBlockNumber(left, right, HasLevel, BinarySearchDirection.Down);
+            if (lowestInsertedHeader != null)
+            {
+                ChainLevelInfo level = LoadLevel(lowestInsertedHeader.Value);
+                BlockInfo blockInfo = level.BlockInfos[0];
+                LowestInsertedHeader = FindHeader(blockInfo.BlockHash, BlockTreeLookupOptions.None);
+            }
         }
 
         private void LoadBestKnown()
         {
-            long left = Head?.Number ?? Math.Max(_syncConfig.PivotNumberParsed, LowestInsertedHeader?.Number ?? 0);
-            long right = left + BestKnownSearchLimit;
+            long left = (Head?.Number ?? 0) == 0
+                ? Math.Max(_syncConfig.PivotNumberParsed, LowestInsertedHeader?.Number ?? 0) - 1
+                : Head.Number;
+            long right = Math.Max(0, left) + BestKnownSearchLimit;
 
             bool LevelExists(long blockNumber)
             {
@@ -200,62 +257,45 @@ namespace Nethermind.Blockchain
                 return false;
             }
 
-            BestKnownNumber = BinarySearchBlockNumber(left, right, LevelExists) ?? 0;
-            long bestSuggestedHeaderNumber = BinarySearchBlockNumber(left, right, HeaderExists) ?? 0;
-            long bestSuggestedBodyNumber = BinarySearchBlockNumber(left, right, BodyExists) ?? 0;
+            long bestKnownNumberFound =
+                BinarySearchBlockNumber(1, left, LevelExists) ?? 0;
+            long bestKnownNumberAlternative =
+                BinarySearchBlockNumber(left, right, LevelExists) ?? 0;
+            
+            long bestSuggestedHeaderNumber =
+                BinarySearchBlockNumber(1, left, HeaderExists) ?? 0;
+            long bestSuggestedHeaderNumberAlternative
+                = BinarySearchBlockNumber(left, right, HeaderExists) ?? 0;
+            
+            long bestSuggestedBodyNumber
+                = BinarySearchBlockNumber(1, left, BodyExists) ?? 0;
+            long bestSuggestedBodyNumberAlternative
+                = BinarySearchBlockNumber(left, right, BodyExists) ?? 0;
+            
+            if(_logger.IsInfo)
+                _logger.Info("Numbers resolved, " +
+                             $"level = Max({bestKnownNumberFound}, {bestKnownNumberAlternative}), " + 
+                             $"header = Max({bestSuggestedHeaderNumber}, {bestSuggestedHeaderNumberAlternative}), " + 
+                             $"body = Max({bestSuggestedBodyNumber}, {bestSuggestedBodyNumberAlternative})");
+            
+            BestKnownNumber = Math.Max(bestKnownNumberFound, bestKnownNumberAlternative);
+            bestSuggestedHeaderNumber = Math.Max(bestSuggestedHeaderNumber, bestSuggestedHeaderNumberAlternative);
+            bestSuggestedBodyNumber = Math.Max(bestSuggestedBodyNumber, bestSuggestedBodyNumberAlternative);
 
             if (BestKnownNumber < 0 ||
                 bestSuggestedHeaderNumber < 0 ||
                 bestSuggestedBodyNumber < 0 ||
                 bestSuggestedHeaderNumber < bestSuggestedBodyNumber)
             {
-                throw new InvalidDataException($"Invalid initial block tree state loaded - best known: {BestKnownNumber}|best header: {bestSuggestedHeaderNumber}|best body: {bestSuggestedBodyNumber}|");
+                throw new InvalidDataException($"Invalid initial block tree state loaded - " +
+                                               $"best known: {BestKnownNumber}|" +
+                                               $"best header: {bestSuggestedHeaderNumber}|" +
+                                               $"best body: {bestSuggestedBodyNumber}|");
             }
 
             BestSuggestedHeader = FindHeader(bestSuggestedHeaderNumber, BlockTreeLookupOptions.None);
             var bestSuggestedBodyHeader = FindHeader(bestSuggestedBodyNumber, BlockTreeLookupOptions.None);
             BestSuggestedBody = bestSuggestedBodyHeader == null ? null : FindBlock(bestSuggestedBodyHeader.Hash, BlockTreeLookupOptions.None);
-        }
-
-        private void LoadLowestInsertedHeader()
-        {
-            long left = 1L;
-            long right = _syncConfig.PivotNumberParsed;
-
-            bool HasLevel(long blockNumber)
-            {
-                ChainLevelInfo level = LoadLevel(blockNumber);
-                return level != null;
-            }
-
-            long? lowestInsertedHeader = BinarySearchBlockNumber(left, right, HasLevel, BinarySearchDirection.Down);
-            if (lowestInsertedHeader != null)
-            {
-                ChainLevelInfo level = LoadLevel(lowestInsertedHeader.Value);
-                BlockInfo blockInfo = level.BlockInfos[0];
-                LowestInsertedHeader = FindHeader(blockInfo.BlockHash, BlockTreeLookupOptions.None);
-            }
-        }
-
-        private void LoadLowestInsertedBody()
-        {
-            long left = 1L;
-            long right = _syncConfig.PivotNumberParsed;
-
-            Block LoadBody(long blockNumber)
-            {
-                ChainLevelInfo level = LoadLevel(blockNumber, true);
-                return level == null ? null : FindBlock(level.BlockInfos[0].BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            }
-
-            bool HasBody(long blockNumber)
-            {
-                Block block = LoadBody(blockNumber);
-                return block != null;
-            }
-
-            long? lowestInsertedBody = BinarySearchBlockNumber(left, right, HasBody, BinarySearchDirection.Down);
-            if (lowestInsertedBody != null) LowestInsertedBody = LoadBody(lowestInsertedBody.Value);
         }
 
         private enum BinarySearchDirection
@@ -326,6 +366,8 @@ namespace Nethermind.Blockchain
             }
 
             // validate hash here
+            // using previously received header RLPs would allows us to save 2GB allocations on a sample
+            // 3M Goerli blocks fast sync
             Rlp newRlp = _headerDecoder.Encode(header);
             _headerDb.Set(header.Hash, newRlp.Bytes);
 
@@ -364,19 +406,10 @@ namespace Nethermind.Blockchain
                 throw new InvalidOperationException("Genesis block should not be inserted.");
             }
 
+            // if we carry Rlp from the network message all the way here then we could solve 4GB of allocations and some processing
+            // by avoiding encoding back to RLP here (allocations measured on a sample 3M blocks Goerli fast sync
             Rlp newRlp = _blockDecoder.Encode(block);
             _blockDb.Set(block.Hash, newRlp.Bytes);
-
-            long expectedNumber = (LowestInsertedBody?.Number - 1 ?? LongConverter.FromString(_syncConfig.PivotNumber ?? "0"));
-            if (block.Number != expectedNumber)
-            {
-                throw new InvalidOperationException($"Trying to insert out of order block {block.Number} when expected number was {expectedNumber}");
-            }
-
-            if (block.Number < (LowestInsertedBody?.Number ?? long.MaxValue))
-            {
-                LowestInsertedBody = block;
-            }
 
             return AddBlockResult.Added;
         }
@@ -474,6 +507,7 @@ namespace Nethermind.Blockchain
                 }
             }
 
+        
             return AddBlockResult.Added;
         }
 
@@ -548,6 +582,27 @@ namespace Nethermind.Blockchain
             }
 
             return header;
+        }
+        
+        /// <returns>
+        /// If level has a block on the main chain then returns the block info,otherwise <value>null</value>
+        /// </returns>
+        public BlockInfo FindCanonicalBlockInfo(long blockNumber)
+        {
+            ChainLevelInfo level = LoadLevel(blockNumber);
+            if (level == null)
+            {
+                return null;
+            }
+
+            if (level.HasBlockOnMainChain)
+            {
+                BlockInfo blockInfo = level.BlockInfos[0];
+                blockInfo.BlockNumber = blockNumber;
+                return blockInfo;
+            }
+
+            return null;
         }
 
         public Keccak FindHash(long number)
@@ -635,6 +690,39 @@ namespace Nethermind.Blockchain
             } while (current != null && responseIndex < numberOfBlocks);
 
             return result;
+        }
+
+        public BlockHeader FindLowestCommonAncestor(BlockHeader firstDescendant, BlockHeader secondDescendant, long maxSearchDepth)
+        {
+            if (firstDescendant.Number > secondDescendant.Number)
+            {
+                firstDescendant = GetAncestorAtNumber(firstDescendant, secondDescendant.Number);
+            }
+            else if (secondDescendant.Number > firstDescendant.Number)
+            {
+                secondDescendant = GetAncestorAtNumber(secondDescendant, firstDescendant.Number);
+            }
+
+            long currentSearchDepth = 0;
+            while (firstDescendant.Hash != secondDescendant.Hash)
+            {
+                if (currentSearchDepth >= maxSearchDepth) return null;
+                firstDescendant = this.FindParentHeader(firstDescendant, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                secondDescendant = this.FindParentHeader(secondDescendant, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            }
+
+            return firstDescendant;
+        }
+
+        private BlockHeader GetAncestorAtNumber(BlockHeader header, long number)
+        {
+            if (header.Number >= number) return header;
+
+            while (header.Number < number)
+            {
+                header = this.FindParentHeader(header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            }
+            return header;
         }
 
         private Keccak GetBlockHashOnMainOrBestDifficultyHash(long blockNumber)
@@ -991,6 +1079,11 @@ namespace Nethermind.Blockchain
             }
         }
 
+        public void UpdateHeadBlock(Keccak blockHash)
+        {
+            _blockInfoDb.Set(HeadAddressInDb, Head.Hash.Bytes);
+        }
+        
         private void UpdateHeadBlock(Block block)
         {
             if (block.IsGenesis)
@@ -1104,7 +1197,7 @@ namespace Nethermind.Blockchain
             {
                 return null;
             }
-
+            
             Block block = _blockDb.Get(blockHash, _blockDecoder, _blockCache, false);
             if (block == null)
             {

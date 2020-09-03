@@ -55,6 +55,7 @@ namespace Nethermind.HonestValidator.Test
         [Ignore("Disable test until OAPI is working again after 0.10.1 spec updates")]
         public async Task BasicSignBlockFromBeaconNodeProxy()
         {
+            await Task.CompletedTask;
             /*
             // Epoch 0 proposals validators:
             // Slot 0, [56] 0x94f0c853 (attestation slot 4, shard 0) 

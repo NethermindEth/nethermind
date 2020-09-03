@@ -17,7 +17,7 @@
 using System;
 using System.Globalization;
 using Nethermind.Core.Extensions;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Newtonsoft.Json;
 
 namespace Nethermind.Serialization.Json
@@ -56,10 +56,8 @@ namespace Nethermind.Serialization.Json
                 case NumberConversion.Decimal:
                     writer.WriteRawValue(value.ToString());
                     break;
-                case NumberConversion.Raw:
-                    throw new NotSupportedException($"{NumberConversion.Raw} format is not supported for {nameof(UInt256)}");
                 default:
-                    throw new ArgumentOutOfRangeException();
+                    throw new NotSupportedException($"{usedConversion} format is not supported for {nameof(UInt256)}");
             }
         }
 
@@ -67,10 +65,15 @@ namespace Nethermind.Serialization.Json
         {
             if (reader.Value is long || reader.Value is int)
             {
-                return new UInt256((long) reader.Value);
+                return (UInt256) (long) reader.Value;
             }
 
             string s = (string) reader.Value;
+            if (s == null)
+            {
+                throw new JsonException($"{nameof(UInt256)} cannot be deserialized from null");
+            }
+
             if (s == "0x0")
             {
                 return UInt256.Zero;
@@ -95,7 +98,7 @@ namespace Nethermind.Serialization.Json
             }
             catch (Exception)
             {
-                return UInt256.Parse(s, NumberStyles.AllowHexSpecifier);
+                return UInt256.Parse(s, NumberStyles.HexNumber);
             }
         }
     }

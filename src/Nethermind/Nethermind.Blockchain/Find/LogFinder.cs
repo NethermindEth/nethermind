@@ -41,7 +41,8 @@ namespace Nethermind.Blockchain.Find
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
             _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
             _bloomStorage = bloomStorage ?? throw new ArgumentNullException(nameof(bloomStorage));
-            _receiptsRecovery = receiptsRecovery ?? throw new ArgumentNullException(nameof(receiptsRecovery));;
+            _receiptsRecovery = receiptsRecovery ?? throw new ArgumentNullException(nameof(receiptsRecovery));
+            ;
             _logger = logManager?.GetClassLogger<LogFinder>() ?? throw new ArgumentNullException(nameof(logManager));
             _maxBlockDepth = maxBlockDepth;
         }
@@ -58,8 +59,11 @@ namespace Nethermind.Blockchain.Find
                 throw new ArgumentException("'From' block is later than 'to' block.");
             }
 
-            return ShouldUseBloomDatabase(fromBlock, toBlock) && CanUseBloomDatabase(toBlock, fromBlock)
-                ? FilterLogsWithBloomsIndex(filter, fromBlock, toBlock) 
+            bool shouldUseBloom = ShouldUseBloomDatabase(fromBlock, toBlock);
+            bool canUseBloom = CanUseBloomDatabase(toBlock, fromBlock);
+            bool useBloom = shouldUseBloom && canUseBloom;
+            return useBloom
+                ? FilterLogsWithBloomsIndex(filter, fromBlock, toBlock)
                 : FilterLogsIteratively(filter, fromBlock, toBlock);
         }
 
@@ -78,9 +82,10 @@ namespace Nethermind.Blockchain.Find
                 {
                     if (_logger.IsError) _logger.Error($"Could not find block {blockNumber} in database. eth_getLogs will return incomplete results.");
                 }
+
                 return blockHash;
             }
-            
+
             IEnumerable<long> FilterBlocks(LogFilter f, long from, long to)
             {
                 var enumeration = _bloomStorage.GetBlooms(from, to);
@@ -92,19 +97,41 @@ namespace Nethermind.Blockchain.Find
                     }
                 }
             }
-            
+
             return FilterBlocks(filter, fromBlock.Number, toBlock.Number)
                 .AsParallel() // can yield big performance improvements 
                 .AsOrdered() // we want to keep block order
                 .SelectMany(blockNumber => FindLogsInBlock(filter, FindBlockHash(blockNumber), blockNumber));
         }
 
-        private bool CanUseBloomDatabase(BlockHeader toBlock, BlockHeader fromBlock) => _bloomStorage.ContainsRange(fromBlock.Number, toBlock.Number) && _blockFinder.IsMainChain(toBlock) && _blockFinder.IsMainChain(fromBlock);
+        private bool CanUseBloomDatabase(BlockHeader toBlock, BlockHeader fromBlock)
+        {
+            // method is designed for convenient debugging
+
+            bool containsRange = _bloomStorage.ContainsRange(fromBlock.Number, toBlock.Number);
+            if (!containsRange)
+            {
+                return false;
+            }
+
+            bool toIsOnMainChain = _blockFinder.IsMainChain(toBlock);
+            if (!toIsOnMainChain)
+            {
+                return false;
+            }
+
+            bool fromIsOnMainChain = _blockFinder.IsMainChain(fromBlock);
+            if (!fromIsOnMainChain)
+            {
+                return false;
+            }
+
+            return true;
+        }
 
         private IEnumerable<FilterLog> FilterLogsIteratively(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock)
         {
             int count = 0;
-
             while (count < _maxBlockDepth && toBlock.Number >= (fromBlock?.Number ?? long.MaxValue))
             {
                 foreach (var filterLog in FindLogsInBlock(filter, toBlock))
@@ -130,8 +157,8 @@ namespace Nethermind.Blockchain.Find
         {
             if (blockHash != null)
             {
-                return _receiptFinder.TryGetReceiptsIterator(blockNumber, blockHash, out var iterator) 
-                    ? FilterLogsInBlockLowMemoryAllocation(filter, ref iterator) 
+                return _receiptFinder.TryGetReceiptsIterator(blockNumber, blockHash, out var iterator)
+                    ? FilterLogsInBlockLowMemoryAllocation(filter, ref iterator)
                     : FilterLogsInBlockHighMemoryAllocation(filter, blockHash, blockNumber);
             }
 
@@ -155,13 +182,13 @@ namespace Nethermind.Blockchain.Find
                             {
                                 logList ??= new List<FilterLog>();
                                 Keccak[] topics = log.Topics;
-                                
+
                                 if (topics == null)
                                 {
                                     var topicsValueDecoderContext = new Rlp.ValueDecoderContext(log.TopicsRlp);
                                     topics = KeccakDecoder.Instance.DecodeArray(ref topicsValueDecoderContext);
                                 }
-                                
+
                                 logList.Add(new FilterLog(
                                     logIndexInBlock,
                                     logsIterator.Index,
@@ -173,7 +200,7 @@ namespace Nethermind.Blockchain.Find
                                     log.Data.ToArray(),
                                     topics));
                             }
-                            
+
                             logIndexInBlock++;
                         }
                     }

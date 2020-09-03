@@ -1,0 +1,38 @@
+name: Publish Nethtest image to Docker Registry
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  nethtest-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+      - name: Unshallow fetching
+        run: git fetch --unshallow
+      - name: Settings
+        id: settings
+        run: |
+          echo ::set-output name=docker_username::${{ secrets.DOCKER_USERNAME }}
+          echo ::set-output name=docker_image::nethermindeth/nethtest
+      - name: Set up docker buildx
+        id: buildx
+        uses: crazy-max/ghaction-docker-buildx@v3.1.0
+        with:
+          version: latest
+      - name: Docker Login
+        if: success()
+        env:
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+        run: |
+          echo "${DOCKER_PASSWORD}" | docker login --username "${{ steps.settings.outputs.docker_username }}" --password-stdin
+      - name: Build & Push image to docker registry
+        run: |
+          docker buildx build --platform=linux/amd64 -t "${{ steps.settings.outputs.docker_image }}" -f Dockerfile.stateRunner --build-arg GIT_COMMIT=$(git log -1 --format=%h) . --push
+      - name: Clear
+        if: always()
+        run: |
+          rm -f ${HOME}/.docker/config.json

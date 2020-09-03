@@ -22,6 +22,7 @@ namespace Nethermind.Synchronization.Peers
         Geth,
         Nethermind,
         Parity,
+        OpenEthereum,
         Unknown
     }
 }

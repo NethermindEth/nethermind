@@ -16,10 +16,11 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.State;
 
 namespace Nethermind.Evm.Tracing.GethStyle
@@ -29,10 +30,12 @@ namespace Nethermind.Evm.Tracing.GethStyle
         private readonly GethTraceOptions _options;
         private GethTxTraceEntry _traceEntry;
         private GethLikeTxTrace _trace = new GethLikeTxTrace();
+        private readonly CancellationToken _cancellationToken;  
 
-        public GethLikeTxTracer(GethTraceOptions options)
+        public GethLikeTxTracer(GethTraceOptions options, CancellationToken cancellationToken = default(CancellationToken)) 
         {
             _options = options;
+            _cancellationToken = cancellationToken;            
             IsTracingStack = !_options.DisableStack;
             IsTracingMemory = !_options.DisableMemory;
             IsTracingOpLevelStorage = !_options.DisableStorage;
@@ -59,11 +62,13 @@ namespace Nethermind.Evm.Tracing.GethStyle
         public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak stateRoot = null)
         {
             _trace.Failed = true;
-            _trace.ReturnValue = output ?? Bytes.Empty;
+            _trace.ReturnValue = output ?? Array.Empty<byte>();
         }
 
         public void StartOperation(int depth, long gas, Instruction opcode, int pc)
         {
+            _cancellationToken.ThrowIfCancellationRequested();
+
             var previousTraceEntry = _traceEntry;
             _traceEntry = new GethTxTraceEntry();
             _traceEntry.Pc = pc;
@@ -116,6 +121,10 @@ namespace Nethermind.Evm.Tracing.GethStyle
                     return "StackUnderflow";
                 case EvmExceptionType.OutOfGas:
                     return "OutOfGas";
+                case EvmExceptionType.InvalidSubroutineEntry:
+                    return "InvalidSubroutineEntry";
+                case EvmExceptionType.InvalidSubroutineReturn:
+                    return "InvalidSubroutineReturn";
                 case EvmExceptionType.InvalidJumpDestination:
                     return "BadJumpDestination";
                 case EvmExceptionType.AccessViolation:
@@ -129,11 +138,15 @@ namespace Nethermind.Evm.Tracing.GethStyle
 
         public void ReportOperationRemainingGas(long gas)
         {
+            _cancellationToken.ThrowIfCancellationRequested();
+
             _traceEntry.GasCost = _traceEntry.Gas - gas;
         }
 
         public void SetOperationMemorySize(ulong newSize)
         {
+            _cancellationToken.ThrowIfCancellationRequested();
+
             _traceEntry.UpdateMemorySize(newSize);
         }
 
@@ -147,6 +160,8 @@ namespace Nethermind.Evm.Tracing.GethStyle
 
         public void SetOperationStorage(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue)
         {
+            _cancellationToken.ThrowIfCancellationRequested();
+
             byte[] bigEndian = new byte[32];
             storageIndex.ToBigEndian(bigEndian);
             _traceEntry.Storage[bigEndian.ToHexString(false)] = newValue.PadLeft(32).ToHexString(false);

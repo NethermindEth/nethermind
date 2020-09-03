@@ -27,7 +27,7 @@ namespace Nethermind.Blockchain.Synchronization
         public static ISyncConfig WithFastBlocks { get; } = new SyncConfig {FastSync = true, FastBlocks = true};
 
         public bool SynchronizationEnabled { get; set; } = true;
-        public long? FastSyncCatchUpHeightDelta { get; set; } = 1024;
+        public long? FastSyncCatchUpHeightDelta { get; set; } = 8192;
         public bool FastBlocks { get; set; }
         public bool UseGethLimitsInFastBlocks { get; set; } = true;
         public bool BeamSync { get; set; }
@@ -38,5 +38,9 @@ namespace Nethermind.Blockchain.Synchronization
         public string PivotTotalDifficulty { get; set; }
         public string PivotNumber { get; set; }
         public string PivotHash { get; set; }
+        public int BeamSyncContextTimeout { get; set; } = 4;
+        public int BeamSyncPreProcessorTimeout { get; set; } = 15;
+        public bool BeamSyncFixMode { get; set; } = false;
+        public bool BeamSyncVerifiedMode { get; set; } = false;
     }
 }

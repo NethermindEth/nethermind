@@ -34,7 +34,7 @@ namespace Nethermind.Core.Crypto
         {
         }
         
-        public PublicKey(byte[] bytes)
+        public PublicKey(Span<byte> bytes)
         {
             if (bytes == null)
             {
@@ -53,7 +53,7 @@ namespace Nethermind.Core.Crypto
                     $"Expected prefix of 0x04 for {PrefixedLengthInBytes} bytes long {nameof(PublicKey)}");
             }
 
-            Bytes = bytes.Length == 64 ? bytes : bytes.Slice(bytes.Length - 64, 64);
+            Bytes = bytes.Slice(bytes.Length - 64, 64).ToArray();
         }
 
         public Address Address
@@ -98,6 +98,12 @@ namespace Nethermind.Core.Crypto
         private Address ComputeAddress()
         {
             Span<byte> hash = ValueKeccak.Compute(Bytes).BytesAsSpan;
+            return new Address(hash.Slice(12).ToArray());
+        }
+        
+        public static Address ComputeAddress(Span<byte> publicKeyBytes)
+        {
+            Span<byte> hash = ValueKeccak.Compute(publicKeyBytes).BytesAsSpan;
             return new Address(hash.Slice(12).ToArray());
         }
 

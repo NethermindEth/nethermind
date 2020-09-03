@@ -21,21 +21,47 @@ using Nethermind.Blockchain.Processing;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Config;
+using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using Nethermind.State;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
     public class TestAuraProducer : AuRaBlockProducer
     {
-        public TestAuraProducer(ITxSource transactionSource, IBlockchainProcessor processor, IStateProvider stateProvider, ISealer sealer, IBlockTree blockTree, IBlockProcessingQueue blockProcessingQueue, ITimestamper timestamper, ILogManager logManager, IAuRaStepCalculator auRaStepCalculator, IAuraConfig config, Address nodeAddress) : base(transactionSource, processor, stateProvider, sealer, blockTree, blockProcessingQueue, timestamper, logManager, auRaStepCalculator, config, nodeAddress)
+        public TestAuraProducer(ITxSource transactionSource,
+            IBlockchainProcessor processor,
+            IStateProvider stateProvider,
+            ISealer sealer,
+            IBlockTree blockTree,
+            IBlockProcessingQueue blockProcessingQueue,
+            ITimestamper timestamper,
+            ILogManager logManager,
+            IAuRaStepCalculator auRaStepCalculator,
+            IReportingValidator reportingValidator,
+            IAuraConfig config) 
+            : base(
+                transactionSource,
+                processor,
+                stateProvider,
+                sealer,
+                blockTree,
+                blockProcessingQueue,
+                timestamper,
+                auRaStepCalculator,
+                reportingValidator,
+                config,
+                FollowOtherMiners.Instance, 
+                logManager)
         {
         }
 
-        private AutoResetEvent _newBlockArrived = new AutoResetEvent(false);
+        private readonly AutoResetEvent _newBlockArrived = new AutoResetEvent(false);
 
         protected override async ValueTask ProducerLoop()
         {

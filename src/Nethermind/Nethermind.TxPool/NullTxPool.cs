@@ -17,7 +17,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 
 namespace Nethermind.TxPool
 {
@@ -38,10 +38,6 @@ namespace Nethermind.TxPool
         public Transaction[] GetPendingTransactions() => Array.Empty<Transaction>();
         
         public Transaction[] GetOwnPendingTransactions() => Array.Empty<Transaction>();
-
-        public void AddFilter<T>(T filter) where T : ITxFilter
-        {
-        }
 
         public void AddPeer(ITxPoolPeer peer)
         {

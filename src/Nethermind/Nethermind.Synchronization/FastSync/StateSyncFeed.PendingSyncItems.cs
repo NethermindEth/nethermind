@@ -20,7 +20,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using Priority_Queue;
 
 namespace Nethermind.Synchronization.FastSync
 {
@@ -28,7 +27,7 @@ namespace Nethermind.Synchronization.FastSync
     {
         internal interface IPendingSyncItems
         {
-            StateSyncItem PeekState();
+            StateSyncItem? PeekState();
             string RecalculatePriorities();
             List<StateSyncItem> TakeBatch(int maxSize);
             void Clear();
@@ -41,8 +40,6 @@ namespace Nethermind.Synchronization.FastSync
         
         internal class PendingSyncItems : IPendingSyncItems
         {
-            private FastPriorityQueue<StateSyncItem> queue = new FastPriorityQueue<StateSyncItem>(1024 * 1024);
-            
             private ConcurrentStack<StateSyncItem>[] _allStacks = new ConcurrentStack<StateSyncItem>[7];
 
             private ConcurrentStack<StateSyncItem> CodeItems => _allStacks[0];
@@ -94,9 +91,9 @@ namespace Nethermind.Synchronization.FastSync
             public string Description => $"{CodeItems?.Count ?? 0:D4} + {StorageItemsPriority0?.Count ?? 0:D6} {StorageItemsPriority1?.Count ?? 0:D6} {StorageItemsPriority2?.Count ?? 0:D6} + {StateItemsPriority0?.Count ?? 0:D6} {StateItemsPriority1?.Count ?? 0:D6} {StateItemsPriority2?.Count ?? 0:D6}";
             public int Count => _allStacks.Sum(n => n?.Count ?? 0);
 
-            public StateSyncItem PeekState()
+            public StateSyncItem? PeekState()
             {
-                StateItemsPriority0.TryPeek(out StateSyncItem node);
+                StateItemsPriority0.TryPeek(out StateSyncItem? node);
 
                 if (node == null)
                 {
@@ -153,7 +150,7 @@ namespace Nethermind.Synchronization.FastSync
                 }
             }
 
-            private bool TryTake(out StateSyncItem node)
+            private bool TryTake(out StateSyncItem? node)
             {
                 for (int i = 0; i < _allStacks.Length; i++)
                 {
@@ -177,9 +174,9 @@ namespace Nethermind.Synchronization.FastSync
                 List<StateSyncItem> requestHashes = new List<StateSyncItem>();
                 for (int i = 0; i < length; i++)
                 {
-                    if (TryTake(out StateSyncItem requestItem))
+                    if (TryTake(out StateSyncItem? requestItem))
                     {
-                        requestHashes.Add(requestItem);
+                        requestHashes.Add(requestItem!);
                     }
                     else
                     {
@@ -199,14 +196,14 @@ namespace Nethermind.Synchronization.FastSync
                 reviewMessage += $"  before {Description}" + Environment.NewLine;
 
                 List<StateSyncItem> temp = new List<StateSyncItem>();
-                while (StateItemsPriority2.TryPop(out StateSyncItem poppedSyncItem))
+                while (StateItemsPriority2.TryPop(out StateSyncItem? poppedSyncItem))
                 {
-                    temp.Add(poppedSyncItem);
+                    temp.Add(poppedSyncItem!);
                 }
 
-                while (StorageItemsPriority2.TryPop(out StateSyncItem poppedSyncItem))
+                while (StorageItemsPriority2.TryPop(out StateSyncItem? poppedSyncItem))
                 {
-                    temp.Add(poppedSyncItem);
+                    temp.Add(poppedSyncItem!);
                 }
 
                 foreach (StateSyncItem syncItem in temp)

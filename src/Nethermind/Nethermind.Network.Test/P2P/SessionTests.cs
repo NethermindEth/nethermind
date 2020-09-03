@@ -230,9 +230,9 @@ namespace Nethermind.Network.Test.P2P
             session.InitiateDisconnect(DisconnectReason.ClientQuitting, "test");
             session.Dispose();
 
-            aaa.Received().InitiateDisconnect(DisconnectReason.ClientQuitting, "test");
-            bbb.Received().InitiateDisconnect(DisconnectReason.ClientQuitting, "test");
-            ccc.Received().InitiateDisconnect(DisconnectReason.ClientQuitting, "test");
+            aaa.Received().DisconnectProtocol(DisconnectReason.ClientQuitting, "test");
+            bbb.Received().DisconnectProtocol(DisconnectReason.ClientQuitting, "test");
+            ccc.Received().DisconnectProtocol(DisconnectReason.ClientQuitting, "test");
 
             aaa.Received().Dispose();
             bbb.Received().Dispose();
@@ -362,9 +362,9 @@ namespace Nethermind.Network.Test.P2P
             session.AddProtocolHandler(bbb);
             session.AddProtocolHandler(ccc);
             session.InitiateDisconnect(DisconnectReason.ClientQuitting, "test");
-            aaa.Received().InitiateDisconnect(DisconnectReason.ClientQuitting, "test");
-            bbb.Received().InitiateDisconnect(DisconnectReason.ClientQuitting, "test");
-            ccc.Received().InitiateDisconnect(DisconnectReason.ClientQuitting, "test");
+            aaa.Received().DisconnectProtocol(DisconnectReason.ClientQuitting, "test");
+            bbb.Received().DisconnectProtocol(DisconnectReason.ClientQuitting, "test");
+            ccc.Received().DisconnectProtocol(DisconnectReason.ClientQuitting, "test");
         }
 
         [Test]
@@ -432,9 +432,9 @@ namespace Nethermind.Network.Test.P2P
         public void Cannot_receive_before_initialized()
         {
             Session session = new Session(30312, LimboLogs.Instance, _channel, new Node("127.0.0.1", 8545));
-            Assert.Throws<InvalidOperationException>(() => session.ReceiveMessage(new Packet("p2p", 1, Bytes.Empty)));
+            Assert.Throws<InvalidOperationException>(() => session.ReceiveMessage(new Packet("p2p", 1, Array.Empty<byte>())));
             session.Handshake(TestItem.PublicKeyA);
-            Assert.Throws<InvalidOperationException>(() => session.ReceiveMessage(new Packet("p2p", 1, Bytes.Empty)));
+            Assert.Throws<InvalidOperationException>(() => session.ReceiveMessage(new Packet("p2p", 1, Array.Empty<byte>())));
             session.Init(5, _channelHandlerContext, _packetSender);
             IProtocolHandler p2p = BuildHandler("p2p", 10);
             session.AddProtocolHandler(p2p);
@@ -466,7 +466,7 @@ namespace Nethermind.Network.Test.P2P
 
             session.InitiateDisconnect(DisconnectReason.Other);
 
-            session.ReceiveMessage(new Packet("p2p", 3, Bytes.Empty));
+            session.ReceiveMessage(new Packet("p2p", 3, Array.Empty<byte>()));
             p2p.DidNotReceive().HandleMessage(Arg.Is<Packet>(p => p.Protocol == "p2p" && p.PacketType == 3));
         }
 
@@ -485,19 +485,19 @@ namespace Nethermind.Network.Test.P2P
             session.AddProtocolHandler(bbb);
             session.AddProtocolHandler(ccc);
 
-            session.ReceiveMessage(new Packet("---", 3, Bytes.Empty));
+            session.ReceiveMessage(new Packet("---", 3, Array.Empty<byte>()));
             p2p.Received().HandleMessage(Arg.Is<Packet>(p => p.Protocol == "p2p" && p.PacketType == 3));
 
-            session.ReceiveMessage(new Packet("---", 11, Bytes.Empty));
+            session.ReceiveMessage(new Packet("---", 11, Array.Empty<byte>()));
             aaa.Received().HandleMessage(Arg.Is<Packet>(p => p.Protocol == "aaa" && p.PacketType == 1));
 
-            session.ReceiveMessage(new Packet("---", 21, Bytes.Empty));
+            session.ReceiveMessage(new Packet("---", 21, Array.Empty<byte>()));
             bbb.Received().HandleMessage(Arg.Is<Packet>(p => p.Protocol == "bbb" && p.PacketType == 1));
 
-            session.ReceiveMessage(new Packet("---", 25, Bytes.Empty));
+            session.ReceiveMessage(new Packet("---", 25, Array.Empty<byte>()));
             ccc.Received().HandleMessage(Arg.Is<Packet>(p => p.Protocol == "ccc" && p.PacketType == 0));
 
-            session.ReceiveMessage(new Packet("---", 100, Bytes.Empty));
+            session.ReceiveMessage(new Packet("---", 100, Array.Empty<byte>()));
         }
 
         [Test]

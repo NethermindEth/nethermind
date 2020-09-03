@@ -23,7 +23,7 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.DataMarketplace.Core.Configs;
 using Nethermind.DataMarketplace.Core.Services.Models;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Facade.Proxy;
 using Nethermind.Logging;
 using Newtonsoft.Json;

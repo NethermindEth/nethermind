@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Buffers.Binary;
 using System.Threading;
 using Nethermind.HashLib;
 using Nethermind.Serialization.Rlp;
@@ -24,7 +25,7 @@ namespace Nethermind.Crypto
     // TODO: it is a copy-paste from Keccak, consider later a similar structure to Hashlib but compare the perf first
     public struct Keccak512 : IEquatable<Keccak512>
     {
-        private const int Size = 64;
+        public const int Size = 64;
 
         public Keccak512(byte[] bytes)
         {
@@ -92,7 +93,7 @@ namespace Nethermind.Crypto
             return _hash.ComputeBytesToUint(input);
         }
 
-        public static uint[] ComputeUIntsToUInts(uint[] input)
+        public static uint[] ComputeUIntsToUInts(Span<uint> input)
         {
             if (input == null || input.Length == 0)
             {
@@ -105,6 +106,21 @@ namespace Nethermind.Crypto
             }
 
             return _hash.ComputeUIntsToUint(input);
+        }
+        
+        public static void ComputeUIntsToUInts(Span<uint> input, Span<uint> output)
+        {
+            if (input == null || input.Length == 0)
+            {
+                throw new NotSupportedException();
+            }
+
+            if (_hash == null)
+            {
+                LazyInitializer.EnsureInitialized(ref _hash, Init);
+            }
+
+            _hash.ComputeUIntsToUint(input, output);
         }
 
         private static HashLib.Crypto.SHA3.Keccak512 Init()
@@ -144,16 +160,7 @@ namespace Nethermind.Crypto
 
         public override int GetHashCode()
         {
-            unchecked
-            {
-                const int p = 16777619;
-                int hash = (int)2166136261;
-
-                hash = hash ^ (Bytes[0] * p);
-                hash = hash ^ (Bytes[Size / 2] * p);
-                hash = hash ^ (Bytes[Size - 1] * p);
-                return hash;
-            }
+            return BinaryPrimitives.ReadInt32LittleEndian(Bytes);
         }
 
         public static bool operator ==(Keccak512 a, Keccak512 b)

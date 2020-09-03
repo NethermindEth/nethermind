@@ -16,7 +16,7 @@
 
 using System.Collections.Generic;
 using Nethermind.Core;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Newtonsoft.Json;
 
 namespace Nethermind.Evm.Tracing.ParityStyle

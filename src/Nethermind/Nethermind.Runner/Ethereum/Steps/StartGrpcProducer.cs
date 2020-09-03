@@ -14,51 +14,34 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Grpc;
 using Nethermind.Grpc.Producers;
 using Nethermind.Runner.Ethereum.Context;
-using Nethermind.Runner.Ethereum.Subsystems;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
     [RunnerStepDependencies(typeof(StartBlockProcessor))]
-    public class StartGrpcProducer : IStep, ISubsystemStateAware
+    public class StartGrpcProducer : IStep
     {
         private readonly EthereumRunnerContext _context;
 
         public StartGrpcProducer(EthereumRunnerContext context)
         {
             _context = context;
-            EthereumSubsystemState newState = _context.Config<IGrpcConfig>().Enabled
-                ? EthereumSubsystemState.AwaitingInitialization
-                : EthereumSubsystemState.Disabled;
-
-            SubsystemStateChanged?.Invoke(this, new SubsystemStateEventArgs(newState));
         }
 
-        public Task Execute()
+        public Task Execute(CancellationToken _)
         {
             IGrpcConfig grpcConfig = _context.Config<IGrpcConfig>();
             if (grpcConfig.Enabled)
             {
-                SubsystemStateChanged?.Invoke(this, new SubsystemStateEventArgs(EthereumSubsystemState.Initializing));
-
-                if (grpcConfig.ProducerEnabled)
-                {
-                    GrpcProducer grpcProducer = new GrpcProducer(_context.GrpcServer);
-                    _context.Producers.Add(grpcProducer);
-                }
-
-                SubsystemStateChanged?.Invoke(this, new SubsystemStateEventArgs(EthereumSubsystemState.Running));
+                GrpcProducer grpcProducer = new GrpcProducer(_context.GrpcServer);
+                _context.Producers.Add(grpcProducer);
             }
 
             return Task.CompletedTask;
         }
-
-        public event EventHandler<SubsystemStateEventArgs>? SubsystemStateChanged;
-
-        public EthereumSubsystem MonitoredSubsystem => EthereumSubsystem.Grpc;
     }
 }

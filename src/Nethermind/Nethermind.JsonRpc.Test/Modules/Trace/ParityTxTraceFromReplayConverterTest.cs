@@ -22,7 +22,7 @@ using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.JsonRpc.Modules.Trace;
@@ -51,7 +51,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
                 CallType = "call",
                 From = TestItem.AddressC,
                 To = TestItem.AddressD,
-                Input = Bytes.Empty,
+                Input = Array.Empty<byte>(),
                 Gas = 10000,
                 TraceAddress = new int[] {0, 0}
             };
@@ -115,7 +115,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
                 CallType = "call",
                 From = TestItem.AddressC,
                 To = TestItem.AddressD,
-                Input = Bytes.Empty,
+                Input = Array.Empty<byte>(),
                 Gas = 10000,
                 TraceAddress = new int[] {0, 0}
             };

@@ -35,7 +35,7 @@ using Nethermind.Synchronization.Reporting;
 
 namespace Nethermind.Synchronization.Blocks
 {
-    internal class BlockDownloader : SyncDispatcher<BlocksRequest>
+    internal class BlockDownloader : SyncDispatcher<BlocksRequest?>
     {
         public const int MaxReorganizationLength = SyncBatchSize.Max * 2;
 
@@ -55,7 +55,7 @@ namespace Nethermind.Synchronization.Blocks
         private int[] _ancestorJumps = {1, 2, 3, 8, 16, 32, 64, 128, 256, 384, 512, 640, 768, 896, 1024};
 
         public BlockDownloader(
-            ISyncFeed<BlocksRequest> feed,
+            ISyncFeed<BlocksRequest?> feed,
             ISyncPeerPool syncPeerPool,
             IBlockTree blockTree,
             IBlockValidator blockValidator,
@@ -78,16 +78,28 @@ namespace Nethermind.Synchronization.Blocks
             _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
         }
 
-        private void BlockTreeOnNewHeadBlock(object sender, BlockEventArgs e)
+        private void BlockTreeOnNewHeadBlock(object? sender, BlockEventArgs e)
         {
             _syncReport.FullSyncBlocksDownloaded.Update(_blockTree.BestSuggestedHeader?.Number ?? 0);
             _syncReport.FullSyncBlocksKnown = Math.Max(_syncReport.FullSyncBlocksKnown, e.Block.Number);
         }
 
-        protected override async Task Dispatch(PeerInfo bestPeer, BlocksRequest blocksRequest, CancellationToken cancellation)
+        protected override async Task Dispatch(
+            PeerInfo bestPeer,
+            BlocksRequest? blocksRequest,
+            CancellationToken cancellation)
         {
+            if (blocksRequest == null)
+            {
+                if(Logger.IsWarn) Logger.Warn($"NULL received for dispatch in {nameof(BlockDownloader)}");
+                return;
+            }
+            
             if (!_blockTree.CanAcceptNewBlocks) return;
-            CancellationTokenSource linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellation, _allocationWithCancellation.Cancellation.Token);
+            CancellationTokenSource linkedCancellation =
+                CancellationTokenSource.CreateLinkedTokenSource(
+                    cancellation,
+                    _allocationWithCancellation.Cancellation.Token);
 
             try
             {
@@ -140,7 +152,7 @@ namespace Nethermind.Synchronization.Blocks
                 if (_logger.IsDebug) _logger.Debug($"Headers request {currentNumber}+{headersToRequest} to peer {bestPeer} with {bestPeer.HeadNumber} blocks. Got {currentNumber} and asking for {headersToRequest} more.");
                 BlockHeader[] headers = await RequestHeaders(bestPeer, cancellation, currentNumber, headersToRequest);
 
-                BlockHeader startingPoint = headers[0] == null ? null : _blockTree.FindHeader(headers[0].Hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                BlockHeader? startingPoint = headers[0] == null ? null : _blockTree.FindHeader(headers[0].Hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                 if (startingPoint == null)
                 {
                     ancestorLookupLevel++;
@@ -311,10 +323,10 @@ namespace Nethermind.Synchronization.Blocks
                     {
                         if (downloadReceipts)
                         {
-                            var contextReceiptsForBlock = context.ReceiptsForBlocks[blockIndex];
+                            var contextReceiptsForBlock = context.ReceiptsForBlocks![blockIndex];
                             if (contextReceiptsForBlock != null)
                             {
-                                _receiptStorage.Insert(currentBlock, false, contextReceiptsForBlock);
+                                _receiptStorage.Insert(currentBlock, contextReceiptsForBlock);
                             }
                         }
 
@@ -532,11 +544,11 @@ namespace Nethermind.Synchronization.Blocks
                     if (_logger.IsTrace) _logger.Trace($"Block/header {block.Number} skipped - already known");
                     return false;
                 default:
-                    throw new NotImplementedException($"Unknown {nameof(AddBlockResult)} {addResult}");
+                    throw new NotSupportedException($"Unknown {nameof(AddBlockResult)} {addResult}");
             }
         }
 
-        public event EventHandler<SyncEventArgs> SyncEvent;
+        public event EventHandler<SyncEventArgs>? SyncEvent;
 
         private void HandleSyncRequestResult(Task<long> task, PeerInfo peerInfo)
         {
@@ -594,8 +606,13 @@ namespace Nethermind.Synchronization.Blocks
             }
         }
 
-        protected override async Task<SyncPeerAllocation> Allocate(BlocksRequest request)
+        protected override async Task<SyncPeerAllocation> Allocate(BlocksRequest? request)
         {
+            if (request == null)
+            {
+                throw new InvalidOperationException($"NULL received for dispatch in {nameof(BlockDownloader)}");
+            }
+
             SyncPeerAllocation allocation = await base.Allocate(request);
             CancellationTokenSource cancellation = new CancellationTokenSource();
             _allocationWithCancellation = new AllocationWithCancellation(allocation, cancellation);
@@ -612,7 +629,7 @@ namespace Nethermind.Synchronization.Blocks
             base.Free(allocation);
         }
 
-        private void AllocationOnCancelled(object sender, AllocationChangeEventArgs e)
+        private void AllocationOnCancelled(object? sender, AllocationChangeEventArgs e)
         {
             AllocationWithCancellation allocationWithCancellation = _allocationWithCancellation;
             if (allocationWithCancellation.Allocation != sender)
@@ -623,7 +640,7 @@ namespace Nethermind.Synchronization.Blocks
             allocationWithCancellation.Cancel();
         }
         
-        private void AllocationOnReplaced(object sender, AllocationChangeEventArgs e)
+        private void AllocationOnReplaced(object? sender, AllocationChangeEventArgs e)
         {
             if (e.Previous == null)
             {
@@ -640,9 +657,9 @@ namespace Nethermind.Synchronization.Blocks
                 _allocationWithCancellation.Cancel();
             }
 
-            PeerInfo newPeer = e.Current;
+            PeerInfo? newPeer = e.Current;
             BlockHeader bestSuggested = _blockTree.BestSuggestedHeader;
-            if (newPeer.TotalDifficulty > bestSuggested.TotalDifficulty)
+            if ((newPeer?.TotalDifficulty ?? 0) > bestSuggested.TotalDifficulty)
             {
                 Feed.Activate();
             }

@@ -69,6 +69,9 @@ namespace Nethermind.Runner
             CommandLineApplication app = new CommandLineApplication {Name = "Nethermind.Runner"};
             app.HelpOption("-?|-h|--help");
             app.VersionOption("-v|--version", () => ClientVersion.Version, () => ClientVersion.Description);
+
+            NLog.GlobalDiagnosticsContext.Set("version", ClientVersion.Version);
+
             CommandOption configFile = app.Option("-c|--config <configFile>", "config file path", CommandOptionType.SingleValue);
             CommandOption dbBasePath = app.Option("-d|--baseDbPath <baseDbPath>", "base db path", CommandOptionType.SingleValue);
             CommandOption logLevelOverride = app.Option("-l|--log <logLevel>", "log level", CommandOptionType.SingleValue);
@@ -117,40 +120,7 @@ namespace Nethermind.Runner
                 // TODO: dynamically switch log levels from CLI!
                 if (logLevelOverride.HasValue())
                 {
-                    string logLevel = logLevelOverride.Value();
-                    NLog.LogLevel nLogLevel = NLog.LogLevel.Info;
-                    switch (logLevel.ToUpperInvariant())
-                    {
-                        case "OFF":
-                            nLogLevel = NLog.LogLevel.Off;
-                            break;
-                        case "ERROR":
-                            nLogLevel = NLog.LogLevel.Error;
-                            break;
-                        case "WARN":
-                            nLogLevel = NLog.LogLevel.Warn;
-                            break;
-                        case "INFO":
-                            nLogLevel = NLog.LogLevel.Info;
-                            break;
-                        case "DEBUG":
-                            nLogLevel = NLog.LogLevel.Debug;
-                            break;
-                        case "TRACE":
-                            nLogLevel = NLog.LogLevel.Trace;
-                            break;
-                    }
-
-                    Console.WriteLine($"Enabling log level override: {logLevel.ToUpperInvariant()}");
-
-                    foreach (LoggingRule rule in LogManager.Configuration.LoggingRules)
-                    {
-                        rule.DisableLoggingForLevels(NLog.LogLevel.Trace, nLogLevel);
-                        rule.EnableLoggingForLevels(nLogLevel, NLog.LogLevel.Off);
-                    }
-
-                    //Call to update existing Loggers created with GetLogger() or //GetCurrentClassLogger()
-                    LogManager.ReconfigExistingLoggers();
+                    (new NLogConfigurator()).ConfigureLogLevels(logLevelOverride);
                 }
 
                 ConfigProvider configProvider = new ConfigProvider();
@@ -175,13 +145,16 @@ namespace Nethermind.Runner
                     configFilePath = configPathVariable;
                 }
 
-                if (configDir == DefaultConfigsDirectory)
+                if (!PathUtils.IsExplicitlyRelative(configFilePath))
                 {
-                    configFilePath = configFilePath.GetApplicationResourcePath();
-                }
-                else
-                {
-                    configFilePath = Path.Combine(configDir, string.Concat(configFilePath));
+                    if (configDir == DefaultConfigsDirectory)
+                    {
+                        configFilePath = configFilePath.GetApplicationResourcePath();
+                    }
+                    else
+                    {
+                        configFilePath = Path.Combine(configDir, string.Concat(configFilePath));
+                    }
                 }
 
                 if (!Path.HasExtension(configFilePath) && !configFilePath.Contains(Path.DirectorySeparatorChar))

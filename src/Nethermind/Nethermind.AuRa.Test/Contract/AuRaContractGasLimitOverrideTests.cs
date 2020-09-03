@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -22,10 +23,12 @@ using Nethermind.Abi;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Validators;
+using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
+using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
@@ -36,6 +39,8 @@ namespace Nethermind.AuRa.Test.Contract
 {
     public class AuRaContractGasLimitOverrideTests
     {
+        private const int CorrectHeadGasLimit = 100000000;
+
         // TestContract: 
         // pragma solidity ^0.5.0;
         // contract TestValidatorSet {
@@ -47,29 +52,57 @@ namespace Nethermind.AuRa.Test.Contract
         public async Task can_read_block_gas_limit_from_contract()
         {
             var chain = await TestContractBlockchain.ForTest<TestGasLimitContractBlockchain, AuRaContractGasLimitOverrideTests>();
-            var gasLimit = chain.GasLimitOverride.GetGasLimit(chain.BlockTree.Head.Header);
-            gasLimit.Should().Be(100000000);
+            var gasLimit = chain.GasLimitCalculator.GetGasLimit(chain.BlockTree.Head.Header);
+            gasLimit.Should().Be(CorrectHeadGasLimit);
+        }
+        
+        [Test]
+        public async Task caches_read_block_gas_limit()
+        {
+            var chain = await TestContractBlockchain.ForTest<TestGasLimitContractBlockchain, AuRaContractGasLimitOverrideTests>();
+            chain.GasLimitCalculator.GetGasLimit(chain.BlockTree.Head.Header);
+            var gasLimit = chain.GasLimitOverrideCache.GasLimitCache.Get(chain.BlockTree.Head.Hash);
+            gasLimit.Should().Be(CorrectHeadGasLimit);
+        }
+        
+        [Test]
+        public async Task can_validate_gas_limit_correct()
+        {
+            var chain = await TestContractBlockchain.ForTest<TestGasLimitContractBlockchain, AuRaContractGasLimitOverrideTests>();
+            var isValid = ((AuRaContractGasLimitOverride) chain.GasLimitCalculator).IsGasLimitValid(chain.BlockTree.Head.Header, CorrectHeadGasLimit, out _);
+            isValid.Should().BeTrue();
+        }
+        
+        [Test]
+        public async Task can_validate_gas_limit_incorrect()
+        {
+            var chain = await TestContractBlockchain.ForTest<TestGasLimitContractBlockchain, AuRaContractGasLimitOverrideTests>();
+            var isValid = ((AuRaContractGasLimitOverride) chain.GasLimitCalculator).IsGasLimitValid(chain.BlockTree.Head.Header, 100000001, out long? expectedGasLimit);
+            isValid.Should().BeFalse();
+            expectedGasLimit.Should().Be(CorrectHeadGasLimit);
+        }
+        
+        [Test]
+        public async Task skip_validate_gas_limit_before_enabled()
+        {
+            var chain = await TestContractBlockchain.ForTest<TestGasLimitContractBlockchainLateBlockGasLimit, AuRaContractGasLimitOverrideTests>();
+            var isValid = ((AuRaContractGasLimitOverride) chain.GasLimitCalculator).IsGasLimitValid(chain.BlockTree.Genesis, 100000001, out _);
+            isValid.Should().BeTrue();
         }
 
         public class TestGasLimitContractBlockchain : TestContractBlockchain
         {
-            public IGasLimitOverride GasLimitOverride { get; private set; }
-            public IGasLimitOverride.Cache GasLimitOverrideCache { get; private set; }
+            public IGasLimitCalculator GasLimitCalculator { get; private set; }
+            public AuRaContractGasLimitOverride.Cache GasLimitOverrideCache { get; private set; }
             
             protected override BlockProcessor CreateBlockProcessor()
             {
-                var validator = new AuRaParameters.Validator()
-                {
-                    Addresses = TestItem.Addresses,
-                    ValidatorType = AuRaParameters.ValidatorType.List
-                };
-
-                var blockGasLimitContractTransition = this.ChainSpec.AuRa.BlockGasLimitContractTransitions.First();
-                var gasLimitContract = new BlockGasLimitContract(TxProcessor, new AbiEncoder(), blockGasLimitContractTransition.Value, blockGasLimitContractTransition.Key,
-                    new ReadOnlyTransactionProcessorSource(DbProvider, BlockTree, SpecProvider, LimboLogs.Instance));
+                var blockGasLimitContractTransition = ChainSpec.AuRa.BlockGasLimitContractTransitions.First();
+                var gasLimitContract = new BlockGasLimitContract(new AbiEncoder(), blockGasLimitContractTransition.Value, blockGasLimitContractTransition.Key,
+                    new ReadOnlyTxProcessorSource(DbProvider, BlockTree, SpecProvider, LimboLogs.Instance));
                 
-                GasLimitOverrideCache = new IGasLimitOverride.Cache();
-                GasLimitOverride = new AuRaContractGasLimitOverride(new[] {gasLimitContract}, GasLimitOverrideCache, false, LimboLogs.Instance);
+                GasLimitOverrideCache = new AuRaContractGasLimitOverride.Cache();
+                GasLimitCalculator = new AuRaContractGasLimitOverride(new[] {gasLimitContract}, GasLimitOverrideCache, false, FollowOtherMiners.Instance, LimboLogs.Instance);
 
                 return new AuRaBlockProcessor(
                     SpecProvider,
@@ -85,10 +118,20 @@ namespace Nethermind.AuRa.Test.Contract
                     LimboLogs.Instance,
                     BlockTree,
                     null,
-                    GasLimitOverride);
+                    GasLimitCalculator as AuRaContractGasLimitOverride);
             }
 
             protected override Task AddBlocksOnStart() => Task.CompletedTask;
+        }
+        
+        public class TestGasLimitContractBlockchainLateBlockGasLimit : TestGasLimitContractBlockchain
+        {
+            protected override BlockProcessor CreateBlockProcessor()
+            {
+                var blockGasLimitContractTransition = ChainSpec.AuRa.BlockGasLimitContractTransitions.First();
+                ChainSpec.AuRa.BlockGasLimitContractTransitions = new Dictionary<long, Address>() {{10, blockGasLimitContractTransition.Value}};
+                return base.CreateBlockProcessor();
+            }
         }
     }
 }

@@ -16,18 +16,22 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.State;
 
 namespace Nethermind.Evm.Tracing
 {
     public class EstimateGasTracer : ITxTracer
     {
-        public EstimateGasTracer()
+        private readonly CancellationToken _cancellationToken; 
+
+        public EstimateGasTracer(CancellationToken cancellationToken = default)
         {
+            _cancellationToken = cancellationToken;
             _currentGasAndNesting.Push(new GasAndNesting(0, -1));
         }
 
@@ -67,7 +71,7 @@ namespace Nethermind.Evm.Tracing
         {
             GasSpent = gasSpent;
             Error = error;
-            ReturnValue = output ?? Bytes.Empty;
+            ReturnValue = output ?? Array.Empty<byte>();
             StatusCode = Evm.StatusCode.Failure;
         }
 
@@ -183,12 +187,14 @@ namespace Nethermind.Evm.Tracing
 
         internal long CalculateAdditionalGasRequired(Transaction tx)
         {
+            _cancellationToken.ThrowIfCancellationRequested();
             long intrinsicGas = tx.GasLimit - IntrinsicGasAt;
             return _currentGasAndNesting.Peek().AdditionalGasRequired + RefundHelper.CalculateClaimableRefund(intrinsicGas + NonIntrinsicGasSpentBeforeRefund, TotalRefund);
         }
 
         public long CalculateEstimate(Transaction tx)
         {
+            _cancellationToken.ThrowIfCancellationRequested();
             long intrinsicGas = tx.GasLimit - IntrinsicGasAt;
             return Math.Max(intrinsicGas, GasSpent + CalculateAdditionalGasRequired(tx));
         }
@@ -248,6 +254,7 @@ namespace Nethermind.Evm.Tracing
 
         private void UpdateAdditionalGas(long gas)
         {
+            _cancellationToken.ThrowIfCancellationRequested();
             var current = _currentGasAndNesting.Pop();
             current.GasLeft = gas;
             _currentGasAndNesting.Peek().GasUsageFromChildren += current.AdditionalGasRequired;

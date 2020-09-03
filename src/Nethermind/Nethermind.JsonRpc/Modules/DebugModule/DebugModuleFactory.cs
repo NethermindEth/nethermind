@@ -34,9 +34,11 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
     {
         private readonly IBlockTree _blockTree;
         private readonly IDbProvider _dbProvider;
+        private readonly IJsonRpcConfig _jsonRpcConfig;
         private readonly IBlockValidator _blockValidator;
         private readonly IRewardCalculatorSource _rewardCalculatorSource;
         private readonly IReceiptStorage _receiptStorage;
+        private readonly IReceiptsMigration _receiptsMigration;
         private readonly IConfigProvider _configProvider;
         private readonly ISpecProvider _specProvider;
         private readonly ILogManager _logManager;
@@ -46,20 +48,24 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         public DebugModuleFactory(
             IDbProvider dbProvider,
             IBlockTree blockTree,
+            IJsonRpcConfig jsonRpcConfig,
             IBlockValidator blockValidator,
             IBlockDataRecoveryStep recoveryStep,
             IRewardCalculatorSource rewardCalculator,
             IReceiptStorage receiptStorage,
+            IReceiptsMigration receiptsMigration,
             IConfigProvider configProvider,
             ISpecProvider specProvider,
             ILogManager logManager)
         {
             _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
             _rewardCalculatorSource = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
+            _receiptsMigration = receiptsMigration ?? throw new ArgumentNullException(nameof(receiptsMigration));
             _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
@@ -70,12 +76,42 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         {
             IReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
             ReadOnlyBlockTree readOnlyTree = new ReadOnlyBlockTree(_blockTree);
-            ReadOnlyTxProcessingEnv txEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, readOnlyTree, _specProvider, _logManager);
-            ReadOnlyChainProcessingEnv readOnlyChainProcessingEnv = new ReadOnlyChainProcessingEnv(txEnv, _blockValidator, _recoveryStep, _rewardCalculatorSource.Get(txEnv.TransactionProcessor), _receiptStorage, readOnlyDbProvider, _specProvider, _logManager);
-            IGethStyleTracer tracer = new GethStyleTracer(readOnlyChainProcessingEnv.ChainProcessor, _receiptStorage, new ReadOnlyBlockTree(_blockTree));
+            
+            ReadOnlyTxProcessingEnv txEnv =
+                new ReadOnlyTxProcessingEnv(
+                    readOnlyDbProvider,
+                    readOnlyTree,
+                    _specProvider,
+                    _logManager);
+            
+            ReadOnlyChainProcessingEnv readOnlyChainProcessingEnv = 
+                new ReadOnlyChainProcessingEnv(
+                    txEnv,
+                    _blockValidator,
+                    _recoveryStep,
+                    _rewardCalculatorSource.Get(txEnv.TransactionProcessor),
+                    _receiptStorage,
+                    readOnlyDbProvider,
+                    _specProvider,
+                    _logManager);
 
-            DebugBridge debugBridge = new DebugBridge(_configProvider, readOnlyDbProvider, tracer, readOnlyChainProcessingEnv.BlockProcessingQueue, readOnlyTree);
-            return new DebugModule(_logManager, debugBridge);
+            IGethStyleTracer tracer =
+                new GethStyleTracer(
+                    readOnlyChainProcessingEnv.ChainProcessor,
+                    _receiptStorage,
+                    new ReadOnlyBlockTree(_blockTree));
+
+            DebugBridge debugBridge =
+                new DebugBridge(
+                    _configProvider,
+                    readOnlyDbProvider,
+                    tracer, 
+                    readOnlyTree, 
+                    _receiptStorage, 
+                    _receiptsMigration, 
+                    _specProvider);
+            
+            return new DebugModule(_logManager, debugBridge, _jsonRpcConfig);
         }
 
         public static JsonConverter[] Converters = {new GethLikeTxTraceConverter()};

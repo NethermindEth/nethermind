@@ -14,7 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Numerics;
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -23,40 +23,38 @@ namespace Nethermind.Evm.Precompiles
 {
     public static class AddressExtensions
     {
-        public static bool IsPrecompiled(this Address address, IReleaseSpec releaseSpec)
+        private static byte[] _nineteenZeros = new byte[19];
+
+        public static bool IsPrecompile(this Address address, IReleaseSpec releaseSpec)
         {
-            if(address[0] != 0)
+            if (!Bytes.AreEqual(address.Bytes.AsSpan(0, 19), _nineteenZeros))
             {
                 return false;
             }
-            
-            BigInteger asInt = address.Bytes.ToUnsignedBigInteger();
-            if (asInt == 0 || asInt > 9)
+           
+            int precompileCode = address[19];
+            return precompileCode switch
             {
-                return false;
-            }
-
-            if (asInt > 0 && asInt <= 4)
-            {
-                return true;
-            }
-
-            if (asInt == 5)
-            {
-                return releaseSpec.IsEip198Enabled;
-            }
-
-            if (asInt == 6 || asInt == 7)
-            {
-                return releaseSpec.IsEip196Enabled;
-            }
-            
-            if (asInt == 8)
-            {
-                return releaseSpec.IsEip197Enabled;
-            }
-
-            return asInt == 9 && releaseSpec.IsEip152Enabled;
+                1 => true,
+                2 => true,
+                3 => true,
+                4 => true,
+                5 => releaseSpec.IsEip198Enabled,
+                6 => releaseSpec.IsEip196Enabled,
+                7 => releaseSpec.IsEip196Enabled,
+                8 => releaseSpec.IsEip197Enabled,
+                9 => releaseSpec.IsEip152Enabled,
+                10 => releaseSpec.IsEip2537Enabled,
+                11 => releaseSpec.IsEip2537Enabled,
+                12 => releaseSpec.IsEip2537Enabled,
+                13 => releaseSpec.IsEip2537Enabled,
+                14 => releaseSpec.IsEip2537Enabled,
+                15 => releaseSpec.IsEip2537Enabled,
+                16 => releaseSpec.IsEip2537Enabled,
+                17 => releaseSpec.IsEip2537Enabled,
+                18 => releaseSpec.IsEip2537Enabled,
+                _ => false
+            };
         }
     }
 }

@@ -81,18 +81,16 @@ namespace Nethermind.Serialization.Json
         public string Serialize<T>(T value, bool indented = false)
         {
             StringWriter stringWriter = new StringWriter(new StringBuilder(256), CultureInfo.InvariantCulture);
-            using (JsonTextWriter jsonTextWriter = new JsonTextWriter(stringWriter))
+            using JsonTextWriter jsonTextWriter = new JsonTextWriter(stringWriter);
+            if (indented)
             {
-                if (indented)
-                {
-                    jsonTextWriter.Formatting = _internalReadableSerializer.Formatting;
-                    _internalReadableSerializer.Serialize(jsonTextWriter, value, typeof(T));
-                }
-                else
-                {
-                    jsonTextWriter.Formatting = _internalSerializer.Formatting;
-                    _internalSerializer.Serialize(jsonTextWriter, value, typeof(T));
-                }
+                jsonTextWriter.Formatting = _internalReadableSerializer.Formatting;
+                _internalReadableSerializer.Serialize(jsonTextWriter, value, typeof(T));
+            }
+            else
+            {
+                jsonTextWriter.Formatting = _internalSerializer.Formatting;
+                _internalSerializer.Serialize(jsonTextWriter, value, typeof(T));
             }
 
             return stringWriter.ToString();
@@ -100,7 +98,7 @@ namespace Nethermind.Serialization.Json
 
         public void Serialize<T>(Stream stream, T value, bool indented = false)
         {
-            StreamWriter streamWriter = new StreamWriter(stream);
+            using StreamWriter streamWriter = new StreamWriter(stream, leaveOpen: true);
             using JsonTextWriter jsonTextWriter = new JsonTextWriter(streamWriter);
             if (indented)
             {

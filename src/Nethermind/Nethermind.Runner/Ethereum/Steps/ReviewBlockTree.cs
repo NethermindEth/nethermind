@@ -16,8 +16,6 @@
 
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.FSharp.Linq;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Logging;
@@ -37,13 +35,11 @@ namespace Nethermind.Runner.Ethereum.Steps
             _logger = _context.LogManager.GetClassLogger();
         }
 
-        public Task Execute()
+        public Task Execute(CancellationToken cancellationToken)
         {
             if (_context.Config<IInitConfig>().ProcessingEnabled)
             {
-#pragma warning disable 4014
-                return RunBlockTreeInitTasks();
-#pragma warning restore 4014
+                return RunBlockTreeInitTasks(cancellationToken);
             }
             else
             {
@@ -51,7 +47,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
         }
 
-        private async Task RunBlockTreeInitTasks()
+        private async Task RunBlockTreeInitTasks(CancellationToken cancellationToken)
         {
             ISyncConfig syncConfig = _context.Config<ISyncConfig>();
             if (!syncConfig.SynchronizationEnabled)
@@ -61,11 +57,10 @@ namespace Nethermind.Runner.Ethereum.Steps
             
             if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
 
-            
             if (!syncConfig.FastSync && !syncConfig.BeamSync)
             {
                 DbBlocksLoader loader = new DbBlocksLoader(_context.BlockTree, _logger);
-                await _context.BlockTree.Accept(loader, _context.RunnerCancellation?.Token ?? CancellationToken.None).ContinueWith(t =>
+                await _context.BlockTree.Accept(loader, cancellationToken).ContinueWith(t =>
                 {
                     if (t.IsFaulted)
                     {
@@ -80,7 +75,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             else
             {
                 StartupBlockTreeFixer fixer = new StartupBlockTreeFixer(_context.Config<ISyncConfig>(), _context.BlockTree, _logger);
-                await _context.BlockTree.Accept(fixer, _context.RunnerCancellation?.Token ?? CancellationToken.None).ContinueWith(t =>
+                await _context.BlockTree.Accept(fixer, cancellationToken).ContinueWith(t =>
                 {
                     if (t.IsFaulted)
                     {

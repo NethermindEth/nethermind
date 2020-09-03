@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Synchronization.FastSync;
@@ -25,16 +26,24 @@ namespace Nethermind.Synchronization.BeamSync
     public class BeamSyncDbProvider : IDbProvider
     {
         private readonly IDbProvider _otherProvider;
-        public ISyncFeed<StateSyncBatch> BeamSyncFeed { get; }
+        private BeamSyncDb _stateDb;
+        private BeamSyncDb _codeDb;
+        public ISyncFeed<StateSyncBatch?> BeamSyncFeed { get; }
         
-        public BeamSyncDbProvider(ISyncModeSelector syncModeSelector, IDbProvider otherProvider, ILogManager logManager)
+        public BeamSyncDbProvider(ISyncModeSelector syncModeSelector, IDbProvider otherProvider, ISyncConfig syncConfig, ILogManager logManager)
         {
             _otherProvider = otherProvider ?? throw new ArgumentNullException(nameof(otherProvider));
-            BeamSyncDb codeDb = new BeamSyncDb(otherProvider.CodeDb.Innermost, otherProvider.BeamStateDb, syncModeSelector, logManager);
-            BeamSyncDb stateDb = new BeamSyncDb(otherProvider.StateDb.Innermost, otherProvider.BeamStateDb, syncModeSelector, logManager);
-            BeamSyncFeed = new CompositeStateSyncFeed<StateSyncBatch>(logManager,codeDb, stateDb);
-            StateDb = new StateDb(stateDb);
-            CodeDb = new StateDb(codeDb);
+            _codeDb = new BeamSyncDb(otherProvider.CodeDb.Innermost, otherProvider.BeamStateDb, syncModeSelector, logManager, syncConfig.BeamSyncContextTimeout, syncConfig.BeamSyncPreProcessorTimeout);
+            _stateDb = new BeamSyncDb(otherProvider.StateDb.Innermost, otherProvider.BeamStateDb, syncModeSelector, logManager, syncConfig.BeamSyncContextTimeout, syncConfig.BeamSyncPreProcessorTimeout);
+            BeamSyncFeed = new CompositeStateSyncFeed<StateSyncBatch?>(logManager, _codeDb, _stateDb);
+            StateDb = new StateDb(_stateDb);
+            CodeDb = new StateDb(_codeDb);
+        }
+
+        public void EnableVerifiedMode()
+        {
+            _stateDb.VerifiedModeEnabled = true;
+            _codeDb.VerifiedModeEnabled = true;
         }
         
         public ISnapshotableDb StateDb { get; }
@@ -48,6 +57,7 @@ namespace Nethermind.Synchronization.BeamSync
         public IDb EthRequestsDb => _otherProvider.EthRequestsDb;
         public IDb BloomDb => _otherProvider.BloomDb;
         public IDb BeamStateDb => _otherProvider.BeamStateDb;
+        public IDb ChtDb => _otherProvider.ChtDb;
 
         public void Dispose()
         {
@@ -61,6 +71,7 @@ namespace Nethermind.Synchronization.BeamSync
             ConfigsDb?.Dispose();
             EthRequestsDb?.Dispose();
             BloomDb?.Dispose();
+            ChtDb?.Dispose();
         }
     }
 }

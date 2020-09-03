@@ -22,7 +22,7 @@ using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
@@ -30,7 +30,7 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.BeamSync
 {
-    public class BeamSyncDb : SyncFeed<StateSyncBatch>, IDb
+    public class BeamSyncDb : SyncFeed<StateSyncBatch?>, IDb
     {
         public UInt256 RequiredPeerDifficulty { get; private set; } = UInt256.Zero;
 
@@ -38,22 +38,27 @@ namespace Nethermind.Synchronization.BeamSync
         /// The actual state DB that can be used for reading the fast synced state from. Also used for writes of any
         /// nodes without dependencies.
         /// </summary>
-        private IDb _stateDb;
+        private readonly IDb _stateDb;
 
         /// <summary>
         /// This DB stands in front of the state DB for reads and serves as beam sync DB write-to DB for any writes
         /// that are not final (do not have any unfilled child nodes).
         /// </summary>
-        private IDb _tempDb;
+        private readonly IDb _tempDb;
 
         private readonly ISyncModeSelector _syncModeSelector;
 
-        private ILogger _logger;
+        private readonly ILogger _logger;
 
         private IDb _targetDbForSaves;
 
-        public BeamSyncDb(IDb stateDb, IDb tempDb, ISyncModeSelector syncModeSelector, ILogManager logManager)
-            : base(logManager)
+        public BeamSyncDb(
+            IDb stateDb,
+            IDb tempDb,
+            ISyncModeSelector syncModeSelector,
+            ILogManager logManager,
+            int contextTimeout = 4,
+            int preProcessTimeout = 15)
         {
             _logger = logManager.GetClassLogger<BeamSyncDb>();
             _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
@@ -64,11 +69,13 @@ namespace Nethermind.Synchronization.BeamSync
             _syncModeSelector.Changed += SyncModeSelectorOnChanged;
 
             _targetDbForSaves = _tempDb; // before transition to full we are saving to beam DB
+            _contextExpiryTimeSpan = TimeSpan.FromSeconds(contextTimeout);
+            _preProcessExpiryTimeSpan = TimeSpan.FromSeconds(preProcessTimeout);
         }
 
-        private object _finishLock = new object();
+        private readonly object _finishLock = new object();
 
-        private void SyncModeSelectorOnChanged(object sender, SyncModeChangedEventArgs e)
+        private void SyncModeSelectorOnChanged(object? sender, SyncModeChangedEventArgs e)
         {
             if ((e.Current & SyncMode.Full) == SyncMode.Full)
             {
@@ -86,12 +93,12 @@ namespace Nethermind.Synchronization.BeamSync
             }
         }
 
-        private void SyncModeSelectorOnPreparing(object sender, SyncModeChangedEventArgs e)
+        private void SyncModeSelectorOnPreparing(object? sender, SyncModeChangedEventArgs e)
         {
             // do nothing, the beam processor is cancelling beam executors now and they may be still writing
         }
 
-        private void SyncModeSelectorOnChanging(object sender, SyncModeChangedEventArgs e)
+        private void SyncModeSelectorOnChanging(object? sender, SyncModeChangedEventArgs e)
         {
             // at this stage beam executors are already cancelled and they no longer save to beam DB
             // standard processor is for sure not started yet - it is waiting for us to replace the target
@@ -107,6 +114,7 @@ namespace Nethermind.Synchronization.BeamSync
         {
             _isDisposed = true;
             UnregisterHandlers();
+            _stateDb.Dispose();
             _tempDb.Dispose();
         }
 
@@ -119,14 +127,14 @@ namespace Nethermind.Synchronization.BeamSync
 
         public string Name => _tempDb.Name;
 
-        private object _diffLock = new object();
+        private readonly object _diffLock = new object();
 
-        private HashSet<Keccak> _requestedNodes = new HashSet<Keccak>();
+        private readonly HashSet<Keccak> _requestedNodes = new HashSet<Keccak>();
 
-        private TimeSpan _contextExpiryTimeSpan = TimeSpan.FromSeconds(4);
-        private TimeSpan _preProcessExpiryTimeSpan = TimeSpan.FromSeconds(15);
+        private readonly TimeSpan _contextExpiryTimeSpan;
+        private readonly TimeSpan _preProcessExpiryTimeSpan;
 
-        public byte[] this[byte[] key]
+        public byte[]? this[byte[] key]
         {
             get
             {
@@ -163,11 +171,11 @@ namespace Nethermind.Synchronization.BeamSync
                         }
                     }
 
-                    var fromMem = _tempDb[key] ?? _stateDb[key];
+                    byte[] fromMem = _tempDb[key] ?? _stateDb[key];
                     if (fromMem == null)
                     {
                         if (_logger.IsTrace) _logger.Trace($"Beam sync miss - {key.ToHexString()} - retrieving");
-                        
+
                         if (BeamSyncContext.Cancelled.Value.IsCancellationRequested)
                         {
                             throw new BeamCanceledException("Beam cancellation requested");
@@ -211,16 +219,23 @@ namespace Nethermind.Synchronization.BeamSync
                         {
                             BeamSyncContext.ResolvedInContext.Value++;
                             Interlocked.Increment(ref Metrics.BeamedTrieNodes);
-                            if (_logger.IsTrace) _logger.Trace($"Resolved key {key.ToHexString()} of context {BeamSyncContext.Description.Value} - resolved ctx {BeamSyncContext.ResolvedInContext.Value} | total {Metrics.BeamedTrieNodes}");
+                            if (_logger.IsDebug)
+                                _logger.Debug(
+                                    $"Resolved key {key.ToHexString()} of context {BeamSyncContext.Description.Value} - resolved ctx {BeamSyncContext.ResolvedInContext.Value} | total {Metrics.BeamedTrieNodes}");
+                        }
+                        else
+                        {
+                            if (VerifiedModeEnabled
+                                && !Bytes.AreEqual(Keccak.Compute(fromMem).Bytes, key))
+                            {
+                                if (_logger.IsWarn) _logger.Warn($"DB had an entry with a hash mismatch {key.ToHexString()} vs {Keccak.Compute(fromMem).Bytes.ToHexString()}");
+                                _tempDb[key] = null;
+                                _stateDb[key] = null;
+                                continue;
+                            }
                         }
 
                         BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
-                        
-                        // if (!Bytes.AreEqual(Keccak.Compute(fromMem).Bytes, key))
-                        // {
-                        //     throw new Exception("DB had an entry with a hash mismatch {key}");
-                        // }
-
                         return fromMem;
                     }
                 }
@@ -233,7 +248,8 @@ namespace Nethermind.Synchronization.BeamSync
             }
         }
 
-        public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => keys.Select(k => new KeyValuePair<byte[], byte[]>(k, this[k])).ToArray();
+        public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] =>
+            keys.Select(k => new KeyValuePair<byte[], byte[]?>(k, this[k])).ToArray();
 
         public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false)
         {
@@ -260,7 +276,7 @@ namespace Nethermind.Synchronization.BeamSync
 
         public bool KeyExists(byte[] key)
         {
-            return _tempDb.KeyExists(key);
+            throw new NotSupportedException("Key exists is not supported by beam sync.");
         }
 
         public IDb Innermost => _stateDb.Innermost;
@@ -276,36 +292,34 @@ namespace Nethermind.Synchronization.BeamSync
             _stateDb.Clear();
         }
 
-        public override Task<StateSyncBatch> PrepareRequest()
+        public override Task<StateSyncBatch?> PrepareRequest()
         {
-            StateSyncBatch request;
+            StateSyncBatch? request;
             lock (_requestedNodes)
             {
                 if (_requestedNodes.Count == 0)
                 {
-                    return Task.FromResult((StateSyncBatch) null);
+                    return Task.FromResult((StateSyncBatch?) null);
                 }
 
-                request = new StateSyncBatch();
-                request.ConsumerId = FeedId;
-
+                StateSyncItem[] requestedNodes;
                 if (_requestedNodes.Count < 256)
                 {
                     // do not make it state sync item :)
-                    request.RequestedNodes = _requestedNodes.Select(n => new StateSyncItem(n, NodeDataType.State, 0, 0)).ToArray();
+                    requestedNodes = _requestedNodes.Select(n => new StateSyncItem(n, NodeDataType.State, 0, 0)).ToArray();
                     _requestedNodes.Clear();
                 }
                 else
                 {
                     Keccak[] source = _requestedNodes.ToArray();
-                    request.RequestedNodes = new StateSyncItem[256];
+                    requestedNodes = new StateSyncItem[256];
                     _requestedNodes.Clear();
                     for (int i = 0; i < source.Length; i++)
                     {
                         if (i < 256)
                         {
                             // not state sync item
-                            request.RequestedNodes[i] = new StateSyncItem(source[i], NodeDataType.State, 0, 0);
+                            requestedNodes[i] = new StateSyncItem(source[i], NodeDataType.State, 0, 0);
                         }
                         else
                         {
@@ -313,24 +327,33 @@ namespace Nethermind.Synchronization.BeamSync
                         }
                     }
                 }
+
+                request = new StateSyncBatch(requestedNodes);
+                request.ConsumerId = FeedId;
             }
 
             Interlocked.Increment(ref Metrics.BeamedRequests);
-            return Task.FromResult(request);
+            return Task.FromResult<StateSyncBatch?>(request);
         }
 
-        public override SyncResponseHandlingResult HandleResponse(StateSyncBatch stateSyncBatch)
+        public override SyncResponseHandlingResult HandleResponse(StateSyncBatch? stateSyncBatch)
         {
+            if (stateSyncBatch == null)
+            {
+                if (_logger.IsWarn) _logger.Warn($"{nameof(BeamSyncDb)} received a NULL batch as a response.");
+                return SyncResponseHandlingResult.InternalError;
+            }
+
             if (stateSyncBatch.ConsumerId != FeedId)
             {
-                if(_logger.IsWarn) _logger.Warn($"Beam sync response sent by feed {stateSyncBatch.ConsumerId} came back to feed {FeedId}");
+                if (_logger.IsWarn) _logger.Warn($"Beam sync response sent by feed {stateSyncBatch.ConsumerId} came back to feed {FeedId}");
                 return SyncResponseHandlingResult.InternalError;
             }
 
             bool wasDataInvalid = false;
             int consumed = 0;
 
-            byte[][] data = stateSyncBatch.Responses;
+            byte[][]? data = stateSyncBatch.Responses;
             if (data != null)
             {
                 for (int i = 0; i < Math.Min(data.Length, stateSyncBatch.RequestedNodes.Length); i++)
@@ -340,19 +363,19 @@ namespace Nethermind.Synchronization.BeamSync
                     {
                         if (Keccak.Compute(data[i]) == key)
                         {
-                            _tempDb[key.Bytes] = data[i];
+                            _targetDbForSaves[key.Bytes] = data[i];
                             // _requestedNodes.Remove(hashes[i], out _);
                             consumed++;
                         }
                         else
                         {
                             wasDataInvalid = true;
-                            if (_logger.IsDebug) _logger.Debug("Received node data which does not match hash.");
+                            if (_logger.IsDebug) _logger.Debug("Received node data which does not match the hash.");
                         }
                     }
                     else
                     {
-                        if (_tempDb[key.Bytes] == null)
+                        if (_targetDbForSaves[key.Bytes] == null)
                         {
                             lock (_requestedNodes)
                             {
@@ -379,5 +402,6 @@ namespace Nethermind.Synchronization.BeamSync
 
         public override bool IsMultiFeed => false;
         public override AllocationContexts Contexts => AllocationContexts.State;
+        public bool VerifiedModeEnabled { get; set; }
     }
 }

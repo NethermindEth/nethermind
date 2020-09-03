@@ -20,7 +20,8 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 
 [assembly: InternalsVisibleTo("Nethermind.Synchronization.Test")]
 
@@ -49,6 +50,8 @@ namespace Nethermind.Synchronization.Peers
         public UInt256 TotalDifficulty => SyncPeer.TotalDifficulty;
 
         public long HeadNumber => SyncPeer.HeadNumber;
+        
+        public Keccak HeadHash => SyncPeer.HeadHash;
 
         [MethodImpl(MethodImplOptions.Synchronized)]
         public bool CanBeAllocated(AllocationContexts contexts)
@@ -188,7 +191,11 @@ namespace Nethermind.Synchronization.Peers
 
         private void RecognizeClientType(ISyncPeer syncPeer)
         {
-            if (syncPeer.ClientId?.Contains("BeSu", StringComparison.InvariantCultureIgnoreCase) ?? false)
+            if (syncPeer == null)
+            {
+                PeerClientType = PeerClientType.Unknown;
+            }
+            else if (syncPeer.ClientId?.Contains("BeSu", StringComparison.InvariantCultureIgnoreCase) ?? false)
             {
                 PeerClientType = PeerClientType.BeSu;
             }
@@ -203,6 +210,10 @@ namespace Nethermind.Synchronization.Peers
             else if (syncPeer.ClientId?.Contains("Parity", StringComparison.InvariantCultureIgnoreCase) ?? false)
             {
                 PeerClientType = PeerClientType.Parity;
+            }
+            else if (syncPeer.ClientId?.Contains("OpenEthereum", StringComparison.InvariantCultureIgnoreCase) ?? false)
+            {
+                PeerClientType = PeerClientType.OpenEthereum;
             }
             else
             {

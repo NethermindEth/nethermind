@@ -19,6 +19,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -34,6 +35,7 @@ using NUnit.Framework;
 namespace Nethermind.Synchronization.Test.BeamSync
 {
     [TestFixture]
+    [Parallelizable(ParallelScope.None)]
     public class BeamSyncDbTests
     {
         private BeamSyncDb _stateBeamLocal;
@@ -59,16 +61,11 @@ namespace Nethermind.Synchronization.Test.BeamSync
         {
             BeamSyncContext.LastFetchUtc.Value = DateTime.MaxValue;
         }
-
-        private void MakeRequestsImmediatelyExpire()
-        {
-            BeamSyncContext.LastFetchUtc.Value = DateTime.MinValue;
-        }
-
+        
         [Test]
         public void Beam_db_provider_smoke_test()
         {
-            BeamSyncDbProvider dbProvider = new BeamSyncDbProvider(StaticSelector.Beam, new MemDbProvider(), LimboLogs.Instance);
+            BeamSyncDbProvider dbProvider = new BeamSyncDbProvider(StaticSelector.Beam, new MemDbProvider(), new SyncConfig(), LimboLogs.Instance);
             // has to be state DB on the outside
             Assert.IsInstanceOf(typeof(StateDb), dbProvider.StateDb);
             Assert.IsInstanceOf(typeof(StateDb), dbProvider.CodeDb);
@@ -77,7 +74,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
         [Test]
         public void Beam_db_provider_can_dispose()
         {
-            BeamSyncDbProvider dbProvider = new BeamSyncDbProvider(StaticSelector.Beam, new MemDbProvider(), LimboLogs.Instance);
+            BeamSyncDbProvider dbProvider = new BeamSyncDbProvider(StaticSelector.Beam, new MemDbProvider(),new SyncConfig(), LimboLogs.Instance);
             dbProvider.Dispose();
         }
 
@@ -122,7 +119,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
 
             RunRounds(1);
             StateSyncBatch request = await _stateBeamLocal.PrepareRequest();
-            request.Responses = new byte[request.RequestedNodes.Length][];
+            request!.Responses = new byte[request.RequestedNodes.Length][];
             _stateBeamLocal.HandleResponse(request);
             RunRounds(3);
 
@@ -147,7 +144,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
 
             RunRounds(1);
             StateSyncBatch request = await _stateBeamLocal.PrepareRequest();
-            request.Responses = new byte[][] {_remoteState.Get(request.RequestedNodes[0].Hash)};
+            request!.Responses = new [] {_remoteState.Get(request.RequestedNodes[0].Hash)};
             _stateBeamLocal.HandleResponse(request);
             RunRounds(3);
 
@@ -163,18 +160,18 @@ namespace Nethermind.Synchronization.Test.BeamSync
 #pragma warning disable 4014
             Task.Run(() => RunRounds(100));
 #pragma warning restore 4014
-            StateSyncBatch request = new StateSyncBatch();
+            StateSyncBatch request = null;
             for (int i = 0; i < 1000; i++)
             {
                 Thread.Sleep(1);
                 request = await _stateBeamLocal.PrepareRequest();
-                if (request.RequestedNodes.Length > 0)
+                if (request!.RequestedNodes.Length > 0)
                 {
                     break;
                 }
             }
 
-            request.Responses = new byte[][] {_remoteState.Get(request.RequestedNodes[0].Hash)};
+            request!.Responses = new [] {_remoteState.Get(request.RequestedNodes[0].Hash)};
             _stateBeamLocal.HandleResponse(request);
 
             Assert.Less(_needMoreDataInvocations, 1000);
@@ -188,7 +185,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
 
             RunRounds(1);
             StateSyncBatch request = await _stateBeamLocal.PrepareRequest();
-            request.Responses = new byte[][] {_remoteState.Get(request.RequestedNodes[0].Hash)};
+            request!.Responses = new [] {_remoteState.Get(request.RequestedNodes[0].Hash)};
             _stateBeamLocal.HandleResponse(request);
             PatriciaTree.NodeCache.Clear();
             RunRounds(1);
@@ -215,7 +212,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
 
             RunRounds(1);
             StateSyncBatch request = await _stateBeamLocal.PrepareRequest();
-            request.Responses = new[] {new byte[] {1, 2, 3}};
+            request!.Responses = new[] {new byte[] {1, 2, 3}};
             _stateBeamLocal.HandleResponse(request);
             RunRounds(3);
 

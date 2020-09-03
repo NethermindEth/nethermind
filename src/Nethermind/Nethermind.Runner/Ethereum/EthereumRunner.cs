@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
@@ -32,6 +31,7 @@ using Nethermind.Network.Config;
 using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Runner.Ethereum.Steps;
 using Nethermind.Serialization.Json;
+using Nethermind.State;
 using Nethermind.WebSockets;
 
 namespace Nethermind.Runner.Ethereum
@@ -74,25 +74,20 @@ namespace Nethermind.Runner.Ethereum
             networkConfig.LocalIp = _context.IpResolver.LocalIp.ToString();
         }
 
-        public async Task Start()
+        public async Task Start(CancellationToken cancellationToken)
         {
             if (_logger.IsDebug) _logger.Debug("Initializing Ethereum");
-            _context.RunnerCancellation = new CancellationTokenSource();
-            _context.DisposeStack.Push(_context.RunnerCancellation);
 
-            EthereumStepsManager stepsManager = new EthereumStepsManager(_context);
-            await stepsManager.DiscoverAll();
-            await stepsManager.InitializeAll();
-            
+            EthereumStepsLoader stepsLoader = new EthereumStepsLoader(GetType().Assembly);
+            EthereumStepsManager stepsManager = new EthereumStepsManager(stepsLoader, _context, _context.LogManager);
+            await stepsManager.InitializeAll(cancellationToken);
+
             string infoScreen = ThisNodeInfo.BuildNodeInfoScreen();
             if (_logger.IsInfo) _logger.Info(infoScreen);
         }
 
         public async Task StopAsync()
         {
-            if (_logger.IsInfo) _logger.Info("Shutting down...");
-            _context.RunnerCancellation?.Cancel();
-
             if (_logger.IsInfo) _logger.Info("Stopping session monitor...");
             _context.SessionMonitor?.Stop();
 

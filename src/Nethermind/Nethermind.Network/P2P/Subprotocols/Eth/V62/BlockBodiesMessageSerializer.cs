@@ -45,7 +45,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             return Deserialize(rlpStream);
         }
         
-        private static BlockBodiesMessage Deserialize(RlpStream rlpStream)
+        public static BlockBodiesMessage Deserialize(RlpStream rlpStream)
         {
             BlockBodiesMessage message = new BlockBodiesMessage();
             message.Bodies = rlpStream.DecodeArray(ctx =>
@@ -56,6 +56,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     return null;
                 }
 
+                // quite significant allocations (>0.5%) here based on a sample 3M blocks sync
+                // (just on these delegates)
                 Transaction[] transactions = rlpStream.DecodeArray(txCtx => Rlp.Decode<Transaction>(ctx));
                 BlockHeader[] ommers = rlpStream.DecodeArray(txCtx => Rlp.Decode<BlockHeader>(ctx));
                 return new BlockBody(transactions, ommers);

@@ -19,10 +19,10 @@
 using System.Linq;
 using Nethermind.Core.Extensions;
 using Nethermind.DataMarketplace.Core.Domain;
-using Nethermind.DataMarketplace.Providers.Domain;
+using Nethermind.RocksDbExtractor.Domain;
 using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.DataMarketplace.Providers.Infrastructure.Rlp
+namespace Nethermind.RocksDbExtractor
 {
     internal class PaymentClaimDecoder : IRlpDecoder<PaymentClaim>
     {
@@ -33,7 +33,7 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure.Rlp
         
         static PaymentClaimDecoder()
         {
-            Nethermind.Serialization.Rlp.Rlp.Decoders[typeof(PaymentClaim)] = new PaymentClaimDecoder();
+            Rlp.Decoders[typeof(PaymentClaim)] = new PaymentClaimDecoder();
         }
 
         public PaymentClaim Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -69,34 +69,34 @@ namespace Nethermind.DataMarketplace.Providers.Infrastructure.Rlp
             return paymentClaim;
         }
 
-        public Nethermind.Serialization.Rlp.Rlp Encode(PaymentClaim item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Rlp Encode(PaymentClaim item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item == null)
             {
-                return Nethermind.Serialization.Rlp.Rlp.OfEmptySequence;
+                return Rlp.OfEmptySequence;
             }
 
-            return Nethermind.Serialization.Rlp.Rlp.Encode(
-                Nethermind.Serialization.Rlp.Rlp.Encode(item.Id),
-                Nethermind.Serialization.Rlp.Rlp.Encode(item.DepositId),
-                Nethermind.Serialization.Rlp.Rlp.Encode(item.AssetId),
-                Nethermind.Serialization.Rlp.Rlp.Encode(item.AssetName),
-                Nethermind.Serialization.Rlp.Rlp.Encode(item.Units),
-                Nethermind.Serialization.Rlp.Rlp.Encode(item.ClaimedUnits),
-                Nethermind.Serialization.Rlp.Rlp.Encode(item.UnitsRange),
-                Nethermind.Serialization.Rlp.Rlp.Encode(item.Value),
-                Nethermind.Serialization.Rlp.Rlp.Encode(item.ClaimedValue),
-                Nethermind.Serialization.Rlp.Rlp.Encode(item.ExpiryTime),
-                Nethermind.Serialization.Rlp.Rlp.Encode(item.Pepper),
-                Nethermind.Serialization.Rlp.Rlp.Encode(item.Provider),
-                Nethermind.Serialization.Rlp.Rlp.Encode(item.Consumer),
-                Nethermind.Serialization.Rlp.Rlp.Encode(item.Transactions.ToArray()),
-                Nethermind.Serialization.Rlp.Rlp.Encode(item.TransactionCost),
-                Nethermind.Serialization.Rlp.Rlp.Encode(item.Timestamp),
-                Nethermind.Serialization.Rlp.Rlp.Encode((int) item.Status),
-                Nethermind.Serialization.Rlp.Rlp.Encode(item.Signature.V),
-                Nethermind.Serialization.Rlp.Rlp.Encode(item.Signature.R.WithoutLeadingZeros()),
-                Nethermind.Serialization.Rlp.Rlp.Encode(item.Signature.S.WithoutLeadingZeros()));
+            return Rlp.Encode(
+                Rlp.Encode(item.Id),
+                Rlp.Encode(item.DepositId),
+                Rlp.Encode(item.AssetId),
+                Rlp.Encode(item.AssetName),
+                Rlp.Encode(item.Units),
+                Rlp.Encode(item.ClaimedUnits),
+                Rlp.Encode(item.UnitsRange),
+                Rlp.Encode(item.Value),
+                Rlp.Encode(item.ClaimedValue),
+                Rlp.Encode(item.ExpiryTime),
+                Rlp.Encode(item.Pepper),
+                Rlp.Encode(item.Provider),
+                Rlp.Encode(item.Consumer),
+                Rlp.Encode(item.Transactions.ToArray()),
+                Rlp.Encode(item.TransactionCost),
+                Rlp.Encode(item.Timestamp),
+                Rlp.Encode((int) item.Status),
+                Rlp.Encode(item.Signature.V),
+                Rlp.Encode(item.Signature.R.WithoutLeadingZeros()),
+                Rlp.Encode(item.Signature.S.WithoutLeadingZeros()));
         }
         
         public int GetLength(PaymentClaim item, RlpBehaviors rlpBehaviors)

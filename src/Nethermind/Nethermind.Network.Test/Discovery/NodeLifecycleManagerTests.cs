@@ -145,7 +145,7 @@ namespace Nethermind.Network.Test.Discovery
             var manager = _discoveryManager.GetNodeLifecycleManager(node);
             Assert.AreEqual(NodeLifecycleState.New, manager.State);
             
-            manager.ProcessPongMessage(new PongMessage {FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port), FarPublicKey = _nodeIds[0] });
+            manager.ProcessPongMessage(new PongMessage {FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port), FarPublicKey = _nodeIds[0], PingMdc = new byte[32]});
 
             Assert.AreEqual(NodeLifecycleState.New, manager.State);
         }

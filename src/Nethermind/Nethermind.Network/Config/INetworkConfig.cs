@@ -20,6 +20,8 @@ namespace Nethermind.Network.Config
 {
     public interface INetworkConfig : IConfig
     {
+        public const int DefaultNettyArenaOrder = 11;
+        
         [ConfigItem(Description = "Use only if your node cannot resolve external IP automatically.", DefaultValue = "null")]
         string ExternalIp { get; set; }
         
@@ -44,7 +46,7 @@ namespace Nethermind.Network.Config
         [ConfigItem(DefaultValue = "5000")]
         int PeersPersistenceInterval { get; set; }
         
-        [ConfigItem(DefaultValue = "100")]
+        [ConfigItem(DefaultValue = "250")]
         int PeersUpdateInterval { get; set; }
 
         [ConfigItem(DefaultValue = "10000")]

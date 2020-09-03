@@ -17,7 +17,6 @@
 
 using System;
 using System.Linq;
-using Nethermind.DataMarketplace.Providers.Infrastructure.Rlp;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
 using Nethermind.RocksDbExtractor.rocksdb;

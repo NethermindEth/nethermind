@@ -23,9 +23,8 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
@@ -35,6 +34,7 @@ using Nethermind.Trie;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Block = Nethermind.Core.Block;
+using System.Threading;
 
 namespace Nethermind.Facade
 {
@@ -47,6 +47,7 @@ namespace Nethermind.Facade
         private readonly IFilterStore _filterStore;
         private readonly IStateReader _stateReader;
         private readonly IEthereumEcdsa _ecdsa;
+        private readonly ITimestamper _timestamper;
         private readonly IFilterManager _filterManager;
         private readonly IStateProvider _stateProvider;
         private readonly IReceiptFinder _receiptFinder;
@@ -66,9 +67,11 @@ namespace Nethermind.Facade
             ITransactionProcessor transactionProcessor,
             IEthereumEcdsa ecdsa,
             IBloomStorage bloomStorage,
+            ITimestamper timestamper,
             ILogManager logManager,
             bool isMining,
-            int findLogBlockDepthLimit = 1000)
+            int findLogBlockDepthLimit = 1000,
+            CancellationToken cancellationToken = default(CancellationToken))
         {
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
@@ -81,8 +84,8 @@ namespace Nethermind.Facade
             _wallet = wallet ?? throw new ArgumentException(nameof(wallet));
             _transactionProcessor = transactionProcessor ?? throw new ArgumentException(nameof(transactionProcessor));
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
+            _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
             IsMining = isMining;
-
             _logFinder = new LogFinder(_blockTree, _receiptFinder, bloomStorage, logManager, new ReceiptsRecovery(), findLogBlockDepthLimit);
         }
 
@@ -169,19 +172,35 @@ namespace Nethermind.Facade
         public CallOutput Call(BlockHeader blockHeader, Transaction transaction)
         {
             CallOutputTracer callOutputTracer = new CallOutputTracer();
-            CallAndRestore(blockHeader, transaction, callOutputTracer);
-            return new CallOutput {Error = callOutputTracer.Error, GasSpent = callOutputTracer.GasSpent, OutputData = callOutputTracer.ReturnValue};
+            CallAndRestore(blockHeader, blockHeader.Number, blockHeader.Timestamp,  transaction, callOutputTracer);
+            return new CallOutput
+            {
+                Error = callOutputTracer.Error,
+                GasSpent = callOutputTracer.GasSpent,
+                OutputData = callOutputTracer.ReturnValue
+            };
         }
 
-        public CallOutput EstimateGas(BlockHeader header, Transaction tx)
+        public CallOutput EstimateGas(BlockHeader header, Transaction tx, CancellationToken cancellationToken)
         {
-            EstimateGasTracer estimateGasTracer = new EstimateGasTracer();
-            CallAndRestore(header, tx, estimateGasTracer);
+            EstimateGasTracer estimateGasTracer = new EstimateGasTracer(cancellationToken);
+            CallAndRestore(
+                header,
+                header.Number + 1,
+                UInt256.Max(header.Timestamp + 1, _timestamper.EpochSeconds),
+                tx,
+                estimateGasTracer);
+            
             long estimate = estimateGasTracer.CalculateEstimate(tx);
             return new CallOutput {Error = estimateGasTracer.Error, GasSpent = estimate};
         }
 
-        private void CallAndRestore(BlockHeader blockHeader, Transaction transaction, ITxTracer tracer)
+        private void CallAndRestore(
+            BlockHeader blockHeader,
+            long number,
+            UInt256 timestamp,
+            Transaction transaction,
+            ITxTracer tracer)
         {
             if (transaction.SenderAddress == null)
             {
@@ -201,10 +220,10 @@ namespace Nethermind.Facade
                     Keccak.OfAnEmptySequenceRlp,
                     Address.Zero,
                     0,
-                    blockHeader.Number + 1,
+                    number,
                     blockHeader.GasLimit,
-                    blockHeader.Timestamp,
-                    Bytes.Empty);
+                    timestamp,
+                    Array.Empty<byte>());
 
                 transaction.Hash = transaction.CalculateHash();
                 _transactionProcessor.CallAndRestore(transaction, callHeader, tracer);
@@ -243,8 +262,8 @@ namespace Nethermind.Facade
 
         public byte[] GetStorage(Address address, UInt256 index, Keccak stateRoot)
         {
-            _stateProvider.StateRoot = stateRoot;
-            return _storageProvider.Get(new StorageCell(address, index));
+            Keccak storageRoot = _stateReader.GetStorageRoot(stateRoot, address);
+            return _stateReader.GetStorage(storageRoot, index);
         }
 
         public Account GetAccount(Address address, Keccak stateRoot)

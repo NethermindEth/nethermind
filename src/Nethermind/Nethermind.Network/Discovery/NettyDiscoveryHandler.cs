@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -175,21 +175,21 @@ namespace Nethermind.Network.Discovery
             var timeToExpire = message.ExpirationTime - (long) _timestamper.EpochSeconds;
             if (timeToExpire < 0)
             {
-                if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(message.FarAddress.Address.MapToIPv4().ToString(), "HANDLER disc v4", $"{message.MessageType.ToString()} expired");
+                if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(message.FarAddress, "HANDLER disc v4", $"{message.MessageType.ToString()} expired");
                 if (_logger.IsDebug) _logger.Debug($"Received a discovery message that has expired {-timeToExpire} seconds ago, type: {type}, sender: {address}, message: {message}");
                 return false;
             }
 
             if (!message.FarAddress.Equals((IPEndPoint) packet.Sender))
             {
-                if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(message.FarAddress.Address.MapToIPv4().ToString(), "HANDLER disc v4", $"{message.MessageType.ToString()} has incorrect far address");
+                if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(message.FarAddress, "HANDLER disc v4", $"{message.MessageType.ToString()} has incorrect far address");
                 if (_logger.IsDebug) _logger.Debug($"Discovery fake IP detected - pretended {message.FarAddress} but was {ctx.Channel.RemoteAddress}, type: {type}, sender: {address}, message: {message}");
                 return false;
             }
 
             if (message.FarPublicKey == null)
             {
-                if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(message.FarAddress.Address.ToString(), "HANDLER disc v4", $"{message.MessageType.ToString()} has null far public key");
+                if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(message.FarAddress, "HANDLER disc v4", $"{message.MessageType.ToString()} has null far public key");
                 if (_logger.IsDebug) _logger.Debug($"Discovery message without a valid signature {message.FarAddress} but was {ctx.Channel.RemoteAddress}, type: {type}, sender: {address}, message: {message}");
                 return false;
             }
@@ -201,11 +201,11 @@ namespace Nethermind.Network.Discovery
         {
                 if (message is PingMessage pingMessage)
                 {
-                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(pingMessage.FarAddress.Address.ToString(), "HANDLER disc v4", $"PING {pingMessage.SourceAddress.Address} -> {pingMessage.DestinationAddress.Address}");    
+                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(pingMessage.FarAddress, "HANDLER disc v4", $"PING {pingMessage.SourceAddress.Address} -> {pingMessage.DestinationAddress.Address}");    
                 }
                 else
                 {
-                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(message.FarAddress.Address.ToString(), "HANDLER disc v4", message.MessageType.ToString());    
+                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(message.FarAddress, "HANDLER disc v4", message.MessageType.ToString());    
                 }
         }
         
