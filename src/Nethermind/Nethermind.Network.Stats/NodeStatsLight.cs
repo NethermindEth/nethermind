@@ -278,7 +278,6 @@ namespace Nethermind.Stats
                 disconnectDelay = _statsConfig.DisconnectDelays[disconnectCount - 1];
             }
 
-            Console.WriteLine($"DISCONNECT DELAY on {Node.Host} is {disconnectDelay}");
             return disconnectDelay;
         }
 
