@@ -28,7 +28,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Network.Rlpx;
@@ -39,66 +38,6 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Network.P2P
 {
-    public class MessageQueue<TMsg, TData> where TMsg : MessageBase
-    {
-        private bool _isClosed;
-        private readonly Action<TMsg> _send;
-        private Request<TMsg, TData> _currentRequest;
-        
-        private Queue<Request<TMsg, TData>> _requestQueue = new Queue<Request<TMsg, TData>>();
-
-        public MessageQueue(Action<TMsg> send)
-        {
-            _send = send;
-        }
-        
-        public void Send(Request<TMsg, TData> request)
-        {
-            if (_isClosed)
-            {
-                return;
-            }
-            
-            lock (_requestQueue)
-            {
-                if (_currentRequest == null)
-                {
-                    _currentRequest = request;
-                    _currentRequest.StartMeasuringTime();
-                    _send(_currentRequest.Message);
-                }
-                else
-                {
-                    _requestQueue.Enqueue(request);
-                }
-            }
-        }
-        
-        public void Handle(TData data, long size)
-        {
-            lock (_requestQueue)
-            {
-                if (_currentRequest == null)
-                {
-                    throw new SubprotocolException($"Received a response to {nameof(TMsg)} that has not been requested");
-                }
-
-                _currentRequest.ResponseSize = size;
-                _currentRequest.CompletionSource.SetResult(data);
-                if (_requestQueue.TryDequeue(out _currentRequest))
-                {
-                    _currentRequest.StartMeasuringTime();
-                    _send(_currentRequest.Message);
-                }
-            }
-        }
-
-        public void CompleteAdding()
-        {
-            _isClosed = true;
-        }
-    }
-    
     public abstract class SyncPeerProtocolHandlerBase : ProtocolHandlerBase, ISyncPeer
     {
         public static readonly ulong SoftOutgoingMessageSizeLimit = 2.MB();
