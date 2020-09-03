@@ -52,12 +52,12 @@ namespace Nethermind.Logging.NLog
                 Directory.CreateDirectory(logsDir);
             }
 
-            if (global::NLog.LogManager.Configuration?.AllTargets != null)
+            if (LogManager.Configuration?.AllTargets != null)
             {
-                foreach (FileTarget target in global::NLog.LogManager.Configuration?.AllTargets.OfType<FileTarget>())
+                foreach (FileTarget target in LogManager.Configuration?.AllTargets.OfType<FileTarget>())
                 {
                     string fileNameToUse = (target.Name == DefaultFileTargetName) ? fileName : target.FileName.Render(LogEventInfo.CreateNullEvent());
-                    target.FileName = !Path.IsPathFullyQualified(fileNameToUse) ? Path.Combine(logsDir, fileNameToUse) : fileNameToUse;
+                    target.FileName = !Path.IsPathFullyQualified(fileNameToUse) ? Path.GetFullPath(Path.Combine(logsDir, fileNameToUse)) : fileNameToUse;
                 }
             }
 
@@ -73,8 +73,7 @@ namespace Nethermind.Logging.NLog
         public NLogLogger(string fileName, string logDirectory = null, string loggerName = null)
         {
             loggerName = string.IsNullOrEmpty(loggerName) ? StackTraceUsageUtils.GetClassFullName().Replace("Nethermind.", string.Empty) : loggerName;
-            Logger = global::NLog.LogManager.GetLogger(loggerName);
-            global::NLog.LogManager.GetLogger(loggerName);
+            Logger = LogManager.GetLogger(loggerName);
             Init(fileName, logDirectory);
         }
 
@@ -105,7 +104,7 @@ namespace Nethermind.Logging.NLog
 
         public static void Shutdown()
         {
-            global::NLog.LogManager.Shutdown();
+            LogManager.Shutdown();
         }
     }
 }
