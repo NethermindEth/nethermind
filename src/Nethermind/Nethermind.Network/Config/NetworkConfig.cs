@@ -22,7 +22,7 @@ namespace Nethermind.Network.Config
         public string LocalIp { get; set; }
         public string StaticPeers { get; set; }
         public bool OnlyStaticPeers { get; set; }
-        public string TrustedPeers { get; set; } = string.Empty;
+        public string TrustedPeers { get; set; } = null;
         public bool IsPeersPersistenceOn { get; set; } = true;
         public int ActivePeersMaxCount { get; set; } = 50;
         public int PeersPersistenceInterval { get; set; } = 1000 * 5;
