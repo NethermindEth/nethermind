@@ -18,31 +18,31 @@
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public interface ICertifierContract
+    public interface IRegisterContract
     {
-        bool Certified(BlockHeader parentHeader, Address sender);
+        Address GetAddress(BlockHeader header, string key);
     }
 
-    public class CertifierContract : RegisterBasedContract, ICertifierContract
+    public class RegisterContract : Contract, IRegisterContract
     {
-        private const string ServiceTransactionContractRegistryName = "service_transaction_checker";
-        
+        private const string DnsARecord = "A";
         private ConstantContract Constant { get; }
         
-        public CertifierContract(
-            IAbiEncoder abiEncoder,
-            IRegisterContract registerContract,
+        public RegisterContract(
+            IAbiEncoder abiEncoder, 
+            Address contractAddress,
             IReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource) 
-            : base(abiEncoder, registerContract, ServiceTransactionContractRegistryName)
+            : base(abiEncoder, contractAddress)
         {
             Constant = GetConstant(readOnlyTransactionProcessorSource);
         }
 
-        public bool Certified(BlockHeader parentHeader, Address sender) => 
-            Constant.Call<bool>(parentHeader, nameof(Certified), Address.Zero, sender);
+        public Address GetAddress(BlockHeader header, string key) => 
+            Constant.Call<Address>(header, nameof(GetAddress), Address.Zero, Keccak.Compute(key).Bytes, DnsARecord);
     }
 }
