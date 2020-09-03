@@ -61,7 +61,7 @@ namespace Nethermind.Blockchain.Visitors
         /// <param name="header"></param>
         /// <param name="cancellationToken"></param>
         /// <returns></returns>
-        Task<bool> VisitHeader(BlockHeader header, CancellationToken cancellationToken);
+        Task<HeaderVisitOutcome> VisitHeader(BlockHeader header, CancellationToken cancellationToken);
 
         /// <summary>
         /// If the block hash is defined on the chain level and both header and body are in the database

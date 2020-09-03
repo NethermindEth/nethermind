@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,22 +13,21 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using Nethermind.Core;
+using System;
+using System.Collections.Generic;
 
-namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
+namespace Nethermind.Runner.Extensions
 {
-    public class ReceiptsMessage : P2PMessage
+    public interface IPluginManager
     {
-        public TxReceipt[][] TxReceipts { get; }
-        public override int PacketType { get; } = Eth63MessageCode.Receipts;
-        public override string Protocol { get; } = "eth";
+        IReadOnlyCollection<T> Get<T>() where T : IPlugin;
 
-        public ReceiptsMessage(TxReceipt[][] txReceipts)
-        {
-            TxReceipts = txReceipts ?? new TxReceipt[0][];
-        }
+        void Register<T>() where T : IPlugin;
         
-        public override string ToString() => $"{nameof(ReceiptsMessage)}({TxReceipts?.Length ?? 0})";
+        void Register(Type type);
+
+        void Register(IPlugin plugin);
     }
 }

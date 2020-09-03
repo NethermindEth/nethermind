@@ -17,7 +17,6 @@
 
 using System;
 using System.Linq;
-using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;

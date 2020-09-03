@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.SyncLimits;
 
@@ -26,12 +27,12 @@ namespace Nethermind.Synchronization.Blocks
         {
             return peer.PeerClientType switch
             {
-                PeerClientType.BeSu => BeSuSyncLimits.MaxBodyFetch,
-                PeerClientType.Geth => GethSyncLimits.MaxBodyFetch,
-                PeerClientType.Nethermind => NethermindSyncLimits.MaxBodyFetch,
-                PeerClientType.Parity => ParitySyncLimits.MaxBodyFetch,
-                PeerClientType.OpenEthereum => ParitySyncLimits.MaxBodyFetch,
-                PeerClientType.Unknown => 32,
+                NodeClientType.BeSu => BeSuSyncLimits.MaxBodyFetch,
+                NodeClientType.Geth => GethSyncLimits.MaxBodyFetch,
+                NodeClientType.Nethermind => NethermindSyncLimits.MaxBodyFetch,
+                NodeClientType.Parity => ParitySyncLimits.MaxBodyFetch,
+                NodeClientType.OpenEthereum => ParitySyncLimits.MaxBodyFetch,
+                NodeClientType.Unknown => 32,
                 _ => throw new ArgumentOutOfRangeException()
             };
         }
@@ -40,12 +41,12 @@ namespace Nethermind.Synchronization.Blocks
         {
             return peer.PeerClientType switch
             {
-                PeerClientType.BeSu => BeSuSyncLimits.MaxReceiptFetch,
-                PeerClientType.Geth => GethSyncLimits.MaxReceiptFetch,
-                PeerClientType.Nethermind => NethermindSyncLimits.MaxReceiptFetch,
-                PeerClientType.Parity => ParitySyncLimits.MaxReceiptFetch,
-                PeerClientType.OpenEthereum => ParitySyncLimits.MaxReceiptFetch,
-                PeerClientType.Unknown => 128,
+                NodeClientType.BeSu => BeSuSyncLimits.MaxReceiptFetch,
+                NodeClientType.Geth => GethSyncLimits.MaxReceiptFetch,
+                NodeClientType.Nethermind => NethermindSyncLimits.MaxReceiptFetch,
+                NodeClientType.Parity => ParitySyncLimits.MaxReceiptFetch,
+                NodeClientType.OpenEthereum => ParitySyncLimits.MaxReceiptFetch,
+                NodeClientType.Unknown => 128,
                 _ => throw new ArgumentOutOfRangeException()
             };
         }
@@ -54,12 +55,12 @@ namespace Nethermind.Synchronization.Blocks
         {
             return peer.PeerClientType switch
             {
-                PeerClientType.BeSu => BeSuSyncLimits.MaxHeaderFetch,
-                PeerClientType.Geth => GethSyncLimits.MaxHeaderFetch,
-                PeerClientType.Nethermind => NethermindSyncLimits.MaxHeaderFetch,
-                PeerClientType.Parity => ParitySyncLimits.MaxHeaderFetch,
-                PeerClientType.OpenEthereum => ParitySyncLimits.MaxHeaderFetch,
-                PeerClientType.Unknown => 192,
+               NodeClientType.BeSu => BeSuSyncLimits.MaxHeaderFetch,
+               NodeClientType.Geth => GethSyncLimits.MaxHeaderFetch,
+               NodeClientType.Nethermind => NethermindSyncLimits.MaxHeaderFetch,
+               NodeClientType.Parity => ParitySyncLimits.MaxHeaderFetch,
+               NodeClientType.OpenEthereum => ParitySyncLimits.MaxHeaderFetch,
+               NodeClientType.Unknown => 192,
                 _ => throw new ArgumentOutOfRangeException()
             };
         }

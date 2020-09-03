@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,22 +13,24 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using Nethermind.Core;
+using System;
+using System.Threading.Tasks;
+using Nethermind.Facade.Proxy.Models;
 
-namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
+namespace Nethermind.Facade.Proxy
 {
-    public class ReceiptsMessage : P2PMessage
+    public class AdminJsonRpcClientProxy : IAdminJsonRpcClientProxy
     {
-        public TxReceipt[][] TxReceipts { get; }
-        public override int PacketType { get; } = Eth63MessageCode.Receipts;
-        public override string Protocol { get; } = "eth";
+        private readonly IJsonRpcClientProxy _proxy;
 
-        public ReceiptsMessage(TxReceipt[][] txReceipts)
+        public AdminJsonRpcClientProxy(IJsonRpcClientProxy proxy)
         {
-            TxReceipts = txReceipts ?? new TxReceipt[0][];
+            _proxy = proxy ?? throw new ArgumentNullException(nameof(proxy));
         }
         
-        public override string ToString() => $"{nameof(ReceiptsMessage)}({TxReceipts?.Length ?? 0})";
+        public Task<RpcResult<PeerInfoModel[]>> admin_peers(bool includeDetails)
+            => _proxy.SendAsync<PeerInfoModel[]>(nameof(admin_peers), includeDetails);
     }
 }

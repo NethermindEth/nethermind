@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,22 +13,21 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using Nethermind.Core;
-
-namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
+namespace Nethermind.PeerView
 {
-    public class ReceiptsMessage : P2PMessage
+    public class PeerInfoRow
     {
-        public TxReceipt[][] TxReceipts { get; }
-        public override int PacketType { get; } = Eth63MessageCode.Receipts;
-        public override string Protocol { get; } = "eth";
+        public string ClientType { get; set; }
+        public string Host { get; set; }
+        public string LastSignal { get; set; }
+        public string EthDetails { get; set; }
+        public int Reputation { get; set; } = 100;
 
-        public ReceiptsMessage(TxReceipt[][] txReceipts)
+        public override string ToString()
         {
-            TxReceipts = txReceipts ?? new TxReceipt[0][];
+            return $"{Host.PadLeft(15)} {(ClientType ?? "").PadLeft(12)} {(EthDetails ?? "").PadLeft(5)} {LastSignal} {Reputation.ToString().PadLeft(6)}";
         }
-        
-        public override string ToString() => $"{nameof(ReceiptsMessage)}({TxReceipts?.Length ?? 0})";
     }
 }

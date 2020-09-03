@@ -98,7 +98,7 @@ namespace Nethermind.Blockchain.Visitors
             throw new InvalidDataException($"Block {hash} is missing from the database when loading blocks.");
         }
 
-        Task<bool> IBlockTreeVisitor.VisitHeader(BlockHeader header, CancellationToken cancellationToken)
+        Task<HeaderVisitOutcome> IBlockTreeVisitor.VisitHeader(BlockHeader header, CancellationToken cancellationToken)
         {
             long i = header.Number - StartLevelInclusive;
             if (i % _batchSize == _batchSize - 1 && i != _blocksToLoad - 1 && _blockTree.Head.Number + _batchSize < header.Number)
@@ -106,7 +106,7 @@ namespace Nethermind.Blockchain.Visitors
                 if (_logger.IsInfo) _logger.Info($"Loaded {i + 1} out of {_blocksToLoad} headers from DB.");
             }
 
-            return Task.FromResult(true);
+            return Task.FromResult(HeaderVisitOutcome.None);
         }
 
         async Task<BlockVisitOutcome> IBlockTreeVisitor.VisitBlock(Block block, CancellationToken cancellationToken)
