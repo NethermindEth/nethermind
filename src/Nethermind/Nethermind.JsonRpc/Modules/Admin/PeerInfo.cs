@@ -53,7 +53,6 @@ namespace Nethermind.JsonRpc.Modules.Admin
             Port = peer.Node.Port;
             Address = peer.Node.Address.ToString();
             IsBootnode = peer.Node.IsBootnode;
-            IsTrusted = peer.Node.IsTrusted;
             IsStatic = peer.Node.IsStatic;
             Enode = peer.Node.ToString("e");
             

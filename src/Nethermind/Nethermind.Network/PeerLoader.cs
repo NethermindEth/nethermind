@@ -58,13 +58,7 @@ namespace Nethermind.Network
                 n.IsStatic = true;
                 if (_logger.IsInfo) _logger.Info($"Static node  : {n}");
             });
-            
-            LoadConfigPeers(allPeers, _networkConfig.TrustedPeers, n =>
-            {
-                n.IsTrusted = true;
-                if (_logger.IsInfo) _logger.Info($"Trusted node : {n}");
-            });
-            
+
             if (!(staticNodes is null))
             {
                 LoadConfigPeers(allPeers, staticNodes, n =>

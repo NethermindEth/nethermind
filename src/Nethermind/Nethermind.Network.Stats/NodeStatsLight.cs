@@ -284,10 +284,7 @@ namespace Nethermind.Stats
 
         private long CalculateCurrentReputation()
         {
-            return IsReputationPenalized()
-                ? -100
-                : CurrentPersistedNodeReputation / 2 + CalculateSessionReputation() +
-                  (Node.IsTrusted ? _statsConfig.PredefinedReputation : 0);
+            return IsReputationPenalized() ? -100 : CurrentPersistedNodeReputation / 2 + CalculateSessionReputation();
         }
 
         private bool HasDisconnectedOnce => _lastLocalDisconnect.HasValue || _lastRemoteDisconnect.HasValue;

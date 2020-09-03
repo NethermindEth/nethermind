@@ -63,12 +63,7 @@ namespace Nethermind.Stats.Model
         /// We use bootnodes to bootstrap the discovery process.
         /// </summary>
         public bool IsBootnode { get; set; }
-        
-        /// <summary>
-        /// We give trusted peers much better reputation upfront.
-        /// </summary>
-        public bool IsTrusted { get; set; }
-        
+
         /// <summary>
         /// We try to maintain connection with static nodes at all time.
         /// </summary>
