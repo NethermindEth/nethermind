@@ -191,7 +191,6 @@ namespace Nethermind.Network.P2P
             }
 
             StatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.Headers, 0);
-            Logger.Warn("TIMED OUT");
             throw new TimeoutException($"{Session} Request timeout in {nameof(GetBlockHeadersMessage)} with {message.MaxHeaders} max headers");
         }
 
