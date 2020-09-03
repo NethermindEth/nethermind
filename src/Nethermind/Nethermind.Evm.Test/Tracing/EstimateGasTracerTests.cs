@@ -18,7 +18,6 @@ using System;
 using System.Threading;
 using FluentAssertions;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
 using NSubstitute;
@@ -181,10 +180,10 @@ namespace Nethermind.Evm.Test.Tracing
         [Test]
         public void Throw_operation_canceled_after_given_timeout()
         {
-            TimeSpan timeout = TimeSpan.FromMilliseconds(100);
+            TimeSpan timeout = TimeSpan.FromMilliseconds(10);
             CancellationToken cancellationToken = new CancellationTokenSource(timeout).Token;
             Transaction transactionMock = Substitute.For<Transaction>();
-            var tracer = new EstimateGasTracer(cancellationToken);
+            EstimateGasTracer tracer = new EstimateGasTracer(cancellationToken);
 
             Thread.Sleep(timeout.Add(TimeSpan.FromMilliseconds(100)));
 
@@ -194,8 +193,8 @@ namespace Nethermind.Evm.Test.Tracing
         [Test]
         public void Does_not_throw_if_cancellation_token_is_default()
         {
-            CancellationToken cancellationToken = default(CancellationToken);
-            var tracer = new EstimateGasTracer(cancellationToken);
+            CancellationToken cancellationToken = default;
+            EstimateGasTracer tracer = new EstimateGasTracer(cancellationToken);
             Transaction transactionMock = Substitute.For<Transaction>();
             
             Thread.Sleep(TimeSpan.FromSeconds(2));
