@@ -401,6 +401,30 @@ namespace Nethermind.Runner.Test
             Test<INetworkConfig, int>(configWildcard, c => c.NettyArenaOrder, 11);
         }
 
+        [Test]
+        public void No_additional_commas_in_config_files()
+        {
+            char pathSeparator = Path.AltDirectorySeparatorChar;
+            string configDirectory = $"{AppDomain.CurrentDomain.BaseDirectory}{pathSeparator}configs";          
+
+            IEnumerable<string> filesPaths = Directory.EnumerateFiles(configDirectory);
+
+            foreach (string filePath in filesPaths)
+            {
+                string content = File.ReadAllText(filePath)
+                                        .Replace("\n", "")
+                                        .Replace(" ", "");
+                
+                IEnumerable<int> commaIndexes = AllIndexesOf(content, ",");
+
+                foreach(int commaIndex in commaIndexes)
+                {
+                    var nextChar = content.ElementAt(commaIndex + 1);
+                    Assert.AreNotEqual('}', nextChar, $"Additional comma found in {filePath}");
+                }
+            }
+        }
+
         private static ConfigProvider GetConfigProviderFromFile(string configFile)
         {
             ConfigProvider configProvider = new ConfigProvider();
@@ -574,6 +598,16 @@ namespace Nethermind.Runner.Test
             }
 
             return groups;
+        }
+
+        public IEnumerable<int> AllIndexesOf(string str, string searchString)
+        {
+            int minIndex = str.IndexOf(searchString);
+            while (minIndex != -1)
+            {
+                yield return minIndex;
+                minIndex = str.IndexOf(searchString, minIndex + searchString.Length);
+            }
         }
 
         private class ConfigFileGroup : Attribute
