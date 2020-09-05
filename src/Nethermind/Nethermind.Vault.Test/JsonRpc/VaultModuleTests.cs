@@ -47,8 +47,8 @@ namespace Nethermind.Vault.Test.JsonRpc
             _config.Scheme = "http";
             _config.Path = "api/v1";
             _config.Token = $"bearer  {TestContext.Parameters["token"]}";
-            _vaultService = new VaultService(_config, LimboLogs.Instance);
-            _vaultModule = new VaultModule(_vaultService, LimboLogs.Instance);
+            _vaultService = new VaultService(_config, new TestLogManager(LogLevel.Trace));
+            _vaultModule = new VaultModule(_vaultService, new TestLogManager(LogLevel.Trace));
 
             provide.Model.Vault.Vault vault = new provide.Model.Vault.Vault();
             vault.Name = "Test Vault";

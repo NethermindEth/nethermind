@@ -50,9 +50,12 @@ namespace Nethermind.Vault
             _accounts = new ConcurrentDictionary<Address, Guid>(
                 keys.Where(k => k.Id != null).Select(ToKeyValuePair));
 
-            foreach (var key in keys)
+            if (_logger.IsTrace)
             {
-                Console.WriteLine($"RETRIEVED KEY {key.Address} {key.Id} {key.VaultId}");
+                foreach (var key in keys)
+                {
+                    _logger.Trace($"Retrieved key {key.Address} {key.Id} from vault {key.VaultId} (intended vault {_vaultId})");
+                }
             }
 
             return _accounts.Keys.ToArray();
@@ -78,7 +81,8 @@ namespace Nethermind.Vault
                 throw new ApplicationException($"Failed to create vault key with a valid {nameof(key.Id)}.");
             }
 
-            Console.WriteLine($"CREATED KEY {createdKey.Address} {createdKey.Id} {createdKey.VaultId}");
+            if(_logger.IsTrace) _logger.Trace(
+                $"Created key {createdKey.Address} {createdKey.Id} in vault {createdKey.VaultId}");
             
             Address account = new Address(createdKey.Address);
             if (!_accounts.TryAdd(account, createdKey.Id.Value))
@@ -97,7 +101,7 @@ namespace Nethermind.Vault
                 throw new KeyNotFoundException($"Account with the given address {address} could not be found");
             }
             
-            Console.WriteLine($"DELETING KEY {keyId}");
+            if(_logger.IsTrace) _logger.Trace($"Deleting key {keyId} from vault {_vaultId}");
             Key deletedKey = await _vaultService.DeleteKey(_vaultId, keyId.Value);
             if (deletedKey is null)
             {

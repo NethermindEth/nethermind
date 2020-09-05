@@ -15,18 +15,16 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using Nethermind.Logging;
-using NUnit.Framework;
 
-namespace Nethermind.Runner.Test
+namespace Nethermind.Logging
 {
-    public class NUnitLogManager : ILogManager
+    public class TestLogManager : ILogManager
     {
-        public static readonly NUnitLogManager Instance = new NUnitLogManager();
+        public static readonly TestLogManager Instance = new TestLogManager();
         
         private readonly LogLevel _level;
         
-        public NUnitLogManager(LogLevel level = LogLevel.Info)
+        public TestLogManager(LogLevel level = LogLevel.Info)
         {
             _level = level;
         }
@@ -98,11 +96,11 @@ namespace Nethermind.Runner.Test
                 
             private static void Log(string text, Exception ex = null)
             {
-                TestContext.Out.WriteLine(text);
+                Console.WriteLine(text);
                     
                 if (ex != null)
                 {
-                    TestContext.Out.WriteLine(ex.ToString());
+                    Console.WriteLine(ex.ToString());
                 }
             }
         }

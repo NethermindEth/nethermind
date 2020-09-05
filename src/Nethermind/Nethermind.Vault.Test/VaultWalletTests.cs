@@ -22,6 +22,7 @@ using Nethermind.Vault.Config;
 using NUnit.Framework;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Test;
 
 namespace Nethermind.Vault.Test
 {
@@ -43,7 +44,7 @@ namespace Nethermind.Vault.Test
 
             _vaultService = new VaultService(
                 config,
-                LimboLogs.Instance
+                new TestLogManager(LogLevel.Trace)
             );
 
             provide.Model.Vault.Vault vault = new provide.Model.Vault.Vault();
