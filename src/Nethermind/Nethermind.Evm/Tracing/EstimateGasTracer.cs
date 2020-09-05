@@ -29,7 +29,7 @@ namespace Nethermind.Evm.Tracing
     {
         private readonly CancellationToken _cancellationToken; 
 
-        public EstimateGasTracer(CancellationToken cancellationToken = default(CancellationToken))
+        public EstimateGasTracer(CancellationToken cancellationToken = default)
         {
             _cancellationToken = cancellationToken;
             _currentGasAndNesting.Push(new GasAndNesting(0, -1));

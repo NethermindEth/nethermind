@@ -151,7 +151,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             return null;
         }
         
-        private IGasLimitCalculator? GetGasLimitCalculator()
+        private AuRaContractGasLimitOverride? GetGasLimitCalculator()
         {
             if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
             var blockGasLimitContractTransitions = _context.ChainSpec.AuRa.BlockGasLimitContractTransitions;
@@ -160,7 +160,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             {
                 _context.GasLimitCalculatorCache = new AuRaContractGasLimitOverride.Cache();
                 
-                IGasLimitCalculator gasLimitCalculator = new AuRaContractGasLimitOverride(
+                AuRaContractGasLimitOverride gasLimitCalculator = new AuRaContractGasLimitOverride(
                     blockGasLimitContractTransitions.Select(blockGasLimitContractTransition =>
                         new BlockGasLimitContract(
                             _context.AbiEncoder,

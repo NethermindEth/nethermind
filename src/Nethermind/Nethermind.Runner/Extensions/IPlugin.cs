@@ -13,16 +13,20 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-namespace Nethermind.Synchronization.Peers
+using System;
+
+namespace Nethermind.Runner.Extensions
 {
-    public enum PeerClientType
+    public interface IPlugin : IDisposable
     {
-        BeSu,
-        Geth,
-        Nethermind,
-        Parity,
-        OpenEthereum,
-        Unknown
+        public string Name { get; }
+        
+        public string Description { get; }
+        
+        public string Author { get; }
+        
+        void Init(INethermindApi api);
     }
 }

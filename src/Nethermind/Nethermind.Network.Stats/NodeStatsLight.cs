@@ -258,6 +258,7 @@ namespace Nethermind.Stats
         
         private int GetDisconnectDelay()
         {
+            int disconnectDelay;
             int disconnectCount;
             lock (_statCountersArray)
             {
@@ -266,24 +267,24 @@ namespace Nethermind.Stats
 
             if (disconnectCount == 0)
             {
-                return 100;
+                disconnectDelay = 100;
             }
-
-            if (disconnectCount > _statsConfig.DisconnectDelays.Length)
+            else if (disconnectCount > _statsConfig.DisconnectDelays.Length)
             {
-                return _statsConfig.DisconnectDelays.Last();
+                disconnectDelay = _statsConfig.DisconnectDelays[^1];
+            }
+            else
+            {
+                disconnectDelay = _statsConfig.DisconnectDelays[disconnectCount - 1];
             }
 
-            return _statsConfig.DisconnectDelays[disconnectCount - 1];
+            return disconnectDelay;
         }
 
 
         private long CalculateCurrentReputation()
         {
-            return IsReputationPenalized()
-                ? -100
-                : CurrentPersistedNodeReputation / 2 + CalculateSessionReputation() +
-                  (Node.IsTrusted ? _statsConfig.PredefinedReputation : 0);
+            return IsReputationPenalized() ? -100 : CurrentPersistedNodeReputation / 2 + CalculateSessionReputation();
         }
 
         private bool HasDisconnectedOnce => _lastLocalDisconnect.HasValue || _lastRemoteDisconnect.HasValue;

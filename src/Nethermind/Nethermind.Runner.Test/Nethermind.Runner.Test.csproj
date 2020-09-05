@@ -83,5 +83,8 @@
           <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </Content>
     </ItemGroup>
+    <ItemGroup>
+      <ProjectReference Include="..\Nethermind.Seq\Nethermind.Seq.csproj" />
+    </ItemGroup>
 
 </Project>

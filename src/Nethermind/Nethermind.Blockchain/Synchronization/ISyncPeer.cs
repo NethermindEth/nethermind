@@ -28,8 +28,9 @@ namespace Nethermind.Blockchain.Synchronization
     public interface ISyncPeer : ITxPoolPeer
     {
         Node Node { get; }
-        
-        string ClientId { get; }
+
+        string ClientId => Node?.ClientId;
+        NodeClientType ClientType => Node?.ClientType ?? NodeClientType.Unknown;
         Keccak HeadHash { get; set; }
         long HeadNumber { get; set; }
         UInt256 TotalDifficulty { get; set; }

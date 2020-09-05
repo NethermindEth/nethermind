@@ -26,5 +26,7 @@ namespace Nethermind.Network.P2P
 
         public override string Protocol => "p2p";
         public override int PacketType => P2PMessageCode.Pong;
+        
+        public override string ToString() => "Pong";
     }
 }
