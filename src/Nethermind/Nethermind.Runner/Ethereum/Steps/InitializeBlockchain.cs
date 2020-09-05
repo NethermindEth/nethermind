@@ -40,6 +40,8 @@ using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Synchronization.BeamSync;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
+using Nethermind.Vault;
+using Nethermind.Vault.Config;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
@@ -98,7 +100,15 @@ namespace Nethermind.Runner.Ethereum.Steps
             TxSealer standardSealer = new TxSealer(_api.Signer, _api.Timestamper);
             NonceReservingTxSealer nonceReservingTxSealer =
                 new NonceReservingTxSealer(_api.Signer, _api.Timestamper, _api.TxPool);
-            _api.TxSender = new TxPoolSender(_api.TxPool, standardSealer, nonceReservingTxSealer);
+
+            if (_api.Config<IVaultConfig>().Enabled)
+            {
+                _api.TxSender = new TxPoolSender(_api.TxPool, standardSealer, nonceReservingTxSealer);
+            }
+            else
+            {
+                _api.TxSender = new VaultTxSender();
+            }
 
             IBloomConfig? bloomConfig = _api.Config<IBloomConfig>();
 

@@ -15,17 +15,43 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Numerics;
+using System.Threading.Tasks;
+using Ipfs;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.TxPool;
+using Nethermind.Vault.Config;
+using provide;
+using ProvideTx = provide.Model.NChain.Transaction;
 
 namespace Nethermind.Vault
 {
     public class VaultTxSender : ITxSender
     {
-        public Keccak SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
+        private NChain _provide;
+
+        public VaultTxSender(IVaultConfig vaultConfig)
         {
-            throw new System.NotImplementedException();
+            _provide = new NChain(
+                vaultConfig.Host,
+                vaultConfig.Path,
+                vaultConfig.Scheme,
+                vaultConfig.Token);
+        }
+        
+        public async ValueTask<Keccak> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
+        {
+            ProvideTx provideTx = new ProvideTx();
+            provideTx.Data = tx.Data.ToHexString();
+            provideTx.Description = "From Nethermind with love";
+            provideTx.Hash = tx.Hash.ToString();
+            provideTx.Signer = tx.SenderAddress.ToString();
+            provideTx.To = tx.To.ToString();
+            provideTx.Value = (BigInteger)tx.Value;
+
+            ProvideTx createdTx = await _provide.CreateTransaction(provideTx);
+            return new Keccak(createdTx.Hash);
         }
     }
 }

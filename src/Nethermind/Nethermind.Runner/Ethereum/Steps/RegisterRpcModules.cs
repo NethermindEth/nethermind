@@ -89,8 +89,21 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
             else
             {
-                EthModuleFactory ethModuleFactory = new EthModuleFactory(_api.DbProvider, _api.TxPool, _api.Wallet, rpcConfig, _api.BlockTree,
-                    _api.EthereumEcdsa, _api.MainBlockProcessor, _api.ReceiptFinder, _api.SpecProvider, rpcConfig, _api.BloomStorage, _api.LogManager, initConfig.IsMining);
+                EthModuleFactory ethModuleFactory = new EthModuleFactory(
+                    _api.DbProvider,
+                    _api.TxPool,
+                    _api.TxSender,
+                    _api.Signer,
+                    _api.Wallet,
+                    _api.BlockTree,
+                    _api.EthereumEcdsa,
+                    _api.MainBlockProcessor,
+                    _api.ReceiptFinder,
+                    _api.SpecProvider,
+                    rpcConfig,
+                    _api.BloomStorage,
+                    _api.LogManager,
+                    initConfig.IsMining);
                 _api.RpcModuleProvider.Register(new BoundedModulePool<IEthModule>(8, ethModuleFactory));
             }
 

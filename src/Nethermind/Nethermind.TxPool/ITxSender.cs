@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -22,6 +23,6 @@ namespace Nethermind.TxPool
 {
     public interface ITxSender
     {
-        Keccak SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions);
+        ValueTask<Keccak> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions);
     }
 }
