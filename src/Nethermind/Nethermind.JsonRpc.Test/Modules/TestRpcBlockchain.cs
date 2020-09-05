@@ -73,9 +73,9 @@ namespace Nethermind.JsonRpc.Test.Modules
                 return this;
             }
             
-            public Builder WithBlockTree(IBlockTree blockTree)
+            public Builder WithBlockFinder(IBlockFinder blockFinder)
             {
-                _blockchain.BlockTree = blockTree;
+                _blockchain.BlockFinder = blockFinder;
                 return this;
             }
             
@@ -108,15 +108,16 @@ namespace Nethermind.JsonRpc.Test.Modules
                 LimboLogs.Instance);
             
             Bridge ??= new BlockchainBridge(processingEnv, TxPool, ReceiptStorage, filterStore, filterManager, EthereumEcdsa, NullBloomStorage.Instance, Timestamper, LimboLogs.Instance, false);
+            BlockFinder ??= BlockTree;
             
             ITxSigner txSigner = new WalletTxSigner(TestWallet, specProvider?.ChainId ?? 0);
-            ITxSealer txSealer = new NonceReservingTxSealer(txSigner, Timestamper, TxPool);
-            TxSender = new TxPoolSender(TxPool, txSealer);
+            ITxSealer txSealer = new TxSealer(txSigner, Timestamper);
+            TxSender ??= new TxPoolSender(TxPool, txSealer);
 
             EthModule = new EthModule(
                 new JsonRpcConfig(),
                 Bridge,
-                BlockTree,
+                BlockFinder,
                 StateReader,
                 txSigner,
                 TxPool,

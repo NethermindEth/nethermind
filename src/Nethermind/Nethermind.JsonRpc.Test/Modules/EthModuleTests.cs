@@ -106,7 +106,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block block = Build.A.Block.WithOmmers(Build.A.BlockHeader.TestObject, Build.A.BlockHeader.TestObject).TestObject;
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             blockTree.FindBlock((BlockParameter) null).ReturnsForAnyArgs(block);
-            _test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockTree(blockTree).Build();
+            _test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockTree).Build();
             string serialized = _test.TestEthRpc("eth_getUncleByBlockNumberAndIndex", _test.BlockTree.FindHeadBlock().Number.ToString(), "1");
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":{\"author\":\"0x0000000000000000000000000000000000000000\",\"difficulty\":\"0xf4240\",\"extraData\":\"0x010203\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0x0\",\"hash\":\"0xa2a9f03b9493046696099d27b2612b99497aa1f392ec966716ab393c715a5bb6\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"mixHash\":\"0x2ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e2\",\"nonce\":\"0x00000000000003e8\",\"number\":\"0x0\",\"parentHash\":\"0xff483e972a04a9a62bb4b7d04ae403c615604e4090521ecc5bb7af67f71be09c\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"size\":\"0x201\",\"stateRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"totalDifficulty\":\"0x0\",\"timestamp\":\"0xf4240\",\"transactions\":[],\"transactionsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"uncles\":[]},\"id\":67}", serialized, serialized.Replace("\"", "\\\""));
         }
@@ -117,7 +117,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block block = Build.A.Block.WithOmmers(Build.A.BlockHeader.TestObject, Build.A.BlockHeader.TestObject).TestObject;
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             blockTree.FindBlock((BlockParameter) null).ReturnsForAnyArgs(block);
-            _test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockTree(blockTree).Build();
+            _test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockTree).Build();
             string serialized = _test.TestEthRpc("eth_getUncleByBlockHashAndIndex", _test.BlockTree.FindHeadBlock().Hash.ToString(), "1");
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":{\"author\":\"0x0000000000000000000000000000000000000000\",\"difficulty\":\"0xf4240\",\"extraData\":\"0x010203\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0x0\",\"hash\":\"0xa2a9f03b9493046696099d27b2612b99497aa1f392ec966716ab393c715a5bb6\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"mixHash\":\"0x2ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e2\",\"nonce\":\"0x00000000000003e8\",\"number\":\"0x0\",\"parentHash\":\"0xff483e972a04a9a62bb4b7d04ae403c615604e4090521ecc5bb7af67f71be09c\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"size\":\"0x201\",\"stateRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"totalDifficulty\":\"0x0\",\"timestamp\":\"0xf4240\",\"transactions\":[],\"transactionsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"uncles\":[]},\"id\":67}", serialized, serialized.Replace("\"", "\\\""));
         }
@@ -217,7 +217,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             blockTree.Head.Returns((Block) null);
 
-            _test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockTree(blockTree).Build();
+            _test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockTree).Build();
             string serialized = _test.TestEthRpc("eth_getBalance", TestItem.AddressA.Bytes.ToHexString(true), "0x01");
 
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Incorrect head block\"},\"id\":67}", serialized);
@@ -233,11 +233,11 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public async Task Eth_syncing_true()
         {
-            IBlockTree bridge = Substitute.For<IBlockTree>();
+            IBlockFinder bridge = Substitute.For<IBlockFinder>();
             bridge.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(900).TestObject).TestObject);
-            bridge.BestSuggestedHeader.Returns(Build.A.BlockHeader.WithNumber(1000L).TestObject);
+            bridge.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(1000L).TestObject);
 
-            _test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockTree(bridge).Build();
+            _test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(bridge).Build();
 
             string serialized = _test.TestEthRpc("eth_syncing");
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":{\"startingBlock\":\"0x0\",\"currentBlock\":\"0x384\",\"highestBlock\":\"0x3e8\"},\"id\":67}", serialized);
@@ -246,11 +246,11 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public async Task Eth_syncing_false()
         {
-            IBlockTree blockTree = Substitute.For<IBlockTree>();
-            blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(900).TestObject).TestObject);
-            blockTree.BestSuggestedHeader.Returns(Build.A.BlockHeader.WithNumber(901).TestObject);
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            blockFinder.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(900).TestObject).TestObject);
+            blockFinder.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(901).TestObject);
 
-            _test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockTree(blockTree).Build();
+            _test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockFinder).Build();
             string serialized = _test.TestEthRpc("eth_syncing");
 
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":false,\"id\":67}", serialized);
@@ -587,11 +587,11 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public async Task Eth_syncing()
         {
-            IBlockTree bridge = Substitute.For<IBlockTree>();
-            bridge.BestSuggestedHeader.Returns(Build.A.BlockHeader.WithNumber(6178000L).TestObject);
+            IBlockFinder bridge = Substitute.For<IBlockFinder>();
+            bridge.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(6178000L).TestObject);
             bridge.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(6170000L).TestObject).TestObject);
 
-            _test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockTree(bridge).Build();
+            _test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(bridge).Build();
             string serialized = _test.TestEthRpc("eth_syncing");
 
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":{\"startingBlock\":\"0x0\",\"currentBlock\":\"0x5e2590\",\"highestBlock\":\"0x5e44d0\"},\"id\":67}", serialized);
