@@ -86,6 +86,8 @@ namespace Nethermind.Vault.Test.JsonRpc
             createKeyResponse.Result.ResultType.Should().Be(ResultType.Success);
 
             createKeyResponse.Data.Address.Should().NotBeNullOrEmpty();
+            
+            _ = await _vaultModule.vault_deleteKey(_vaultId.ToString(), createKeyResponse.Data.Id!.ToString());
         }
 
         [Test]
@@ -187,6 +189,7 @@ namespace Nethermind.Vault.Test.JsonRpc
             foreach (Key listedKey in listKeysResponse.Data)
             {
                 listedKey.Address.Should().NotBeNullOrEmpty(listedKey.Name + " " + listedKey.Description);
+                _ = await _vaultModule.vault_deleteKey(_vaultId.ToString(), listedKey.Id!.ToString());
             }
         }
 
@@ -249,6 +252,8 @@ namespace Nethermind.Vault.Test.JsonRpc
             signMessageResponse.ErrorCode.Should().Be(0);
             signMessageResponse.Data.Should().NotBeNull();
             signMessageResponse.Result.ResultType.Should().Be(ResultType.Success);
+            
+            _ = await _vaultModule.vault_deleteKey(_vaultId.ToString(), keyId!.ToString());
         }
 
         [Test]
@@ -276,6 +281,8 @@ namespace Nethermind.Vault.Test.JsonRpc
             verifySignatureResponse.ErrorCode.Should().Be(0);
             verifySignatureResponse.Data.Should().Be(true);
             verifySignatureResponse.Result.ResultType.Should().Be(ResultType.Success);
+            
+            _ = await _vaultModule.vault_deleteKey(_vaultId.ToString(), keyId!.ToString());
         }
 
         [Test]
