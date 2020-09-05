@@ -280,6 +280,9 @@ namespace Nethermind.Vault.Test.JsonRpc
         [Test]
         public async Task can_delete_a_vault()
         {
+            ResultWrapper<string[]> listVaultsResponse = await _vaultModule.vault_listVaults();
+            listVaultsResponse.Data.Should().HaveCount(1);
+            
             provide.Model.Vault.Vault vault  = new provide.Model.Vault.Vault();
             vault.Name = "Name 0";
             vault.Description = "Test Vault used for test purposes";
@@ -288,6 +291,9 @@ namespace Nethermind.Vault.Test.JsonRpc
                 = await _vaultModule.vault_createVault(vault);
             Guid? vaultId = createVaultResponse.Data.Id;
             vaultId.Should().NotBeNull();
+            
+            listVaultsResponse = await _vaultModule.vault_listVaults();
+            listVaultsResponse.Data.Should().HaveCount(2);
 
             ResultWrapper<provide.Model.Vault.Vault> deleteVaultResponse
                 = await _vaultModule.vault_deleteVault(vaultId.ToString());
@@ -296,7 +302,7 @@ namespace Nethermind.Vault.Test.JsonRpc
             deleteVaultResponse.Data.Should().BeNull();
             deleteVaultResponse.Result.ResultType.Should().Be(ResultType.Success);
 
-            ResultWrapper<string[]> listVaultsResponse = await _vaultModule.vault_listVaults();
+            listVaultsResponse = await _vaultModule.vault_listVaults();
             listVaultsResponse.Data.Should().HaveCount(1);
 
             listVaultsResponse.Data.Should().NotContain(vaultId.ToString());
