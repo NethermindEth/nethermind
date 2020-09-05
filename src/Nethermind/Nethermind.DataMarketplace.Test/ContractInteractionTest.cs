@@ -227,6 +227,7 @@ namespace Nethermind.DataMarketplace.Test
 
             public Keccak SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
             {
+                tx.Nonce = GetNonce(tx.SenderAddress);
                 tx.Hash = tx.CalculateHash();
                 _headBlock.Transactions[_txIndex++] = tx;
                 _receiptsTracer.StartNewTxTrace(tx.Hash);

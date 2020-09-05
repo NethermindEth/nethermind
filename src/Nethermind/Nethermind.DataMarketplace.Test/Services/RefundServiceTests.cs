@@ -73,6 +73,7 @@ namespace Nethermind.DataMarketplace.Test.Services
 
             Deposit deposit = new Deposit(depositId, units, expiryTime, value);
             Keccak depositTxHash = await depositService.MakeDepositAsync(_consumerAccount, deposit, 20.GWei());
+            _bridge.IncrementNonce(_consumerAccount);
             TxReceipt depositTxReceipt = _bridge.GetReceipt(depositTxHash);
             TestContext.WriteLine("GAS USED FOR DEPOSIT: {0}", depositTxReceipt.GasUsed);
             Assert.AreEqual(StatusCode.Success, depositTxReceipt.StatusCode, $"deposit made {depositTxReceipt.Error} {Encoding.UTF8.GetString(depositTxReceipt.ReturnValue ?? new byte[0])}");
@@ -122,6 +123,7 @@ namespace Nethermind.DataMarketplace.Test.Services
 
             Deposit deposit = new Deposit(depositId, units, expiryTime, value);
             Keccak depositTxHash = await depositService.MakeDepositAsync(_consumerAccount, deposit, 20.GWei());
+            _bridge.IncrementNonce(_consumerAccount);
             TxReceipt depositTxReceipt = _bridge.GetReceipt(depositTxHash);
             TestContext.WriteLine("GAS USED FOR DEPOSIT: {0}", depositTxReceipt.GasUsed);
             Assert.AreEqual(StatusCode.Success, depositTxReceipt.StatusCode, $"deposit made {depositTxReceipt.Error} {Encoding.UTF8.GetString(depositTxReceipt.ReturnValue ?? new byte[0])}");
