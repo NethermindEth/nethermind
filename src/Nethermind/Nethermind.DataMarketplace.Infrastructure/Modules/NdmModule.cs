@@ -26,6 +26,7 @@ using Nethermind.DataMarketplace.Infrastructure.Rlp;
 using Nethermind.Db;
 using Nethermind.Facade;
 using Nethermind.JsonRpc;
+using Nethermind.TxPool;
 using Nethermind.Wallet;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Modules
@@ -54,22 +55,19 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
                 services.SpecProvider, logManager);
             var jsonRpcConfig = services.ConfigProvider.GetConfig<IJsonRpcConfig>();
             var blockchainBridge = new BlockchainBridge(
-                readOnlyTxProcessingEnv.StateReader,
-                readOnlyTxProcessingEnv.StateProvider,
-                readOnlyTxProcessingEnv.StorageProvider,
-                readOnlyTxProcessingEnv.BlockTree,
+                readOnlyTxProcessingEnv,
                 services.TransactionPool,
                 services.ReceiptFinder,
                 services.FilterStore,
                 services.FilterManager,
-                readOnlyTxProcessingEnv.TransactionProcessor,
                 services.Ecdsa,
                 services.BloomStorage,
                 Timestamper.Default,
                 logManager,
                 false,
                 jsonRpcConfig.FindLogBlockDepthLimit);
-            var txPoolBridge = new TxPoolBridge(services.TransactionPool, new WalletTxSigner(services.Wallet, services.SpecProvider.ChainId), services.Timestamper);
+            var txSigner = new WalletTxSigner(services.Wallet, services.SpecProvider.ChainId);
+            var txSender = new TxPoolSender(services.TransactionPool, new NonceReservingTxSealer(txSigner, services.Timestamper, services.TransactionPool));
             var dataAssetRlpDecoder = new DataAssetDecoder();
             var encoder = new AbiEncoder();
 
@@ -86,7 +84,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
             }
             else
             {
-                ndmBlockchainBridge = new NdmBlockchainBridge(txPoolBridge, blockchainBridge, services.TransactionPool);
+                ndmBlockchainBridge = new NdmBlockchainBridge(blockchainBridge, services.BlockTree, readOnlyTxProcessingEnv.StateReader, txSender);
             }
 
             var gasPriceService = new GasPriceService(services.HttpClient, configManager, configId, timestamper,

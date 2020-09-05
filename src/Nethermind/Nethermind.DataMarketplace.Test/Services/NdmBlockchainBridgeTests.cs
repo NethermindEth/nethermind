@@ -17,8 +17,9 @@
 using System;
 using System.Threading.Tasks;
 using FluentAssertions;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Find;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.Int256;
@@ -35,40 +36,20 @@ namespace Nethermind.DataMarketplace.Test.Services
         private INdmBlockchainBridge _ndmBridge;
         private IBlockchainBridge _blockchainBridge;
         private ITxPool _txPool;
-        private IBlockTree _blockTree;
+        private ITxSender _txSender;
+        private IBlockFinder _blockFinder;
         private IStateReader _stateReader;
-        private IReceiptFinder _receiptFinder;
 
         [SetUp]
         public void Setup()
         {
             _blockchainBridge = Substitute.For<IBlockchainBridge>();
             _txPool = Substitute.For<ITxPool>();
-            _blockTree = Substitute.For<IBlockTree>();
+            _blockFinder = Substitute.For<IBlockFinder>();
             _stateReader = Substitute.For<IStateReader>();
-            _receiptFinder = Substitute.For<IReceiptFinder>();
-            _ndmBridge = new NdmBlockchainBridge(_blockTree, _stateReader, _txPool, _receiptFinder);
-        }
-
-        [Test]
-        public void constructor_should_throw_exception_if_blockchain_bridge_argument_is_null()
-        {
-            Action act = () => _ndmBridge = new NdmBlockchainBridge(Substitute.For<ITxPoolBridge>(), null, _txPool);
-            act.Should().Throw<ArgumentNullException>();
-        }
-        
-        [Test]
-        public void constructor_should_throw_exception_if_txpool_bridge_argument_is_null()
-        {
-            Action act = () => _ndmBridge = new NdmBlockchainBridge(null, Substitute.For<IBlockchainBridge>(), _txPool);
-            act.Should().Throw<ArgumentNullException>();
-        }
-        
-        [Test]
-        public void constructor_should_throw_exception_if_tx_pool_argument_is_null()
-        {
-            Action act = () => _ndmBridge = new NdmBlockchainBridge(_txPoolBridge, _blockchainBridge, null);
-            act.Should().Throw<ArgumentNullException>();
+            _txSender = Substitute.For<ITxSender>();
+            
+            _ndmBridge = new NdmBlockchainBridge(_blockchainBridge, _blockFinder, _stateReader, _txSender);
         }
 
         [Test]
@@ -82,19 +63,22 @@ namespace Nethermind.DataMarketplace.Test.Services
         public async Task get_latest_block_number_should_return_head_number()
         {
             var header = Build.A.Block.TestObject;
-            _blockchainBridge.Head.Returns(header);
+            _blockFinder.Head.Returns(header);
             var result = await _ndmBridge.GetLatestBlockNumberAsync();
-            result.Should().Be(_blockchainBridge.Head.Number);
+            result.Should().Be(_blockFinder.Head.Number);
         }
+
+        private Block _anyBlock = Build.A.Block.TestObject;
         
         [Test]
         public async Task get_code_should_invoke_blockchain_bridge_get_code()
         {
             var code = new byte[] {0, 1, 2};
             var address = TestItem.AddressA;
-            _blockchainBridge.GetCode(address).Returns(code);
+            _stateReader.GetCode(Arg.Any<Keccak>(), address).Returns(code);
+            _blockFinder.Head.Returns(_anyBlock);
             var result = await _ndmBridge.GetCodeAsync(address);
-            _blockchainBridge.Received().GetCode(address);
+            _stateReader.Received().GetCode(_anyBlock.StateRoot, address);
             result.Should().BeSameAs(code);
         }
         
@@ -102,9 +86,9 @@ namespace Nethermind.DataMarketplace.Test.Services
         public async Task find_block_by_hash_should_invoke_blockchain_bridge_find_block_by_hash()
         {
             var block = Build.A.Block.TestObject;
-            _blockchainBridge.FindBlock(block.Hash).Returns(block);
+            _blockFinder.FindBlock(block.Hash).Returns(block);
             var result = await _ndmBridge.FindBlockAsync(block.Hash);
-            _blockchainBridge.Received().FindBlock(block.Hash);
+            _blockFinder.Received().FindBlock(block.Hash);
             result.Should().Be(block);
         }
         
@@ -112,9 +96,9 @@ namespace Nethermind.DataMarketplace.Test.Services
         public async Task find_block_by_number_should_invoke_blockchain_bridge_find_block_by_number()
         {
             var block = Build.A.Block.TestObject;
-            _blockchainBridge.FindBlock(block.Number).Returns(block);
+            _blockFinder.FindBlock(block.Number).Returns(block);
             var result = await _ndmBridge.FindBlockAsync(block.Number);
-            _blockchainBridge.Received().FindBlock(block.Number);
+            _blockFinder.Received().FindBlock(block.Number);
             result.Should().Be(block);
         }
         
@@ -129,11 +113,11 @@ namespace Nethermind.DataMarketplace.Test.Services
         public async Task get_latest_block_should_return_head_number()
         {
             var block = Build.A.Block.TestObject;
-            _blockchainBridge.Head.Returns(block);
-            _blockchainBridge.FindBlock(block.Hash).Returns(block);
+            _blockFinder.Head.Returns(block);
+            _blockFinder.FindBlock(block.Hash).Returns(block);
             var result = await _ndmBridge.GetLatestBlockAsync();
             result.Should().Be(block);
-            _blockchainBridge.Received().FindBlock(block.Hash);
+            _blockFinder.Received().FindBlock(block.Hash);
         }
         
         [Test]
@@ -141,23 +125,13 @@ namespace Nethermind.DataMarketplace.Test.Services
         {
             UInt256 nonce = 1;
             var address = TestItem.AddressA;
-            _blockchainBridge.GetNonce(address).Returns(nonce);
+            _blockFinder.Head.Returns(_anyBlock);
+            _stateReader.GetNonce(_anyBlock.StateRoot, address).Returns(nonce);
             var result = await _ndmBridge.GetNonceAsync(address);
-            _blockchainBridge.Received().GetNonce(address);
+            _stateReader.Received().GetNonce(_anyBlock.StateRoot, address);
             result.Should().Be(nonce);
         }
-        
-        [Test]
-        public async Task reserve_own_transaction_nonce_should_invoke_tx_pool_reserve_own_transaction_nonce()
-        {
-            UInt256 nonce = 1;
-            var address = TestItem.AddressA;
-            _txPool.ReserveOwnTransactionNonce(address).Returns(nonce);
-            var result = await _ndmBridge.ReserveOwnTransactionNonceAsync(address);
-            _txPool.Received().ReserveOwnTransactionNonce(address);
-            result.Should().Be(nonce);
-        }
-        
+
         [Test]
         public async Task get_transaction_should_return_null_if_receipt_or_transaction_is_null()
         {
@@ -200,7 +174,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             var head = Build.A.Block.TestObject;
             var transaction = Build.A.Transaction.TestObject;
             var data = new byte[] {0, 1, 2};
-            _blockchainBridge.Head.Returns(head);
+            _blockFinder.Head.Returns(head);
             var output = new BlockchainBridge.CallOutput(data, 0, null);
             _blockchainBridge.Call(head?.Header, transaction).Returns(output);
             var result = await _ndmBridge.CallAsync(transaction);
@@ -214,7 +188,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             const int blockNumber = 1;
             var transaction = Build.A.Transaction.TestObject;
             var result = await _ndmBridge.CallAsync(transaction, blockNumber);
-            _blockchainBridge.Received().FindBlock(blockNumber);
+            _blockFinder.Received().FindBlock(blockNumber);
             _blockchainBridge.DidNotReceiveWithAnyArgs().Call(null, null);
             result.Should().BeSameAs(Array.Empty<byte>());
         }
@@ -225,11 +199,11 @@ namespace Nethermind.DataMarketplace.Test.Services
             var block = Build.A.Block.TestObject;
             var transaction = Build.A.Transaction.TestObject;
             var data = new byte[] {0, 1, 2};
-            _blockchainBridge.FindBlock(block.Number).Returns(block);
+            _blockFinder.FindBlock(block.Number).Returns(block);
             var output = new BlockchainBridge.CallOutput(data, 0, null);
             _blockchainBridge.Call(block.Header, transaction).Returns(output);
             var result = await _ndmBridge.CallAsync(transaction, block.Number);
-            _blockchainBridge.Received().FindBlock(block.Number);
+            _blockFinder.Received().FindBlock(block.Number);
             _blockchainBridge.Received().Call(block.Header, transaction);
             result.Should().BeSameAs(data);
         }
@@ -239,9 +213,9 @@ namespace Nethermind.DataMarketplace.Test.Services
         {
             var transaction = Build.A.Transaction.TestObject;
             var hash = TestItem.KeccakA;
-            _txPoolBridge.SendTransaction(transaction, TxHandlingOptions.PersistentBroadcast | TxHandlingOptions.ManagedNonce).Returns(hash);
+            _txSender.SendTransaction(transaction, TxHandlingOptions.PersistentBroadcast | TxHandlingOptions.ManagedNonce).Returns(hash);
             var result = await _ndmBridge.SendOwnTransactionAsync(transaction);
-            _txPoolBridge.Received().SendTransaction(transaction, TxHandlingOptions.PersistentBroadcast | TxHandlingOptions.ManagedNonce);
+            _txSender.Received().SendTransaction(transaction, TxHandlingOptions.PersistentBroadcast | TxHandlingOptions.ManagedNonce);
             result.Should().Be(hash);
         }
     }

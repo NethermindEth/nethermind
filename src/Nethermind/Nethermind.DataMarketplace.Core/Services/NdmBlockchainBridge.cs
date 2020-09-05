@@ -16,7 +16,7 @@
 
 using System;
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Core.Domain;
@@ -31,13 +31,12 @@ namespace Nethermind.DataMarketplace.Core.Services
     {
         private readonly IBlockchainBridge _blockchainBridge;
         private readonly ITxSender _txSender;
-        private readonly IBlockTree _blockTree;
+        private readonly IBlockFinder _blockTree;
         private readonly IStateReader _stateReader;
-        private readonly ITxPool _txPool;
 
         public NdmBlockchainBridge(
             IBlockchainBridge blockchainBridge,
-            IBlockTree blockTree,
+            IBlockFinder blockTree,
             IStateReader stateReader,
             ITxSender txSender)
         {
@@ -79,9 +78,6 @@ namespace Nethermind.DataMarketplace.Core.Services
             return Task.FromResult(_stateReader.GetNonce(_blockTree.Head.StateRoot, address));   
         }
 
-        public Task<UInt256> ReserveOwnTransactionNonceAsync(Address address)
-            => Task.FromResult(_txPool.ReserveOwnTransactionNonce(address));
-
         public Task<NdmTransaction?> GetTransactionAsync(Keccak transactionHash)
         {
             (TxReceipt receipt, Transaction transaction) = _blockchainBridge.GetTransaction(transactionHash);
@@ -100,13 +96,13 @@ namespace Nethermind.DataMarketplace.Core.Services
 
         public Task<byte[]> CallAsync(Transaction transaction)
         {
-            var callOutput = _blockchainBridge.Call(_blockchainBridge.Head?.Header, transaction);
+            var callOutput = _blockchainBridge.Call(_blockTree.Head?.Header, transaction);
             return Task.FromResult(callOutput.OutputData ?? new byte[] {0});
         }
 
         public Task<byte[]> CallAsync(Transaction transaction, long blockNumber)
         {
-            var block = _blockchainBridge.FindBlock(blockNumber);
+            var block = _blockTree.FindBlock(blockNumber);
             if (block is null)
             {
                 return Task.FromResult(Array.Empty<byte>());

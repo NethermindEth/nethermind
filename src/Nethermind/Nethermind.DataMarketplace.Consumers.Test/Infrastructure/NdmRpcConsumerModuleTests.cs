@@ -44,6 +44,7 @@ using Nethermind.Int256;
 using Nethermind.Facade;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.Wallet;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -59,7 +60,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         private IGasPriceService _gasPriceService;
         private IConsumerTransactionsService _consumerTransactionsService;
         private IConsumerGasLimitsService _gasLimitsService;
-        private IPersonalBridge _personalBridge;
+        private IWallet _wallet;
         private INdmRpcConsumerModule _rpc;
         private ITimestamper _timestamper;
         private const uint DepositExpiryTime = 1546393600;
@@ -76,11 +77,11 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             _gasPriceService = Substitute.For<IGasPriceService>();
             _gasLimitsService = Substitute.For<IConsumerGasLimitsService>();
             _consumerTransactionsService = Substitute.For<IConsumerTransactionsService>();
-            _personalBridge = Substitute.For<IPersonalBridge>();
+            _wallet = Substitute.For<IWallet>();
             _timestamper = new Timestamper(Date);
             _rpc = new NdmRpcConsumerModule(_consumerService, _depositReportService, _jsonRpcNdmConsumerChannel,
                 _ethRequestService, _ethPriceService, _gasPriceService, _consumerTransactionsService, _gasLimitsService,
-                _personalBridge, _timestamper);
+                _wallet, _timestamper);
         }
 
         [Test]
@@ -92,9 +93,9 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         [Test]
         public void given_personal_bridge_list_accounts_should_return_accounts()
         {
-            _personalBridge.ListAccounts().Returns(new[] {TestItem.AddressA});
+            _wallet.ListAccounts().Returns(new[] {TestItem.AddressA});
             var result = _rpc.ndm_listAccounts();
-            _personalBridge.Received().ListAccounts();
+            _wallet.Received().ListAccounts();
             result.Data.Should().ContainSingle();
             var account = result.Data.Single();
             account.Should().NotBeNull();
@@ -103,9 +104,8 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         }
 
         [Test]
-        public void given_null_personal_bridge_list_accounts_should_return_no_accounts()
+        public void given_null_wallet_list_accounts_should_return_no_accounts()
         {
-            _personalBridge = NullPersonalBridge.Instance;
             _rpc = new NdmRpcConsumerModule(
                 _consumerService,
                 _depositReportService,
@@ -115,7 +115,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
                 _gasPriceService,
                 _consumerTransactionsService,
                 _gasLimitsService,
-                _personalBridge,
+                NullWallet.Instance, 
                 _timestamper);
             var result = _rpc.ndm_listAccounts();
             result.Data.Should().BeEmpty();

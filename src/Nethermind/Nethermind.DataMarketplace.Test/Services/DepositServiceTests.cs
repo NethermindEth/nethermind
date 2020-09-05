@@ -18,6 +18,7 @@ using System;
 using System.IO;
 using System.Text;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -27,6 +28,8 @@ using Nethermind.DataMarketplace.Core.Services.Models;
 using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Facade;
+using Nethermind.State;
+using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -99,33 +102,47 @@ namespace Nethermind.DataMarketplace.Test.Services
         [Test]
         public void Throws_when_no_code_deployed()
         {
-            IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-            _ndmBridge = new NdmBlockchainBridge(Substitute.For<ITxPoolBridge>(), bridge, _txPool);
+            IStateReader stateReader = Substitute.For<IStateReader>();
+            _ndmBridge = new NdmBlockchainBridge(
+                Substitute.For<IBlockchainBridge>(),
+                Substitute.For<IBlockTree>(),
+                Substitute.For<IStateReader>(),
+                Substitute.For<ITxSender>());
             DepositService depositService = new DepositService(_ndmBridge, _abiEncoder, _wallet, _contractAddress);
             Address contractAddress = new Address(_ndmConfig.ContractAddress);
-            bridge.GetCode(contractAddress).Returns(Array.Empty<byte>());
+            stateReader.GetCode(Arg.Any<Keccak>(), contractAddress).Returns(Array.Empty<byte>());
             Assert.ThrowsAsync<InvalidDataException>(async () => await depositService.ValidateContractAddressAsync(contractAddress));
         }
         
         [Test]
         public void Throws_when_unexpected_code()
         {
-            IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-            _ndmBridge = new NdmBlockchainBridge(Substitute.For<ITxPoolBridge>(), bridge, _txPool);
+            IStateReader stateReader = Substitute.For<IStateReader>();
+            _ndmBridge = new NdmBlockchainBridge(
+                Substitute.For<IBlockchainBridge>(),
+                Substitute.For<IBlockTree>(),
+                Substitute.For<IStateReader>(),
+                Substitute.For<ITxSender>());
+            
             DepositService depositService = new DepositService(_ndmBridge, _abiEncoder, _wallet, _contractAddress);
             Address contractAddress = new Address(_ndmConfig.ContractAddress);
-            bridge.GetCode(contractAddress).Returns(Bytes.FromHexString("0xa234"));
+            stateReader.GetCode(Arg.Any<Keccak>(), contractAddress).Returns(Bytes.FromHexString("0xa234"));
             Assert.ThrowsAsync<InvalidDataException>(async () => await depositService.ValidateContractAddressAsync(contractAddress));
         }
         
         [Test]
         public async Task Ok_when_code_is_valid()
         {
-            IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-            _ndmBridge = new NdmBlockchainBridge(Substitute.For<ITxPoolBridge>(), bridge, _txPool);
+            IStateReader stateReader = Substitute.For<IStateReader>();
+            _ndmBridge = new NdmBlockchainBridge(
+                Substitute.For<IBlockchainBridge>(),
+                Substitute.For<IBlockTree>(),
+                Substitute.For<IStateReader>(),
+                Substitute.For<ITxSender>());
+            
             DepositService depositService = new DepositService(_ndmBridge, _abiEncoder, _wallet, _contractAddress);
             Address contractAddress = new Address(_ndmConfig.ContractAddress);
-            bridge.GetCode(contractAddress).Returns(Bytes.FromHexString(ContractData.DeployedCode));
+            stateReader.GetCode(Arg.Any<Keccak>(), contractAddress).Returns(Bytes.FromHexString(ContractData.DeployedCode));
             await depositService.ValidateContractAddressAsync(contractAddress);
         }
         

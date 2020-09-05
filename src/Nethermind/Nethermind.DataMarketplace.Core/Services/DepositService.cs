@@ -46,6 +46,7 @@ namespace Nethermind.DataMarketplace.Core.Services
         
         public ulong GasLimit { get; } = 70000;
 
+        // TODO: why this read only call creates a transaction??? 
         public async Task<UInt256> ReadDepositBalanceAsync(Address onBehalfOf, Keccak depositId)
         {
             var txData = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, ContractData.DepositBalanceAbiSig,
@@ -97,8 +98,7 @@ namespace Nethermind.DataMarketplace.Core.Services
                 To = _contractAddress,
                 SenderAddress = onBehalfOf,
                 GasLimit = (long) GasLimit,
-                GasPrice = gasPrice,
-                Nonce = await _blockchainBridge.ReserveOwnTransactionNonceAsync(onBehalfOf)
+                GasPrice = gasPrice
             };
             // check  
             _wallet.Sign(transaction, await _blockchainBridge.GetNetworkIdAsync());

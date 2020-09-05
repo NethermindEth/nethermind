@@ -128,8 +128,7 @@ namespace Nethermind.DataMarketplace.Test
             _contractAddress = receipt.ContractAddress;
             _txPool = new TxPool.TxPool(new InMemoryTxStorage(), Timestamper.Default,
                 new EthereumEcdsa(specProvider.ChainId, _logManager), specProvider, new TxPoolConfig(), _state, _logManager);
-
-            _ndmBridge = new NdmBlockchainBridge(_bridge, _bridge, _txPool);
+            _ndmBridge = new NdmBlockchainBridge(_bridge, _bridge, _bridge, _bridge);
         }
 
         protected TxReceipt DeployContract(byte[] initCode)
@@ -145,7 +144,7 @@ namespace Nethermind.DataMarketplace.Test
             return receipt;
         }
 
-        public class BlockchainBridge : IBlockchainBridge, ITxPoolBridge
+        public class BlockchainBridge : IBlockchainBridge, IBlockFinder, ITxSender, IStateReader
         {
             private readonly TransactionProcessor _processor;
 
@@ -155,21 +154,6 @@ namespace Nethermind.DataMarketplace.Test
                 _headBlock = Build.A.Block.WithParent(Head).WithTimestamp(timestamp).TestObject;
                 _headBlock.Body = _headBlock.Body.WithChangedTransactions(new Transaction[100]);
                 _receiptsTracer.StartNewBlockTrace(_headBlock);
-            }
-
-            public IReadOnlyCollection<Address> GetWalletAccounts()
-            {
-                throw new NotImplementedException();
-            }
-
-            public Signature Sign(Address address, Keccak message)
-            {
-                throw new NotImplementedException();
-            }
-            
-            public void Sign(Transaction transaction)
-            {
-                throw new NotImplementedException();
             }
 
             public int GetNetworkId()
@@ -223,6 +207,11 @@ namespace Nethermind.DataMarketplace.Test
             public bool IsMainChain(BlockHeader blockHeader) => blockHeader.Number == _headBlock.Number;
 
             public bool IsMainChain(Keccak blockHash) => _headBlock.Hash == blockHash;
+            
+            public BlockHeader FindBestSuggestedHeader()
+            {
+                throw new NotImplementedException();
+            }
 
             public (TxReceipt Receipt, Transaction Transaction) GetTransaction(Keccak txHash)
             {
@@ -231,17 +220,7 @@ namespace Nethermind.DataMarketplace.Test
                     Hash = txHash
                 });
             }
-
-            public Transaction GetPendingTransaction(Keccak txHash)
-            {
-                throw new NotImplementedException();
-            }
-
-            public Transaction[] GetPendingTransactions()
-            {
-                throw new NotImplementedException();
-            }
-
+            
             private BlockReceiptsTracer _receiptsTracer;
 
             private int _txIndex = 0;
@@ -257,7 +236,7 @@ namespace Nethermind.DataMarketplace.Test
             }
 
             public TxReceipt GetReceipt(Keccak txHash) => _receiptsTracer.TxReceipts.Single(r => r?.TxHash == txHash);
-            
+
             public Facade.BlockchainBridge.CallOutput Call(BlockHeader blockHeader, Transaction transaction)
             {
                 CallOutputTracer tracer = new CallOutputTracer();
@@ -276,6 +255,36 @@ namespace Nethermind.DataMarketplace.Test
             }
 
             public byte[] GetCode(Address address)
+            {
+                throw new NotImplementedException();
+            }
+
+            public Account GetAccount(Keccak stateRoot, Address address)
+            {
+                throw new NotImplementedException();
+            }
+
+            public UInt256 GetNonce(Keccak stateRoot, Address address)
+            {
+                return GetNonce(address);
+            }
+
+            public UInt256 GetBalance(Keccak stateRoot, Address address)
+            {
+                throw new NotImplementedException();
+            }
+
+            public Keccak GetStorageRoot(Keccak stateRoot, Address address)
+            {
+                throw new NotImplementedException();
+            }
+
+            public byte[] GetStorage(Keccak storageRoot, UInt256 index)
+            {
+                throw new NotImplementedException();
+            }
+
+            public byte[] GetCode(Keccak stateRoot, Address address)
             {
                 throw new NotImplementedException();
             }
@@ -301,16 +310,6 @@ namespace Nethermind.DataMarketplace.Test
             {
                 var nonce = GetNonce(address);
                 _nonces[address] = nonce + 1;
-            }
-
-            public byte[] GetStorage(Address address, UInt256 index, Keccak storageRoot)
-            {
-                throw new NotImplementedException();
-            }
-            
-            public Account GetAccount(Address address, Keccak stateRoot)
-            {
-                throw new NotImplementedException();
             }
 
             public int NewBlockFilter()

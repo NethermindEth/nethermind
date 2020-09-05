@@ -20,6 +20,7 @@ using Nethermind.Core;
 
 namespace Nethermind.TxPool
 {
+    // TODO: this should be nonce reserving tx sender, not sealer?
     public class NonceReservingTxSealer : TxSealer
     {
         private readonly ITxPool _txPool;

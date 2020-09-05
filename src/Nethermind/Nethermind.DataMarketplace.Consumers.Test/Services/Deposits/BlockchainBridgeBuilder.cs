@@ -16,6 +16,7 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
+using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
@@ -51,7 +52,22 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             VirtualMachine virtualMachine = new VirtualMachine(stateProvider, storageProvider, new BlockhashProvider(blockTree, LimboLogs.Instance), MainnetSpecProvider.Instance, LimboLogs.Instance);
             TransactionProcessor processor = new TransactionProcessor(MainnetSpecProvider.Instance, stateProvider, storageProvider, virtualMachine, LimboLogs.Instance);
 
-            BlockchainBridge blockchainBridge = new BlockchainBridge(stateReader, stateProvider, storageProvider, blockTree, txPool, new InMemoryReceiptStorage(), NullFilterStore.Instance, NullFilterManager.Instance, processor, ecdsa, NullBloomStorage.Instance, Timestamper.Default, LimboLogs.Instance, false);
+            ReadOnlyTxProcessingEnv processingEnv = new ReadOnlyTxProcessingEnv(
+                new ReadOnlyDbProvider(memDbProvider, false),
+                new ReadOnlyBlockTree(blockTree),
+                MainnetSpecProvider.Instance, LimboLogs.Instance);
+            BlockchainBridge blockchainBridge = new BlockchainBridge(
+                processingEnv,
+                txPool,
+                new InMemoryReceiptStorage(),
+                NullFilterStore.Instance,
+                NullFilterManager.Instance,
+                ecdsa,
+                NullBloomStorage.Instance,
+                Timestamper.Default,
+                LimboLogs.Instance,
+                false);
+            
             WalletTxSigner txSigner = new WalletTxSigner(wallet, ChainId.Mainnet);
             NonceReservingTxSealer txSealer = new NonceReservingTxSealer(txSigner, Timestamper.Default, txPool);
             ITxSender txSender = new TxPoolSender(txPool, txSealer);
