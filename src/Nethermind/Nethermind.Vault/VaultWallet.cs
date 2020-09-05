@@ -78,7 +78,7 @@ namespace Nethermind.Vault
                 throw new ApplicationException($"Failed to create vault key with a valid {nameof(key.Id)}.");
             }
 
-            Console.WriteLine($"CREATED KEY {key.Address} {key.Id} {key.VaultId}");
+            Console.WriteLine($"CREATED KEY {createdKey.Address} {createdKey.Id} {createdKey.VaultId}");
             
             Address account = new Address(createdKey.Address);
             if (!_accounts.TryAdd(account, createdKey.Id.Value))
