@@ -80,7 +80,7 @@ namespace Nethermind.Facade.Test
                 _specProvider,
                 LimboLogs.Instance);
 
-            processingEnv.TransactionProcessor = Substitute.For<ITransactionProcessor>();
+            processingEnv.TransactionProcessor = _transactionProcessor;
             
             _blockchainBridge = new BlockchainBridge(
                 processingEnv,
