@@ -27,17 +27,22 @@ namespace Nethermind.Vault
     public class VaultService : IVaultService
     {
         private static readonly Dictionary<string, object> EmptyQuery = new Dictionary<string, object>();
-        
+
+        private static readonly Dictionary<string, object> OnlyEthKeys = new Dictionary<string, object>
+        {
+            {"type", "secp256k1"}
+        };
+
         private readonly ILogger _logger;
-        
+
         private readonly IVaultConfig _vaultConfig;
 
         private string _host;
-        
+
         private string _path;
-        
+
         private string _scheme;
-        
+
         private string _token;
 
         private provide.Vault _vaultService;
@@ -86,28 +91,28 @@ namespace Nethermind.Vault
                 throw new ArgumentException(
                     $"{nameof(provide.Model.Vault.Vault)} has to have a non-NULL {nameof(vault.Name)}");
             }
-            
+
             if (vault.Description == null)
             {
                 throw new ArgumentException(
                     $"{nameof(provide.Model.Vault.Vault)} has to have a non-NULL {nameof(vault.Description)}");
             }
 
-            if(_logger.IsDebug) _logger.Debug($"Creating a vault {vault.Name} {vault.Description}");
+            if (_logger.IsDebug) _logger.Debug($"Creating a vault {vault.Name} {vault.Description}");
             provide.Model.Vault.Vault result = await _vaultService.CreateVault(vault);
             return result;
         }
 
         public async Task<provide.Model.Vault.Vault> DeleteVault(Guid vaultId)
         {
-            if(_logger.IsDebug) _logger.Debug($"Deleting vault {vaultId}");
+            if (_logger.IsDebug) _logger.Debug($"Deleting vault {vaultId}");
             return await _vaultService.DeleteVault(vaultId.ToString());
         }
 
         public async Task<IEnumerable<Key>> ListKeys(Guid vaultId)
         {
-            if(_logger.IsDebug) _logger.Debug("Listing keys");
-            return await _vaultService.ListVaultKeys(vaultId.ToString(), EmptyQuery);
+            if (_logger.IsDebug) _logger.Debug("Listing keys");
+            return await _vaultService.ListVaultKeys(vaultId.ToString(), OnlyEthKeys);
         }
 
         public async Task<Key> CreateKey(Guid vaultId, Key key)
@@ -117,28 +122,28 @@ namespace Nethermind.Vault
                 throw new ArgumentException(
                     $"{nameof(Key)} has to have a non-NULL {nameof(key.Name)}");
             }
-            
+
             if (key.Description == null)
             {
                 throw new ArgumentException(
                     $"{nameof(Key)} has to have a non-NULL {nameof(key.Description)}");
             }
-            
-            if(_logger.IsDebug) _logger.Debug($"Creating a key named {nameof(key.Name)} in the vault {vaultId}");
+
+            if (_logger.IsDebug) _logger.Debug($"Creating a key named {nameof(key.Name)} in the vault {vaultId}");
             Key vaultKey = await _vaultService.CreateVaultKey(vaultId.ToString(), key);
             return vaultKey;
         }
-        
+
         public async Task<Key> DeleteKey(Guid vaultId, Guid keyId)
         {
-            if(_logger.IsDebug) _logger.Debug($"Deleting the key {keyId} in the vault {vaultId}");
+            if (_logger.IsDebug) _logger.Debug($"Deleting the key {keyId} in the vault {vaultId}");
             Key vaultKey = await _vaultService.DeleteVaultKey(vaultId.ToString(), keyId.ToString());
             return vaultKey;
         }
 
         public async Task<IEnumerable<Secret>> ListSecrets(Guid vaultId)
         {
-            if(_logger.IsDebug) _logger.Debug("Listing secrets");
+            if (_logger.IsDebug) _logger.Debug("Listing secrets");
             return await _vaultService.ListVaultSecrets(vaultId.ToString(), EmptyQuery);
         }
 
@@ -149,36 +154,36 @@ namespace Nethermind.Vault
                 throw new ArgumentException(
                     $"{nameof(Secret)} has to have a non-NULL {nameof(secret.Name)}");
             }
-            
+
             if (secret.Description == null)
             {
                 throw new ArgumentException(
                     $"{nameof(Secret)} has to have a non-NULL {nameof(secret.Description)}");
             }
-            
-            if(_logger.IsDebug) _logger.Debug($"Creating a secret in the vault {vaultId}");
+
+            if (_logger.IsDebug) _logger.Debug($"Creating a secret in the vault {vaultId}");
             return await _vaultService.CreateVaultSecret(
                 vaultId.ToString(), secret);
         }
 
         public async Task<Secret> DeleteSecret(Guid vaultId, Guid secretId)
         {
-            if(_logger.IsDebug) _logger.Debug($"Deleting the secret {secretId} in the vault {vaultId}");
+            if (_logger.IsDebug) _logger.Debug($"Deleting the secret {secretId} in the vault {vaultId}");
             return await _vaultService.DeleteVaultSecret(
                 vaultId.ToString(), secretId.ToString());
         }
 
         public async Task<string> Sign(Guid vaultId, Guid keyId, string message)
         {
-            if(_logger.IsDebug) _logger.Debug($"Signing a message with the key {keyId} from the vault {vaultId}");
+            if (_logger.IsDebug) _logger.Debug($"Signing a message with the key {keyId} from the vault {vaultId}");
             SignMessageResponse response = await _vaultService.SignMessage(
                 vaultId.ToString(), keyId.ToString(), message);
             return response.Signature;
         }
-        
+
         public async Task<bool> Verify(Guid vaultId, Guid keyId, string message, string signature)
         {
-            if(_logger.IsDebug) _logger.Debug($"Verifying a message with the key {keyId} from the vault {vaultId}");
+            if (_logger.IsDebug) _logger.Debug($"Verifying a message with the key {keyId} from the vault {vaultId}");
             SignatureVerificationResponse response = await _vaultService.VerifySignature(
                 vaultId.ToString(), keyId.ToString(), message, signature);
             return response.Verified;
@@ -186,7 +191,7 @@ namespace Nethermind.Vault
 
         private void InitVaultService()
         {
-            if(_logger.IsDebug) _logger.Debug($"Initializing a vault service for {_host} {_path} {_scheme}");
+            if (_logger.IsDebug) _logger.Debug($"Initializing a vault service for {_host} {_path} {_scheme}");
             _vaultService = new provide.Vault(_host, _path, _scheme, _token);
         }
     }
