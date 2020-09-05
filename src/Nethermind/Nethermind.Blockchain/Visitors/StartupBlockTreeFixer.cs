@@ -122,11 +122,11 @@ namespace Nethermind.Blockchain.Visitors
             return Task.FromResult(true);
         }
 
-        Task<bool> IBlockTreeVisitor.VisitHeader(BlockHeader header, CancellationToken cancellationToken)
+        Task<HeaderVisitOutcome> IBlockTreeVisitor.VisitHeader(BlockHeader header, CancellationToken cancellationToken)
         {
             AssertNotVisitingAfterGap();
             _blocksCheckedInCurrentLevel++;
-            return Task.FromResult(true);
+            return Task.FromResult(HeaderVisitOutcome.None);
         }
 
         Task<BlockVisitOutcome> IBlockTreeVisitor.VisitBlock(Block block, CancellationToken cancellationToken)

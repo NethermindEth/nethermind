@@ -14,6 +14,9 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+using System.Globalization;
+using System.Net;
 using Nethermind.Network;
 
 namespace Nethermind.JsonRpc.Modules.Admin
@@ -29,20 +32,36 @@ namespace Nethermind.JsonRpc.Modules.Admin
         public bool IsStatic { get; set; }
         public string Enode { get; set; }
 
+        public string ClientType { get; set; }
+        public string EthDetails { get; set; }
+        public string LastSignal { get; set; }
+
         public PeerInfo()
         {
         }
 
-        public PeerInfo(Peer peer)
+        public PeerInfo(Peer peer, bool includeDetails)
         {
+            if (peer.Node == null)
+            {
+                throw new ArgumentException(
+                    $"{nameof(PeerInfo)} cannot be created for a {nameof(Peer)} with an unknown {peer.Node}");
+            }
+            
             ClientId = peer.Node.ClientId;
-            Host = peer.Node.Host;
+            Host = peer.Node.Host == null ? null : IPAddress.Parse(peer.Node.Host).MapToIPv4().ToString();
             Port = peer.Node.Port;
             Address = peer.Node.Address.ToString();
             IsBootnode = peer.Node.IsBootnode;
-            IsTrusted = peer.Node.IsTrusted;
             IsStatic = peer.Node.IsStatic;
             Enode = peer.Node.ToString("e");
+            
+            if (includeDetails)
+            {
+                ClientType = peer.Node.ClientType.ToString();
+                EthDetails = peer.Node.EthDetails;
+                LastSignal = (peer.InSession ?? peer.OutSession)?.LastPingUtc.ToString(CultureInfo.InvariantCulture);
+            }
         }
     }
 }

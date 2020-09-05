@@ -173,6 +173,11 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         public void TryReportSkipped(BlockHeader header, BlockHeader parent)
         {
+            if (Validators == null)
+            {
+                return;
+            }
+            
             var areThereSkipped = header.AuRaStep > parent.AuRaStep + 1;
             var firstBlock = header.Number == 1;
             if (areThereSkipped && !firstBlock)

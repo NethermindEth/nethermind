@@ -35,6 +35,15 @@ using Nethermind.Db.Rocks.Config;
 using Nethermind.Runner.Analytics;
 using Nethermind.TxPool;
 using NUnit.Framework;
+using Nethermind.Seq.Config;
+using Nethermind.Runner.Hive;
+using Nethermind.Consensus.AuRa.Config;
+using Nethermind.Consensus;
+using Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo;
+using Nethermind.KeyStore.Config;
+using Nethermind.Stats;
+using Nethermind.Vault.Config;
+using Nethermind.Wallet;
 
 namespace Nethermind.Runner.Test
 {
@@ -46,7 +55,7 @@ namespace Nethermind.Runner.Test
         public void Setup()
         {
         }
-
+    
         [TestCase("*")]
         public void Required_config_files_exist(string configWildcard)
         {
@@ -54,6 +63,83 @@ namespace Nethermind.Runner.Test
             {
                 var configPath = Path.Combine(TestContext.CurrentContext.TestDirectory, "configs", configFile);
                 Assert.True(File.Exists(configPath));
+            }
+        }
+
+        [TestCase(typeof(IInitConfig))]
+        [TestCase(typeof(IBaselineConfig))]
+        [TestCase(typeof(ISyncConfig))]
+        [TestCase(typeof(IAuraConfig))]
+        [TestCase(typeof(IMiningConfig))]
+        [TestCase(typeof(INdmConfig))]
+        [TestCase(typeof(INdmMongoConfig))]
+        [TestCase(typeof(IDbConfig))]
+        [TestCase(typeof(IBloomConfig))]
+        [TestCase(typeof(IEthStatsConfig))]
+        [TestCase(typeof(IGrpcConfig))]
+        [TestCase(typeof(IJsonRpcConfig))]
+        [TestCase(typeof(IKeyStoreConfig))]
+        [TestCase(typeof(IMetricsConfig))]
+        [TestCase(typeof(IStatsConfig))]
+        [TestCase(typeof(IDiscoveryConfig))]
+        [TestCase(typeof(INetworkConfig))]
+        [TestCase(typeof(IKafkaConfig))]
+        [TestCase(typeof(IAnalyticsConfig))]
+        [TestCase(typeof(IHiveConfig))]
+        [TestCase(typeof(ISeqConfig))]
+        [TestCase(typeof(ITxPoolConfig))]
+        [TestCase(typeof(IVaultConfig))]
+        [TestCase(typeof(IWalletConfig))]
+        public void All_default_values_are_correct(Type configType)
+        {
+            ConfigProvider configProvider = new ConfigProvider();
+            PropertyInfo[] properties = configType.GetProperties();
+
+            Type implementationType = configType.Assembly.GetTypes().SingleOrDefault(t => t.IsClass && configType.IsAssignableFrom(t));
+            object instance = Activator.CreateInstance(implementationType);     
+
+
+            foreach(PropertyInfo property in properties)
+            {
+                ConfigItemAttribute attribute = property.GetCustomAttribute<ConfigItemAttribute>();
+                if(attribute == null)
+                {
+                    //there are properties without attribute - we don't pay attention to them 
+                    continue;
+                }
+
+                string expectedValue = attribute.DefaultValue.Trim('"');
+                string actualValue;
+
+                object value = property.GetValue(instance);
+                if(value == null)
+                {
+                    actualValue = "null";
+                }
+                else if (value is bool)
+                {
+                    actualValue = value.ToString().ToLowerInvariant();
+                }
+                else if (value is int[])
+                {
+                    //there is a case when we have default value as [4, 8, 8] and we need to compare this string to int[] so removing brackets and whitespaces
+                    int[] items = (int[])value;
+                    expectedValue = expectedValue.Trim('[').Trim(']');
+                    expectedValue = expectedValue.Replace(" ", "");
+                    string[] numbers = expectedValue.Split(',');
+
+                    for (int i = 0; i < numbers.Length; i++)
+                    {
+                        Assert.AreEqual(items[i].ToString(), numbers[i]);
+                    }
+                    continue;
+                }
+                else
+                {
+                    actualValue = value.ToString();
+                }
+
+                Assert.AreEqual(expectedValue, actualValue, $"Property: {property.Name}, expected value: <{expectedValue}> but was <{actualValue}>");
             }
         }
 
@@ -401,6 +487,30 @@ namespace Nethermind.Runner.Test
             Test<INetworkConfig, int>(configWildcard, c => c.NettyArenaOrder, 11);
         }
 
+        [Test]
+        public void No_additional_commas_in_config_files()
+        {
+            char pathSeparator = Path.AltDirectorySeparatorChar;
+            string configDirectory = $"{AppDomain.CurrentDomain.BaseDirectory}{pathSeparator}configs";          
+
+            IEnumerable<string> filesPaths = Directory.EnumerateFiles(configDirectory);
+
+            foreach (string filePath in filesPaths)
+            {
+                string content = File.ReadAllText(filePath)
+                                        .Replace("\n", "")
+                                        .Replace(" ", "");
+                
+                IEnumerable<int> commaIndexes = AllIndexesOf(content, ",");
+
+                foreach(int commaIndex in commaIndexes)
+                {
+                    var nextChar = content.ElementAt(commaIndex + 1);
+                    Assert.AreNotEqual('}', nextChar, $"Additional comma found in {filePath}");
+                }
+            }
+        }
+
         private static ConfigProvider GetConfigProviderFromFile(string configFile)
         {
             ConfigProvider configProvider = new ConfigProvider();
@@ -574,6 +684,16 @@ namespace Nethermind.Runner.Test
             }
 
             return groups;
+        }
+
+        public IEnumerable<int> AllIndexesOf(string str, string searchString)
+        {
+            int minIndex = str.IndexOf(searchString);
+            while (minIndex != -1)
+            {
+                yield return minIndex;
+                minIndex = str.IndexOf(searchString, minIndex + searchString.Length);
+            }
         }
 
         private class ConfigFileGroup : Attribute
