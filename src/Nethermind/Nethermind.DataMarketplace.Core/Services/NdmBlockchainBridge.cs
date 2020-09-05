@@ -54,7 +54,8 @@ namespace Nethermind.DataMarketplace.Core.Services
 
         public Task<byte[]> GetCodeAsync(Address address)
         {
-            return Task.FromResult(_stateReader.GetCode(_blockTree.Head.StateRoot, address));   
+            byte[] code = _stateReader.GetCode(_blockTree.Head.StateRoot, address);
+            return Task.FromResult(code);   
         }
 
         public Task<Block?> FindBlockAsync(Keccak blockHash)

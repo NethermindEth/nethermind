@@ -19,9 +19,11 @@ using System.IO;
 using System.Text;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Builders;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Core.Services.Models;
@@ -74,7 +76,6 @@ namespace Nethermind.DataMarketplace.Test.Services
             DepositService depositService = new DepositService(_ndmBridge, _abiEncoder, _wallet, _contractAddress);
             Deposit deposit = new Deposit(Keccak.Compute("a secret"), 10, (uint) Timestamper.Default.EpochSeconds + 86000, 1.Ether());
             Keccak depositTxHash = await depositService.MakeDepositAsync(_consumerAccount, deposit, 20.GWei());
-            _bridge.IncrementNonce(_consumerAccount);
             TxReceipt depositTxReceipt = _bridge.GetReceipt(depositTxHash);
             Assert.AreEqual(StatusCode.Success, depositTxReceipt.StatusCode, $"deposit made {depositTxReceipt.Error} {Encoding.UTF8.GetString(depositTxReceipt.ReturnValue ?? new byte[0])}");
             Assert.AreEqual(0U, await depositService.VerifyDepositAsync(_consumerAccount, Keccak.Compute("incorrect id")), "deposit verified");
@@ -103,10 +104,13 @@ namespace Nethermind.DataMarketplace.Test.Services
         public void Throws_when_no_code_deployed()
         {
             IStateReader stateReader = Substitute.For<IStateReader>();
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            blockFinder.Head.Returns(Build.A.Block.Genesis.TestObject);
+            
             _ndmBridge = new NdmBlockchainBridge(
                 Substitute.For<IBlockchainBridge>(),
-                Substitute.For<IBlockTree>(),
-                Substitute.For<IStateReader>(),
+                blockFinder,
+                stateReader,
                 Substitute.For<ITxSender>());
             DepositService depositService = new DepositService(_ndmBridge, _abiEncoder, _wallet, _contractAddress);
             Address contractAddress = new Address(_ndmConfig.ContractAddress);
@@ -117,11 +121,14 @@ namespace Nethermind.DataMarketplace.Test.Services
         [Test]
         public void Throws_when_unexpected_code()
         {
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            blockFinder.Head.Returns(Build.A.Block.Genesis.TestObject);
+            
             IStateReader stateReader = Substitute.For<IStateReader>();
             _ndmBridge = new NdmBlockchainBridge(
                 Substitute.For<IBlockchainBridge>(),
-                Substitute.For<IBlockTree>(),
-                Substitute.For<IStateReader>(),
+                blockFinder,
+                stateReader,
                 Substitute.For<ITxSender>());
             
             DepositService depositService = new DepositService(_ndmBridge, _abiEncoder, _wallet, _contractAddress);
@@ -134,10 +141,13 @@ namespace Nethermind.DataMarketplace.Test.Services
         public async Task Ok_when_code_is_valid()
         {
             IStateReader stateReader = Substitute.For<IStateReader>();
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            blockFinder.Head.Returns(Build.A.Block.Genesis.TestObject);
+            
             _ndmBridge = new NdmBlockchainBridge(
                 Substitute.For<IBlockchainBridge>(),
-                Substitute.For<IBlockTree>(),
-                Substitute.For<IStateReader>(),
+                blockFinder,
+                stateReader,
                 Substitute.For<ITxSender>());
             
             DepositService depositService = new DepositService(_ndmBridge, _abiEncoder, _wallet, _contractAddress);
