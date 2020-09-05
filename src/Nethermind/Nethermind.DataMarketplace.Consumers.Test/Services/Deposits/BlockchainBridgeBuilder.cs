@@ -69,8 +69,9 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
                 false);
             
             WalletTxSigner txSigner = new WalletTxSigner(wallet, ChainId.Mainnet);
-            NonceReservingTxSealer txSealer = new NonceReservingTxSealer(txSigner, Timestamper.Default, txPool);
-            ITxSender txSender = new TxPoolSender(txPool, txSealer);
+            ITxSealer txSealer0 = new TxSealer(txSigner, Timestamper.Default);
+            ITxSealer txSealer1 = new NonceReservingTxSealer(txSigner, Timestamper.Default, txPool);
+            ITxSender txSender = new TxPoolSender(txPool, txSealer0, txSealer1);
             return new NdmBlockchainBridge(blockchainBridge, blockTree, stateReader, txSender);
         }
     }

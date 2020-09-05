@@ -33,11 +33,7 @@ namespace Nethermind.TxPool
 
         public override void Seal(Transaction tx)
         {
-            if (!tx.IsSigned)
-            {
-                tx.Nonce = _txPool.ReserveOwnTransactionNonce(tx.SenderAddress);
-            }
-
+            tx.Nonce = _txPool.ReserveOwnTransactionNonce(tx.SenderAddress);
             base.Seal(tx);
         }
     }

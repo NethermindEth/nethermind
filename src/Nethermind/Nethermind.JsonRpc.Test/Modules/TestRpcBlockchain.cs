@@ -111,8 +111,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             BlockFinder ??= BlockTree;
             
             ITxSigner txSigner = new WalletTxSigner(TestWallet, specProvider?.ChainId ?? 0);
-            ITxSealer txSealer = new TxSealer(txSigner, Timestamper);
-            TxSender ??= new TxPoolSender(TxPool, txSealer);
+            ITxSealer txSealer0 = new TxSealer(txSigner, Timestamper);
+            ITxSealer txSealer1 = new NonceReservingTxSealer(txSigner, Timestamper, TxPool);
+            TxSender ??= new TxPoolSender(TxPool, txSealer0, txSealer1);
 
             EthModule = new EthModule(
                 new JsonRpcConfig(),

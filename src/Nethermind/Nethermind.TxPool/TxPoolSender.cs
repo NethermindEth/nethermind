@@ -35,6 +35,9 @@ namespace Nethermind.TxPool
 
         public Keccak SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
+            // TODO: this is very not intuitive - can we fix it...?
+            // maybe move nonce reservation to sender itself before sealing
+            // sealers should behave like composite and not like chain of commands
             foreach (var sealer in _sealers)
             {
                 sealer.Seal(tx);
