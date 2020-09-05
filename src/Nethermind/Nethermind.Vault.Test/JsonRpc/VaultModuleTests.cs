@@ -95,7 +95,7 @@ namespace Nethermind.Vault.Test.JsonRpc
             secret.Name = "Test Secret";
             secret.Description = "Test Secret used for test purposes";
             secret.Type = "Sample secret";
-            // secret.Secret = "Secret to be stored";
+            secret.Value = "Secret to be stored";
 
             ResultWrapper<Secret> createSecretResponse
                 = await _vaultModule.vault_createSecret(_vaultId.ToString(), secret);
@@ -133,7 +133,7 @@ namespace Nethermind.Vault.Test.JsonRpc
                 secret.Name = name;
                 secret.Description = "Test Secret used for test purposes";
                 secret.Type = "Sample secret";
-                // secret.Secret = "Secret to be stored";
+                secret.Value = "Secret to be stored";
                 ResultWrapper<Secret> res = await _vaultModule.vault_createSecret(_vaultId.ToString(), secret);
                 if (res.Result != Result.Success || res.Data.Id is null)
                 {
@@ -197,7 +197,7 @@ namespace Nethermind.Vault.Test.JsonRpc
             secret.Name = "Sample secret name";
             secret.Description = "Test Secret used for test purposes";
             secret.Type = "Sample secret";
-            // secret.Secret = "Secret to be stored";
+            secret.Value = "Secret to be stored";
 
             ResultWrapper<Secret> createSecretResponse =
                 await _vaultModule.vault_createSecret(_vaultId.ToString(), secret);
