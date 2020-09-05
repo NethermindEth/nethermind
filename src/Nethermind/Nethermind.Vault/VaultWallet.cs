@@ -102,17 +102,7 @@ namespace Nethermind.Vault
             }
             
             if(_logger.IsTrace) _logger.Trace($"Deleting key {keyId} from vault {_vaultId}");
-            Key deletedKey = await _vaultService.DeleteKey(_vaultId, keyId.Value);
-            if (deletedKey is null)
-            {
-                throw new ApplicationException("Failed to delete vault account.");
-            }
-
-            if (new Address(deletedKey.Address) != address)
-            {
-                throw new ApplicationException(
-                    $"Deleted key address mismatch - requested {address}, deleted {deletedKey.Address}");
-            }
+            await _vaultService.DeleteKey(_vaultId, keyId.Value);
         }
 
         public async Task<Signature> Sign(Address address, Keccak message)

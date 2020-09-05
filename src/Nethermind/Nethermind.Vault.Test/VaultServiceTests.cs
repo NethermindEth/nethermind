@@ -111,8 +111,7 @@ namespace Nethermind.Vault.Test
             key.Spec = "secp256k1";
             key.Usage = "sign/verify";
             Key createdKey = await _vaultService.CreateKey(createdVault.Id.Value, key);
-            Key deletedKey = await _vaultService.DeleteKey(createdVault.Id.Value, createdKey.Id.Value);
-            deletedKey.Should().NotBe(null);
+            await _vaultService.DeleteKey(createdVault.Id.Value, createdKey.Id.Value);
         }
         
         [Test]
@@ -135,8 +134,7 @@ namespace Nethermind.Vault.Test
             var keys = await _vaultService.ListKeys(createdVault.Id.Value);
             foreach (var listedKey in keys)
             {
-                Key deletedKey = await _vaultService.DeleteKey(createdVault.Id.Value, listedKey.Id.Value);
-                deletedKey.Should().NotBeNull();
+                await _vaultService.DeleteKey(createdVault.Id.Value, listedKey.Id.Value);
             }
         }
     }

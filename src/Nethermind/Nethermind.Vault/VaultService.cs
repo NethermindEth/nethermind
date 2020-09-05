@@ -134,11 +134,10 @@ namespace Nethermind.Vault
             return vaultKey;
         }
 
-        public async Task<Key> DeleteKey(Guid vaultId, Guid keyId)
+        public async Task DeleteKey(Guid vaultId, Guid keyId)
         {
             if (_logger.IsDebug) _logger.Debug($"Deleting the key {keyId} in the vault {vaultId}");
-            Key vaultKey = await _vaultService.DeleteVaultKey(vaultId.ToString(), keyId.ToString());
-            return vaultKey;
+            await _vaultService.DeleteVaultKey(vaultId.ToString(), keyId.ToString());
         }
 
         public async Task<IEnumerable<Secret>> ListSecrets(Guid vaultId)
@@ -166,11 +165,10 @@ namespace Nethermind.Vault
                 vaultId.ToString(), secret);
         }
 
-        public async Task<Secret> DeleteSecret(Guid vaultId, Guid secretId)
+        public async Task DeleteSecret(Guid vaultId, Guid secretId)
         {
             if (_logger.IsDebug) _logger.Debug($"Deleting the secret {secretId} in the vault {vaultId}");
-            return await _vaultService.DeleteVaultSecret(
-                vaultId.ToString(), secretId.ToString());
+            await _vaultService.DeleteVaultSecret(vaultId.ToString(), secretId.ToString());
         }
 
         public async Task<string> Sign(Guid vaultId, Guid keyId, string message)

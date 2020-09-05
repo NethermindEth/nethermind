@@ -150,10 +150,10 @@ namespace Nethermind.Vault.Test.JsonRpc
                 throw new ApplicationException($"Failed to create secrets with valid {nameof(Secret.Id)}");
             }
 
-            ResultWrapper<Secret> response =
+            ResultWrapper<bool> response =
                 await _vaultModule.vault_deleteSecret(_vaultId.ToString(), secretId.ToString());
             response.Result.Error.Should().BeNull();
-            response.Data.Should().BeNull();
+            response.Data.Should().BeTrue();
             response.Result.ResultType.Should().Be(ResultType.Success);
 
             ResultWrapper<Secret[]> secretsAfterDelete = await _vaultModule.vault_listSecrets(_vaultId.ToString());
@@ -336,11 +336,11 @@ namespace Nethermind.Vault.Test.JsonRpc
             }
 
             lastKeyId.Should().NotBeNull();
-            ResultWrapper<Key> deleteKeyResponse
+            ResultWrapper<bool> deleteKeyResponse
                 = await _vaultModule.vault_deleteKey(_vaultId.ToString(), lastKeyId!.Value.ToString());
             deleteKeyResponse.Result.Error.Should().BeNull();
             deleteKeyResponse.ErrorCode.Should().Be(0);
-            deleteKeyResponse.Data.Should().BeNull();
+            deleteKeyResponse.Data.Should().BeTrue();
             deleteKeyResponse.Result.ResultType.Should().Be(ResultType.Success);
 
             ResultWrapper<Key[]> listKeysResponse = await _vaultModule.vault_listKeys(_vaultId.ToString());

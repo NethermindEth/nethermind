@@ -33,13 +33,13 @@ namespace Nethermind.Vault
         
         Task<Key> CreateKey(Guid vaultId, Key key);
 
-        Task<Key> DeleteKey(Guid vaultId, Guid keyId);
+        Task DeleteKey(Guid vaultId, Guid keyId);
         
         Task<IEnumerable<Secret>> ListSecrets(Guid vaultId);
         
         Task<Secret> CreateSecret(Guid vaultId, Secret secret);
         
-        Task<Secret> DeleteSecret(Guid vaultId, Guid secretId);
+        Task DeleteSecret(Guid vaultId, Guid secretId);
 
         Task<string> Sign(Guid vaultId, Guid keyId, string message);
 

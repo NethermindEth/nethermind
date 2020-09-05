@@ -80,30 +80,30 @@ namespace Nethermind.Vault.JsonRpc
             }
         }
 
-        public async Task<ResultWrapper<Key>> vault_deleteKey(string vaultId, string keyId)
+        public async Task<ResultWrapper<bool>> vault_deleteKey(string vaultId, string keyId)
         {
             try
             {
-                Key result = await _vaultService.DeleteKey(Guid.Parse(vaultId), Guid.Parse(keyId));
-                return ResultWrapper<Key>.Success(result);
+                await _vaultService.DeleteKey(Guid.Parse(vaultId), Guid.Parse(keyId));
+                return ResultWrapper<bool>.Success(true);
             }
             catch (Exception e)
             {
-                return ResultWrapper<Key>.Fail(e);
+                return ResultWrapper<bool>.Fail(e);
             }
         }
 
-        public async Task<ResultWrapper<Secret>> vault_deleteSecret(string vaultId, string secretId)
+        public async Task<ResultWrapper<bool>> vault_deleteSecret(string vaultId, string secretId)
         {
             try
             {
-                var result = await _vaultService.DeleteSecret(Guid.Parse(vaultId), Guid.Parse(secretId));
+                await _vaultService.DeleteSecret(Guid.Parse(vaultId), Guid.Parse(secretId));
 
-                return ResultWrapper<Secret>.Success(result);
+                return ResultWrapper<bool>.Success(true);
             }
             catch (Exception e)
             {
-                return ResultWrapper<Secret>.Fail(e);
+                return ResultWrapper<bool>.Fail(e);
             }
         }
         

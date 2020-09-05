@@ -58,7 +58,7 @@ namespace Nethermind.Vault.JsonRpc
             Description = "Deletes a key from Vault",
             IsReadOnly = false,
             IsImplemented = true)]
-        Task<ResultWrapper<Key>> vault_deleteKey(string vaultId, string keyId);
+        Task<ResultWrapper<bool>> vault_deleteKey(string vaultId, string keyId);
 
         [JsonRpcMethod(
             Description = "Retrieves a list of the secrets secured within the vault",
@@ -76,7 +76,7 @@ namespace Nethermind.Vault.JsonRpc
             Description = "Permanently removes the specified secret from the vault",
             IsReadOnly = false,
             IsImplemented = true)]
-        Task<ResultWrapper<Secret>> vault_deleteSecret(string vaultId, string secretId);
+        Task<ResultWrapper<bool>> vault_deleteSecret(string vaultId, string secretId);
 
         [JsonRpcMethod(
             Description = "Securely signs the given message",
