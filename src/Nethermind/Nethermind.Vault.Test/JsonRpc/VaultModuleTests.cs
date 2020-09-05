@@ -84,6 +84,8 @@ namespace Nethermind.Vault.Test.JsonRpc
             createKeyResponse.ErrorCode.Should().Be(0);
             createKeyResponse.Data.Should().NotBeNull();
             createKeyResponse.Result.ResultType.Should().Be(ResultType.Success);
+
+            createKeyResponse.Data.Address.Should().NotBeNullOrEmpty();
         }
 
         [Test]
@@ -180,6 +182,11 @@ namespace Nethermind.Vault.Test.JsonRpc
             listKeysResponse.Data.Should().NotBeNull();
             listKeysResponse.Data.Should().HaveCount(1);
             listKeysResponse.Result.ResultType.Should().Be(ResultType.Success);
+
+            foreach (Key listedKey in listKeysResponse.Data)
+            {
+                listedKey.Address.Should().NotBeNullOrEmpty();
+            }
         }
 
         [Test]
