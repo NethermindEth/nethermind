@@ -30,7 +30,7 @@ namespace Nethermind.Vault
 
         private static readonly Dictionary<string, object> OnlyEthKeys = new Dictionary<string, object>
         {
-            {"type", "secp256k1"}
+            {"spec", "secp256k1"}
         };
 
         private readonly ILogger _logger;
@@ -112,7 +112,7 @@ namespace Nethermind.Vault
         public async Task<IEnumerable<Key>> ListKeys(Guid vaultId)
         {
             if (_logger.IsDebug) _logger.Debug("Listing keys");
-            return (await _vaultService.ListVaultKeys(vaultId.ToString(), OnlyEthKeys)).Where(k => k.Type == "secp256k1");
+            return (await _vaultService.ListVaultKeys(vaultId.ToString(), OnlyEthKeys)).Where(k => k.Spec == "secp256k1");
         }
 
         public async Task<Key> CreateKey(Guid vaultId, Key key)
