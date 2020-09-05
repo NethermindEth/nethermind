@@ -331,6 +331,7 @@ namespace Nethermind.Vault.Test.JsonRpc
                 key.Spec = "secp256k1";
                 key.Usage = "sign/verify";
                 ResultWrapper<Key> res = await _vaultModule.vault_createKey(_vaultId.ToString(), key);
+                res.Result.ResultType.Should().Be(ResultType.Success);
                 lastKeyId = res.Data.Id;
             }
 
@@ -343,6 +344,7 @@ namespace Nethermind.Vault.Test.JsonRpc
             deleteKeyResponse.Result.ResultType.Should().Be(ResultType.Success);
 
             ResultWrapper<Key[]> listKeysResponse = await _vaultModule.vault_listKeys(_vaultId.ToString());
+            listKeysResponse.Data.Should().HaveCount(2);
             listKeysResponse.Data.Select(k => k.Id).Should().NotContain(lastKeyId);
         }
         
