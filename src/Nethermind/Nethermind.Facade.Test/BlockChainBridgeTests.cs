@@ -73,11 +73,14 @@ namespace Nethermind.Facade.Test
             _ethereumEcdsa = Substitute.For<IEthereumEcdsa>();
             _bloomStorage = Substitute.For<IBloomStorage>();
             _specProvider = MainnetSpecProvider.Instance;
+            
             ReadOnlyTxProcessingEnv processingEnv = new ReadOnlyTxProcessingEnv(
                 new ReadOnlyDbProvider(_dbProvider, false),
                 new ReadOnlyBlockTree(_blockTree),
                 _specProvider,
                 LimboLogs.Instance);
+
+            processingEnv.TransactionProcessor = Substitute.For<ITransactionProcessor>();
             
             _blockchainBridge = new BlockchainBridge(
                 processingEnv,
@@ -134,6 +137,7 @@ namespace Nethermind.Facade.Test
             _timestamper.Add(TimeSpan.FromDays(123));
             BlockHeader header = Build.A.BlockHeader.WithNumber(10).TestObject;
             Transaction tx = new Transaction();
+            tx.Init = new byte[0];
             tx.GasLimit = Transaction.BaseTxGasCost;
 
             var gas = _blockchainBridge.EstimateGas(header, tx, default);
