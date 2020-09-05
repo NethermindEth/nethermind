@@ -25,7 +25,6 @@ using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Evm;
 using Nethermind.Facade;
-using Nethermind.Facade.Transactions;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.State;

@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,22 +15,25 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Collections.Generic;
-using Nethermind.Blockchain.Filters;
-using Nethermind.Blockchain.Find;
+using Nethermind.Consensus;
+using Nethermind.Core;
 
-namespace Nethermind.Facade
+namespace Nethermind.Wallet
 {
-    public interface ILogBridge
+    public class WalletTxSigner : ITxSigner
     {
-        IEnumerable<FilterLog> GetLogs(BlockParameter fromBlock, BlockParameter toBlock, object address = null, IEnumerable<object> topics = null);
-    }
+        private readonly IWallet _wallet;
+        private readonly int _chainId;
 
-    public class LogBridge : ILogBridge
-    {
-        public IEnumerable<FilterLog> GetLogs(BlockParameter fromBlock, BlockParameter toBlock, object address = null, IEnumerable<object> topics = null)
+        public WalletTxSigner(IWallet wallet, int chainId)
         {
-            throw new System.NotImplementedException();
+            _wallet = wallet;
+            _chainId = chainId;
+        }
+        
+        public void Sign(Transaction tx)
+        {
+            _wallet.Sign(tx, _chainId);
         }
     }
 }

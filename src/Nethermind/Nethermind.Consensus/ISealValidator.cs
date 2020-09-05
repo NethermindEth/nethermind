@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -16,27 +16,22 @@
 // 
 
 using System;
-using Nethermind.Consensus;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.TxPool;
-using Nethermind.Wallet;
 
-namespace Nethermind.Facade.Transactions
+namespace Nethermind.Consensus
 {
-    public class TxNonceTxPoolReserveSealer : TxSealer
+    public interface ISealValidator
     {
-        private readonly ITxPool _txPool;
-
-        public TxNonceTxPoolReserveSealer(ITxSigner txSigner, ITimestamper timestamper, ITxPool txPool) : base(txSigner, timestamper, false)
-        {
-            _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
-        }
-
-        public override void Seal(Transaction tx)
-        {
-            tx.Nonce = _txPool.ReserveOwnTransactionNonce(tx.SenderAddress);
-            base.Seal(tx);
-        }
+        bool ValidateParams(BlockHeader parent, BlockHeader header);
+        
+        /// <summary>
+        /// Validates block header seal.
+        /// </summary>
+        /// <param name="header">Block header to validate.</param>
+        /// <param name="force">Unless set to <value>true</value> the validator is allowed to optimize validation away in a safe manner.</param>
+        /// <returns><value>True</value> if seal is valid or was not checked, otherwise <value>false</value></returns>
+        bool ValidateSeal(BlockHeader header, bool force);
+        
+        public void HintValidationRange(Guid guid, long start, long end) { }
     }
 }

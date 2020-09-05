@@ -15,25 +15,26 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Security;
 using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
-using Nethermind.Facade;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
+using Nethermind.Wallet;
 
 namespace Nethermind.JsonRpc.Modules.Personal
 {
     public class PersonalModule : IPersonalModule
     {
         private Encoding _messageEncoding = Encoding.UTF8;
-        private readonly IPersonalBridge _bridge;
+        private readonly IEcdsa _ecdsa;
+        private readonly IWallet _bridge;
 
-        public PersonalModule(IPersonalBridge bridge, ILogManager logManager)
+        public PersonalModule(IEcdsa ecdsa, IWallet bridge, ILogManager logManager)
         {
+            _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _bridge = bridge ?? throw new ArgumentNullException(nameof(bridge));
         }
 
@@ -44,7 +45,7 @@ namespace Nethermind.JsonRpc.Modules.Personal
 
         public ResultWrapper<Address[]> personal_listAccounts()
         {
-            return ResultWrapper<Address[]>.Success(_bridge.ListAccounts());
+            return ResultWrapper<Address[]>.Success(_bridge.GetAccounts());
         }
 
         public ResultWrapper<bool> personal_lockAccount(Address address)
@@ -78,7 +79,9 @@ namespace Nethermind.JsonRpc.Modules.Personal
         public ResultWrapper<Address> personal_ecRecover(byte[] message, byte[] signature)
         {
             message = ToEthSignedMessage(message);
-            return ResultWrapper<Address>.Success(_bridge.EcRecover(message, new Signature(signature)));
+            var msgHash = Keccak.Compute(message);
+            PublicKey publicKey = _ecdsa.RecoverPublicKey(new Signature(signature), msgHash);
+            return ResultWrapper<Address>.Success(publicKey.Address);
         }
 
         private static byte[] ToEthSignedMessage(byte[] message)
@@ -101,7 +104,7 @@ namespace Nethermind.JsonRpc.Modules.Personal
             }
             
             message = ToEthSignedMessage(message);
-            return ResultWrapper<byte[]>.Success(_bridge.Sign(message, address).Bytes);
+            return ResultWrapper<byte[]>.Success(_bridge.Sign(Keccak.Compute(message), address).Bytes);
         }
     }
 }

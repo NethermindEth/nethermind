@@ -13,21 +13,27 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System.Security;
+using System;
+using Nethermind.Consensus;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 
-namespace Nethermind.Facade
+namespace Nethermind.TxPool
 {
-    public interface IPersonalBridge
+    public class NonceReservingTxSealer : TxSealer
     {
-        Address[] ListAccounts();
-        Address NewAccount(SecureString passphrase);
-        bool UnlockAccount(Address address, SecureString notSecuredHere);
-        bool LockAccount(Address address);
-        bool IsUnlocked(Address address);
-        Address EcRecover(byte[] message, Signature signature);
-        Signature Sign(byte[] message, Address address);
+        private readonly ITxPool _txPool;
+
+        public NonceReservingTxSealer(ITxSigner txSigner, ITimestamper timestamper, ITxPool txPool) : base(txSigner, timestamper, false)
+        {
+            _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
+        }
+
+        public override void Seal(Transaction tx)
+        {
+            tx.Nonce = _txPool.ReserveOwnTransactionNonce(tx.SenderAddress);
+            base.Seal(tx);
+        }
     }
 }

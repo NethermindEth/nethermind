@@ -22,7 +22,6 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Facade;
-using Nethermind.Facade.Transactions;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.State;

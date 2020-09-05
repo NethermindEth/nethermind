@@ -15,26 +15,35 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using Nethermind.Consensus;
 using Nethermind.Core;
-using Nethermind.Wallet;
+using Nethermind.Crypto;
 
-namespace Nethermind.Facade.Transactions
+namespace Nethermind.TxPool
 {
-    public class WalletTxSigner : ITxSigner
+    public class TxSealer : ITxSealer
     {
-        private readonly IWallet _wallet;
-        private readonly int _chainId;
+        private readonly ITxSigner _txSigner;
+        private readonly ITimestamper _timestamper;
+        private readonly bool _allowExistingSignature;
 
-        public WalletTxSigner(IWallet wallet, int chainId)
+        public TxSealer(ITxSigner txSigner, ITimestamper timestamper, bool allowExistingSignature = true)
         {
-            _wallet = wallet;
-            _chainId = chainId;
+            _txSigner = txSigner ?? throw new ArgumentNullException(nameof(txSigner));
+            _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
+            _allowExistingSignature = allowExistingSignature;
         }
-        
-        public void Sign(Transaction tx)
+
+        public virtual void Seal(Transaction tx)
         {
-            _wallet.Sign(tx, _chainId);
+            if (tx.Signature == null || !_allowExistingSignature)
+            {
+                _txSigner.Sign(tx);
+            }
+
+            tx.Hash = tx.CalculateHash();
+            tx.Timestamp = _timestamper.EpochSeconds;
         }
     }
 }

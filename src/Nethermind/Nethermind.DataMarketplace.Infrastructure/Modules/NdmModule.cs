@@ -25,8 +25,8 @@ using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Infrastructure.Rlp;
 using Nethermind.Db;
 using Nethermind.Facade;
-using Nethermind.Facade.Transactions;
 using Nethermind.JsonRpc;
+using Nethermind.Wallet;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Modules
 {

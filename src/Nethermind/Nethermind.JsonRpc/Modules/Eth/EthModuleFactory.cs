@@ -28,7 +28,6 @@ using Nethermind.Facade;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Db.Blooms;
-using Nethermind.Facade.Transactions;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Newtonsoft.Json;

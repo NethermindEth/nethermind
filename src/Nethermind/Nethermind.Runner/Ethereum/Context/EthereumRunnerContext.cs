@@ -136,7 +136,8 @@ namespace Nethermind.Runner.Ethereum.Context
         public INdmInitializer? NdmInitializer { get; set; }
         public IBloomStorage? BloomStorage { get; set; }
         public AbiEncoder AbiEncoder { get; } = new AbiEncoder();
-        public Signer? Signer { get; set; }
+        public ISigner? Signer { get; set; }
+        public ISignerStore? SignerStore { get; set; }
         public ProtectedPrivateKey? OriginalSignerKey { get; set; }
     }
 }

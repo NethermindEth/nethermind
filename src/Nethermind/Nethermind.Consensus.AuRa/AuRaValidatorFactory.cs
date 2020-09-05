@@ -26,7 +26,6 @@ using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.Db.Blooms;
-using Nethermind.Facade.Transactions;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa

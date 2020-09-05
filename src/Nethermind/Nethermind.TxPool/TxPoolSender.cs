@@ -16,16 +16,11 @@
 // 
 
 using System;
-using System.Security;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Crypto;
-using Nethermind.Int256;
-using Nethermind.TxPool;
-using Nethermind.Wallet;
 
-namespace Nethermind.Facade.Transactions
+namespace Nethermind.TxPool
 {
     public class TxPoolSender : ITxSender
     {
@@ -40,7 +35,7 @@ namespace Nethermind.Facade.Transactions
         }
 
         public TxPoolSender(ITxPool txPool, ITxSigner txSigner, ITimestamper timestamper)
-            : this(txPool, new TxSealer(txSigner, timestamper), new TxNonceTxPoolReserveSealer(txSigner, timestamper, txPool))
+            : this(txPool, new TxSealer(txSigner, timestamper), new NonceReservingTxSealer(txSigner, timestamper, txPool))
         {
         }
 

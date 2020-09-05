@@ -76,7 +76,9 @@ namespace Nethermind.Runner.Ethereum.Steps
             
             Account.AccountStartNonce = _context.ChainSpec.Parameters.AccountStartNonce;
             
-            _context.Signer = new Signer(_context.SpecProvider.ChainId, _context.OriginalSignerKey, _context.LogManager);
+            Signer signer = new Signer(_context.SpecProvider.ChainId, _context.OriginalSignerKey, _context.LogManager);
+            _context.Signer = signer;
+            _context.SignerStore = signer;
 
             _context.StateProvider = new StateProvider(
                 _context.DbProvider.StateDb,

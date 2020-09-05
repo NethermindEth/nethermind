@@ -50,7 +50,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         private readonly IJsonRpcConfig _rpcConfig;
         private readonly IBlockchainBridge _blockchainBridge;
-        private readonly ITxPoolBridge _txPoolBridge;
+        private readonly ITxPool _txPoolBridge;
+        private readonly ITxSender _txSender;
 
         private readonly ILogger _logger;
 
@@ -61,12 +62,18 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return rootCheckVisitor.HasRoot;
         }
 
-        public EthModule(IJsonRpcConfig rpcConfig, IBlockchainBridge blockchainBridge, ITxPoolBridge txPoolBridge, ILogManager logManager)
+        public EthModule(
+            IJsonRpcConfig rpcConfig,
+            IBlockchainBridge blockchainBridge,
+            ITxPool txPoolBridge,
+            ITxSender txSender,
+            ILogManager logManager)
         {
             _logger = logManager.GetClassLogger();
             _rpcConfig = rpcConfig ?? throw new ArgumentNullException(nameof(rpcConfig));
             _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
             _txPoolBridge = txPoolBridge ?? throw new ArgumentNullException(nameof(txPoolBridge));
+            _txSender = txSender;
         }
 
         public ResultWrapper<string> eth_protocolVersion()
@@ -312,7 +319,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             try
             {
-                Keccak txHash = _txPoolBridge.SendTransaction(tx, TxHandlingOptions.PersistentBroadcast);
+                Keccak txHash = _txSender.SendTransaction(tx, TxHandlingOptions.PersistentBroadcast);
                 return Task.FromResult(ResultWrapper<Keccak>.Success(txHash));
             }
             catch (SecurityException e)
@@ -424,7 +431,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public ResultWrapper<TransactionForRpc> eth_getTransactionByHash(Keccak transactionHash)
         {
-            Transaction transaction = _txPoolBridge.GetPendingTransaction(transactionHash);
+            _txPoolBridge.TryGetPendingTransaction(transactionHash, out Transaction transaction);
             TxReceipt receipt = null; // note that if transaction is pending then for sure no receipt is known
             if (transaction == null)
             {

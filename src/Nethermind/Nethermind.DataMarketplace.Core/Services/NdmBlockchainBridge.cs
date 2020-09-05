@@ -16,58 +16,77 @@
 
 using System;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.Int256;
 using Nethermind.Facade;
+using Nethermind.State;
 using Nethermind.TxPool;
 
 namespace Nethermind.DataMarketplace.Core.Services
 {
     public class NdmBlockchainBridge : INdmBlockchainBridge
     {
-        private readonly ITxPoolBridge _txPoolBridge;
-        private readonly IBlockchainBridge _blockchainBridge;
+        private readonly ITxPool _txPoolBridge;
+        private readonly IReceiptFinder _receiptFinder;
+        private readonly IBlockTree _blockTree;
+        private readonly IStateReader _stateReader;
         private readonly ITxPool _txPool;
 
-        public NdmBlockchainBridge(ITxPoolBridge txPoolBridge, IBlockchainBridge blockchainBridge, ITxPool txPool)
+        public NdmBlockchainBridge(
+            IBlockTree blockTree,
+            IStateReader stateReader,
+            ITxPool txPool,
+            IReceiptFinder receiptFinder)
         {
-            _txPoolBridge = txPoolBridge ?? throw new ArgumentNullException(nameof(txPoolBridge));
-            _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
+            _txPoolBridge = txPool ?? throw new ArgumentNullException(nameof(txPool));
+            _receiptFinder = receiptFinder;
+            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
         }
 
         public Task<long> GetLatestBlockNumberAsync()
         {
-            var head = _blockchainBridge.Head;
-
+            var head = _blockTree.Head;
             return head is null ? Task.FromResult(0L) : Task.FromResult(head.Number);
         }
 
-        public Task<byte[]> GetCodeAsync(Address address) => Task.FromResult(_blockchainBridge.GetCode(address));
+        public Task<byte[]> GetCodeAsync(Address address)
+        {
+            return Task.FromResult(_stateReader.GetCode(_blockTree.Head.StateRoot, address));   
+        }
 
-        public Task<Block?> FindBlockAsync(Keccak blockHash) => Task.FromResult<Block?>(_blockchainBridge.FindBlock(blockHash));
+        public Task<Block?> FindBlockAsync(Keccak blockHash)
+        {
+            return Task.FromResult<Block?>(_blockTree.FindBlock(blockHash));   
+        }
 
         public Task<Block?> FindBlockAsync(long blockNumber) =>
-            Task.FromResult<Block?>(_blockchainBridge.FindBlock(blockNumber));
+            Task.FromResult<Block?>(_blockTree.FindBlock(blockNumber));
 
         public Task<Block?> GetLatestBlockAsync()
         {
-            Block head = _blockchainBridge.Head;
+            Block head = _blockTree.Head;
             return head is null
                 ? Task.FromResult<Block?>(null)
-                : Task.FromResult<Block?>(_blockchainBridge.FindBlock(head.Hash));
+                : Task.FromResult<Block?>(_blockTree.FindBlock(head.Hash));
         }
 
-        public Task<UInt256> GetNonceAsync(Address address) => Task.FromResult(_blockchainBridge.GetNonce(address));
+        public Task<UInt256> GetNonceAsync(Address address)
+        {
+            return Task.FromResult(_stateReader.GetNonce(_blockTree.Head.StateRoot, address));   
+        }
 
         public Task<UInt256> ReserveOwnTransactionNonceAsync(Address address)
             => Task.FromResult(_txPool.ReserveOwnTransactionNonce(address));
 
         public Task<NdmTransaction?> GetTransactionAsync(Keccak transactionHash)
         {
-            (TxReceipt receipt, Transaction transaction) = _blockchainBridge.GetTransaction(transactionHash);
+            (TxReceipt receipt, Transaction transaction) = (_) _blockchainBridge.GetTransaction(transactionHash);
             if (transaction is null)
             {
                 return Task.FromResult<NdmTransaction?>(null);

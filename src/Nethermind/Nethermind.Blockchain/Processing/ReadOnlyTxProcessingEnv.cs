@@ -32,7 +32,11 @@ namespace Nethermind.Blockchain.Processing
         public TransactionProcessor TransactionProcessor;
         public IBlockTree BlockTree;
 
-        public ReadOnlyTxProcessingEnv(IReadOnlyDbProvider readOnlyDbProvider, ReadOnlyBlockTree readOnlyBlockTree, ISpecProvider specProvider, ILogManager logManager)
+        public ReadOnlyTxProcessingEnv(
+            IReadOnlyDbProvider readOnlyDbProvider,
+            ReadOnlyBlockTree readOnlyBlockTree,
+            ISpecProvider specProvider,
+            ILogManager logManager)
         {
             ISnapshotableDb stateDb = readOnlyDbProvider.StateDb;
             IDb codeDb = readOnlyDbProvider.CodeDb;

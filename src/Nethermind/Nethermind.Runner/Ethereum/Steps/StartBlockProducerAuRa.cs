@@ -33,7 +33,6 @@ using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
-using Nethermind.Facade.Transactions;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.TxPool;
 
@@ -194,7 +193,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (needSigner)
             {
                 TxSealer transactionSealer = new TxSealer(_context.Signer, _context.Timestamper); 
-                txSource = new GeneratedTxSourceSealer(txSource, transactionSealer, processingEnv.StateReader, _context.LogManager);
+                txSource = new GeneratedTxSource(txSource, transactionSealer, processingEnv.StateReader, _context.LogManager);
             }
 
             var txPermissionFilter = GetTxPermissionFilter(processingEnv, readOnlyTxProcessorSource);

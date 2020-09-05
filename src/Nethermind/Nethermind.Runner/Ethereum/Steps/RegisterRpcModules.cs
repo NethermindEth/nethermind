@@ -112,9 +112,12 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             TraceModuleFactory traceModuleFactory = new TraceModuleFactory(_context.DbProvider, _context.BlockTree, rpcConfig, _context.RecoveryStep, _context.RewardCalculatorSource, _context.ReceiptStorage, _context.SpecProvider, _context.LogManager);
             _context.RpcModuleProvider.Register(new BoundedModulePool<ITraceModule>(8, traceModuleFactory));
-
-            PersonalBridge personalBridge = new PersonalBridge(_context.EthereumEcdsa, _context.Wallet);
-            PersonalModule personalModule = new PersonalModule(personalBridge, _context.LogManager);
+            
+            PersonalModule personalModule = new PersonalModule(
+                _context.EthereumEcdsa,
+                _context.Wallet,
+                _context.LogManager);
+            
             _context.RpcModuleProvider.Register(new SingletonModulePool<IPersonalModule>(personalModule, true));
 
             AdminModule adminModule = new AdminModule(_context.BlockTree, networkConfig, _context.PeerManager, _context.StaticNodesManager, _context.Enode, initConfig.BaseDbPath);
@@ -177,7 +180,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.BlockTree,
                 _context.ReceiptFinder,
                 _context.Enode,
-                _context.Signer,
+                _context.SignerStore,
                 _context.KeyStore,
                 _context.LogManager);
 

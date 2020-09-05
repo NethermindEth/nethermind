@@ -28,7 +28,6 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.Db.Blooms;
-using Nethermind.Facade.Transactions;
 using Nethermind.Int256;
 using Nethermind.KeyStore;
 using Nethermind.Specs;

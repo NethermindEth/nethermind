@@ -12,4 +12,8 @@
       <ProjectReference Include="..\Nethermind.Wallet\Nethermind.Wallet.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+      <Folder Include="Transactions" />
+    </ItemGroup>
+
 </Project>
