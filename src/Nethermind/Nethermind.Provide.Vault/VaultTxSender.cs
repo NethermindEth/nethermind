@@ -47,7 +47,7 @@ namespace Nethermind.Vault
         public async ValueTask<Keccak> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
             ProvideTx provideTx = new ProvideTx();
-            provideTx.Data = tx.Data.ToHexString();
+            provideTx.Data = (tx.Data ?? tx.Init).ToHexString();
             provideTx.Description = "From Nethermind with love";
             provideTx.Hash = tx.Hash.ToString();
             provideTx.Signer = tx.SenderAddress.ToString();
