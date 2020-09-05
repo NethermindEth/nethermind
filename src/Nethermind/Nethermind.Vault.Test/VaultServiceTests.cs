@@ -21,6 +21,7 @@ using Nethermind.Vault.Config;
 using NUnit.Framework;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using provide.Model.Vault;
 
 namespace Nethermind.Vault.Test
 {
@@ -92,6 +93,51 @@ namespace Nethermind.Vault.Test
             await _vaultService.DeleteVault(createdVault.Id!.Value);
             IEnumerable<Guid> vaults = await _vaultService.ListVaultIds();
             vaults.Should().NotContain(createdVault.Id.Value);
+        }
+        
+        [Test]
+        public async Task can_delete_key()
+        {
+            provide.Model.Vault.Vault vault = new provide.Model.Vault.Vault();
+            vault.Name = "Wallet Vault Test";
+            vault.Description = "Test Vault used for test purposes";
+            
+            provide.Model.Vault.Vault createdVault = await _vaultService.CreateVault(vault);
+            
+            Key key = new Key();
+            key.Name = "Test Key";
+            key.Description = "Test Key used for test purposes";
+            key.Type = "asymmetric";
+            key.Spec = "secp256k1";
+            key.Usage = "sign/verify";
+            Key createdKey = await _vaultService.CreateKey(createdVault.Id.Value, key);
+            Key deletedKey = await _vaultService.DeleteKey(createdVault.Id.Value, createdKey.Id.Value);
+            deletedKey.Should().NotBe(null);
+        }
+        
+        [Test]
+        public async Task can_delete_key_via_listed()
+        {
+            provide.Model.Vault.Vault vault = new provide.Model.Vault.Vault();
+            vault.Name = "Wallet Vault Test";
+            vault.Description = "Test Vault used for test purposes";
+            
+            provide.Model.Vault.Vault createdVault = await _vaultService.CreateVault(vault);
+            
+            Key key = new Key();
+            key.Name = "Test Key";
+            key.Description = "Test Key used for test purposes";
+            key.Type = "asymmetric";
+            key.Spec = "secp256k1";
+            key.Usage = "sign/verify";
+            
+            _ = await _vaultService.CreateKey(createdVault.Id.Value, key);
+            var keys = await _vaultService.ListKeys(createdVault.Id.Value);
+            foreach (var listedKey in keys)
+            {
+                Key deletedKey = await _vaultService.DeleteKey(createdVault.Id.Value, listedKey.Id.Value);
+                deletedKey.Should().NotBeNull();
+            }
         }
     }
 }
