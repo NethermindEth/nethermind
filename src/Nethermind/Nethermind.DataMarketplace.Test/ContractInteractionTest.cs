@@ -47,6 +47,7 @@ using Nethermind.Wallet;
 using NSubstitute;
 using NUnit.Framework;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace Nethermind.DataMarketplace.Test
 {
@@ -100,7 +101,7 @@ namespace Nethermind.DataMarketplace.Test
         protected Address _contractAddress;
         protected ITxPool _txPool;
 
-        protected void Prepare()
+        protected async Task Prepare()
         {
             _wallet = new DevWallet(new WalletConfig(), _logManager);
             _feeAccount = _wallet.GetAccounts()[0];
@@ -123,7 +124,7 @@ namespace Nethermind.DataMarketplace.Test
             TransactionProcessor processor = new TransactionProcessor(specProvider, _state, storageProvider, machine, _logManager);
             _bridge = new BlockchainBridge(processor);
 
-            TxReceipt receipt = DeployContract(Bytes.FromHexString(ContractData.GetInitCode(_feeAccount)));
+            TxReceipt receipt = await DeployContract(Bytes.FromHexString(ContractData.GetInitCode(_feeAccount)));
             ((NdmConfig) _ndmConfig).ContractAddress = receipt.ContractAddress.ToString();
             _contractAddress = receipt.ContractAddress;
             _txPool = new TxPool.TxPool(new InMemoryTxStorage(), Timestamper.Default,
@@ -131,14 +132,14 @@ namespace Nethermind.DataMarketplace.Test
             _ndmBridge = new NdmBlockchainBridge(_bridge, _bridge, _bridge, _bridge);
         }
 
-        protected TxReceipt DeployContract(byte[] initCode)
+        protected async Task<TxReceipt> DeployContract(byte[] initCode)
         {
             Transaction deployContract = new Transaction();
             deployContract.SenderAddress = _providerAccount;
             deployContract.GasLimit = 4000000;
             deployContract.Init = initCode;
             deployContract.Nonce = _bridge.GetNonce(_providerAccount);
-            Keccak txHash = _bridge.SendTransaction(deployContract, TxHandlingOptions.None);
+            Keccak txHash = await _bridge.SendTransaction(deployContract, TxHandlingOptions.None);
             TxReceipt receipt = _bridge.GetReceipt(txHash);
             Assert.AreEqual(StatusCode.Success, receipt.StatusCode, $"contract deployed {receipt.Error}");
             return receipt;
@@ -225,7 +226,7 @@ namespace Nethermind.DataMarketplace.Test
 
             private int _txIndex = 0;
 
-            public Keccak SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
+            public ValueTask<Keccak> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
             {
                 tx.Nonce = GetNonce(tx.SenderAddress);
                 tx.Hash = tx.CalculateHash();
@@ -233,7 +234,7 @@ namespace Nethermind.DataMarketplace.Test
                 _receiptsTracer.StartNewTxTrace(tx.Hash);
                 _processor.Execute(tx, Head?.Header, _receiptsTracer);
                 _receiptsTracer.EndTxTrace();
-                return tx.CalculateHash();
+                return new ValueTask<Keccak>(tx.CalculateHash());
             }
 
             public TxReceipt GetReceipt(Keccak txHash) => _receiptsTracer.TxReceipts.Single(r => r?.TxHash == txHash);

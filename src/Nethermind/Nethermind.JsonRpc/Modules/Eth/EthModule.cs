@@ -330,20 +330,20 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
         }
 
-        private Task<ResultWrapper<Keccak>> SendTx(Transaction tx)
+        private async Task<ResultWrapper<Keccak>> SendTx(Transaction tx)
         {
             try
             {
-                Keccak txHash = _txSender.SendTransaction(tx, TxHandlingOptions.PersistentBroadcast);
-                return Task.FromResult(ResultWrapper<Keccak>.Success(txHash));
+                Keccak txHash = await _txSender.SendTransaction(tx, TxHandlingOptions.PersistentBroadcast);
+                return ResultWrapper<Keccak>.Success(txHash);
             }
             catch (SecurityException e)
             {
-                return Task.FromResult(ResultWrapper<Keccak>.Fail(e.Message, ErrorCodes.AccountLocked));
+                return ResultWrapper<Keccak>.Fail(e.Message, ErrorCodes.AccountLocked);
             }
             catch (Exception e)
             {
-                return Task.FromResult(ResultWrapper<Keccak>.Fail(e.Message, ErrorCodes.TransactionRejected));
+                return ResultWrapper<Keccak>.Fail(e.Message, ErrorCodes.TransactionRejected);
             }
         }
 

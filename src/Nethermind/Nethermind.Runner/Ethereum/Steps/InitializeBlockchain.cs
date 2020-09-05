@@ -107,7 +107,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
             else
             {
-                _api.TxSender = new VaultTxSender();
+                _api.TxSender = new VaultTxSender(_api.Config<IVaultConfig>());
             }
 
             IBloomConfig? bloomConfig = _api.Config<IBloomConfig>();
