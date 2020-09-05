@@ -58,7 +58,10 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             EthereumRunnerContext context = Build.ContextWithMocks();
             context.ConfigProvider = configProvider;
             context.RpcModuleProvider = rpcModuleProvider;
-            context.Signer = new Signer(ChainId.Mainnet, TestItem.PrivateKeyA, LimboLogs.Instance);
+            var signer = new Signer(ChainId.Mainnet, TestItem.PrivateKeyA, LimboLogs.Instance);
+            context.Signer = signer;
+            context.SignerStore = signer;
+            
             context.KeyStore = Substitute.For<IKeyStore>();
             context.SyncModeSelector = Substitute.For<ISyncModeSelector>();
             context.ChainLevelInfoRepository = Substitute.For<IChainLevelInfoRepository>();

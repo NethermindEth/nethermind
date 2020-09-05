@@ -19,56 +19,47 @@ using System.IO.Abstractions;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Facade;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.TxPool;
-using Nethermind.Wallet;
 
 namespace Nethermind.Baseline.JsonRpc
 {
     public class BaselineModuleFactory : ModuleFactoryBase<IBaselineModule>
     {
-        private readonly ISpecProvider _specProvider;
         private readonly IFileSystem _fileSystem;
-        private readonly ITxPool _txPool;
+        private readonly ITxSender _txSender;
         private readonly ILogFinder _logFinder;
         private readonly IBlockFinder _blockFinder;
         private readonly IStateReader _stateReader;
-        private readonly IWallet _wallet;
         private readonly ILogManager _logManager;
         private readonly IAbiEncoder _abiEncoder;
         
-        public BaselineModuleFactory(ITxPool txPool,
+        public BaselineModuleFactory(
+            ITxSender txSender,
             IStateReader stateReader,
             ILogFinder logFinder,
             IBlockFinder blockFinder,
             IAbiEncoder abiEncoder,
-            IWallet wallet,
-            ISpecProvider specProvider,
             IFileSystem fileSystem,
             ILogManager logManager)
         {
-            _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
+            _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
             _logFinder = logFinder ?? throw new ArgumentNullException(nameof(logFinder));
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
             _abiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
-            _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
         }
         
         public override IBaselineModule Create()
         {
-            WalletTxSigner txSigner = new WalletTxSigner(_wallet, _specProvider.ChainId);
-            ITxSender txSender = new TxPoolSender(_txPool, txSigner, Timestamper.Default);
             return new BaselineModule(
-                txSender,
+                _txSender,
                 _stateReader,
                 _logFinder,
                 _blockFinder,

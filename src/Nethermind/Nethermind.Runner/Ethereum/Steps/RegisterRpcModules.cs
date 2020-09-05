@@ -42,6 +42,7 @@ using Nethermind.State;
 using Nethermind.Vault.JsonRpc;
 using Nethermind.Vault.Config;
 using Nethermind.Runner.Ethereum.Steps.Migrations;
+using Nethermind.TxPool;
 using Nethermind.Vault;
 
 namespace Nethermind.Runner.Ethereum.Steps
@@ -135,14 +136,14 @@ namespace Nethermind.Runner.Ethereum.Steps
                 IDbProvider dbProvider = _context.DbProvider!;
                 IStateReader stateReader = new StateReader(dbProvider.StateDb, dbProvider.CodeDb, _context.LogManager);
 
+                ITxSealer txSealer = new TxSealer(_context.Signer, _context.Timestamper);
+                ITxSender txSender = new TxPoolSender(_context.TxPool, txSealer);
                 BaselineModuleFactory baselineModuleFactory = new BaselineModuleFactory(
-                    _context.TxPool,
+                    txSender,
                     stateReader,
                     logFinder,
                     _context.BlockTree,
                     _context.AbiEncoder,
-                    _context.Wallet,
-                    _context.SpecProvider,
                     _context.FileSystem,
                     _context.LogManager);
 

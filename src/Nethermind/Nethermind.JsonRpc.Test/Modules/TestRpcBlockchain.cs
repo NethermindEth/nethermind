@@ -79,9 +79,9 @@ namespace Nethermind.JsonRpc.Test.Modules
                 return this;
             }
             
-            public Builder WithTxPoolBridge(ITxSender txPoolBridge)
+            public Builder WithTxSender(ITxSender txSender)
             {
-                _blockchain.TxSender = txPoolBridge;
+                _blockchain.TxSender = txSender;
                 return this;
             }
             
@@ -108,8 +108,10 @@ namespace Nethermind.JsonRpc.Test.Modules
                 LimboLogs.Instance);
             
             Bridge ??= new BlockchainBridge(processingEnv, TxPool, ReceiptStorage, filterStore, filterManager, EthereumEcdsa, NullBloomStorage.Instance, Timestamper, LimboLogs.Instance, false);
-            TxSender = new TxPoolSender(TxPool);
+            
             ITxSigner txSigner = new WalletTxSigner(TestWallet, specProvider?.ChainId ?? 0);
+            ITxSealer txSealer = new NonceReservingTxSealer(txSigner, Timestamper, TxPool);
+            TxSender = new TxPoolSender(TxPool, txSealer);
 
             EthModule = new EthModule(
                 new JsonRpcConfig(),

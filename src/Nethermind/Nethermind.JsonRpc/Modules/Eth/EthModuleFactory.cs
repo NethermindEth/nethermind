@@ -103,7 +103,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 );
 
             ITxSigner txSigner = new WalletTxSigner(_wallet, _specProvider.ChainId);
-            TxPoolSender txPoolSender = new TxPoolSender(_txPool);
+            TxPoolSender txPoolSender = new TxPoolSender(_txPool, txSigner);
             
             return new EthModule(
                 _rpcConfig,

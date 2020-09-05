@@ -37,7 +37,7 @@ namespace Nethermind.JsonRpc
 
         [ConfigItem(
             Description = "Base file path for diagnostic JSON RPC recorder.",
-            DefaultValue = "\"logs/rpc.log_1.txt\"")]
+            DefaultValue = "\"logs/rpc.{counter}.txt\"")]
         string RpcRecorderBaseFilePath { get; set; }
 
         [ConfigItem(
@@ -57,7 +57,7 @@ namespace Nethermind.JsonRpc
         
         [ConfigItem(
             Description = "Defines which RPC modules should be enabled.",
-            DefaultValue = "all")]
+            DefaultValue = "System.String[]")]
         string[] EnabledModules { get; set; }
         
         [ConfigItem(

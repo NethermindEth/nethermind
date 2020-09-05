@@ -33,7 +33,7 @@ namespace Nethermind.DataMarketplace.Core.Configs
         public string? ProviderAddress { get; set; }
         public string? ProviderColdWalletAddress { get; set; }
         public string? ConsumerAddress { get; set; }
-        public string? ContractAddress { get; set; }
+        public string? ContractAddress { get; set; } = "0x82c839fa4a41e158f613ec8a1a84be3c816d370f";
         public UInt256 ReceiptRequestThreshold { get; set; } = 10000000000000000;
         public UInt256 ReceiptsMergeThreshold { get; set; } = 100000000000000000;
         public UInt256 PaymentClaimThreshold { get; set; } = 1000000000000000000;

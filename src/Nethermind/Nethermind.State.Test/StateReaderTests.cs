@@ -203,9 +203,8 @@ namespace Nethermind.Store.Test
             
             /* all testing will be touching just a single storage cell */
             StorageCell storageCell = new StorageCell(_address1, UInt256.One);
-            StateDb stateDb = new StateDb(dbProvider.StateDb);
-            StateProvider state = new StateProvider(stateDb, dbProvider.CodeDb, Logger);
-            StorageProvider storage = new StorageProvider(stateDb, state, Logger);
+            StateProvider state = new StateProvider(dbProvider, Logger);
+            StorageProvider storage = new StorageProvider(dbProvider, state, Logger);
 
             /* to start with we need to create an account that we will be setting storage at */
             state.CreateAccount(storageCell.Address, UInt256.One);
@@ -221,7 +220,7 @@ namespace Nethermind.Store.Test
             state.Commit(MuirGlacier.Instance);
             state.CommitTree();
 
-            StateReader reader = new StateReader(stateDb, Substitute.For<IDb>(), Logger);
+            StateReader reader = new StateReader(dbProvider, Logger);
 
             var account = reader.GetAccount(state.StateRoot, _address1);
             var retrieved =  reader.GetStorage(account.StorageRoot, storageCell.Index);
@@ -236,11 +235,11 @@ namespace Nethermind.Store.Test
             byte[] newValue = new byte[] {1, 2, 3, 4, 5};
             
             StateProvider processorStateProvider =
-                new StateProvider(dbProvider.StateDb, dbProvider.CodeDb, LimboLogs.Instance);
+                new StateProvider(dbProvider, LimboLogs.Instance);
             processorStateProvider.StateRoot = state.StateRoot;
             
             StorageProvider processorStorageProvider =
-                new StorageProvider(dbProvider.StateDb, processorStateProvider, LimboLogs.Instance);
+                new StorageProvider(dbProvider, processorStateProvider, LimboLogs.Instance);
             
             processorStorageProvider.Set(storageCell, newValue);
             processorStorageProvider.Commit();
@@ -252,7 +251,7 @@ namespace Nethermind.Store.Test
                We will try to retrieve the value by taking the state root from the processor.*/
             
             retrieved =
-                reader.GetStorage(processorStateProvider.StateRoot, storageCell.Index);
+                reader.GetStorage(processorStateProvider.GetStorageRoot(storageCell.Address), storageCell.Index);
             retrieved.Should().BeEquivalentTo(newValue);
             
             /* If it failed then it means that the blockchain bridge cached the previous call value */

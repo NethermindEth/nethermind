@@ -38,7 +38,7 @@ namespace Nethermind.Facade.Test
         {
             _txPool = Substitute.For<ITxPool>();
             _txSigner = Substitute.For<ITxSigner>();
-            _txSender = new TxPoolSender(_txPool, _txSigner, Timestamper.Default);
+            _txSender = new TxPoolSender(_txPool, new TxSealer(_txSigner, Timestamper.Default));
         }
 
         [Test]

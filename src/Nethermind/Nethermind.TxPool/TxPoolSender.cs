@@ -33,11 +33,6 @@ namespace Nethermind.TxPool
             if (sealers.Length == 0) throw new ArgumentException("Sealers can not be empty.", nameof(sealers));
         }
 
-        public TxPoolSender(ITxPool txPool, ITxSigner txSigner, ITimestamper timestamper)
-            : this(txPool, new TxSealer(txSigner, timestamper), new NonceReservingTxSealer(txSigner, timestamper, txPool))
-        {
-        }
-
         public Keccak SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
             foreach (var sealer in _sealers)
