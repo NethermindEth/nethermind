@@ -16,7 +16,6 @@
 // 
 
 using System;
-using Nethermind.Consensus;
 using Nethermind.Core;
 
 namespace Nethermind.TxPool
@@ -25,7 +24,8 @@ namespace Nethermind.TxPool
     {
         private readonly ITxPool _txPool;
 
-        public NonceReservingTxSealer(ITxSigner txSigner, ITimestamper timestamper, ITxPool txPool) : base(txSigner, timestamper, false)
+        public NonceReservingTxSealer(ITxSigner txSigner, ITimestamper timestamper, ITxPool txPool)
+            : base(txSigner, timestamper, false)
         {
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
         }

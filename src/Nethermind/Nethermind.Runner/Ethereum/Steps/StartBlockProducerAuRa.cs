@@ -33,11 +33,6 @@ using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Context;
-<<<<<<< HEAD
-=======
-using Nethermind.Facade.Transactions;
-using Nethermind.Int256;
->>>>>>> master
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.TxPool;
 

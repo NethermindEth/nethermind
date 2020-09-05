@@ -33,6 +33,11 @@ namespace Nethermind.State
         private readonly StateTree _state;
         private readonly StorageTree _storage;
 
+        public StateReader(IDbProvider dbProvider, ILogManager logManager) 
+            :this(dbProvider.StateDb, dbProvider.CodeDb, logManager)
+        {
+        }
+        
         public StateReader(ISnapshotableDb stateDb, IDb codeDb, ILogManager logManager)
         {
             if (stateDb == null) throw new ArgumentNullException(nameof(stateDb));

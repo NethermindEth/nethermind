@@ -17,10 +17,15 @@
 
 using Nethermind.Core;
 
-namespace Nethermind.Consensus
+namespace Nethermind.TxPool
 {
-    public interface ITxSigner
+    public interface ITxSigner : ITxSealer
     {
         void Sign(Transaction tx);
+
+        void ITxSealer.Seal(Transaction tx)
+        {
+            Sign(tx);
+        }
     }
 }

@@ -16,7 +16,6 @@
 // 
 
 using System;
-using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Crypto;
 

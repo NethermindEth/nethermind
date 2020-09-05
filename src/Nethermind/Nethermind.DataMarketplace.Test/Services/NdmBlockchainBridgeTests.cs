@@ -17,10 +17,13 @@
 using System;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Core.Test.Builders;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.Int256;
 using Nethermind.Facade;
+using Nethermind.State;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -32,16 +35,19 @@ namespace Nethermind.DataMarketplace.Test.Services
         private INdmBlockchainBridge _ndmBridge;
         private IBlockchainBridge _blockchainBridge;
         private ITxPool _txPool;
-        private ITxPoolBridge _txPoolBridge;
+        private IBlockTree _blockTree;
+        private IStateReader _stateReader;
+        private IReceiptFinder _receiptFinder;
 
         [SetUp]
         public void Setup()
         {
             _blockchainBridge = Substitute.For<IBlockchainBridge>();
-            _txPoolBridge = Substitute.For<ITxPoolBridge>();
-            _txPoolBridge = Substitute.For<ITxPoolBridge>();
             _txPool = Substitute.For<ITxPool>();
-            _ndmBridge = new NdmBlockchainBridge(_txPoolBridge, _blockchainBridge, _txPool);
+            _blockTree = Substitute.For<IBlockTree>();
+            _stateReader = Substitute.For<IStateReader>();
+            _receiptFinder = Substitute.For<IReceiptFinder>();
+            _ndmBridge = new NdmBlockchainBridge(_blockTree, _stateReader, _txPool, _receiptFinder);
         }
 
         [Test]

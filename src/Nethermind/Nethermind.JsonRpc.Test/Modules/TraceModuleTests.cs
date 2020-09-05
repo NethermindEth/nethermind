@@ -44,7 +44,6 @@ using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
-using Nethermind.Wallet;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 using Nethermind.Blockchain.Find;
@@ -65,14 +64,13 @@ namespace Nethermind.JsonRpc.Test.Modules
 
         private void Initialize(bool auRa = false)
         {
+            MemDbProvider dbProvider = new MemDbProvider();
             ISpecProvider specProvider = MainnetSpecProvider.Instance;
             _jsonRpcConfig = new JsonRpcConfig();
             IEthereumEcdsa ethereumEcdsa = new EthereumEcdsa(specProvider.ChainId, LimboLogs.Instance);
             ITxStorage txStorage = new InMemoryTxStorage();
             _stateDb = new StateDb();
-            ISnapshotableDb codeDb = new StateDb();
-            IStateReader stateReader = new StateReader(_stateDb, codeDb, LimboLogs.Instance);
-            _stateProvider = new StateProvider(_stateDb, codeDb, LimboLogs.Instance);
+            _stateProvider = new StateProvider(dbProvider, LimboLogs.Instance);
             _stateProvider.CreateAccount(TestItem.AddressA, 1000.Ether());
             _stateProvider.CreateAccount(TestItem.AddressB, 1000.Ether());
             _stateProvider.CreateAccount(TestItem.AddressC, 1000.Ether());
@@ -89,21 +87,25 @@ namespace Nethermind.JsonRpc.Test.Modules
             _stateProvider.CommitTree();
 
             ITxPool txPool = new TxPool.TxPool(txStorage, Timestamper.Default, ethereumEcdsa, specProvider, new TxPoolConfig(), _stateProvider, LimboLogs.Instance);
-
-            IDb blockDb = new MemDb();
-            IDb headerDb = new MemDb();
-            IDb blockInfoDb = new MemDb();
-            IBlockTree blockTree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockDb), specProvider, txPool, NullBloomStorage.Instance, LimboLogs.Instance);
+            IChainLevelInfoRepository chainLevels = new ChainLevelInfoRepository(dbProvider);
+            IBlockTree blockTree = new BlockTree(dbProvider, chainLevels, specProvider, txPool, NullBloomStorage.Instance, LimboLogs.Instance);
 
             IReceiptStorage receiptStorage = new InMemoryReceiptStorage();
             VirtualMachine virtualMachine = new VirtualMachine(_stateProvider, storageProvider, new BlockhashProvider(blockTree, LimboLogs.Instance), specProvider, LimboLogs.Instance);
             TransactionProcessor txProcessor = new TransactionProcessor(specProvider, _stateProvider, storageProvider, virtualMachine, LimboLogs.Instance);
-            IBlockProcessor blockProcessor = new BlockProcessor(specProvider, Always.Valid, new RewardCalculator(specProvider), txProcessor, _stateDb, codeDb, _stateProvider, storageProvider, txPool, receiptStorage, LimboLogs.Instance);
+            IBlockProcessor blockProcessor = new BlockProcessor(
+                specProvider,
+                Always.Valid,
+                new RewardCalculator(specProvider),
+                txProcessor,
+                dbProvider.StateDb,
+                dbProvider.CodeDb,
+                _stateProvider,
+                storageProvider,
+                txPool,
+                receiptStorage,
+                LimboLogs.Instance);
 
-            IFilterStore filterStore = new FilterStore();
-            IFilterManager filterManager = new FilterManager(filterStore, blockProcessor, txPool, LimboLogs.Instance);
-            _blockchainBridge = new BlockchainBridge(stateReader, _stateProvider, storageProvider, blockTree, txPool, receiptStorage, filterStore, filterManager, NullWallet.Instance, txProcessor, ethereumEcdsa, NullBloomStorage.Instance, Timestamper.Default, LimboLogs.Instance, false);
-            
             var signatureRecovery = new TxSignaturesRecoveryStep(ethereumEcdsa, txPool, LimboLogs.Instance);
             BlockchainProcessor blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, signatureRecovery, LimboLogs.Instance, BlockchainProcessor.Options.Default);
             
@@ -152,10 +154,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             IReceiptFinder receiptFinder = new FullInfoReceiptFinder(receiptStorage, receiptsRecovery, blockTree);
 
             resetEvent.Wait(2000);
-            _traceModule = new TraceModule(receiptFinder, new Tracer(_stateProvider, blockchainProcessor), _blockchainBridge, _jsonRpcConfig);
+            _traceModule = new TraceModule(receiptFinder, new Tracer(_stateProvider, blockchainProcessor), blockTree, _jsonRpcConfig);
         }
 
-        private IBlockchainBridge _blockchainBridge;
         private ITraceModule _traceModule;
         private IStateProvider _stateProvider;
         private ISnapshotableDb _stateDb;

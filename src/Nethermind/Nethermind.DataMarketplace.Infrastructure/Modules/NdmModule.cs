@@ -62,7 +62,6 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
                 services.ReceiptFinder,
                 services.FilterStore,
                 services.FilterManager,
-                wallet,
                 readOnlyTxProcessingEnv.TransactionProcessor,
                 services.Ecdsa,
                 services.BloomStorage,

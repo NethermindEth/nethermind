@@ -27,10 +27,11 @@ namespace Nethermind.Blockchain.Processing
         public IStateReader StateReader;
         public IStateProvider StateProvider;
         public IStorageProvider StorageProvider;
-        public IBlockhashProvider BlockhashProvider;
-        public IVirtualMachine VirtualMachine;
         public TransactionProcessor TransactionProcessor;
         public IBlockTree BlockTree;
+        
+        private IBlockhashProvider BlockhashProvider;
+        private IVirtualMachine VirtualMachine;
 
         public ReadOnlyTxProcessingEnv(
             IReadOnlyDbProvider readOnlyDbProvider,

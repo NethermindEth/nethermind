@@ -30,12 +30,12 @@ namespace Nethermind.JsonRpc.Modules.Personal
     {
         private Encoding _messageEncoding = Encoding.UTF8;
         private readonly IEcdsa _ecdsa;
-        private readonly IWallet _bridge;
+        private readonly IWallet _wallet;
 
-        public PersonalModule(IEcdsa ecdsa, IWallet bridge, ILogManager logManager)
+        public PersonalModule(IEcdsa ecdsa, IWallet wallet, ILogManager logManager)
         {
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
-            _bridge = bridge ?? throw new ArgumentNullException(nameof(bridge));
+            _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
         }
 
         public ResultWrapper<Address> personal_importRawKey(byte keyData, string passphrase)
@@ -45,12 +45,12 @@ namespace Nethermind.JsonRpc.Modules.Personal
 
         public ResultWrapper<Address[]> personal_listAccounts()
         {
-            return ResultWrapper<Address[]>.Success(_bridge.GetAccounts());
+            return ResultWrapper<Address[]>.Success(_wallet.GetAccounts());
         }
 
         public ResultWrapper<bool> personal_lockAccount(Address address)
         {
-            var locked = _bridge.LockAccount(address);
+            var locked = _wallet.LockAccount(address);
 
             return ResultWrapper<bool>.Success(locked);
         }
@@ -59,7 +59,7 @@ namespace Nethermind.JsonRpc.Modules.Personal
         public ResultWrapper<bool> personal_unlockAccount(Address address, string passphrase)
         {
             var notSecuredHere = passphrase.Secure();
-            var unlocked = _bridge.UnlockAccount(address, notSecuredHere);
+            var unlocked = _wallet.UnlockAccount(address, notSecuredHere);
             return ResultWrapper<bool>.Success(unlocked);
         }
 
@@ -67,7 +67,7 @@ namespace Nethermind.JsonRpc.Modules.Personal
         public ResultWrapper<Address> personal_newAccount(string passphrase)
         {
             var notSecuredHere = passphrase.Secure();
-            return ResultWrapper<Address>.Success(_bridge.NewAccount(notSecuredHere));
+            return ResultWrapper<Address>.Success(_wallet.NewAccount(notSecuredHere));
         }
 
         [RequiresSecurityReview("Consider removing any operations that allow to provide passphrase in JSON RPC")]
@@ -79,7 +79,7 @@ namespace Nethermind.JsonRpc.Modules.Personal
         public ResultWrapper<Address> personal_ecRecover(byte[] message, byte[] signature)
         {
             message = ToEthSignedMessage(message);
-            var msgHash = Keccak.Compute(message);
+            Keccak msgHash = Keccak.Compute(message);
             PublicKey publicKey = _ecdsa.RecoverPublicKey(new Signature(signature), msgHash);
             return ResultWrapper<Address>.Success(publicKey.Address);
         }
@@ -94,17 +94,17 @@ namespace Nethermind.JsonRpc.Modules.Personal
         [RequiresSecurityReview("Consider removing any operations that allow to provide passphrase in JSON RPC")]
         public ResultWrapper<byte[]> personal_sign(byte[] message, Address address, string passphrase = null)
         {
-            if (!_bridge.IsUnlocked(address))
+            if (!_wallet.IsUnlocked(address))
             {
                 if (passphrase != null)
                 {
                     var notSecuredHere = passphrase.Secure();                    
-                    _bridge.UnlockAccount(address, notSecuredHere);
+                    _wallet.UnlockAccount(address, notSecuredHere);
                 }
             }
             
             message = ToEthSignedMessage(message);
-            return ResultWrapper<byte[]>.Success(_bridge.Sign(Keccak.Compute(message), address).Bytes);
+            return ResultWrapper<byte[]>.Success(_wallet.Sign(Keccak.Compute(message), address).Bytes);
         }
     }
 }

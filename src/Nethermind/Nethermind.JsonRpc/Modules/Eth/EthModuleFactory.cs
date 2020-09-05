@@ -31,7 +31,6 @@ using Nethermind.Db.Blooms;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Newtonsoft.Json;
-using System.Threading;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
@@ -90,16 +89,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
             ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, readOnlyTree, _specProvider, _logManager);
             
             var blockchainBridge = new BlockchainBridge(
-                readOnlyTxProcessingEnv.StateReader,
-                readOnlyTxProcessingEnv.StateProvider,
-                readOnlyTxProcessingEnv.StorageProvider,
-                readOnlyTxProcessingEnv.BlockTree,
+                readOnlyTxProcessingEnv,
                 _txPool,
                 _receiptFinder,
                 _filterStore,
                 _filterManager,
-                _wallet,
-                readOnlyTxProcessingEnv.TransactionProcessor,
                 _ethereumEcdsa,
                 _bloomStorage,
                 Timestamper.Default,
@@ -107,10 +101,20 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 _isMining,
                 _rpcConfig.FindLogBlockDepthLimit
                 );
+
+            ITxSigner txSigner = new WalletTxSigner(_wallet, _specProvider.ChainId);
+            TxPoolSender txPoolSender = new TxPoolSender(_txPool);
             
-            TxPoolBridge txPoolBridge = new TxPoolBridge(_txPool, new WalletTxSigner(_wallet, _specProvider.ChainId), Timestamper.Default);
-            
-            return new EthModule(_rpcConfig, blockchainBridge, txPoolBridge, _logManager);
+            return new EthModule(
+                _rpcConfig,
+                blockchainBridge,
+                readOnlyTxProcessingEnv.BlockTree,
+                readOnlyTxProcessingEnv.StateReader,
+                txSigner,
+                _txPool,
+                txPoolSender,
+                _wallet,
+                _logManager);
         }
 
         public static List<JsonConverter> Converters = new List<JsonConverter>

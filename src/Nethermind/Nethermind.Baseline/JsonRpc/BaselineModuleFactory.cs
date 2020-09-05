@@ -66,9 +66,9 @@ namespace Nethermind.Baseline.JsonRpc
         public override IBaselineModule Create()
         {
             WalletTxSigner txSigner = new WalletTxSigner(_wallet, _specProvider.ChainId);
-            TxPoolBridge txPoolBridge = new TxPoolBridge(_txPool, txSigner, Timestamper.Default);
+            ITxSender txSender = new TxPoolSender(_txPool, txSigner, Timestamper.Default);
             return new BaselineModule(
-                txPoolBridge,
+                txSender,
                 _stateReader,
                 _logFinder,
                 _blockFinder,

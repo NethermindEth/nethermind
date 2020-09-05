@@ -25,12 +25,17 @@ namespace Nethermind.State.Repositories
     public class ChainLevelInfoRepository : IChainLevelInfoRepository
     {
         private const int CacheSize = 64;
-        
+
         private readonly object _writeLock = new object();
-        private readonly ICache<long, ChainLevelInfo> _blockInfoCache = new LruCache<long, ChainLevelInfo>(CacheSize, CacheSize,  "chain level infos");
-        
+        private readonly ICache<long, ChainLevelInfo> _blockInfoCache = new LruCache<long, ChainLevelInfo>(CacheSize, CacheSize, "chain level infos");
+
         private readonly IDb _blockInfoDb;
-        
+
+        public ChainLevelInfoRepository(IDbProvider dbProvider)
+            : this(dbProvider.BlockInfosDb)
+        {
+        }
+
         public ChainLevelInfoRepository(IDb blockInfoDb)
         {
             _blockInfoDb = blockInfoDb ?? throw new ArgumentNullException(nameof(blockInfoDb));
@@ -47,7 +52,7 @@ namespace Nethermind.State.Repositories
             bool needLock = batch?.Disposed != false;
             if (needLock)
             {
-                lock(_writeLock)
+                lock (_writeLock)
                 {
                     Delete();
                 }
@@ -69,7 +74,7 @@ namespace Nethermind.State.Repositories
             bool needLock = batch?.Disposed != false;
             if (needLock)
             {
-                lock(_writeLock)
+                lock (_writeLock)
                 {
                     PersistLevel();
                 }

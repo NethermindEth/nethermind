@@ -17,12 +17,11 @@
 using System;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Core.Domain;
-using Nethermind.Int256;
 using Nethermind.Facade;
+using Nethermind.Int256;
 using Nethermind.State;
 using Nethermind.TxPool;
 
@@ -30,23 +29,22 @@ namespace Nethermind.DataMarketplace.Core.Services
 {
     public class NdmBlockchainBridge : INdmBlockchainBridge
     {
-        private readonly ITxPool _txPoolBridge;
-        private readonly IReceiptFinder _receiptFinder;
+        private readonly IBlockchainBridge _blockchainBridge;
+        private readonly ITxSender _txSender;
         private readonly IBlockTree _blockTree;
         private readonly IStateReader _stateReader;
         private readonly ITxPool _txPool;
 
         public NdmBlockchainBridge(
+            IBlockchainBridge blockchainBridge,
             IBlockTree blockTree,
             IStateReader stateReader,
-            ITxPool txPool,
-            IReceiptFinder receiptFinder)
+            ITxSender txSender)
         {
-            _txPoolBridge = txPool ?? throw new ArgumentNullException(nameof(txPool));
-            _receiptFinder = receiptFinder;
+            _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
+            _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
-            _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
         }
 
         public Task<long> GetLatestBlockNumberAsync()
@@ -86,7 +84,7 @@ namespace Nethermind.DataMarketplace.Core.Services
 
         public Task<NdmTransaction?> GetTransactionAsync(Keccak transactionHash)
         {
-            (TxReceipt receipt, Transaction transaction) = (_) _blockchainBridge.GetTransaction(transactionHash);
+            (TxReceipt receipt, Transaction transaction) = _blockchainBridge.GetTransaction(transactionHash);
             if (transaction is null)
             {
                 return Task.FromResult<NdmTransaction?>(null);
@@ -120,6 +118,6 @@ namespace Nethermind.DataMarketplace.Core.Services
         }
 
         public Task<Keccak?> SendOwnTransactionAsync(Transaction transaction)
-            => Task.FromResult<Keccak?>(_txPoolBridge.SendTransaction(transaction, TxHandlingOptions.ManagedNonce | TxHandlingOptions.PersistentBroadcast));
+            => Task.FromResult<Keccak?>(_txSender.SendTransaction(transaction, TxHandlingOptions.ManagedNonce | TxHandlingOptions.PersistentBroadcast));
     }
 }

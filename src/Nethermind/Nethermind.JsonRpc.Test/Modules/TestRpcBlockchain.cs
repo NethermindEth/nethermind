@@ -15,8 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -31,6 +33,7 @@ using Nethermind.Db.Blooms;
 using Nethermind.Int256;
 using Nethermind.KeyStore;
 using Nethermind.Specs;
+using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Newtonsoft.Json;
 
@@ -40,7 +43,7 @@ namespace Nethermind.JsonRpc.Test.Modules
     {
         public IEthModule EthModule { get; private set; }
         public IBlockchainBridge Bridge { get; private set; }
-        public ITxPoolBridge TxPoolBridge { get; private set; }
+        public ITxSender TxSender { get; private set; }
         public ILogFinder LogFinder { get; private set; }
         public IKeyStore KeyStore { get; } = new MemKeyStore(TestItem.PrivateKeys);
         public IWallet TestWallet { get; } = new DevKeyStoreWallet(new MemKeyStore(TestItem.PrivateKeys), LimboLogs.Instance);
@@ -70,9 +73,15 @@ namespace Nethermind.JsonRpc.Test.Modules
                 return this;
             }
             
-            public Builder WithTxPoolBridge(ITxPoolBridge txPoolBridge)
+            public Builder WithBlockTree(IBlockTree blockTree)
             {
-                _blockchain.TxPoolBridge = txPoolBridge;
+                _blockchain.BlockTree = blockTree;
+                return this;
+            }
+            
+            public Builder WithTxPoolBridge(ITxSender txPoolBridge)
+            {
+                _blockchain.TxSender = txPoolBridge;
                 return this;
             }
             
@@ -91,10 +100,28 @@ namespace Nethermind.JsonRpc.Test.Modules
             IFilterManager filterManager = new FilterManager(filterStore, BlockProcessor, TxPool, LimboLogs.Instance);
             
             LogFinder = new LogFinder(BlockTree, ReceiptStorage, bloomStorage, LimboLogs.Instance, new ReceiptsRecovery());
-            Bridge ??= new BlockchainBridge(StateReader, State, Storage, BlockTree, TxPool, ReceiptStorage, filterStore, filterManager, TestWallet, TxProcessor, EthereumEcdsa, NullBloomStorage.Instance, Timestamper, LimboLogs.Instance, false);
-            TxPoolBridge ??= new TxPoolBridge(TxPool, new WalletTxSigner(TestWallet, specProvider?.ChainId ?? 0), Timestamper);
+            
+            ReadOnlyTxProcessingEnv processingEnv = new ReadOnlyTxProcessingEnv(
+                new ReadOnlyDbProvider(DbProvider, false),
+                new ReadOnlyBlockTree(BlockTree),
+                SpecProvider,
+                LimboLogs.Instance);
+            
+            Bridge ??= new BlockchainBridge(processingEnv, TxPool, ReceiptStorage, filterStore, filterManager, EthereumEcdsa, NullBloomStorage.Instance, Timestamper, LimboLogs.Instance, false);
+            TxSender = new TxPoolSender(TxPool);
+            ITxSigner txSigner = new WalletTxSigner(TestWallet, specProvider?.ChainId ?? 0);
 
-            EthModule = new EthModule(new JsonRpcConfig(), Bridge, TxPoolBridge, LimboLogs.Instance);
+            EthModule = new EthModule(
+                new JsonRpcConfig(),
+                Bridge,
+                BlockTree,
+                StateReader,
+                txSigner,
+                TxPool,
+                TxSender,
+                TestWallet,
+                LimboLogs.Instance);
+            
             return this;
         }
 

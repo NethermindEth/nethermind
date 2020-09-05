@@ -51,9 +51,11 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             VirtualMachine virtualMachine = new VirtualMachine(stateProvider, storageProvider, new BlockhashProvider(blockTree, LimboLogs.Instance), MainnetSpecProvider.Instance, LimboLogs.Instance);
             TransactionProcessor processor = new TransactionProcessor(MainnetSpecProvider.Instance, stateProvider, storageProvider, virtualMachine, LimboLogs.Instance);
 
-            BlockchainBridge blockchainBridge = new BlockchainBridge(stateReader, stateProvider, storageProvider, blockTree, txPool, new InMemoryReceiptStorage(), NullFilterStore.Instance, NullFilterManager.Instance, wallet, processor, ecdsa, NullBloomStorage.Instance, Timestamper.Default, LimboLogs.Instance, false);
-            TxPoolBridge txPoolBridge = new TxPoolBridge(txPool, new WalletTxSigner(wallet, ChainId.Mainnet), Timestamper.Default);
-            return new NdmBlockchainBridge(txPoolBridge, blockchainBridge, txPool);
+            BlockchainBridge blockchainBridge = new BlockchainBridge(stateReader, stateProvider, storageProvider, blockTree, txPool, new InMemoryReceiptStorage(), NullFilterStore.Instance, NullFilterManager.Instance, processor, ecdsa, NullBloomStorage.Instance, Timestamper.Default, LimboLogs.Instance, false);
+            WalletTxSigner txSigner = new WalletTxSigner(wallet, ChainId.Mainnet);
+            NonceReservingTxSealer txSealer = new NonceReservingTxSealer(txSigner, Timestamper.Default, txPool);
+            ITxSender txSender = new TxPoolSender(txPool, txSealer);
+            return new NdmBlockchainBridge(blockchainBridge, blockTree, stateReader, txSender);
         }
     }
 }

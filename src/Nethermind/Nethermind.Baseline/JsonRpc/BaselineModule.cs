@@ -42,7 +42,7 @@ namespace Nethermind.Baseline.JsonRpc
     public class BaselineModule : IBaselineModule
     {
         public BaselineModule(
-            ITxPoolBridge txPoolBridge,
+            ITxSender txSender,
             IStateReader stateReader,
             ILogFinder logFinder,
             IBlockFinder blockFinder,
@@ -55,7 +55,7 @@ namespace Nethermind.Baseline.JsonRpc
             _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
             _baselineDb = baselineDb ?? throw new ArgumentNullException(nameof(baselineDb));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _txPoolBridge = txPoolBridge ?? throw new ArgumentNullException(nameof(txPoolBridge));
+            _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
             _logFinder = logFinder ?? throw new ArgumentNullException(nameof(logFinder));
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
@@ -84,7 +84,7 @@ namespace Nethermind.Baseline.JsonRpc
             tx.GasLimit = 1000000;
             tx.GasPrice = 20.GWei();
 
-            Keccak txHash = _txPoolBridge.SendTransaction(tx, TxHandlingOptions.ManagedNonce);
+            Keccak txHash = _txSender.SendTransaction(tx, TxHandlingOptions.ManagedNonce);
             return Task.FromResult(ResultWrapper<Keccak>.Success(txHash));
         }
 
@@ -115,7 +115,7 @@ namespace Nethermind.Baseline.JsonRpc
             tx.GasLimit = 1000000;
             tx.GasPrice = 20.GWei();
 
-            Keccak txHash = _txPoolBridge.SendTransaction(tx, TxHandlingOptions.ManagedNonce);
+            Keccak txHash = _txSender.SendTransaction(tx, TxHandlingOptions.ManagedNonce);
 
             return Task.FromResult(ResultWrapper<Keccak>.Success(txHash));
         }
@@ -459,7 +459,7 @@ namespace Nethermind.Baseline.JsonRpc
         private readonly IFileSystem _fileSystem;
         private readonly IDb _baselineDb;
         private readonly ILogger _logger;
-        private readonly ITxPoolBridge _txPoolBridge;
+        private readonly ITxSender _txSender;
         private readonly IStateReader _stateReader;
         private readonly ILogFinder _logFinder;
         private readonly IBlockFinder _blockFinder;
@@ -495,7 +495,7 @@ namespace Nethermind.Baseline.JsonRpc
             tx.GasPrice = 20.GWei();
             tx.SenderAddress = address;
 
-            Keccak txHash = _txPoolBridge.SendTransaction(tx, TxHandlingOptions.ManagedNonce);
+            Keccak txHash = _txSender.SendTransaction(tx, TxHandlingOptions.ManagedNonce);
 
             _logger.Info($"Sent transaction at price {tx.GasPrice} to {tx.SenderAddress}");
             _logger.Info($"Contract {contractType} has been deployed");
