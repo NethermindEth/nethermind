@@ -20,7 +20,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Runner.Ethereum.Context;
+using Nethermind.Runner.Ethereum.Api;
 using Nethermind.State.Repositories;
 
 namespace Nethermind.Runner.Ethereum.Steps
@@ -28,7 +28,7 @@ namespace Nethermind.Runner.Ethereum.Steps
     [RunnerStepDependencies(typeof(InitRlp), typeof(InitDatabase), typeof(InitializeBlockchain))]
     public class ResetDatabaseMigrations : IStep
     {
-        private readonly EthereumRunnerContext _context;
+        private readonly NethermindApi _api;
         [NotNull]
         private IReceiptStorage? _receiptStorage;
         [NotNull]
@@ -36,18 +36,18 @@ namespace Nethermind.Runner.Ethereum.Steps
         [NotNull]
         private IChainLevelInfoRepository? _chainLevelInfoRepository;
 
-        public ResetDatabaseMigrations(EthereumRunnerContext context)
+        public ResetDatabaseMigrations(NethermindApi api)
         {
-            _context = context;
+            _api = api;
         }
         
         public Task Execute(CancellationToken cancellationToken)
         {
-            _receiptStorage = _context.ReceiptStorage ?? throw new StepDependencyException(nameof(_context.ReceiptStorage));
-            _blockTree = _context.BlockTree ?? throw new StepDependencyException(nameof(_context.BlockTree));
-            _chainLevelInfoRepository = _context.ChainLevelInfoRepository ?? throw new StepDependencyException(nameof(_context.ChainLevelInfoRepository));
+            _receiptStorage = _api.ReceiptStorage ?? throw new StepDependencyException(nameof(_api.ReceiptStorage));
+            _blockTree = _api.BlockTree ?? throw new StepDependencyException(nameof(_api.BlockTree));
+            _chainLevelInfoRepository = _api.ChainLevelInfoRepository ?? throw new StepDependencyException(nameof(_api.ChainLevelInfoRepository));
             
-            var initConfig = _context.Config<IInitConfig>();
+            var initConfig = _api.Config<IInitConfig>();
 
             if (initConfig.StoreReceipts)
             {

@@ -19,14 +19,14 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using Nethermind.Runner.Ethereum.Context;
+using Nethermind.Runner.Ethereum.Api;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
     public class EthereumStepsLoader : IEthereumStepsLoader
     {
         private readonly Assembly[] _stepsAssemblies;
-        private readonly Type _baseContextType = typeof(EthereumRunnerContext);
+        private readonly Type _baseContextType = typeof(NethermindApi);
 
         public EthereumStepsLoader(params Assembly[] stepsAssemblies)
         {

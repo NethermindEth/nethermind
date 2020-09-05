@@ -27,9 +27,9 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
-using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Runner.Ethereum.Steps.Migrations;
 using Nethermind.Db.Blooms;
+using Nethermind.Runner.Ethereum.Api;
 using Timer = System.Timers.Timer;
 
 namespace Nethermind.Runner.Ethereum.Steps
@@ -37,11 +37,11 @@ namespace Nethermind.Runner.Ethereum.Steps
     [RunnerStepDependencies(typeof(InitRlp), typeof(InitDatabase), typeof(InitializeBlockchain), typeof(InitializeNetwork), typeof(ResetDatabaseMigrations))]
     public class DatabaseMigrations : IStep
     {
-        private readonly EthereumRunnerContext _context;
+        private readonly NethermindApi _api;
 
-        public DatabaseMigrations(EthereumRunnerContext context)
+        public DatabaseMigrations(NethermindApi api)
         {
-            _context = context;
+            _api = api;
         }
 
         public Task Execute(CancellationToken cancellationToken)
@@ -56,8 +56,8 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         private IEnumerable<IDatabaseMigration> CreateMigrations()
         {
-            yield return new BloomMigration(_context);
-            yield return new ReceiptMigration(_context);
+            yield return new BloomMigration(_api);
+            yield return new ReceiptMigration(_api);
         }
     }
 }

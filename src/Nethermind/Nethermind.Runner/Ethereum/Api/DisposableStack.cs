@@ -14,31 +14,38 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Threading;
+using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
-using Nethermind.Runner.Ethereum.Api;
 
-namespace Nethermind.Runner.Ethereum.Steps
+namespace Nethermind.Runner.Ethereum.Api
 {
-    [RunnerStepDependencies(typeof(InitializeBlockchain), typeof(ResetDatabaseMigrations))]
-    public class StartBlockProcessor : IStep
+    public class DisposableStack : Stack<IAsyncDisposable>
     {
-        private readonly NethermindApi _api;
-
-        public StartBlockProcessor(NethermindApi api)
+        public void Push(IDisposable item)
         {
-            _api = api;
+            Push(new AsyncDisposableWrapper(item));
         }
-        
-        public Task Execute(CancellationToken _)
+
+        private class AsyncDisposableWrapper : IAsyncDisposable
         {
-            if (_api.BlockchainProcessor == null)
+            private readonly IDisposable _item;
+
+            public AsyncDisposableWrapper(IDisposable item)
             {
-                throw new StepDependencyException(nameof(_api.BlockchainProcessor));
+                _item = item;
             }
-            
-            _api.BlockchainProcessor.Start();
-            return Task.CompletedTask;
+
+            public ValueTask DisposeAsync()
+            {
+                _item?.Dispose();
+                return default;
+            }
+
+            public override string? ToString()
+            {
+                return _item?.ToString() ?? base.ToString();
+            }
         }
     }
 }

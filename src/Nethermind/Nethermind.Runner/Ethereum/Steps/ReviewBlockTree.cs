@@ -19,25 +19,25 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Logging;
-using Nethermind.Runner.Ethereum.Context;
+using Nethermind.Runner.Ethereum.Api;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
     [RunnerStepDependencies(typeof(StartBlockProcessor))]
     public class ReviewBlockTree : IStep
     {
-        private readonly EthereumRunnerContext _context;
+        private readonly NethermindApi _api;
         private ILogger _logger;
 
-        public ReviewBlockTree(EthereumRunnerContext context)
+        public ReviewBlockTree(NethermindApi api)
         {
-            _context = context;
-            _logger = _context.LogManager.GetClassLogger();
+            _api = api;
+            _logger = _api.LogManager.GetClassLogger();
         }
 
         public Task Execute(CancellationToken cancellationToken)
         {
-            if (_context.Config<IInitConfig>().ProcessingEnabled)
+            if (_api.Config<IInitConfig>().ProcessingEnabled)
             {
                 return RunBlockTreeInitTasks(cancellationToken);
             }
@@ -49,18 +49,18 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         private async Task RunBlockTreeInitTasks(CancellationToken cancellationToken)
         {
-            ISyncConfig syncConfig = _context.Config<ISyncConfig>();
+            ISyncConfig syncConfig = _api.Config<ISyncConfig>();
             if (!syncConfig.SynchronizationEnabled)
             {
                 return;
             }
             
-            if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
+            if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
 
             if (!syncConfig.FastSync && !syncConfig.BeamSync)
             {
-                DbBlocksLoader loader = new DbBlocksLoader(_context.BlockTree, _logger);
-                await _context.BlockTree.Accept(loader, cancellationToken).ContinueWith(t =>
+                DbBlocksLoader loader = new DbBlocksLoader(_api.BlockTree, _logger);
+                await _api.BlockTree.Accept(loader, cancellationToken).ContinueWith(t =>
                 {
                     if (t.IsFaulted)
                     {
@@ -74,8 +74,8 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
             else
             {
-                StartupBlockTreeFixer fixer = new StartupBlockTreeFixer(_context.Config<ISyncConfig>(), _context.BlockTree, _logger);
-                await _context.BlockTree.Accept(fixer, cancellationToken).ContinueWith(t =>
+                StartupBlockTreeFixer fixer = new StartupBlockTreeFixer(_api.Config<ISyncConfig>(), _api.BlockTree, _logger);
+                await _api.BlockTree.Accept(fixer, cancellationToken).ContinueWith(t =>
                 {
                     if (t.IsFaulted)
                     {

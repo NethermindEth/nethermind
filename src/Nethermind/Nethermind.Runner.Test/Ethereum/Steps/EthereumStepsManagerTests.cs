@@ -20,7 +20,7 @@ using System.Threading.Tasks;
 using FluentAssertions.Execution;
 using Nethermind.Config;
 using Nethermind.Logging;
-using Nethermind.Runner.Ethereum.Context;
+using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Runner.Ethereum.Steps;
 using NUnit.Framework;
 
@@ -32,7 +32,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         [Test]
         public async Task When_no_assemblies_defined()
         {
-            EthereumRunnerContext runnerContext = new EthereumRunnerContext(
+            NethermindApi runnerContext = new NethermindApi(
                 new ConfigProvider(),
                 LimboLogs.Instance);
 
@@ -49,7 +49,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         [Test]
         public async Task With_steps_from_here()
         {
-            EthereumRunnerContext runnerContext = new EthereumRunnerContext(
+            NethermindApi runnerContext = new NethermindApi(
                 new ConfigProvider(),
                 LimboLogs.Instance);
 
@@ -77,7 +77,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         [Test]
         public async Task With_steps_from_here_Clique()
         {
-            EthereumRunnerContext runnerContext = new CliqueEthereumRunnerContext(
+            NethermindApi runnerContext = new CliqueNethermindApi(
                 new ConfigProvider(),
                 LimboLogs.Instance);
 
@@ -105,7 +105,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         [Test]
         public async Task With_failing_steps()
         {
-            EthereumRunnerContext runnerContext = new AuRaEthereumRunnerContext(
+            NethermindApi runnerContext = new AuRaNethermindApi(
                 new ConfigProvider(),
                 LimboLogs.Instance);
 
@@ -138,7 +138,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             await Task.Delay(100000, cancellationToken);
         }
 
-        public StepLong(EthereumRunnerContext runnerContext)
+        public StepLong(NethermindApi runnerContext)
         {
         }
     }
@@ -150,7 +150,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             await Task.Delay(100000);
         }
 
-        public StepForever(EthereumRunnerContext runnerContext)
+        public StepForever(NethermindApi runnerContext)
         {
         }
     }
@@ -162,7 +162,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             return Task.CompletedTask;
         }
 
-        public StepA(EthereumRunnerContext runnerContext)
+        public StepA(NethermindApi runnerContext)
         {
         }
     }
@@ -175,7 +175,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             return Task.CompletedTask;
         }
 
-        public StepB(EthereumRunnerContext runnerContext)
+        public StepB(NethermindApi runnerContext)
         {
         }
     }
@@ -201,7 +201,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
     /// </summary>
     public class StepCAuRa : StepC
     {
-        public StepCAuRa(AuRaEthereumRunnerContext runnerContext)
+        public StepCAuRa(AuRaNethermindApi runnerContext)
         {
         }
 
@@ -213,7 +213,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
 
     public class StepCClique : StepC, IStep
     {
-        public StepCClique(CliqueEthereumRunnerContext runnerContext)
+        public StepCClique(CliqueNethermindApi runnerContext)
         {
         }
 
@@ -227,7 +227,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
 
     public class StepCStandard : StepC
     {
-        public StepCStandard(EthereumRunnerContext runnerContext)
+        public StepCStandard(NethermindApi runnerContext)
         {
         }
     }

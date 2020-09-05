@@ -37,7 +37,6 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.KeyStore;
 using Nethermind.Logging;
 using Nethermind.Monitoring;
-using Nethermind.Network;
 using Nethermind.Serialization.Json;
 using Nethermind.Db.Blooms;
 using Nethermind.TxPool;
@@ -59,6 +58,7 @@ namespace Nethermind.DataMarketplace.Test.Infrastructure
         private IBlockTree _blockTree;
         private ISpecProvider _specProvider;
         private ITxPool _transactionPool;
+        private ITxSender _txSender;
         private IReceiptStorage _receiptStorage;
         private IFilterStore _filterStore;
         private IFilterManager _filterManager;
@@ -97,6 +97,7 @@ namespace Nethermind.DataMarketplace.Test.Infrastructure
             _blockTree = Substitute.For<IBlockTree>();
             _specProvider = Substitute.For<ISpecProvider>();
             _transactionPool = Substitute.For<ITxPool>();
+            _txSender = Substitute.For<ITxSender>();
             _receiptStorage = Substitute.For<IReceiptStorage>();
             _filterStore = Substitute.For<IFilterStore>();
             _filterManager = Substitute.For<IFilterManager>();
@@ -127,7 +128,7 @@ namespace Nethermind.DataMarketplace.Test.Infrastructure
         public void init_should_return_services()
         {
             var services = _ndmModule.Init(new NdmRequiredServices(_configProvider, _configManager, _ndmConfig,
-                _baseDbPath, _rocksProvider, _mongoProvider, _logManager, _blockTree, _transactionPool, _specProvider,
+                _baseDbPath, _rocksProvider, _mongoProvider, _logManager, _blockTree, _transactionPool, _txSender, _specProvider,
                 _receiptStorage, _filterStore, _filterManager, _wallet, _timestamper, _ecdsa, _keyStore,
                 _rpcModuleProvider, _jsonSerializer, _cryptoRandom, _enode, _ndmConsumerChannelManager,
                 _ndmDataPublisher, _grpcServer, _ethRequestService, _notifier, _enableUnsecuredDevWallet,

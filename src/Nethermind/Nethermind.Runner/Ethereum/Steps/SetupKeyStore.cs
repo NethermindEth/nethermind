@@ -30,7 +30,7 @@ using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
-using Nethermind.Runner.Ethereum.Context;
+using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Wallet;
 
 namespace Nethermind.Runner.Ethereum.Steps
@@ -38,11 +38,11 @@ namespace Nethermind.Runner.Ethereum.Steps
     [RunnerStepDependencies]
     public class SetupKeyStore : IStep
     {
-        private readonly EthereumRunnerContext _context;
+        private readonly NethermindApi _api;
 
-        public SetupKeyStore(EthereumRunnerContext context)
+        public SetupKeyStore(NethermindApi api)
         {
-            _context = context;
+            _api = api;
         }
 
         public async Task Execute(CancellationToken cancellationToken)
@@ -50,35 +50,35 @@ namespace Nethermind.Runner.Ethereum.Steps
             // why is the await Task.Run here?
             await Task.Run(() =>
             {
-                IKeyStoreConfig keyStoreConfig = _context.Config<IKeyStoreConfig>();
-                INetworkConfig networkConfig = _context.Config<INetworkConfig>();
+                IKeyStoreConfig keyStoreConfig = _api.Config<IKeyStoreConfig>();
+                INetworkConfig networkConfig = _api.Config<INetworkConfig>();
 
                 AesEncrypter encrypter = new AesEncrypter(
                     keyStoreConfig,
-                    _context.LogManager);
+                    _api.LogManager);
 
-                _context.KeyStore = new FileKeyStore(
+                _api.KeyStore = new FileKeyStore(
                     keyStoreConfig,
-                    _context.EthereumJsonSerializer,
+                    _api.EthereumJsonSerializer,
                     encrypter,
-                    _context.CryptoRandom,
-                    _context.LogManager);
+                    _api.CryptoRandom,
+                    _api.LogManager);
 
-                _context.Wallet = _context.Config<IInitConfig>() switch
+                _api.Wallet = _api.Config<IInitConfig>() switch
                 {
-                    var config when config.EnableUnsecuredDevWallet && config.KeepDevWalletInMemory => new DevWallet(_context.Config<IWalletConfig>(), _context.LogManager),
-                    var config when config.EnableUnsecuredDevWallet && !config.KeepDevWalletInMemory => new DevKeyStoreWallet(_context.KeyStore, _context.LogManager),
-                    _ => new ProtectedKeyStoreWallet(_context.KeyStore, new ProtectedPrivateKeyFactory(_context.CryptoRandom, _context.Timestamper), _context.Timestamper, _context.LogManager),
+                    var config when config.EnableUnsecuredDevWallet && config.KeepDevWalletInMemory => new DevWallet(_api.Config<IWalletConfig>(), _api.LogManager),
+                    var config when config.EnableUnsecuredDevWallet && !config.KeepDevWalletInMemory => new DevKeyStoreWallet(_api.KeyStore, _api.LogManager),
+                    _ => new ProtectedKeyStoreWallet(_api.KeyStore, new ProtectedPrivateKeyFactory(_api.CryptoRandom, _api.Timestamper), _api.Timestamper, _api.LogManager),
                 };
 
-                new AccountUnlocker(keyStoreConfig, _context.Wallet, new FileSystem(), _context.LogManager).UnlockAccounts();
+                new AccountUnlocker(keyStoreConfig, _api.Wallet, new FileSystem(), _api.LogManager).UnlockAccounts();
 
-                INodeKeyManager nodeKeyManager = new NodeKeyManager(_context.CryptoRandom, _context.KeyStore, keyStoreConfig, _context.LogManager);
-                _context.NodeKey = nodeKeyManager.LoadNodeKey();
-                _context.OriginalSignerKey = nodeKeyManager.LoadSignerKey();
-                _context.Enode = new Enode(_context.NodeKey.PublicKey, IPAddress.Parse(networkConfig.ExternalIp), networkConfig.P2PPort);
+                INodeKeyManager nodeKeyManager = new NodeKeyManager(_api.CryptoRandom, _api.KeyStore, keyStoreConfig, _api.LogManager);
+                _api.NodeKey = nodeKeyManager.LoadNodeKey();
+                _api.OriginalSignerKey = nodeKeyManager.LoadSignerKey();
+                _api.Enode = new Enode(_api.NodeKey.PublicKey, IPAddress.Parse(networkConfig.ExternalIp), networkConfig.P2PPort);
                 
-                _context.LogManager.SetGlobalVariable("enode", _context.Enode.ToString());
+                _api.LogManager.SetGlobalVariable("enode", _api.Enode.ToString());
             }, cancellationToken);
         }
     }

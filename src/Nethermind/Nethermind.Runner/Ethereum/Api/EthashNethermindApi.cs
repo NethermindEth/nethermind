@@ -14,38 +14,16 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
-using System.Collections.Generic;
-using System.Threading.Tasks;
+using Nethermind.Config;
+using Nethermind.Logging;
 
-namespace Nethermind.Runner.Ethereum.Context
+namespace Nethermind.Runner.Ethereum.Api
 {
-    public class DisposableStack : Stack<IAsyncDisposable>
+    public class EthashNethermindApi : NethermindApi
     {
-        public void Push(IDisposable item)
+        public EthashNethermindApi(IConfigProvider configProvider, ILogManager logManager)
+            : base(configProvider, logManager)
         {
-            Push(new AsyncDisposableWrapper(item));
-        }
-
-        private class AsyncDisposableWrapper : IAsyncDisposable
-        {
-            private readonly IDisposable _item;
-
-            public AsyncDisposableWrapper(IDisposable item)
-            {
-                _item = item;
-            }
-
-            public ValueTask DisposeAsync()
-            {
-                _item?.Dispose();
-                return default;
-            }
-
-            public override string? ToString()
-            {
-                return _item?.ToString() ?? base.ToString();
-            }
         }
     }
 }

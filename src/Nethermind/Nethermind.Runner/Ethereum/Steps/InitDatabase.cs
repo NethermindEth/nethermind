@@ -28,7 +28,7 @@ using Nethermind.Db.Rocks.Config;
 using Nethermind.Db.Rpc;
 using Nethermind.JsonRpc.Client;
 using Nethermind.Logging;
-using Nethermind.Runner.Ethereum.Context;
+using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Synchronization.BeamSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.StateSync;
@@ -37,21 +37,21 @@ namespace Nethermind.Runner.Ethereum.Steps
 {
     public class InitDatabase : IStep
     {
-        private readonly EthereumRunnerContext _context;
+        private readonly NethermindApi _api;
 
-        public InitDatabase(EthereumRunnerContext context)
+        public InitDatabase(NethermindApi api)
         {
-            _context = context;
+            _api = api;
         }
 
         public async Task Execute(CancellationToken _)
         {
-            ILogger logger = _context.LogManager.GetClassLogger();
+            ILogger logger = _api.LogManager.GetClassLogger();
 
             /* sync */
-            IDbConfig dbConfig = _context.Config<IDbConfig>();
-            ISyncConfig syncConfig = _context.Config<ISyncConfig>();
-            IInitConfig initConfig = _context.Config<IInitConfig>();
+            IDbConfig dbConfig = _api.Config<IDbConfig>();
+            ISyncConfig syncConfig = _api.Config<ISyncConfig>();
+            IInitConfig initConfig = _api.Config<IInitConfig>();
 
             foreach (PropertyInfo propertyInfo in typeof(IDbConfig).GetProperties())
             {
@@ -60,12 +60,12 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             try
             {
-                _context.DbProvider = await GetDbProvider(initConfig, dbConfig, initConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync);
+                _api.DbProvider = await GetDbProvider(initConfig, dbConfig, initConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync);
                 if (syncConfig.BeamSync)
                 {
-                    _context.SyncModeSelector = new PendingSyncModeSelector();
-                    BeamSyncDbProvider beamSyncProvider = new BeamSyncDbProvider(_context.SyncModeSelector, _context.DbProvider, _context.Config<ISyncConfig>(), _context.LogManager);
-                    _context.DbProvider = beamSyncProvider;
+                    _api.SyncModeSelector = new PendingSyncModeSelector();
+                    BeamSyncDbProvider beamSyncProvider = new BeamSyncDbProvider(_api.SyncModeSelector, _api.DbProvider, _api.Config<ISyncConfig>(), _api.LogManager);
+                    _api.DbProvider = beamSyncProvider;
                 }
             }
             catch(TypeInitializationException)
@@ -82,7 +82,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             {
                 case DiagnosticMode.RpcDb:
                     rocksDb = await GetRocksDbProvider(dbConfig, Path.Combine(initConfig.BaseDbPath, "debug"), storeReceipts);
-                    return new RpcDbProvider(_context.EthereumJsonSerializer, new BasicJsonRpcClient(new Uri(initConfig.RpcDbUrl), _context.EthereumJsonSerializer, _context.LogManager), _context.LogManager, rocksDb);
+                    return new RpcDbProvider(_api.EthereumJsonSerializer, new BasicJsonRpcClient(new Uri(initConfig.RpcDbUrl), _api.EthereumJsonSerializer, _api.LogManager), _api.LogManager, rocksDb);
                 case DiagnosticMode.ReadOnlyDb:
                     rocksDb = await GetRocksDbProvider(dbConfig, Path.Combine(initConfig.BaseDbPath, "debug"), storeReceipts);
                     return new ReadOnlyDbProvider(rocksDb, storeReceipts);
@@ -95,8 +95,8 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         private async Task<RocksDbProvider> GetRocksDbProvider(IDbConfig dbConfig, string basePath, bool useReceiptsDb)
         {
-            IInitConfig initConfig = _context.Config<IInitConfig>();
-            RocksDbProvider debugRecorder = new RocksDbProvider(_context.LogManager, _context.Config<INdmConfig>().Enabled);
+            IInitConfig initConfig = _api.Config<IInitConfig>();
+            RocksDbProvider debugRecorder = new RocksDbProvider(_api.LogManager, _api.Config<INdmConfig>().Enabled);
             ThisNodeInfo.AddInfo("DB location  :", $"{basePath}");
             await debugRecorder.Init(basePath, dbConfig, useReceiptsDb);
             return debugRecorder;

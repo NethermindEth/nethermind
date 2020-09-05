@@ -24,25 +24,25 @@ using Nethermind.Blockchain.Analytics;
 using Nethermind.Logging;
 using Nethermind.PubSub;
 using Nethermind.Runner.Analytics;
-using Nethermind.Runner.Ethereum.Context;
+using Nethermind.Runner.Ethereum.Api;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
     [RunnerStepDependencies(typeof(InitializeBlockchain), typeof(StartGrpcProducer), typeof(StartKafkaProducer), typeof(StartLogProducer))]
     public class AddSubscriptions : IStep
     {
-        private readonly EthereumRunnerContext _context;
+        private readonly NethermindApi _api;
         private ILogger _logger;
 
-        public AddSubscriptions(EthereumRunnerContext context)
+        public AddSubscriptions(NethermindApi api)
         {
-            _context = context;
-            _logger = context.LogManager.GetClassLogger();
+            _api = api;
+            _logger = api.LogManager.GetClassLogger();
         }
 
         public Task Execute(CancellationToken cancellationToken)
         {
-            IAnalyticsConfig analyticsConfig = _context.Config<IAnalyticsConfig>();
+            IAnalyticsConfig analyticsConfig = _api.Config<IAnalyticsConfig>();
             InitBlocksStreaming(analyticsConfig);
             InitTransactionStreaming(analyticsConfig);
             LoadPlugins(analyticsConfig);
@@ -54,8 +54,8 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (analyticsConfig.StreamBlocks)
             {
                 BlocksSubscription subscription =
-                    new BlocksSubscription(_context.Producers, _context.MainBlockProcessor, _context.LogManager);
-                _context.DisposeStack.Push(subscription);
+                    new BlocksSubscription(_api.Producers, _api.MainBlockProcessor, _api.LogManager);
+                _api.DisposeStack.Push(subscription);
             }
         }
 
@@ -64,8 +64,8 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (analyticsConfig.StreamTransactions)
             {
                 TransactionsSubscription subscription =
-                    new TransactionsSubscription(_context.Producers, _context.MainBlockProcessor, _context.LogManager);
-                _context.DisposeStack.Push(subscription);
+                    new TransactionsSubscription(_api.Producers, _api.MainBlockProcessor, _api.LogManager);
+                _api.DisposeStack.Push(subscription);
             }
         }
 
@@ -73,7 +73,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         {
             if (analyticsConfig.PluginsEnabled)
             {
-                IInitConfig initConfig = _context.Config<IInitConfig>();
+                IInitConfig initConfig = _api.Config<IInitConfig>();
                 string fullPluginsDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory!, initConfig.PluginsDirectory);
                 if (!Directory.Exists(fullPluginsDir))
                 {
@@ -106,10 +106,10 @@ namespace Nethermind.Runner.Ethereum.Steps
         {
             if (logger.IsInfo) logger.Info($"Activating pluging {type.Name}");
             IAnalyticsPluginLoader? pluginLoader = Activator.CreateInstance(type) as IAnalyticsPluginLoader;
-            foreach (IProducer producer in _context.Producers)
+            foreach (IProducer producer in _api.Producers)
             {
                 var bridge = new TxPublisherBridge(producer);
-                pluginLoader?.Init(_context.FileSystem, _context.TxPool, _context.BlockTree, _context.MainBlockProcessor, bridge, _context.LogManager);
+                pluginLoader?.Init(_api.FileSystem, _api.TxPool, _api.BlockTree, _api.MainBlockProcessor, bridge, _api.LogManager);
             }
         }
 

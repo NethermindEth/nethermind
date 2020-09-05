@@ -17,14 +17,14 @@
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
-using Nethermind.Runner.Ethereum.Context;
+using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
     public class InitRlpAuRa : InitRlp
     {
-        public InitRlpAuRa(AuRaEthereumRunnerContext context) : base(context) { }
+        public InitRlpAuRa(AuRaNethermindApi context) : base(context) { }
 
         public override Task Execute(CancellationToken cancellationToken)
         {

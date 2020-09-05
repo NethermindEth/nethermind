@@ -47,6 +47,7 @@
     <ProjectReference Include="..\Nethermind.Logging.NLog\Nethermind.Logging.NLog.csproj" />
     <ProjectReference Include="..\Nethermind.Monitoring\Nethermind.Monitoring.csproj" />
     <ProjectReference Include="..\Nethermind.Network\Nethermind.Network.csproj" />
+    <ProjectReference Include="..\Nethermind.Provide.Vault\Nethermind.Provide.Vault.csproj" />
     <ProjectReference Include="..\Nethermind.PubSub.Kafka\Nethermind.PubSub.Kafka.csproj" />
     <ProjectReference Include="..\Nethermind.PubSub\Nethermind.PubSub.csproj" />
     <ProjectReference Include="..\Nethermind.Specs\Nethermind.Specs.csproj" />
@@ -54,7 +55,6 @@
     <ProjectReference Include="..\Nethermind.Synchronization\Nethermind.Synchronization.csproj" />
     <ProjectReference Include="..\Nethermind.WebSockets\Nethermind.WebSockets.csproj" />
     <ProjectReference Include="..\Nethermind.Baseline\Nethermind.Baseline.csproj" />
-    <ProjectReference Include="..\Nethermind.Vault\Nethermind.Vault.csproj" />
     <ProjectReference Include="..\Nethermind.Seq\Nethermind.Seq.csproj" />
   </ItemGroup>
   <ItemGroup>

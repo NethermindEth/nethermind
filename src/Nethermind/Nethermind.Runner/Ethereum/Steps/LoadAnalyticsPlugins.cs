@@ -23,7 +23,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Analytics;
 using Nethermind.Grpc;
 using Nethermind.Logging;
-using Nethermind.Runner.Ethereum.Context;
+using Nethermind.Runner.Ethereum.Api;
 using YamlDotNet.Serialization.TypeInspectors;
 
 namespace Nethermind.Runner.Ethereum.Steps
@@ -31,12 +31,12 @@ namespace Nethermind.Runner.Ethereum.Steps
     [RunnerStepDependencies(typeof(InitializeNetwork))]
     public class LoadAnalyticsPlugins : IStep
     {
-        private readonly EthereumRunnerContext _context;
+        private readonly NethermindApi _api;
         private readonly ILogger _logger;
 
-        public LoadAnalyticsPlugins(EthereumRunnerContext context)
+        public LoadAnalyticsPlugins(NethermindApi context)
         {
-            _context = context ?? throw new ArgumentNullException(nameof(context));
+            _api = context ?? throw new ArgumentNullException(nameof(context));
             _logger = context.LogManager.GetClassLogger();
         }
 
@@ -103,8 +103,8 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         public virtual Task Execute(CancellationToken cancellationToken)
         {
-            IInitConfig initConfig = _context.Config<IInitConfig>();
-            IGrpcConfig grpcConfig = _context.Config<IGrpcConfig>();
+            IInitConfig initConfig = _api.Config<IInitConfig>();
+            IGrpcConfig grpcConfig = _api.Config<IGrpcConfig>();
             
             string fullPluginsDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory!, initConfig.PluginsDirectory);
             if (!Directory.Exists(fullPluginsDir))
@@ -139,12 +139,12 @@ namespace Nethermind.Runner.Ethereum.Steps
                         if (grpcConfig.Enabled)
                         {
                             if(_logger.IsWarn) _logger.Warn($"Initializing gRPC for {type.Name}");
-                            pluginLoader?.Init(_context.FileSystem, _context.TxPool, _context.BlockTree, _context.MainBlockProcessor, new GrpcPublisher(_context.GrpcServer!), _context.LogManager);
+                            pluginLoader?.Init(_api.FileSystem, _api.TxPool, _api.BlockTree, _api.MainBlockProcessor, new GrpcPublisher(_api.GrpcServer!), _api.LogManager);
                         }
                         else
                         {
                             if(_logger.IsWarn) _logger.Warn($"Initializing log publisher for {type.Name}");
-                            pluginLoader?.Init(_context.FileSystem, _context.TxPool, _context.BlockTree, _context.MainBlockProcessor, new LogDataPublisher(_context.LogManager), _context.LogManager);
+                            pluginLoader?.Init(_api.FileSystem, _api.TxPool, _api.BlockTree, _api.MainBlockProcessor, new LogDataPublisher(_api.LogManager), _api.LogManager);
                         }
                     }
                 }

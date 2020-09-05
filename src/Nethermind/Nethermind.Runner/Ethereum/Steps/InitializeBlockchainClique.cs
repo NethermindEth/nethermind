@@ -19,40 +19,40 @@ using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Clique;
-using Nethermind.Runner.Ethereum.Context;
+using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Wallet;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
     public class InitializeBlockchainClique : InitializeBlockchain
     {
-        private readonly CliqueEthereumRunnerContext _context;
+        private readonly CliqueNethermindApi _api;
 
-        public InitializeBlockchainClique(CliqueEthereumRunnerContext context) : base(context)
+        public InitializeBlockchainClique(CliqueNethermindApi api) : base(api)
         {
-            _context = context;
+            _api = api;
         }
 
         protected override void InitSealEngine()
         {
-            if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
-            if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
-            if (_context.EthereumEcdsa == null) throw new StepDependencyException(nameof(_context.EthereumEcdsa));
-            if (_context.DbProvider == null) throw new StepDependencyException(nameof(_context.DbProvider));
-            if (_context.Signer == null) throw new StepDependencyException(nameof(_context.Signer));
+            if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
+            if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
+            if (_api.EthereumEcdsa == null) throw new StepDependencyException(nameof(_api.EthereumEcdsa));
+            if (_api.DbProvider == null) throw new StepDependencyException(nameof(_api.DbProvider));
+            if (_api.Signer == null) throw new StepDependencyException(nameof(_api.Signer));
         
-            _context.RewardCalculatorSource = NoBlockRewards.Instance;
-            CliqueConfig cliqueConfig = new CliqueConfig {BlockPeriod = _context.ChainSpec.Clique.Period, Epoch = _context.ChainSpec.Clique.Epoch};
-            _context.SnapshotManager = new SnapshotManager(cliqueConfig, _context.DbProvider.BlocksDb, _context.BlockTree, _context.EthereumEcdsa, _context.LogManager);
-            _context.SealValidator = new CliqueSealValidator(cliqueConfig, _context.SnapshotManager, _context.LogManager);
-            _context.RecoveryStep = new CompositeDataRecoveryStep(_context.RecoveryStep, new AuthorRecoveryStep(_context.SnapshotManager));
-            if (_context.Config<IInitConfig>().IsMining)
+            _api.RewardCalculatorSource = NoBlockRewards.Instance;
+            CliqueConfig cliqueConfig = new CliqueConfig {BlockPeriod = _api.ChainSpec.Clique.Period, Epoch = _api.ChainSpec.Clique.Epoch};
+            _api.SnapshotManager = new SnapshotManager(cliqueConfig, _api.DbProvider.BlocksDb, _api.BlockTree, _api.EthereumEcdsa, _api.LogManager);
+            _api.SealValidator = new CliqueSealValidator(cliqueConfig, _api.SnapshotManager, _api.LogManager);
+            _api.RecoveryStep = new CompositeDataRecoveryStep(_api.RecoveryStep, new AuthorRecoveryStep(_api.SnapshotManager));
+            if (_api.Config<IInitConfig>().IsMining)
             {
-                _context.Sealer = new CliqueSealer(_context.Signer, cliqueConfig, _context.SnapshotManager, _context.LogManager);
+                _api.Sealer = new CliqueSealer(_api.Signer, cliqueConfig, _api.SnapshotManager, _api.LogManager);
             }
             else
             {
-                ((EthereumRunnerContext)_context).Sealer = NullSealEngine.Instance;
+                ((NethermindApi)_api).Sealer = NullSealEngine.Instance;
             }
         }
     }

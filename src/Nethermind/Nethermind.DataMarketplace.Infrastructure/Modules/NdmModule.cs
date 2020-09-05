@@ -56,7 +56,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
             var jsonRpcConfig = services.ConfigProvider.GetConfig<IJsonRpcConfig>();
             var blockchainBridge = new BlockchainBridge(
                 readOnlyTxProcessingEnv,
-                services.TransactionPool,
+                services.TxPool,
                 services.ReceiptFinder,
                 services.FilterStore,
                 services.FilterManager,
@@ -66,8 +66,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
                 logManager,
                 false,
                 jsonRpcConfig.FindLogBlockDepthLimit);
-            var txSigner = new WalletTxSigner(services.Wallet, services.SpecProvider.ChainId);
-            var txSender = new TxPoolSender(services.TransactionPool, new NonceReservingTxSealer(txSigner, services.Timestamper, services.TransactionPool));
+            
             var dataAssetRlpDecoder = new DataAssetDecoder();
             var encoder = new AbiEncoder();
 
@@ -84,7 +83,8 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
             }
             else
             {
-                ndmBlockchainBridge = new NdmBlockchainBridge(blockchainBridge, services.BlockTree, readOnlyTxProcessingEnv.StateReader, txSender);
+                ndmBlockchainBridge = new NdmBlockchainBridge(
+                    blockchainBridge, services.BlockTree, readOnlyTxProcessingEnv.StateReader, services.TxSender);
             }
 
             var gasPriceService = new GasPriceService(services.HttpClient, configManager, configId, timestamper,
