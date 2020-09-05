@@ -10,7 +10,7 @@
     <ProjectReference Include="..\Nethermind.Config\Nethermind.Config.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Provide" Version="2.0.1" />
+    <PackageReference Include="Provide" Version="2.0.2" />
   </ItemGroup>
 
 </Project>
