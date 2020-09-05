@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,18 +15,31 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Rlp;
+using Nethermind.TxPool;
 
-namespace Nethermind.TxPool
+namespace Nethermind.Vault
 {
-    public interface ITxSigner : ITxSealer
+    public class VaultTxSigner : ITxSigner
     {
-        ValueTask Sign(Transaction tx);
+        private readonly IVaultWallet _vaultWallet;
+        private readonly int _chainId;
 
-        void ITxSealer.Seal(Transaction tx)
+        public VaultTxSigner(IVaultWallet vaultWallet, int chainId)
         {
-            Sign(tx);
+            _vaultWallet = vaultWallet ?? throw new ArgumentNullException(nameof(vaultWallet));
+            _chainId = chainId;
+        }
+        
+        public async ValueTask Sign(Transaction tx)
+        {
+            Keccak hash = Keccak.Compute(Rlp.Encode(tx, true, true, _chainId).Bytes);
+            tx.Signature = await _vaultWallet.Sign(tx.SenderAddress, hash);
+            tx.Signature.V = tx.Signature.V + 8 + 2 * _chainId;
         }
     }
 }

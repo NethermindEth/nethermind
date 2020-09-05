@@ -42,6 +42,7 @@ using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
 using Nethermind.Vault;
 using Nethermind.Vault.Config;
+using Nethermind.Wallet;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
@@ -101,13 +102,19 @@ namespace Nethermind.Runner.Ethereum.Steps
             NonceReservingTxSealer nonceReservingTxSealer =
                 new NonceReservingTxSealer(_api.Signer, _api.Timestamper, _api.TxPool);
 
-            if (_api.Config<IVaultConfig>().Enabled)
+            IVaultConfig vaultConfig = _api.Config<IVaultConfig>(); 
+            if (vaultConfig.Enabled)
             {
                 _api.TxSender = new TxPoolSender(_api.TxPool, standardSealer, nonceReservingTxSealer);
             }
             else
             {
-                _api.TxSender = new VaultTxSender(_api.Config<IVaultConfig>());
+                IVaultService vaultService = new VaultService(vaultConfig, _api.LogManager);
+                IVaultWallet wallet = new VaultWallet(vaultService, vaultConfig.VaultId, _api.LogManager);
+                ITxSigner vaultSigner = new VaultTxSigner(wallet, _api.ChainSpec.ChainId);
+                
+                // change vault to provide, use sealer to set the gas price as well
+                _api.TxSender = new VaultTxSender(vaultSigner, vaultConfig);
             }
 
             IBloomConfig? bloomConfig = _api.Config<IBloomConfig>();

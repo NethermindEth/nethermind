@@ -15,6 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
+using System.Collections.Generic;
 using System.Numerics;
 using System.Threading.Tasks;
 using Ipfs;
@@ -29,10 +31,12 @@ namespace Nethermind.Vault
 {
     public class VaultTxSender : ITxSender
     {
+        private readonly ITxSigner _txSigner;
         private NChain _provide;
 
-        public VaultTxSender(IVaultConfig vaultConfig)
+        public VaultTxSender(ITxSigner txSigner, IVaultConfig vaultConfig)
         {
+            _txSigner = txSigner;
             _provide = new NChain(
                 vaultConfig.Host,
                 vaultConfig.Path,
@@ -49,6 +53,13 @@ namespace Nethermind.Vault
             provideTx.Signer = tx.SenderAddress.ToString();
             provideTx.To = tx.To.ToString();
             provideTx.Value = (BigInteger)tx.Value;
+            provideTx.Params = new Dictionary<string, object>
+            {
+                {"subsidize", true}
+            };
+
+            // this should happen after we set the GasPrice
+            _txSigner.Seal(tx);
 
             ProvideTx createdTx = await _provide.CreateTransaction(provideTx);
             return new Keccak(createdTx.Hash);
