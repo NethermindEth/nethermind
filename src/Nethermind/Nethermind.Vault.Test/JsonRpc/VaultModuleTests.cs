@@ -186,7 +186,7 @@ namespace Nethermind.Vault.Test.JsonRpc
 
             foreach (Key listedKey in listKeysResponse.Data)
             {
-                listedKey.Address.Should().NotBeNullOrEmpty();
+                listedKey.Address.Should().NotBeNullOrEmpty(listedKey.Name + " " + listedKey.Description);
             }
         }
 

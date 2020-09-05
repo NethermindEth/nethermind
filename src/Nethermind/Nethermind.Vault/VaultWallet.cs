@@ -158,7 +158,7 @@ namespace Nethermind.Vault
             
             if (key.Address == null)
             {
-                throw new ArgumentException($"Can only convert keys with {nameof(key.Address)} that is not NULL");
+                throw new ArgumentException($"Can only convert keys with {nameof(key.Address)} that is not NULL ({key.Name})");
             }
 
             Address address = new Address(key.Address);
