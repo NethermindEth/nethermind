@@ -114,7 +114,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 ITxSigner vaultSigner = new VaultTxSigner(wallet, _api.ChainSpec.ChainId);
                 
                 // change vault to provide, use sealer to set the gas price as well
-                _api.TxSender = new VaultTxSender(vaultSigner, vaultConfig);
+                _api.TxSender = new VaultTxSender(vaultSigner, vaultConfig, _api.ChainSpec.ChainId);
             }
 
             IBloomConfig? bloomConfig = _api.Config<IBloomConfig>();
