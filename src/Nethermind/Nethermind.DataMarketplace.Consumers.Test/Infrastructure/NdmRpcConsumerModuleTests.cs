@@ -91,11 +91,11 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         }
 
         [Test]
-        public void given_personal_bridge_list_accounts_should_return_accounts()
+        public void given_wallet_list_accounts_should_return_accounts()
         {
-            _wallet.ListAccounts().Returns(new[] {TestItem.AddressA});
+            _wallet.GetAccounts().Returns(new[] {TestItem.AddressA});
             var result = _rpc.ndm_listAccounts();
-            _wallet.Received().ListAccounts();
+            _wallet.Received().GetAccounts();
             result.Data.Should().ContainSingle();
             var account = result.Data.Single();
             account.Should().NotBeNull();
