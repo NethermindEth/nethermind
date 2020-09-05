@@ -14,32 +14,22 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Collections.Generic;
-using System.Security;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Vault.Styles;
 
 namespace Nethermind.Vault
 {
     public interface IVaultWallet
     {
         Task<Address[]> GetAccounts();
-        Task<Address> NewAccount(Dictionary<string, object> parameters);
+        
+        Task<Address> CreateAccount();
+        
         Task DeleteAccount(Address address);
+        
         Task<Signature> Sign(Address address, Keccak message);
+        
         Task<bool> Verify(Address address, Keccak message, Signature signature);
-        Task<string> SetWalletVault();
-
-        public Task<Address> NewAccount(KeyArgs args) 
-        {
-            return NewAccount(new Dictionary<string, object> 
-            {
-                {
-                    "keyArgs", args
-                }
-            });
-        }
     }
 }

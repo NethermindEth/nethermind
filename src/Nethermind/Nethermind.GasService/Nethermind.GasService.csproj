@@ -9,4 +9,8 @@
       <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+      <PackageReference Include="Provide" Version="2.0.2" />
+    </ItemGroup>
+
 </Project>

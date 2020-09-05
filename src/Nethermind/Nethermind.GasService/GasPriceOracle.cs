@@ -1,4 +1,4 @@
-//  Copyright (c) 2020 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,30 +13,20 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System.Collections.Generic;
-using Newtonsoft.Json;
+using System;
+using System.Threading.Tasks;
+using Nethermind.Int256;
 
-namespace Nethermind.Vault.Styles
+namespace Nethermind.GasService
 {
-    public class VaultArgs
+    public class GasPriceOracle : IGasPriceOracle
     {
-        
-        [JsonProperty("name")]
-        public string Name { get; set; }
-        
-        [JsonProperty("description")]
-        public string Description { get; set; }
-        
-        public static VaultArgs Default = new VaultArgs();
-
-        public Dictionary<string, object> ToDictionary()
+        public Task<UInt256> GetGasPrice(ulong txGasLimit, GasPriceType priceType)
         {
-            return new Dictionary<string, object> 
-            {
-                { nameof(Name), Name },
-                { nameof(Description), Description }
-            };
+            var provider = provide.NChain.InitNChain("token");
+            throw new NotImplementedException();
         }
     }
 }

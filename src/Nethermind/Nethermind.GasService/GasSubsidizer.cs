@@ -1,4 +1,4 @@
-//  Copyright (c) 2020 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,26 +13,24 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System.Collections.Generic;
 using System.Threading.Tasks;
-using Nethermind.Vault.Styles;
+using Nethermind.Core;
+using Nethermind.Int256;
 
-namespace Nethermind.Vault
+namespace Nethermind.GasService
 {
-    public interface IVaultManager
+    public class GasSubsidizer : IGasSubsidizer
     {
-        Task<string> NewVault(Dictionary<string, object> parameters);
-        Task<string[]> GetVaults();
-        Task DeleteVault(string vaultId);
-        public Task<string> NewVault(VaultArgs args)
+        public Task<SubsidyResult> Subsidize(Transaction signedTx, bool broadcast)
         {
-            return NewVault(new Dictionary<string, object> 
-            {
-                {
-                    "vaultArgs", args
-                }
-            });
+            throw new System.NotImplementedException();
+        }
+
+        public Task<SubsidyResult> Subsidize(Address recipient, UInt256 value, byte[]? callData = null, bool broadcast = true)
+        {
+            throw new System.NotImplementedException();
         }
     }
 }

@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Core;
 using Nethermind.Facade.Proxy;
 using Nethermind.JsonRpc.Modules;
@@ -38,6 +39,11 @@ namespace Nethermind.JsonRpc
         public static ResultWrapper<T> Fail(string error)
         {
             return new ResultWrapper<T> { Result = Result.Fail(error), ErrorCode = ErrorCodes.InternalError};
+        }
+        
+        public static ResultWrapper<T> Fail(Exception e)
+        {
+            return new ResultWrapper<T> { Result = Result.Fail(e.ToString()), ErrorCode = ErrorCodes.InternalError};
         }
 
         public static ResultWrapper<T> Fail(string error, int errorCode, T outputData)
