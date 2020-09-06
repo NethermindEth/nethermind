@@ -28,26 +28,15 @@ namespace Nethermind.RocksDbExtractor.Modules.Data.Providers
 {
     public class ConsumerReceiptsProvider : IDataProvider
     {
-        public ConsumerReceiptsProvider()
-        {
-        }
-        
         public void Init(string path)
         {
             var dbOnTheRocks = new ConsumerReceiptsRocksDb(path, new DbConfig(), LimboLogs.Instance);
             var receiptsBytes = dbOnTheRocks.GetAll();
-            
             var receiptDecoder = new DataDeliveryReceiptDetailsDecoder();
             var receipts = receiptsBytes
                 .Select(b => receiptDecoder.Decode(b.Value.AsRlpStream()));
-            
-            var window = new Window("Consumer receipts")
-            {
-                X = 0,
-                Y = 10,
-                Width = Dim.Fill(),
-                Height = Dim.Fill()
-            };
+
+            var window = new Window("Consumer receipts") {X = 0, Y = 10, Width = Dim.Fill(), Height = Dim.Fill()};
             if (!receipts.Any())
             {
                 MessageBox.Query(40, 7, "Consumer receipts", "No data." +
@@ -55,6 +44,7 @@ namespace Nethermind.RocksDbExtractor.Modules.Data.Providers
                 window.FocusPrev();
                 return;
             }
+
             var y = 1;
             foreach (var receipt in receipts)
             {
@@ -64,10 +54,7 @@ namespace Nethermind.RocksDbExtractor.Modules.Data.Providers
                 {
                     var receiptDetailsWindow = new Window("Receipt details")
                     {
-                        X = 0,
-                        Y = 10,
-                        Width = Dim.Fill(),
-                        Height = Dim.Fill()
+                        X = 0, Y = 10, Width = Dim.Fill(), Height = Dim.Fill()
                     };
                     Application.Top.Add(receiptDetailsWindow);
                     var serializer = new EthereumJsonSerializer();
@@ -77,6 +64,7 @@ namespace Nethermind.RocksDbExtractor.Modules.Data.Providers
                 };
                 window.Add(receiptBtn);
             }
+
             Application.Top.Add(window);
             Application.Run(window);
         }

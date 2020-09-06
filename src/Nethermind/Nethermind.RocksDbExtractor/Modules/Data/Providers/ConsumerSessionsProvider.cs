@@ -28,26 +28,15 @@ namespace Nethermind.RocksDbExtractor.Modules.Data.Providers
 {
     public class ConsumerSessionsProvider : IDataProvider
     {
-        public ConsumerSessionsProvider()
-        {
-        }
-        
         public void Init(string path)
         {
             var dbOnTheRocks = new ConsumerSessionsRocksDb(path, new DbConfig(), LimboLogs.Instance);
             var consumerSessionsBytes = dbOnTheRocks.GetAll();
-            
             var consumerSessionsDecoder = new ConsumerSessionDecoder();
             var consumerSessions = consumerSessionsBytes
                 .Select(b => consumerSessionsDecoder.Decode(b.Value.AsRlpStream()));
-            
-            var window = new Window("Consumer sessions")
-            {
-                X = 0,
-                Y = 10,
-                Width = Dim.Fill(),
-                Height = Dim.Fill()
-            };
+
+            var window = new Window("Consumer sessions") {X = 0, Y = 10, Width = Dim.Fill(), Height = Dim.Fill()};
             if (!consumerSessions.Any())
             {
                 MessageBox.Query(40, 7, "Consumer sessions", "No data." +
@@ -55,6 +44,7 @@ namespace Nethermind.RocksDbExtractor.Modules.Data.Providers
                 window.FocusPrev();
                 return;
             }
+
             var y = 1;
             foreach (var consumerSession in consumerSessions)
             {
@@ -65,10 +55,7 @@ namespace Nethermind.RocksDbExtractor.Modules.Data.Providers
                 {
                     var consumerSessionDetailsWindow = new Window("Session details")
                     {
-                        X = 0,
-                        Y = 10,
-                        Width = Dim.Fill(),
-                        Height = Dim.Fill()
+                        X = 0, Y = 10, Width = Dim.Fill(), Height = Dim.Fill()
                     };
                     Application.Top.Add(consumerSessionDetailsWindow);
                     var serializer = new EthereumJsonSerializer();
@@ -84,4 +71,3 @@ namespace Nethermind.RocksDbExtractor.Modules.Data.Providers
         }
     }
 }
-

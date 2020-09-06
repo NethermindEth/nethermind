@@ -1,4 +1,4 @@
-namespace Nethermind.RocksDbExtractor.Domain
+namespace Nethermind.RocksDbExtractor.ProviderDecoders.Domain
 {
     public enum PaymentClaimStatus
     {

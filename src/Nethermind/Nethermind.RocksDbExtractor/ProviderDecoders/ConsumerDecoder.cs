@@ -17,18 +17,13 @@
  */
 
 using Nethermind.DataMarketplace.Core.Domain;
-using Nethermind.RocksDbExtractor.Domain;
+using Nethermind.RocksDbExtractor.ProviderDecoders.Domain;
 using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.RocksDbExtractor
+namespace Nethermind.RocksDbExtractor.ProviderDecoders
 {
     internal class ConsumerDecoder : IRlpDecoder<Consumer>
     {
-        public static void Init()
-        {
-            // here to register with RLP in static constructor
-        }
-
         static ConsumerDecoder()
         {
             Rlp.Decoders[typeof(Consumer)] = new ConsumerDecoder();

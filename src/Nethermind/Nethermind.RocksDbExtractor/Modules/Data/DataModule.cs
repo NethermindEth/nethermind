@@ -41,7 +41,7 @@ namespace Nethermind.RocksDbExtractor.Modules.Data
                 ["deposits"] = () => new DepositsProvider(),
                 ["consumers"] = () => new ConsumersProvider()
             };
-        
+
         private readonly string _path;
 
         public DataModule(string path)
@@ -51,13 +51,7 @@ namespace Nethermind.RocksDbExtractor.Modules.Data
 
         public Window Init()
         {
-            var mainWindow = new Window("")
-            {
-                X = 0,
-                Y = 10,
-                Width = Dim.Fill(),
-                Height = Dim.Fill()
-            };
+            var mainWindow = new Window("") {X = 0, Y = 10, Width = Dim.Fill(), Height = Dim.Fill()};
             Application.Top.Add(mainWindow);
 
             var dataPaths = Directory.GetDirectories(_path, "*");
@@ -78,7 +72,7 @@ namespace Nethermind.RocksDbExtractor.Modules.Data
                         {
                             mainWindow.Remove(dataFolderBtn);
                         }
-                        
+
                         var innerDataPaths = Directory.GetDirectories(dataPath, "*");
                         var i = 1;
                         foreach (var innerDataPath in innerDataPaths)
@@ -93,8 +87,9 @@ namespace Nethermind.RocksDbExtractor.Modules.Data
                                     MessageBox.ErrorQuery(40, 7, "Error", "Data provider not found");
                                     return;
                                 }
-                            
-                                if (!Directory.GetDirectories(innerDataPath, "*").Any())
+
+                                var i = innerDataPath;
+                                if (!Directory.GetDirectories(i, "*").Any())
                                 {
                                     try
                                     {
@@ -111,14 +106,14 @@ namespace Nethermind.RocksDbExtractor.Modules.Data
 
                         }
                     }
-                    
+
                     if (!Directory.GetDirectories(dataPath, "*").Any() &&
                         !Providers.TryGetValue(dataFolder, out _))
                     {
                         MessageBox.Query(40, 7, "Error", "Data provider not found");
                         return;
                     }
-                    
+
                     if (!Directory.GetDirectories(dataPath, "*").Any())
                     {
                         Providers.TryGetValue(dataFolder, out var dataProviderFactory);
@@ -129,8 +124,8 @@ namespace Nethermind.RocksDbExtractor.Modules.Data
                         catch (Exception ex)
                         {
                             MessageBox.Query(50, 20, "Error", "There was an error with getting data." +
-                                                             $"{Environment.NewLine}{Environment.NewLine}" +
-                                                             $"{ex}");
+                                                              $"{Environment.NewLine}{Environment.NewLine}" +
+                                                              $"{ex}");
                         }
                     }
 

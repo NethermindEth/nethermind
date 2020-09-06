@@ -5,7 +5,7 @@ using Terminal.Gui;
 
 namespace Nethermind.RocksDbExtractor
 {
-    class Program
+    static class Program
     {
         static void Main(string[] args)
         {
@@ -17,7 +17,7 @@ namespace Nethermind.RocksDbExtractor
                 Console.WriteLine($"There was an error.{Environment.NewLine}{e.ExceptionObject}");
             };
             Application.Init();
-            
+
             var mainModule = new MainModule();
             mainModule.PathSelected += (_, path) =>
             {
@@ -26,10 +26,9 @@ namespace Nethermind.RocksDbExtractor
                 Application.Top.Add(dataModuleWindow);
                 Application.Run(dataModuleWindow);
             };
-            
+
             Application.Top.Add(mainModule.Init());
             Application.Run();
         }
-
     }
 }

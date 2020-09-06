@@ -19,18 +19,13 @@
 using System.Linq;
 using Nethermind.Core.Extensions;
 using Nethermind.DataMarketplace.Core.Domain;
-using Nethermind.RocksDbExtractor.Domain;
+using Nethermind.RocksDbExtractor.ProviderDecoders.Domain;
 using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.RocksDbExtractor
+namespace Nethermind.RocksDbExtractor.ProviderDecoders
 {
     internal class PaymentClaimDecoder : IRlpDecoder<PaymentClaim>
     {
-        public static void Init()
-        {
-            // here to register with RLP in static constructor
-        }
-        
         static PaymentClaimDecoder()
         {
             Rlp.Decoders[typeof(PaymentClaim)] = new PaymentClaimDecoder();
@@ -52,10 +47,10 @@ namespace Nethermind.RocksDbExtractor
             var pepper = rlpStream.DecodeByteArray();
             var provider = rlpStream.DecodeAddress();
             var consumer = rlpStream.DecodeAddress();
-            var transactions = Nethermind.Serialization.Rlp.Rlp.DecodeArray<TransactionInfo>(rlpStream);
+            var transactions = Rlp.DecodeArray<TransactionInfo>(rlpStream);
             var transactionCost = rlpStream.DecodeUInt256();
             var timestamp = rlpStream.DecodeUlong();
-            var status = (PaymentClaimStatus) rlpStream.DecodeInt();
+            var status = (PaymentClaimStatus)rlpStream.DecodeInt();
             var signature = SignatureDecoder.DecodeSignature(rlpStream);
             var paymentClaim = new PaymentClaim(id, depositId, assetId, assetName, units, claimedUnits, unitsRange,
                 value, claimedValue, expiryTime, pepper, provider, consumer, signature, timestamp, transactions,
@@ -93,12 +88,12 @@ namespace Nethermind.RocksDbExtractor
                 Rlp.Encode(item.Transactions.ToArray()),
                 Rlp.Encode(item.TransactionCost),
                 Rlp.Encode(item.Timestamp),
-                Rlp.Encode((int) item.Status),
+                Rlp.Encode((int)item.Status),
                 Rlp.Encode(item.Signature.V),
                 Rlp.Encode(item.Signature.R.WithoutLeadingZeros()),
                 Rlp.Encode(item.Signature.S.WithoutLeadingZeros()));
         }
-        
+
         public int GetLength(PaymentClaim item, RlpBehaviors rlpBehaviors)
         {
             throw new System.NotImplementedException();

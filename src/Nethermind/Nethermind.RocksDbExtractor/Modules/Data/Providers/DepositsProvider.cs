@@ -28,28 +28,15 @@ namespace Nethermind.RocksDbExtractor.Modules.Data.Providers
 {
     public class DepositsProvider : IDataProvider
     {
-        private static readonly string NewLine = Environment.NewLine;
-        
-        public DepositsProvider()
-        {
-        }
-        
         public void Init(string path)
         {
             var dbOnTheRocks = new DepositsRocksDb(path, new DbConfig(), LimboLogs.Instance);
             var depositsBytes = dbOnTheRocks.GetAll();
-            
             var depositsDecoder = new DepositDecoder();
             var deposits = depositsBytes
                 .Select(b => depositsDecoder.Decode(b.Value.AsRlpStream()));
-            
-            var window = new Window("Deposits")
-            {
-                X = 0,
-                Y = 10,
-                Width = Dim.Fill(),
-                Height = Dim.Fill()
-            };
+
+            var window = new Window("Deposits") {X = 0, Y = 10, Width = Dim.Fill(), Height = Dim.Fill()};
             if (!deposits.Any())
             {
                 MessageBox.Query(40, 7, "Deposits", "No data." +
@@ -57,6 +44,7 @@ namespace Nethermind.RocksDbExtractor.Modules.Data.Providers
                 window.FocusPrev();
                 return;
             }
+
             var y = 1;
             foreach (var deposit in deposits)
             {
@@ -66,22 +54,19 @@ namespace Nethermind.RocksDbExtractor.Modules.Data.Providers
                 {
                     var depositDetailsWindow = new Window("Deposit details")
                     {
-                        X = 0,
-                        Y = 10,
-                        Width = Dim.Fill(),
-                        Height = Dim.Fill()
+                        X = 0, Y = 10, Width = Dim.Fill(), Height = Dim.Fill()
                     };
                     Application.Top.Add(depositDetailsWindow);
                     var serializer = new EthereumJsonSerializer();
                     var dataAssetLbl = new Label(1, 1, serializer.Serialize(deposit, true));
-                            
+
                     depositDetailsWindow.Add(dataAssetLbl);
                     Application.Run(depositDetailsWindow);
                 };
             }
+
             Application.Top.Add(window);
             Application.Run(window);
         }
     }
 }
-

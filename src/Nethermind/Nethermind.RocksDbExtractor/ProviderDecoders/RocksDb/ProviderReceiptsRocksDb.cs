@@ -2,7 +2,7 @@ using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
 
-namespace Nethermind.RocksDbExtractor.rocksdb
+namespace Nethermind.RocksDbExtractor.ProviderDecoders.RocksDb
 {
     internal class ProviderReceiptsRocksDb : DbOnTheRocks
     {

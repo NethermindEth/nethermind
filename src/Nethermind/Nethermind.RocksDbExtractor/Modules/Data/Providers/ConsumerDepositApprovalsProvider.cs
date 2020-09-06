@@ -28,25 +28,17 @@ namespace Nethermind.RocksDbExtractor.Modules.Data.Providers
 {
     public class ConsumerDepositApprovalsProvider : IDataProvider
     {
-        public ConsumerDepositApprovalsProvider()
-        {
-        }
-        
         public void Init(string path)
         {
             var dbOnTheRocks = new ConsumerDepositApprovalsRocksDb(path, new DbConfig(), LimboLogs.Instance);
             var depositApprovalsBytes = dbOnTheRocks.GetAll();
-            
             var depositApprovalDecoder = new DepositApprovalDecoder();
             var depositApprovals = depositApprovalsBytes
                 .Select(b => depositApprovalDecoder.Decode(b.Value.AsRlpStream()));
-            
+
             var window = new Window("Consumer deposit approvals")
             {
-                X = 0,
-                Y = 10,
-                Width = Dim.Fill(),
-                Height = Dim.Fill()
+                X = 0, Y = 10, Width = Dim.Fill(), Height = Dim.Fill()
             };
             if (!depositApprovals.Any())
             {
@@ -55,6 +47,7 @@ namespace Nethermind.RocksDbExtractor.Modules.Data.Providers
                 window.FocusPrev();
                 return;
             }
+
             var y = 1;
             foreach (var depositApproval in depositApprovals)
             {
@@ -65,19 +58,17 @@ namespace Nethermind.RocksDbExtractor.Modules.Data.Providers
                 {
                     var depositApprovalDetailsWindow = new Window("Deposit approval details")
                     {
-                        X = 0,
-                        Y = 10,
-                        Width = Dim.Fill(),
-                        Height = Dim.Fill()
+                        X = 0, Y = 10, Width = Dim.Fill(), Height = Dim.Fill()
                     };
                     Application.Top.Add(depositApprovalDetailsWindow);
                     var serializer = new EthereumJsonSerializer();
-                    var depositApprovalLbl = new Label(1,1, serializer.Serialize(depositApproval, true));
+                    var depositApprovalLbl = new Label(1, 1, serializer.Serialize(depositApproval, true));
                     depositApprovalDetailsWindow.Add(depositApprovalLbl);
                     Application.Run(depositApprovalDetailsWindow);
                 };
                 window.Add(depositApprovalBtn);
             }
+
             Application.Top.Add(window);
             Application.Run(window);
         }

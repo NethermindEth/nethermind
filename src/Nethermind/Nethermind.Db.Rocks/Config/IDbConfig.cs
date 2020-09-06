@@ -90,6 +90,7 @@ namespace Nethermind.Db.Rocks.Config
         ulong BloomDbBlockCacheSize { get; set; }
         bool BloomDbCacheIndexAndFilterBlocks { get; set; }
 
+        bool DataAssetsDbCacheIndexAndFilterBlocks { get; set; }
         ulong DataAssetsDbBlockCacheSize { get; set; }
         ulong DataAssetsDbWriteBufferSize { get; set; }
         uint DataAssetsDbWriteBufferNumber { get; set; }
@@ -113,6 +114,7 @@ namespace Nethermind.Db.Rocks.Config
         ulong ProviderDepositApprovalsDbBlockCacheSize { get; set; }
         ulong ProviderDepositApprovalsDbWriteBufferSize { get; set; }
         uint ProviderDepositApprovalsDbWriteBufferNumber { get; set; }
+        
         ulong CanonicalHashTrieDbWriteBufferSize { get; set; }
         uint CanonicalHashTrieDbWriteBufferNumber { get; set; }
         ulong CanonicalHashTrieDbBlockCacheSize { get; set; }
