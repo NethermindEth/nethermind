@@ -59,7 +59,7 @@ using Nethermind.WebSockets;
 
 namespace Nethermind.Runner.Ethereum.Context
 {
-    public class EthereumRunnerContext
+    public class EthereumRunnerContext : INethermindApi
     {
         public T Config<T>() where T : IConfig
         {

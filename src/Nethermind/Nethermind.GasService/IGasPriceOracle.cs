@@ -1,4 +1,4 @@
-//  Copyright (c) 2020 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,26 +13,21 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System.Collections.Generic;
 using System.Threading.Tasks;
-using Nethermind.Vault.Styles;
+using Nethermind.Int256;
 
-namespace Nethermind.Vault
+namespace Nethermind.GasService
 {
-    public interface IVaultManager
+    public interface IGasPriceOracle
     {
-        Task<string> NewVault(Dictionary<string, object> parameters);
-        Task<string[]> GetVaults();
-        Task DeleteVault(string vaultId);
-        public Task<string> NewVault(VaultArgs args)
-        {
-            return NewVault(new Dictionary<string, object> 
-            {
-                {
-                    "vaultArgs", args
-                }
-            });
-        }
+        /// <summary>
+        /// Provides the gas price to set on the transaction before signing.
+        /// </summary>
+        /// <param name="txGasLimit">Only used when service returns different prices for different tx sizes. Can be ignored by some of the service implementations.</param>
+        /// <param name="priceType">Type of the gas price, can be ignored by some implementations.</param>
+        /// <returns>Gas price in wei.</returns>
+        Task<UInt256> GetGasPrice(ulong txGasLimit, GasPriceType priceType);
     }
 }

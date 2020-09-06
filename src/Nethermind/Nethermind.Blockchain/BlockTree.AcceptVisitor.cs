@@ -118,8 +118,8 @@ namespace Nethermind.Blockchain
 
         private static async Task<bool> VisitHeader(IBlockTreeVisitor visitor, BlockHeader header, CancellationToken cancellationToken)
         {
-            bool shouldContinue = await visitor.VisitHeader(header, cancellationToken);
-            if (!shouldContinue)
+            HeaderVisitOutcome outcome = await visitor.VisitHeader(header, cancellationToken);
+            if (outcome == HeaderVisitOutcome.StopVisiting)
             {
                 return true;
             }

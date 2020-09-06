@@ -21,19 +21,19 @@ namespace Nethermind.JsonRpc.Modules.Admin
     [RpcModule(ModuleType.Admin)]
     public interface IAdminModule : IModule
     {
-        [JsonRpcMethod(Description = "", Returns = "String", IsImplemented = true)]
+        [JsonRpcMethod(Description = "", IsImplemented = true)]
         Task<ResultWrapper<string>> admin_addPeer(string enode, bool addToStaticNodes = false);
         
-        [JsonRpcMethod(Description = "", Returns = "String", IsImplemented = true)]
+        [JsonRpcMethod(Description = "", IsImplemented = true)]
         Task<ResultWrapper<string>> admin_removePeer(string enode, bool removeFromStaticNodes = false);
         
-        [JsonRpcMethod(Description = "", Returns = "Array", IsImplemented = true)]
-        ResultWrapper<PeerInfo[]> admin_peers();
+        [JsonRpcMethod(Description = "", IsImplemented = true)]
+        ResultWrapper<PeerInfo[]> admin_peers(bool includeDetails);
         
-        [JsonRpcMethod(Description = "Relevant information about this node", Returns = "Object", IsImplemented = true)]
+        [JsonRpcMethod(Description = "Relevant information about this node", IsImplemented = true)]
         ResultWrapper<NodeInfo> admin_nodeInfo();
         
-        [JsonRpcMethod(Description = "Base data directory path", Returns = "String", IsImplemented = false)]
+        [JsonRpcMethod(Description = "Base data directory path", IsImplemented = false)]
         ResultWrapper<string> admin_dataDir();
         
         [JsonRpcMethod(Description = "[DEPRECATED]", IsImplemented = false)]

@@ -1,4 +1,4 @@
-//  Copyright (c) 2020 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,30 +13,21 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
+using System;
 using System.Collections.Generic;
-using Newtonsoft.Json;
 
-namespace Nethermind.Vault.Styles
+namespace Nethermind.Runner.Extensions
 {
-    public class VaultArgs
+    public interface IPluginManager
     {
-        
-        [JsonProperty("name")]
-        public string Name { get; set; }
-        
-        [JsonProperty("description")]
-        public string Description { get; set; }
-        
-        public static VaultArgs Default = new VaultArgs();
+        IReadOnlyCollection<T> Get<T>() where T : IPlugin;
 
-        public Dictionary<string, object> ToDictionary()
-        {
-            return new Dictionary<string, object> 
-            {
-                { nameof(Name), Name },
-                { nameof(Description), Description }
-            };
-        }
+        void Register<T>() where T : IPlugin;
+        
+        void Register(Type type);
+
+        void Register(IPlugin plugin);
     }
 }

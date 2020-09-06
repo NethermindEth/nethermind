@@ -97,6 +97,9 @@ namespace Nethermind.GitBook
                     }
                 }
 
+                _markdownGenerator.CloseTab(docBuilder);
+                _markdownGenerator.CreateTab(docBuilder, "Response");
+
                 docBuilder.AppendLine();
                 _markdownGenerator.CloseTab(docBuilder);
                 _markdownGenerator.CreateTab(docBuilder, "Response");

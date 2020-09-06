@@ -28,5 +28,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
         {
             Data = data ?? Array.Empty<byte[]>();
         }
+        
+        public override string ToString() => $"{nameof(NodeDataMessage)}({Data?.Length ?? 0})";
     }
 }

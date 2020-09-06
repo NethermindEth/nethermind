@@ -30,8 +30,6 @@ namespace Nethermind.Stats
 
         public bool CaptureNodeLatencyStatsEventHistory { get; set; } = false;
 
-        public long PredefinedReputation { get; set; } = 1000500;
-
         public DisconnectReason[] PenalizedReputationLocalDisconnectReasons { get; set; } = {
             DisconnectReason.UnexpectedIdentity, DisconnectReason.IncompatibleP2PVersion, DisconnectReason.UselessPeer,
             DisconnectReason.BreachOfProtocol

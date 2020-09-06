@@ -32,11 +32,6 @@ namespace Nethermind.Stats
         bool CaptureNodeLatencyStatsEventHistory { get; set; }
 
         /// <summary>
-        /// Value of predefined reputation for trusted nodes
-        /// </summary>
-        long PredefinedReputation { get; }
-
-        /// <summary>
         /// Local disconnect reasons for penalizing node reputation
         /// </summary>
         DisconnectReason[] PenalizedReputationLocalDisconnectReasons { get; }

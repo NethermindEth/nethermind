@@ -21,10 +21,10 @@ namespace Nethermind.JsonRpc.Modules.Web3
     [RpcModule(ModuleType.Web3)]
     public interface IWeb3Module : IModule
     {
-        [JsonRpcMethod(Description = "Returns the current client version.", Returns = "String", IsImplemented = true)]
+        [JsonRpcMethod(Description = "Returns the current client version.", IsImplemented = true)]
         ResultWrapper<string> web3_clientVersion();
 
-        [JsonRpcMethod(Description = "Returns Keccak of the given data.", Returns = "Data", IsImplemented = true)]
+        [JsonRpcMethod(Description = "Returns Keccak of the given data.", IsImplemented = true)]
         ResultWrapper<Keccak> web3_sha3(byte[] data);
     }
 }

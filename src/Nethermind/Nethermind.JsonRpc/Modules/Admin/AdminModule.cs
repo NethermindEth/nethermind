@@ -36,14 +36,20 @@ namespace Nethermind.JsonRpc.Modules.Admin
         private readonly string _dataDir;
         private NodeInfo _nodeInfo;
 
-        public AdminModule(IBlockTree blockTree, INetworkConfig networkConfig, IPeerManager peerManager, IStaticNodesManager staticNodesManager, IEnode enode, string dataDir)
+        public AdminModule(
+            IBlockTree blockTree,
+            INetworkConfig networkConfig,
+            IPeerManager peerManager,
+            IStaticNodesManager staticNodesManager,
+            IEnode enode,
+            string dataDir)
         {
-            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
-            _peerManager = peerManager ?? throw new ArgumentNullException(nameof(peerManager));
-            _staticNodesManager = staticNodesManager ?? throw new ArgumentNullException(nameof(staticNodesManager));
             _enode = enode ?? throw new ArgumentNullException(nameof(enode));
             _dataDir = dataDir ?? throw new ArgumentNullException(nameof(dataDir));
+            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _peerManager = peerManager ?? throw new ArgumentNullException(nameof(peerManager));
+            _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
+            _staticNodesManager = staticNodesManager ?? throw new ArgumentNullException(nameof(staticNodesManager));
 
             BuildNodeInfo();
         }
@@ -104,9 +110,10 @@ namespace Nethermind.JsonRpc.Modules.Admin
                 ? ResultWrapper<string>.Success(enode)
                 : ResultWrapper<string>.Fail("Failed to remove peer.");
         }
-
-        public ResultWrapper<PeerInfo[]> admin_peers()
-            => ResultWrapper<PeerInfo[]>.Success(_peerManager.ActivePeers.Select(p => new PeerInfo(p)).ToArray());
+        
+        public ResultWrapper<PeerInfo[]> admin_peers(bool includeDetails = false)
+            => ResultWrapper<PeerInfo[]>.Success(
+                _peerManager.ActivePeers.Select(p => new PeerInfo(p, includeDetails)).ToArray());
 
         public ResultWrapper<NodeInfo> admin_nodeInfo()
         {

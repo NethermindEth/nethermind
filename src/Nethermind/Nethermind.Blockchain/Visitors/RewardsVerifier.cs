@@ -69,8 +69,8 @@ namespace Nethermind.Blockchain.Visitors
         public Task<bool> VisitMissing(Keccak hash, CancellationToken cancellationToken)
             => Task.FromResult(true);
 
-        public Task<bool> VisitHeader(BlockHeader header, CancellationToken cancellationToken)
-            => Task.FromResult(true);
+        public Task<HeaderVisitOutcome> VisitHeader(BlockHeader header, CancellationToken cancellationToken)
+            => Task.FromResult(HeaderVisitOutcome.None);
         
         public Task<LevelVisitOutcome> VisitLevelEnd(CancellationToken cancellationToken)
             => Task.FromResult(LevelVisitOutcome.None);
