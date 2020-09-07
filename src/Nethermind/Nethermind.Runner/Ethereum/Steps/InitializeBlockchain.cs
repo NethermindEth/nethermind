@@ -103,7 +103,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 new NonceReservingTxSealer(_api.Signer, _api.Timestamper, _api.TxPool);
 
             IVaultConfig vaultConfig = _api.Config<IVaultConfig>(); 
-            if (vaultConfig.Enabled)
+            if (!vaultConfig.Enabled)
             {
                 _api.TxSender = new TxPoolSender(_api.TxPool, standardSealer, nonceReservingTxSealer);
             }
