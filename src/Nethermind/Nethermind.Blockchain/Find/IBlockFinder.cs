@@ -80,6 +80,8 @@ namespace Nethermind.Blockchain.Find
 
         public BlockHeader FindPendingHeader() => FindHeader(PendingHash, BlockTreeLookupOptions.None);
         
+        BlockHeader FindBestSuggestedHeader();
+
         public Block FindBlock(BlockParameter blockParameter)
         {
             if (blockParameter == null)

@@ -26,8 +26,8 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network;
-using Nethermind.Runner.Ethereum.Context;
 using Nethermind.Db.Blooms;
+using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
@@ -37,8 +37,8 @@ namespace Nethermind.Runner.Test.Ethereum
 {
     public static class Build
     {
-        public static EthereumRunnerContext ContextWithMocks() =>
-            new EthereumRunnerContext(Substitute.For<IConfigProvider>(), LimboLogs.Instance)
+        public static NethermindApi ContextWithMocks() =>
+            new NethermindApi(Substitute.For<IConfigProvider>(), LimboLogs.Instance)
             {
                 LogManager = LimboLogs.Instance,
                 Enode = Substitute.For<IEnode>(),

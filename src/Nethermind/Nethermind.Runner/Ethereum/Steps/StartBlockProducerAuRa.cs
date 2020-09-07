@@ -32,9 +32,7 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Logging;
-using Nethermind.Runner.Ethereum.Context;
-using Nethermind.Facade.Transactions;
-using Nethermind.Int256;
+using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.TxPool;
 
@@ -43,39 +41,39 @@ namespace Nethermind.Runner.Ethereum.Steps
     [RunnerStepDependencies(typeof(InitializeNetwork), typeof(SetupKeyStore))]
     public class StartBlockProducerAuRa : StartBlockProducer
     {
-        private readonly AuRaEthereumRunnerContext _context;
+        private readonly AuRaNethermindApi _api;
         private IAuraConfig? _auraConfig;
         private IAuRaValidator? _validator;
 
-        public StartBlockProducerAuRa(AuRaEthereumRunnerContext context) : base(context)
+        public StartBlockProducerAuRa(AuRaNethermindApi api) : base(api)
         {
-            _context = context;
+            _api = api;
         }
 
         protected override void BuildProducer()
         {
-            if (_context.Signer == null) throw new StepDependencyException(nameof(_context.Signer));
-            if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
+            if (_api.Signer == null) throw new StepDependencyException(nameof(_api.Signer));
+            if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
 
-            _auraConfig = _context.Config<IAuraConfig>();
-            ILogger logger = _context.LogManager.GetClassLogger();
+            _auraConfig = _api.Config<IAuraConfig>();
+            ILogger logger = _api.LogManager.GetClassLogger();
             if (logger.IsWarn) logger.Warn("Starting AuRa block producer & sealer");
 
-            IAuRaStepCalculator stepCalculator = new AuRaStepCalculator(_context.ChainSpec.AuRa.StepDuration, _context.Timestamper, _context.LogManager);
+            IAuRaStepCalculator stepCalculator = new AuRaStepCalculator(_api.ChainSpec.AuRa.StepDuration, _api.Timestamper, _api.LogManager);
             BlockProducerContext producerContext = GetProducerChain();
-            _context.BlockProducer = new AuRaBlockProducer(
+            _api.BlockProducer = new AuRaBlockProducer(
                 producerContext.TxSource,
                 producerContext.ChainProcessor,
                 producerContext.ReadOnlyStateProvider,
-                _context.Sealer,
-                _context.BlockTree,
-                _context.BlockProcessingQueue,
-                _context.Timestamper,
+                _api.Sealer,
+                _api.BlockTree,
+                _api.BlockProcessingQueue,
+                _api.Timestamper,
                 stepCalculator,
-                _context.ReportingValidator,
+                _api.ReportingValidator,
                 _auraConfig,
                 CreateGasLimitCalculator(producerContext.ReadOnlyTxProcessorSource),
-                _context.LogManager);
+                _api.LogManager);
         }
 
         protected override BlockProcessor CreateBlockProcessor(
@@ -83,49 +81,49 @@ namespace Nethermind.Runner.Ethereum.Steps
             ReadOnlyTxProcessorSource readOnlyTxProcessorSource,
             IReadOnlyDbProvider readOnlyDbProvider)
         {
-            if (_context.RewardCalculatorSource == null) throw new StepDependencyException(nameof(_context.RewardCalculatorSource));
-            if (_context.ValidatorStore == null) throw new StepDependencyException(nameof(_context.ValidatorStore));
-            if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
-            if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
-            if (_context.Signer == null) throw new StepDependencyException(nameof(_context.Signer));
+            if (_api.RewardCalculatorSource == null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
+            if (_api.ValidatorStore == null) throw new StepDependencyException(nameof(_api.ValidatorStore));
+            if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
+            if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
+            if (_api.Signer == null) throw new StepDependencyException(nameof(_api.Signer));
 
-            var chainSpecAuRa = _context.ChainSpec.AuRa;
+            var chainSpecAuRa = _api.ChainSpec.AuRa;
 
             _validator = new AuRaValidatorFactory(
                     readOnlyTxProcessingEnv.StateProvider,
-                    _context.AbiEncoder,
+                    _api.AbiEncoder,
                     readOnlyTxProcessingEnv.TransactionProcessor,
                     readOnlyTxProcessorSource,
                     readOnlyTxProcessingEnv.BlockTree,
-                    _context.ReceiptStorage,
-                    _context.ValidatorStore,
-                    _context.FinalizationManager,
+                    _api.ReceiptStorage,
+                    _api.ValidatorStore,
+                    _api.FinalizationManager,
                     NullTxSender.Instance,
                     NullTxPool.Instance,
-                    _context.LogManager,
-                    _context.Signer,
-                    _context.ReportingContractValidatorCache,
+                    _api.LogManager,
+                    _api.Signer,
+                    _api.ReportingContractValidatorCache,
                     chainSpecAuRa.PosdaoTransition,
                     true)
-                .CreateValidatorProcessor(chainSpecAuRa.Validators, _context.BlockTree.Head?.Header);
+                .CreateValidatorProcessor(chainSpecAuRa.Validators, _api.BlockTree.Head?.Header);
 
             if (_validator is IDisposable disposableValidator)
             {
-                _context.DisposeStack.Push(disposableValidator);
+                _api.DisposeStack.Push(disposableValidator);
             }
 
             return new AuRaBlockProcessor(
-                _context.SpecProvider,
-                _context.BlockValidator,
-                _context.RewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor),
+                _api.SpecProvider,
+                _api.BlockValidator,
+                _api.RewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor),
                 readOnlyTxProcessingEnv.TransactionProcessor,
                 readOnlyDbProvider.StateDb,
                 readOnlyDbProvider.CodeDb,
                 readOnlyTxProcessingEnv.StateProvider,
                 readOnlyTxProcessingEnv.StorageProvider,
-                _context.TxPool,
-                _context.ReceiptStorage,
-                _context.LogManager,
+                _api.TxPool,
+                _api.ReceiptStorage,
+                _api.LogManager,
                 readOnlyTxProcessingEnv.BlockTree,
                 GetTxPermissionFilter(readOnlyTxProcessingEnv, readOnlyTxProcessorSource),
                 CreateGasLimitCalculator(readOnlyTxProcessorSource) as AuRaContractGasLimitOverride)
@@ -166,12 +164,12 @@ namespace Nethermind.Runner.Ethereum.Steps
                 if (randomnessContractAddress?.Any() == true)
                 {
                     var randomContractTxSource = new RandomContractTxSource(
-                        GetRandomContracts(randomnessContractAddress, _context.AbiEncoder,
+                        GetRandomContracts(randomnessContractAddress, _api.AbiEncoder,
                             readOnlyTxProcessorSource,
                             signer),
-                        new EciesCipher(_context.CryptoRandom),
-                        _context.NodeKey,
-                        _context.CryptoRandom);
+                        new EciesCipher(_api.CryptoRandom),
+                        _api.NodeKey,
+                        _api.CryptoRandom);
 
                     list.Insert(0, randomContractTxSource);
                     return true;
@@ -180,22 +178,22 @@ namespace Nethermind.Runner.Ethereum.Steps
                 return false;
             }
 
-            if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
-            if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
-            if (_context.Signer == null) throw new StepDependencyException(nameof(_context.Signer));
+            if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
+            if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
+            if (_api.Signer == null) throw new StepDependencyException(nameof(_api.Signer));
 
             IList<ITxSource> txSources = new List<ITxSource> {base.CreateTxSourceForProducer(processingEnv, readOnlyTxProcessorSource)};
             bool needSigner = false;
 
-            needSigner |= CheckAddPosdaoTransactions(txSources, _context.ChainSpec.AuRa.PosdaoTransition);
-            needSigner |= CheckAddRandomnessTransactions(txSources, _context.ChainSpec.AuRa.RandomnessContractAddress, _context.Signer);
+            needSigner |= CheckAddPosdaoTransactions(txSources, _api.ChainSpec.AuRa.PosdaoTransition);
+            needSigner |= CheckAddRandomnessTransactions(txSources, _api.ChainSpec.AuRa.RandomnessContractAddress, _api.Signer);
 
             ITxSource txSource = txSources.Count > 1 ? new CompositeTxSource(txSources.ToArray()) : txSources[0];
 
             if (needSigner)
             {
-                TxSealer transactionSealer = new TxSealer(_context.Signer, _context.Timestamper);
-                txSource = new GeneratedTxSourceSealer(txSource, transactionSealer, processingEnv.StateReader, _context.LogManager);
+                TxSealer transactionSealer = new TxSealer(_api.Signer, _api.Timestamper); 
+                txSource = new GeneratedTxSource(txSource, transactionSealer, processingEnv.StateReader, _api.LogManager);
             }
 
             var txPermissionFilter = GetTxPermissionFilter(processingEnv, readOnlyTxProcessorSource);
@@ -210,12 +208,12 @@ namespace Nethermind.Runner.Ethereum.Steps
         protected override ITxFilter CreateGasPriceTxFilter(ReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
             ITxFilter gasPriceTxFilter = base.CreateGasPriceTxFilter(readOnlyTxProcessorSource);
-            Address? registrar = _context.ChainSpec?.Parameters.Registrar;
+            Address? registrar = _api.ChainSpec?.Parameters.Registrar;
             if (registrar != null)
             {
-                RegisterContract registerContract = new RegisterContract(_context.AbiEncoder, registrar, readOnlyTxProcessorSource);
-                CertifierContract certifierContract = new CertifierContract(_context.AbiEncoder, registerContract, readOnlyTxProcessorSource);
-                return new TxCertifierFilter(certifierContract, gasPriceTxFilter, _context.LogManager);
+                RegisterContract registerContract = new RegisterContract(_api.AbiEncoder, registrar, readOnlyTxProcessorSource);
+                CertifierContract certifierContract = new CertifierContract(_api.AbiEncoder, registerContract, readOnlyTxProcessorSource);
+                return new TxCertifierFilter(certifierContract, gasPriceTxFilter, _api.LogManager);
             }
 
             return gasPriceTxFilter;
@@ -225,19 +223,19 @@ namespace Nethermind.Runner.Ethereum.Steps
             ReadOnlyTxProcessingEnv environment,
             ReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
-            if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
+            if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
 
-            if (_context.ChainSpec.Parameters.TransactionPermissionContract != null)
+            if (_api.ChainSpec.Parameters.TransactionPermissionContract != null)
             {
                 var txPermissionFilter = new PermissionBasedTxFilter(
-                    new VersionedTransactionPermissionContract(_context.AbiEncoder,
-                        _context.ChainSpec.Parameters.TransactionPermissionContract,
-                        _context.ChainSpec.Parameters.TransactionPermissionContractTransition ?? 0,
+                    new VersionedTransactionPermissionContract(_api.AbiEncoder,
+                        _api.ChainSpec.Parameters.TransactionPermissionContract,
+                        _api.ChainSpec.Parameters.TransactionPermissionContractTransition ?? 0,
                         readOnlyTxProcessorSource,
-                        _context.TransactionPermissionContractVersions),
-                    _context.TxFilterCache,
+                        _api.TransactionPermissionContractVersions),
+                    _api.TxFilterCache,
                     environment.StateProvider,
-                    _context.LogManager);
+                    _api.LogManager);
 
                 return txPermissionFilter;
             }
@@ -247,26 +245,26 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         private IGasLimitCalculator CreateGasLimitCalculator(ReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
-            if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
-            var blockGasLimitContractTransitions = _context.ChainSpec.AuRa.BlockGasLimitContractTransitions;
+            if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
+            var blockGasLimitContractTransitions = _api.ChainSpec.AuRa.BlockGasLimitContractTransitions;
 
             IGasLimitCalculator gasLimitCalculator =
-                new TargetAdjustedGasLimitCalculator(_context.SpecProvider, _context.Config<IMiningConfig>());
+                new TargetAdjustedGasLimitCalculator(_api.SpecProvider, _api.Config<IMiningConfig>());
             if (blockGasLimitContractTransitions?.Any() == true)
             {
                 AuRaContractGasLimitOverride auRaContractGasLimitOverride =
                     new AuRaContractGasLimitOverride(
                         blockGasLimitContractTransitions.Select(blockGasLimitContractTransition =>
                                 new BlockGasLimitContract(
-                                    _context.AbiEncoder,
+                                    _api.AbiEncoder,
                                     blockGasLimitContractTransition.Value,
                                     blockGasLimitContractTransition.Key,
                                     readOnlyTxProcessorSource))
                             .ToArray<IBlockGasLimitContract>(),
-                        _context.GasLimitCalculatorCache,
+                        _api.GasLimitCalculatorCache,
                         _auraConfig?.Minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract == true,
                         gasLimitCalculator,
-                        _context.LogManager);
+                        _api.LogManager);
 
                 gasLimitCalculator = auRaContractGasLimitOverride;
             }

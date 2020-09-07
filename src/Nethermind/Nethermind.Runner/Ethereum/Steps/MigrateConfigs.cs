@@ -18,22 +18,22 @@
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus;
-using Nethermind.Runner.Ethereum.Context;
+using Nethermind.Runner.Ethereum.Api;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
     public class MigrateConfigs : IStep
     {
-        private readonly EthereumRunnerContext _context;
+        private readonly NethermindApi _api;
 
-        public MigrateConfigs(EthereumRunnerContext context)
+        public MigrateConfigs(NethermindApi api)
         {
-            _context = context;
+            _api = api;
         }
         
         public Task Execute(CancellationToken cancellationToken)
         {
-            _context.Config<IMiningConfig>().Enabled = _context.Config<IInitConfig>().IsMining;
+            _api.Config<IMiningConfig>().Enabled = _api.Config<IInitConfig>().IsMining;
             return Task.CompletedTask;
         }
     }

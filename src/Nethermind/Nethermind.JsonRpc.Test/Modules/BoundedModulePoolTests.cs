@@ -32,6 +32,7 @@ using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
+using NSubstitute;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 
@@ -66,9 +67,10 @@ namespace Nethermind.JsonRpc.Test.Modules
                 1, 
                 new EthModuleFactory(
                     dbProvider, 
-                    txPool, 
-                    NullWallet.Instance, 
-                    jsonRpcConfig,
+                    txPool,
+                    Substitute.For<ITxSender>(),
+                    Substitute.For<ITxSigner>(),
+                    NullWallet.Instance,
                     blockTree, 
                     new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance), 
                     NullBlockProcessor.Instance, 

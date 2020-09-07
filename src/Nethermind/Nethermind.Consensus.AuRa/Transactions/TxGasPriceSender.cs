@@ -17,6 +17,7 @@
 
 using System;
 using System.Linq;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -38,10 +39,9 @@ namespace Nethermind.Consensus.AuRa.Transactions
             _percentDelta = percentDelta;
         }
 
-        public Keccak SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
+        public ValueTask<Keccak> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
-            // TODO: Move to Uint256 when we support division
-            ulong minGasPrice = (ulong) CurrentMinGasPrice();
+            UInt256 minGasPrice =  CurrentMinGasPrice();
             tx.GasPrice = minGasPrice * _percentDelta / 100;
             return _txSender.SendTransaction(tx, txHandlingOptions);
         }

@@ -17,11 +17,11 @@
 using Nethermind.Config;
 using Nethermind.Logging;
 
-namespace Nethermind.Runner.Ethereum.Context
+namespace Nethermind.Runner.Ethereum.Api
 {
-    public class NethDevEthereumRunnerContext : EthereumRunnerContext
+    public class EthashNethermindApi : NethermindApi
     {
-        public NethDevEthereumRunnerContext(IConfigProvider configProvider, ILogManager logManager)
+        public EthashNethermindApi(IConfigProvider configProvider, ILogManager logManager)
             : base(configProvider, logManager)
         {
         }

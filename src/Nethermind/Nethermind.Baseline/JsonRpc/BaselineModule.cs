@@ -42,7 +42,7 @@ namespace Nethermind.Baseline.JsonRpc
     public class BaselineModule : IBaselineModule
     {
         public BaselineModule(
-            ITxPoolBridge txPoolBridge,
+            ITxSender txSender,
             IStateReader stateReader,
             ILogFinder logFinder,
             IBlockFinder blockFinder,
@@ -55,7 +55,7 @@ namespace Nethermind.Baseline.JsonRpc
             _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
             _baselineDb = baselineDb ?? throw new ArgumentNullException(nameof(baselineDb));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _txPoolBridge = txPoolBridge ?? throw new ArgumentNullException(nameof(txPoolBridge));
+            _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
             _logFinder = logFinder ?? throw new ArgumentNullException(nameof(logFinder));
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
@@ -64,11 +64,11 @@ namespace Nethermind.Baseline.JsonRpc
             InitTrees();
         }
 
-        public Task<ResultWrapper<Keccak>> baseline_insertLeaf(Address address, Address contractAddress, Keccak hash)
+        public async Task<ResultWrapper<Keccak>> baseline_insertLeaf(Address address, Address contractAddress, Keccak hash)
         {
             if (hash == Keccak.Zero)
             {
-                return Task.FromResult(ResultWrapper<Keccak>.Fail("Cannot insert zero hash", ErrorCodes.InvalidInput));
+                return ResultWrapper<Keccak>.Fail("Cannot insert zero hash", ErrorCodes.InvalidInput);
             }
 
             var txData = _abiEncoder.Encode(
@@ -84,11 +84,11 @@ namespace Nethermind.Baseline.JsonRpc
             tx.GasLimit = 1000000;
             tx.GasPrice = 20.GWei();
 
-            Keccak txHash = _txPoolBridge.SendTransaction(tx, TxHandlingOptions.ManagedNonce);
-            return Task.FromResult(ResultWrapper<Keccak>.Success(txHash));
+            Keccak txHash = await _txSender.SendTransaction(tx, TxHandlingOptions.ManagedNonce);
+            return ResultWrapper<Keccak>.Success(txHash);
         }
 
-        public Task<ResultWrapper<Keccak>> baseline_insertLeaves(
+        public async Task<ResultWrapper<Keccak>> baseline_insertLeaves(
             Address address,
             Address contractAddress,
             params Keccak[] hashes)
@@ -98,7 +98,7 @@ namespace Nethermind.Baseline.JsonRpc
                 if (hashes[i] == Keccak.Zero)
                 {
                     var result = ResultWrapper<Keccak>.Fail("Cannot insert zero hash", ErrorCodes.InvalidInput);
-                    return Task.FromResult(result);
+                    return result;
                 }
             }
 
@@ -115,9 +115,9 @@ namespace Nethermind.Baseline.JsonRpc
             tx.GasLimit = 1000000;
             tx.GasPrice = 20.GWei();
 
-            Keccak txHash = _txPoolBridge.SendTransaction(tx, TxHandlingOptions.ManagedNonce);
+            Keccak txHash = await _txSender.SendTransaction(tx, TxHandlingOptions.ManagedNonce);
 
-            return Task.FromResult(ResultWrapper<Keccak>.Success(txHash));
+            return ResultWrapper<Keccak>.Success(txHash);
         }
 
         public Task<ResultWrapper<Keccak>> baseline_getRoot(
@@ -246,7 +246,7 @@ namespace Nethermind.Baseline.JsonRpc
                 var bytecode = await GetContractBytecode(contractType);
                 try
                 {
-                    Keccak txHash = DeployBytecode(address, contractType, bytecode);
+                    Keccak txHash = await DeployBytecode(address, contractType, bytecode);
                     result = ResultWrapper<Keccak>.Success(txHash);
                 }
                 catch (Exception e)
@@ -272,7 +272,7 @@ namespace Nethermind.Baseline.JsonRpc
             return result;
         }
 
-        public Task<ResultWrapper<Keccak>> baseline_deployBytecode(Address address, string byteCode)
+        public async Task<ResultWrapper<Keccak>> baseline_deployBytecode(Address address, string byteCode)
         {
             ResultWrapper<Keccak> result;
 
@@ -285,7 +285,7 @@ namespace Nethermind.Baseline.JsonRpc
                 var bytecodeBytes = Bytes.FromHexString(byteCode);
                 try
                 {
-                    Keccak txHash = DeployBytecode(address, "bytecode", bytecodeBytes);
+                    Keccak txHash = await DeployBytecode(address, "bytecode", bytecodeBytes);
                     result = ResultWrapper<Keccak>.Success(txHash);
                 }
                 catch (Exception e)
@@ -296,7 +296,7 @@ namespace Nethermind.Baseline.JsonRpc
                 }
             }
 
-            return Task.FromResult(result);
+            return result;
         }
 
         private BaselineTree RebuildEntireTree(Address treeAddress)
@@ -459,7 +459,7 @@ namespace Nethermind.Baseline.JsonRpc
         private readonly IFileSystem _fileSystem;
         private readonly IDb _baselineDb;
         private readonly ILogger _logger;
-        private readonly ITxPoolBridge _txPoolBridge;
+        private readonly ITxSender _txSender;
         private readonly IStateReader _stateReader;
         private readonly ILogFinder _logFinder;
         private readonly IBlockFinder _blockFinder;
@@ -486,7 +486,7 @@ namespace Nethermind.Baseline.JsonRpc
                      (c >= 'A' && c <= 'F'));
         }
         
-        private Keccak DeployBytecode(Address address, string contractType, byte[] bytecode)
+        private async Task<Keccak> DeployBytecode(Address address, string contractType, byte[] bytecode)
         {
             Transaction tx = new Transaction();
             tx.Value = 0;
@@ -495,7 +495,7 @@ namespace Nethermind.Baseline.JsonRpc
             tx.GasPrice = 20.GWei();
             tx.SenderAddress = address;
 
-            Keccak txHash = _txPoolBridge.SendTransaction(tx, TxHandlingOptions.ManagedNonce);
+            Keccak txHash = await _txSender.SendTransaction(tx, TxHandlingOptions.ManagedNonce);
 
             _logger.Info($"Sent transaction at price {tx.GasPrice} to {tx.SenderAddress}");
             _logger.Info($"Contract {contractType} has been deployed");

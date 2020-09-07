@@ -16,13 +16,10 @@
 // 
 
 using System;
-using Nethermind.Consensus;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
-using Nethermind.TxPool;
 
-namespace Nethermind.Facade.Transactions
+namespace Nethermind.TxPool
 {
     public class TxSealer : ITxSealer
     {

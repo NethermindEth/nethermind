@@ -3,6 +3,7 @@
     <PropertyGroup>
         <TargetFramework>netcoreapp3.1</TargetFramework>
         <Nullable>annotations</Nullable>
+        <RootNamespace>Nethermind.GasService</RootNamespace>
     </PropertyGroup>
 
     <ItemGroup>

@@ -56,7 +56,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
 
             BaselineModule baselineModule = new BaselineModule(
-                testRpc.TxPoolBridge,
+                testRpc.TxSender,
                 testRpc.StateReader,
                 testRpc.LogFinder,
                 testRpc.BlockTree,
@@ -91,7 +91,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
 
             BaselineModule baselineModule = new BaselineModule(
-                testRpc.TxPoolBridge,
+                testRpc.TxSender,
                 testRpc.StateReader,
                 testRpc.LogFinder,
                 testRpc.BlockTree,
@@ -134,7 +134,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
 
             BaselineModule baselineModule = new BaselineModule(
-                testRpc.TxPoolBridge,
+                testRpc.TxSender,
                 testRpc.StateReader,
                 testRpc.LogFinder,
                 testRpc.BlockTree,
@@ -171,7 +171,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
 
             BaselineModule baselineModule = new BaselineModule(
-                testRpc.TxPoolBridge,
+                testRpc.TxSender,
                 testRpc.StateReader,
                 testRpc.LogFinder,
                 testRpc.BlockTree,
@@ -193,7 +193,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
             BaselineModule baselineModule = new BaselineModule(
-                testRpc.TxPoolBridge,
+                testRpc.TxSender,
                 testRpc.StateReader,
                 testRpc.LogFinder,
                 testRpc.BlockTree,
@@ -229,7 +229,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
             BaselineModule baselineModule = new BaselineModule(
-                testRpc.TxPoolBridge,
+                testRpc.TxSender,
                 testRpc.StateReader,
                 testRpc.LogFinder,
                 testRpc.BlockTree,
@@ -264,7 +264,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
             BaselineModule baselineModule = new BaselineModule(
-                testRpc.TxPoolBridge,
+                testRpc.TxSender,
                 testRpc.StateReader,
                 testRpc.LogFinder,
                 testRpc.BlockTree,
@@ -311,7 +311,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
             BaselineModule baselineModule = new BaselineModule(
-                testRpc.TxPoolBridge,
+                testRpc.TxSender,
                 testRpc.StateReader,
                 testRpc.LogFinder,
                 testRpc.BlockTree,
@@ -341,7 +341,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
             BaselineModule baselineModule = new BaselineModule(
-                testRpc.TxPoolBridge,
+                testRpc.TxSender,
                 testRpc.StateReader,
                 testRpc.LogFinder,
                 testRpc.BlockTree,
@@ -373,7 +373,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
             BaselineModule baselineModule = new BaselineModule(
-                testRpc.TxPoolBridge,
+                testRpc.TxSender,
                 testRpc.StateReader,
                 testRpc.LogFinder,
                 testRpc.BlockTree,
@@ -408,7 +408,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
             BaselineModule baselineModule = new BaselineModule(
-                testRpc.TxPoolBridge,
+                testRpc.TxSender,
                 testRpc.StateReader,
                 testRpc.LogFinder,
                 testRpc.BlockTree,
@@ -444,7 +444,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
             BaselineModule baselineModule = new BaselineModule(
-                testRpc.TxPoolBridge,
+                testRpc.TxSender,
                 testRpc.StateReader,
                 testRpc.LogFinder,
                 testRpc.BlockTree,
@@ -475,7 +475,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
             BaselineModule baselineModule = new BaselineModule(
-                testRpc.TxPoolBridge,
+                testRpc.TxSender,
                 testRpc.StateReader,
                 testRpc.LogFinder,
                 testRpc.BlockTree,
@@ -508,7 +508,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
             BaselineModule baselineModule = new BaselineModule(
-                testRpc.TxPoolBridge,
+                testRpc.TxSender,
                 testRpc.StateReader,
                 testRpc.LogFinder,
                 testRpc.BlockTree,
@@ -587,7 +587,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
 
             IStateReader stateReader = Substitute.For<IStateReader>();
             BaselineModule baselineModule = new BaselineModule(
-                testRpc.TxPoolBridge,
+                testRpc.TxSender,
                 stateReader,
                 testRpc.LogFinder,
                 testRpc.BlockTree,
@@ -614,7 +614,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
 
             IStateReader stateReader = Substitute.For<IStateReader>();
             BaselineModule baselineModule = new BaselineModule(
-                testRpc.TxPoolBridge,
+                testRpc.TxSender,
                 stateReader,
                 testRpc.LogFinder,
                 testRpc.BlockTree,
@@ -655,7 +655,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
             BaselineModule baselineModule = new BaselineModule(
-                testRpc.TxPoolBridge,
+                testRpc.TxSender,
                 testRpc.StateReader,
                 testRpc.LogFinder,
                 testRpc.BlockTree,
@@ -680,7 +680,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
             BaselineModule baselineModule = new BaselineModule(
-                testRpc.TxPoolBridge,
+                testRpc.TxSender,
                 testRpc.StateReader,
                 testRpc.LogFinder,
                 testRpc.BlockTree,
@@ -708,7 +708,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
 
             IStateReader stateReader = Substitute.For<IStateReader>();
             BaselineModule baselineModule = new BaselineModule(
-                testRpc.TxPoolBridge,
+                testRpc.TxSender,
                 stateReader,
                 testRpc.LogFinder,
                 testRpc.BlockTree,
@@ -738,7 +738,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
 
             IStateReader stateReader = Substitute.For<IStateReader>();
             BaselineModule baselineModule = new BaselineModule(
-                testRpc.TxPoolBridge,
+                testRpc.TxSender,
                 stateReader,
                 testRpc.LogFinder,
                 testRpc.BlockTree,
@@ -754,7 +754,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             }
 
             BaselineModule restored = new BaselineModule(
-                testRpc.TxPoolBridge,
+                testRpc.TxSender,
                 testRpc.StateReader,
                 testRpc.LogFinder,
                 testRpc.BlockTree,
@@ -773,7 +773,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
             BaselineModule baselineModule = new BaselineModule(
-                testRpc.TxPoolBridge,
+                testRpc.TxSender,
                 testRpc.StateReader,
                 testRpc.LogFinder,
                 testRpc.BlockTree,
@@ -807,7 +807,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             SingleReleaseSpecProvider spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
             BaselineModule baselineModule = new BaselineModule(
-                testRpc.TxPoolBridge,
+                testRpc.TxSender,
                 testRpc.StateReader,
                 testRpc.LogFinder,
                 testRpc.BlockTree,
@@ -891,7 +891,7 @@ namespace Nethermind.Baseline.Test.JsonRpc
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(
                 SealEngineType.NethDev).Build(spec, 100000.Ether());
             BaselineModule baselineModule = new BaselineModule(
-                testRpc.TxPoolBridge,
+                testRpc.TxSender,
                 testRpc.StateReader,
                 testRpc.LogFinder,
                 testRpc.BlockTree,

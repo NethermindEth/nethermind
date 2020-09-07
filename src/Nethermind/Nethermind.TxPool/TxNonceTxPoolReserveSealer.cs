@@ -13,17 +13,28 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using Nethermind.Config;
-using Nethermind.Logging;
+using System;
+using Nethermind.Core;
 
-namespace Nethermind.Runner.Ethereum.Context
+namespace Nethermind.TxPool
 {
-    public class EthashEthereumRunnerContext : EthereumRunnerContext
+    // TODO: this should be nonce reserving tx sender, not sealer?
+    public class NonceReservingTxSealer : TxSealer
     {
-        public EthashEthereumRunnerContext(IConfigProvider configProvider, ILogManager logManager)
-            : base(configProvider, logManager)
+        private readonly ITxPool _txPool;
+
+        public NonceReservingTxSealer(ITxSigner txSigner, ITimestamper timestamper, ITxPool txPool)
+            : base(txSigner, timestamper, false)
         {
+            _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
+        }
+
+        public override void Seal(Transaction tx)
+        {
+            tx.Nonce = _txPool.ReserveOwnTransactionNonce(tx.SenderAddress);
+            base.Seal(tx);
         }
     }
 }

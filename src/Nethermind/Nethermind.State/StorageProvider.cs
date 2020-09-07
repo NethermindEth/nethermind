@@ -48,6 +48,11 @@ namespace Nethermind.State
         private Change[] _changes = new Change[StartCapacity];
         private int _currentPosition = -1;
 
+        public StorageProvider(IDbProvider dbProvider, IStateProvider stateProvider, ILogManager logManager) 
+            :this(dbProvider.StateDb, stateProvider, logManager)
+        {
+        }
+        
         public StorageProvider(ISnapshotableDb stateDb, IStateProvider stateProvider, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));

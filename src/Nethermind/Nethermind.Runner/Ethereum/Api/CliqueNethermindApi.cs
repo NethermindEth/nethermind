@@ -14,20 +14,25 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Security;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
+using Nethermind.Config;
+using Nethermind.Consensus.Clique;
+using Nethermind.Logging;
 
-namespace Nethermind.Facade
+namespace Nethermind.Runner.Ethereum.Api
 {
-    public interface IPersonalBridge
+    public class CliqueNethermindApi : NethermindApi
     {
-        Address[] ListAccounts();
-        Address NewAccount(SecureString passphrase);
-        bool UnlockAccount(Address address, SecureString notSecuredHere);
-        bool LockAccount(Address address);
-        bool IsUnlocked(Address address);
-        Address EcRecover(byte[] message, Signature signature);
-        Signature Sign(byte[] message, Address address);
+        public CliqueNethermindApi(IConfigProvider configProvider, ILogManager logManager)
+            : base(configProvider, logManager)
+        {
+        }
+        
+        public ISnapshotManager? SnapshotManager{ get; set; }
+
+        public new CliqueSealer? Sealer
+        {
+            get => base.Sealer as CliqueSealer;
+            set => base.Sealer = value;
+        }
     }
 }

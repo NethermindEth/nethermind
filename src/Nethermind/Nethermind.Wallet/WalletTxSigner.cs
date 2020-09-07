@@ -15,12 +15,27 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.TxPool;
 
-namespace Nethermind.Consensus
+namespace Nethermind.Wallet
 {
-    public interface ITxSigner
+    public class WalletTxSigner : ITxSigner
     {
-        void Sign(Transaction tx);
+        private readonly IWallet _wallet;
+        private readonly int _chainId;
+
+        public WalletTxSigner(IWallet wallet, int chainId)
+        {
+            _wallet = wallet;
+            _chainId = chainId;
+        }
+        
+        public ValueTask Sign(Transaction tx)
+        {
+            _wallet.Sign(tx, _chainId);
+            return default;
+        }
     }
 }

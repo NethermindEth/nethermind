@@ -19,7 +19,7 @@ using System.IO;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Logging;
-using Nethermind.Runner.Ethereum.Context;
+using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using NLog;
@@ -65,25 +65,25 @@ namespace Nethermind.Runner.Ethereum
             Context.SpecProvider = new ChainSpecBasedSpecProvider(Context.ChainSpec);
         }
 
-        private EthereumRunnerContext Create(SealEngineType engine)
+        private NethermindApi Create(SealEngineType engine)
         {
             switch (engine)
             {
                 case SealEngineType.Ethash:
-                    return new EthashEthereumRunnerContext(_configProvider, _logManager);
+                    return new EthashNethermindApi(_configProvider, _logManager);
                 case SealEngineType.AuRa:
-                    return new AuRaEthereumRunnerContext(_configProvider, _logManager);
+                    return new AuRaNethermindApi(_configProvider, _logManager);
                 case SealEngineType.Clique:
-                    return new CliqueEthereumRunnerContext(_configProvider, _logManager);
+                    return new CliqueNethermindApi(_configProvider, _logManager);
                 case SealEngineType.NethDev:
-                    return new NethDevEthereumRunnerContext(_configProvider, _logManager);
+                    return new NethDevNethermindApi(_configProvider, _logManager);
                 case SealEngineType.None:
-                    return new EthereumRunnerContext(_configProvider, _logManager);
+                    return new NethermindApi(_configProvider, _logManager);
                 default:
                     throw new ArgumentOutOfRangeException(nameof(engine), engine, "Unexpected engine.");
             }
         }
 
-        public EthereumRunnerContext Context { get; }
+        public NethermindApi Context { get; }
     }
 }

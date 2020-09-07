@@ -94,6 +94,29 @@ namespace Nethermind.Blockchain
         public bool CanAcceptNewBlocks => _canAcceptNewBlocksCounter == 0;
 
         public BlockTree(
+            IDbProvider dbProvider,
+            IChainLevelInfoRepository chainLevelInfoRepository,
+            ISpecProvider specProvider,
+            ITxPool txPool,
+            IBloomStorage bloomStorage,
+            ILogManager logManager)
+            : this(dbProvider.BlocksDb, dbProvider.HeadersDb, dbProvider.BlockInfosDb, chainLevelInfoRepository, specProvider, txPool, bloomStorage, new SyncConfig(), logManager)
+        {
+        }
+        
+        public BlockTree(
+            IDbProvider dbProvider,
+            IChainLevelInfoRepository chainLevelInfoRepository,
+            ISpecProvider specProvider,
+            ITxPool txPool,
+            IBloomStorage bloomStorage,
+            ISyncConfig syncConfig,
+            ILogManager logManager)
+            : this(dbProvider.BlocksDb, dbProvider.HeadersDb, dbProvider.BlockInfosDb, chainLevelInfoRepository, specProvider, txPool, bloomStorage, syncConfig, logManager)
+        {
+        }
+        
+        public BlockTree(
             IDb blockDb,
             IDb headerDb,
             IDb blockInfoDb,
@@ -886,6 +909,8 @@ namespace Nethermind.Blockchain
 
             return IsMainChain(header);
         }
+
+        public BlockHeader FindBestSuggestedHeader() => BestSuggestedHeader;
 
         public bool WasProcessed(long number, Keccak blockHash)
         {

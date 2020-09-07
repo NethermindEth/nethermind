@@ -1,4 +1,4 @@
-//  Copyright (c) 2020 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,15 +14,16 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-namespace Nethermind.Vault.Config
+using Nethermind.Config;
+using Nethermind.Logging;
+
+namespace Nethermind.Runner.Ethereum.Api
 {
-    public class VaultConfig : IVaultConfig
+    public class NethDevNethermindApi : NethermindApi
     {
-        public bool Enabled { get; set;}
-        public string Host { get; set;}
-        public string Token { get; set;}
-        public string Scheme { get; set;}
-        public string Path { get; set;}
-        public string VaultId { get; set;}
+        public NethDevNethermindApi(IConfigProvider configProvider, ILogManager logManager)
+            : base(configProvider, logManager)
+        {
+        }
     }
 }

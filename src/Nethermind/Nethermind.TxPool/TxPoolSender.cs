@@ -16,16 +16,11 @@
 // 
 
 using System;
-using System.Security;
-using Nethermind.Consensus;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Crypto;
-using Nethermind.Int256;
-using Nethermind.TxPool;
-using Nethermind.Wallet;
 
-namespace Nethermind.Facade.Transactions
+namespace Nethermind.TxPool
 {
     public class TxPoolSender : ITxSender
     {
@@ -39,13 +34,11 @@ namespace Nethermind.Facade.Transactions
             if (sealers.Length == 0) throw new ArgumentException("Sealers can not be empty.", nameof(sealers));
         }
 
-        public TxPoolSender(ITxPool txPool, ITxSigner txSigner, ITimestamper timestamper)
-            : this(txPool, new TxSealer(txSigner, timestamper), new TxNonceTxPoolReserveSealer(txSigner, timestamper, txPool))
+        public ValueTask<Keccak> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
-        }
-
-        public Keccak SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
-        {
+            // TODO: this is very not intuitive - can we fix it...?
+            // maybe move nonce reservation to sender itself before sealing
+            // sealers should behave like composite and not like chain of commands
             foreach (var sealer in _sealers)
             {
                 sealer.Seal(tx);
@@ -58,7 +51,7 @@ namespace Nethermind.Facade.Transactions
                 }
             }
 
-            return tx.Hash;
+            return new ValueTask<Keccak>(tx.Hash);
         }
     }
 }

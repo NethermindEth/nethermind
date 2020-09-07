@@ -108,7 +108,7 @@ namespace Nethermind.Runner.Test
                     continue;
                 }
 
-                string expectedValue = attribute.DefaultValue.Trim('"');
+                string expectedValue = attribute.DefaultValue?.Trim('"') ?? "null";
                 string actualValue;
 
                 object value = property.GetValue(instance);

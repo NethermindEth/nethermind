@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,22 +15,18 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Collections.Generic;
-using Nethermind.Blockchain.Filters;
-using Nethermind.Blockchain.Find;
+using System.Threading.Tasks;
+using Nethermind.Core;
 
-namespace Nethermind.Facade
+namespace Nethermind.TxPool
 {
-    public interface ILogBridge
+    public interface ITxSigner : ITxSealer
     {
-        IEnumerable<FilterLog> GetLogs(BlockParameter fromBlock, BlockParameter toBlock, object address = null, IEnumerable<object> topics = null);
-    }
+        ValueTask Sign(Transaction tx);
 
-    public class LogBridge : ILogBridge
-    {
-        public IEnumerable<FilterLog> GetLogs(BlockParameter fromBlock, BlockParameter toBlock, object address = null, IEnumerable<object> topics = null)
+        void ITxSealer.Seal(Transaction tx)
         {
-            throw new System.NotImplementedException();
+            Sign(tx);
         }
     }
 }

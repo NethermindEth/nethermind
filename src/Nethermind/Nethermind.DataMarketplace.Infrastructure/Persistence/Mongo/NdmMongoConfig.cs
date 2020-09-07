@@ -18,7 +18,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo
 {
     public class NdmMongoConfig : INdmMongoConfig
     {
-        public string? ConnectionString { get; set; }
+        public string? ConnectionString { get; set; } = "mongodb://localhost:27017";
         public string Database { get; set; } = "ndm";
         public bool LogQueries { get; set; } = false;
     }

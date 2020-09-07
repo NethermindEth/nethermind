@@ -23,7 +23,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
-using Nethermind.Runner.Ethereum.Context;
+using Nethermind.Runner.Ethereum.Api;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
@@ -32,13 +32,13 @@ namespace Nethermind.Runner.Ethereum.Steps
         private ILogger _logger;
 
         private AutoResetEvent _autoResetEvent = new AutoResetEvent(true);
-        private readonly EthereumRunnerContext _context;
+        private readonly NethermindApi _api;
         private readonly List<StepInfo> _allSteps;
         private readonly Dictionary<Type, StepInfo> _allStepsByBaseType;
 
         public EthereumStepsManager(
             IEthereumStepsLoader loader,
-            EthereumRunnerContext context,
+            NethermindApi context,
             ILogManager logManager)
         {
             if (loader == null)
@@ -46,11 +46,11 @@ namespace Nethermind.Runner.Ethereum.Steps
                 throw new ArgumentNullException(nameof(loader));
             }
 
-            _context = context ?? throw new ArgumentNullException(nameof(context));
+            _api = context ?? throw new ArgumentNullException(nameof(context));
             _logger = logManager?.GetClassLogger<EthereumStepsManager>()
                       ?? throw new ArgumentNullException(nameof(logManager));
 
-            _allSteps = loader.LoadSteps(_context.GetType()).ToList();
+            _allSteps = loader.LoadSteps(_api.GetType()).ToList();
             _allStepsByBaseType = _allSteps.ToDictionary(s => s.StepBaseType, s => s);
         }
 
@@ -191,7 +191,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             IStep? step = null;
             try
             {
-                step = Activator.CreateInstance(stepInfo.StepType, _context) as IStep;
+                step = Activator.CreateInstance(stepInfo.StepType, _api) as IStep;
             }
             catch (Exception e)
             {

@@ -18,18 +18,18 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Network.Config;
-using Nethermind.Runner.Ethereum.Context;
+using Nethermind.Runner.Ethereum.Api;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
     [RunnerStepDependencies(typeof(FilterBootnodes))]
     public class UpdateDiscoveryConfig : IStep
     {
-        private readonly EthereumRunnerContext _context;
+        private readonly NethermindApi _api;
 
-        public UpdateDiscoveryConfig(EthereumRunnerContext context)
+        public UpdateDiscoveryConfig(NethermindApi api)
         {
-            _context = context;
+            _api = api;
         }
 
         public Task Execute(CancellationToken _)
@@ -40,22 +40,22 @@ namespace Nethermind.Runner.Ethereum.Steps
         
         private void Update()
         {
-            if (_context.ChainSpec == null)
+            if (_api.ChainSpec == null)
             {
                 return;
             }
             
-            IDiscoveryConfig discoveryConfig = _context.Config<IDiscoveryConfig>();
+            IDiscoveryConfig discoveryConfig = _api.Config<IDiscoveryConfig>();
             if (discoveryConfig.Bootnodes != string.Empty)
             {
-                if (_context.ChainSpec.Bootnodes.Length != 0)
+                if (_api.ChainSpec.Bootnodes.Length != 0)
                 {
-                    discoveryConfig.Bootnodes += "," + string.Join(",", _context.ChainSpec.Bootnodes.Select(bn => bn.ToString()));
+                    discoveryConfig.Bootnodes += "," + string.Join(",", _api.ChainSpec.Bootnodes.Select(bn => bn.ToString()));
                 }
             }
             else
             {
-                discoveryConfig.Bootnodes = string.Join(",", _context.ChainSpec.Bootnodes.Select(bn => bn.ToString()));
+                discoveryConfig.Bootnodes = string.Join(",", _api.ChainSpec.Bootnodes.Select(bn => bn.ToString()));
             }
         }
     }

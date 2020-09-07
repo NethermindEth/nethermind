@@ -19,7 +19,7 @@ using System.Threading.Tasks;
 using Nethermind.Logging;
 using Nethermind.PubSub;
 using Nethermind.Runner.Analytics;
-using Nethermind.Runner.Ethereum.Context;
+using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.Runner.Ethereum.Steps
@@ -27,20 +27,20 @@ namespace Nethermind.Runner.Ethereum.Steps
     [RunnerStepDependencies(typeof(StartBlockProcessor))]
     public class StartLogProducer : IStep
     {
-        private readonly EthereumRunnerContext _context;
+        private readonly NethermindApi _api;
 
-        public StartLogProducer(EthereumRunnerContext context)
+        public StartLogProducer(NethermindApi api)
         {
-            _context = context;
+            _api = api;
         }
 
         public Task Execute(CancellationToken cancellationToken)
         {
-            IAnalyticsConfig analyticsConfig = _context.Config<IAnalyticsConfig>();
+            IAnalyticsConfig analyticsConfig = _api.Config<IAnalyticsConfig>();
             if (analyticsConfig.LogPublishedData)
             {
-                LogProducer logProducer = new LogProducer(_context.EthereumJsonSerializer!, _context.LogManager);
-                _context.Producers.Add(logProducer);
+                LogProducer logProducer = new LogProducer(_api.EthereumJsonSerializer!, _api.LogManager);
+                _api.Producers.Add(logProducer);
             }
 
             return Task.CompletedTask;

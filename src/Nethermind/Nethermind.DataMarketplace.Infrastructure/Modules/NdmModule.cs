@@ -25,8 +25,9 @@ using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Infrastructure.Rlp;
 using Nethermind.Db;
 using Nethermind.Facade;
-using Nethermind.Facade.Transactions;
 using Nethermind.JsonRpc;
+using Nethermind.TxPool;
+using Nethermind.Wallet;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Modules
 {
@@ -54,23 +55,18 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
                 services.SpecProvider, logManager);
             var jsonRpcConfig = services.ConfigProvider.GetConfig<IJsonRpcConfig>();
             var blockchainBridge = new BlockchainBridge(
-                readOnlyTxProcessingEnv.StateReader,
-                readOnlyTxProcessingEnv.StateProvider,
-                readOnlyTxProcessingEnv.StorageProvider,
-                readOnlyTxProcessingEnv.BlockTree,
-                services.TransactionPool,
+                readOnlyTxProcessingEnv,
+                services.TxPool,
                 services.ReceiptFinder,
                 services.FilterStore,
                 services.FilterManager,
-                wallet,
-                readOnlyTxProcessingEnv.TransactionProcessor,
                 services.Ecdsa,
                 services.BloomStorage,
                 Timestamper.Default,
                 logManager,
                 false,
                 jsonRpcConfig.FindLogBlockDepthLimit);
-            var txPoolBridge = new TxPoolBridge(services.TransactionPool, new WalletTxSigner(services.Wallet, services.SpecProvider.ChainId), services.Timestamper);
+            
             var dataAssetRlpDecoder = new DataAssetDecoder();
             var encoder = new AbiEncoder();
 
@@ -87,7 +83,8 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
             }
             else
             {
-                ndmBlockchainBridge = new NdmBlockchainBridge(txPoolBridge, blockchainBridge, services.TransactionPool);
+                ndmBlockchainBridge = new NdmBlockchainBridge(
+                    blockchainBridge, services.BlockTree, readOnlyTxProcessingEnv.StateReader, services.TxSender);
             }
 
             var gasPriceService = new GasPriceService(services.HttpClient, configManager, configId, timestamper,

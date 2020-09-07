@@ -29,9 +29,9 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Runner.Ethereum.Context;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
+using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Timer = System.Timers.Timer;
@@ -42,7 +42,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
     {
         private static readonly BlockHeader EmptyHeader = new BlockHeader(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.Zero, 0L, 0L, UInt256.Zero, Array.Empty<byte>());
         
-        private readonly EthereumRunnerContext _context;
+        private readonly NethermindApi _api;
         private readonly ILogger _logger;
         private Stopwatch? _stopwatch;
         private readonly MeasuredProgress _progress = new MeasuredProgress();
@@ -53,31 +53,31 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
         private readonly StringBuilder _builder = new StringBuilder();
         private readonly IBloomConfig _bloomConfig;
         
-        public BloomMigration(EthereumRunnerContext context)
+        public BloomMigration(NethermindApi api)
         {
-            _context = context;
-            _logger = context.LogManager.GetClassLogger<BloomMigration>();
-            _bloomConfig = context.Config<IBloomConfig>();
+            _api = api;
+            _logger = api.LogManager.GetClassLogger<BloomMigration>();
+            _bloomConfig = api.Config<IBloomConfig>();
         }
         
         public void Run()
         {
-            if (_context.BloomStorage == null) throw new StepDependencyException(nameof(_context.BloomStorage));
-            if (_context.Synchronizer == null) throw new StepDependencyException(nameof(_context.Synchronizer));
-            if (_context.SyncModeSelector == null) throw new StepDependencyException(nameof(_context.SyncModeSelector));
+            if (_api.BloomStorage == null) throw new StepDependencyException(nameof(_api.BloomStorage));
+            if (_api.Synchronizer == null) throw new StepDependencyException(nameof(_api.Synchronizer));
+            if (_api.SyncModeSelector == null) throw new StepDependencyException(nameof(_api.SyncModeSelector));
 
-            IBloomStorage? storage = _context.BloomStorage;
+            IBloomStorage? storage = _api.BloomStorage;
             if (storage.NeedsMigration)
             {
                 if (_bloomConfig.Migration)
                 {
-                    if (CanMigrate(_context.SyncModeSelector.Current))
+                    if (CanMigrate(_api.SyncModeSelector.Current))
                     {
                         RunBloomMigration();
                     }
                     else
                     {
-                        _context.SyncModeSelector.Changed += SynchronizerOnSyncModeChanged;
+                        _api.SyncModeSelector.Changed += SynchronizerOnSyncModeChanged;
                     }
                 }
                 else
@@ -100,22 +100,22 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
         {
             if (CanMigrate(e.Current))
             {
-                if (_context.SyncModeSelector == null) throw new StepDependencyException(nameof(_context.SyncModeSelector));
+                if (_api.SyncModeSelector == null) throw new StepDependencyException(nameof(_api.SyncModeSelector));
 
                 RunBloomMigration();
-                _context.SyncModeSelector.Changed -= SynchronizerOnSyncModeChanged;
+                _api.SyncModeSelector.Changed -= SynchronizerOnSyncModeChanged;
             }
         }
 
         private void RunBloomMigration()
         {
-            if (_context.DisposeStack == null) throw new StepDependencyException(nameof(_context.DisposeStack));
-            if (_context.BloomStorage == null) throw new StepDependencyException(nameof(_context.BloomStorage));
+            if (_api.DisposeStack == null) throw new StepDependencyException(nameof(_api.DisposeStack));
+            if (_api.BloomStorage == null) throw new StepDependencyException(nameof(_api.BloomStorage));
 
-            if (_context.BloomStorage.NeedsMigration)
+            if (_api.BloomStorage.NeedsMigration)
             {
                 _cancellationTokenSource = new CancellationTokenSource();
-                _context.DisposeStack.Push(this);
+                _api.DisposeStack.Push(this);
                 _stopwatch = Stopwatch.StartNew();
                 _migrationTask = Task.Run(() => RunBloomMigration(_cancellationTokenSource.Token))
                     .ContinueWith(x =>
@@ -133,12 +133,12 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
         {
             get
             {
-                if (_context.BloomStorage == null) throw new StepDependencyException(nameof(_context.BloomStorage));
-                if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
+                if (_api.BloomStorage == null) throw new StepDependencyException(nameof(_api.BloomStorage));
+                if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
                 
-                return _context.BloomStorage.MinBlockNumber == long.MaxValue
-                    ? _context.BlockTree.BestKnownNumber
-                    : _context.BloomStorage.MinBlockNumber - 1;
+                return _api.BloomStorage.MinBlockNumber == long.MaxValue
+                    ? _api.BlockTree.BestKnownNumber
+                    : _api.BloomStorage.MinBlockNumber - 1;
             }
         }
 
@@ -150,18 +150,18 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
                 return EmptyHeader;
             }
 
-            if (_context.BloomStorage == null) throw new StepDependencyException(nameof(_context.BloomStorage));
-            if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
-            if (_context.ChainLevelInfoRepository == null) throw new StepDependencyException(nameof(_context.ChainLevelInfoRepository));
+            if (_api.BloomStorage == null) throw new StepDependencyException(nameof(_api.BloomStorage));
+            if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
+            if (_api.ChainLevelInfoRepository == null) throw new StepDependencyException(nameof(_api.ChainLevelInfoRepository));
             
-            IBlockTree blockTree = _context.BlockTree;
-            IBloomStorage storage = _context.BloomStorage;
+            IBlockTree blockTree = _api.BlockTree;
+            IBloomStorage storage = _api.BloomStorage;
             long to = MinBlockNumber;
             long synced = storage.MigratedBlockNumber + 1;
             long from = synced;
             _migrateCount = to + 1;
-            _averages = _context.BloomStorage.Averages.ToArray();
-            var chainLevelInfoRepository = _context.ChainLevelInfoRepository;
+            _averages = _api.BloomStorage.Averages.ToArray();
+            var chainLevelInfoRepository = _api.ChainLevelInfoRepository;
 
             _progress.Update(synced);
 

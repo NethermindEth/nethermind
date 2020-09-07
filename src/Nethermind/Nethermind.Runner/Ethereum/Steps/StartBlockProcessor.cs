@@ -16,28 +16,28 @@
 
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Runner.Ethereum.Context;
+using Nethermind.Runner.Ethereum.Api;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
     [RunnerStepDependencies(typeof(InitializeBlockchain), typeof(ResetDatabaseMigrations))]
     public class StartBlockProcessor : IStep
     {
-        private readonly EthereumRunnerContext _context;
+        private readonly NethermindApi _api;
 
-        public StartBlockProcessor(EthereumRunnerContext context)
+        public StartBlockProcessor(NethermindApi api)
         {
-            _context = context;
+            _api = api;
         }
         
         public Task Execute(CancellationToken _)
         {
-            if (_context.BlockchainProcessor == null)
+            if (_api.BlockchainProcessor == null)
             {
-                throw new StepDependencyException(nameof(_context.BlockchainProcessor));
+                throw new StepDependencyException(nameof(_api.BlockchainProcessor));
             }
             
-            _context.BlockchainProcessor.Start();
+            _api.BlockchainProcessor.Start();
             return Task.CompletedTask;
         }
     }

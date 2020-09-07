@@ -23,10 +23,8 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Consensus;
 using Nethermind.Facade;
 using Nethermind.Logging;
-using Nethermind.Specs;
 using Nethermind.State;
 using Nethermind.TxPool;
-using Nethermind.Wallet;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -38,15 +36,12 @@ namespace Nethermind.Baseline.Test
         [Test]
         public void Can_create_many()
         {
-            var txPool = Substitute.For<ITxPool>();
             BaselineModuleFactory factory = new BaselineModuleFactory(
-                txPool,
+                Substitute.For<ITxSender>(),
                 Substitute.For<IStateReader>(),
                 Substitute.For<ILogFinder>(),
                 Substitute.For<IBlockFinder>(),
                 new AbiEncoder(),
-                NullWallet.Instance, 
-                MainnetSpecProvider.Instance,
                 Substitute.For<IFileSystem>(),
                 LimboLogs.Instance);
 

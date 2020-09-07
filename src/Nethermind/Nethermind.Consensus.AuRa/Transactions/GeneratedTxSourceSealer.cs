@@ -30,7 +30,7 @@ using Nethermind.Wallet;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
-    public class GeneratedTxSourceSealer : ITxSource
+    public class GeneratedTxSource : ITxSource
     {
         private readonly ITxSource _innerSource;
         private readonly ITxSealer _txSealer;
@@ -38,12 +38,12 @@ namespace Nethermind.Consensus.AuRa.Transactions
         private readonly ILogger _logger;
         private readonly IDictionary<Address, UInt256> _nonces = new Dictionary<Address, UInt256>(1);
 
-        public GeneratedTxSourceSealer(ITxSource innerSource, ITxSealer txSealer, IStateReader stateReader, ILogManager logManager)
+        public GeneratedTxSource(ITxSource innerSource, ITxSealer txSealer, IStateReader stateReader, ILogManager logManager)
         {
             _innerSource = innerSource ?? throw new ArgumentNullException(nameof(innerSource));
             _txSealer = txSealer ?? throw new ArgumentNullException(nameof(txSealer));
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
-            _logger = logManager?.GetClassLogger<GeneratedTxSourceSealer>() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<GeneratedTxSource>() ?? throw new ArgumentNullException(nameof(logManager));
         }
         
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
@@ -82,6 +82,6 @@ namespace Nethermind.Consensus.AuRa.Transactions
             return nonce;
         }
         
-        public override string ToString() => $"{nameof(GeneratedTxSourceSealer)} [ {_innerSource} ]";
+        public override string ToString() => $"{nameof(GeneratedTxSource)} [ {_innerSource} ]";
     }
 }

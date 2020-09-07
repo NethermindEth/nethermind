@@ -15,15 +15,23 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.TxPool;
 
-namespace Nethermind.Facade
+namespace Nethermind.Consensus
 {
-    public interface ITxPoolBridge : ITxSender
+    public interface ISealValidator
     {
-        Transaction GetPendingTransaction(Keccak txHash);
-        Transaction[] GetPendingTransactions();
+        bool ValidateParams(BlockHeader parent, BlockHeader header);
+        
+        /// <summary>
+        /// Validates block header seal.
+        /// </summary>
+        /// <param name="header">Block header to validate.</param>
+        /// <param name="force">Unless set to <value>true</value> the validator is allowed to optimize validation away in a safe manner.</param>
+        /// <returns><value>True</value> if seal is valid or was not checked, otherwise <value>false</value></returns>
+        bool ValidateSeal(BlockHeader header, bool force);
+        
+        public void HintValidationRange(Guid guid, long start, long end) { }
     }
 }
