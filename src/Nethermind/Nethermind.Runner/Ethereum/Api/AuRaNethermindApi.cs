@@ -24,13 +24,12 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.TxPool;
 
-namespace Nethermind.Runner.Ethereum.Context
+namespace Nethermind.Runner.Ethereum.Api
 {
-    public class AuRaEthereumRunnerContext : EthereumRunnerContext
+    public class AuRaNethermindApi : NethermindApi
     {
-        public AuRaEthereumRunnerContext(IConfigProvider configProvider, ILogManager logManager)
+        public AuRaNethermindApi(IConfigProvider configProvider, ILogManager logManager)
             : base(configProvider, logManager)
         {
         }

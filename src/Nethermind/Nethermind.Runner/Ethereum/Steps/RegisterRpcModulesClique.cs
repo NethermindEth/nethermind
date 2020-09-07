@@ -18,29 +18,29 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Clique;
 using Nethermind.JsonRpc.Modules;
-using Nethermind.Runner.Ethereum.Context;
+using Nethermind.Runner.Ethereum.Api;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
     public class RegisterRpcModulesClique : RegisterRpcModules
     {
-        private readonly CliqueEthereumRunnerContext _context;
+        private readonly CliqueNethermindApi _api;
 
-        public RegisterRpcModulesClique(CliqueEthereumRunnerContext context) : base(context)
+        public RegisterRpcModulesClique(CliqueNethermindApi api) : base(api)
         {
-            _context = context;
+            _api = api;
         }
 
         public override Task Execute(CancellationToken cancellationToken)
         {
-            if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
-            if (_context.SnapshotManager == null) throw new StepDependencyException(nameof(_context.SnapshotManager));
-            if (_context.RpcModuleProvider == null) throw new StepDependencyException(nameof(_context.RpcModuleProvider));
+            if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
+            if (_api.SnapshotManager == null) throw new StepDependencyException(nameof(_api.SnapshotManager));
+            if (_api.RpcModuleProvider == null) throw new StepDependencyException(nameof(_api.RpcModuleProvider));
             
             Task result = base.Execute(cancellationToken);
-            if (_context.SnapshotManager == null) throw new StepDependencyException(nameof(_context.SnapshotManager));
-            CliqueModule cliqueModule = new CliqueModule(_context.LogManager, new CliqueBridge(_context.BlockProducer as ICliqueBlockProducer, _context.SnapshotManager, _context.BlockTree));
-            _context.RpcModuleProvider.Register(new SingletonModulePool<ICliqueModule>(cliqueModule, true));
+            if (_api.SnapshotManager == null) throw new StepDependencyException(nameof(_api.SnapshotManager));
+            CliqueModule cliqueModule = new CliqueModule(_api.LogManager, new CliqueBridge(_api.BlockProducer as ICliqueBlockProducer, _api.SnapshotManager, _api.BlockTree));
+            _api.RpcModuleProvider.Register(new SingletonModulePool<ICliqueModule>(cliqueModule, true));
             return result;
         }
     }

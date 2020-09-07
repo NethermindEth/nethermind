@@ -114,7 +114,7 @@ namespace Nethermind.DataMarketplace.Core.Services
             return Task.FromResult(callOutput.OutputData ?? new byte[] {0});
         }
 
-        public Task<Keccak?> SendOwnTransactionAsync(Transaction transaction)
-            => Task.FromResult<Keccak?>(_txSender.SendTransaction(transaction, TxHandlingOptions.ManagedNonce | TxHandlingOptions.PersistentBroadcast));
+        public ValueTask<Keccak?> SendOwnTransactionAsync(Transaction transaction)
+            => _txSender.SendTransaction(transaction, TxHandlingOptions.ManagedNonce | TxHandlingOptions.PersistentBroadcast);
     }
 }

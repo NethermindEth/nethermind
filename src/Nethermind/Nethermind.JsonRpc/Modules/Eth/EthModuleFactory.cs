@@ -38,23 +38,26 @@ namespace Nethermind.JsonRpc.Modules.Eth
     {
         private readonly IBlockTree _blockTree;
         private readonly IDbProvider _dbProvider;
-        private readonly IJsonRpcConfig _jsonRpcConfig; 
         private readonly IEthereumEcdsa _ethereumEcdsa;
         private readonly IReceiptFinder _receiptFinder;
         private readonly ISpecProvider _specProvider;
         private readonly ILogManager _logManager;
         private readonly bool _isMining;
         private readonly ITxPool _txPool;
+        private readonly ITxSender _txSender;
+        private readonly ITxSigner _txSigner;
         private readonly IWallet _wallet;
         private readonly IFilterStore _filterStore;
         private readonly IFilterManager _filterManager;
         private readonly IJsonRpcConfig _rpcConfig;
         private readonly IBloomStorage _bloomStorage;
 
-        public EthModuleFactory(IDbProvider dbProvider,
+        public EthModuleFactory(
+            IDbProvider dbProvider,
             ITxPool txPool,
+            ITxSender txSender,
+            ITxSigner txSigner,
             IWallet wallet,
-            IJsonRpcConfig jsonRpcConfig,
             IBlockTree blockTree,
             IEthereumEcdsa ethereumEcdsa,
             IBlockProcessor blockProcessor,
@@ -67,8 +70,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
+            _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
+            _txSigner = txSigner ?? throw new ArgumentNullException(nameof(txSigner));
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
-            _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(wallet));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _ethereumEcdsa = ethereumEcdsa ?? throw new ArgumentNullException(nameof(ethereumEcdsa));
             _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
@@ -101,18 +105,16 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 _isMining,
                 _rpcConfig.FindLogBlockDepthLimit
                 );
-
-            ITxSigner txSigner = new WalletTxSigner(_wallet, _specProvider.ChainId);
-            TxPoolSender txPoolSender = new TxPoolSender(_txPool, txSigner);
+            
             
             return new EthModule(
                 _rpcConfig,
                 blockchainBridge,
                 readOnlyTxProcessingEnv.BlockTree,
                 readOnlyTxProcessingEnv.StateReader,
-                txSigner,
+                _txSigner,
                 _txPool,
-                txPoolSender,
+                _txSender,
                 _wallet,
                 _logManager);
         }

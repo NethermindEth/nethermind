@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.TxPool;
 
@@ -31,9 +32,10 @@ namespace Nethermind.Wallet
             _chainId = chainId;
         }
         
-        public void Sign(Transaction tx)
+        public ValueTask Sign(Transaction tx)
         {
             _wallet.Sign(tx, _chainId);
+            return default;
         }
     }
 }

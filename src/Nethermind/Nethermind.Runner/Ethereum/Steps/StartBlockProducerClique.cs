@@ -18,44 +18,44 @@ using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Clique;
 using Nethermind.Logging;
-using Nethermind.Runner.Ethereum.Context;
+using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Specs;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
     public class StartBlockProducerClique : StartBlockProducer
     {
-        private readonly CliqueEthereumRunnerContext _context;
+        private readonly CliqueNethermindApi _api;
 
-        public StartBlockProducerClique(CliqueEthereumRunnerContext context) : base(context)
+        public StartBlockProducerClique(CliqueNethermindApi api) : base(api)
         {
-            _context = context;
+            _api = api;
         }
 
         protected override void BuildProducer()
         {
-            if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
-            if (_context.SnapshotManager == null) throw new StepDependencyException(nameof(_context.SnapshotManager));
-            if (_context.Signer == null) throw new StepDependencyException(nameof(_context.Signer));
-            if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
-            if (_context.Sealer == null) throw new StepDependencyException(nameof(_context.Sealer));
+            if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
+            if (_api.SnapshotManager == null) throw new StepDependencyException(nameof(_api.SnapshotManager));
+            if (_api.Signer == null) throw new StepDependencyException(nameof(_api.Signer));
+            if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
+            if (_api.Sealer == null) throw new StepDependencyException(nameof(_api.Sealer));
 
-            ILogger logger = _context.LogManager.GetClassLogger();
+            ILogger logger = _api.LogManager.GetClassLogger();
             if (logger.IsWarn) logger.Warn("Starting Clique block producer & sealer");
             BlockProducerContext producerChain = GetProducerChain();
-            CliqueConfig cliqueConfig = new CliqueConfig {BlockPeriod = _context.ChainSpec.Clique.Period, Epoch = _context.ChainSpec.Clique.Epoch};
-            _context.BlockProducer = new CliqueBlockProducer(
+            CliqueConfig cliqueConfig = new CliqueConfig {BlockPeriod = _api.ChainSpec.Clique.Period, Epoch = _api.ChainSpec.Clique.Epoch};
+            _api.BlockProducer = new CliqueBlockProducer(
                 producerChain.TxSource,
                 producerChain.ChainProcessor,
                 producerChain.ReadOnlyStateProvider,
-                _context.BlockTree,
-                _context.Timestamper,
-                _context.CryptoRandom,
-                _context.SnapshotManager,
-                _context.Sealer,
+                _api.BlockTree,
+                _api.Timestamper,
+                _api.CryptoRandom,
+                _api.SnapshotManager,
+                _api.Sealer,
                 new TargetAdjustedGasLimitCalculator(GoerliSpecProvider.Instance, new MiningConfig()), 
                 cliqueConfig,
-                _context.LogManager);
+                _api.LogManager);
         }
     }
 }

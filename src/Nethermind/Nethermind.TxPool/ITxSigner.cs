@@ -15,13 +15,14 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Threading.Tasks;
 using Nethermind.Core;
 
 namespace Nethermind.TxPool
 {
     public interface ITxSigner : ITxSealer
     {
-        void Sign(Transaction tx);
+        ValueTask Sign(Transaction tx);
 
         void ITxSealer.Seal(Transaction tx)
         {

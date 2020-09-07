@@ -59,6 +59,7 @@ namespace Nethermind.DataMarketplace.Test.Initializers
         private string _baseDbPath;
         private IBlockTree _blockTree;
         private ITxPool _txPool;
+        private ITxSender _txSender;
         private ISpecProvider _specProvider;
         private IReceiptFinder _receiptFinder;
         private IWallet _wallet;
@@ -99,6 +100,7 @@ namespace Nethermind.DataMarketplace.Test.Initializers
             _dbProvider = Substitute.For<IDbProvider>();
             _blockTree = Substitute.For<IBlockTree>();
             _txPool = Substitute.For<ITxPool>();
+            _txSender = Substitute.For<ITxSender>();
             _specProvider = Substitute.For<ISpecProvider>();
             _receiptFinder = Substitute.For<IReceiptFinder>();
             _wallet = Substitute.For<IWallet>();
@@ -138,7 +140,7 @@ namespace Nethermind.DataMarketplace.Test.Initializers
             _baseDbPath = "db";
             _ndmConfig.DatabasePath = "ndm";
             await _ndmInitializer.InitAsync(_configProvider, _dbProvider, _baseDbPath, _blockTree,
-                _txPool, _specProvider, _receiptFinder, _wallet, _filterStore, _filterManager, _timestamper, _ecdsa,
+                _txPool, _txSender, _specProvider, _receiptFinder, _wallet, _filterStore, _filterManager, _timestamper, _ecdsa,
                 _rpcModuleProvider, _keyStore, _jsonSerializer, _cryptoRandom, _enode, _consumerChannelManager,
                 _dataPublisher, _grpcServer, _nodeStatsManager, _protocolsManager, _protocolValidator,
                 _messageSerializationService, _enableUnsecuredDevWallet, _webSocketsManager, _logManager,

@@ -29,7 +29,7 @@ using Nethermind.JsonRpc.Modules.Proof;
 using Nethermind.KeyStore;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum;
-using Nethermind.Runner.Ethereum.Context;
+using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Runner.Ethereum.Steps;
 using Nethermind.State.Repositories;
 using Nethermind.Synchronization.ParallelSync;
@@ -55,7 +55,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
 
             IRpcModuleProvider rpcModuleProvider = Substitute.For<IRpcModuleProvider>();
 
-            EthereumRunnerContext context = Build.ContextWithMocks();
+            NethermindApi context = Build.ContextWithMocks();
             context.ConfigProvider = configProvider;
             context.RpcModuleProvider = rpcModuleProvider;
             var signer = new Signer(ChainId.Mainnet, TestItem.PrivateKeyA, LimboLogs.Instance);
@@ -83,7 +83,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
 
             IRpcModuleProvider rpcModuleProvider = Substitute.For<IRpcModuleProvider>();
 
-            EthereumRunnerContext context = new EthereumRunnerContext(configProvider, LimboLogs.Instance)
+            NethermindApi context = new NethermindApi(configProvider, LimboLogs.Instance)
                 {
                     ConfigProvider = configProvider,
                     RpcModuleProvider = rpcModuleProvider,

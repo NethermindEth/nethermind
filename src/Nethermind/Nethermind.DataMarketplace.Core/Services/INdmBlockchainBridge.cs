@@ -34,6 +34,6 @@ namespace Nethermind.DataMarketplace.Core.Services
         Task<int> GetNetworkIdAsync();
         Task<byte[]> CallAsync(Transaction transaction);
         Task<byte[]> CallAsync(Transaction transaction, long blockNumber);
-        Task<Keccak?> SendOwnTransactionAsync(Transaction transaction);
+        ValueTask<Keccak?> SendOwnTransactionAsync(Transaction transaction);
     }
 }

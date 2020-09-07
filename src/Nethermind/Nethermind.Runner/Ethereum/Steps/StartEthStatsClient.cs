@@ -25,54 +25,54 @@ using Nethermind.EthStats.Integrations;
 using Nethermind.EthStats.Senders;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
-using Nethermind.Runner.Ethereum.Context;
+using Nethermind.Runner.Ethereum.Api;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
     [RunnerStepDependencies(typeof(StartBlockProcessor), typeof(InitializeNetwork), typeof(InitializeBlockchain))]
     public class StartEthStatsClient : IStep
     {
-        private readonly EthereumRunnerContext _context;
+        private readonly NethermindApi _api;
         private ILogger _logger;
 
-        public StartEthStatsClient(EthereumRunnerContext context)
+        public StartEthStatsClient(NethermindApi api)
         {
-            _context = context;
-            _logger = _context.LogManager.GetClassLogger();
+            _api = api;
+            _logger = _api.LogManager.GetClassLogger();
         }
 
         bool IStep.MustInitialize => false;
         
         public async Task Execute(CancellationToken _)
         {
-            IEthStatsConfig ethStatsConfig = _context.Config<IEthStatsConfig>();
+            IEthStatsConfig ethStatsConfig = _api.Config<IEthStatsConfig>();
             if (!ethStatsConfig.Enabled)
             {
                 return;
             }
             
-            INetworkConfig networkConfig = _context.Config<INetworkConfig>();
+            INetworkConfig networkConfig = _api.Config<INetworkConfig>();
 
-            if (_context.Enode == null) throw new StepDependencyException(nameof(_context.Enode));
-            if (_context.SpecProvider == null) throw new StepDependencyException(nameof(_context.SpecProvider));
+            if (_api.Enode == null) throw new StepDependencyException(nameof(_api.Enode));
+            if (_api.SpecProvider == null) throw new StepDependencyException(nameof(_api.SpecProvider));
 
-            string instanceId = $"{ethStatsConfig.Name}-{Keccak.Compute(_context.Enode.Info)}";
+            string instanceId = $"{ethStatsConfig.Name}-{Keccak.Compute(_api.Enode.Info)}";
             if (_logger.IsInfo) _logger.Info($"Initializing ETH Stats for the instance: {instanceId}, server: {ethStatsConfig.Server}");
-            MessageSender sender = new MessageSender(instanceId, _context.LogManager);
+            MessageSender sender = new MessageSender(instanceId, _api.LogManager);
             const int reconnectionInterval = 5000;
             const string api = "no";
             const string client = "0.1.1";
             const bool canUpdateHistory = false;
             string node = ClientVersion.Description ?? string.Empty;
             int port = networkConfig.P2PPort;
-            string network = _context.SpecProvider.ChainId.ToString();
+            string network = _api.SpecProvider.ChainId.ToString();
             string protocol = "eth/65";
             
             EthStatsClient ethStatsClient = new EthStatsClient(
                 ethStatsConfig.Server,
                 reconnectionInterval,
                 sender,
-                _context.LogManager);
+                _api.LogManager);
             
             EthStatsIntegration ethStatsIntegration = new EthStatsIntegration(
                 ethStatsConfig.Name,
@@ -87,12 +87,12 @@ namespace Nethermind.Runner.Ethereum.Steps
                 ethStatsConfig.Secret,
                 ethStatsClient,
                 sender,
-                _context.BlockTree,
-                _context.PeerManager,
-                _context.LogManager);
+                _api.BlockTree,
+                _api.PeerManager,
+                _api.LogManager);
             
             await ethStatsIntegration.InitAsync();
-            _context.DisposeStack.Push(ethStatsIntegration);
+            _api.DisposeStack.Push(ethStatsIntegration);
             // TODO: handle failure
         }
     }

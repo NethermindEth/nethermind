@@ -17,27 +17,27 @@
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Ethash;
-using Nethermind.Runner.Ethereum.Context;
+using Nethermind.Runner.Ethereum.Api;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
     public class InitializeBlockchainEthash : InitializeBlockchain
     {
-        private readonly EthashEthereumRunnerContext _context;
+        private readonly EthashNethermindApi _api;
 
-        public InitializeBlockchainEthash(EthashEthereumRunnerContext context) : base(context)
+        public InitializeBlockchainEthash(EthashNethermindApi api) : base(api)
         {
-            _context = context;
+            _api = api;
         }
 
         protected override void InitSealEngine()
         {
-            _context.RewardCalculatorSource = new RewardCalculator(_context.SpecProvider);
-            DifficultyCalculator difficultyCalculator = new DifficultyCalculator(_context.SpecProvider);
-            _context.Sealer = _context.Config<IInitConfig>().IsMining
-                ? (ISealer) new EthashSealer(new Ethash(_context.LogManager), _context.Signer, _context.LogManager)
+            _api.RewardCalculatorSource = new RewardCalculator(_api.SpecProvider);
+            DifficultyCalculator difficultyCalculator = new DifficultyCalculator(_api.SpecProvider);
+            _api.Sealer = _api.Config<IInitConfig>().IsMining
+                ? (ISealer) new EthashSealer(new Ethash(_api.LogManager), _api.Signer, _api.LogManager)
                 : NullSealEngine.Instance;
-            _context.SealValidator = new EthashSealValidator(_context.LogManager, difficultyCalculator, _context.CryptoRandom, new Ethash(_context.LogManager));
+            _api.SealValidator = new EthashSealValidator(_api.LogManager, difficultyCalculator, _api.CryptoRandom, new Ethash(_api.LogManager));
         }
     }
 }

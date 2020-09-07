@@ -19,6 +19,9 @@ using Nethermind.Core;
 
 namespace Nethermind.TxPool
 {
+    /// <summary>
+    /// Interface for classes that try to make final changes to the transaction object before it is broadcast.
+    /// </summary>
     public interface ITxSealer
     {
         void Seal(Transaction tx);

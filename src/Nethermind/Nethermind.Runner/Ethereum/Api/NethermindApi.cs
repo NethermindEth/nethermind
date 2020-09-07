@@ -16,7 +16,6 @@
 
 using System.Collections.Generic;
 using System.IO.Abstractions;
-using System.Threading;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
@@ -57,16 +56,16 @@ using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.WebSockets;
 
-namespace Nethermind.Runner.Ethereum.Context
+namespace Nethermind.Runner.Ethereum.Api
 {
-    public class EthereumRunnerContext : INethermindApi
+    public class NethermindApi : INethermindApi
     {
         public T Config<T>() where T : IConfig
         {
             return ConfigProvider.GetConfig<T>();
         }
 
-        public EthereumRunnerContext(IConfigProvider configProvider, ILogManager logManager)
+        public NethermindApi(IConfigProvider configProvider, ILogManager logManager)
         {
             ConfigProvider = configProvider;
             LogManager = logManager;
@@ -75,69 +74,72 @@ namespace Nethermind.Runner.Ethereum.Context
             DisposeStack.Push(CryptoRandom);
         }
         
-        public IFileSystem FileSystem { get; set; } = new FileSystem();
-        public IConfigProvider ConfigProvider { get; set; }
-        public ILogManager LogManager{ get; set; }
-        public DisposableStack DisposeStack { get; } = new DisposableStack();
-        public List<IProducer> Producers { get; }= new List<IProducer>();
-        public IGrpcServer? GrpcServer { get; set; }
-        public IRpcModuleProvider? RpcModuleProvider { get; set; }
-        public IIPResolver? IpResolver { get; set; }
-        public ProtectedPrivateKey? NodeKey { get; set; }
+        public AbiEncoder AbiEncoder { get; } = new AbiEncoder();
         public ChainSpec? ChainSpec { get; set; }
-        public ICryptoRandom CryptoRandom { get; }
-        public IJsonSerializer? EthereumJsonSerializer { get; set; }
+        public DisposableStack DisposeStack { get; } = new DisposableStack();
+
         public IBlockchainProcessor? BlockchainProcessor { get; set; }
-        public IDiscoveryApp? DiscoveryApp { get; set; }
-        public IMessageSerializationService _messageSerializationService { get; } = new MessageSerializationService();
-        public INodeStatsManager? NodeStatsManager { get; set; }
-        public ITxPool? TxPool { get; set; }
-        public IReceiptStorage? ReceiptStorage { get; set; }
-        public IReceiptFinder? ReceiptFinder { get; set; }
-        public IEthereumEcdsa? EthereumEcdsa { get; set; }
-        public ISyncPeerPool? SyncPeerPool { get; set; }
-        public ISyncModeSelector? SyncModeSelector { get; set; }
-        public ISynchronizer? Synchronizer { get; set; }
-        public ISyncServer? SyncServer { get; set; }
-        public IKeyStore? KeyStore { get; set; }
-        public IPeerManager? PeerManager { get; set; }
-        public IProtocolsManager? ProtocolsManager { get; set; }
+        public IBlockDataRecoveryStep? RecoveryStep { get; set; }
+        public IBlockProcessingQueue? BlockProcessingQueue { get; set; }
+        public IBlockProcessor? MainBlockProcessor { get; set; }
+        public IBlockProducer? BlockProducer { get; set; }
         public IBlockTree? BlockTree { get; set; }
         public IBlockValidator? BlockValidator { get; set; }
-        public IHeaderValidator? HeaderValidator { get; set; }
-        public IBlockDataRecoveryStep? RecoveryStep { get; set; }
-        public IBlockProcessor? MainBlockProcessor { get; set; }
-        public IRewardCalculatorSource? RewardCalculatorSource { get; set; }
-        public ISpecProvider? SpecProvider { get; set; }
-        public IStateProvider? StateProvider { get; set; }
-        public ISealer? Sealer { get; set; }
-        public ISealValidator? SealValidator { get; set; }
-        public IBlockProducer? BlockProducer { get; set; }
-        public IDbProvider? DbProvider { get; set; }
-        public ITimestamper Timestamper { get; } = Core.Timestamper.Default;
-        public IStorageProvider? StorageProvider { get; set; }
-        public IWallet? Wallet { get; set; }
-        public IEnode? Enode { get; set; }
-        public ISessionMonitor? SessionMonitor { get; set; }
-        public IStaticNodesManager? StaticNodesManager { get; set; }
-        public ITransactionProcessor? TransactionProcessor { get; set; }
-        public ITxPoolInfoProvider? TxPoolInfoProvider { get; set; }
+        public IBloomStorage? BloomStorage { get; set; }
         public IChainLevelInfoRepository? ChainLevelInfoRepository { get; set; }
-        public IBlockProcessingQueue? BlockProcessingQueue { get; set; }
-        public IValidatorStore? ValidatorStore { get; set; }
-        public IRlpxPeer? RlpxPeer;
-        public IWebSocketsManager? WebSocketsManager;
-        public IJsonRpcClientProxy? JsonRpcClientProxy;
+        public IConfigProvider ConfigProvider { get; set; }
+        public ICryptoRandom CryptoRandom { get; }
+        public IDbProvider? DbProvider { get; set; }
+        public IDiscoveryApp? DiscoveryApp { get; set; }
+        public IEnode? Enode { get; set; }
+        public IEthereumEcdsa? EthereumEcdsa { get; set; }
         public IEthJsonRpcClientProxy? EthJsonRpcClientProxy;
+        public IFileSystem FileSystem { get; set; } = new FileSystem();
+        public IGrpcServer? GrpcServer { get; set; }
+        public IHeaderValidator? HeaderValidator { get; set; }
         public IHttpClient? HttpClient;
+        public IIPResolver? IpResolver { get; set; }
+        public IJsonRpcClientProxy? JsonRpcClientProxy;
+        public IJsonSerializer? EthereumJsonSerializer { get; set; }
+        public IKeyStore? KeyStore { get; set; }
+        public ILogManager LogManager{ get; set; }
+        public IMessageSerializationService _messageSerializationService { get; } = new MessageSerializationService();
         public IMonitoringService MonitoringService = NullMonitoringService.Instance;
         public INdmConsumerChannelManager? NdmConsumerChannelManager { get; set; }
         public INdmDataPublisher? NdmDataPublisher { get; set; }
         public INdmInitializer? NdmInitializer { get; set; }
-        public IBloomStorage? BloomStorage { get; set; }
-        public AbiEncoder AbiEncoder { get; } = new AbiEncoder();
+        public INodeStatsManager? NodeStatsManager { get; set; }
+        public IPeerManager? PeerManager { get; set; }
+        public IProtocolsManager? ProtocolsManager { get; set; }
+        public IReceiptStorage? ReceiptStorage { get; set; }
+        public IReceiptFinder? ReceiptFinder { get; set; }
+        public IRewardCalculatorSource? RewardCalculatorSource { get; set; }
+        public IRlpxPeer? RlpxPeer;
+        public IRpcModuleProvider? RpcModuleProvider { get; set; }
+        public ISealer? Sealer { get; set; }
+        public ISealValidator? SealValidator { get; set; }
         public ISigner? Signer { get; set; }
         public ISignerStore? SignerStore { get; set; }
+        public ISpecProvider? SpecProvider { get; set; }
+        public ISyncModeSelector? SyncModeSelector { get; set; }
+        public ISyncPeerPool? SyncPeerPool { get; set; }
+        public ISynchronizer? Synchronizer { get; set; }
+        public ISyncServer? SyncServer { get; set; }
+        public IStateProvider? StateProvider { get; set; }
+        public IStorageProvider? StorageProvider { get; set; }
+        public ISessionMonitor? SessionMonitor { get; set; }
+        public IStaticNodesManager? StaticNodesManager { get; set; }
+        public ITimestamper Timestamper { get; } = Core.Timestamper.Default;
+        public ITransactionProcessor? TransactionProcessor { get; set; }
+        public ITxSender? TxSender { get; set; }
+        public ITxPool? TxPool { get; set; }
+        public ITxPoolInfoProvider? TxPoolInfoProvider { get; set; }
+        public IValidatorStore? ValidatorStore { get; set; }
+        public IWallet? Wallet { get; set; }
+        public IWebSocketsManager? WebSocketsManager;
+        
+        public List<IProducer> Producers { get; }= new List<IProducer>();
+        public ProtectedPrivateKey? NodeKey { get; set; }
         public ProtectedPrivateKey? OriginalSignerKey { get; set; }
     }
 }

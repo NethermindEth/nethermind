@@ -112,7 +112,7 @@ namespace Nethermind.DataMarketplace.Core.Services
             return result?.IsValid == true ? result.Result ?? Array.Empty<byte>() : Array.Empty<byte>();
         }
 
-        public async Task<Keccak?> SendOwnTransactionAsync(Transaction transaction)
+        public async ValueTask<Keccak?> SendOwnTransactionAsync(Transaction transaction)
         {
             var data = Rlp.Encode(transaction).Bytes;
             var result = await _proxy.eth_sendRawTransaction(data);

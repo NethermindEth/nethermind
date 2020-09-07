@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,39 +13,33 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
 using System;
-using System.Collections.Generic;
 using System.Threading.Tasks;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Rlp;
+using Nethermind.TxPool;
 
-namespace Nethermind.Runner.Ethereum.Context
+namespace Nethermind.Vault
 {
-    public class DisposableStack : Stack<IAsyncDisposable>
+    public class VaultTxSigner : ITxSigner
     {
-        public void Push(IDisposable item)
+        private readonly IVaultWallet _vaultWallet;
+        private readonly int _chainId;
+
+        public VaultTxSigner(IVaultWallet vaultWallet, int chainId)
         {
-            Push(new AsyncDisposableWrapper(item));
+            _vaultWallet = vaultWallet ?? throw new ArgumentNullException(nameof(vaultWallet));
+            _chainId = chainId;
         }
-
-        private class AsyncDisposableWrapper : IAsyncDisposable
+        
+        public async ValueTask Sign(Transaction tx)
         {
-            private readonly IDisposable _item;
-
-            public AsyncDisposableWrapper(IDisposable item)
-            {
-                _item = item;
-            }
-
-            public ValueTask DisposeAsync()
-            {
-                _item?.Dispose();
-                return default;
-            }
-
-            public override string? ToString()
-            {
-                return _item?.ToString() ?? base.ToString();
-            }
+            Keccak hash = Keccak.Compute(Rlp.Encode(tx, true, true, _chainId).Bytes);
+            tx.Signature = await _vaultWallet.Sign(tx.SenderAddress, hash);
+            tx.Signature.V = tx.Signature.V + 8 + 2 * _chainId;
         }
     }
 }
