@@ -581,6 +581,7 @@ namespace Nethermind.Blockchain
                 {
                     // TODO: this is here because storing block data is not transactional
                     // TODO: would be great to remove it, he?
+                    if(_logger.IsTrace) _logger.Trace("Entering missing block info scope");
                     SetTotalDifficulty(header);
                     blockInfo = new BlockInfo(header.Hash, header.TotalDifficulty.Value);
                     UpdateOrCreateLevel(header.Number, blockInfo);
@@ -1239,8 +1240,9 @@ namespace Nethermind.Blockchain
                 {
                     // TODO: this is here because storing block data is not transactional
                     // TODO: would be great to remove it, he?
+                    if(_logger.IsTrace) _logger.Trace("Entering missing block info scope");
                     SetTotalDifficulty(block.Header);
-                    blockInfo = new BlockInfo(block.Hash, block.TotalDifficulty.Value);
+                    blockInfo = new BlockInfo(block.Hash, block.TotalDifficulty!.Value);
                     UpdateOrCreateLevel(block.Number, blockInfo);
 
                     (_, level) = LoadInfo(block.Number, block.Hash);
@@ -1275,10 +1277,10 @@ namespace Nethermind.Blockchain
 
             if (_logger.IsTrace)
             {
-                _logger.Trace($"Calculating total difficulty for {header}");
+                _logger.Trace($"Calculating total difficulty for {header.ToString(BlockHeader.Format.Short)}");
             }
 
-            if (header.Number == 0)
+            if (header.IsGenesis)
             {
                 header.TotalDifficulty = header.Difficulty;
             }
