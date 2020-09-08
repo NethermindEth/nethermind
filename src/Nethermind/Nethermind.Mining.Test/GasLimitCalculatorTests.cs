@@ -32,7 +32,6 @@ namespace Nethermind.Mining.Test
         [TestCase(2000000, 2000000, 2000000)]
         [TestCase(2000001, 2000000, 2000000)]
         [TestCase(3000000, 2000000, 2997072)]
-        [TestCase(3000000, 2000000, 2997072)]
         public void Test(long current, long target, long expected)
         {
             MiningConfig miningConfig = new MiningConfig();
