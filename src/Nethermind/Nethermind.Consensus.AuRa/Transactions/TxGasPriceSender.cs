@@ -28,7 +28,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
 {
     public class TxGasPriceSender : ITxSender
     {
-        private static readonly UInt256 DefaultGasPrice = 20_000_000ul;
+        public static readonly UInt256 DefaultGasPrice = 20_000_000ul;
         private readonly ITxSender _txSender;
         private readonly ITxPool _txPool;
         private readonly IMiningConfig _miningConfig;
