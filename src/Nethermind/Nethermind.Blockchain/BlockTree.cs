@@ -576,7 +576,7 @@ namespace Nethermind.Blockchain
 
             if ((totalDifficultyNeeded && header.TotalDifficulty == null) || requiresCanonical)
             {
-                (BlockInfo blockInfo, ChainLevelInfo level) = LoadInfo(header.Number, header.Hash);
+                (BlockInfo blockInfo, ChainLevelInfo level) = LoadInfo(header.Number, header.Hash, true);
                 if (level == null || blockInfo == null)
                 {
                     // TODO: this is here because storing block data is not transactional
@@ -584,9 +584,7 @@ namespace Nethermind.Blockchain
                     if(_logger.IsTrace) _logger.Trace($"Entering missing block info in {nameof(FindHeader)} scope when head is {Head?.ToString(Block.Format.Short)}");
                     SetTotalDifficulty(header);
                     blockInfo = new BlockInfo(header.Hash, header.TotalDifficulty.Value);
-                    UpdateOrCreateLevel(header.Number, blockInfo);
-
-                    (_, level) = LoadInfo(header.Number, header.Hash);
+                    level = UpdateOrCreateLevel(header.Number, blockInfo);
                 }
                 else
                 {
@@ -1122,7 +1120,7 @@ namespace Nethermind.Blockchain
             NewHeadBlock?.Invoke(this, new BlockEventArgs(block));
         }
 
-        private void UpdateOrCreateLevel(long number, BlockInfo blockInfo, bool setAsMain = false)
+        private ChainLevelInfo UpdateOrCreateLevel(long number, BlockInfo blockInfo, bool setAsMain = false)
         {
             using (var batch = _chainLevelInfoRepository.StartBatch())
             {
@@ -1160,12 +1158,14 @@ namespace Nethermind.Blockchain
                 }
 
                 _chainLevelInfoRepository.PersistLevel(number, level, batch);
+
+                return level;
             }
         }
 
-        private (BlockInfo Info, ChainLevelInfo Level) LoadInfo(long number, Keccak blockHash)
+        private (BlockInfo Info, ChainLevelInfo Level) LoadInfo(long number, Keccak blockHash, bool forceLoad)
         {
-            ChainLevelInfo chainLevelInfo = LoadLevel(number);
+            ChainLevelInfo chainLevelInfo = LoadLevel(number, forceLoad);
             if (chainLevelInfo == null)
             {
                 return (null, null);
@@ -1235,7 +1235,7 @@ namespace Nethermind.Blockchain
 
             if ((totalDifficultyNeeded && block.TotalDifficulty == null) || requiresCanonical)
             {
-                (BlockInfo blockInfo, ChainLevelInfo level) = LoadInfo(block.Number, block.Hash);
+                (BlockInfo blockInfo, ChainLevelInfo level) = LoadInfo(block.Number, block.Hash, true);
                 if (level == null || blockInfo == null)
                 {
                     // TODO: this is here because storing block data is not transactional
@@ -1243,9 +1243,7 @@ namespace Nethermind.Blockchain
                     if(_logger.IsTrace) _logger.Trace($"Entering missing block info in {nameof(FindBlock)} scope when head is {Head?.ToString(Block.Format.Short)}");
                     SetTotalDifficulty(block.Header);
                     blockInfo = new BlockInfo(block.Hash, block.TotalDifficulty!.Value);
-                    UpdateOrCreateLevel(block.Number, blockInfo);
-
-                    (_, level) = LoadInfo(block.Number, block.Hash);
+                    level = UpdateOrCreateLevel(block.Number, blockInfo);
                 }
                 else
                 {
