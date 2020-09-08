@@ -140,6 +140,7 @@ namespace Nethermind.DataMarketplace.Test
             deployContract.Init = initCode;
             deployContract.Nonce = _bridge.GetNonce(_providerAccount);
             Keccak txHash = await _bridge.SendTransaction(deployContract, TxHandlingOptions.None);
+            _bridge.IncrementNonce(_providerAccount);
             TxReceipt receipt = _bridge.GetReceipt(txHash);
             Assert.AreEqual(StatusCode.Success, receipt.StatusCode, $"contract deployed {receipt.Error}");
             return receipt;
