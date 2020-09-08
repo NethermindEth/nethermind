@@ -159,7 +159,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public Task<ResultWrapper<long?>> eth_blockNumber()
         {
-            long number = _blockFinder.Head?.Number ?? 0;
+            long number = _blockchainBridge.BeamHead?.Number ?? 0;
             return Task.FromResult(ResultWrapper<long?>.Success(number));
         }
 

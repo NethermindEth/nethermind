@@ -83,7 +83,7 @@ namespace Nethermind.Facade
             _logFinder = new LogFinder(_blockTree, _receiptFinder, bloomStorage, logManager, new ReceiptsRecovery(), findLogBlockDepthLimit);
         }
         
-        public Block Head
+        public Block BeamHead
         {
             get
             {
@@ -98,10 +98,6 @@ namespace Nethermind.Facade
             }
         }
 
-        public long BestKnown => _blockTree.BestKnownNumber;
-
-        public bool IsSyncing => _blockTree.BestSuggestedHeader.Number >= _blockTree.Head.Number + 1;
-        
         public bool IsMining { get; }
 
         public (TxReceipt Receipt, Transaction Transaction) GetTransaction(Keccak txHash)

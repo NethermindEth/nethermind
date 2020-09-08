@@ -28,8 +28,7 @@ namespace Nethermind.Facade
     public interface IBlockchainBridge
     {
         int GetNetworkId();
-        long BestKnown { get; }
-        bool IsSyncing { get; }
+        Block BeamHead { get; }
         bool IsMining { get; }
         void RecoverTxSenders(Block block);
         void RecoverTxSender(Transaction tx);
