@@ -27,11 +27,12 @@ namespace Nethermind.Mining.Test
     [TestFixture]
     public class GasLimitCalculatorTests
     {
-        [TestCase(1000000, 2000000, 1000976)]
+        [TestCase(1000000, 2000000, 1000975)]
         [TestCase(1999999, 2000000, 2000000)]
         [TestCase(2000000, 2000000, 2000000)]
         [TestCase(2000001, 2000000, 2000000)]
-        [TestCase(3000000, 2000000, 2997071)]
+        [TestCase(3000000, 2000000, 2997072)]
+        [TestCase(3000000, 2000000, 2997072)]
         public void Test(long current, long target, long expected)
         {
             MiningConfig miningConfig = new MiningConfig();
