@@ -60,6 +60,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             context.RpcModuleProvider = rpcModuleProvider;
             var signer = new Signer(ChainId.Mainnet, TestItem.PrivateKeyA, LimboLogs.Instance);
             context.Signer = signer;
+            context.TxSender = new NullTxSender();
             context.SignerStore = signer;
             
             context.KeyStore = Substitute.For<IKeyStore>();
