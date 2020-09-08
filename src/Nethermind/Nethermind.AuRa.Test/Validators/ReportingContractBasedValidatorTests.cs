@@ -20,6 +20,7 @@ using System.Linq;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
@@ -218,6 +219,7 @@ namespace Nethermind.AuRa.Test.Validators
                     PosdaoTransition,
                     TxSender,
                     txPool,
+                    new MiningConfig(),
                     stateProvider,
                     cache ?? new ReportingContractBasedValidator.Cache(),
                     LimboLogs.Instance);

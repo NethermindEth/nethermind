@@ -100,6 +100,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _api.FinalizationManager,
                     NullTxSender.Instance,
                     NullTxPool.Instance,
+                    _api.Config<IMiningConfig>(),
                     _api.LogManager,
                     _api.Signer,
                     _api.ReportingContractValidatorCache,

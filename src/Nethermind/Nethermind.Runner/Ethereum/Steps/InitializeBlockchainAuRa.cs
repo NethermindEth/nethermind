@@ -112,6 +112,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _api.FinalizationManager,
                     new TxPoolSender(_api.TxPool, new NonceReservingTxSealer(_api.Signer, _api.Timestamper, _api.TxPool)), 
                     _api.TxPool,
+                    _api.Config<IMiningConfig>(),
                     _api.LogManager,
                     _api.Signer,
                     _api.ReportingContractValidatorCache,
