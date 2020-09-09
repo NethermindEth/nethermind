@@ -1006,24 +1006,28 @@ namespace Nethermind.Trie.Test
             }
         }
         
-          // [TestCase(256, 128, 128, 32)]
-          // [TestCase(128, 128, 8, 8)]
-        [TestCase(128, 1024, 8, 128)]
-        // [TestCase(64, 512, 4, 32)]
-        // [TestCase(8, 1024, 8, 128)]
-        // [TestCase(8, 16, 8, 8)]
-        // [TestCase(4, 32, 4, 4)]
-        // [TestCase(4, 16, 4, 4)]
+          // [TestCase(256, 128, 32)]
+          // [TestCase(128, 128, 8)]
+        [TestCase(96, 192, 96)]
+        // [TestCase(64, 512, 32)]
+        // [TestCase(8, 1024, 128)]
+        // [TestCase(8, 16, 8)]
+        // [TestCase(4, 32, 4)]
+        // [TestCase(4, 16, 4)]
         public void Fuzz_accounts_with_storage(
             int accountsCount,
             int blocksCount,
-            int uniqueValuesCount,
             int lookupLimit)
         {
             
             // int seed = _random.Next(int.MaxValue);
-            // int seed = 632577172; // (key not present in dictionary)
-            int seed = 710888398; // (decrement refs issue)
+            
+            int seed = 1541344441; // (decrement refs issue) [TestCase(96, 192, 96)]
+            // int seed = 580514763; // (decrement refs issue) [TestCase(96, 256, 128)]
+            // int seed = 483020425; // (key not present) [TestCase(128, 256, 128)]
+            // int seed = 483020425; // (decrement refs issue) [TestCase(128, 256, 128)]
+            // int seed = 483020425; // (decrement refs issue) [TestCase(128, 256, 128)]
+            // int seed = 1299777953; // (decrement refs issue) [TestCase(128, 512, 128)]
             _random = new Random(seed);
             _logger.Info($"RANDOM SEED {seed}");
             
@@ -1032,7 +1036,6 @@ namespace Nethermind.Trie.Test
             _logger.Info(
                 $"Fuzzing with accounts: {accountsCount}, " +
                 $"blocks {blocksCount}, " +
-                $"values: {uniqueValuesCount}, " +
                 $"lookup: {lookupLimit} into file {fileName}");
 
             using FileStream fileStream = new FileStream(fileName, FileMode.Create);
