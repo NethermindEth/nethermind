@@ -579,7 +579,10 @@ namespace Nethermind.Trie
         {
             if (!IsPersisted && isParentPersisted)
             {
-                throw new InvalidDataException($"{this} is not persisted while parent is.");
+                IsPersisted = true;
+                
+                // throw new InvalidDataException($"{this} is not persisted while parent is.");
+                // can happen
             }
             
             if (!IsLeaf)
@@ -615,7 +618,12 @@ namespace Nethermind.Trie
         {
             if (!IsPersisted && isParentPersisted)
             {
-                throw new InvalidDataException($"{this} is not persisted while parent is.");
+                IsPersisted = true;
+                // throw new InvalidDataException($"{this} is not persisted while parent is.");
+
+                // there is a possibility that there has existed a persisted (storage root)A->B->C
+                // and we just created a (storage root)B->C and then resolved A
+                // and then read A and made A->B a pair that has B that is not marked as persisted and A which has been resolved
             }
             
             if (!IsLeaf)
@@ -653,7 +661,7 @@ namespace Nethermind.Trie
 #if DEBUG
             LastConnectedBlock = block;
 #endif
-
+            
             Refs++;
         }
 
@@ -742,6 +750,12 @@ namespace Nethermind.Trie
                         Keccak keccak = _rlpStream.DecodeKeccak();
                         // TODO: here we assume the node is in the DB and should be loadable from the DB
                         _data![i] = tree.FindCachedOrUnknown(keccak);
+                        
+                        // TODO: remove the comment below when no longer needed for diag
+                        // if (this.IsPersisted && !((TrieNode) _data[i]).IsPersisted)
+                        // {
+                        //     throw new Exception("It is ok but wan to check it"); <- ti did hit this breakpoint as it can happen in the two different storage roots scenario
+                        // }
                         break;
                     default:
                     {
