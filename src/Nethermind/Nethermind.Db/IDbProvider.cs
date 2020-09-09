@@ -31,12 +31,21 @@ namespace Nethermind.Db
         IDb BlocksDb { get; }
         IDb HeadersDb { get; }
         IDb BlockInfosDb { get; }
+        
+        // BloomDB progress / config (does not contain blooms - they are kept in bloom storage)
+        IDb BloomDb { get; }
+        
+        // deleted on startup and built from empty each time
         IDb PendingTxsDb { get; }
+        
+        // LES (ignore)
+        IDb ChtDb { get; }
+        
+        // Beam Sync (StateDB like)
+        IDb BeamStateDb { get; }
+        
+        // NDM
         IDb ConfigsDb { get; }
         IDb EthRequestsDb { get; }
-        IDb BloomDb { get; }
-        IDb ChtDb { get; }
-        IDb BeamStateDb { get; }
-        // add C#8 Dispose (default implementation)
     }
 }
