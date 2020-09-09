@@ -92,17 +92,17 @@ namespace Nethermind.Core.Test.Builders
 
         public static Bloom NonZeroBloom;
         
-        public static Address GetRandomAddress()
+        public static Address GetRandomAddress(Random random = null)
         {
             byte[] bytes = new byte[20];
-            _random.NextBytes(bytes);
+            (random ?? _random).NextBytes(bytes);
             return new Address(bytes);
         }
         
-        public static Keccak GetRandomKeccak()
+        public static Keccak GetRandomKeccak(Random random = null)
         {
             byte[] bytes = new byte[32];
-            _random.NextBytes(bytes);
+            (random ?? _random).NextBytes(bytes);
             return new Keccak(bytes);
         }
     }

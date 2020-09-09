@@ -1009,6 +1009,8 @@ namespace Nethermind.Trie.Test
           // [TestCase(256, 128, 128, 32)]
           // [TestCase(128, 128, 8, 8)]
         [TestCase(128, 1024, 8, 128)]
+        // [TestCase(64, 512, 4, 32)]
+        // [TestCase(8, 1024, 8, 128)]
         // [TestCase(8, 16, 8, 8)]
         // [TestCase(4, 32, 4, 4)]
         // [TestCase(4, 16, 4, 4)]
@@ -1018,6 +1020,13 @@ namespace Nethermind.Trie.Test
             int uniqueValuesCount,
             int lookupLimit)
         {
+            
+            // int seed = _random.Next(int.MaxValue);
+            // int seed = 632577172; // (key not present in dictionary)
+            int seed = 710888398; // (decrement refs issue)
+            _random = new Random(seed);
+            _logger.Info($"RANDOM SEED {seed}");
+            
             string fileName = Path.GetTempFileName();
             //string fileName = "C:\\Temp\\fuzz.txt";
             _logger.Info(
@@ -1054,7 +1063,7 @@ namespace Nethermind.Trie.Test
                     accounts[i] = GenerateRandomAccount();
                 }
                 
-                addresses[i] = TestItem.GetRandomAddress();
+                addresses[i] = TestItem.GetRandomAddress(_random);
             }
             
             for (int blockNumber = 0; blockNumber < blocksCount; blockNumber++)
