@@ -252,7 +252,7 @@ namespace Nethermind.Evm.Test
             return _logManager;
         }
 
-        [TestCase(long.MinValue)]
+        [TestCase(0)]
         [TestCase(MainnetSpecProvider.HomesteadBlockNumber)]
         [TestCase(MainnetSpecProvider.SpuriousDragonBlockNumber)]
         [TestCase(MainnetSpecProvider.TangerineWhistleBlockNumber)]
