@@ -591,7 +591,7 @@ namespace Nethermind.Trie
                         TrieNode child = _data[i] as TrieNode;
                         if (child != null) // both unresolved and NULL are handled here
                         {
-                            logger.Trace($"Decrementing refs recursively on child {i} {child}");
+                            if(logger.IsTrace) logger.Trace($"Decrementing refs recursively on child {i} {child}");
                             child.DecrementRefsRecursively(logger, IsPersisted);
                             if (child.Refs == 0)
                             {
@@ -627,7 +627,7 @@ namespace Nethermind.Trie
                         object o = _data[i];
                         if (o is TrieNode child)
                         {
-                            logger.Trace($"Incrementing refs recursively on child {i} {child} of {this}");
+                            if(logger.IsTrace) logger.Trace($"Incrementing refs recursively on child {i} {child} of {this}");
                             child.IncrementRefsRecursively(logger, block, storageRoots, IsPersisted);
                             // if(child.IsPersisted)
                             // {
