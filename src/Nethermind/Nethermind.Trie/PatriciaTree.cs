@@ -35,12 +35,12 @@ namespace Nethermind.Trie
     public class PatriciaTree
     {
         private readonly ILogger _logger;
-        
+
         private const int OneNodeAvgMemoryEstimate = 384;
 
         public static readonly ICache<Keccak, byte[]> NodeCache =
             new LruCache<Keccak, byte[]>(
-                (int)(MemoryAllowance.TrieNodeCacheMemory / OneNodeAvgMemoryEstimate), "trie nodes");
+                (int) (MemoryAllowance.TrieNodeCacheMemory / OneNodeAvgMemoryEstimate), "trie nodes");
 
         /// <summary>
         ///     0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421
@@ -91,8 +91,8 @@ namespace Nethermind.Trie
             bool allowCommits,
             ILogManager logManager)
             : this(
-                new PassThroughTrieStore(keyValueStore, logManager), 
-                rootHash, 
+                new PassThroughTrieStore(keyValueStore, logManager),
+                rootHash,
                 parallelBranches,
                 allowCommits,
                 logManager)
@@ -324,7 +324,7 @@ namespace Nethermind.Trie
                 ? stackalloc byte[nibblesCount]
                 : array = ArrayPool<byte>.Shared.Rent(nibblesCount);
             Nibbles.BytesToNibbleBytes(rawKey, nibbles);
-            var result = Run(nibbles, nibblesCount, Array.Empty<byte>(), false, rootHash: rootHash);
+            var result = Run(nibbles, nibblesCount, Array.Empty<byte>(), false, startRootHash: rootHash);
             if (array != null) ArrayPool<byte>.Shared.Return(array);
             return result;
         }
@@ -354,50 +354,64 @@ namespace Nethermind.Trie
         private byte[]? Run(
             Span<byte> updatePath,
             int nibblesCount,
-            byte[] updateValue,
+            byte[]? updateValue,
             bool isUpdate,
             bool ignoreMissingDelete = true,
-            Keccak? rootHash = null)
+            Keccak? startRootHash = null)
         {
-            if (isUpdate && rootHash != null)
+            if (isUpdate && startRootHash != null)
             {
                 throw new InvalidOperationException("Only reads can be done in parallel on the Patricia tree");
             }
 
-            if (isUpdate)
+#if DEBUG
+            if (nibblesCount != updatePath.Length)
+            {
+                throw new Exception("Does it ever happen?");
+            }
+#endif
+
+            TraverseContext traverseContext =
+                new TraverseContext(updatePath.Slice(0, nibblesCount), updateValue, isUpdate, ignoreMissingDelete);
+
+            // lazy stack cleaning after the previous update
+            if (traverseContext.IsUpdate)
             {
                 _nodeStack.Clear();
             }
 
-            if (isUpdate && updateValue.Length == 0)
+            byte[]? result;
+            if (startRootHash != null)
             {
-                updateValue = null;
+                if(_logger.IsTrace) _logger.Trace($"Starting from {startRootHash} - {traverseContext.ToString()}");
+                TrieNode startNode = TrieStore.FindCachedOrUnknown(startRootHash);
+                startNode.ResolveNode(TrieStore);
+                result = TraverseNode(startNode, traverseContext);
             }
-
-            if (!(rootHash is null))
+            else
             {
-                TrieNode rootRef = TrieStore.FindCachedOrUnknown(rootHash);
-                rootRef.ResolveNode(TrieStore);
-                return TraverseNode(rootRef, new TraverseContext(updatePath.Slice(0, nibblesCount), updateValue,
-                    false, ignoreMissingDelete));
-            }
-
-            if (RootRef is null)
-            {
-                if (!isUpdate || updateValue is null)
+                bool trieIsEmpty = RootRef is null;
+                if (trieIsEmpty)
                 {
-                    return null;
+                    if (traverseContext.UpdateValue != null)
+                    {
+                        if(_logger.IsTrace) _logger.Trace($"Setting new leaf node with value {traverseContext.UpdateValue}");
+                        HexPrefix key = HexPrefix.Leaf(updatePath.Slice(0, nibblesCount).ToArray());
+                        RootRef = TrieNodeFactory.CreateLeaf(key, traverseContext.UpdateValue);
+                    }
+                    
+                    if(_logger.IsTrace) _logger.Trace($"Keeping the root as null in {traverseContext.ToString()}");
+                    result = traverseContext.UpdateValue;
                 }
-
-                HexPrefix key = HexPrefix.Leaf(updatePath.Slice(0, nibblesCount).ToArray());
-                RootRef = TrieNodeFactory.CreateLeaf(key, updateValue);
-                return updateValue;
+                else
+                {
+                    RootRef.ResolveNode(TrieStore);
+                    if(_logger.IsTrace) _logger.Trace($"{traverseContext.ToString()}");
+                    result = TraverseNode(RootRef, traverseContext);
+                }
             }
 
-            RootRef.ResolveNode(TrieStore);
-            TraverseContext traverseContext =
-                new TraverseContext(updatePath.Slice(0, nibblesCount), updateValue, isUpdate, ignoreMissingDelete);
-            return TraverseNode(RootRef, traverseContext);
+            return result;
         }
 
         private byte[]? TraverseNode(TrieNode node, TraverseContext traverseContext)
@@ -570,14 +584,14 @@ namespace Nethermind.Trie
                         throw new InvalidOperationException(
                             $"An attempt to set a null node as a child of the {node}");
                     }
-                    
+
                     if (nextNode.IsLeaf)
                     {
                         HexPrefix newKey = HexPrefix.Leaf(Bytes.Concat(node.Path, nextNode.Path));
                         TrieNode extendedLeaf = nextNode.CloneWithChangedKey(newKey);
                         if (_logger.IsTrace)
                             _logger.Trace($"Combining {node} and {nextNode} into {extendedLeaf}");
-                        
+
                         nextNode = extendedLeaf;
                     }
                     else if (nextNode.IsExtension)
@@ -606,7 +620,7 @@ namespace Nethermind.Trie
                            E - - - - - - - - - - - - - - -
                            B B B B B B B B B B B B B B B B
                            L L - - - - - - - - - - - - - - */
-                        
+
                         HexPrefix newKey
                             = HexPrefix.Extension(Bytes.Concat(node.Path, nextNode.Path));
                         TrieNode extendedExtension = nextNode.CloneWithChangedKey(newKey);
@@ -619,7 +633,7 @@ namespace Nethermind.Trie
                     {
                         if (node.IsSealed)
                         {
-                            node = node.Clone();    
+                            node = node.Clone();
                         }
 
                         if (_logger.IsTrace) _logger.Trace($"Connecting {node} with {nextNode}");
@@ -944,10 +958,20 @@ namespace Nethermind.Trie
                 bool ignoreMissingDelete = true)
             {
                 UpdatePath = updatePath;
+                if (updateValue != null && updateValue.Length == 0)
+                {
+                    updateValue = null;
+                }
+
                 UpdateValue = updateValue;
                 IsUpdate = isUpdate;
                 IgnoreMissingDelete = ignoreMissingDelete;
                 CurrentIndex = 0;
+            }
+
+            public override string ToString()
+            {
+                return $"{(IsDelete ? "DELETE" : IsUpdate ? "UPDATE" : "READ")} {UpdatePath.ToHexString()}{(IsRead ? "" : $" -> {UpdateValue}")}";
             }
         }
 

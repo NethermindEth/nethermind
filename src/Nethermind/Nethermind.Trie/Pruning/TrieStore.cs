@@ -101,6 +101,7 @@ namespace Nethermind.Trie.Pruning
                 else
                 {
                     long previousPackageMemory = CurrentPackage.MemorySize;
+                    if(_logger.IsTrace) _logger.Trace($"Enqueuing {trieNode}");
                     CurrentPackage.Enqueue(trieNode);
                     _trieNodeCache.Set(trieNode.Keccak, trieNode);
                     AddToMemory(CurrentPackage.MemorySize - previousPackageMemory);
@@ -253,16 +254,45 @@ namespace Nethermind.Trie.Pruning
             _packageQueue.AddLast(newPackage);
 
             _highestBlockNumber = Math.Max(blockNumber, _highestBlockNumber);
-            if (_packageQueue.First!.Value.BlockNumber <= _highestBlockNumber - _lookupLimit)
-            {
-                TryDispatchOne();
-            }
+            
+            DispatchExcessivePackages();
+            DispatchExcessiveMemory();
 
             long newMemory = newPackage.MemorySize + LinkedListNodeMemorySize;
             AddToMemory(newMemory);
 
             Debug.Assert(CurrentPackage == newPackage,
                 "Current package is not equal the new package just after adding");
+        }
+
+        private void DispatchExcessivePackages()
+        {
+            if (_packageQueue.First!.Value.BlockNumber <= _highestBlockNumber - _lookupLimit)
+            {
+                if (_logger.IsTrace)
+                    _logger.Trace($"Dispatching one after lookup limit ({_lookupLimit}) has been reached.");
+                TryDispatchOne();
+            }
+        }
+
+        private void DispatchExcessiveMemory()
+        {
+            while (MemorySize > _memoryLimit)
+            {
+                if (_logger.IsTrace)
+                    _logger.Trace($"Dispatching one after memory limit ({_memoryLimit}) has been reached.");
+                bool success = TryDispatchOne();
+                if (!success)
+                {
+                    break;
+                }
+            }
+
+            if (MemorySize > _memoryLimit)
+            {
+                if (_logger.IsTrace)
+                    _logger.Trace($"Not able to dispatch to decrease memory usage below the limit of {_memoryLimit}.");
+            }
         }
 
         private List<Keccak> _emptyList = new List<Keccak>();
@@ -306,21 +336,6 @@ namespace Nethermind.Trie.Pruning
 
         private void AddToMemory(long newMemory)
         {
-            while (MemorySize + newMemory > _memoryLimit)
-            {
-                bool success = TryDispatchOne();
-                if (!success)
-                {
-                    break;
-                }
-            }
-
-            if (MemorySize + newMemory > _memoryLimit)
-            {
-                if (_logger.IsTrace)
-                    _logger.Trace($"Not able to dispatch to decrease memory usage below the limit of {_memoryLimit}.");
-            }
-
             MemorySize += newMemory;
         }
 

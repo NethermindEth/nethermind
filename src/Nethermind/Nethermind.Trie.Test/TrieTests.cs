@@ -1025,8 +1025,6 @@ namespace Nethermind.Trie.Test
             int seed = 1541344441; // (decrement refs issue) [TestCase(96, 192, 96)]
             // int seed = 580514763; // (decrement refs issue) [TestCase(96, 256, 128)]
             // int seed = 483020425; // (key not present) [TestCase(128, 256, 128)]
-            // int seed = 483020425; // (decrement refs issue) [TestCase(128, 256, 128)]
-            // int seed = 483020425; // (decrement refs issue) [TestCase(128, 256, 128)]
             // int seed = 1299777953; // (decrement refs issue) [TestCase(128, 512, 128)]
             _random = new Random(seed);
             _logger.Info($"RANDOM SEED {seed}");

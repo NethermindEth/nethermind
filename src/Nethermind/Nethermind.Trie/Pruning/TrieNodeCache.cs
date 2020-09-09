@@ -44,8 +44,8 @@ namespace Nethermind.Trie.Pruning
         {
             if (!_actualCache.ContainsKey(hash))
             {
-                if(_logger.IsTrace) _logger.Trace($"Creating new node {hash}");
                 TrieNode newNode = new TrieNode(NodeType.Unknown, hash);
+                if(_logger.IsTrace) _logger.Trace($"Creating new node {newNode}");
                 _actualCache.Add(newNode.Keccak!, newNode);
             }
             
