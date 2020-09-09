@@ -53,18 +53,18 @@ namespace Nethermind.Trie.Benchmark
         private ILogManager _logManager = new OneLoggerLogManager(NullLogger.Instance);
 
         [Benchmark]
-        public TreeStore Trie_committer_with_one_node()
+        public TrieStore Trie_committer_with_one_node()
         {
             TrieNode trieNode = new TrieNode(NodeType.Unknown); // 56B
 
             ITrieNodeCache trieNodeCache = new TrieNodeCache(_logManager);
-            TreeStore treeStore = new TreeStore(
+            TrieStore treeStore = new TrieStore(
                 trieNodeCache,
                 _whateverDb,
                 _logManager,
                 1.MB(),
                 128);
-            treeStore.Commit(1234, new NodeCommitInfo(trieNode));
+            treeStore.Commit(TrieType.State, 1234, new NodeCommitInfo(trieNode));
             return treeStore;
         }
     }
