@@ -63,52 +63,8 @@ namespace Nethermind.Baseline.JsonRpc
             _metadata = LoadMetadata();
             InitTrees();
         }
-
-<<<<<<< HEAD
-        private void InitTrees()
-        {
-            foreach (Address trackedTree in _metadata.TrackedTrees)
-            {
-                TryAddTree(trackedTree);
-            }
-        }
-
-        private byte[] _metadataKey = {0};
-
-        private BaselineMetadata LoadMetadata()
-        {
-            byte[]? serializedMetadata = _baselineDb[_metadataKey];
-            BaselineMetadata metadata;
-            if (serializedMetadata == null)
-            {
-                metadata = new BaselineMetadata();
-            }
-            else
-            {
-                RlpStream rlpStream = new RlpStream(serializedMetadata);
-                Address?[] addresses = rlpStream.DecodeArray(itemContext => itemContext.DecodeAddress());
-                metadata = new BaselineMetadata(
-                    addresses.Where(a => a != null).Select(a => a!).ToArray());
-            }
-
-            return metadata;
-        }
-
-        private bool TryAddTree(Address trackedTree)
-        {
-            if (_stateReader.GetCode(_blockFinder.Head.StateRoot, trackedTree).Length == 0)
-            {
-                return false;
-            }
-            
-            ShaBaselineTree tree = new ShaBaselineTree(_baselineDb, trackedTree.Bytes, TruncationLength);
-            return _baselineTrees.TryAdd(trackedTree, tree);
-        }
-
-        public Task<ResultWrapper<Keccak>> baseline_insertLeaf(Address address, Address contractAddress, Keccak hash)
-=======
+        
         public async Task<ResultWrapper<Keccak>> baseline_insertLeaf(Address address, Address contractAddress, Keccak hash)
->>>>>>> master
         {
             if (hash == Keccak.Zero)
             {

@@ -21,12 +21,12 @@ using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.BeamWallet.Modules.Events;
-using Nethermind.Dirichlet.Numerics;
 using Nethermind.Facade.Proxy;
 using Terminal.Gui;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Facade.Proxy.Models;
+using Nethermind.Int256;
 
 namespace Nethermind.BeamWallet.Modules.Data
 {

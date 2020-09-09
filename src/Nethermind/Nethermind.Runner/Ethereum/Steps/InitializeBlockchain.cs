@@ -79,35 +79,23 @@ namespace Nethermind.Runner.Ethereum.Steps
             
             Account.AccountStartNonce = _api.ChainSpec.Parameters.AccountStartNonce;
             
-<<<<<<< HEAD
-            _context.Signer = new Signer(_context.SpecProvider.ChainId, _context.OriginalSignerKey, _context.LogManager);
 
-            TrieNodeCache trieNodeCache = new TrieNodeCache(_context.LogManager);
-            TrieStore trieStore = new TrieStore(trieNodeCache, _context.DbProvider.StateDb, _context.LogManager, 256.MB(), 1024);
+            TrieNodeCache trieNodeCache = new TrieNodeCache(_api.LogManager);
+            TrieStore trieStore = new TrieStore(trieNodeCache, _api.DbProvider.StateDb, _api.LogManager, 256.MB(), 1024);
             trieStore.Stored += TreeStoreOnStored; 
             
-            _context.StateProvider = new StateProvider(
-                new StateTree(trieStore, _context.LogManager),
-                _context.DbProvider.CodeDb,
-                _context.LogManager);
+            _api.StateProvider = new StateProvider(
+                new StateTree(trieStore, _api.LogManager),
+                _api.DbProvider.CodeDb,
+                _api.LogManager);
 
-            _context.EthereumEcdsa = new EthereumEcdsa(_context.SpecProvider.ChainId, _context.LogManager);
-            _context.TxPool = new TxPool.TxPool(
-                new PersistentTxStorage(_context.DbProvider.PendingTxsDb),
-=======
             Signer signer = new Signer(_api.SpecProvider.ChainId, _api.OriginalSignerKey, _api.LogManager);
             _api.Signer = signer;
             _api.SignerStore = signer;
 
-            _api.StateProvider = new StateProvider(
-                _api.DbProvider.StateDb,
-                _api.DbProvider.CodeDb,
-                _api.LogManager);
-
             _api.EthereumEcdsa = new EthereumEcdsa(_api.SpecProvider.ChainId, _api.LogManager);
             _api.TxPool = new TxPool.TxPool(
                 new PersistentTxStorage(_api.DbProvider.PendingTxsDb),
->>>>>>> master
                 Timestamper.Default,
                 _api.EthereumEcdsa,
                 _api.SpecProvider,
@@ -169,18 +157,11 @@ namespace Nethermind.Runner.Ethereum.Steps
             _api.ReceiptFinder = new FullInfoReceiptFinder(_api.ReceiptStorage, new ReceiptsRecovery(), _api.BlockTree);
 
             _api.RecoveryStep = new TxSignaturesRecoveryStep(_api.EthereumEcdsa, _api.TxPool, _api.LogManager);
-
-<<<<<<< HEAD
-            _context.StorageProvider = new StorageProvider(
-                trieStore,
-                _context.StateProvider,
-                _context.LogManager);
-=======
+            
             _api.StorageProvider = new StorageProvider(
-                _api.DbProvider.StateDb,
+                trieStore,
                 _api.StateProvider,
                 _api.LogManager);
->>>>>>> master
 
             // blockchain processing
             BlockhashProvider blockhashProvider = new BlockhashProvider(
@@ -259,12 +240,15 @@ namespace Nethermind.Runner.Ethereum.Steps
             return Task.CompletedTask;
         }
 
+        /// <summary>
+        /// Used to save info when closing the app to remember the pruning state
+        /// </summary>
         private void TreeStoreOnStored(object? sender, BlockNumberEventArgs e)
         {
             // the kind of hacks when you run out of time...
             long blockNumber = e.BlockNumber;
-            Keccak stateHeadHash = _context.BlockTree!.FindHash(blockNumber);
-            (_context.BlockTree as BlockTree)!.SaveStateHead(stateHeadHash);
+            Keccak stateHeadHash = _api.BlockTree!.FindHash(blockNumber);
+            (_api.BlockTree as BlockTree)!.SaveStateHead(stateHeadHash);
         }
 
         protected virtual  HeaderValidator CreateHeaderValidator() =>
