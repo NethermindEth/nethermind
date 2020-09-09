@@ -209,16 +209,16 @@ namespace Nethermind.Store.Test
             /* to start with we need to create an account that we will be setting storage at */
             state.CreateAccount(storageCell.Address, UInt256.One);
             state.Commit(MuirGlacier.Instance);
-            state.CommitTree();
+            state.CommitTree(1);
             
             /* at this stage we have an account with empty storage at the address that we want to test */
 
             byte[] initialValue = new byte[] {1, 2, 3};
             storage.Set(storageCell, initialValue);
             storage.Commit();
-            storage.CommitTrees();
+            storage.CommitTrees(2);
             state.Commit(MuirGlacier.Instance);
-            state.CommitTree();
+            state.CommitTree(2);
 
             StateReader reader = new StateReader(dbProvider, Logger);
 
@@ -243,9 +243,9 @@ namespace Nethermind.Store.Test
             
             processorStorageProvider.Set(storageCell, newValue);
             processorStorageProvider.Commit();
-            processorStorageProvider.CommitTrees();
+            processorStorageProvider.CommitTrees(3);
             processorStateProvider.Commit(MuirGlacier.Instance);
-            processorStateProvider.CommitTree();
+            processorStateProvider.CommitTree(3);
             
             /* At this stage the DB should have the storage value updated to 5.
                We will try to retrieve the value by taking the state root from the processor.*/
