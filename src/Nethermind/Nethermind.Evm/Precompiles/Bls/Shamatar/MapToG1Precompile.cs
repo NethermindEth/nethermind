@@ -47,13 +47,19 @@ namespace Nethermind.Evm.Precompiles.Bls.Shamatar
 
         public (byte[], bool) Run(byte[] inputData)
         {
-            Span<byte> inputDataSpan = stackalloc byte[64];
-            inputData.PrepareEthInput(inputDataSpan);
+            const int expectedInputLength = 64;
+            if (inputData.Length != expectedInputLength)
+            {
+                return (Array.Empty<byte>(), false); 
+            }
+            
+            // Span<byte> inputDataSpan = stackalloc byte[expectedInputLength];
+            // inputData.PrepareEthInput(inputDataSpan);
 
             (byte[], bool) result;
             
             Span<byte> output = stackalloc byte[128];
-            bool success = ShamatarLib.BlsMapToG1(inputDataSpan, output);
+            bool success = ShamatarLib.BlsMapToG1(inputData, output);
             if (success)
             {
                 result = (output.ToArray(), true);

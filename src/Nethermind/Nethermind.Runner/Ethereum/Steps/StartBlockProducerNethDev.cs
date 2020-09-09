@@ -17,40 +17,40 @@
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
-using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
-using Nethermind.Core;
 using Nethermind.Logging;
-using Nethermind.Runner.Ethereum.Context;
+using Nethermind.Runner.Ethereum.Api;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
     public class StartBlockProducerNethDev : StartBlockProducer
     {
-        private readonly NethDevEthereumRunnerContext _context;
+        private readonly NethDevNethermindApi _api;
 
-        public StartBlockProducerNethDev(NethDevEthereumRunnerContext context) : base(context)
+        public StartBlockProducerNethDev(NethDevNethermindApi api) : base(api)
         {
-            _context = context;
+            _api = api;
         }
 
         protected override void BuildProducer()
         {
-            ILogger logger = _context.LogManager.GetClassLogger();
+            ILogger logger = _api.LogManager.GetClassLogger();
             if (logger.IsWarn) logger.Warn("Starting Neth Dev block producer & sealer");
             BlockProducerContext producerChain = GetProducerChain();
-            _context.BlockProducer = new DevBlockProducer(
+            _api.BlockProducer = new DevBlockProducer(
                 producerChain.TxSource,
                 producerChain.ChainProcessor,
                 producerChain.ReadOnlyStateProvider,
-                _context.BlockTree,
-                _context.BlockProcessingQueue,
-                _context.TxPool,
-                _context.Timestamper,
-                _context.LogManager);
+                _api.BlockTree,
+                _api.BlockProcessingQueue,
+                _api.TxPool,
+                _api.Timestamper, 
+                _api.LogManager);
         }
 
-        protected override ITxSource CreateTxSourceForProducer(ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv, ReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource) 
-            => new SinglePendingTxSelector(base.CreateTxSourceForProducer(readOnlyTxProcessingEnv, readOnlyTransactionProcessorSource));
+        protected override ITxSource CreateTxSourceForProducer(
+            ReadOnlyTxProcessingEnv processingEnv,
+            ReadOnlyTxProcessorSource readOnlyTxProcessorSource) 
+            => new SinglePendingTxSelector(base.CreateTxSourceForProducer(processingEnv, readOnlyTxProcessorSource));
     }
 }

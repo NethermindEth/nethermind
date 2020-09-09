@@ -19,7 +19,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.TxPool.Collections;
 using NUnit.Framework;
 
@@ -39,7 +39,7 @@ namespace Nethermind.Blockchain.Test.TxPools.Collections
         {
             for (int i = 0; i < _transactions.Length; i++)
             {
-                UInt256.Create(out UInt256 gasPrice, i);
+                UInt256 gasPrice = (UInt256)i;
                 _transactions[i] = Build.A.Transaction.WithGasPrice(gasPrice).TestObject;
             }
         }
@@ -61,7 +61,7 @@ namespace Nethermind.Blockchain.Test.TxPools.Collections
             for (int i = 0; i < Capacity; i++)
             {
                 Transaction tx = _sortedPool.TakeFirst();
-                UInt256.Create(out UInt256 gasPrice, _transactions.Length - i - 1);
+                UInt256 gasPrice = (UInt256)(_transactions.Length - i - 1);
                 Assert.AreEqual(Capacity - i - 1, _sortedPool.Count);
                 Assert.AreEqual(gasPrice, tx.GasPrice);
             }
@@ -81,7 +81,7 @@ namespace Nethermind.Blockchain.Test.TxPools.Collections
             for (int i = 0; i < Capacity; i++)
             {
                 Transaction tx = _sortedPool.TakeFirst();
-                UInt256.Create(out UInt256 gasPrice, _transactions.Length - i - 1);
+                UInt256 gasPrice = (UInt256)(_transactions.Length - i - 1);
                 Assert.AreEqual(Capacity - i - 1, _sortedPool.Count);
                 Assert.AreEqual(gasPrice, tx.GasPrice);
             }

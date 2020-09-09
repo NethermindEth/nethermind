@@ -19,11 +19,10 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie;
 using Metrics = Nethermind.Db.Metrics;
@@ -58,6 +57,11 @@ namespace Nethermind.State
             _tree = stateTree ?? throw new ArgumentNullException(nameof(stateTree));
         }
 
+        public StateProvider(IDbProvider dbProvider, ILogManager logManager)
+            : this(new StateTree(dbProvider.StateDb), dbProvider.CodeDb, logManager)
+        {
+        }
+        
         public StateProvider(ISnapshotableDb stateDb, IDb codeDb, ILogManager logManager)
             : this(new StateTree(stateDb), codeDb, logManager)
         {

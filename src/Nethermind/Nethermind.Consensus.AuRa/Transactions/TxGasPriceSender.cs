@@ -16,43 +16,45 @@
 // 
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
-using Nethermind.Config;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
     public class TxGasPriceSender : ITxSender
     {
-        private static readonly UInt256 DefaultGasPrice = 20_000_000ul;
+        public static readonly UInt256 DefaultGasPrice = 20_000_000ul;
         private readonly ITxSender _txSender;
         private readonly ITxPool _txPool;
+        private readonly IMiningConfig _miningConfig;
         private readonly uint _percentDelta;
 
-        public TxGasPriceSender(ITxSender txSender, ITxPool txPool, uint percentDelta = 110)
+        public TxGasPriceSender(ITxSender txSender, ITxPool txPool, IMiningConfig miningConfig, uint percentDelta = 110)
         {
             _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
+            _miningConfig = miningConfig ?? throw new ArgumentNullException(nameof(miningConfig));
             _percentDelta = percentDelta;
         }
 
-        public Keccak SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
+        public ValueTask<Keccak> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
-            // TODO: Move to Uint256 when we support division
-            ulong minGasPrice = (ulong) CurrentMinGasPrice();
-            tx.GasPrice = minGasPrice * _percentDelta / 100;
+            UInt256 minGasPrice =  CurrentMinGasPrice();
+            UInt256 txGasPrice = minGasPrice * _percentDelta / 100;
+            tx.GasPrice = UInt256.Max(txGasPrice, _miningConfig.MinGasPrice);
             return _txSender.SendTransaction(tx, txHandlingOptions);
         }
 
-        private UInt256 CurrentMinGasPrice()
-        {
-            var transactionsWithGasPrice = _txPool.GetPendingTransactions();
-            return transactionsWithGasPrice.Any(t => t.GasPrice > 0) 
-                ? transactionsWithGasPrice.Where(t => t.GasPrice > 0).Min(t => t.GasPrice) 
-                : DefaultGasPrice;
-        }
+        private UInt256 CurrentMinGasPrice() =>
+            _txPool.GetPendingTransactions()
+                .Select(t => t.GasPrice)
+                .Where(g => g > UInt256.Zero)
+                .DefaultIfEmpty(DefaultGasPrice)
+                .Min();
     }
 }

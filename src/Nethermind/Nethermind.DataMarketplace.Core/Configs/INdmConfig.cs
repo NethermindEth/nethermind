@@ -16,13 +16,13 @@
 
 using Nethermind.Config;
 using Nethermind.Core.Attributes;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 
 namespace Nethermind.DataMarketplace.Core.Configs
 {
     public interface INdmConfig : IConfig
     {
-        [ConfigItem(Description = "If 'false' then it disables the NDM (Nethermind Data Marketplace) capability", DefaultValue = "true")]
+        [ConfigItem(Description = "If 'false' then it disables the NDM (Nethermind Data Marketplace) capability", DefaultValue = "false")]
         bool Enabled { get; }
         [ConfigItem(Description = "Type of the initializer that will be used to bootstrap NDM", DefaultValue = "ndm")]
         string InitializerName { get; }
@@ -40,11 +40,11 @@ namespace Nethermind.DataMarketplace.Core.Configs
         string Persistence { get; }
         [ConfigItem(Description = "If 'false' then signature verification will be skipped during NDM capability P2P handshake", DefaultValue = "true")]
         bool VerifyP2PSignature { get; }
-        [ConfigItem(Description = "An account address (hot wallet) of the data provider", DefaultValue = "")]
+        [ConfigItem(Description = "An account address (hot wallet) of the data provider", DefaultValue = null)]
         string? ProviderAddress { get; }
-        [ConfigItem(Description = "An account address (cold wallet) of the data provider", DefaultValue = "")]
+        [ConfigItem(Description = "An account address (cold wallet) of the data provider", DefaultValue = null)]
         string? ProviderColdWalletAddress { get; }
-        [ConfigItem(Description = "An account address (hot wallet) of the data consumer", DefaultValue = "")]
+        [ConfigItem(Description = "An account address (hot wallet) of the data consumer", DefaultValue = null)]
         string? ConsumerAddress { get; }
 
         [DoNotUseInSecuredContext("Hardcode so cannot be overwritten to redirect to another contract")]
@@ -75,7 +75,7 @@ namespace Nethermind.DataMarketplace.Core.Configs
         string DatabasePath { get; }
         [ConfigItem(Description = "If 'true' then JSON RPC calls will be redirected to the specified proxies.", DefaultValue = "false")]
         bool ProxyEnabled { get; }
-        [ConfigItem(Description = "'List of JSON RPC URLs proxies.", DefaultValue = "")]
+        [ConfigItem(Description = "'List of JSON RPC URLs proxies.", DefaultValue = "System.String[]")]
         string[] JsonRpcUrlProxies { get; }
         [ConfigItem(Description = "Gas price (make deposit, claim payment etc.).", DefaultValue = "20000000000")]
         UInt256 GasPrice { get; }

@@ -17,19 +17,19 @@
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
-using Nethermind.Runner.Ethereum.Context;
+using Nethermind.Int256;
+using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Specs.Forks;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
     public class LoadGenesisBlockAuRa : LoadGenesisBlock
     {
-        private readonly AuRaEthereumRunnerContext _context;
+        private readonly AuRaNethermindApi _api;
 
-        public LoadGenesisBlockAuRa(AuRaEthereumRunnerContext context) : base(context)
+        public LoadGenesisBlockAuRa(AuRaNethermindApi api) : base(api)
         {
-            _context = context;
+            _api = api;
         }
 
         protected override void Load()
@@ -40,17 +40,17 @@ namespace Nethermind.Runner.Ethereum.Steps
         
         private void CreateSystemAccounts()
         {
-            if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
+            if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
             
-            bool hasConstructorAllocation = _context.ChainSpec.Allocations.Values.Any(a => a.Constructor != null);
+            bool hasConstructorAllocation = _api.ChainSpec.Allocations.Values.Any(a => a.Constructor != null);
             if (hasConstructorAllocation)
             {
-                if (_context.StateProvider == null) throw new StepDependencyException(nameof(_context.StateProvider));
-                if (_context.StorageProvider == null) throw new StepDependencyException(nameof(_context.StorageProvider));
+                if (_api.StateProvider == null) throw new StepDependencyException(nameof(_api.StateProvider));
+                if (_api.StorageProvider == null) throw new StepDependencyException(nameof(_api.StorageProvider));
 
-                _context.StateProvider.CreateAccount(Address.Zero, UInt256.Zero);
-                _context.StorageProvider.Commit();
-                _context.StateProvider.Commit(Homestead.Instance);
+                _api.StateProvider.CreateAccount(Address.Zero, UInt256.Zero);
+                _api.StorageProvider.Commit();
+                _api.StateProvider.Commit(Homestead.Instance);
             }
         }
     }

@@ -21,7 +21,7 @@ using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.State.Proofs;
 
@@ -39,7 +39,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         [JsonRpcMethod(IsImplemented = true, Description = "Returns syncing status", IsReadOnly = true)]
         ResultWrapper<SyncingResult> eth_syncing();
         
-        [JsonRpcMethod(IsImplemented = false, Description = "Returns miner's coinbase'", IsReadOnly = true)]
+        [JsonRpcMethod(IsImplemented = false, Description = "Returns miner's coinbase", IsReadOnly = true)]
         ResultWrapper<Address> eth_coinbase();
         
         [JsonRpcMethod(IsImplemented = false, Description = "Returns mining status", IsReadOnly = true)]

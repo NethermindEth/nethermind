@@ -23,7 +23,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Infrastructure.Rpc.Models;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Facade.Proxy;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -190,7 +190,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.EndToEnd
             {
                 DataAssetId = dataAsset.Id,
                 Units = dataAsset.MaxUnits,
-                Value = dataAsset.MaxUnits * new UInt256(dataAsset.UnitPrice ?? 0)
+                Value = dataAsset.MaxUnits * (UInt256)(dataAsset.UnitPrice ?? 0)
             };
             Log(_serializer.Serialize(makeDeposit, true));
             Separator();

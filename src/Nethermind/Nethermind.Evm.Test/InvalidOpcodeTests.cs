@@ -230,7 +230,7 @@ namespace Nethermind.Evm.Test
         private Dictionary<long, Instruction[]> _validOpcodes
             = new Dictionary<long, Instruction[]>
             {
-                {long.MinValue, FrontierInstructions},
+                {0, FrontierInstructions},
                 {MainnetSpecProvider.HomesteadBlockNumber, HomesteadInstructions},
                 {MainnetSpecProvider.SpuriousDragonBlockNumber, HomesteadInstructions},
                 {MainnetSpecProvider.TangerineWhistleBlockNumber, HomesteadInstructions},
@@ -260,6 +260,7 @@ namespace Nethermind.Evm.Test
         [TestCase(MainnetSpecProvider.IstanbulBlockNumber)]
         [TestCase(MainnetSpecProvider.ConstantinopleFixBlockNumber)]
         [TestCase(MainnetSpecProvider.MuirGlacierBlockNumber)]
+        [TestCase(MainnetSpecProvider.BerlinBlockNumber)]
         [TestCase(MainnetSpecProvider.BerlinBlockNumber)]
         [TestCase(long.MaxValue)]
         public void Test(long blockNumber)

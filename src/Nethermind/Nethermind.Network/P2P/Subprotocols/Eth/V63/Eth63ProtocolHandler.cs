@@ -33,11 +33,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 {
     public class Eth63ProtocolHandler : Eth62ProtocolHandler
     {
-        private readonly BlockingCollection<Request<GetNodeDataMessage, byte[][]>> _nodeDataRequests
-            = new BlockingCollection<Request<GetNodeDataMessage, byte[][]>>();
+        private readonly MessageQueue<GetNodeDataMessage, byte[][]> _nodeDataRequests;
 
-        private readonly BlockingCollection<Request<GetReceiptsMessage, TxReceipt[][]>> _receiptsRequests
-            = new BlockingCollection<Request<GetReceiptsMessage, TxReceipt[][]>>();
+        private readonly MessageQueue<GetReceiptsMessage, TxReceipt[][]> _receiptsRequests;
 
         public Eth63ProtocolHandler(ISession session,
             IMessageSerializationService serializer,
@@ -46,6 +44,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             ITxPool txPool,
             ILogManager logManager) : base(session, serializer, nodeStatsManager, syncServer, txPool, logManager)
         {
+            _nodeDataRequests = new MessageQueue<GetNodeDataMessage, byte[][]>(Send);
+            _receiptsRequests = new MessageQueue<GetReceiptsMessage, TxReceipt[][]>(Send);
         }
 
         public override byte ProtocolVersion => 63;
@@ -87,11 +87,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
         private void Handle(ReceiptsMessage msg, long size)
         {
             Metrics.Eth63ReceiptsReceived++;
-            using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
-            cancellationTokenSource.CancelAfter(1000);
-            Request<GetReceiptsMessage, TxReceipt[][]> request = _receiptsRequests.Take(cancellationTokenSource.Token);
-            request.ResponseSize = size;
-            request.CompletionSource.SetResult(msg.TxReceipts);
+            _receiptsRequests.Handle(msg.TxReceipts, size);
         }
 
         private void Handle(GetNodeDataMessage msg)
@@ -113,11 +109,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
         private void Handle(NodeDataMessage msg, int size)
         {
             Metrics.Eth63NodeDataReceived++;
-            using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
-            cancellationTokenSource.CancelAfter(1000);
-            Request<GetNodeDataMessage, byte[][]> request = _nodeDataRequests.Take(cancellationTokenSource.Token);
-            request.ResponseSize = size;
-            request.CompletionSource.SetResult(msg.Data);
+            _nodeDataRequests.Handle(msg.Data, size);
         }
 
         public override async Task<byte[][]> GetNodeData(IList<Keccak> keys, CancellationToken token)
@@ -155,10 +147,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             }
 
             Request<GetNodeDataMessage, byte[][]> request = new Request<GetNodeDataMessage, byte[][]>(message);
-            request.StartMeasuringTime();
-            _nodeDataRequests.Add(request, token);
-
-            Send(request.Message);
+            _nodeDataRequests.Send(request);
+            
             Task<byte[][]> task = request.CompletionSource.Task;
 
             using CancellationTokenSource delayCancellation = new CancellationTokenSource();
@@ -196,10 +186,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
             Request<GetReceiptsMessage, TxReceipt[][]> request
                 = new Request<GetReceiptsMessage, TxReceipt[][]>(message);
-            request.StartMeasuringTime();
-            _receiptsRequests.Add(request, token);
-
-            Send(request.Message);
+            _receiptsRequests.Send(request);
 
             Task<TxReceipt[][]> task = request.CompletionSource.Task;
             using CancellationTokenSource delayCancellation = new CancellationTokenSource();

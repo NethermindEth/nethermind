@@ -1,0 +1,21 @@
+name: Update GitBook Docs
+
+on:
+  push:
+    tags:
+    - '*'
+    
+jobs:
+  update-gitbook:
+    name: Trigger the GitBook Docs update
+    runs-on: ubuntu-latest
+    steps:
+    - name: Send dispatch event to Nethermind docs repository
+      env: 
+        DISPATCH_REPO: NethermindEth/docs
+      run: |
+        curl -v -X POST -u "${{ secrets.PAT_GITHUB }}" \
+        -H "Accept: application/vnd.github.everest-preview+json" \
+        -H "Content-Type: application/json" \
+        --data '{"event_type":"docs_update"}' \
+        https://api.github.com/repos/$DISPATCH_REPO/dispatches

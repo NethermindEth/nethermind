@@ -19,7 +19,7 @@ using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Services;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;

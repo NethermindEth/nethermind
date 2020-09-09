@@ -23,7 +23,7 @@ namespace Nethermind.Core.Caching
     /// <summary>
     /// https://stackoverflow.com/questions/754233/is-it-there-any-lru-implementation-of-idictionary
     /// </summary>
-    public class LruCacheWithRecycling<TKey, TValue> : ICache<TKey, TValue>
+    public class LruCache<TKey, TValue> : ICache<TKey, TValue>
     {
         private readonly int _maxCapacity;
         private readonly Dictionary<TKey, LinkedListNode<LruCacheItem>> _cacheMap;
@@ -35,7 +35,7 @@ namespace Nethermind.Core.Caching
             _lruList?.Clear();
         }
 
-        public LruCacheWithRecycling(int maxCapacity, int startCapacity, string name)
+        public LruCache(int maxCapacity, int startCapacity, string name)
         {
             _maxCapacity = maxCapacity;
             _cacheMap = typeof(TKey) == typeof(byte[])
@@ -44,7 +44,7 @@ namespace Nethermind.Core.Caching
             _lruList = new LinkedList<LruCacheItem>();
         }
 
-        public LruCacheWithRecycling(int maxCapacity, string name)
+        public LruCache(int maxCapacity, string name)
             : this(maxCapacity, 0, name)
         {
         }

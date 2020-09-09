@@ -23,6 +23,7 @@ using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -39,8 +40,8 @@ namespace Nethermind.Consensus.AuRa
     public class AuRaBlockProcessor : BlockProcessor
     {
         private readonly IBlockTree _blockTree;
-        private readonly IGasLimitOverride _gasLimitOverride;
-        private readonly ITxPermissionFilter _txFilter;
+        private readonly AuRaContractGasLimitOverride _gasLimitOverride;
+        private readonly ITxFilter _txFilter;
         private readonly ILogger _logger;
         private IAuRaValidator _auRaValidator;
 
@@ -57,13 +58,13 @@ namespace Nethermind.Consensus.AuRa
             IReceiptStorage receiptStorage,
             ILogManager logManager,
             IBlockTree blockTree,
-            ITxPermissionFilter txFilter = null,
-            IGasLimitOverride gasLimitOverride = null)
+            ITxFilter txFilter = null,
+            AuRaContractGasLimitOverride gasLimitOverride = null)
             : base(specProvider, blockValidator, rewardCalculator, transactionProcessor, stateDb, codeDb, stateProvider, storageProvider, txPool, receiptStorage, logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _logger = logManager?.GetClassLogger<AuRaBlockProcessor>() ?? throw new ArgumentNullException(nameof(logManager));
-            _txFilter = txFilter ?? NullTxPermissionFilter.Instance;
+            _txFilter = txFilter ?? NullTxFilter.Instance;
             _gasLimitOverride = gasLimitOverride;
         }
 
@@ -97,10 +98,10 @@ namespace Nethermind.Consensus.AuRa
 
         private void ValidateGasLimit(BlockHeader header, BlockHeader parentHeader)
         {
-            var gasLimit = _gasLimitOverride?.GetGasLimit(parentHeader);
-            if (gasLimit.HasValue && header.GasLimit != gasLimit)
+            long? expectedGasLimit = null;
+            if (_gasLimitOverride?.IsGasLimitValid(parentHeader, header.GasLimit, out expectedGasLimit) == false)
             {
-                if (_logger.IsError) _logger.Error($"Invalid gas limit for block {header.Number}, hash {header.Hash}, expected value from contract {gasLimit.Value}, but found {header.GasLimit}.");
+                if (_logger.IsError) _logger.Error($"Invalid gas limit for block {header.Number}, hash {header.Hash}, expected value from contract {expectedGasLimit}, but found {header.GasLimit}.");
                 throw new InvalidBlockException(header.Hash);
             }
         }

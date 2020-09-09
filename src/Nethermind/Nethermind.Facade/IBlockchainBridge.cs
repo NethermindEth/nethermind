@@ -20,20 +20,15 @@ using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
 using Nethermind.Trie;
 using Block = Nethermind.Core.Block;
 
 namespace Nethermind.Facade
 {
-    public interface IBlockchainBridge : IBlockFinder
+    public interface IBlockchainBridge
     {
-        IReadOnlyCollection<Address> GetWalletAccounts();
-        Signature Sign(Address address, Keccak message);
-        void Sign(Transaction tx);
         int GetNetworkId();
-        long BestKnown { get; }
-        bool IsSyncing { get; }
+        Block BeamHead { get; }
         bool IsMining { get; }
         void RecoverTxSenders(Block block);
         void RecoverTxSender(Transaction tx);
@@ -42,12 +37,7 @@ namespace Nethermind.Facade
         BlockchainBridge.CallOutput Call(BlockHeader blockHeader, Transaction transaction);
         BlockchainBridge.CallOutput EstimateGas(BlockHeader header, Transaction tx, CancellationToken cancellationToken);
         long GetChainId();
-        byte[] GetCode(Address address);
-        byte[] GetCode(Keccak codeHash);
-        UInt256 GetNonce(Address address);
-        byte[] GetStorage(Address address, UInt256 index, Keccak storageRoot);
-        Account GetAccount(Address address, Keccak stateRoot);
-        
+
         int NewBlockFilter();
         int NewPendingTransactionFilter();
         int NewFilter(BlockParameter fromBlock, BlockParameter toBlock, object address = null, IEnumerable<object> topics = null);

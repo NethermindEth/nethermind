@@ -17,13 +17,14 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.Tracing.ParityStyle;
@@ -281,7 +282,10 @@ namespace Nethermind.Blockchain.Processing
 
             ProcessingBranch processingBranch = PrepareProcessingBranch(suggestedBlock, options);
             PrepareBlocksToProcess(suggestedBlock, options, processingBranch);
+
+            Stopwatch stopwatch = Stopwatch.StartNew();
             Block[] processedBlocks = ProcessBranch(processingBranch, options, tracer);
+            stopwatch.Stop();
             if (processedBlocks == null)
             {
                 return null;
@@ -290,6 +294,7 @@ namespace Nethermind.Blockchain.Processing
             if ((options & (ProcessingOptions.ReadOnlyChain | ProcessingOptions.DoNotUpdateHead)) == 0)
             {
                 _blockTree.UpdateMainChain(processingBranch.Blocks.ToArray(), true);
+                Metrics.LastBlockProcessingTimeInMs = stopwatch.ElapsedMilliseconds;
             }
 
             Block lastProcessed = null;

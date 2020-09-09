@@ -16,11 +16,13 @@
 // 
 
 using System.Collections.Generic;
+using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
+using Nethermind.Specs;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -28,13 +30,13 @@ namespace Nethermind.AuRa.Test
 {
     public class AuRaContractGasLimitOverrideTests
     {
-        [TestCase(false, 1, ExpectedResult = null)]
-        [TestCase(true, 1, ExpectedResult = null)]
+        [TestCase(false, 1, ExpectedResult = 4000000)]
+        [TestCase(true, 1, ExpectedResult = 4000000)]
         [TestCase(false, 3, ExpectedResult = 1000)]
         [TestCase(false, 5, ExpectedResult = 3000000)]
         [TestCase(true, 3, ExpectedResult = 2000000)]
         [TestCase(true, 5, ExpectedResult = 3000000)]
-        public long? GetGasLimit(bool minimum2MlnGasPerBlockWhenUsingBlockGasLimit, long blockNumber)
+        public long GetGasLimit(bool minimum2MlnGasPerBlockWhenUsingBlockGasLimit, long blockNumber)
         {
             var blockGasLimitContract1 = Substitute.For<IBlockGasLimitContract>();
             blockGasLimitContract1.ActivationBlock.Returns(3);
@@ -44,14 +46,16 @@ namespace Nethermind.AuRa.Test
             blockGasLimitContract2.ActivationBlock.Returns(5);
             blockGasLimitContract2.Activation.Returns(5);
             blockGasLimitContract2.BlockGasLimit(Arg.Any<BlockHeader>()).Returns(3000000u);
-            
+
+            var config = new MiningConfig {TargetBlockGasLimit = 4000000};
             var gasLimitOverride = new AuRaContractGasLimitOverride(
-                new List<IBlockGasLimitContract>() {blockGasLimitContract1, blockGasLimitContract2}, 
-                new IGasLimitOverride.Cache(), 
-                minimum2MlnGasPerBlockWhenUsingBlockGasLimit, 
+                new List<IBlockGasLimitContract> {blockGasLimitContract1, blockGasLimitContract2}, 
+                new AuRaContractGasLimitOverride.Cache(), 
+                minimum2MlnGasPerBlockWhenUsingBlockGasLimit,
+                new TargetAdjustedGasLimitCalculator(MainnetSpecProvider.Instance, config), 
                 LimboLogs.Instance);
 
-            var header = Build.A.BlockHeader.WithNumber(blockNumber - 1).TestObject;
+            var header = Build.A.BlockHeader.WithGasLimit(3999999).WithNumber(blockNumber - 1).TestObject;
             return gasLimitOverride.GetGasLimit(header);
         }
     }

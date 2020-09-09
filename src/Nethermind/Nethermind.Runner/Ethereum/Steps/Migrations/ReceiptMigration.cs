@@ -29,9 +29,9 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Runner.Ethereum.Context;
+using Nethermind.Runner.Ethereum.Api;
 using Nethermind.State.Repositories;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
@@ -43,7 +43,6 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
     {
         private static readonly Block EmptyBlock = new Block(new BlockHeader(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.Zero, 0L, 0L, UInt256.Zero, Array.Empty<byte>()));
 
-        //private readonly EthereumRunnerContext _context;
         private readonly ILogger _logger;
         private CancellationTokenSource? _cancellationTokenSource;
         private Task? _migrationTask;
@@ -65,7 +64,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
 
         private readonly IInitConfig _initConfig;
 
-        public ReceiptMigration(EthereumRunnerContext context)
+        public ReceiptMigration(NethermindApi context)
         {
             _logger = context.LogManager.GetClassLogger<ReceiptMigration>();
             _receiptStorage = context.ReceiptStorage ?? throw new StepDependencyException(nameof(context.ReceiptStorage));

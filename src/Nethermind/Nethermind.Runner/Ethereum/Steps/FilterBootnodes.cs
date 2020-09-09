@@ -18,33 +18,33 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
-using Nethermind.Runner.Ethereum.Context;
+using Nethermind.Runner.Ethereum.Api;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
     [RunnerStepDependencies(typeof(SetupKeyStore))]
     public class FilterBootnodes : IStep
     {
-        private readonly EthereumRunnerContext _context;
+        private readonly NethermindApi _api;
 
-        public FilterBootnodes(EthereumRunnerContext context)
+        public FilterBootnodes(NethermindApi api)
         {
-            _context = context;
+            _api = api;
         }
 
         public Task Execute(CancellationToken _)
         {
-            if (_context.ChainSpec == null)
+            if (_api.ChainSpec == null)
             {
                 return Task.CompletedTask;
             }
             
-            if (_context.NodeKey == null)
+            if (_api.NodeKey == null)
             {
                 return Task.CompletedTask;
             }
 
-            _context.ChainSpec.Bootnodes = _context.ChainSpec.Bootnodes?.Where(n => !n.NodeId?.Equals(_context.NodeKey.PublicKey) ?? false).ToArray() ?? new NetworkNode[0];
+            _api.ChainSpec.Bootnodes = _api.ChainSpec.Bootnodes?.Where(n => !n.NodeId?.Equals(_api.NodeKey.PublicKey) ?? false).ToArray() ?? new NetworkNode[0];
             return Task.CompletedTask;
         }
     }

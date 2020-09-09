@@ -29,7 +29,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
@@ -48,8 +48,8 @@ namespace Nethermind.Blockchain
         internal static Keccak HeadAddressInDb = Keccak.Zero;
         
         private const int CacheSize = 64;
-        private readonly ICache<Keccak, Block> _blockCache = new LruCacheWithRecycling<Keccak, Block>(CacheSize, CacheSize, "blocks");
-        private readonly ICache<Keccak, BlockHeader> _headerCache = new LruCacheWithRecycling<Keccak, BlockHeader>(CacheSize, CacheSize, "headers");
+        private readonly ICache<Keccak, Block> _blockCache = new LruCache<Keccak, Block>(CacheSize, CacheSize, "blocks");
+        private readonly ICache<Keccak, BlockHeader> _headerCache = new LruCache<Keccak, BlockHeader>(CacheSize, CacheSize, "headers");
 
         private const int BestKnownSearchLimit = 256_000_000;
 
@@ -59,7 +59,7 @@ namespace Nethermind.Blockchain
         private readonly IDb _headerDb;
         private readonly IDb _blockInfoDb;
 
-        private ICache<long, HashSet<Keccak>> _invalidBlocks = new LruCacheWithRecycling<long, HashSet<Keccak>>(128, 128, "invalid blocks");
+        private ICache<long, HashSet<Keccak>> _invalidBlocks = new LruCache<long, HashSet<Keccak>>(128, 128, "invalid blocks");
         private readonly BlockDecoder _blockDecoder = new BlockDecoder();
         private readonly HeaderDecoder _headerDecoder = new HeaderDecoder();
         private readonly ILogger _logger;
@@ -95,6 +95,29 @@ namespace Nethermind.Blockchain
         private int _canAcceptNewBlocksCounter = 0;
         public bool CanAcceptNewBlocks => _canAcceptNewBlocksCounter == 0;
 
+        public BlockTree(
+            IDbProvider dbProvider,
+            IChainLevelInfoRepository chainLevelInfoRepository,
+            ISpecProvider specProvider,
+            ITxPool txPool,
+            IBloomStorage bloomStorage,
+            ILogManager logManager)
+            : this(dbProvider.BlocksDb, dbProvider.HeadersDb, dbProvider.BlockInfosDb, chainLevelInfoRepository, specProvider, txPool, bloomStorage, new SyncConfig(), logManager)
+        {
+        }
+        
+        public BlockTree(
+            IDbProvider dbProvider,
+            IChainLevelInfoRepository chainLevelInfoRepository,
+            ISpecProvider specProvider,
+            ITxPool txPool,
+            IBloomStorage bloomStorage,
+            ISyncConfig syncConfig,
+            ILogManager logManager)
+            : this(dbProvider.BlocksDb, dbProvider.HeadersDb, dbProvider.BlockInfosDb, chainLevelInfoRepository, specProvider, txPool, bloomStorage, syncConfig, logManager)
+        {
+        }
+        
         public BlockTree(
             IDb blockDb,
             IDb headerDb,
@@ -555,16 +578,15 @@ namespace Nethermind.Blockchain
 
             if ((totalDifficultyNeeded && header.TotalDifficulty == null) || requiresCanonical)
             {
-                (BlockInfo blockInfo, ChainLevelInfo level) = LoadInfo(header.Number, header.Hash);
+                (BlockInfo blockInfo, ChainLevelInfo level) = LoadInfo(header.Number, header.Hash, true);
                 if (level == null || blockInfo == null)
                 {
                     // TODO: this is here because storing block data is not transactional
                     // TODO: would be great to remove it, he?
+                    if(_logger.IsTrace) _logger.Trace($"Entering missing block info in {nameof(FindHeader)} scope when head is {Head?.ToString(Block.Format.Short)}");
                     SetTotalDifficulty(header);
                     blockInfo = new BlockInfo(header.Hash, header.TotalDifficulty.Value);
-                    UpdateOrCreateLevel(header.Number, blockInfo);
-
-                    (_, level) = LoadInfo(header.Number, header.Hash);
+                    level = UpdateOrCreateLevel(header.Number, blockInfo);
                 }
                 else
                 {
@@ -889,6 +911,8 @@ namespace Nethermind.Blockchain
             return IsMainChain(header);
         }
 
+        public BlockHeader FindBestSuggestedHeader() => BestSuggestedHeader;
+
         public bool WasProcessed(long number, Keccak blockHash)
         {
             ChainLevelInfo levelInfo = LoadLevel(number);
@@ -1098,7 +1122,7 @@ namespace Nethermind.Blockchain
             NewHeadBlock?.Invoke(this, new BlockEventArgs(block));
         }
 
-        private void UpdateOrCreateLevel(long number, BlockInfo blockInfo, bool setAsMain = false)
+        private ChainLevelInfo UpdateOrCreateLevel(long number, BlockInfo blockInfo, bool setAsMain = false)
         {
             using (var batch = _chainLevelInfoRepository.StartBatch())
             {
@@ -1136,12 +1160,14 @@ namespace Nethermind.Blockchain
                 }
 
                 _chainLevelInfoRepository.PersistLevel(number, level, batch);
+
+                return level;
             }
         }
 
-        private (BlockInfo Info, ChainLevelInfo Level) LoadInfo(long number, Keccak blockHash)
+        private (BlockInfo Info, ChainLevelInfo Level) LoadInfo(long number, Keccak blockHash, bool forceLoad)
         {
-            ChainLevelInfo chainLevelInfo = LoadLevel(number);
+            ChainLevelInfo chainLevelInfo = LoadLevel(number, forceLoad);
             if (chainLevelInfo == null)
             {
                 return (null, null);
@@ -1211,16 +1237,15 @@ namespace Nethermind.Blockchain
 
             if ((totalDifficultyNeeded && block.TotalDifficulty == null) || requiresCanonical)
             {
-                (BlockInfo blockInfo, ChainLevelInfo level) = LoadInfo(block.Number, block.Hash);
+                (BlockInfo blockInfo, ChainLevelInfo level) = LoadInfo(block.Number, block.Hash, true);
                 if (level == null || blockInfo == null)
                 {
                     // TODO: this is here because storing block data is not transactional
                     // TODO: would be great to remove it, he?
+                    if(_logger.IsTrace) _logger.Trace($"Entering missing block info in {nameof(FindBlock)} scope when head is {Head?.ToString(Block.Format.Short)}");
                     SetTotalDifficulty(block.Header);
-                    blockInfo = new BlockInfo(block.Hash, block.TotalDifficulty.Value);
-                    UpdateOrCreateLevel(block.Number, blockInfo);
-
-                    (_, level) = LoadInfo(block.Number, block.Hash);
+                    blockInfo = new BlockInfo(block.Hash, block.TotalDifficulty!.Value);
+                    level = UpdateOrCreateLevel(block.Number, blockInfo);
                 }
                 else
                 {
@@ -1252,10 +1277,10 @@ namespace Nethermind.Blockchain
 
             if (_logger.IsTrace)
             {
-                _logger.Trace($"Calculating total difficulty for {header}");
+                _logger.Trace($"Calculating total difficulty for {header.ToString(BlockHeader.Format.Short)}");
             }
 
-            if (header.Number == 0)
+            if (header.IsGenesis)
             {
                 header.TotalDifficulty = header.Difficulty;
             }

@@ -17,27 +17,17 @@
 using FluentAssertions;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Caching
 {
-    [TestFixture(true)]
-    [TestFixture(false)]
+    [TestFixture]
     public class LruCacheTests
     {
-        private readonly bool _allowRecycling;
-
-        public LruCacheTests(bool allowRecycling)
-        {
-            _allowRecycling = allowRecycling;
-        }
-        
         private ICache<Address, Account> Create()
         {
-            return _allowRecycling
-                ? (ICache<Address, Account>)new LruCacheWithRecycling<Address, Account>(Capacity, "test")
-                : new LruCache<Address, Account>(Capacity, "test");
+            return new LruCache<Address, Account>(Capacity, "test");
         }
         
         private const int Capacity = 16;

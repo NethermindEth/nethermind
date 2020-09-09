@@ -19,6 +19,7 @@ using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Int256;
 
 namespace Nethermind.Evm.Precompiles
 {
@@ -44,18 +45,22 @@ namespace Nethermind.Evm.Precompiles
         {
             try
             {
-                BigInteger baseLength = inputData.SliceWithZeroPaddingEmptyOnError(0, 32).ToUnsignedBigInteger();
-                BigInteger expLength = inputData.SliceWithZeroPaddingEmptyOnError(32, 32).ToUnsignedBigInteger();
-                BigInteger modulusLength = inputData.SliceWithZeroPaddingEmptyOnError(64, 32).ToUnsignedBigInteger();
+                Span<byte> extendedInput = stackalloc byte[96];
+                inputData.Slice(0, Math.Min(96, inputData.Length))
+                    .CopyTo(extendedInput.Slice(0, Math.Min(96, inputData.Length)));
+                
+                UInt256 baseLength = new UInt256(extendedInput.Slice(0, 32), true);
+                UInt256 expLength = new UInt256(extendedInput.Slice(32, 32), true);
+                UInt256 modulusLength = new UInt256(extendedInput.Slice(64, 32), true);
 
-                BigInteger complexity = MultComplexity(BigInteger.Max(baseLength, modulusLength));
+                UInt256 complexity = MultComplexity(UInt256.Max(baseLength, modulusLength));
 
-                byte[] expSignificantBytes = inputData.SliceWithZeroPaddingEmptyOnError(96 + (int)baseLength, (int)BigInteger.Min(expLength, 32));
+                byte[] expSignificantBytes = inputData.SliceWithZeroPaddingEmptyOnError(96 + (int)baseLength, (int)UInt256.Min(expLength, 32));
 
-                BigInteger lengthOver32 = expLength <= 32 ? 0 : expLength - 32;
-                BigInteger adjusted = AdjustedExponentLength(lengthOver32, expSignificantBytes);
-                BigInteger gas = complexity * BigInteger.Max(adjusted, BigInteger.One) / 20;
-                return (long)gas;
+                UInt256 lengthOver32 = expLength <= 32 ? 0 : expLength - 32;
+                UInt256 adjusted = AdjustedExponentLength(lengthOver32, expSignificantBytes);
+                UInt256 gas = complexity * UInt256.Max(adjusted, UInt256.One) / 20;
+                return gas > long.MaxValue ? long.MaxValue : (long)gas;
             }
             catch (OverflowException)
             {
@@ -71,9 +76,7 @@ namespace Nethermind.Evm.Precompiles
             BigInteger expLengthBig = inputData.SliceWithZeroPaddingEmptyOnError(32, 32).ToUnsignedBigInteger();
             int expLength = expLengthBig > int.MaxValue ? int.MaxValue : (int)expLengthBig;
             int modulusLength = (int)inputData.SliceWithZeroPaddingEmptyOnError(64, 32).ToUnsignedBigInteger();
-
-            BigInteger baseInt = inputData.SliceWithZeroPaddingEmptyOnError(96, baseLength).ToUnsignedBigInteger();
-            BigInteger expInt = inputData.SliceWithZeroPaddingEmptyOnError(96 + baseLength, expLength).ToUnsignedBigInteger();
+            
             BigInteger modulusInt = inputData.SliceWithZeroPaddingEmptyOnError(96 + baseLength + expLength, modulusLength).ToUnsignedBigInteger();
 
             if (modulusInt.IsZero)
@@ -81,10 +84,12 @@ namespace Nethermind.Evm.Precompiles
                 return (new byte[modulusLength], true);
             }
 
+            BigInteger baseInt = inputData.SliceWithZeroPaddingEmptyOnError(96, baseLength).ToUnsignedBigInteger();
+            BigInteger expInt = inputData.SliceWithZeroPaddingEmptyOnError(96 + baseLength, expLength).ToUnsignedBigInteger();
             return (BigInteger.ModPow(baseInt, expInt, modulusInt).ToBigEndianByteArray(modulusLength), true);
         }
 
-        private BigInteger MultComplexity(BigInteger adjustedExponentLength)
+        private UInt256 MultComplexity(UInt256 adjustedExponentLength)
         {
             if (adjustedExponentLength <= 64)
             {
@@ -99,7 +104,7 @@ namespace Nethermind.Evm.Precompiles
             return adjustedExponentLength * adjustedExponentLength / 16 + 480 * adjustedExponentLength - 199680;
         }
 
-        private static BigInteger AdjustedExponentLength(BigInteger lengthOver32, byte[] exponent)
+        private static UInt256 AdjustedExponentLength(UInt256 lengthOver32, byte[] exponent)
         {
             int leadingZeros = exponent.AsSpan().LeadingZerosCount();
             if (leadingZeros == exponent.Length)
@@ -107,7 +112,14 @@ namespace Nethermind.Evm.Precompiles
                 return lengthOver32 * 8;
             }
 
-            return (lengthOver32 + exponent.Length - leadingZeros - 1) * 8 + (exponent[leadingZeros].GetHighestSetBitIndex() - 1);
+            return
+                (
+                    lengthOver32 
+                    + (UInt256)exponent.Length 
+                    - (UInt256)leadingZeros 
+                    - (UInt256)1) 
+                * 8 
+                + (UInt256)(exponent[leadingZeros].GetHighestSetBitIndex() - 1);
         }
     }
 }

@@ -23,9 +23,8 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
@@ -33,17 +32,17 @@ using Nethermind.State;
 using Nethermind.Db.Blooms;
 using Nethermind.Trie;
 using Nethermind.TxPool;
-using Nethermind.Wallet;
 using Block = Nethermind.Core.Block;
 using System.Threading;
+using Nethermind.Blockchain.Processing;
 
 namespace Nethermind.Facade
 {
     [Todo(Improve.Refactor, "I want to remove BlockchainBridge, split it into something with logging, state and tx processing. Then we can start using independent modules.")]
     public class BlockchainBridge : IBlockchainBridge
     {
+        private readonly ReadOnlyTxProcessingEnv _processingEnv;
         private readonly ITxPool _txPool;
-        private readonly IWallet _wallet;
         private readonly IBlockTree _blockTree;
         private readonly IFilterStore _filterStore;
         private readonly IStateReader _stateReader;
@@ -52,20 +51,15 @@ namespace Nethermind.Facade
         private readonly IFilterManager _filterManager;
         private readonly IStateProvider _stateProvider;
         private readonly IReceiptFinder _receiptFinder;
-        private readonly IStorageProvider _storageProvider;
         private readonly ITransactionProcessor _transactionProcessor;
         private readonly ILogFinder _logFinder;
 
-        public BlockchainBridge(IStateReader stateReader,
-            IStateProvider stateProvider,
-            IStorageProvider storageProvider,
-            IBlockTree blockTree,
+        public BlockchainBridge(
+            ReadOnlyTxProcessingEnv processingEnv,
             ITxPool txPool,
             IReceiptFinder receiptStorage,
             IFilterStore filterStore,
             IFilterManager filterManager,
-            IWallet wallet,
-            ITransactionProcessor transactionProcessor,
             IEthereumEcdsa ecdsa,
             IBloomStorage bloomStorage,
             ITimestamper timestamper,
@@ -74,38 +68,22 @@ namespace Nethermind.Facade
             int findLogBlockDepthLimit = 1000,
             CancellationToken cancellationToken = default(CancellationToken))
         {
-            _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
-            _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
-            _storageProvider = storageProvider ?? throw new ArgumentNullException(nameof(storageProvider));
-            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _processingEnv = processingEnv ?? throw new ArgumentNullException(nameof(processingEnv));
+            _stateReader = processingEnv.StateReader ?? throw new ArgumentNullException(nameof(processingEnv.StateReader));
+            _stateProvider = processingEnv.StateProvider ?? throw new ArgumentNullException(nameof(processingEnv.StateProvider));
+            _blockTree = processingEnv.BlockTree ?? throw new ArgumentNullException(nameof(processingEnv.BlockTree));
+            _transactionProcessor = processingEnv.TransactionProcessor ?? throw new ArgumentException(nameof(processingEnv.TransactionProcessor));
             _txPool = txPool ?? throw new ArgumentNullException(nameof(_txPool));
             _receiptFinder = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _filterStore = filterStore ?? throw new ArgumentException(nameof(filterStore));
             _filterManager = filterManager ?? throw new ArgumentException(nameof(filterManager));
-            _wallet = wallet ?? throw new ArgumentException(nameof(wallet));
-            _transactionProcessor = transactionProcessor ?? throw new ArgumentException(nameof(transactionProcessor));
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
             IsMining = isMining;
             _logFinder = new LogFinder(_blockTree, _receiptFinder, bloomStorage, logManager, new ReceiptsRecovery(), findLogBlockDepthLimit);
         }
-
-        public IReadOnlyCollection<Address> GetWalletAccounts()
-        {
-            return _wallet.GetAccounts();
-        }
-
-        public Signature Sign(Address address, Keccak message)
-        {
-            return _wallet.Sign(message, address);
-        }
-
-        public void Sign(Transaction tx)
-        {
-            _wallet.Sign(tx, _blockTree.ChainId);
-        }
-
-        public Block Head
+        
+        public Block BeamHead
         {
             get
             {
@@ -120,10 +98,6 @@ namespace Nethermind.Facade
             }
         }
 
-        public long BestKnown => _blockTree.BestKnownNumber;
-
-        public bool IsSyncing => _blockTree.BestSuggestedHeader.Hash != _blockTree.Head.Hash;
-        
         public bool IsMining { get; }
 
         public (TxReceipt Receipt, Transaction Transaction) GetTransaction(Keccak txHash)
@@ -173,19 +147,35 @@ namespace Nethermind.Facade
         public CallOutput Call(BlockHeader blockHeader, Transaction transaction)
         {
             CallOutputTracer callOutputTracer = new CallOutputTracer();
-            CallAndRestore(blockHeader, transaction, blockHeader.Timestamp, callOutputTracer);
-            return new CallOutput {Error = callOutputTracer.Error, GasSpent = callOutputTracer.GasSpent, OutputData = callOutputTracer.ReturnValue};
+            CallAndRestore(blockHeader, blockHeader.Number, blockHeader.Timestamp,  transaction, callOutputTracer);
+            return new CallOutput
+            {
+                Error = callOutputTracer.Error,
+                GasSpent = callOutputTracer.GasSpent,
+                OutputData = callOutputTracer.ReturnValue
+            };
         }
 
         public CallOutput EstimateGas(BlockHeader header, Transaction tx, CancellationToken cancellationToken)
         {
             EstimateGasTracer estimateGasTracer = new EstimateGasTracer(cancellationToken);
-            CallAndRestore(header, tx, UInt256.Max(header.Timestamp + 1, _timestamper.EpochSeconds), estimateGasTracer);
+            CallAndRestore(
+                header,
+                header.Number + 1,
+                UInt256.Max(header.Timestamp + 1, _timestamper.EpochSeconds),
+                tx,
+                estimateGasTracer);
+            
             long estimate = estimateGasTracer.CalculateEstimate(tx);
             return new CallOutput {Error = estimateGasTracer.Error, GasSpent = estimate};
         }
 
-        private void CallAndRestore(BlockHeader blockHeader, Transaction transaction, UInt256 timestamp, ITxTracer tracer)
+        private void CallAndRestore(
+            BlockHeader blockHeader,
+            long number,
+            UInt256 timestamp,
+            Transaction transaction,
+            ITxTracer tracer)
         {
             if (transaction.SenderAddress == null)
             {
@@ -205,7 +195,7 @@ namespace Nethermind.Facade
                     Keccak.OfAnEmptySequenceRlp,
                     Address.Zero,
                     0,
-                    blockHeader.Number + 1,
+                    number,
                     blockHeader.GasLimit,
                     timestamp,
                     Array.Empty<byte>());
@@ -215,8 +205,7 @@ namespace Nethermind.Facade
             }
             finally
             {
-                _stateProvider.Reset();
-                _storageProvider.Reset();
+                _processingEnv.Reset();
             }
         }
 
@@ -224,36 +213,10 @@ namespace Nethermind.Facade
         {
             return _blockTree.ChainId;
         }
-
-        public byte[] GetCode(Address address)
-        {
-            return _stateReader.GetCode(_blockTree.Head.StateRoot, address);
-        }
-
-        public byte[] GetCode(Keccak codeHash)
-        {
-            return _stateReader.GetCode(codeHash);
-        }
-
-        public UInt256 GetNonce(Address address)
-        {
-            return GetNonce(_blockTree.Head.StateRoot, address);
-        }
-
+        
         private UInt256 GetNonce(Keccak stateRoot, Address address)
         {
             return _stateReader.GetNonce(stateRoot, address);
-        }
-
-        public byte[] GetStorage(Address address, UInt256 index, Keccak stateRoot)
-        {
-            Keccak storageRoot = _stateReader.GetStorageRoot(stateRoot, address);
-            return _stateReader.GetStorage(storageRoot, index);
-        }
-
-        public Account GetAccount(Address address, Keccak stateRoot)
-        {
-            return _stateReader.GetAccount(stateRoot, address);
         }
 
         public int GetNetworkId() => _blockTree.ChainId;
@@ -318,17 +281,5 @@ namespace Nethermind.Facade
         {
             _stateReader.RunTreeVisitor(treeVisitor, stateRoot);
         }
-
-        public Keccak HeadHash => _blockTree.HeadHash;
-        public Keccak GenesisHash => _blockTree.GenesisHash;
-        public Keccak PendingHash => _blockTree.PendingHash;
-        public Block FindBlock(Keccak blockHash, BlockTreeLookupOptions options) => _blockTree.FindBlock(blockHash, options);
-        public Block FindBlock(long blockNumber, BlockTreeLookupOptions options) => _blockTree.FindBlock(blockNumber, options);
-        public BlockHeader FindHeader(Keccak blockHash, BlockTreeLookupOptions options) => _blockTree.FindHeader(blockHash, options);
-        public BlockHeader FindHeader(long blockNumber, BlockTreeLookupOptions options) => _blockTree.FindHeader(blockNumber, options);
-        public Keccak FindBlockHash(long blockNumber) => _blockTree.FindBlockHash(blockNumber);
-
-        public bool IsMainChain(BlockHeader blockHeader) => _blockTree.IsMainChain(blockHeader);
-        public bool IsMainChain(Keccak blockHash) => _blockTree.IsMainChain(blockHash);
     }
 }

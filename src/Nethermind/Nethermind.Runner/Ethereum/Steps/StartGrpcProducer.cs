@@ -18,27 +18,27 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Grpc;
 using Nethermind.Grpc.Producers;
-using Nethermind.Runner.Ethereum.Context;
+using Nethermind.Runner.Ethereum.Api;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
     [RunnerStepDependencies(typeof(StartBlockProcessor))]
     public class StartGrpcProducer : IStep
     {
-        private readonly EthereumRunnerContext _context;
+        private readonly NethermindApi _api;
 
-        public StartGrpcProducer(EthereumRunnerContext context)
+        public StartGrpcProducer(NethermindApi api)
         {
-            _context = context;
+            _api = api;
         }
 
         public Task Execute(CancellationToken _)
         {
-            IGrpcConfig grpcConfig = _context.Config<IGrpcConfig>();
+            IGrpcConfig grpcConfig = _api.Config<IGrpcConfig>();
             if (grpcConfig.Enabled)
             {
-                GrpcProducer grpcProducer = new GrpcProducer(_context.GrpcServer);
-                _context.Producers.Add(grpcProducer);
+                GrpcProducer grpcProducer = new GrpcProducer(_api.GrpcServer);
+                _api.Producers.Add(grpcProducer);
             }
 
             return Task.CompletedTask;

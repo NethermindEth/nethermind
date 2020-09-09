@@ -17,18 +17,22 @@
 
 using System;
 using System.Security.Cryptography;
-using Nethermind.Core.Crypto;
 using Nethermind.Trie;
 
 namespace Nethermind.Baseline
 {
     public class ShaBaselineTree : BaselineTree
     {
-        private static readonly HashAlgorithm _hashAlgorithm = SHA256.Create();
-        
+        [ThreadStatic] private static HashAlgorithm? _hashAlgorithm;
+
         public ShaBaselineTree(IKeyValueStore keyValueStore, byte[] dbPrefix, int truncationLength = 0)
             : base(keyValueStore, dbPrefix, truncationLength)
         {
+        }
+
+        private static void InitHashIfNeeded()
+        {
+            _hashAlgorithm ??= SHA256.Create();
         }
 
         private static void HashStatic(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b, Span<byte> target)
@@ -36,8 +40,9 @@ namespace Nethermind.Baseline
             Span<byte> combined = new Span<byte>(new byte[a.Length + b.Length]);
             a.CopyTo(combined);
             b.CopyTo(combined.Slice(a.Length));
-            
-            _hashAlgorithm.TryComputeHash(combined, target, out _);
+
+            InitHashIfNeeded();
+            _hashAlgorithm!.TryComputeHash(combined, target, out _);
         }
 
         protected override void Hash(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b, Span<byte> target)

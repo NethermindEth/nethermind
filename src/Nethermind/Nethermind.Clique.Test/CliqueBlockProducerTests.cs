@@ -36,7 +36,7 @@ using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -147,7 +147,18 @@ namespace Nethermind.Clique.Test
                 }
 
                 TxPoolTxSource txPoolTxSource = new TxPoolTxSource(txPool, stateReader, nodeLogManager);
-                CliqueBlockProducer blockProducer = new CliqueBlockProducer(txPoolTxSource, minerProcessor, minerStateProvider, blockTree, _timestamper, new CryptoRandom(), snapshotManager, cliqueSealer, _cliqueConfig, nodeLogManager);
+                CliqueBlockProducer blockProducer = new CliqueBlockProducer(
+                    txPoolTxSource,
+                    minerProcessor,
+                    minerStateProvider,
+                    blockTree,
+                    _timestamper,
+                    new CryptoRandom(),
+                    snapshotManager,
+                    cliqueSealer,
+                    new TargetAdjustedGasLimitCalculator(GoerliSpecProvider.Instance, new MiningConfig()), 
+                    _cliqueConfig,
+                    nodeLogManager);
                 blockProducer.Start();
 
                 _producers.Add(privateKey, blockProducer);
@@ -393,7 +404,7 @@ namespace Nethermind.Clique.Test
                 transaction.To = TestItem.AddressC;
                 transaction.GasLimit = 30000;
                 transaction.GasPrice = 20.GWei();
-                transaction.Nonce = _currentNonce++;
+                transaction.Nonce = _currentNonce + 1;
                 transaction.SenderAddress = TestItem.PrivateKeyD.Address;
                 transaction.Hash = transaction.CalculateHash();
                 _ethereumEcdsa.Sign(TestItem.PrivateKeyD, transaction, true);

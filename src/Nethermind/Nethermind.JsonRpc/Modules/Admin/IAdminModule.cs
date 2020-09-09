@@ -28,7 +28,7 @@ namespace Nethermind.JsonRpc.Modules.Admin
         Task<ResultWrapper<string>> admin_removePeer(string enode, bool removeFromStaticNodes = false);
         
         [JsonRpcMethod(Description = "", IsImplemented = true)]
-        ResultWrapper<PeerInfo[]> admin_peers();
+        ResultWrapper<PeerInfo[]> admin_peers(bool includeDetails);
         
         [JsonRpcMethod(Description = "Relevant information about this node", IsImplemented = true)]
         ResultWrapper<NodeInfo> admin_nodeInfo();

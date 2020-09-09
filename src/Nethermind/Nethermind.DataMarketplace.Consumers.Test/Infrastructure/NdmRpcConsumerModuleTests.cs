@@ -40,10 +40,11 @@ using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Core.Services.Models;
 using Nethermind.DataMarketplace.Infrastructure.Rpc.Models;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Facade;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.Wallet;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -59,7 +60,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         private IGasPriceService _gasPriceService;
         private IConsumerTransactionsService _consumerTransactionsService;
         private IConsumerGasLimitsService _gasLimitsService;
-        private IPersonalBridge _personalBridge;
+        private IWallet _wallet;
         private INdmRpcConsumerModule _rpc;
         private ITimestamper _timestamper;
         private const uint DepositExpiryTime = 1546393600;
@@ -76,11 +77,11 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             _gasPriceService = Substitute.For<IGasPriceService>();
             _gasLimitsService = Substitute.For<IConsumerGasLimitsService>();
             _consumerTransactionsService = Substitute.For<IConsumerTransactionsService>();
-            _personalBridge = Substitute.For<IPersonalBridge>();
+            _wallet = Substitute.For<IWallet>();
             _timestamper = new Timestamper(Date);
             _rpc = new NdmRpcConsumerModule(_consumerService, _depositReportService, _jsonRpcNdmConsumerChannel,
                 _ethRequestService, _ethPriceService, _gasPriceService, _consumerTransactionsService, _gasLimitsService,
-                _personalBridge, _timestamper);
+                _wallet, _timestamper);
         }
 
         [Test]
@@ -90,11 +91,11 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         }
 
         [Test]
-        public void given_personal_bridge_list_accounts_should_return_accounts()
+        public void given_wallet_list_accounts_should_return_accounts()
         {
-            _personalBridge.ListAccounts().Returns(new[] {TestItem.AddressA});
+            _wallet.GetAccounts().Returns(new[] {TestItem.AddressA});
             var result = _rpc.ndm_listAccounts();
-            _personalBridge.Received().ListAccounts();
+            _wallet.Received().GetAccounts();
             result.Data.Should().ContainSingle();
             var account = result.Data.Single();
             account.Should().NotBeNull();
@@ -103,9 +104,8 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         }
 
         [Test]
-        public void given_null_personal_bridge_list_accounts_should_return_no_accounts()
+        public void given_null_wallet_list_accounts_should_return_no_accounts()
         {
-            _personalBridge = NullPersonalBridge.Instance;
             _rpc = new NdmRpcConsumerModule(
                 _consumerService,
                 _depositReportService,
@@ -115,7 +115,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
                 _gasPriceService,
                 _consumerTransactionsService,
                 _gasLimitsService,
-                _personalBridge,
+                NullWallet.Instance, 
                 _timestamper);
             var result = _rpc.ndm_listAccounts();
             result.Data.Should().BeEmpty();
@@ -433,7 +433,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         public async Task request_eth_should_return_true()
         {
             var address = TestItem.AddressA;
-            var value = 1.Ether();
+            UInt256 value = 1.Ether();
             _ethRequestService.TryRequestEthAsync(address, value).Returns(FaucetResponse.RequestCompleted(null));
             var result = await _rpc.ndm_requestEth(address);
             await _ethRequestService.Received().TryRequestEthAsync(address, value);
@@ -694,7 +694,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             deposit.Deposit.Should().NotBeNull();
             deposit.Deposit.Id.Should().Be(Keccak.OfAnEmptyString);
             deposit.Deposit.Units.Should().Be((uint?)1);
-            deposit.Deposit.Value.Should().Be((BigInteger?)BigInteger.One);
+            deposit.Deposit.Value.Should().Be((UInt256?)UInt256.One);
             deposit.Deposit.ExpiryTime.Should().Be((uint?)DepositExpiryTime);
             deposit.Timestamp.Should().Be(1);
             deposit.Transaction.Hash.Should().Be(TestItem.KeccakA);
@@ -718,7 +718,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             dataAsset.Id.Should().NotBeNull();
             dataAsset.Name.Should().Be("test");
             dataAsset.Description.Should().Be("test");
-            dataAsset.UnitPrice.Should().Be((BigInteger?)BigInteger.One);
+            dataAsset.UnitPrice.Should().Be((UInt256?)UInt256.One);
             dataAsset.UnitType.Should().Be(DataAssetUnitType.Unit.ToString().ToLowerInvariant());
             dataAsset.QueryType.Should().Be(QueryType.Stream.ToString().ToLowerInvariant());
             dataAsset.MinUnits.Should().Be(0);
@@ -753,7 +753,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
 
         private static DepositReportItem GetDepositReportItem()
             => new DepositReportItem(Keccak.Zero, TestItem.KeccakA, "test", TestItem.AddressA,
-                "test", 1, 1, TestItem.AddressB, 1, DepositExpiryTime, false, TestItem.KeccakA,
+                "test", 1, 2, TestItem.AddressB, 1, DepositExpiryTime, false, TestItem.KeccakA,
                 1, 1, 1, true, false, TestItem.KeccakB, false, 1, new[]
                 {
                     new DataDeliveryReceiptReportItem(Keccak.Zero, 1, TestItem.KeccakC, TestItem.PublicKeyA,

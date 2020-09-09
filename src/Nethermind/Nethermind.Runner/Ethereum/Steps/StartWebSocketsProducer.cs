@@ -17,30 +17,30 @@
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Runner.Analytics;
-using Nethermind.Runner.Ethereum.Context;
+using Nethermind.Runner.Ethereum.Api;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
     [RunnerStepDependencies(typeof(StartBlockProcessor))]
     public class StartWebSocketProducer : IStep
     {
-        private readonly EthereumRunnerContext _context;
+        private readonly NethermindApi _api;
 
-        public StartWebSocketProducer(EthereumRunnerContext context)
+        public StartWebSocketProducer(NethermindApi api)
         {
-            _context = context;
+            _api = api;
         }
 
         public Task Execute(CancellationToken cancellationToken)
         {
-            IInitConfig initConfig = _context.Config<IInitConfig>();
+            IInitConfig initConfig = _api.Config<IInitConfig>();
             if (initConfig.WebSocketsEnabled)
             {
                 AnalyticsWebSocketsModule? analyticsModule =
-                    _context.WebSocketsManager?.GetModule("analytics") as AnalyticsWebSocketsModule;
+                    _api.WebSocketsManager?.GetModule("analytics") as AnalyticsWebSocketsModule;
                 if (analyticsModule != null)
                 {
-                    _context.Producers.Add(analyticsModule);
+                    _api.Producers.Add(analyticsModule);
                 }
             }
 

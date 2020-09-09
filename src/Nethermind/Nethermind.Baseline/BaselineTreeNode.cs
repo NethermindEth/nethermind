@@ -32,5 +32,10 @@ namespace Nethermind.Baseline
         /// </summary>
         public Keccak Hash { get; }
         public ulong NodeIndex { get; } // 64bit index for a tree of height 32
+
+        public override string ToString()
+        {
+            return $"{NodeIndex}.{Hash}";
+        }
     }
 }

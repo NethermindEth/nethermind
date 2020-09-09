@@ -19,7 +19,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Stats.Model;
 using Nethermind.TxPool;
 
@@ -28,8 +28,9 @@ namespace Nethermind.Blockchain.Synchronization
     public interface ISyncPeer : ITxPoolPeer
     {
         Node Node { get; }
-        
-        string ClientId { get; }
+
+        string ClientId => Node?.ClientId;
+        NodeClientType ClientType => Node?.ClientType ?? NodeClientType.Unknown;
         Keccak HeadHash { get; set; }
         long HeadNumber { get; set; }
         UInt256 TotalDifficulty { get; set; }

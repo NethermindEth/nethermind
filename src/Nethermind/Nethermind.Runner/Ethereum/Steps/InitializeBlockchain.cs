@@ -32,25 +32,28 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Logging;
-using Nethermind.Runner.Ethereum.Context;
 using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
+using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Synchronization.BeamSync;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
+using Nethermind.Vault;
+using Nethermind.Vault.Config;
+using Nethermind.Wallet;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
     [RunnerStepDependencies(typeof(InitRlp), typeof(InitDatabase), typeof(SetupKeyStore))]
     public class InitializeBlockchain : IStep
     {
-        private readonly EthereumRunnerContext _context;
+        private readonly NethermindApi _api;
 
-        public InitializeBlockchain(EthereumRunnerContext context)
+        public InitializeBlockchain(NethermindApi api)
         {
-            _context = context;
+            _api = api;
         }
 
         public async Task Execute(CancellationToken _)
@@ -61,21 +64,22 @@ namespace Nethermind.Runner.Ethereum.Steps
         [Todo(Improve.Refactor, "Use chain spec for all chain configuration")]
         private Task InitBlockchain()
         {
-            if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
-            if (_context.DbProvider == null) throw new StepDependencyException(nameof(_context.DbProvider));
-            if (_context.SpecProvider == null) throw new StepDependencyException(nameof(_context.SpecProvider));
+            if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
+            if (_api.DbProvider == null) throw new StepDependencyException(nameof(_api.DbProvider));
+            if (_api.SpecProvider == null) throw new StepDependencyException(nameof(_api.SpecProvider));
 
-            ILogger logger = _context.LogManager.GetClassLogger();
-            IInitConfig initConfig = _context.Config<IInitConfig>();
-            ISyncConfig syncConfig = _context.Config<ISyncConfig>();
+            ILogger logger = _api.LogManager.GetClassLogger();
+            IInitConfig initConfig = _api.Config<IInitConfig>();
+            ISyncConfig syncConfig = _api.Config<ISyncConfig>();
             if (syncConfig.DownloadReceiptsInFastSync && !syncConfig.DownloadBodiesInFastSync)
             {
                 logger.Warn($"{nameof(syncConfig.DownloadReceiptsInFastSync)} is selected but {nameof(syncConfig.DownloadBodiesInFastSync)} - enabling bodies to support receipts download.");
                 syncConfig.DownloadBodiesInFastSync = true;
             }
             
-            Account.AccountStartNonce = _context.ChainSpec.Parameters.AccountStartNonce;
+            Account.AccountStartNonce = _api.ChainSpec.Parameters.AccountStartNonce;
             
+<<<<<<< HEAD
             _context.Signer = new Signer(_context.SpecProvider.ChainId, _context.OriginalSignerKey, _context.LogManager);
 
             TrieNodeCache trieNodeCache = new TrieNodeCache(_context.LogManager);
@@ -90,126 +94,166 @@ namespace Nethermind.Runner.Ethereum.Steps
             _context.EthereumEcdsa = new EthereumEcdsa(_context.SpecProvider.ChainId, _context.LogManager);
             _context.TxPool = new TxPool.TxPool(
                 new PersistentTxStorage(_context.DbProvider.PendingTxsDb),
+=======
+            Signer signer = new Signer(_api.SpecProvider.ChainId, _api.OriginalSignerKey, _api.LogManager);
+            _api.Signer = signer;
+            _api.SignerStore = signer;
+
+            _api.StateProvider = new StateProvider(
+                _api.DbProvider.StateDb,
+                _api.DbProvider.CodeDb,
+                _api.LogManager);
+
+            _api.EthereumEcdsa = new EthereumEcdsa(_api.SpecProvider.ChainId, _api.LogManager);
+            _api.TxPool = new TxPool.TxPool(
+                new PersistentTxStorage(_api.DbProvider.PendingTxsDb),
+>>>>>>> master
                 Timestamper.Default,
-                _context.EthereumEcdsa,
-                _context.SpecProvider,
-                _context.Config<ITxPoolConfig>(),
-                _context.StateProvider,
-                _context.LogManager);
+                _api.EthereumEcdsa,
+                _api.SpecProvider,
+                _api.Config<ITxPoolConfig>(),
+                _api.StateProvider,
+                _api.LogManager);
+            
+            TxSealer standardSealer = new TxSealer(_api.Signer, _api.Timestamper);
+            NonceReservingTxSealer nonceReservingTxSealer =
+                new NonceReservingTxSealer(_api.Signer, _api.Timestamper, _api.TxPool);
 
-            var bloomConfig = _context.Config<IBloomConfig>();
+            IVaultConfig vaultConfig = _api.Config<IVaultConfig>(); 
+            if (!vaultConfig.Enabled)
+            {
+                _api.TxSender = new TxPoolSender(_api.TxPool, standardSealer, nonceReservingTxSealer);
+            }
+            else
+            {
+                IVaultService vaultService = new VaultService(vaultConfig, _api.LogManager);
+                IVaultWallet wallet = new VaultWallet(vaultService, vaultConfig.VaultId, _api.LogManager);
+                ITxSigner vaultSigner = new VaultTxSigner(wallet, _api.ChainSpec.ChainId);
+                
+                // change vault to provide, use sealer to set the gas price as well
+                _api.TxSender = new VaultTxSender(vaultSigner, vaultConfig, _api.ChainSpec.ChainId);
+            }
 
-            var fileStoreFactory = initConfig.DiagnosticMode == DiagnosticMode.MemDb
+            IBloomConfig? bloomConfig = _api.Config<IBloomConfig>();
+
+            IFileStoreFactory fileStoreFactory = initConfig.DiagnosticMode == DiagnosticMode.MemDb
                 ? (IFileStoreFactory) new InMemoryDictionaryFileStoreFactory()
                 : new FixedSizeFileStoreFactory(Path.Combine(initConfig.BaseDbPath, DbNames.Bloom), DbNames.Bloom, Bloom.ByteLength);
 
-            _context.BloomStorage = bloomConfig.Index
-                ? new BloomStorage(bloomConfig, _context.DbProvider.BloomDb, fileStoreFactory)
+            _api.BloomStorage = bloomConfig.Index
+                ? new BloomStorage(bloomConfig, _api.DbProvider.BloomDb, fileStoreFactory)
                 : (IBloomStorage) NullBloomStorage.Instance;
 
-            _context.DisposeStack.Push(_context.BloomStorage);
+            _api.DisposeStack.Push(_api.BloomStorage);
 
-            _context.ChainLevelInfoRepository = new ChainLevelInfoRepository(_context.DbProvider.BlockInfosDb);
+            _api.ChainLevelInfoRepository = new ChainLevelInfoRepository(_api.DbProvider.BlockInfosDb);
 
-            _context.BlockTree = new BlockTree(
-                _context.DbProvider.BlocksDb,
-                _context.DbProvider.HeadersDb,
-                _context.DbProvider.BlockInfosDb,
-                _context.ChainLevelInfoRepository,
-                _context.SpecProvider,
-                _context.TxPool,
-                _context.BloomStorage,
-                _context.Config<ISyncConfig>(),
-                _context.LogManager);
+            _api.BlockTree = new BlockTree(
+                _api.DbProvider.BlocksDb,
+                _api.DbProvider.HeadersDb,
+                _api.DbProvider.BlockInfosDb,
+                _api.ChainLevelInfoRepository,
+                _api.SpecProvider,
+                _api.TxPool,
+                _api.BloomStorage,
+                _api.Config<ISyncConfig>(),
+                _api.LogManager);
 
             // Init state if we need system calls before actual processing starts
-            if (_context.BlockTree.Head != null)
+            if (_api.BlockTree.Head != null)
             {
-                _context.StateProvider.StateRoot = _context.BlockTree.Head.StateRoot;
+                _api.StateProvider.StateRoot = _api.BlockTree.Head.StateRoot;
             }
 
-            _context.ReceiptStorage = initConfig.StoreReceipts ? (IReceiptStorage?) new PersistentReceiptStorage(_context.DbProvider.ReceiptsDb, _context.SpecProvider, new ReceiptsRecovery()) : NullReceiptStorage.Instance;
-            _context.ReceiptFinder = new FullInfoReceiptFinder(_context.ReceiptStorage, new ReceiptsRecovery(), _context.BlockTree);
+            _api.ReceiptStorage = initConfig.StoreReceipts ? (IReceiptStorage?) new PersistentReceiptStorage(_api.DbProvider.ReceiptsDb, _api.SpecProvider, new ReceiptsRecovery()) : NullReceiptStorage.Instance;
+            _api.ReceiptFinder = new FullInfoReceiptFinder(_api.ReceiptStorage, new ReceiptsRecovery(), _api.BlockTree);
 
-            _context.RecoveryStep = new TxSignaturesRecoveryStep(_context.EthereumEcdsa, _context.TxPool, _context.LogManager);
+            _api.RecoveryStep = new TxSignaturesRecoveryStep(_api.EthereumEcdsa, _api.TxPool, _api.LogManager);
 
+<<<<<<< HEAD
             _context.StorageProvider = new StorageProvider(
                 trieStore,
                 _context.StateProvider,
                 _context.LogManager);
+=======
+            _api.StorageProvider = new StorageProvider(
+                _api.DbProvider.StateDb,
+                _api.StateProvider,
+                _api.LogManager);
+>>>>>>> master
 
             // blockchain processing
             BlockhashProvider blockhashProvider = new BlockhashProvider(
-                _context.BlockTree, _context.LogManager);
+                _api.BlockTree, _api.LogManager);
 
             VirtualMachine virtualMachine = new VirtualMachine(
-                _context.StateProvider,
-                _context.StorageProvider,
+                _api.StateProvider,
+                _api.StorageProvider,
                 blockhashProvider,
-                _context.SpecProvider,
-                _context.LogManager);
+                _api.SpecProvider,
+                _api.LogManager);
 
-            _context.TransactionProcessor = new TransactionProcessor(
-                _context.SpecProvider,
-                _context.StateProvider,
-                _context.StorageProvider,
+            _api.TransactionProcessor = new TransactionProcessor(
+                _api.SpecProvider,
+                _api.StateProvider,
+                _api.StorageProvider,
                 virtualMachine,
-                _context.LogManager);
+                _api.LogManager);
 
             InitSealEngine();
-            if (_context.SealValidator == null) throw new StepDependencyException(nameof(_context.SealValidator));
+            if (_api.SealValidator == null) throw new StepDependencyException(nameof(_api.SealValidator));
 
             /* validation */
-            _context.HeaderValidator = CreateHeaderValidator();
+            _api.HeaderValidator = CreateHeaderValidator();
 
             OmmersValidator ommersValidator = new OmmersValidator(
-                _context.BlockTree,
-                _context.HeaderValidator,
-                _context.LogManager);
+                _api.BlockTree,
+                _api.HeaderValidator,
+                _api.LogManager);
 
-            TxValidator txValidator = new TxValidator(_context.SpecProvider.ChainId);
+            TxValidator txValidator = new TxValidator(_api.SpecProvider.ChainId);
 
-            _context.BlockValidator = new BlockValidator(
+            _api.BlockValidator = new BlockValidator(
                 txValidator,
-                _context.HeaderValidator,
+                _api.HeaderValidator,
                 ommersValidator,
-                _context.SpecProvider,
-                _context.LogManager);
+                _api.SpecProvider,
+                _api.LogManager);
 
-            ReadOnlyDbProvider readOnly = new ReadOnlyDbProvider(_context.DbProvider, false);
-            StateReader stateReader = new StateReader(readOnly.StateDb, readOnly.CodeDb, _context.LogManager);
-            _context.TxPoolInfoProvider = new TxPoolInfoProvider(stateReader, _context.TxPool);
+            ReadOnlyDbProvider readOnly = new ReadOnlyDbProvider(_api.DbProvider, false);
+            StateReader stateReader = new StateReader(readOnly.StateDb, readOnly.CodeDb, _api.LogManager);
+            _api.TxPoolInfoProvider = new TxPoolInfoProvider(stateReader, _api.TxPool);
 
-            _context.MainBlockProcessor = CreateBlockProcessor();
+            _api.MainBlockProcessor = CreateBlockProcessor();
 
             BlockchainProcessor blockchainProcessor = new BlockchainProcessor(
-                _context.BlockTree,
-                _context.MainBlockProcessor,
-                _context.RecoveryStep,
-                _context.LogManager,
+                _api.BlockTree,
+                _api.MainBlockProcessor,
+                _api.RecoveryStep,
+                _api.LogManager,
                 new BlockchainProcessor.Options
                 {
                     AutoProcess = !syncConfig.BeamSync,
                     StoreReceiptsByDefault = initConfig.StoreReceipts,
                 });
 
-            _context.BlockProcessingQueue = blockchainProcessor;
-            _context.BlockchainProcessor = blockchainProcessor;
+            _api.BlockProcessingQueue = blockchainProcessor;
+            _api.BlockchainProcessor = blockchainProcessor;
 
             if (syncConfig.BeamSync)
             {
                 BeamBlockchainProcessor beamBlockchainProcessor = new BeamBlockchainProcessor(
-                    new ReadOnlyDbProvider(_context.DbProvider, false),
-                    _context.BlockTree,
-                    _context.SpecProvider,
-                    _context.LogManager,
-                    _context.BlockValidator,
-                    _context.RecoveryStep,
-                    _context.RewardCalculatorSource!,
-                    _context.BlockProcessingQueue,
-                    _context.SyncModeSelector!);
+                    new ReadOnlyDbProvider(_api.DbProvider, false),
+                    _api.BlockTree,
+                    _api.SpecProvider,
+                    _api.LogManager,
+                    _api.BlockValidator,
+                    _api.RecoveryStep,
+                    _api.RewardCalculatorSource!,
+                    _api.BlockProcessingQueue,
+                    _api.SyncModeSelector!);
                 
-                _context.DisposeStack.Push(beamBlockchainProcessor);
+                _api.DisposeStack.Push(beamBlockchainProcessor);
             }
 
             return Task.CompletedTask;
@@ -225,35 +269,35 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         protected virtual  HeaderValidator CreateHeaderValidator() =>
             new HeaderValidator(
-                _context.BlockTree,
-                _context.SealValidator,
-                _context.SpecProvider,
-                _context.LogManager);
+                _api.BlockTree,
+                _api.SealValidator,
+                _api.SpecProvider,
+                _api.LogManager);
 
         protected virtual BlockProcessor CreateBlockProcessor()
         {
-            if (_context.DbProvider == null) throw new StepDependencyException(nameof(_context.DbProvider));
-            if (_context.RewardCalculatorSource == null) throw new StepDependencyException(nameof(_context.RewardCalculatorSource));
+            if (_api.DbProvider == null) throw new StepDependencyException(nameof(_api.DbProvider));
+            if (_api.RewardCalculatorSource == null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
 
             return new BlockProcessor(
-                _context.SpecProvider,
-                _context.BlockValidator,
-                _context.RewardCalculatorSource.Get(_context.TransactionProcessor),
-                _context.TransactionProcessor,
-                _context.DbProvider.StateDb,
-                _context.DbProvider.CodeDb,
-                _context.StateProvider,
-                _context.StorageProvider,
-                _context.TxPool,
-                _context.ReceiptStorage,
-                _context.LogManager);
+                _api.SpecProvider,
+                _api.BlockValidator,
+                _api.RewardCalculatorSource.Get(_api.TransactionProcessor),
+                _api.TransactionProcessor,
+                _api.DbProvider.StateDb,
+                _api.DbProvider.CodeDb,
+                _api.StateProvider,
+                _api.StorageProvider,
+                _api.TxPool,
+                _api.ReceiptStorage,
+                _api.LogManager);
         }
 
         protected virtual void InitSealEngine()
         {
-            _context.Sealer = NullSealEngine.Instance;
-            _context.SealValidator = NullSealEngine.Instance;
-            _context.RewardCalculatorSource = NoBlockRewards.Instance;
+            _api.Sealer = NullSealEngine.Instance;
+            _api.SealValidator = NullSealEngine.Instance;
+            _api.RewardCalculatorSource = NoBlockRewards.Instance;
         }
     }
 }

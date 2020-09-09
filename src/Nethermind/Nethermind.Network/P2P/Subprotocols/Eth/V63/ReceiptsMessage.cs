@@ -28,5 +28,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
         {
             TxReceipts = txReceipts ?? new TxReceipt[0][];
         }
+        
+        public override string ToString() => $"{nameof(ReceiptsMessage)}({TxReceipts?.Length ?? 0})";
     }
 }

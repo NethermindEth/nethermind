@@ -23,8 +23,8 @@ namespace Nethermind.Cli.Modules
         {
         }
         
-        [CliProperty("admin", "peers")]
-        public object[] Peers() => NodeManager.Post<object[]>("admin_peers").Result;
+        [CliFunction("admin", "peers")]
+        public object[] Peers(bool includeDetails = false) => NodeManager.Post<object[]>("admin_peers", includeDetails).Result;
         
         [CliProperty("admin", "nodeInfo")]
         public object NodeInfo() => NodeManager.Post<object>("admin_nodeInfo").Result;

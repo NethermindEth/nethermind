@@ -22,7 +22,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Specs;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
@@ -194,6 +194,67 @@ namespace Nethermind.Store.Test
                         result.Should().BeEquivalentTo(value);
                     }
                 });
+        }
+        
+        [Test]
+        public void Get_storage()
+        {
+            MemDbProvider dbProvider = new MemDbProvider();
+            
+            /* all testing will be touching just a single storage cell */
+            StorageCell storageCell = new StorageCell(_address1, UInt256.One);
+            StateProvider state = new StateProvider(dbProvider, Logger);
+            StorageProvider storage = new StorageProvider(dbProvider, state, Logger);
+
+            /* to start with we need to create an account that we will be setting storage at */
+            state.CreateAccount(storageCell.Address, UInt256.One);
+            state.Commit(MuirGlacier.Instance);
+            state.CommitTree();
+            
+            /* at this stage we have an account with empty storage at the address that we want to test */
+
+            byte[] initialValue = new byte[] {1, 2, 3};
+            storage.Set(storageCell, initialValue);
+            storage.Commit();
+            storage.CommitTrees();
+            state.Commit(MuirGlacier.Instance);
+            state.CommitTree();
+
+            StateReader reader = new StateReader(dbProvider, Logger);
+
+            var account = reader.GetAccount(state.StateRoot, _address1);
+            var retrieved =  reader.GetStorage(account.StorageRoot, storageCell.Index);
+            retrieved.Should().BeEquivalentTo(initialValue);
+            
+            /* at this stage we set the value in storage to 1,2,3 at the tested storage cell */
+            
+            /* Now we are testing scenario where the storage is being changed by the block processor.
+               To do that we create some different storage / state access stack that represents the processor.
+               It is a different stack of objects than the one that is used by the blockchain bridge. */
+            
+            byte[] newValue = new byte[] {1, 2, 3, 4, 5};
+            
+            StateProvider processorStateProvider =
+                new StateProvider(dbProvider, LimboLogs.Instance);
+            processorStateProvider.StateRoot = state.StateRoot;
+            
+            StorageProvider processorStorageProvider =
+                new StorageProvider(dbProvider, processorStateProvider, LimboLogs.Instance);
+            
+            processorStorageProvider.Set(storageCell, newValue);
+            processorStorageProvider.Commit();
+            processorStorageProvider.CommitTrees();
+            processorStateProvider.Commit(MuirGlacier.Instance);
+            processorStateProvider.CommitTree();
+            
+            /* At this stage the DB should have the storage value updated to 5.
+               We will try to retrieve the value by taking the state root from the processor.*/
+            
+            retrieved =
+                reader.GetStorage(processorStateProvider.GetStorageRoot(storageCell.Address), storageCell.Index);
+            retrieved.Should().BeEquivalentTo(newValue);
+            
+            /* If it failed then it means that the blockchain bridge cached the previous call value */
         }
     }
 }

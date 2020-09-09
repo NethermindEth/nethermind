@@ -25,7 +25,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.HashLib;
 using Nethermind.Logging;
@@ -99,8 +99,8 @@ namespace Nethermind.Consensus.AuRa.Transactions
                         throw new AuRaException("Decrypted random number doesn't agree with the hash.");
                     }
                     
-                    UInt256.CreateFromBigEndian(out var number, bytes);
-                    
+                    UInt256 number = new UInt256(bytes, true);
+
                     Metrics.RevealNumber++;
                     return contract.RevealNumber(number);
                 }

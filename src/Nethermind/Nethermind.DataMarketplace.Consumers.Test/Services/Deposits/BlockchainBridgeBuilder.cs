@@ -16,6 +16,7 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
+using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
@@ -25,7 +26,6 @@ using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Evm;
 using Nethermind.Facade;
-using Nethermind.Facade.Transactions;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.State;
@@ -52,9 +52,27 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             VirtualMachine virtualMachine = new VirtualMachine(stateProvider, storageProvider, new BlockhashProvider(blockTree, LimboLogs.Instance), MainnetSpecProvider.Instance, LimboLogs.Instance);
             TransactionProcessor processor = new TransactionProcessor(MainnetSpecProvider.Instance, stateProvider, storageProvider, virtualMachine, LimboLogs.Instance);
 
-            BlockchainBridge blockchainBridge = new BlockchainBridge(stateReader, stateProvider, storageProvider, blockTree, txPool, new InMemoryReceiptStorage(), NullFilterStore.Instance, NullFilterManager.Instance, wallet, processor, ecdsa, NullBloomStorage.Instance, Timestamper.Default, LimboLogs.Instance, false);
-            TxPoolBridge txPoolBridge = new TxPoolBridge(txPool, new WalletTxSigner(wallet, ChainId.Mainnet), Timestamper.Default);
-            return new NdmBlockchainBridge(txPoolBridge, blockchainBridge, txPool);
+            ReadOnlyTxProcessingEnv processingEnv = new ReadOnlyTxProcessingEnv(
+                new ReadOnlyDbProvider(memDbProvider, false),
+                new ReadOnlyBlockTree(blockTree),
+                MainnetSpecProvider.Instance, LimboLogs.Instance);
+            BlockchainBridge blockchainBridge = new BlockchainBridge(
+                processingEnv,
+                txPool,
+                new InMemoryReceiptStorage(),
+                NullFilterStore.Instance,
+                NullFilterManager.Instance,
+                ecdsa,
+                NullBloomStorage.Instance,
+                Timestamper.Default,
+                LimboLogs.Instance,
+                false);
+            
+            WalletTxSigner txSigner = new WalletTxSigner(wallet, ChainId.Mainnet);
+            ITxSealer txSealer0 = new TxSealer(txSigner, Timestamper.Default);
+            ITxSealer txSealer1 = new NonceReservingTxSealer(txSigner, Timestamper.Default, txPool);
+            ITxSender txSender = new TxPoolSender(txPool, txSealer0, txSealer1);
+            return new NdmBlockchainBridge(blockchainBridge, blockTree, stateReader, txSender);
         }
     }
 }

@@ -30,6 +30,7 @@ namespace Nethermind.Evm
         StackOverflow,
         StackUnderflow,
         OutOfGas,
+        GasUInt64Overflow,
         InvalidSubroutineEntry,
         InvalidSubroutineReturn,
         InvalidJumpDestination,

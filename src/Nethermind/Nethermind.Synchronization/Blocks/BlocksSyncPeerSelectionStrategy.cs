@@ -17,8 +17,9 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Stats;
+using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
 
@@ -86,7 +87,7 @@ namespace Nethermind.Synchronization.Blocks
                     continue;
                 }
 
-                if (info.TotalDifficulty - localTotalDiff <= 2 && (info.PeerClientType == PeerClientType.Parity || info.PeerClientType == PeerClientType.OpenEthereum))
+                if (info.TotalDifficulty - localTotalDiff <= 2 && (info.PeerClientType == NodeClientType.Parity || info.PeerClientType == NodeClientType.OpenEthereum))
                 {
                     // Parity advertises a better block but never sends it back and then it disconnects after a few conversations like this
                     // Geth responds all fine here

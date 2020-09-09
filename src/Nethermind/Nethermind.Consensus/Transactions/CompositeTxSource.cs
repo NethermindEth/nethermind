@@ -46,7 +46,8 @@ namespace Nethermind.Consensus.Transactions
             }
         }
         
-        public override string ToString() => $"{nameof(CompositeTxSource)} [ {(string.Join(", ", _transactionSources.Cast<object>()))} ]";
+        public override string ToString()
+            => $"{nameof(CompositeTxSource)} [ {(string.Join(", ", _transactionSources.Cast<object>()))} ]";
 
     }
 }

@@ -23,7 +23,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Services.Models;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Wallet;
 
 namespace Nethermind.DataMarketplace.Core.Services
@@ -45,7 +45,7 @@ namespace Nethermind.DataMarketplace.Core.Services
         }
         
         public ulong GasLimit { get; } = 70000;
-
+        
         public async Task<UInt256> ReadDepositBalanceAsync(Address onBehalfOf, Keccak depositId)
         {
             var txData = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, ContractData.DepositBalanceAbiSig,
@@ -60,7 +60,7 @@ namespace Nethermind.DataMarketplace.Core.Services
                 GasPrice = 0.GWei(),
                 Nonce = await _blockchainBridge.GetNonceAsync(onBehalfOf)
             };
-            _wallet.Sign(transaction, await _blockchainBridge.GetNetworkIdAsync());
+            
             var data = await _blockchainBridge.CallAsync(transaction);
 
             return data.ToUInt256();
@@ -97,8 +97,7 @@ namespace Nethermind.DataMarketplace.Core.Services
                 To = _contractAddress,
                 SenderAddress = onBehalfOf,
                 GasLimit = (long) GasLimit,
-                GasPrice = gasPrice,
-                Nonce = await _blockchainBridge.ReserveOwnTransactionNonceAsync(onBehalfOf)
+                GasPrice = gasPrice
             };
             // check  
             _wallet.Sign(transaction, await _blockchainBridge.GetNetworkIdAsync());

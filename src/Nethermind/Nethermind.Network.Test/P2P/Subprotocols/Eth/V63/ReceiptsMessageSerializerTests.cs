@@ -19,7 +19,7 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using NSubstitute;
 using NUnit.Framework;

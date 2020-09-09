@@ -50,6 +50,7 @@ namespace Nethermind.DataMarketplace.Initializers
             string baseDbPath,
             IBlockTree blockTree,
             ITxPool txPool,
+            ITxSender txSender,
             ISpecProvider specProvider,
             IReceiptFinder receiptFinder,
             IWallet wallet,

@@ -25,5 +25,6 @@ namespace Nethermind.BeamWallet.Clients
     {
         Task<RpcResult<bool>> personal_unlockAccount(Address address, string passphrase);
         Task<RpcResult<bool>> personal_lockAccount(Address address);
+        Task<RpcResult<Address>> personal_newAccount(string passphrase);
     }
 }

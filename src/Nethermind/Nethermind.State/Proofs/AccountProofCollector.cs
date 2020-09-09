@@ -20,7 +20,7 @@ using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 
@@ -150,8 +150,6 @@ namespace Nethermind.State.Proofs
                     Keccak childHash = node.GetChildHash((byte) childIndex);
                     if (childHash == null)
                     {
-                        Console.WriteLine($"Empty at {storageIndex}");
-
                         AddEmpty(node, trieVisitContext);
                     }
                     else

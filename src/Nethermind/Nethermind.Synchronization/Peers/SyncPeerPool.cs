@@ -27,7 +27,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Stats;
@@ -442,7 +442,7 @@ namespace Nethermind.Synchronization.Peers
                 if (peerInfo.HeadNumber == 0
                     && peerInfo.IsInitialized
                     && ourNumber != 0
-                    && peerInfo.PeerClientType != PeerClientType.Nethermind)
+                    && peerInfo.PeerClientType != NodeClientType.Nethermind)
                     // we know that Nethermind reports 0 HeadNumber when it is in sync (and it can still serve a lot of data to other nodes)
                 {
                     if (!CanBeUsefulForFastBlocks(peerInfo.HeadNumber))

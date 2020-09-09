@@ -33,10 +33,11 @@ using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Core.Services.Models;
 using Nethermind.DataMarketplace.Infrastructure.Rpc.Models;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Facade;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.Personal;
+using Nethermind.Wallet;
 
 namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
 {
@@ -50,7 +51,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
         private readonly IGasPriceService _gasPriceService;
         private readonly IConsumerTransactionsService _transactionsService;
         private readonly IConsumerGasLimitsService _gasLimitsService;
-        private readonly IPersonalBridge _personalBridge;
+        private readonly IWallet _wallet;
         private readonly ITimestamper _timestamper;
 
         public NdmRpcConsumerModule(
@@ -62,7 +63,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
             IGasPriceService gasPriceService,
             IConsumerTransactionsService transactionsService,
             IConsumerGasLimitsService gasLimitsService,
-            IPersonalBridge personalBridge,
+            IWallet personalBridge,
             ITimestamper timestamper)
         {
             _consumerService = consumerService ?? throw new ArgumentNullException(nameof(consumerService));
@@ -73,16 +74,16 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
             _gasPriceService = gasPriceService ?? throw new ArgumentNullException(nameof(gasPriceService));
             _transactionsService = transactionsService ?? throw new ArgumentNullException(nameof(transactionsService));
             _gasLimitsService = gasLimitsService ?? throw new ArgumentNullException(nameof(gasLimitsService));
-            _personalBridge = personalBridge ?? throw new ArgumentNullException(nameof(personalBridge));
+            _wallet = personalBridge ?? throw new ArgumentNullException(nameof(personalBridge));
             _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
         }
 
         public ResultWrapper<AccountForRpc[]> ndm_listAccounts()
         {
-            AccountForRpc[] accounts = _personalBridge.ListAccounts().Select(a => new AccountForRpc
+            AccountForRpc[] accounts = _wallet.GetAccounts().Select(a => new AccountForRpc
             {
                 Address = a,
-                Unlocked = _personalBridge.IsUnlocked(a)
+                Unlocked = _wallet.IsUnlocked(a)
             }).ToArray();
 
             return ResultWrapper<AccountForRpc[]>.Success(accounts);

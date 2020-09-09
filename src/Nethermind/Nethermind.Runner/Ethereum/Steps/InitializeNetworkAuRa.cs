@@ -16,17 +16,18 @@
 // 
 
 using Nethermind.Consensus.AuRa;
-using Nethermind.Runner.Ethereum.Context;
+using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
     public class InitializeNetworkAuRa : InitializeNetwork
     {
-        public InitializeNetworkAuRa(AuRaEthereumRunnerContext context) : base(context)
+        public InitializeNetworkAuRa(AuRaNethermindApi context) : base(context)
         {
         }
 
-        protected override MultiSyncModeSelector CreateMultiSyncModeSelector(SyncProgressResolver syncProgressResolver) => new AuRaMultiSyncModeSelector(syncProgressResolver, _ctx.SyncPeerPool, _syncConfig, _ctx.LogManager);
+        protected override MultiSyncModeSelector CreateMultiSyncModeSelector(SyncProgressResolver syncProgressResolver)
+            => new AuRaMultiSyncModeSelector(syncProgressResolver, _api.SyncPeerPool, _syncConfig, _api.LogManager);
     }
 }

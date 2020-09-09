@@ -23,9 +23,8 @@ using Nethermind.DataMarketplace.Consumers.Deposits.Repositories;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Core.Services.Models;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Wallet;
 
 namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
 {
@@ -33,17 +32,15 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
     {
         private readonly INdmBlockchainBridge _blockchainBridge;
         private readonly IAbiEncoder _abiEncoder;
-        private readonly IWallet _wallet;
         private readonly IDepositDetailsRepository _depositRepository;
         private readonly Address _contractAddress;
         private readonly ILogger _logger;
 
-        public RefundService(INdmBlockchainBridge blockchainBridge, IAbiEncoder abiEncoder, IWallet wallet,
+        public RefundService(INdmBlockchainBridge blockchainBridge, IAbiEncoder abiEncoder,
             IDepositDetailsRepository depositRepository, Address contractAddress, ILogManager logManager)
         {
             _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
             _abiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
-            _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
             _depositRepository = depositRepository;
             _contractAddress = contractAddress ?? throw new ArgumentNullException(nameof(contractAddress));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -74,9 +71,7 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
             transaction.SenderAddress = onBehalfOf;
             transaction.GasLimit = (long) GasLimit;
             transaction.GasPrice = gasPrice;
-            transaction.Nonce = await _blockchainBridge.ReserveOwnTransactionNonceAsync(onBehalfOf);
-            _wallet.Sign(transaction, await _blockchainBridge.GetNetworkIdAsync());
-            
+
             if (_logger.IsInfo)
             {
                 _logger.Info($"Sending a refund claim transaction for {refundClaim.DepositId} to be refunded to {refundClaim.RefundTo}");
@@ -96,8 +91,6 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
             transaction.SenderAddress = onBehalfOf;
             transaction.GasLimit = (long) GasLimit;
             transaction.GasPrice = gasPrice;
-            transaction.Nonce = await _blockchainBridge.ReserveOwnTransactionNonceAsync(onBehalfOf);
-            _wallet.Sign(transaction, await _blockchainBridge.GetNetworkIdAsync());
 
             if (_logger.IsInfo)
             {

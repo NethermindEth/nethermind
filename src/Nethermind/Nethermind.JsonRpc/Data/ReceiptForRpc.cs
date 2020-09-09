@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -63,5 +64,25 @@ namespace Nethermind.JsonRpc.Data
         public Keccak Root { get; set; }
         public long Status { get; set; }
         public string Error { get; set; }
+
+        public TxReceipt ToReceipt()
+        {
+            TxReceipt receipt = new TxReceipt();
+            receipt.Bloom = LogsBloom;
+            receipt.Error = Error;
+            receipt.Index = (int)TransactionIndex;
+            receipt.Logs = Logs.Select(l => l.ToLogEntry()).ToArray();
+            receipt.Recipient = To;
+            receipt.Sender = From;
+            receipt.BlockHash = BlockHash;
+            receipt.BlockNumber = BlockNumber;
+            receipt.ContractAddress = ContractAddress;
+            receipt.GasUsed = GasUsed;
+            receipt.StatusCode = (byte)Status;
+            receipt.TxHash = TransactionHash;
+            receipt.GasUsedTotal = CumulativeGasUsed;
+            receipt.PostTransactionState = Root;
+            return receipt;
+        }
     }
 }

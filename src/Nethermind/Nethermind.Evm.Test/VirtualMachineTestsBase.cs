@@ -24,7 +24,7 @@ using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Logging;
@@ -104,19 +104,25 @@ namespace Nethermind.Evm.Test
             return tracer.BuildResult();
         }
 
-        protected CallOutputTracer Execute(params byte[] code)
+        protected TestAllTracerWithOutput Execute(params byte[] code)
         {
             (var block, var transaction) = PrepareTx(BlockNumber, 100000, code);
-            CallOutputTracer tracer = new CallOutputTracer();
+            TestAllTracerWithOutput tracer = new TestAllTracerWithOutput();
             _processor.Execute(transaction, block.Header, tracer);
             return tracer;
         }
 
-        protected CallOutputTracer Execute(long blockNumber, long gasLimit, byte[] code)
+        protected T Execute<T>(T tracer, params byte[] code) where T : ITxTracer
+        {
+            (var block, var transaction) = PrepareTx(BlockNumber, 100000, code);
+            _processor.Execute(transaction, block.Header, tracer);
+            return tracer;
+        }
+
+        protected TestAllTracerWithOutput Execute(long blockNumber, long gasLimit, byte[] code)
         {
             (var block, var transaction) = PrepareTx(blockNumber, gasLimit, code);
-            CallOutputTracer tracer = new CallOutputTracer();
-            // return new CallOutputTracer();
+            TestAllTracerWithOutput tracer = new TestAllTracerWithOutput();
             _processor.Execute(transaction, block.Header, tracer);
             return tracer;
         }
@@ -204,7 +210,7 @@ namespace Nethermind.Evm.Test
             return Build.A.Block.WithNumber(blockNumber).WithTransactions(tx == null ? new Transaction[0] : new[] {tx}).WithGasLimit(8000000).WithBeneficiary(senderRecipientAndMiner.Miner).TestObject;
         }
 
-        protected void AssertGas(CallOutputTracer receipt, long gas)
+        protected void AssertGas(TestAllTracerWithOutput receipt, long gas)
         {
             Assert.AreEqual(gas, receipt.GasSpent, "gas");
         }
@@ -227,22 +233,31 @@ namespace Nethermind.Evm.Test
         protected void AssertStorage(UInt256 address, BigInteger expectedValue)
         {
             byte[] actualValue = Storage.Get(new StorageCell(Recipient, address));
-            Assert.AreEqual(expectedValue.ToBigEndianByteArray(), actualValue, "storage");
+            byte[] expected = expectedValue < 0 ? expectedValue.ToBigEndianByteArray(32) : expectedValue.ToBigEndianByteArray();  
+            Assert.AreEqual(expected, actualValue, "storage");
+        }
+        
+        protected void AssertStorage(UInt256 address, UInt256 expectedValue)
+        {
+            byte[] bytes = ((BigInteger)expectedValue).ToBigEndianByteArray();
+
+            byte[] actualValue = Storage.Get(new StorageCell(Recipient, address));
+            Assert.AreEqual(bytes, actualValue, "storage");
         }
 
         private static int _callIndex = -1;
         
-        protected void AssertStorage(StorageCell storageCell, BigInteger expectedValue)
+        protected void AssertStorage(StorageCell storageCell, UInt256 expectedValue)
         {
             _callIndex++;
             if (!TestState.AccountExists(storageCell.Address))
             {
-                Assert.AreEqual(expectedValue.ToBigEndianByteArray(), new byte[1] {0}, $"storage {storageCell}, call {_callIndex}");
+                Assert.AreEqual(expectedValue.ToBigEndian().WithoutLeadingZeros().ToArray(), new byte[1] {0}, $"storage {storageCell}, call {_callIndex}");
             }
             else
             {
                 byte[] actualValue = Storage.Get(storageCell);
-                Assert.AreEqual(expectedValue.ToBigEndianByteArray(), actualValue, $"storage {storageCell}, call {_callIndex}");    
+                Assert.AreEqual(expectedValue.ToBigEndian().WithoutLeadingZeros().ToArray(), actualValue, $"storage {storageCell}, call {_callIndex}");    
             }
         }
 

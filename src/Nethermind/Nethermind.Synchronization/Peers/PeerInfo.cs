@@ -21,7 +21,8 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
+using Nethermind.Stats.Model;
 
 [assembly: InternalsVisibleTo("Nethermind.Synchronization.Test")]
 
@@ -32,10 +33,9 @@ namespace Nethermind.Synchronization.Peers
         public PeerInfo(ISyncPeer syncPeer)
         {
             SyncPeer = syncPeer;
-            RecognizeClientType(syncPeer);
         }
 
-        public PeerClientType PeerClientType { get; private set; }
+        public NodeClientType PeerClientType => SyncPeer?.ClientType ?? NodeClientType.Unknown;
 
         public AllocationContexts AllocatedContexts { get; private set; }
 
@@ -188,37 +188,5 @@ namespace Nethermind.Synchronization.Peers
         }
         
         public override string ToString() => $"[{BuildContextString(AllocatedContexts)}][{BuildContextString(SleepingContexts)}]{SyncPeer}";
-
-        private void RecognizeClientType(ISyncPeer syncPeer)
-        {
-            if (syncPeer == null)
-            {
-                PeerClientType = PeerClientType.Unknown;
-            }
-            else if (syncPeer.ClientId?.Contains("BeSu", StringComparison.InvariantCultureIgnoreCase) ?? false)
-            {
-                PeerClientType = PeerClientType.BeSu;
-            }
-            else if (syncPeer.ClientId?.Contains("Geth", StringComparison.InvariantCultureIgnoreCase) ?? false)
-            {
-                PeerClientType = PeerClientType.Geth;
-            }
-            else if (syncPeer.ClientId?.Contains("Nethermind", StringComparison.InvariantCultureIgnoreCase) ?? false)
-            {
-                PeerClientType = PeerClientType.Nethermind;
-            }
-            else if (syncPeer.ClientId?.Contains("Parity", StringComparison.InvariantCultureIgnoreCase) ?? false)
-            {
-                PeerClientType = PeerClientType.Parity;
-            }
-            else if (syncPeer.ClientId?.Contains("OpenEthereum", StringComparison.InvariantCultureIgnoreCase) ?? false)
-            {
-                PeerClientType = PeerClientType.OpenEthereum;
-            }
-            else
-            {
-                PeerClientType = PeerClientType.Unknown;
-            }
-        }
     }
 }

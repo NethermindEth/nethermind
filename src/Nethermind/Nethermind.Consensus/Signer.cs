@@ -16,6 +16,7 @@
 // 
 
 using System;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
@@ -33,10 +34,7 @@ namespace Nethermind.Consensus
 
         public Address Address => _key?.Address ?? Address.Zero;
 
-        public bool CanSign
-        {
-            get => _key != null;
-        }
+        public bool CanSign => _key != null;
 
         public Signer(int chainId, PrivateKey key, ILogManager logManager)
         {
@@ -61,11 +59,12 @@ namespace Nethermind.Consensus
             return new Signature(rs, v);
         }
 
-        public void Sign(Transaction tx)
+        public ValueTask Sign(Transaction tx)
         {
             Keccak hash = Keccak.Compute(Rlp.Encode(tx, true, true, _chainId).Bytes);
             tx.Signature = Sign(hash);
             tx.Signature.V = tx.Signature.V + 8 + 2 * _chainId;
+            return default;
         }
 
         public void SetSigner(PrivateKey key)
@@ -76,7 +75,8 @@ namespace Nethermind.Consensus
         public void SetSigner(ProtectedPrivateKey key)
         {
             _key = key;
-            if (_logger.IsInfo) _logger.Info(_key != null ? $"Address {Address} is configured for signing blocks." : "No address is configured for signing blocks.");
+            if (_logger.IsInfo) _logger.Info(
+                _key != null ? $"Address {Address} is configured for signing blocks." : "No address is configured for signing blocks.");
         }
     }
 }

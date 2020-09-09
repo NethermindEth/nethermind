@@ -16,7 +16,7 @@
 
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Runner.Ethereum.Context;
+using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Stats;
 
 namespace Nethermind.Runner.Ethereum.Steps
@@ -24,18 +24,18 @@ namespace Nethermind.Runner.Ethereum.Steps
     [RunnerStepDependencies]
     public class InitializeNodeStats : IStep
     {
-        private readonly EthereumRunnerContext _context;
+        private readonly NethermindApi _api;
 
-        public InitializeNodeStats(EthereumRunnerContext context)
+        public InitializeNodeStats(NethermindApi api)
         {
-            _context = context;
+            _api = api;
         }
 
         public Task Execute(CancellationToken _)
         {
             // create shared objects between discovery and peer manager
-            IStatsConfig statsConfig = _context.Config<IStatsConfig>();
-            _context.NodeStatsManager = new NodeStatsManager(statsConfig, _context.LogManager);
+            IStatsConfig statsConfig = _api.Config<IStatsConfig>();
+            _api.NodeStatsManager = new NodeStatsManager(statsConfig, _api.LogManager);
 
             return Task.CompletedTask;
         }

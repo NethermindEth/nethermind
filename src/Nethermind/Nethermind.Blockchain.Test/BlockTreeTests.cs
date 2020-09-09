@@ -1568,9 +1568,9 @@ namespace Nethermind.Blockchain.Test
                 return Task.FromResult(true);
             }
 
-            public Task<bool> VisitHeader(BlockHeader header, CancellationToken cancellationToken)
+            public Task<HeaderVisitOutcome> VisitHeader(BlockHeader header, CancellationToken cancellationToken)
             {
-                return Task.FromResult(true);
+                return Task.FromResult(HeaderVisitOutcome.None);
             }
 
             public Task<BlockVisitOutcome> VisitBlock(Block block, CancellationToken cancellationToken)

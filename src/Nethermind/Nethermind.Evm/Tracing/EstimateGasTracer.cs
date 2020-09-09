@@ -20,7 +20,7 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.State;
 
 namespace Nethermind.Evm.Tracing
@@ -29,7 +29,7 @@ namespace Nethermind.Evm.Tracing
     {
         private readonly CancellationToken _cancellationToken; 
 
-        public EstimateGasTracer(CancellationToken cancellationToken = default(CancellationToken))
+        public EstimateGasTracer(CancellationToken cancellationToken = default)
         {
             _cancellationToken = cancellationToken;
             _currentGasAndNesting.Push(new GasAndNesting(0, -1));

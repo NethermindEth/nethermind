@@ -15,8 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -28,9 +30,10 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.Db.Blooms;
-using Nethermind.Facade.Transactions;
+using Nethermind.Int256;
 using Nethermind.KeyStore;
 using Nethermind.Specs;
+using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Newtonsoft.Json;
 
@@ -40,7 +43,7 @@ namespace Nethermind.JsonRpc.Test.Modules
     {
         public IEthModule EthModule { get; private set; }
         public IBlockchainBridge Bridge { get; private set; }
-        public ITxPoolBridge TxPoolBridge { get; private set; }
+        public ITxSender TxSender { get; private set; }
         public ILogFinder LogFinder { get; private set; }
         public IKeyStore KeyStore { get; } = new MemKeyStore(TestItem.PrivateKeys);
         public IWallet TestWallet { get; } = new DevKeyStoreWallet(new MemKeyStore(TestItem.PrivateKeys), LimboLogs.Instance);
@@ -70,31 +73,59 @@ namespace Nethermind.JsonRpc.Test.Modules
                 return this;
             }
             
-            public Builder WithTxPoolBridge(ITxPoolBridge txPoolBridge)
+            public Builder WithBlockFinder(IBlockFinder blockFinder)
             {
-                _blockchain.TxPoolBridge = txPoolBridge;
+                _blockchain.BlockFinder = blockFinder;
                 return this;
             }
             
-            public async Task<TestRpcBlockchain> Build(ISpecProvider specProvider = null)
+            public Builder WithTxSender(ITxSender txSender)
             {
-                return (TestRpcBlockchain)(await _blockchain.Build(specProvider));
+                _blockchain.TxSender = txSender;
+                return this;
+            }
+            
+            public async Task<TestRpcBlockchain> Build(ISpecProvider specProvider = null, UInt256? initialValues = null)
+            {
+                return (TestRpcBlockchain)(await _blockchain.Build(specProvider, initialValues));
             }
         }
 
-        protected override async Task<TestBlockchain> Build(ISpecProvider specProvider = null)
+        protected override async Task<TestBlockchain> Build(ISpecProvider specProvider = null, UInt256? initialValues = null)
         {
             BloomStorage bloomStorage = new BloomStorage(new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
             specProvider ??= MainnetSpecProvider.Instance;
-            await base.Build(specProvider);
+            await base.Build(specProvider, initialValues);
             IFilterStore filterStore = new FilterStore();
             IFilterManager filterManager = new FilterManager(filterStore, BlockProcessor, TxPool, LimboLogs.Instance);
             
             LogFinder = new LogFinder(BlockTree, ReceiptStorage, bloomStorage, LimboLogs.Instance, new ReceiptsRecovery());
-            Bridge ??= new BlockchainBridge(StateReader, State, Storage, BlockTree, TxPool, ReceiptStorage, filterStore, filterManager, TestWallet, TxProcessor, EthereumEcdsa, NullBloomStorage.Instance, Timestamper, LimboLogs.Instance, false);
-            TxPoolBridge ??= new TxPoolBridge(TxPool, new WalletTxSigner(TestWallet, specProvider?.ChainId ?? 0), Timestamper);
+            
+            ReadOnlyTxProcessingEnv processingEnv = new ReadOnlyTxProcessingEnv(
+                new ReadOnlyDbProvider(DbProvider, false),
+                new ReadOnlyBlockTree(BlockTree),
+                SpecProvider,
+                LimboLogs.Instance);
+            
+            Bridge ??= new BlockchainBridge(processingEnv, TxPool, ReceiptStorage, filterStore, filterManager, EthereumEcdsa, NullBloomStorage.Instance, Timestamper, LimboLogs.Instance, false);
+            BlockFinder ??= BlockTree;
+            
+            ITxSigner txSigner = new WalletTxSigner(TestWallet, specProvider?.ChainId ?? 0);
+            ITxSealer txSealer0 = new TxSealer(txSigner, Timestamper);
+            ITxSealer txSealer1 = new NonceReservingTxSealer(txSigner, Timestamper, TxPool);
+            TxSender ??= new TxPoolSender(TxPool, txSealer0, txSealer1);
 
-            EthModule = new EthModule(new JsonRpcConfig(), Bridge, TxPoolBridge, LimboLogs.Instance);
+            EthModule = new EthModule(
+                new JsonRpcConfig(),
+                Bridge,
+                BlockFinder,
+                StateReader,
+                txSigner,
+                TxPool,
+                TxSender,
+                TestWallet,
+                LimboLogs.Instance);
+            
             return this;
         }
 

@@ -18,6 +18,7 @@ using System;
 using System.Numerics;
 using System.Text;
 using Nethermind.Core.Extensions;
+using Nethermind.Int256;
 
 namespace Nethermind.Abi
 {
@@ -39,7 +40,7 @@ namespace Nethermind.Abi
 
         public override (object, int) Decode(byte[] data, int position, bool packed)
         {
-            (BigInteger length, int currentPosition) = UInt256.DecodeUInt(data, position, packed);
+            (UInt256 length, int currentPosition) = UInt256.DecodeUInt(data, position, packed);
             int paddingSize = packed ? (int)length : (1 + (int) length / PaddingMultiple) * PaddingMultiple;
             return (data.Slice(currentPosition, (int) length), currentPosition + paddingSize);
         }

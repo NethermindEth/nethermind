@@ -16,6 +16,7 @@
 
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing.GethStyle;
@@ -40,5 +41,6 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         public int DeleteChainSlice(long startNumber);
         public void UpdateHeadBlock(Keccak blockHash);
         Task<bool> MigrateReceipts(long blockNumber);
+        void InsertReceipts(BlockParameter blockParameter, TxReceipt[] receipts);
     }
 }

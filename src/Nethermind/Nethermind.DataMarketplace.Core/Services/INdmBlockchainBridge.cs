@@ -18,7 +18,7 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Core.Domain;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 
 namespace Nethermind.DataMarketplace.Core.Services
 {
@@ -30,11 +30,10 @@ namespace Nethermind.DataMarketplace.Core.Services
         Task<Block?> FindBlockAsync(long blockNumber);
         Task<Block?> GetLatestBlockAsync();
         Task<UInt256> GetNonceAsync(Address address);
-        Task<UInt256> ReserveOwnTransactionNonceAsync(Address address);
         Task<NdmTransaction?> GetTransactionAsync(Keccak transactionHash);
         Task<int> GetNetworkIdAsync();
         Task<byte[]> CallAsync(Transaction transaction);
         Task<byte[]> CallAsync(Transaction transaction, long blockNumber);
-        Task<Keccak?> SendOwnTransactionAsync(Transaction transaction);
+        ValueTask<Keccak?> SendOwnTransactionAsync(Transaction transaction);
     }
 }

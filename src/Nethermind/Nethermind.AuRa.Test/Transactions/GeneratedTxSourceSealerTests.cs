@@ -23,10 +23,10 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Dirichlet.Numerics;
-using Nethermind.Facade.Transactions;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.TxPool;
 using Nethermind.Wallet;
 using NSubstitute;
 using NUnit.Framework;
@@ -57,7 +57,7 @@ namespace Nethermind.AuRa.Test.Transactions
             innerTxSource.GetTransactions(blockHeader, gasLimit).Returns(new[] {tx1, tx2});
             
             TxSealer txSealer = new TxSealer(new Signer(chainId, Build.A.PrivateKey.TestObject, LimboLogs.Instance), timestamper);
-            var transactionFiller = new GeneratedTxSourceSealer(innerTxSource, txSealer, stateReader, LimboLogs.Instance);
+            var transactionFiller = new GeneratedTxSource(innerTxSource, txSealer, stateReader, LimboLogs.Instance);
 
             var sealedTxs = transactionFiller.GetTransactions(blockHeader, gasLimit).ToArray();
             var sealedTx1 = sealedTxs.First();

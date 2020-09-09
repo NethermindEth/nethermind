@@ -23,8 +23,9 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Evm.Tracing.GethStyle;
+using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 
@@ -130,6 +131,12 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
 
         public async Task<ResultWrapper<bool>> debug_migrateReceipts(long blockNumber) => 
             ResultWrapper<bool>.Success(await _debugBridge.MigrateReceipts(blockNumber));
+
+        public Task<ResultWrapper<bool>> debug_insertReceipts(BlockParameter blockParameter, ReceiptForRpc[] receiptForRpc)
+        {
+            _debugBridge.InsertReceipts(blockParameter, receiptForRpc.Select(r => r.ToReceipt()).ToArray());
+            return Task.FromResult(ResultWrapper<bool>.Success(true));
+        }
 
         public ResultWrapper<GethLikeTxTrace[]> debug_traceBlock(byte[] blockRlp, GethTraceOptions options = null)
         {

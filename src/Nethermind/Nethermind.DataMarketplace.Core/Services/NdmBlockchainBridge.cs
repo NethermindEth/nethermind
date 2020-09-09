@@ -16,54 +16,68 @@
 
 using System;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Core.Domain;
-using Nethermind.Dirichlet.Numerics;
 using Nethermind.Facade;
+using Nethermind.Int256;
+using Nethermind.State;
 using Nethermind.TxPool;
 
 namespace Nethermind.DataMarketplace.Core.Services
 {
     public class NdmBlockchainBridge : INdmBlockchainBridge
     {
-        private readonly ITxPoolBridge _txPoolBridge;
         private readonly IBlockchainBridge _blockchainBridge;
-        private readonly ITxPool _txPool;
+        private readonly ITxSender _txSender;
+        private readonly IBlockFinder _blockTree;
+        private readonly IStateReader _stateReader;
 
-        public NdmBlockchainBridge(ITxPoolBridge txPoolBridge, IBlockchainBridge blockchainBridge, ITxPool txPool)
+        public NdmBlockchainBridge(
+            IBlockchainBridge blockchainBridge,
+            IBlockFinder blockTree,
+            IStateReader stateReader,
+            ITxSender txSender)
         {
-            _txPoolBridge = txPoolBridge ?? throw new ArgumentNullException(nameof(txPoolBridge));
             _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
-            _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
+            _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
+            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
         }
 
         public Task<long> GetLatestBlockNumberAsync()
         {
-            var head = _blockchainBridge.Head;
-
+            var head = _blockTree.Head;
             return head is null ? Task.FromResult(0L) : Task.FromResult(head.Number);
         }
 
-        public Task<byte[]> GetCodeAsync(Address address) => Task.FromResult(_blockchainBridge.GetCode(address));
+        public Task<byte[]> GetCodeAsync(Address address)
+        {
+            byte[] code = _stateReader.GetCode(_blockTree.Head.StateRoot, address);
+            return Task.FromResult(code);   
+        }
 
-        public Task<Block?> FindBlockAsync(Keccak blockHash) => Task.FromResult<Block?>(_blockchainBridge.FindBlock(blockHash));
+        public Task<Block?> FindBlockAsync(Keccak blockHash)
+        {
+            return Task.FromResult<Block?>(_blockTree.FindBlock(blockHash));   
+        }
 
         public Task<Block?> FindBlockAsync(long blockNumber) =>
-            Task.FromResult<Block?>(_blockchainBridge.FindBlock(blockNumber));
+            Task.FromResult<Block?>(_blockTree.FindBlock(blockNumber));
 
         public Task<Block?> GetLatestBlockAsync()
         {
-            Block head = _blockchainBridge.Head;
+            Block head = _blockTree.Head;
             return head is null
                 ? Task.FromResult<Block?>(null)
-                : Task.FromResult<Block?>(_blockchainBridge.FindBlock(head.Hash));
+                : Task.FromResult<Block?>(_blockTree.FindBlock(head.Hash));
         }
 
-        public Task<UInt256> GetNonceAsync(Address address) => Task.FromResult(_blockchainBridge.GetNonce(address));
-
-        public Task<UInt256> ReserveOwnTransactionNonceAsync(Address address)
-            => Task.FromResult(_txPool.ReserveOwnTransactionNonce(address));
+        public Task<UInt256> GetNonceAsync(Address address)
+        {
+            return Task.FromResult(_stateReader.GetNonce(_blockTree.Head.StateRoot, address));   
+        }
 
         public Task<NdmTransaction?> GetTransactionAsync(Keccak transactionHash)
         {
@@ -83,13 +97,13 @@ namespace Nethermind.DataMarketplace.Core.Services
 
         public Task<byte[]> CallAsync(Transaction transaction)
         {
-            var callOutput = _blockchainBridge.Call(_blockchainBridge.Head?.Header, transaction);
+            var callOutput = _blockchainBridge.Call(_blockTree.Head?.Header, transaction);
             return Task.FromResult(callOutput.OutputData ?? new byte[] {0});
         }
 
         public Task<byte[]> CallAsync(Transaction transaction, long blockNumber)
         {
-            var block = _blockchainBridge.FindBlock(blockNumber);
+            var block = _blockTree.FindBlock(blockNumber);
             if (block is null)
             {
                 return Task.FromResult(Array.Empty<byte>());
@@ -100,7 +114,7 @@ namespace Nethermind.DataMarketplace.Core.Services
             return Task.FromResult(callOutput.OutputData ?? new byte[] {0});
         }
 
-        public Task<Keccak?> SendOwnTransactionAsync(Transaction transaction)
-            => Task.FromResult<Keccak?>(_txPoolBridge.SendTransaction(transaction, TxHandlingOptions.ManagedNonce | TxHandlingOptions.PersistentBroadcast));
+        public ValueTask<Keccak?> SendOwnTransactionAsync(Transaction transaction)
+            => _txSender.SendTransaction(transaction, TxHandlingOptions.ManagedNonce | TxHandlingOptions.PersistentBroadcast);
     }
 }

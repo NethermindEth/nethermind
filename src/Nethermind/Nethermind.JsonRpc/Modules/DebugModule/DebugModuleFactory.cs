@@ -16,7 +16,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
@@ -77,12 +76,41 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         {
             IReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
             ReadOnlyBlockTree readOnlyTree = new ReadOnlyBlockTree(_blockTree);
-            ReadOnlyTxProcessingEnv txEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, readOnlyTree, _specProvider, _logManager);
-            ReadOnlyChainProcessingEnv readOnlyChainProcessingEnv = new ReadOnlyChainProcessingEnv(txEnv, _blockValidator, _recoveryStep, _rewardCalculatorSource.Get(txEnv.TransactionProcessor), _receiptStorage, readOnlyDbProvider, _specProvider, _logManager);
+            
+            ReadOnlyTxProcessingEnv txEnv =
+                new ReadOnlyTxProcessingEnv(
+                    readOnlyDbProvider,
+                    readOnlyTree,
+                    _specProvider,
+                    _logManager);
+            
+            ReadOnlyChainProcessingEnv readOnlyChainProcessingEnv = 
+                new ReadOnlyChainProcessingEnv(
+                    txEnv,
+                    _blockValidator,
+                    _recoveryStep,
+                    _rewardCalculatorSource.Get(txEnv.TransactionProcessor),
+                    _receiptStorage,
+                    readOnlyDbProvider,
+                    _specProvider,
+                    _logManager);
 
-            IGethStyleTracer tracer = new GethStyleTracer(readOnlyChainProcessingEnv.ChainProcessor, _receiptStorage, new ReadOnlyBlockTree(_blockTree));
+            IGethStyleTracer tracer =
+                new GethStyleTracer(
+                    readOnlyChainProcessingEnv.ChainProcessor,
+                    _receiptStorage,
+                    new ReadOnlyBlockTree(_blockTree));
 
-            DebugBridge debugBridge = new DebugBridge(_configProvider, readOnlyDbProvider, tracer, readOnlyTree, _receiptsMigration);
+            DebugBridge debugBridge =
+                new DebugBridge(
+                    _configProvider,
+                    readOnlyDbProvider,
+                    tracer, 
+                    readOnlyTree, 
+                    _receiptStorage, 
+                    _receiptsMigration, 
+                    _specProvider);
+            
             return new DebugModule(_logManager, debugBridge, _jsonRpcConfig);
         }
 

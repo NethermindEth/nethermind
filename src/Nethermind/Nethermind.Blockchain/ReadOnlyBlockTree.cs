@@ -97,6 +97,8 @@ namespace Nethermind.Blockchain
         public void DeleteInvalidBlock(Block invalidBlock) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(DeleteInvalidBlock)} calls");
 
         public bool IsMainChain(Keccak blockHash) => _wrapped.IsMainChain(blockHash);
+        
+        public BlockHeader FindBestSuggestedHeader() => _wrapped.FindBestSuggestedHeader();
 
         public bool IsKnownBlock(long number, Keccak blockHash) => _wrapped.IsKnownBlock(number, blockHash);
 

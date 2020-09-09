@@ -25,7 +25,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
         public override string Protocol { get; } = "eth";
 
         public GetReceiptsMessage(IList<Keccak> blockHashes)
-        :base(blockHashes)
+            : base(blockHashes)
         {
         }
     }

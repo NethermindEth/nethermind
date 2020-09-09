@@ -23,7 +23,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.DataMarketplace.Core.Services;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Facade.Proxy;
 using Nethermind.Facade.Proxy.Models;
 using Nethermind.Serialization.Rlp;
@@ -128,21 +128,6 @@ namespace Nethermind.DataMarketplace.Test.Services
                     Arg.Is<BlockParameterModel>(x => x.Type == BlockParameterModel.Pending.Type))
                 .Returns(RpcResult<UInt256?>.Ok(nonce));
             var result = await _ndmBridge.GetNonceAsync(address);
-            await _proxy.Received()
-                .eth_getTransactionCount(address,
-                    Arg.Is<BlockParameterModel>(x => x.Type == BlockParameterModel.Pending.Type));
-            result.Should().Be(nonce);
-        }
-     
-        [Test]
-        public async Task reserve_own_transaction_nonce_should_invoke_proxy_eth_getTransactionCount_with_address_and_pending_arguments()
-        {
-            UInt256 nonce = 1;
-            var address = TestItem.AddressA;
-            _proxy.eth_getTransactionCount(address,
-                    Arg.Is<BlockParameterModel>(x => x.Type == BlockParameterModel.Pending.Type))
-                .Returns(RpcResult<UInt256?>.Ok(nonce));
-            var result = await _ndmBridge.ReserveOwnTransactionNonceAsync(address);
             await _proxy.Received()
                 .eth_getTransactionCount(address,
                     Arg.Is<BlockParameterModel>(x => x.Type == BlockParameterModel.Pending.Type));

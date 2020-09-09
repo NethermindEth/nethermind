@@ -14,6 +14,8 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.IO.Abstractions;
+using FluentAssertions;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Net;
 using Nethermind.JsonRpc.Modules.Proof;
@@ -29,10 +31,13 @@ namespace Nethermind.JsonRpc.Test.Modules
     {
         private RpcModuleProvider _moduleProvider;
 
+        private IFileSystem _fileSystem;
+
         [SetUp]
         public void Initialize()
         {
-            _moduleProvider = new RpcModuleProvider(new JsonRpcConfig(), LimboLogs.Instance);
+            _fileSystem = Substitute.For<IFileSystem>();
+            _moduleProvider = new RpcModuleProvider(_fileSystem, new JsonRpcConfig(), LimboLogs.Instance);
         }
 
         [Test]
@@ -40,12 +45,12 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             JsonRpcConfig jsonRpcConfig = new JsonRpcConfig();
             jsonRpcConfig.EnabledModules = new string[0];
-            _moduleProvider = new RpcModuleProvider(jsonRpcConfig, LimboLogs.Instance);
+            _moduleProvider = new RpcModuleProvider(new FileSystem(), jsonRpcConfig, LimboLogs.Instance);
             _moduleProvider.Register(new SingletonModulePool<IProofModule>(Substitute.For<IProofModule>(), false));
             ModuleResolution resolution = _moduleProvider.Check("proof_call");
             Assert.AreEqual(ModuleResolution.Disabled, resolution);
         }
-        
+
         [Test]
         public void Method_resolution_is_not_case_sensitive()
         {
@@ -55,7 +60,23 @@ namespace Nethermind.JsonRpc.Test.Modules
             ModuleResolution resolution = _moduleProvider.Check("net_VeRsIoN");
             Assert.AreEqual(ModuleResolution.Enabled, resolution);
         }
-        
+
+        [TestCase("eth_.*", ModuleResolution.Unknown)]
+        [TestCase("net_.*", ModuleResolution.Enabled)]
+        public void With_filter_can_reject(string regex, ModuleResolution expectedResult)
+        {
+            JsonRpcConfig config = new JsonRpcConfig();
+            _fileSystem.File.Exists(Arg.Any<string>()).Returns(true);
+            _fileSystem.File.ReadLines(Arg.Any<string>()).Returns(new[] {regex});
+            _moduleProvider = new RpcModuleProvider(_fileSystem, config, LimboLogs.Instance);
+            
+            SingletonModulePool<INetModule> pool = new SingletonModulePool<INetModule>(new NetModule(LimboLogs.Instance, Substitute.For<INetBridge>()), true);
+            _moduleProvider.Register(pool);
+
+            ModuleResolution resolution = _moduleProvider.Check("net_version");
+            resolution.Should().Be(expectedResult);
+        }
+
         [Test]
         public void Returns_politely_when_no_method_found()
         {

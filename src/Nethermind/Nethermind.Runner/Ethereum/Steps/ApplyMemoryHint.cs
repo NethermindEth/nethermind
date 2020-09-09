@@ -21,24 +21,24 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Network.Config;
-using Nethermind.Runner.Ethereum.Context;
+using Nethermind.Runner.Ethereum.Api;
 using Nethermind.TxPool;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
-    [RunnerStepDependencies]
+    [RunnerStepDependencies(typeof(MigrateConfigs))]
     public sealed class ApplyMemoryHint : IStep
     {
-        private readonly EthereumRunnerContext _context;
+        private readonly NethermindApi _api;
         private IInitConfig _initConfig;
         private IDbConfig _dbConfig;
         private INetworkConfig _networkConfig;
         private ISyncConfig _syncConfig;
         private ITxPoolConfig _txPoolConfig;
 
-        public ApplyMemoryHint(EthereumRunnerContext context)
+        public ApplyMemoryHint(NethermindApi context)
         {
-            _context = context ?? throw new ArgumentNullException(nameof(context));
+            _api = context ?? throw new ArgumentNullException(nameof(context));
             _initConfig = context.Config<IInitConfig>();
             _dbConfig = context.Config<IDbConfig>();
             _networkConfig = context.Config<INetworkConfig>();
@@ -48,7 +48,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         public Task Execute(CancellationToken _)
         {
-            MemoryHintMan memoryHintMan = new MemoryHintMan(_context.LogManager);
+            MemoryHintMan memoryHintMan = new MemoryHintMan(_api.LogManager);
             uint cpuCount = (uint) Environment.ProcessorCount;
             if (_initConfig.MemoryHint.HasValue)
             {

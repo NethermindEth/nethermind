@@ -15,23 +15,27 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Timers;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.TxPool;
+using Timer = System.Timers.Timer;
 
 namespace Nethermind.Blockchain.Producers
 {
-    public class DevBlockProducer : BaseBlockProducer
+    public class DevBlockProducer : BlockProducerBase
     {
         private readonly ITxPool _txPool;
         private readonly SemaphoreSlim _newBlockLock = new SemaphoreSlim(1, 1);
+        private Timer _timer;
 
         public DevBlockProducer(
             ITxSource txSource,
@@ -42,20 +46,43 @@ namespace Nethermind.Blockchain.Producers
             ITxPool txPool,
             ITimestamper timestamper,
             ILogManager logManager) 
-            : base(txSource, processor, new NethDevSealEngine(), blockTree, blockProcessingQueue, stateProvider, timestamper, logManager)
+            : base(
+                txSource,
+                processor,
+                new NethDevSealEngine(),
+                blockTree,
+                blockProcessingQueue,
+                stateProvider,
+                FollowOtherMiners.Instance, 
+                timestamper,
+                logManager)
         {
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
+            _timer = new System.Timers.Timer(200);
+            _timer.Elapsed += TimerOnElapsed;
+        }
+
+        private void TimerOnElapsed(object sender, ElapsedEventArgs e)
+        {
+            Transaction[] txs = _txPool.GetPendingTransactions();
+            Transaction tx = txs.FirstOrDefault();
+            if (tx != null)
+            {
+                OnNewPendingTxAsync(new TxEventArgs(tx));
+            }
         }
 
         public override void Start()
         {
             _txPool.NewPending += OnNewPendingTx;
             BlockTree.NewHeadBlock += OnNewHeadBlock;
+            _timer.Start();
         }
         
         public override async Task StopAsync()
         {
             _txPool.NewPending -= OnNewPendingTx;
+            _timer.Stop();
             BlockTree.NewHeadBlock -= OnNewHeadBlock;
             await Task.CompletedTask;
         }
@@ -79,7 +106,9 @@ namespace Nethermind.Blockchain.Producers
             }
             catch (Exception exception)
             {
-                if (Logger.IsError) Logger.Error($"Failed to produce block after receiving transaction {e.Transaction}", exception);
+                if (Logger.IsError)
+                    Logger.Error(
+                        $"Failed to produce block after receiving transaction {e.Transaction}", exception);
                 _newBlockLock.Release();
             }
         }

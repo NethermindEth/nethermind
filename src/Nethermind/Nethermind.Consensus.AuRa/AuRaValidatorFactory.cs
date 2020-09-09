@@ -26,7 +26,6 @@ using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.Db.Blooms;
-using Nethermind.Facade.Transactions;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa
@@ -43,6 +42,7 @@ namespace Nethermind.Consensus.AuRa
         private readonly IBlockFinalizationManager _finalizationManager;
         private readonly ITxSender _txSender;
         private readonly ITxPool _txPool;
+        private readonly IMiningConfig _miningConfig;
         private readonly ILogManager _logManager;
         private readonly ISigner _signer;
         private readonly ReportingContractBasedValidator.Cache _reportingValidatorCache;
@@ -59,6 +59,7 @@ namespace Nethermind.Consensus.AuRa
             IBlockFinalizationManager finalizationManager,
             ITxSender txSender,
             ITxPool txPool,
+            IMiningConfig miningConfig,
             ILogManager logManager,
             ISigner signer,
             ReportingContractBasedValidator.Cache reportingValidatorCache,
@@ -75,6 +76,7 @@ namespace Nethermind.Consensus.AuRa
             _finalizationManager = finalizationManager;
             _txSender = txSender;
             _txPool = txPool;
+            _miningConfig = miningConfig;
             _logManager = logManager;
             _signer = signer;
             _reportingValidatorCache = reportingValidatorCache;
@@ -124,6 +126,7 @@ namespace Nethermind.Consensus.AuRa
                         _posdaoTransition,
                         _txSender,
                         _txPool,
+                        _miningConfig,
                         _stateProvider,
                         _reportingValidatorCache,
                         _logManager),

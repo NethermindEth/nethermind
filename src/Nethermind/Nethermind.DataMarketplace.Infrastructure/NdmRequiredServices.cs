@@ -53,7 +53,8 @@ namespace Nethermind.DataMarketplace.Infrastructure
         public IMongoProvider MongoProvider { get; }
         public ILogManager LogManager { get; }
         public IBlockTree BlockTree { get; }
-        public ITxPool TransactionPool { get; }
+        public ITxPool TxPool { get; }
+        public ITxSender TxSender { get; }
         public ISpecProvider SpecProvider { get; }
         public IReceiptFinder ReceiptFinder { get; }
         public IFilterStore FilterStore { get; }
@@ -79,6 +80,7 @@ namespace Nethermind.DataMarketplace.Infrastructure
         public IMonitoringService MonitoringService { get; }
         public IBloomStorage BloomStorage { get; }
 
+        // TODO: remove this
         public NdmRequiredServices(
             IConfigProvider configProvider,
             IConfigManager configManager,
@@ -88,7 +90,8 @@ namespace Nethermind.DataMarketplace.Infrastructure
             IMongoProvider mongoProvider,
             ILogManager logManager,
             IBlockTree blockTree,
-            ITxPool transactionPool,
+            ITxPool txPool,
+            ITxSender txSender,
             ISpecProvider specProvider,
             IReceiptFinder receiptFinder,
             IFilterStore filterStore,
@@ -122,7 +125,8 @@ namespace Nethermind.DataMarketplace.Infrastructure
             MongoProvider = mongoProvider ?? throw new ArgumentNullException(nameof(mongoProvider));
             LogManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             BlockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            TransactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
+            TxPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
+            TxSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
             SpecProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             ReceiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
             FilterStore = filterStore ?? throw new ArgumentNullException(nameof(filterStore));

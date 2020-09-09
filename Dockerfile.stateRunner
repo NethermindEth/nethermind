@@ -1,8 +1,10 @@
 FROM mcr.microsoft.com/dotnet/core/sdk:3.1-alpine AS build
 
-COPY src/ .
+COPY . .
 
-RUN dotnet publish Nethermind/Nethermind.State.Test.Runner -c release -o out
+RUN apk add git && \
+ git submodule update --init src/Dirichlet src/int256 && \
+ dotnet publish src/Nethermind/Nethermind.State.Test.Runner -c release -o out
 
 FROM mcr.microsoft.com/dotnet/core/sdk:3.1-alpine
 

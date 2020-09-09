@@ -170,7 +170,7 @@ namespace Nethermind.Trie
         public bool IsLeaf => NodeType == NodeType.Leaf;
         public bool IsBranch => NodeType == NodeType.Branch;
         public bool IsExtension => NodeType == NodeType.Extension;
-
+        
         public byte[]? Path => Key?.Path;
 
         internal HexPrefix? Key
@@ -371,7 +371,7 @@ namespace Nethermind.Trie
 
             return rlp;
         }
-
+        
         public Keccak? GetChildHash(int i)
         {
             if (_rlpStream == null)
