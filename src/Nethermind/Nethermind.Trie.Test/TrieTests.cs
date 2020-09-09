@@ -1008,7 +1008,9 @@ namespace Nethermind.Trie.Test
         
           // [TestCase(256, 128, 32)]
           // [TestCase(128, 128, 8)]
-        [TestCase(96, 192, 96)]
+        // [TestCase(96, 192, 96)]
+        // [TestCase(96, 256, 128)]
+        [TestCase(128, 256, 128)]
         // [TestCase(64, 512, 32)]
         // [TestCase(8, 1024, 128)]
         // [TestCase(8, 16, 8)]
@@ -1020,10 +1022,10 @@ namespace Nethermind.Trie.Test
             int lookupLimit)
         {
             
-            // int seed = _random.Next(int.MaxValue);
+            int seed = _random.Next(int.MaxValue);
             
-            int seed = 1541344441; // (decrement refs issue) [TestCase(96, 192, 96)]
-            // int seed = 580514763; // (decrement refs issue) [TestCase(96, 256, 128)]
+            // int seed = 1541344441; // (decrement refs issue) [TestCase(96, 192, 96)] FIXED
+            // int seed = 580514763; // (decrement refs issue) [TestCase(96, 256, 128)] FIXED
             // int seed = 483020425; // (key not present) [TestCase(128, 256, 128)]
             // int seed = 1299777953; // (decrement refs issue) [TestCase(128, 512, 128)]
             _random = new Random(seed);

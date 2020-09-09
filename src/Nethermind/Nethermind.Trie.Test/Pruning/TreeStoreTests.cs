@@ -109,12 +109,16 @@ namespace Nethermind.Trie.Test.Pruning
             trieStore.FinishBlockCommit(TrieType.State, 1234, trieNode2);
             trieStore.Commit(TrieType.State, 1235, new NodeCommitInfo(trieNode3));
             trieStore.Commit(TrieType.State, 1235, new NodeCommitInfo(trieNode4));
+            trieStore.FinishBlockCommit(TrieType.State, 1235, trieNode2);
+            trieStore.FinishBlockCommit(TrieType.State, 1236, trieNode2);
             trieStore.MemorySize.Should().Be(
                 96 /* committer */ +
                 1 * 88 /* block package */ +
                 1 * 48 /* linked list node size */ +
                 trieNode3.GetMemorySize(false) +
-                trieNode4.GetMemorySize(false));
+                trieNode4.GetMemorySize(false) +
+                1 * 88 /* block package */ +
+                1 * 48 /* linked list node size */);
         }
 
         [Test]
