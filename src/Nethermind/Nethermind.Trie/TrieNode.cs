@@ -789,7 +789,15 @@ namespace Nethermind.Trie
                         _data![i] = cachedOrUnknown;
                         if (IsPersisted && !cachedOrUnknown.IsPersisted)
                         {
-                            MarkPersistedRecursively(NullLogger.Instance);
+                            cachedOrUnknown.MarkPersistedRecursively(NullLogger.Instance);
+                        }
+
+                        if (!IsPersisted && !cachedOrUnknown.IsPersisted)
+                        {
+                            // generally I start to think that whatever we resolve in this method - it should be persisted, not true?
+                            // let us try
+                            cachedOrUnknown.MarkPersistedRecursively(NullLogger.Instance);
+                            // Refs += cachedOrUnknown.Refs;
                         }
                         
                         if (cachedOrUnknown.Refs < Refs)
