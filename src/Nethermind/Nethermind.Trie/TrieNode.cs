@@ -596,11 +596,11 @@ namespace Nethermind.Trie
                         {
                             if(logger.IsTrace) logger.Trace($"Decrementing refs recursively on child {i} {child}");
                             child.DecrementRefsRecursively(logger, IsPersisted);
-                            if (child.Refs == 0)
-                            {
-                                _data[i] = _unresolvedChild;
-                            }
-
+                            // if (child.Refs == 0)
+                            // {
+                            //     _data[i] = _unresolvedChild;
+                            // }
+                            //
                             // if (child.IsPersisted)
                             // {
                             //     _data[i] = _unresolvedChild;
