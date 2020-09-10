@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -47,7 +48,29 @@ namespace Ethereum.Abi
         [Test]
         public void Test_abi_encoding()
         {
-            string text = File.ReadAllText(Path.Combine(TestContext.CurrentContext.TestDirectory, "basic_abi_tests.json"));
+            string text = string.Empty;
+            
+            string[] potentialLocations = new string[]
+            {
+                Path.Combine(TestContext.CurrentContext.TestDirectory, "basic_abi_tests.json"),
+                Path.Combine(TestContext.CurrentContext.WorkDirectory, "basic_abi_tests.json"),
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory!, "basic_abi_tests.json"),
+                Path.Combine(AppDomain.CurrentDomain.DynamicDirectory!, "basic_abi_tests.json"),
+            };
+
+            foreach (string potentialLocation in potentialLocations)
+            {
+                try
+                {
+                    text = File.ReadAllText(potentialLocation);
+                    break;
+                }
+                catch (IOException)
+                {
+                    TestContext.WriteLine($"Could not find test in {potentialLocation}");
+                }    
+            }
+
             Dictionary<string, AbiTest> tests = JsonConvert.DeserializeObject<Dictionary<string, AbiTest>>(text);
             foreach ((string testName, AbiTest abiTest) in tests)
             {
