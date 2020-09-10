@@ -7,8 +7,9 @@ namespace Nethermind.Precompiles.Benchmark
 {
     [HtmlExporter]
     // [NativeMemoryProfiler]
-    [MemoryDiagnoser]
-    [ShortRunJob(RuntimeMoniker.NetCoreApp31)]
+    // [MemoryDiagnoser]
+    // [ShortRunJob(RuntimeMoniker.NetCoreApp31)]
+    [SimpleJob(RuntimeMoniker.NetCoreApp31)]
     public class RipEmdBenchmark : PrecompileBenchmarkBase
     {
         protected override IPrecompile[] Precompiles => new[] {Ripemd160Precompile.Instance};
