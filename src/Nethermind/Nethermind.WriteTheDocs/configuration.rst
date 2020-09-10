@@ -101,6 +101,8 @@ DbConfig
  DepositsDbWriteBufferNumber
 
  DepositsDbWriteBufferSize
+ 
+ DataAssetsDbCacheIndexAndFilterBlocks
 
  EthRequestsDbBlockCacheSize
 
@@ -557,6 +559,7 @@ Sample configuration (mainnet)
               "DepositsDbCacheIndexAndFilterBlocks" : [MISSING_DOCS],
               "DepositsDbWriteBufferNumber" : [MISSING_DOCS],
               "DepositsDbWriteBufferSize" : [MISSING_DOCS],
+              "DataAssetsDbCacheIndexAndFilterBlocks" : [MISSING_DOCS],
               "EthRequestsDbBlockCacheSize" : [MISSING_DOCS],
               "EthRequestsDbCacheIndexAndFilterBlocks" : [MISSING_DOCS],
               "EthRequestsDbWriteBufferNumber" : [MISSING_DOCS],
