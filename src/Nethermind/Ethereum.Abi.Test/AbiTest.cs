@@ -18,7 +18,7 @@
 
 using Newtonsoft.Json;
 
-namespace Ethereum.Abi
+namespace Ethereum.Abi.Test
 {
     public class AbiTest
     {

@@ -81,7 +81,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Serialization.Js
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Int256", "..\int256\src\Nethermind.Int256\Nethermind.Int256.csproj", "{5F580B6C-8770-4DC6-B9CE-35F6151A183B}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.Abi", "Ethereum.Abi\Ethereum.Abi.csproj", "{E0EAF613-4BC5-4728-B422-F0BE1BC3683E}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.Abi.Test", "Ethereum.Abi.Test\Ethereum.Abi.Test.csproj", "{E0EAF613-4BC5-4728-B422-F0BE1BC3683E}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

@@ -27,7 +27,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 
-namespace Ethereum.Abi
+namespace Ethereum.Abi.Test
 {
     public class Tests
     {
