@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
@@ -42,14 +43,14 @@ namespace Nethermind.Trie.Pruning
 
         public TrieNode Get(Keccak hash)
         {
-            if (!_actualCache.ContainsKey(hash))
+            if (!_actualCache.TryGetValue(hash, out TrieNode trieNode))
             {
-                TrieNode newNode = new TrieNode(NodeType.Unknown, hash);
-                if(_logger.IsTrace) _logger.Trace($"Creating new node {newNode}");
-                _actualCache.Add(newNode.Keccak!, newNode);
+                trieNode = new TrieNode(NodeType.Unknown, hash);
+                if(_logger.IsTrace) _logger.Trace($"Creating new node {trieNode}");
+                _actualCache.TryAdd(trieNode.Keccak!, trieNode);
             }
-            
-            return _actualCache[hash];
+
+            return trieNode;
         }
 
         public TrieNode? StrictlyGet(Keccak hash)
@@ -70,7 +71,7 @@ namespace Nethermind.Trie.Pruning
 
         public void Remove(Keccak hash)
         {
-            _actualCache.Remove(hash);
+            _actualCache.TryRemove(hash, out _);
         }
 
         public void Dump()
@@ -78,6 +79,7 @@ namespace Nethermind.Trie.Pruning
             if (_logger.IsTrace)
             {
                 _logger.Trace($"Trie node cache ({_actualCache.Count})");
+                return;
                 foreach (KeyValuePair<Keccak, TrieNode> keyValuePair in _actualCache)
                 {
                     _logger.Trace($"  {keyValuePair.Value}");
@@ -92,13 +94,13 @@ namespace Nethermind.Trie.Pruning
                 if (value.Refs == 0)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Pruning in cache: {value}.");
-                    _actualCache.Remove(key);
+                    _actualCache.TryRemove(key, out _);
                 }
                 else if (value.IsPersisted)
                 {
                     // TODO: remove refs (as the node is still being held by other nodes and this will grow in memory)
                     if(_logger.IsTrace) _logger.Trace($"Removing persisted {value} from memory.");
-                    _actualCache.Remove(key);
+                    _actualCache.TryRemove(key, out _);
                 }
             }
         }
@@ -107,8 +109,8 @@ namespace Nethermind.Trie.Pruning
 
         private ILogger _logger;
         
-        private Dictionary<Keccak, TrieNode> _actualCache
-            = new Dictionary<Keccak, TrieNode>();        
+        private ConcurrentDictionary<Keccak, TrieNode> _actualCache
+            = new ConcurrentDictionary<Keccak, TrieNode>();        
 
         #endregion
     }
