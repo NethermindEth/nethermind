@@ -762,6 +762,11 @@ namespace Nethermind.Trie
                         Keccak keccak = _rlpStream.DecodeKeccak();
                         // TODO: here we assume the node is in the DB and should be loadable from the DB
                         _data![i] = tree.FindCachedOrUnknown(keccak);
+                        if ((((TrieNode) _data[i])?.Refs ?? int.MaxValue) < Refs)
+                        {
+                            throw new InvalidDataException(
+                                $"Child {(TrieNode) _data[i]} should always have greater or equal number of refs than {this}.");
+                        }
                         
                         // TODO: remove the comment below when no longer needed for diag
                         // if (this.IsPersisted && !((TrieNode) _data[i]).IsPersisted)
