@@ -676,6 +676,31 @@ namespace Nethermind.Trie
             
             Refs++;
         }
+        
+        public void MarkPersistedRecursively(ILogger logger)
+        {
+            if (!IsLeaf)
+            {
+                if (_data != null)
+                {
+                    for (int i = 0; i < _data.Length; i++)
+                    {
+                        object o = _data[i];
+                        if (o is TrieNode child)
+                        {
+                            if(logger.IsTrace) logger.Trace($"Mark persisted on child {i} {child} of {this}");
+                            child.MarkPersistedRecursively(logger);
+                            // if(child.IsPersisted)
+                            // {
+                            //     _data[i] = _unresolvedChild;
+                            // }
+                        }   
+                    }
+                }
+            }
+
+            IsPersisted = true;
+        }
 
         #region private
 
@@ -760,19 +785,19 @@ namespace Nethermind.Trie
                     case 160:
                         _rlpStream.Position--;
                         Keccak keccak = _rlpStream.DecodeKeccak();
-                        // TODO: here we assume the node is in the DB and should be loadable from the DB
-                        _data![i] = tree.FindCachedOrUnknown(keccak);
-                        if ((((TrieNode) _data[i])?.Refs ?? int.MaxValue) < Refs)
+                        TrieNode cachedOrUnknown = tree.FindCachedOrUnknown(keccak);
+                        _data![i] = cachedOrUnknown;
+                        if (IsPersisted && !cachedOrUnknown.IsPersisted)
                         {
-                            throw new InvalidDataException(
-                                $"Child {(TrieNode) _data[i]} should always have greater or equal number of refs than {this}.");
+                            MarkPersistedRecursively(NullLogger.Instance);
                         }
                         
-                        // TODO: remove the comment below when no longer needed for diag
-                        // if (this.IsPersisted && !((TrieNode) _data[i]).IsPersisted)
-                        // {
-                        //     throw new Exception("It is ok but wan to check it"); <- ti did hit this breakpoint as it can happen in the two different storage roots scenario
-                        // }
+                        if (cachedOrUnknown.Refs < Refs)
+                        {
+                            throw new InvalidDataException(
+                                $"Child {cachedOrUnknown} should always have greater or equal number of refs than {this}.");
+                        }
+                        
                         break;
                     default:
                     {
