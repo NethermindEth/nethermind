@@ -54,8 +54,8 @@ namespace Ethereum.Abi.Test
             {
                 Path.Combine(TestContext.CurrentContext.TestDirectory, "basic_abi_tests.json"),
                 Path.Combine(TestContext.CurrentContext.WorkDirectory, "basic_abi_tests.json"),
-                Path.Combine(AppDomain.CurrentDomain.BaseDirectory!, "basic_abi_tests.json"),
-                Path.Combine(AppDomain.CurrentDomain.DynamicDirectory!, "basic_abi_tests.json"),
+                Path.Combine(AppDomain.CurrentDomain.BaseDirectory ?? string.Empty, "basic_abi_tests.json"),
+                Path.Combine(AppDomain.CurrentDomain.DynamicDirectory ?? string.Empty, "basic_abi_tests.json"),
             };
 
             foreach (string potentialLocation in potentialLocations)
