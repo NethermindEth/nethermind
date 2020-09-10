@@ -594,6 +594,12 @@ namespace Nethermind.Trie
                         TrieNode child = _data[i] as TrieNode;
                         if (child != null) // both unresolved and NULL are handled here
                         {
+                            if (child.Refs < Refs)
+                            {
+                                throw new InvalidDataException(
+                                    $"Child {child} should always have greater or equal number of refs than {this}.");
+                            }
+                            
                             if(logger.IsTrace) logger.Trace($"Decrementing refs recursively on child {i} {child}");
                             child.DecrementRefsRecursively(logger, IsPersisted);
                             // if (child.Refs == 0)
@@ -625,7 +631,7 @@ namespace Nethermind.Trie
                 // and we just created a (storage root)B->C and then resolved A
                 // and then read A and made A->B a pair that has B that is not marked as persisted and A which has been resolved
             }
-            
+
             if (!IsLeaf)
             {
                 if (_data != null)
@@ -635,6 +641,12 @@ namespace Nethermind.Trie
                         object o = _data[i];
                         if (o is TrieNode child)
                         {
+                            if (child.Refs < Refs)
+                            {
+                                throw new InvalidDataException(
+                                    $"Child {child} should always have greater or equal number of refs than {this}.");
+                            }
+                            
                             if(logger.IsTrace) logger.Trace($"Incrementing refs recursively on child {i} {child} of {this}");
                             child.IncrementRefsRecursively(logger, block, storageRoots, IsPersisted);
                             // if(child.IsPersisted)
