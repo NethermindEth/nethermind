@@ -40,7 +40,7 @@ namespace Nethermind.Network.Config
         [ConfigItem(Description = "If 'false' then discovered node list will be cleared on each restart.", DefaultValue = "true")]
         bool IsPeersPersistenceOn { get; set; }
 
-        [ConfigItem(Description = "Max number of connected peers.", DefaultValue = "25")]
+        [ConfigItem(Description = "Max number of connected peers.", DefaultValue = "50")]
         int ActivePeersMaxCount { get; set; }
 
         [ConfigItem(DefaultValue = "5000")]

@@ -47,6 +47,7 @@ using Nethermind.Wallet;
 using NSubstitute;
 using NUnit.Framework;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace Nethermind.DataMarketplace.Test
 {
@@ -100,7 +101,7 @@ namespace Nethermind.DataMarketplace.Test
         protected Address _contractAddress;
         protected ITxPool _txPool;
 
-        protected void Prepare()
+        protected async Task Prepare()
         {
             _wallet = new DevWallet(new WalletConfig(), _logManager);
             _feeAccount = _wallet.GetAccounts()[0];
@@ -123,29 +124,29 @@ namespace Nethermind.DataMarketplace.Test
             TransactionProcessor processor = new TransactionProcessor(specProvider, _state, storageProvider, machine, _logManager);
             _bridge = new BlockchainBridge(processor);
 
-            TxReceipt receipt = DeployContract(Bytes.FromHexString(ContractData.GetInitCode(_feeAccount)));
+            TxReceipt receipt = await DeployContract(Bytes.FromHexString(ContractData.GetInitCode(_feeAccount)));
             ((NdmConfig) _ndmConfig).ContractAddress = receipt.ContractAddress.ToString();
             _contractAddress = receipt.ContractAddress;
             _txPool = new TxPool.TxPool(new InMemoryTxStorage(), Timestamper.Default,
                 new EthereumEcdsa(specProvider.ChainId, _logManager), specProvider, new TxPoolConfig(), _state, _logManager);
-
-            _ndmBridge = new NdmBlockchainBridge(_bridge, _bridge, _txPool);
+            _ndmBridge = new NdmBlockchainBridge(_bridge, _bridge, _bridge, _bridge);
         }
 
-        protected TxReceipt DeployContract(byte[] initCode)
+        protected async Task<TxReceipt> DeployContract(byte[] initCode)
         {
             Transaction deployContract = new Transaction();
             deployContract.SenderAddress = _providerAccount;
             deployContract.GasLimit = 4000000;
             deployContract.Init = initCode;
             deployContract.Nonce = _bridge.GetNonce(_providerAccount);
-            Keccak txHash = _bridge.SendTransaction(deployContract, TxHandlingOptions.None);
+            Keccak txHash = await _bridge.SendTransaction(deployContract, TxHandlingOptions.None);
+            _bridge.IncrementNonce(_providerAccount);
             TxReceipt receipt = _bridge.GetReceipt(txHash);
             Assert.AreEqual(StatusCode.Success, receipt.StatusCode, $"contract deployed {receipt.Error}");
             return receipt;
         }
 
-        public class BlockchainBridge : IBlockchainBridge, ITxPoolBridge
+        public class BlockchainBridge : IBlockchainBridge, IBlockFinder, ITxSender, IStateReader
         {
             private readonly TransactionProcessor _processor;
 
@@ -157,25 +158,12 @@ namespace Nethermind.DataMarketplace.Test
                 _receiptsTracer.StartNewBlockTrace(_headBlock);
             }
 
-            public IReadOnlyCollection<Address> GetWalletAccounts()
-            {
-                throw new NotImplementedException();
-            }
-
-            public Signature Sign(Address address, Keccak message)
-            {
-                throw new NotImplementedException();
-            }
-            
-            public void Sign(Transaction transaction)
-            {
-                throw new NotImplementedException();
-            }
-
             public int GetNetworkId()
             {
                 return 99;
             }
+
+            public Block BeamHead => _headBlock;
 
             public GethLikeBlockTracer GethTracer { get; set; } = new GethLikeBlockTracer(GethTraceOptions.Default);
 
@@ -223,6 +211,11 @@ namespace Nethermind.DataMarketplace.Test
             public bool IsMainChain(BlockHeader blockHeader) => blockHeader.Number == _headBlock.Number;
 
             public bool IsMainChain(Keccak blockHash) => _headBlock.Hash == blockHash;
+            
+            public BlockHeader FindBestSuggestedHeader()
+            {
+                throw new NotImplementedException();
+            }
 
             public (TxReceipt Receipt, Transaction Transaction) GetTransaction(Keccak txHash)
             {
@@ -231,33 +224,24 @@ namespace Nethermind.DataMarketplace.Test
                     Hash = txHash
                 });
             }
-
-            public Transaction GetPendingTransaction(Keccak txHash)
-            {
-                throw new NotImplementedException();
-            }
-
-            public Transaction[] GetPendingTransactions()
-            {
-                throw new NotImplementedException();
-            }
-
+            
             private BlockReceiptsTracer _receiptsTracer;
 
             private int _txIndex = 0;
 
-            public Keccak SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
+            public ValueTask<Keccak> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
             {
+                tx.Nonce = GetNonce(tx.SenderAddress);
                 tx.Hash = tx.CalculateHash();
                 _headBlock.Transactions[_txIndex++] = tx;
                 _receiptsTracer.StartNewTxTrace(tx.Hash);
                 _processor.Execute(tx, Head?.Header, _receiptsTracer);
                 _receiptsTracer.EndTxTrace();
-                return tx.CalculateHash();
+                return new ValueTask<Keccak>(tx.CalculateHash());
             }
 
             public TxReceipt GetReceipt(Keccak txHash) => _receiptsTracer.TxReceipts.Single(r => r?.TxHash == txHash);
-            
+
             public Facade.BlockchainBridge.CallOutput Call(BlockHeader blockHeader, Transaction transaction)
             {
                 CallOutputTracer tracer = new CallOutputTracer();
@@ -276,6 +260,36 @@ namespace Nethermind.DataMarketplace.Test
             }
 
             public byte[] GetCode(Address address)
+            {
+                throw new NotImplementedException();
+            }
+
+            public Account GetAccount(Keccak stateRoot, Address address)
+            {
+                throw new NotImplementedException();
+            }
+
+            public UInt256 GetNonce(Keccak stateRoot, Address address)
+            {
+                return GetNonce(address);
+            }
+
+            public UInt256 GetBalance(Keccak stateRoot, Address address)
+            {
+                throw new NotImplementedException();
+            }
+
+            public Keccak GetStorageRoot(Keccak stateRoot, Address address)
+            {
+                throw new NotImplementedException();
+            }
+
+            public byte[] GetStorage(Keccak storageRoot, UInt256 index)
+            {
+                throw new NotImplementedException();
+            }
+
+            public byte[] GetCode(Keccak stateRoot, Address address)
             {
                 throw new NotImplementedException();
             }
@@ -301,16 +315,6 @@ namespace Nethermind.DataMarketplace.Test
             {
                 var nonce = GetNonce(address);
                 _nonces[address] = nonce + 1;
-            }
-
-            public byte[] GetStorage(Address address, UInt256 index, Keccak storageRoot)
-            {
-                throw new NotImplementedException();
-            }
-            
-            public Account GetAccount(Address address, Keccak stateRoot)
-            {
-                throw new NotImplementedException();
             }
 
             public int NewBlockFilter()

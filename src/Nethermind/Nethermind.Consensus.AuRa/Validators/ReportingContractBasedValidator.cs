@@ -59,6 +59,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             long posdaoTransition,
             ITxSender txSender,
             ITxPool txPool,
+            IMiningConfig miningConfig,
             IStateProvider stateProvider,
             Cache cache,
             ILogManager logManager)
@@ -69,7 +70,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             _posdaoTxSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _cache = cache ?? throw new ArgumentNullException(nameof(cache));
-            _nonPosdaoTxSender = new TxGasPriceSender(txSender, txPool);
+            _nonPosdaoTxSender = new TxGasPriceSender(txSender, txPool, miningConfig);
             _persistentReports = cache.PersistentReports ?? throw new ArgumentNullException(nameof(cache));
             _logger = logManager?.GetClassLogger<ReportingContractBasedValidator>() ?? throw new ArgumentNullException(nameof(logManager));
         }
@@ -173,6 +174,11 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         public void TryReportSkipped(BlockHeader header, BlockHeader parent)
         {
+            if (Validators == null)
+            {
+                return;
+            }
+            
             var areThereSkipped = header.AuRaStep > parent.AuRaStep + 1;
             var firstBlock = header.Number == 1;
             if (areThereSkipped && !firstBlock)

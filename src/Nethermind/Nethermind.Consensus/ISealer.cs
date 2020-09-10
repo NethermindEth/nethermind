@@ -14,7 +14,6 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -27,20 +26,5 @@ namespace Nethermind.Consensus
         Task<Block> SealBlock(Block block, CancellationToken cancellationToken);
         bool CanSeal(long blockNumber, Keccak parentHash);
         Address Address { get; }
-    }
-    
-    public interface ISealValidator
-    {
-        bool ValidateParams(BlockHeader parent, BlockHeader header);
-        
-        /// <summary>
-        /// Validates block header seal.
-        /// </summary>
-        /// <param name="header">Block header to validate.</param>
-        /// <param name="force">Unless set to <value>true</value> the validator is allowed to optimize validation away in a safe manner.</param>
-        /// <returns><value>True</value> if seal is valid or was not checked, otherwise <value>false</value></returns>
-        bool ValidateSeal(BlockHeader header, bool force);
-        
-        public void HintValidationRange(Guid guid, long start, long end) { }
     }
 }

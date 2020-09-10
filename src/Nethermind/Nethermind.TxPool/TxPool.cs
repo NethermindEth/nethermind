@@ -165,6 +165,11 @@ namespace Nethermind.TxPool
 
         public AddTxResult AddTransaction(Transaction tx, TxHandlingOptions handlingOptions)
         {
+            if (tx.Hash == null)
+            {
+                throw new ArgumentException($"{nameof(tx.Hash)} not set on {nameof(Transaction)}");
+            }
+            
             bool managedNonce = (handlingOptions & TxHandlingOptions.ManagedNonce) == TxHandlingOptions.ManagedNonce;
             bool isPersistentBroadcast = (handlingOptions & TxHandlingOptions.PersistentBroadcast) == TxHandlingOptions.PersistentBroadcast;
             if (isPersistentBroadcast)

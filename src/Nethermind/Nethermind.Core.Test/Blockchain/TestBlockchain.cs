@@ -18,6 +18,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Receipts;
@@ -56,6 +57,7 @@ namespace Nethermind.Core.Test.Blockchain
         public ISnapshotableDb CodeDb => DbProvider.CodeDb;
         public IBlockProcessor BlockProcessor { get; set; }
         public IBlockTree BlockTree { get; set; }
+        public IBlockFinder BlockFinder { get; set; }
         public IJsonSerializer JsonSerializer { get; set; }
         public IStateProvider State { get; set; }
         public ISnapshotableDb StateDb => DbProvider.StateDb;

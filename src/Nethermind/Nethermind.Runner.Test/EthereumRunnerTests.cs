@@ -109,7 +109,7 @@ namespace Nethermind.Runner.Test
                 EthereumRunner runner = new EthereumRunner(
                     new RpcModuleProvider(new FileSystem(), new JsonRpcConfig(), LimboLogs.Instance),
                     configProvider,
-                    NUnitLogManager.Instance,
+                    TestLogManager.Instance,
                     Substitute.For<IGrpcServer>(),
                     Substitute.For<INdmConsumerChannelManager>(),
                     Substitute.For<INdmDataPublisher>(),
@@ -165,7 +165,7 @@ namespace Nethermind.Runner.Test
                 runner = new EthereumRunner(
                     new RpcModuleProvider(new FileSystem(), new JsonRpcConfig(), LimboLogs.Instance),
                     configProvider,
-                    NUnitLogManager.Instance,
+                    TestLogManager.Instance,
                     Substitute.For<IGrpcServer>(),
                     Substitute.For<INdmConsumerChannelManager>(),
                     Substitute.For<INdmDataPublisher>(),

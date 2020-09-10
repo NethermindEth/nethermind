@@ -57,6 +57,11 @@ namespace Nethermind.State
             _tree = stateTree ?? throw new ArgumentNullException(nameof(stateTree));
         }
 
+        public StateProvider(IDbProvider dbProvider, ILogManager logManager)
+            : this(new StateTree(dbProvider.StateDb), dbProvider.CodeDb, logManager)
+        {
+        }
+        
         public StateProvider(ISnapshotableDb stateDb, IDb codeDb, ILogManager logManager)
             : this(new StateTree(stateDb), codeDb, logManager)
         {

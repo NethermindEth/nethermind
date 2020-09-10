@@ -22,34 +22,34 @@ using Nethermind.Logging;
 using Nethermind.PubSub;
 using Nethermind.PubSub.Kafka;
 using Nethermind.PubSub.Kafka.Avro;
-using Nethermind.Runner.Ethereum.Context;
+using Nethermind.Runner.Ethereum.Api;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
     [RunnerStepDependencies(typeof(StartBlockProcessor))]
     public class StartKafkaProducer : IStep
     {
-        private readonly EthereumRunnerContext _context;
+        private readonly NethermindApi _api;
         private ILogger _logger;
 
-        public StartKafkaProducer(EthereumRunnerContext context)
+        public StartKafkaProducer(NethermindApi api)
         {
-            _context = context;
-            _logger = context.LogManager.GetClassLogger();
+            _api = api;
+            _logger = api.LogManager.GetClassLogger();
         }
 
         public async Task Execute(CancellationToken _)
         {
-            if (_context.BlockTree == null)
+            if (_api.BlockTree == null)
             {
                 throw new InvalidOperationException("Kafka producer initialization started before the block tree is ready.");
             }
             
-            IKafkaConfig kafkaConfig = _context.Config<IKafkaConfig>();
+            IKafkaConfig kafkaConfig = _api.Config<IKafkaConfig>();
             if (kafkaConfig.Enabled)
             {
-                IProducer kafkaProducer = await PrepareKafkaProducer(_context.BlockTree, kafkaConfig);
-                _context.Producers.Add(kafkaProducer);
+                IProducer kafkaProducer = await PrepareKafkaProducer(_api.BlockTree, kafkaConfig);
+                _api.Producers.Add(kafkaProducer);
             }
         }
 
@@ -57,7 +57,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         {
             PubSubModelMapper pubSubModelMapper = new PubSubModelMapper();
             AvroMapper avroMapper = new AvroMapper(blockTree);
-            KafkaProducer kafkaProducer = new KafkaProducer(kafkaConfig, pubSubModelMapper, avroMapper, _context.LogManager);
+            KafkaProducer kafkaProducer = new KafkaProducer(kafkaConfig, pubSubModelMapper, avroMapper, _api.LogManager);
             await kafkaProducer.InitAsync().ContinueWith(x =>
             {
                 if (x.IsFaulted && _logger.IsError) _logger.Error("Error during Kafka initialization", x.Exception);

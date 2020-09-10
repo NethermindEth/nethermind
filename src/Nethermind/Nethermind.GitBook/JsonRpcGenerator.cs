@@ -7,6 +7,8 @@ using Nethermind.JsonRpc.Modules;
 using System.Text;
 using System.Threading.Tasks;
 using Nethermind.GitBook.Extensions;
+using Nethermind.Blockchain.Find;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.GitBook
 {
@@ -99,6 +101,10 @@ namespace Nethermind.GitBook
                 _markdownGenerator.CreateTab(docBuilder, "Response");
 
                 docBuilder.AppendLine();
+                _markdownGenerator.CloseTab(docBuilder);
+                _markdownGenerator.CreateTab(docBuilder, "Response");
+
+                docBuilder.AppendLine();
                 docBuilder.AppendLine(@$"#### Return type");
 
                 Type returnType = GetTypeFromWrapper(method.ReturnType);
@@ -116,6 +122,7 @@ namespace Nethermind.GitBook
                     _markdownGenerator.CloseTab(docBuilder);
                 }
 
+                _markdownGenerator.CloseTabs(docBuilder);
             }
 
             string rpcModuleFile = Directory.GetFiles(docsDir, $"{moduleName}.md", SearchOption.AllDirectories).First();
@@ -148,6 +155,7 @@ namespace Nethermind.GitBook
             if (rpcType.Equals($"{type.Name} object") && rpcTypesToDescribe != null)
             {
                 rpcTypesToDescribe.Add(type);
+                AdditionalPropertiesToDescribe(type, rpcTypesToDescribe);
             }
 
             return rpcType;
@@ -161,6 +169,14 @@ namespace Nethermind.GitBook
             foreach (Type rpcType in rpcTypesToDescribe)
             {
                 rpcModuleBuilder.AppendLine(@$"`{rpcType.Name}`");
+
+                if(rpcType == typeof(BlockParameterType))
+                {
+                    rpcModuleBuilder.AppendLine("`Quantity` or `String` (latest, earliest, pending)");
+                    rpcModuleBuilder.AppendLine();
+                    continue;
+                }
+
                 PropertyInfo[] properties = rpcType.GetProperties();
 
                 rpcModuleBuilder.AppendLine("| Fields name | Type |");
@@ -200,6 +216,29 @@ namespace Nethermind.GitBook
             }
 
             return returnType.IsArray ? returnType.GetElementType() : returnType;
+        }
+
+        private void AdditionalPropertiesToDescribe(Type type, List<Type> rpcTypesToDescribe)
+        {
+            PropertyInfo[] properties = type.GetProperties()
+                                                        .Where(p => !p.PropertyType.IsPrimitive
+                                                         && p.PropertyType != typeof(string) 
+                                                         && p.PropertyType != typeof(long)
+                                                         && p.PropertyType != typeof(Keccak))
+                                                        .ToArray();
+
+            foreach (PropertyInfo property in properties)
+            {
+                if (property.PropertyType.IsNullable())
+                {
+                    Type underlyingType = Nullable.GetUnderlyingType(property.PropertyType);
+                    rpcTypesToDescribe.Add(underlyingType);
+                }
+                else
+                {
+                    rpcTypesToDescribe.Add(property.PropertyType);
+                }
+            }
         }
     }
 }

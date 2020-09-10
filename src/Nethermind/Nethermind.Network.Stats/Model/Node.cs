@@ -21,12 +21,14 @@ using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 
 namespace Nethermind.Stats.Model
-{   
+{
     /// <summary>
     /// Represents a physical network node address and attributes that we assign to it (static, bootnode, trusted, etc.)
     /// </summary>
     public class Node : IFormattable
     {
+        private string _clientId;
+
         /// <summary>
         /// Node public key - same as in enode. 
         /// </summary>
@@ -66,7 +68,22 @@ namespace Nethermind.Stats.Model
         /// We try to maintain connection with static nodes at all time.
         /// </summary>
         public bool IsStatic { get; set; }
-        public string ClientId { get; set; }
+
+        public string ClientId
+        {
+            get => _clientId;
+            set
+            {
+                if (_clientId == null)
+                {
+                    _clientId = value;
+                    RecognizeClientType();
+                }
+            }
+        }
+
+        public NodeClientType ClientType { get; private set; } = NodeClientType.Unknown;
+        
         public string EthDetails { get; set; }
 
         public Node(PublicKey id, IPEndPoint address)
@@ -169,6 +186,38 @@ namespace Nethermind.Stats.Model
         public static bool operator !=(Node a, Node b)
         {
             return !(a == b);
+        }
+        
+        private void RecognizeClientType()
+        {
+            if (_clientId == null)
+            {
+                ClientType = NodeClientType.Unknown;
+            }
+            else if (_clientId.Contains("BeSu", StringComparison.InvariantCultureIgnoreCase))
+            {
+                ClientType = NodeClientType.BeSu;
+            }
+            else if (_clientId.Contains("Geth", StringComparison.InvariantCultureIgnoreCase))
+            {
+                ClientType = NodeClientType.Geth;
+            }
+            else if (_clientId.Contains("Nethermind", StringComparison.InvariantCultureIgnoreCase))
+            {
+                ClientType = NodeClientType.Nethermind;
+            }
+            else if (_clientId.Contains("Parity", StringComparison.InvariantCultureIgnoreCase))
+            {
+                ClientType = NodeClientType.Parity;
+            }
+            else if (_clientId.Contains("OpenEthereum", StringComparison.InvariantCultureIgnoreCase))
+            {
+                ClientType = NodeClientType.OpenEthereum;
+            }
+            else
+            {
+                ClientType = NodeClientType.Unknown;
+            }
         }
     }
 }

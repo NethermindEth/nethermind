@@ -24,11 +24,11 @@ namespace Nethermind.JsonRpc
     {
         private int? _webSocketsPort;
         public bool Enabled { get; set; }
-        public string Host { get; set; }
+        public string Host { get; set; } = "127.0.0.1";
         public int TracerTimeout { get; set; } = 20000;
         public string RpcRecorderBaseFilePath { get; set; } = "logs/rpc.{counter}.txt"; 
         public bool RpcRecorderEnabled { get; set; }
-        public int Port { get; set; }
+        public int Port { get; set; } = 8545;
  
         public int WebSocketsPort
         {

@@ -28,5 +28,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         }
         
         public IList<Keccak> Hashes { get; }
+
+        public override string ToString()
+        {
+            return $"{GetType().Name}({Hashes.Count})";
+        }
     }
 }

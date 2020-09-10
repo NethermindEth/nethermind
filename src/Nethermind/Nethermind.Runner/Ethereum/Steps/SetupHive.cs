@@ -18,7 +18,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Runner.Ethereum.Context;
+using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Runner.Hive;
 
 namespace Nethermind.Runner.Ethereum.Steps
@@ -26,11 +26,11 @@ namespace Nethermind.Runner.Ethereum.Steps
     [RunnerStepDependencies(typeof(SetupKeyStore), typeof(LoadGenesisBlock))]
     public class SetupHive : IStep
     {
-        private readonly EthereumRunnerContext _context;
+        private readonly NethermindApi _api;
 
-        public SetupHive(EthereumRunnerContext context)
+        public SetupHive(NethermindApi api)
         {
-            _context = context;
+            _api = api;
         }
 
         public async Task Execute(CancellationToken cancellationToken)
@@ -38,9 +38,9 @@ namespace Nethermind.Runner.Ethereum.Steps
             bool hiveEnabled = Environment.GetEnvironmentVariable("NETHERMIND_HIVE_ENABLED")?.ToLowerInvariant() == "true";
             if (hiveEnabled)
             {
-                if (_context.BlockTree == null) throw new StepDependencyException(nameof(_context.BlockTree));
-                if (_context.EthereumJsonSerializer == null) throw new StepDependencyException(nameof(_context.EthereumJsonSerializer));
-                HiveRunner hiveRunner = new HiveRunner(_context.BlockTree, _context.EthereumJsonSerializer, _context.ConfigProvider, _context.LogManager.GetClassLogger());
+                if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
+                if (_api.EthereumJsonSerializer == null) throw new StepDependencyException(nameof(_api.EthereumJsonSerializer));
+                HiveRunner hiveRunner = new HiveRunner(_api.BlockTree, _api.EthereumJsonSerializer, _api.ConfigProvider, _api.LogManager.GetClassLogger());
                 await hiveRunner.Start(cancellationToken);
             }
         }

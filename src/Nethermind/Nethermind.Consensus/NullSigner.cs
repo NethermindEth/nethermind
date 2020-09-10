@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -25,8 +26,8 @@ namespace Nethermind.Consensus
         public static readonly NullSigner Instance = new NullSigner();
         
         public Address Address { get; } = Address.Zero;
-        
-        public void Sign(Transaction tx) { }
+
+        public ValueTask Sign(Transaction tx) => default;
 
         public Signature Sign(Keccak message) { return new Signature(new byte[65]); }
 

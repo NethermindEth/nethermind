@@ -24,30 +24,30 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Db;
 using Nethermind.Int256;
-using Nethermind.Runner.Ethereum.Context;
+using Nethermind.Runner.Ethereum.Api;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
     [RunnerStepDependencies(typeof(StartBlockProcessor), typeof(SetupKeyStore), typeof(ReviewBlockTree))]
     public abstract class StartBlockProducer : IStep
     {
-        private readonly EthereumRunnerContext _context;
+        private readonly NethermindApi _api;
         private BlockProducerContext? _blockProducerContext;
         
-        protected StartBlockProducer(EthereumRunnerContext context)
+        protected StartBlockProducer(NethermindApi api)
         {
-            _context = context;
+            _api = api;
         }
 
         public Task Execute(CancellationToken _)
         {
-            IInitConfig initConfig = _context.Config<IInitConfig>();
+            IInitConfig initConfig = _api.Config<IInitConfig>();
             if (initConfig.IsMining)
             {
                 BuildProducer();
-                if (_context.BlockProducer == null) throw new StepDependencyException(nameof(_context.BlockProducer));
+                if (_api.BlockProducer == null) throw new StepDependencyException(nameof(_api.BlockProducer));
 
-                _context.BlockProducer.Start();
+                _api.BlockProducer.Start();
             }
 
             return Task.CompletedTask;
@@ -55,18 +55,18 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         protected virtual void BuildProducer()
         {
-            if (_context.ChainSpec == null) throw new StepDependencyException(nameof(_context.ChainSpec));
-            throw new NotSupportedException($"Mining in {_context.ChainSpec.SealEngineType} mode is not supported");
+            if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
+            throw new NotSupportedException($"Mining in {_api.ChainSpec.SealEngineType} mode is not supported");
         }
 
         protected BlockProducerContext GetProducerChain()
         {
             BlockProducerContext Create()
             {
-                ReadOnlyDbProvider dbProvider = new ReadOnlyDbProvider(_context.DbProvider, false);
-                ReadOnlyBlockTree blockTree = new ReadOnlyBlockTree(_context.BlockTree);
+                ReadOnlyDbProvider dbProvider = new ReadOnlyDbProvider(_api.DbProvider, false);
+                ReadOnlyBlockTree blockTree = new ReadOnlyBlockTree(_api.BlockTree);
                 ReadOnlyTxProcessingEnv txProcessingEnv =
-                    new ReadOnlyTxProcessingEnv(dbProvider, blockTree, _context.SpecProvider, _context.LogManager);
+                    new ReadOnlyTxProcessingEnv(dbProvider, blockTree, _api.SpecProvider, _api.LogManager);
                 
                 ReadOnlyTxProcessorSource txProcessorSource =
                     new ReadOnlyTxProcessorSource(txProcessingEnv);
@@ -78,8 +78,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                     new BlockchainProcessor(
                         blockTree,
                         blockProcessor,
-                        _context.RecoveryStep,
-                        _context.LogManager,
+                        _api.RecoveryStep,
+                        _api.LogManager,
                         BlockchainProcessor.Options.NoReceipts);
                 
                 OneTimeChainProcessor chainProcessor = new OneTimeChainProcessor(
@@ -103,13 +103,13 @@ namespace Nethermind.Runner.Ethereum.Steps
             ReadOnlyTxProcessingEnv processingEnv,
             ReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
-            ITxSource innerSource = new TxPoolTxSource(_context.TxPool, processingEnv.StateReader, _context.LogManager);
+            ITxSource innerSource = new TxPoolTxSource(_api.TxPool, processingEnv.StateReader, _api.LogManager);
             return new FilteredTxSource(innerSource, CreateGasPriceTxFilter(readOnlyTxProcessorSource));
         }
 
         protected virtual ITxFilter CreateGasPriceTxFilter(ReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
-            UInt256 minGasPrice = _context.Config<IMiningConfig>().MinGasPrice;
+            UInt256 minGasPrice = _api.Config<IMiningConfig>().MinGasPrice;
             return new MinGasPriceTxFilter(minGasPrice);
         }
 
@@ -118,24 +118,24 @@ namespace Nethermind.Runner.Ethereum.Steps
             ReadOnlyTxProcessorSource readOnlyTxProcessorSource, 
             IReadOnlyDbProvider readOnlyDbProvider)
         {
-            if (_context.SpecProvider == null) throw new StepDependencyException(nameof(_context.SpecProvider));
-            if (_context.BlockValidator == null) throw new StepDependencyException(nameof(_context.BlockValidator));
-            if (_context.RewardCalculatorSource == null) throw new StepDependencyException(nameof(_context.RewardCalculatorSource));
-            if (_context.ReceiptStorage == null) throw new StepDependencyException(nameof(_context.ReceiptStorage));
-            if (_context.TxPool == null) throw new StepDependencyException(nameof(_context.TxPool));
+            if (_api.SpecProvider == null) throw new StepDependencyException(nameof(_api.SpecProvider));
+            if (_api.BlockValidator == null) throw new StepDependencyException(nameof(_api.BlockValidator));
+            if (_api.RewardCalculatorSource == null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
+            if (_api.ReceiptStorage == null) throw new StepDependencyException(nameof(_api.ReceiptStorage));
+            if (_api.TxPool == null) throw new StepDependencyException(nameof(_api.TxPool));
 
             return new BlockProcessor(
-                _context.SpecProvider,
-                _context.BlockValidator,
-                _context.RewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor),
+                _api.SpecProvider,
+                _api.BlockValidator,
+                _api.RewardCalculatorSource.Get(readOnlyTxProcessingEnv.TransactionProcessor),
                 readOnlyTxProcessingEnv.TransactionProcessor,
                 readOnlyDbProvider.StateDb,
                 readOnlyDbProvider.CodeDb,
                 readOnlyTxProcessingEnv.StateProvider,
                 readOnlyTxProcessingEnv.StorageProvider,
-                _context.TxPool,
-                _context.ReceiptStorage,
-                _context.LogManager);
+                _api.TxPool,
+                _api.ReceiptStorage,
+                _api.LogManager);
         }
     }
 }

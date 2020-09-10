@@ -21,7 +21,7 @@ using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Db.Rocks;
 using Nethermind.Logging;
-using Nethermind.Runner.Ethereum.Context;
+using Nethermind.Runner.Ethereum.Api;
 using Nethermind.State;
 
 namespace Nethermind.Runner.Ethereum.Steps
@@ -31,17 +31,17 @@ namespace Nethermind.Runner.Ethereum.Steps
     [RunnerStepDependencies(typeof(ReviewBlockTree))]
     public class RunCustomTools : IStep
     {
-        private readonly EthereumRunnerContext _context;
+        private readonly NethermindApi _api;
         
-        public RunCustomTools(EthereumRunnerContext context)
+        public RunCustomTools(NethermindApi api)
         {
-            _context = context;
+            _api = api;
         }
     
         public Task Execute(CancellationToken cancellationToken)
         {
-            ILogger logger = _context.LogManager.GetClassLogger();
-            IInitConfig initConfig = _context.Config<IInitConfig>();
+            ILogger logger = _api.LogManager.GetClassLogger();
+            IInitConfig initConfig = _api.Config<IInitConfig>();
             
             switch (initConfig.DiagnosticMode)
             {
@@ -49,19 +49,19 @@ namespace Nethermind.Runner.Ethereum.Steps
                 {
                     logger.Info("Genesis supply:");
                     SupplyVerifier supplyVerifier = new SupplyVerifier(logger);
-                    StateDb stateDb = new StateDb(_context.DbProvider!.StateDb.Innermost);
-                    StateDb codeDb = new StateDb(_context.DbProvider.StateDb.Innermost);
-                    StateReader stateReader = new StateReader(stateDb, codeDb, _context.LogManager);
-                    stateReader.RunTreeVisitor(supplyVerifier, _context.BlockTree!.Genesis.StateRoot);
+                    StateDb stateDb = new StateDb(_api.DbProvider!.StateDb.Innermost);
+                    StateDb codeDb = new StateDb(_api.DbProvider.StateDb.Innermost);
+                    StateReader stateReader = new StateReader(stateDb, codeDb, _api.LogManager);
+                    stateReader.RunTreeVisitor(supplyVerifier, _api.BlockTree!.Genesis.StateRoot);
 
-                    Block head = _context.BlockTree!.Head;
+                    Block head = _api.BlockTree!.Head;
                     logger.Info($"Head ({head.Number}) block supply:");
                     supplyVerifier = new SupplyVerifier(logger);
                     stateReader.RunTreeVisitor(supplyVerifier, head.StateRoot);
                     break;
                 }
                 case DiagnosticMode.VerifyRewards:
-                    _context.BlockTree!.Accept(new RewardsVerifier(_context.LogManager), cancellationToken);
+                    _api.BlockTree!.Accept(new RewardsVerifier(_api.LogManager), cancellationToken);
                     break;
             }
     

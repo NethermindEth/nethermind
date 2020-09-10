@@ -208,7 +208,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
             ReceiptService receiptService = new ReceiptService(depositProvider, providerService, receiptRequestValidator,
                 sessionService, timestamper, receiptRepository, sessionRepository, abiEncoder, wallet, ecdsa,
                 nodePublicKey, logManager);
-            RefundService refundService = new RefundService(blockchainBridge, abiEncoder, wallet, depositRepository,
+            RefundService refundService = new RefundService(blockchainBridge, abiEncoder, depositRepository,
                 contractAddress, logManager);
             RefundClaimant refundClaimant = new RefundClaimant(refundService, blockchainBridge, depositRepository,
                 transactionVerifier, gasPriceService, timestamper, logManager);
@@ -223,13 +223,11 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
                 timestamper, logManager);
             ConsumerGasLimitsService gasLimitService = new ConsumerGasLimitsService(depositService, refundService);
             
-            IPersonalBridge personalBridge = services.RequiredServices.EnableUnsecuredDevWallet
-                ? new PersonalBridge(ecdsa, wallet)
-                : NullPersonalBridge.Instance;
+
             services.RequiredServices.RpcModuleProvider.Register(
                 new SingletonModulePool<INdmRpcConsumerModule>(new NdmRpcConsumerModule(consumerService,
                     depositReportService, jsonRpcNdmConsumerChannel, ethRequestService, ethPriceService,
-                    gasPriceService, consumerTransactionsService, gasLimitService, personalBridge, timestamper), true));
+                    gasPriceService, consumerTransactionsService, gasLimitService, wallet, timestamper), true));
 
             if (!backgroundServicesDisabled)
             {

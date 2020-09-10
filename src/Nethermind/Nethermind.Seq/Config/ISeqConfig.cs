@@ -24,7 +24,7 @@ namespace Nethermind.Seq.Config
         [ConfigItem(Description = "Minimal level of log events which will be sent to Seq instance.", DefaultValue = "Off")]
         string MinLevel { get; }
         
-        [ConfigItem(Description = "Seq instance URL.", DefaultValue = "\"http://localhost:5341/\"")]
+        [ConfigItem(Description = "Seq instance URL.", DefaultValue = "\"http://localhost:5341")]
         string ServerUrl {get; }
         
         [ConfigItem(Description = "Api Key used for log events ingestion to Seq instance", DefaultValue = "")]
