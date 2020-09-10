@@ -29,7 +29,6 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Specs;
 using NUnit.Framework;
 
 namespace Ethereum.Basic.Test
