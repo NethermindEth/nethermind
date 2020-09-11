@@ -7,22 +7,25 @@ jobs:
     name: Nethermind POSDAO Tests
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
-    - name: Updating submodules
-      run: git submodule update --init src/rocksdb-sharp src/int256 src/Dirichlet
     - name: Installing Linux packages
       run: |
         sudo apt-get update
         sudo apt-get install libsnappy-dev libc6-dev libc6
+    - name: Cloning Nethermind
+      run: |
+        git clone https://github.com/NethermindEth/nethermind.git --recursive
+        git submodule update --init src/rocksdb-sharp src/int256 src/Dirichlet
     - name: Cloning posdao-test repo from POA
       run: |
         git clone https://github.com/poanetwork/posdao-test-setup.git
     - name: Building Nethermind binary
       run: |
+        cd nethermind
         mkdir bin
         cd src/Nethermind/Nethermind.Runner
         dotnet publish -c release -r linux-x64 /p:PublishSingleFile=true
-        cp /src/Nethermind/Nethermind.Runner/bin/release/netcoreapp3.1/linux-x64/publish/Nethermind.Runner /home/runner/nethermind/nethermind/bin/
+        pwd
+        cp bin/release/netcoreapp3.1/linux-x64/publish/Nethermind.Runner ~/nethermind/bin/
     - name: Running POSDAO tests
       run: |
         cd ~/posdao-test-setup
