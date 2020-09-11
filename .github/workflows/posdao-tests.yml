@@ -25,9 +25,8 @@ jobs:
         mkdir bin
         cd src/Nethermind/Nethermind.Runner
         dotnet publish -c release -r linux-x64 /p:PublishSingleFile=true
-        pwd
-        cp bin/release/netcoreapp3.1/linux-x64/publish/Nethermind.Runner ~/nethermind/bin/
+        cp bin/release/netcoreapp3.1/linux-x64/publish/Nethermind.Runner /home/runner/nethermind/nethermind/nethermind/bin/
     - name: Running POSDAO tests
       run: |
-        cd ~/posdao-test-setup
+        cd posdao-test-setup
         npm run all-nethermind
