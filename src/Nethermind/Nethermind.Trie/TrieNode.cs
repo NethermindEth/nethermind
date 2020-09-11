@@ -577,6 +577,11 @@ namespace Nethermind.Trie
         // TODO: can do it as visitors but seems an overkill
         public void DecrementRefsRecursively(ILogger logger, bool isParentPersisted = false)
         {
+            if (IsPersisted)
+            {
+                return;
+            }
+            
             if (!IsPersisted && isParentPersisted)
             {
                 IsPersisted = true;
@@ -622,6 +627,11 @@ namespace Nethermind.Trie
         // TODO: can do it as visitors but seems an overkill
         public void IncrementRefsRecursively(ILogger logger, long block, List<Keccak> storageRoots, bool isParentPersisted = false)
         {
+            if (IsPersisted)
+            {
+                return;
+            }
+            
             if (!IsPersisted && isParentPersisted)
             {
                 IsPersisted = true;
