@@ -594,11 +594,11 @@ namespace Nethermind.Trie
                         TrieNode child = _data[i] as TrieNode;
                         if (child != null) // both unresolved and NULL are handled here
                         {
-                            if (child.Refs < Refs)
-                            {
-                                throw new InvalidDataException(
-                                    $"Child {child} should always have greater or equal number of refs than {this}.");
-                            }
+                            // if (child.Refs < Refs)
+                            // {
+                            //     throw new InvalidDataException(
+                            //         $"Child {child} should always have greater or equal number of refs than {this}.");
+                            // }
                             
                             if(logger.IsTrace) logger.Trace($"Decrementing refs recursively on child {i} {child}");
                             child.DecrementRefsRecursively(logger, IsPersisted);
@@ -641,11 +641,11 @@ namespace Nethermind.Trie
                         object o = _data[i];
                         if (o is TrieNode child)
                         {
-                            if (child.Refs < Refs)
-                            {
-                                throw new InvalidDataException(
-                                    $"Child {child} should always have greater or equal number of refs than {this}.");
-                            }
+                            // if (child.Refs < Refs)
+                            // {
+                            //     throw new InvalidDataException(
+                            //         $"Child {child} should always have greater or equal number of refs than {this}.");
+                            // }
                             
                             if(logger.IsTrace) logger.Trace($"Incrementing refs recursively on child {i} {child} of {this}");
                             child.IncrementRefsRecursively(logger, block, storageRoots, IsPersisted);
@@ -800,11 +800,11 @@ namespace Nethermind.Trie
                             // Refs += cachedOrUnknown.Refs;
                         }
                         
-                        if (cachedOrUnknown.Refs < Refs)
-                        {
-                            throw new InvalidDataException(
-                                $"Child {cachedOrUnknown} should always have greater or equal number of refs than {this}.");
-                        }
+                        // if (cachedOrUnknown.Refs < Refs)
+                        // {
+                        //     throw new InvalidDataException(
+                        //         $"Child {cachedOrUnknown} should always have greater or equal number of refs than {this}.");
+                        // }
                         
                         break;
                     default:
