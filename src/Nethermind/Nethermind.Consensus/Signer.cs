@@ -59,12 +59,11 @@ namespace Nethermind.Consensus
             return new Signature(rs, v);
         }
 
-        public ValueTask Sign(Transaction tx)
+        public void Sign(Transaction tx)
         {
             Keccak hash = Keccak.Compute(Rlp.Encode(tx, true, true, _chainId).Bytes);
             tx.Signature = Sign(hash);
             tx.Signature.V = tx.Signature.V + 8 + 2 * _chainId;
-            return default;
         }
 
         public void SetSigner(PrivateKey key)

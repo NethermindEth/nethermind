@@ -22,7 +22,7 @@ namespace Nethermind.TxPool
 {
     public interface ITxSigner : ITxSealer
     {
-        ValueTask Sign(Transaction tx);
+        void Sign(Transaction tx);
 
         void ITxSealer.Seal(Transaction tx)
         {

@@ -35,7 +35,7 @@ namespace Nethermind.Vault
             _chainId = chainId;
         }
         
-        public async ValueTask Sign(Transaction tx)
+        public async void Sign(Transaction tx)
         {
             Keccak hash = Keccak.Compute(Rlp.Encode(tx, true, true, _chainId).Bytes);
             tx.Signature = await _vaultWallet.Sign(tx.SenderAddress, hash);
