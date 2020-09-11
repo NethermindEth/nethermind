@@ -19,12 +19,6 @@ jobs:
         git clone https://github.com/poanetwork/posdao-test-setup.git
     - name: Building Nethermind binary
       run: |
-        dotnet test -c Release src/Nethermind/Nethermind.AuRa.Test
-    - name: Nethermind.Baseline.Test
-      run: |
-        dotnet test -c Release src/Nethermind/Nethermind.Baseline.Test
-    - name: Nethermind.BeaconNode.Eth1Bridge.Test
-      run: |
         cd nethermind
         mkdir bin
         git checkout 1.8.98
