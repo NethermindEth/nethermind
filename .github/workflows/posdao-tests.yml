@@ -14,6 +14,7 @@ jobs:
     - name: Cloning Nethermind
       run: |
         git clone https://github.com/NethermindEth/nethermind.git --recursive
+        cd nethermind
         git submodule update --init src/rocksdb-sharp src/int256 src/Dirichlet
     - name: Cloning posdao-test repo from POA
       run: |
