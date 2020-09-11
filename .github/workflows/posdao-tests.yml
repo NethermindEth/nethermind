@@ -20,7 +20,6 @@ jobs:
     - name: Building Nethermind binary
       run: |
         mkdir bin
-        git checkout 1.8.98
         cd ~/src/Nethermind/Nethermind.Runner
         dotnet publish -c release -r linux-x64 /p:PublishSingleFile=true
         cp ~/src/Nethermind/Nethermind.Runner/bin/release/netcoreapp3.1/linux-x64/publish/Nethermind.Runner ~/bin/
