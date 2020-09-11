@@ -19,12 +19,11 @@ jobs:
         git clone https://github.com/poanetwork/posdao-test-setup.git
     - name: Building Nethermind binary
       run: |
-        cd nethermind
         mkdir bin
         git checkout 1.8.98
-        cd src/Nethermind/Nethermind.Runner
+        cd ~/src/Nethermind/Nethermind.Runner
         dotnet publish -c release -r linux-x64 /p:PublishSingleFile=true
-        cp ~/nethermind/src/Nethermind/Nethermind.Runner/bin/release/netcoreapp3.1/linux-x64/publish/Nethermind.Runner ~/nethermind/bin/
+        cp ~/src/Nethermind/Nethermind.Runner/bin/release/netcoreapp3.1/linux-x64/publish/Nethermind.Runner ~/bin/
     - name: Running POSDAO tests
       run: |
         cd ~/posdao-test-setup
