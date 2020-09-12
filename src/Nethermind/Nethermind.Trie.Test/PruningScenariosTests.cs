@@ -139,6 +139,12 @@ namespace Nethermind.Trie.Test
                 _trieStore.DroppedNodesCount.Should().Be(i);
                 return this;
             }
+
+            public PruningContext DumpCache()
+            {
+                _trieNodeCache.Dump();
+                return this;
+            }
         }
 
         [Test]
@@ -163,13 +169,16 @@ namespace Nethermind.Trie.Test
                 .CommitEmptyBlock()
                 .PruneOldBlock()
                 .PruneOldBlock()
+                .VerifyPersisted(4)
                 .CreateAccount(2)
                 .Commit()
                 .CommitEmptyBlock()
                 .PruneOldBlock()
                 .PruneOldBlock()
-                .VerifyPersisted(7)
+                .VerifyPersisted(7) // not the length of the leaf path has changed
+                .DumpCache()
                 .AddStorage(2, 1)
+                .AddStorage(2, 2)
                 .Commit()
                 .ReadStorage(1, 1)
                 .Commit()

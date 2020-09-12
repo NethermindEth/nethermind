@@ -79,7 +79,7 @@ namespace Nethermind.Trie.Pruning
             if (_logger.IsTrace)
             {
                 _logger.Trace($"Trie node cache ({_actualCache.Count})");
-                return;
+                // return;
                 foreach (KeyValuePair<Keccak, TrieNode> keyValuePair in _actualCache)
                 {
                     _logger.Trace($"  {keyValuePair.Value}");

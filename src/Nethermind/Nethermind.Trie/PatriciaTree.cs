@@ -111,6 +111,7 @@ namespace Nethermind.Trie
             _parallelBranches = parallelBranches;
             _allowCommits = allowCommits;
             RootHash = rootHash;
+            RootRef?.MarkPersistedRecursively(_logger);
 
             if (_allowCommits)
             {
