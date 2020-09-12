@@ -33,7 +33,7 @@ namespace Nethermind.Trie.Test
         /* When analyzing the tests below please remember that the way we store accounts is by calculating a hash
            of Address bytes. Address bytes here are created from an UInt256 of the account index.
            Analysis of branch / extension might be more difficult because of the hashing of addresses.*/
-        
+
         /* TODO: fuzz here with a single seed number */
 
         public class PruningContext
@@ -63,48 +63,52 @@ namespace Nethermind.Trie.Test
                 _storageProvider = new StorageProvider(_trieStore, _stateProvider, _logManager);
             }
 
-            
+
             public static PruningContext ArchiveWithManualPruning
             {
-                [DebuggerStepThrough]
-                get => new PruningContext(No.Pruning, Full.Archive);
+                [DebuggerStepThrough] get => new PruningContext(No.Pruning, Full.Archive);
             }
             
+            public static PruningContext SnapshotEveryOtherBlockWithManualPruning
+            {
+                [DebuggerStepThrough] get => new PruningContext(No.Pruning, new ConstantInterval(2));
+            }
+
             public static PruningContext InMemory
             {
-                [DebuggerStepThrough]
-                get => new PruningContext(No.Pruning, No.Persistence);
+                [DebuggerStepThrough] get => new PruningContext(No.Pruning, No.Persistence);
             }
-            
+
             public static PruningContext SetupWithPersistenceEveryEightBlocks
             {
-                [DebuggerStepThrough]
-                get => new PruningContext(No.Pruning, new ConstantInterval(8));
-            }
-            
-            public static PruningContext SetupWithoutPersisting
-            {
-                [DebuggerStepThrough]
-                get => new PruningContext(No.Pruning, new ConstantInterval(8)); // some big number here that we never plan to reach in test
+                [DebuggerStepThrough] get => new PruningContext(No.Pruning, new ConstantInterval(8));
             }
 
             public PruningContext CreateAccount(int accountIndex)
             {
-                _stateProvider.CreateAccount(Address.FromNumber((UInt256)accountIndex), 1);
+                _stateProvider.CreateAccount(Address.FromNumber((UInt256) accountIndex), 1);
                 return this;
             }
 
-            public PruningContext Prune()
+            public PruningContext PruneOldBlock()
             {
                 _trieStore.TryPruningOldBlock();
                 return this;
             }
 
-            public PruningContext AddStorage(int i, int i1, int i2 = 1)
+            public PruningContext AddStorage(int accountIndex, int storageKey, int storageValue = 1)
             {
                 _storageProvider.Set(
-                    new StorageCell(Address.FromNumber((UInt256)i), (UInt256)i1),
-                    ((UInt256)i2).ToBigEndian());
+                    new StorageCell(Address.FromNumber((UInt256) accountIndex), (UInt256) storageKey),
+                    ((UInt256) storageValue).ToBigEndian());
+                return this;
+            }
+
+            public PruningContext ReadStorage(int accountIndex, int storageKey)
+            {
+                StorageCell storageCell =
+                    new StorageCell(Address.FromNumber((UInt256) accountIndex), (UInt256) storageKey);
+                _storageProvider.Get(storageCell);
                 return this;
             }
 
@@ -117,13 +121,19 @@ namespace Nethermind.Trie.Test
                 _blockNumber++;
                 return this;
             }
+            
+            public PruningContext CommitEmptyBlock()
+            {
+                Commit(); // same, just for better test redability
+                return this;
+            }
 
             public PruningContext VerifyPersisted(int i)
             {
                 _trieStore.PersistedNodesCount.Should().Be(i);
                 return this;
             }
-            
+
             public PruningContext VerifyDropped(int i)
             {
                 _trieStore.DroppedNodesCount.Should().Be(i);
@@ -145,16 +155,31 @@ namespace Nethermind.Trie.Test
             // Then we read L2 from account 1 so that B is resolved from persistent storage and L2 is read from cache.
             // When persisting the root everything should be fine.
 
-            PruningContext.ArchiveWithManualPruning
+            PruningContext.SnapshotEveryOtherBlockWithManualPruning
                 .CreateAccount(1)
                 .AddStorage(1, 1)
                 .AddStorage(1, 2)
                 .Commit()
-                .Prune()
-                .VerifyPersisted(4)
+                .CommitEmptyBlock()
+                .PruneOldBlock()
+                .PruneOldBlock()
+                .CreateAccount(2)
+                .Commit()
+                .CommitEmptyBlock()
+                .PruneOldBlock()
+                .PruneOldBlock()
+                .VerifyPersisted(7)
+                .AddStorage(2, 1)
+                .Commit()
+                .ReadStorage(1, 1)
+                .Commit()
+                .CommitEmptyBlock()
+                .PruneOldBlock()
+                .PruneOldBlock()
+                .VerifyPersisted(9)
                 .VerifyDropped(0);
         }
-        
+
         [Test]
         public void Simple_in_memory_scenario()
         {
@@ -163,11 +188,11 @@ namespace Nethermind.Trie.Test
                 .AddStorage(1, 1)
                 .AddStorage(1, 2)
                 .Commit()
-                .Prune()
+                .PruneOldBlock()
                 .VerifyPersisted(0)
                 .VerifyDropped(0);
         }
-        
+
         [Test]
         public void Single_storage_trie_persistence()
         {
@@ -177,7 +202,7 @@ namespace Nethermind.Trie.Test
                 .AddStorage(1, 1)
                 .AddStorage(1, 2)
                 .Commit()
-                .Prune()
+                .PruneOldBlock()
                 .VerifyPersisted(4) // account leaf, storage branch, 2x storage leaf
                 .VerifyDropped(0);
         }
@@ -189,7 +214,7 @@ namespace Nethermind.Trie.Test
                 .CreateAccount(1)
                 .CreateAccount(2)
                 .Commit()
-                .Prune()
+                .PruneOldBlock()
                 .VerifyPersisted(3) // branch and two leaves 
                 .VerifyDropped(0);
         }
