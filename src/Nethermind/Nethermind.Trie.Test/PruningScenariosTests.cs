@@ -43,6 +43,7 @@ namespace Nethermind.Trie.Test
             private IStateProvider _stateProvider;
             private IStorageProvider _storageProvider;
             private ILogManager _logManager;
+            private ILogger _logger;
             private TrieStore _trieStore;
             private TrieNodeCache _trieNodeCache;
             private IPersistenceStrategy _persistenceStrategy;
@@ -52,6 +53,7 @@ namespace Nethermind.Trie.Test
             private PruningContext(IPruningStrategy pruningStrategy, IPersistenceStrategy persistenceStrategy)
             {
                 _logManager = new TestLogManager(LogLevel.Trace);
+                _logger = _logManager.GetClassLogger();
                 _dbProvider = new MemDbProvider();
                 _trieNodeCache = new TrieNodeCache(_logManager);
                 _persistenceStrategy = persistenceStrategy;
@@ -68,7 +70,7 @@ namespace Nethermind.Trie.Test
             {
                 [DebuggerStepThrough] get => new PruningContext(No.Pruning, Full.Archive);
             }
-            
+
             public static PruningContext SnapshotEveryOtherBlockWithManualPruning
             {
                 [DebuggerStepThrough] get => new PruningContext(No.Pruning, new ConstantInterval(2));
@@ -96,7 +98,7 @@ namespace Nethermind.Trie.Test
                 return this;
             }
 
-            public PruningContext AddStorage(int accountIndex, int storageKey, int storageValue = 1)
+            public PruningContext SetStorage(int accountIndex, int storageKey, int storageValue = 1)
             {
                 _storageProvider.Set(
                     new StorageCell(Address.FromNumber((UInt256) accountIndex), (UInt256) storageKey),
@@ -104,8 +106,16 @@ namespace Nethermind.Trie.Test
                 return this;
             }
 
+            public PruningContext DeleteStorage(int accountIndex, int storageKey)
+            {
+                _logger.Info($"DELETE STORAGE {accountIndex}.{storageKey}");
+                SetStorage(accountIndex, storageKey, 0);
+                return this;
+            }
+
             public PruningContext ReadStorage(int accountIndex, int storageKey)
             {
+                _logger.Info($"READ   STORAGE {accountIndex}.{storageKey}");
                 StorageCell storageCell =
                     new StorageCell(Address.FromNumber((UInt256) accountIndex), (UInt256) storageKey);
                 _storageProvider.Get(storageCell);
@@ -121,7 +131,7 @@ namespace Nethermind.Trie.Test
                 _blockNumber++;
                 return this;
             }
-            
+
             public PruningContext CommitEmptyBlock()
             {
                 Commit(); // same, just for better test redability
@@ -155,16 +165,17 @@ namespace Nethermind.Trie.Test
             //     B
             //  L1     L2
             // and we persist such trie
-            // Then we create an account 2 with a storage trie that is a subtrie of account 1 storage
+            // Then we create an account 2 with a same storage trie
             //     2
-            //     L2  
-            // Then we read L2 from account 1 so that B is resolved from persistent storage and L2 is read from cache.
-            // When persisting the root everything should be fine.
+            //     B
+            //  L1     L2  
+            // Then we read L2 from account 1 so that B is resolved from cache.
+            // When persisting account 2, storage should not get persisted again.
 
             PruningContext.SnapshotEveryOtherBlockWithManualPruning
                 .CreateAccount(1)
-                .AddStorage(1, 1)
-                .AddStorage(1, 2)
+                .SetStorage(1, 1)
+                .SetStorage(1, 2)
                 .Commit()
                 .CommitEmptyBlock()
                 .PruneOldBlock()
@@ -177,8 +188,8 @@ namespace Nethermind.Trie.Test
                 .PruneOldBlock()
                 .VerifyPersisted(7) // not the length of the leaf path has changed
                 .DumpCache()
-                .AddStorage(2, 1)
-                .AddStorage(2, 2)
+                .SetStorage(2, 1)
+                .SetStorage(2, 2)
                 .Commit()
                 .ReadStorage(1, 1)
                 .Commit()
@@ -190,12 +201,76 @@ namespace Nethermind.Trie.Test
         }
 
         [Test]
+        public void Delete_storage()
+        {
+            PruningContext.SnapshotEveryOtherBlockWithManualPruning
+                .CreateAccount(1)
+                .SetStorage(1, 1)
+                .SetStorage(1, 2)
+                .Commit()
+                .CommitEmptyBlock()
+                .PruneOldBlock()
+                .PruneOldBlock()
+                .VerifyPersisted(4)
+                .DeleteStorage(1, 1)
+                .DeleteStorage(1, 2)
+                .Commit()
+                .CommitEmptyBlock()
+                .PruneOldBlock()
+                .PruneOldBlock()
+                .VerifyPersisted(5);
+        }
+        
+        [Test]
+        public void Delete_and_revive()
+        {
+            PruningContext.SnapshotEveryOtherBlockWithManualPruning
+                .CreateAccount(1)
+                .SetStorage(1, 1)
+                .SetStorage(1, 2)
+                .Commit()
+                .CommitEmptyBlock()
+                .PruneOldBlock()
+                .PruneOldBlock()
+                .VerifyPersisted(4)
+                .DeleteStorage(1, 1)
+                .DeleteStorage(1, 2)
+                .SetStorage(1, 1)
+                .SetStorage(1, 2)
+                .Commit()
+                .CommitEmptyBlock()
+                .PruneOldBlock()
+                .PruneOldBlock()
+                .VerifyPersisted(4);
+        }
+        
+        [Test]
+        public void Update_storage()
+        {
+            PruningContext.SnapshotEveryOtherBlockWithManualPruning
+                .CreateAccount(1)
+                .SetStorage(1, 1)
+                .SetStorage(1, 2)
+                .Commit()
+                .CommitEmptyBlock()
+                .PruneOldBlock()
+                .PruneOldBlock()
+                .VerifyPersisted(4)
+                .SetStorage(1, 1, 1000)
+                .Commit()
+                .CommitEmptyBlock()
+                .PruneOldBlock()
+                .PruneOldBlock()
+                .VerifyPersisted(7);
+        }
+
+        [Test]
         public void Simple_in_memory_scenario()
         {
             PruningContext.InMemory
                 .CreateAccount(1)
-                .AddStorage(1, 1)
-                .AddStorage(1, 2)
+                .SetStorage(1, 1)
+                .SetStorage(1, 2)
                 .Commit()
                 .PruneOldBlock()
                 .VerifyPersisted(0)
@@ -208,8 +283,8 @@ namespace Nethermind.Trie.Test
             // here we expect that the account and the storage will be saved into the database
             PruningContext.ArchiveWithManualPruning
                 .CreateAccount(1)
-                .AddStorage(1, 1)
-                .AddStorage(1, 2)
+                .SetStorage(1, 1)
+                .SetStorage(1, 2)
                 .Commit()
                 .PruneOldBlock()
                 .VerifyPersisted(4) // account leaf, storage branch, 2x storage leaf

@@ -41,6 +41,7 @@ namespace Nethermind.State
 
         private readonly ITrieStore _trieStore;
         private readonly IStateProvider _stateProvider;
+        private readonly ILogManager _logManager;
 
         private ResettableDictionary<Address, StorageTree> _storages = new ResettableDictionary<Address, StorageTree>();
 
@@ -61,7 +62,8 @@ namespace Nethermind.State
 
         public StorageProvider(ITrieStore trieStore, IStateProvider stateProvider, ILogManager logManager)
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
         }
@@ -336,7 +338,7 @@ namespace Nethermind.State
         {
             if (!_storages.ContainsKey(address))
             {
-                StorageTree storageTree = new StorageTree(_trieStore, _stateProvider.GetStorageRoot(address));
+                StorageTree storageTree = new StorageTree(_trieStore, _stateProvider.GetStorageRoot(address), _logManager);
                 return _storages[address] = storageTree;
             }
 
@@ -424,7 +426,7 @@ namespace Nethermind.State
                by means of CREATE 2 - notice that the cached trie may carry information about items that were not
                touched in this block, hence were not zeroed above */
             // TODO: how does it work with pruning?
-            _storages[address] = new StorageTree(_trieStore, Keccak.EmptyTreeHash);
+            _storages[address] = new StorageTree(_trieStore, Keccak.EmptyTreeHash, _logManager);
         }
 
         private enum ChangeType
