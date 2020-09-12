@@ -210,6 +210,9 @@ jobs:
       run: git fetch --unshallow
     - name: Updating submodules
       run: git -c submodule."src/eth2.0-spec-tests".update=none submodule update --init
+    - name: Ethereum.Abi.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Ethereum.Abi.Test
     - name: Ethereum.Basic.Test
       run: |
         dotnet test -c Release src/Nethermind/Ethereum.Basic.Test
