@@ -143,6 +143,12 @@ namespace Nethermind.Trie.Test
                 _trieStore.PersistedNodesCount.Should().Be(i);
                 return this;
             }
+            
+            public PruningContext VerifyCached(int i)
+            {
+                _trieNodeCache.Count.Should().Be(i);
+                return this;
+            }
 
             public PruningContext VerifyDropped(int i)
             {
@@ -196,7 +202,8 @@ namespace Nethermind.Trie.Test
                 .CommitEmptyBlock()
                 .PruneOldBlock()
                 .PruneOldBlock()
-                .VerifyPersisted(9)
+                // .VerifyPersisted(9) // this can be 9 if we merge the storage and state tries
+                .VerifyPersisted(12) 
                 .VerifyDropped(0);
         }
 
@@ -219,6 +226,61 @@ namespace Nethermind.Trie.Test
                 .PruneOldBlock()
                 .PruneOldBlock()
                 .VerifyPersisted(5);
+        }
+        
+        [Test]
+        public void Delete_storage_before_persisting()
+        {
+            PruningContext.SnapshotEveryOtherBlockWithManualPruning
+                .CreateAccount(1)
+                .SetStorage(1, 1)
+                .SetStorage(1, 2)
+                .Commit()
+                .DeleteStorage(1, 1)
+                .DeleteStorage(1, 2)
+                .CommitEmptyBlock()
+                .PruneOldBlock()
+                .PruneOldBlock()
+                .VerifyPersisted(1)
+                .VerifyCached(0);
+        }
+        
+        [Test]
+        public void Two_accounts_adding_shared_storage_in_same_block()
+        {
+            PruningContext.SnapshotEveryOtherBlockWithManualPruning
+                .CreateAccount(1)
+                .SetStorage(1, 1)
+                .SetStorage(1, 2)
+                .CreateAccount(2)
+                .SetStorage(2, 1)
+                .SetStorage(2, 2)
+                .Commit()
+                .CommitEmptyBlock()
+                .PruneOldBlock()
+                .PruneOldBlock()
+                .VerifyPersisted(6)
+                .VerifyCached(0);
+        }
+        
+        [Test]
+        public void Two_accounts_adding_shared_storage_in_same_block_then_one_account_storage_is_cleared()
+        {
+            PruningContext.SnapshotEveryOtherBlockWithManualPruning
+                .CreateAccount(1)
+                .SetStorage(1, 1)
+                .SetStorage(1, 2)
+                .CreateAccount(2)
+                .SetStorage(2, 1)
+                .SetStorage(2, 2)
+                .Commit()
+                .DeleteStorage(2, 1)
+                .DeleteStorage(2, 2)
+                .CommitEmptyBlock()
+                .PruneOldBlock()
+                .PruneOldBlock()
+                .VerifyPersisted(6)
+                .VerifyCached(0);
         }
         
         [Test]

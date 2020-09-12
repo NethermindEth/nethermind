@@ -81,7 +81,13 @@ namespace Nethermind.Runner.Ethereum.Steps
             
 
             TrieNodeCache trieNodeCache = new TrieNodeCache(_api.LogManager);
-            TrieStore trieStore = new TrieStore(trieNodeCache, _api.DbProvider.StateDb, _api.LogManager, 256.MB(), 1024);
+            TrieStore trieStore = new TrieStore(
+                trieNodeCache,
+                _api.DbProvider.StateDb,
+                new DepthAndMemoryBased(1024, 256.MB()),
+                new ConstantInterval(1024),
+                _api.LogManager);
+            
             trieStore.Stored += TreeStoreOnStored; 
             
             _api.StateProvider = new StateProvider(

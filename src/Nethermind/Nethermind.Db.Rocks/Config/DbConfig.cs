@@ -29,12 +29,12 @@ namespace Nethermind.Db.Rocks.Config
 
         public ulong ReceiptsDbWriteBufferSize { get; set; } = (ulong) 8.MiB();
         public uint ReceiptsDbWriteBufferNumber { get; set; } = 4;
-        public ulong ReceiptsDbBlockCacheSize { get; set; } = 32.MiB();
+        public ulong ReceiptsDbBlockCacheSize { get; set; } = (ulong)32.MiB();
         public bool ReceiptsDbCacheIndexAndFilterBlocks { get; set; } = false;
 
         public ulong BlocksDbWriteBufferSize { get; set; } = (ulong) 8.MiB();
         public uint BlocksDbWriteBufferNumber { get; set; } = 4;
-        public ulong BlocksDbBlockCacheSize { get; set; } = 32.MiB();
+        public ulong BlocksDbBlockCacheSize { get; set; } = (ulong)32.MiB();
         public bool BlocksDbCacheIndexAndFilterBlocks { get; set; } = false;
 
         public ulong HeadersDbWriteBufferSize { get; set; } = (ulong) 8.MiB();

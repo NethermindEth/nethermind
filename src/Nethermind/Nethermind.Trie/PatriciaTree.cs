@@ -111,7 +111,9 @@ namespace Nethermind.Trie
             _parallelBranches = parallelBranches;
             _allowCommits = allowCommits;
             RootHash = rootHash;
-            RootRef?.MarkPersistedRecursively(_logger);
+            
+            // TODO: cannot do that without knowing whether the owning account is persisted or not
+            // RootRef?.MarkPersistedRecursively(_logger);
 
             if (_allowCommits)
             {
