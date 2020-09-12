@@ -19,6 +19,7 @@ using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Blockchain.Processing
 {
@@ -32,9 +33,10 @@ namespace Nethermind.Blockchain.Processing
         
         private IBlockhashProvider BlockhashProvider;
         private IVirtualMachine VirtualMachine;
-
+        
         public ReadOnlyTxProcessingEnv(
             IReadOnlyDbProvider readOnlyDbProvider,
+            ITrieStore trieStore,
             ReadOnlyBlockTree readOnlyBlockTree,
             ISpecProvider specProvider,
             ILogManager logManager)
@@ -42,9 +44,12 @@ namespace Nethermind.Blockchain.Processing
             ISnapshotableDb stateDb = readOnlyDbProvider.StateDb;
             IDb codeDb = readOnlyDbProvider.CodeDb;
 
-            StateReader = new StateReader(stateDb, codeDb, logManager);
-            StateProvider = new StateProvider(stateDb, codeDb, logManager);
-            StorageProvider = new StorageProvider(stateDb, StateProvider, logManager);
+            // TODO: this will not properly load data... need to have a caching wrapper around the state DB...
+            StateReader = new StateReader(trieStore, codeDb, logManager);
+            // TODO: this will not properly load data... need to have a caching wrapper around the state DB...
+            StateProvider = new StateProvider(new StateTree(trieStore, logManager), codeDb, logManager);
+            // TODO: this will not properly load data... need to have a caching wrapper around the state DB...
+            StorageProvider = new StorageProvider(trieStore, StateProvider, logManager);
 
             BlockTree = readOnlyBlockTree;
             BlockhashProvider = new BlockhashProvider(BlockTree, logManager);

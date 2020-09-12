@@ -41,6 +41,7 @@ using NSubstitute;
 using NUnit.Framework;
 using System.Threading;
 using Nethermind.Blockchain.Processing;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Facade.Test
 {
@@ -76,6 +77,7 @@ namespace Nethermind.Facade.Test
             
             ReadOnlyTxProcessingEnv processingEnv = new ReadOnlyTxProcessingEnv(
                 new ReadOnlyDbProvider(_dbProvider, false),
+                new PassThroughTrieStore(_dbProvider.StateDb, LimboLogs.Instance), 
                 new ReadOnlyBlockTree(_blockTree),
                 _specProvider,
                 LimboLogs.Instance);

@@ -198,7 +198,8 @@ namespace Nethermind.Runner.Ethereum.Steps
         }
 
         private IReadOnlyTransactionProcessorSource GetReadOnlyTransactionProcessorSource() => 
-            _readOnlyTransactionProcessorSource ??= new ReadOnlyTxProcessorSource(_api.DbProvider, _api.BlockTree, _api.SpecProvider, _api.LogManager);
+            _readOnlyTransactionProcessorSource ??= new ReadOnlyTxProcessorSource(
+                _api.DbProvider, _api.TrieStore, _api.BlockTree, _api.SpecProvider, _api.LogManager);
 
         protected override HeaderValidator CreateHeaderValidator()
         {

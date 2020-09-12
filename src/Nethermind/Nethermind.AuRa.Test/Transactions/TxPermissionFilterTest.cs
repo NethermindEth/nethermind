@@ -41,6 +41,7 @@ using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
+using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -249,7 +250,7 @@ namespace Nethermind.AuRa.Test.Transactions
                 TransactionPermissionContractVersions =
                     new LruCache<Keccak, UInt256>(PermissionBasedTxFilter.Cache.MaxCacheSize, nameof(TransactionPermissionContract));
                 var transactionPermissionContract = new VersionedTransactionPermissionContract(new AbiEncoder(), _contractAddress, 1,
-                    new ReadOnlyTxProcessorSource(DbProvider, BlockTree, SpecProvider, LimboLogs.Instance), TransactionPermissionContractVersions);
+                    new ReadOnlyTxProcessorSource(DbProvider, new PassThroughTrieStore(DbProvider.StateDb, LimboLogs.Instance), BlockTree, SpecProvider, LimboLogs.Instance), TransactionPermissionContractVersions);
 
                 TxPermissionFilterCache = new PermissionBasedTxFilter.Cache();
                 PermissionBasedTxFilter = new PermissionBasedTxFilter(transactionPermissionContract, TxPermissionFilterCache, State, LimboLogs.Instance);

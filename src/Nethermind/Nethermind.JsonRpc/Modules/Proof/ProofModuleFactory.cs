@@ -26,6 +26,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
+using Nethermind.Trie.Pruning;
 using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules.Proof
@@ -59,7 +60,8 @@ namespace Nethermind.JsonRpc.Modules.Proof
         {
             ReadOnlyBlockTree readOnlyTree = new ReadOnlyBlockTree(_blockTree);
             IReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
-            ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, readOnlyTree, _specProvider, _logManager);
+            ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(
+                readOnlyDbProvider, new PassThroughTrieStore(readOnlyDbProvider.StateDb, _logManager), readOnlyTree, _specProvider, _logManager);
             ReadOnlyChainProcessingEnv readOnlyChainProcessingEnv = new ReadOnlyChainProcessingEnv(readOnlyTxProcessingEnv, Always.Valid, _recoveryStep, NoBlockRewards.Instance, new InMemoryReceiptStorage(), readOnlyDbProvider, _specProvider, _logManager);
             
             Tracer tracer = new Tracer(

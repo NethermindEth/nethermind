@@ -66,7 +66,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 ReadOnlyDbProvider dbProvider = new ReadOnlyDbProvider(_api.DbProvider, false);
                 ReadOnlyBlockTree blockTree = new ReadOnlyBlockTree(_api.BlockTree);
                 ReadOnlyTxProcessingEnv txProcessingEnv =
-                    new ReadOnlyTxProcessingEnv(dbProvider, blockTree, _api.SpecProvider, _api.LogManager);
+                    new ReadOnlyTxProcessingEnv(dbProvider, _api.TrieStore, blockTree, _api.SpecProvider, _api.LogManager);
                 
                 ReadOnlyTxProcessorSource txProcessorSource =
                     new ReadOnlyTxProcessorSource(txProcessingEnv);

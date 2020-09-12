@@ -26,6 +26,7 @@ using Nethermind.Config;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Trie.Pruning;
 using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule
@@ -80,6 +81,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             ReadOnlyTxProcessingEnv txEnv =
                 new ReadOnlyTxProcessingEnv(
                     readOnlyDbProvider,
+                    new PassThroughTrieStore(readOnlyDbProvider.StateDb, _logManager), 
                     readOnlyTree,
                     _specProvider,
                     _logManager);

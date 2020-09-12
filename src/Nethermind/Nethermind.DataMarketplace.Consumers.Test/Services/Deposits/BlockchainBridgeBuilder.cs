@@ -29,6 +29,7 @@ using Nethermind.Facade;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.State;
+using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
 using Nethermind.Wallet;
@@ -41,7 +42,8 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
         public static INdmBlockchainBridge BuildABridge()
         {
             MemDbProvider memDbProvider = new MemDbProvider();
-            StateReader stateReader = new StateReader(memDbProvider.StateDb, memDbProvider.CodeDb, LimboLogs.Instance);
+            StateReader stateReader = new StateReader(
+                new PassThroughTrieStore(memDbProvider.StateDb, LimboLogs.Instance), memDbProvider.CodeDb, LimboLogs.Instance);
             StateProvider stateProvider = new StateProvider(memDbProvider.StateDb, memDbProvider.CodeDb, LimboLogs.Instance);
             StorageProvider storageProvider = new StorageProvider(memDbProvider.StateDb, stateProvider, LimboLogs.Instance);
             IEthereumEcdsa ecdsa = new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance);
@@ -54,6 +56,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
 
             ReadOnlyTxProcessingEnv processingEnv = new ReadOnlyTxProcessingEnv(
                 new ReadOnlyDbProvider(memDbProvider, false),
+                new PassThroughTrieStore(memDbProvider.StateDb, LimboLogs.Instance),
                 new ReadOnlyBlockTree(blockTree),
                 MainnetSpecProvider.Instance, LimboLogs.Instance);
             BlockchainBridge blockchainBridge = new BlockchainBridge(

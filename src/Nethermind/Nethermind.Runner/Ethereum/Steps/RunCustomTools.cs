@@ -23,6 +23,7 @@ using Nethermind.Db.Rocks;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Api;
 using Nethermind.State;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
@@ -51,7 +52,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                     SupplyVerifier supplyVerifier = new SupplyVerifier(logger);
                     StateDb stateDb = new StateDb(_api.DbProvider!.StateDb.Innermost);
                     StateDb codeDb = new StateDb(_api.DbProvider.StateDb.Innermost);
-                    StateReader stateReader = new StateReader(stateDb, codeDb, _api.LogManager);
+                    StateReader stateReader = new StateReader(
+                        new PassThroughTrieStore(stateDb, _api.LogManager), codeDb, _api.LogManager);
                     stateReader.RunTreeVisitor(supplyVerifier, _api.BlockTree!.Genesis.StateRoot);
 
                     Block head = _api.BlockTree!.Head;

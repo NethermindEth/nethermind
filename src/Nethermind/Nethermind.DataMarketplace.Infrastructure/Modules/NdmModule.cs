@@ -26,6 +26,7 @@ using Nethermind.DataMarketplace.Infrastructure.Rlp;
 using Nethermind.Db;
 using Nethermind.Facade;
 using Nethermind.JsonRpc;
+using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 
@@ -51,8 +52,12 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
             var wallet = services.Wallet;
             var readOnlyTree = new ReadOnlyBlockTree(services.BlockTree);
             var readOnlyDbProvider = new ReadOnlyDbProvider(services.RocksProvider, false);
-            var readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, readOnlyTree,
-                services.SpecProvider, logManager);
+            var readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(
+                readOnlyDbProvider,
+                new PassThroughTrieStore(readOnlyDbProvider.StateDb, logManager),
+                readOnlyTree,
+                services.SpecProvider,
+                logManager);
             var jsonRpcConfig = services.ConfigProvider.GetConfig<IJsonRpcConfig>();
             var blockchainBridge = new BlockchainBridge(
                 readOnlyTxProcessingEnv,

@@ -28,6 +28,7 @@ using Nethermind.Facade;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Db.Blooms;
+using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Newtonsoft.Json;
@@ -90,7 +91,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             ReadOnlyBlockTree readOnlyTree = new ReadOnlyBlockTree(_blockTree);
             IReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
-            ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, readOnlyTree, _specProvider, _logManager);
+            ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(
+                readOnlyDbProvider, new PassThroughTrieStore(readOnlyDbProvider.StateDb, _logManager), readOnlyTree, _specProvider, _logManager);
             
             var blockchainBridge = new BlockchainBridge(
                 readOnlyTxProcessingEnv,

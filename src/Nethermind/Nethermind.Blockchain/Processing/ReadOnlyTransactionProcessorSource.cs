@@ -19,6 +19,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Logging;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Blockchain.Processing
 {
@@ -26,9 +27,10 @@ namespace Nethermind.Blockchain.Processing
     {
         private readonly ReadOnlyTxProcessingEnv _environment;
 
-        public ReadOnlyTxProcessorSource(IDbProvider dbProvider, IBlockTree blockTree, ISpecProvider specProvider, ILogManager logManager)
+        public ReadOnlyTxProcessorSource(IDbProvider dbProvider, ITrieStore trieStore, IBlockTree blockTree, ISpecProvider specProvider, ILogManager logManager)
         {
-            _environment = new ReadOnlyTxProcessingEnv(new ReadOnlyDbProvider(dbProvider, false), new ReadOnlyBlockTree(blockTree), specProvider, logManager);
+            var readDbs = new ReadOnlyDbProvider(dbProvider, false);
+            _environment = new ReadOnlyTxProcessingEnv(readDbs, trieStore, new ReadOnlyBlockTree(blockTree), specProvider, logManager);
         }
 
         public ReadOnlyTxProcessorSource(ReadOnlyTxProcessingEnv environment)
@@ -36,6 +38,7 @@ namespace Nethermind.Blockchain.Processing
             _environment = environment;
         }
         
-        public IReadOnlyTransactionProcessor Get(Keccak stateRoot) => new ReadOnlyTransactionProcessor(_environment.TransactionProcessor, _environment.StateProvider, stateRoot);
+        public IReadOnlyTransactionProcessor Get(Keccak stateRoot) => new ReadOnlyTransactionProcessor(
+            _environment.TransactionProcessor, _environment.StateProvider, stateRoot);
     }
 }

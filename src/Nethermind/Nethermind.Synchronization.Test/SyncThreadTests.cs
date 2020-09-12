@@ -41,6 +41,7 @@ using Nethermind.Stats;
 using Nethermind.Db.Blooms;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
 using NUnit.Framework;
@@ -157,8 +158,8 @@ namespace Nethermind.Synchronization.Test
             for (int i = 0; i < chainLength; i++)
             {
                 Transaction transaction = new Transaction();
-                
-                1.Ether().Divide((UInt256)_chainLength, out UInt256 txValue);
+
+                1.Ether().Divide((UInt256) _chainLength, out UInt256 txValue);
                 transaction.Value = txValue;
                 transaction.SenderAddress = TestItem.AddressA;
                 transaction.To = TestItem.AddressB;
@@ -251,7 +252,7 @@ namespace Nethermind.Synchronization.Test
             ISnapshotableDb codeDb = dbProvider.CodeDb;
             ISnapshotableDb stateDb = dbProvider.StateDb;
 
-            var stateReader = new StateReader(stateDb, codeDb, logManager);
+            var stateReader = new StateReader(new PassThroughTrieStore(stateDb, LimboLogs.Instance), codeDb, logManager);
             var stateProvider = new StateProvider(stateDb, codeDb, logManager);
             stateProvider.CreateAccount(TestItem.AddressA, 10000.Ether());
             stateProvider.Commit(specProvider.GenesisSpec);
@@ -299,9 +300,9 @@ namespace Nethermind.Synchronization.Test
                 stateProvider, tree,
                 processor,
                 txPool,
-                Timestamper.Default, 
+                Timestamper.Default,
                 logManager);
-            
+
             SyncProgressResolver resolver = new SyncProgressResolver(tree, receiptStorage, stateDb, new MemDb(), syncConfig, logManager);
             MultiSyncModeSelector selector = new MultiSyncModeSelector(resolver, syncPeerPool, syncConfig, logManager);
             Synchronizer synchronizer = new Synchronizer(
@@ -352,3 +353,4 @@ namespace Nethermind.Synchronization.Test
         }
     }
 }
+          

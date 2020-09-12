@@ -39,6 +39,7 @@ using Nethermind.Specs;
 using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
+using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
 using BlockTree = Nethermind.Blockchain.BlockTree;
@@ -126,7 +127,7 @@ namespace Nethermind.Core.Test.Blockchain
             BlockchainProcessor chainProcessor = new BlockchainProcessor(BlockTree, BlockProcessor, new TxSignaturesRecoveryStep(EthereumEcdsa, TxPool, LimboLogs.Instance), LimboLogs.Instance, BlockchainProcessor.Options.Default);
             chainProcessor.Start();
 
-            StateReader = new StateReader(StateDb, CodeDb, LimboLogs.Instance);
+            StateReader = new StateReader(new PassThroughTrieStore(StateDb, LimboLogs.Instance), CodeDb, LimboLogs.Instance);
             TxPoolTxSource txPoolTxSource = new TxPoolTxSource(TxPool, StateReader, LimboLogs.Instance);
             ISealer sealer = new NethDevSealEngine(TestItem.AddressD);
             BlockProducer = new TestBlockProducer(txPoolTxSource, chainProcessor, State, sealer, BlockTree, chainProcessor, Timestamper, LimboLogs.Instance);

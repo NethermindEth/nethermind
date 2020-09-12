@@ -147,7 +147,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (baselineConfig.Enabled)
             {
                 IDbProvider dbProvider = _api.DbProvider!;
-                IStateReader stateReader = new StateReader(dbProvider.StateDb, dbProvider.CodeDb, _api.LogManager);
+                IStateReader stateReader = new StateReader(_api.TrieStore, dbProvider.CodeDb, _api.LogManager);
 
                 ITxSealer txSealer = new TxSealer(_api.Signer, _api.Timestamper);
                 ITxSender txSender = new TxPoolSender(_api.TxPool, txSealer);

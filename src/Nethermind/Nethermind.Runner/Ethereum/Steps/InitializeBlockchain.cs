@@ -81,17 +81,17 @@ namespace Nethermind.Runner.Ethereum.Steps
             
 
             TrieNodeCache trieNodeCache = new TrieNodeCache(_api.LogManager);
-            TrieStore trieStore = new TrieStore(
+            _api.TrieStore = new TrieStore(
                 trieNodeCache,
                 _api.DbProvider.StateDb,
                 new DepthAndMemoryBased(1024, 256.MB()),
                 new ConstantInterval(1024),
                 _api.LogManager);
             
-            trieStore.Stored += TreeStoreOnStored; 
+            _api.TrieStore.Stored += TreeStoreOnStored; 
             
             _api.StateProvider = new StateProvider(
-                new StateTree(trieStore, _api.LogManager),
+                new StateTree(_api.TrieStore, _api.LogManager),
                 _api.DbProvider.CodeDb,
                 _api.LogManager);
 
@@ -165,7 +165,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             _api.RecoveryStep = new TxSignaturesRecoveryStep(_api.EthereumEcdsa, _api.TxPool, _api.LogManager);
             
             _api.StorageProvider = new StorageProvider(
-                trieStore,
+                _api.TrieStore,
                 _api.StateProvider,
                 _api.LogManager);
 
@@ -208,7 +208,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.LogManager);
 
             ReadOnlyDbProvider readOnly = new ReadOnlyDbProvider(_api.DbProvider, false);
-            StateReader stateReader = new StateReader(readOnly.StateDb, readOnly.CodeDb, _api.LogManager);
+            StateReader stateReader = new StateReader(_api.TrieStore, readOnly.CodeDb, _api.LogManager);
             _api.TxPoolInfoProvider = new TxPoolInfoProvider(stateReader, _api.TxPool);
 
             _api.MainBlockProcessor = CreateBlockProcessor();

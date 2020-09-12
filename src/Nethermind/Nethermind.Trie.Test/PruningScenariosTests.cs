@@ -41,6 +41,7 @@ namespace Nethermind.Trie.Test
             private long _blockNumber = 1;
             private IDbProvider _dbProvider;
             private IStateProvider _stateProvider;
+            private IStateReader _stateReader;
             private IStorageProvider _storageProvider;
             private ILogManager _logManager;
             private ILogger _logger;
@@ -63,6 +64,7 @@ namespace Nethermind.Trie.Test
                 StateTree stateTree = new StateTree(_trieStore, _logManager);
                 _stateProvider = new StateProvider(stateTree, _dbProvider.CodeDb, _logManager);
                 _storageProvider = new StorageProvider(_trieStore, _stateProvider, _logManager);
+                _stateReader = new StateReader(_trieStore, _dbProvider.CodeDb, _logManager);
             }
 
 
@@ -119,6 +121,20 @@ namespace Nethermind.Trie.Test
                 StorageCell storageCell =
                     new StorageCell(Address.FromNumber((UInt256) accountIndex), (UInt256) storageKey);
                 _storageProvider.Get(storageCell);
+                return this;
+            }
+
+            public PruningContext ReadAccount(int accountIndex)
+            {
+                _logger.Info($"READ   ACCOUNT {accountIndex}");
+                _stateProvider.GetAccount(Address.FromNumber((UInt256)accountIndex));
+                return this;
+            }
+            
+            public PruningContext ReadAccountViaStateReader(int accountIndex)
+            {
+                _logger.Info($"READ   ACCOUNT {accountIndex}");
+                _stateReader.GetAccount(_stateProvider.StateRoot, Address.FromNumber((UInt256)accountIndex));
                 return this;
             }
 
@@ -204,6 +220,23 @@ namespace Nethermind.Trie.Test
                 .PruneOldBlock()
                 // .VerifyPersisted(9) // this can be 9 if we merge the storage and state tries
                 .VerifyPersisted(12) 
+                .VerifyDropped(0);
+        }
+        
+        [Test]
+        public void Aura_scenario_asking_about_a_not_yet_persisted_root()
+        {
+            // AuRa can make calls asking about the state in one of the previous blocks while processing / finalizing
+            // if the state root is neither in the cache nor in the database (but only held as a commit root in the trie store)
+            // then it would throw an exception
+            PruningContext.SnapshotEveryOtherBlockWithManualPruning
+                .CreateAccount(1)
+                .Commit()
+                .ReadAccountViaStateReader(1)
+                .CommitEmptyBlock()
+                .PruneOldBlock()
+                .PruneOldBlock()
+                .VerifyPersisted(1) 
                 .VerifyDropped(0);
         }
 

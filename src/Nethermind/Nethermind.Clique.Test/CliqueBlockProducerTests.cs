@@ -42,6 +42,7 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
+using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
 using Nethermind.Wallet;
@@ -103,7 +104,7 @@ namespace Nethermind.Clique.Test
 
                 ISpecProvider specProvider = RinkebySpecProvider.Instance;
 
-                StateReader stateReader = new StateReader(stateDb, codeDb, nodeLogManager);
+                StateReader stateReader = new StateReader(new PassThroughTrieStore(stateDb, nodeLogManager), codeDb, nodeLogManager);
                 StateProvider stateProvider = new StateProvider(stateDb, codeDb, nodeLogManager);
                 stateProvider.CreateAccount(TestItem.PrivateKeyD.Address, 100.Ether());
                 stateProvider.Commit(GoerliSpecProvider.Instance.GenesisSpec);
