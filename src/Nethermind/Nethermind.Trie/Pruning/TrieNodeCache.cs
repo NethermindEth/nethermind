@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
@@ -75,11 +74,6 @@ namespace Nethermind.Trie.Pruning
             _actualCache[hash] = trieNode;
         }
 
-        public void Remove(Keccak hash)
-        {
-            _actualCache.Remove(hash);
-        }
-
         public void Dump()
         {
             if (_logger.IsTrace)
@@ -93,7 +87,7 @@ namespace Nethermind.Trie.Pruning
             }
         }
 
-        public void Prune()
+        public void Prune(long snapshotId)
         {
             List<Keccak> toRemove = new List<Keccak>();
             foreach ((Keccak key, TrieNode value) in _actualCache)
@@ -101,6 +95,12 @@ namespace Nethermind.Trie.Pruning
                 if (value.IsPersisted)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Removing persisted {value} from memory.");
+                    toRemove.Add(key);
+                }
+
+                if (HasBeenRemoved(value, snapshotId))
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Removing {value} from memory (no longer referenced).");
                     toRemove.Add(key);
                 }
             }
@@ -117,6 +117,17 @@ namespace Nethermind.Trie.Pruning
 
         private Dictionary<Keccak, TrieNode> _actualCache
             = new Dictionary<Keccak, TrieNode>();
+
+        private bool HasBeenRemoved(TrieNode trieNode, long snapshotId)
+        {
+            if (!trieNode.LastSeen.HasValue)
+            {
+                throw new Exception("interesting");
+            }
+            
+            bool isNotANewlyCreatedNode = trieNode.LastSeen.HasValue;
+            return isNotANewlyCreatedNode && trieNode.LastSeen < snapshotId;
+        }
 
         #endregion
     }

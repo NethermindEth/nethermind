@@ -64,7 +64,7 @@ namespace Nethermind.Trie.Benchmark
                 new DepthAndMemoryBased(128, 1.MB()),
                 No.Persistence,
                 _logManager);
-            treeStore.Commit(TrieType.State, 1234, new NodeCommitInfo(trieNode));
+            treeStore.CommitOneNode(1234, new NodeCommitInfo(trieNode));
             return treeStore;
         }
     }

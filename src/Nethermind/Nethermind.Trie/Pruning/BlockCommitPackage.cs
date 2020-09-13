@@ -14,31 +14,15 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
-using System.Collections.Generic;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Logging;
-
 namespace Nethermind.Trie.Pruning
 {
     internal class BlockCommitPackage
     {
+        public long BlockNumber { get; }
+        
         public TrieNode? Root { get; set; }
 
-        public long BlockNumber { get; }
-
-        public bool IsSealed { get; set; }
-
-        public long MemorySize { get; private set; } =
-            MemorySizes.Align(
-                MemorySizes.SmallObjectOverhead +
-                sizeof(long) +
-                sizeof(bool) +
-                MemorySizes.RefSize -
-                -MemorySizes.SmallObjectFreeDataSize) +
-                32 /* queue */ +
-                0 /* queue array - not counted */;
+        public bool IsSealed { get; private set; }
 
         public BlockCommitPackage(long blockNumber)
         {
@@ -50,56 +34,9 @@ namespace Nethermind.Trie.Pruning
             IsSealed = true;
         }
 
-        public void Enqueue(TrieNode trieNode)
-        {
-            if (IsSealed)
-            {
-                throw new InvalidOperationException("Cannot add to a sealed commit package.");
-            }
-
-            _queue.Enqueue(trieNode);
-            MemorySize += trieNode.GetMemorySize(false);
-        }
-
-        public bool TryDequeue(out TrieNode trieNode)
-        {
-            if (!IsSealed)
-            {
-                throw new InvalidOperationException("Trying to dequeue from an unsealed commit package.");
-            }
-
-            bool success = _queue.TryDequeue(out trieNode);
-            if (success)
-            {
-                MemorySize -= trieNode.GetMemorySize(false);
-            }
-
-            return success;
-        }
-
         public override string ToString()
         {
-            return $"{BlockNumber}({_queue.Count})";
-        }
-
-        #region private
-
-        /// <summary>
-        /// TODO: the actual queue is not accounted for in memory calculations
-        /// </summary>
-        private Queue<TrieNode> _queue = new Queue<TrieNode>();
-
-        #endregion
-
-        public void LogContent(ILogger logger)
-        {
-            if (logger.IsTrace)
-            {
-                foreach (TrieNode trieNode in _queue)
-                {
-                    logger.Trace($"  Queued {trieNode}");    
-                }
-            }
+            return $"{BlockNumber}({Root})";
         }
     }
 }

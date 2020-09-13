@@ -27,7 +27,7 @@ namespace Nethermind.Trie.Pruning
 
         public static NullTrieStore Instance { get; } = new NullTrieStore();
 
-        public void Commit(TrieType trieType, long blockNumber, NodeCommitInfo nodeCommitInfo)
+        public void CommitOneNode(long blockNumber, NodeCommitInfo nodeCommitInfo)
         {
         }
 
@@ -50,10 +50,10 @@ namespace Nethermind.Trie.Pruning
             return Array.Empty<byte>();
         }
 
-        public void Unwind()
+        public void UndoOneBlock()
         {
         }
 
-        public event EventHandler<BlockNumberEventArgs> Stored;
+        public event EventHandler<BlockNumberEventArgs> SnapshotTaken;
     }
 }

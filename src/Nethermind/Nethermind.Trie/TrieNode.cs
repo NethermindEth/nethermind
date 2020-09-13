@@ -360,6 +360,8 @@ namespace Nethermind.Trie
             return _data?[i] == null || ReferenceEquals(_data[i], _nullNode);
         }
 
+        public long? LastSeen { get; set; }
+        
         public bool IsChildDirty(int i)
         {
             if (IsExtension)

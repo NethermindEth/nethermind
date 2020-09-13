@@ -165,7 +165,7 @@ namespace Nethermind.Trie
                     }
 
                     if (_logger.IsTrace) _logger.Trace($"Committing {node} in {blockNumber}");
-                    TrieStore.Commit(TrieType, blockNumber, node);
+                    TrieStore.CommitOneNode(blockNumber, node);
                 }
 
                 // reset objects

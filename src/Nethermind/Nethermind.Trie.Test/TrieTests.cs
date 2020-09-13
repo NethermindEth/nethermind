@@ -923,7 +923,7 @@ namespace Nethermind.Trie.Test
                 {
                     try
                     {
-                        trieStore.Unwind();
+                        trieStore.UndoOneBlock();
                     }
                     catch (InvalidOperationException)
                     {

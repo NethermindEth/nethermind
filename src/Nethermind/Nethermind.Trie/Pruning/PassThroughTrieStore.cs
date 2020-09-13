@@ -34,7 +34,7 @@ namespace Nethermind.Trie.Pruning
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
         
-        public void Commit(TrieType trieType, long blockNumber, NodeCommitInfo nodeCommitInfo)
+        public void CommitOneNode(long blockNumber, NodeCommitInfo nodeCommitInfo)
         {
             TrieNode? trieNode = nodeCommitInfo.Node;
             if (trieNode != null)
@@ -68,10 +68,10 @@ namespace Nethermind.Trie.Pruning
             return _keyValueStore[hash.Bytes];
         }
 
-        public void Unwind()
+        public void UndoOneBlock()
         {
         }
 
-        public event EventHandler<BlockNumberEventArgs> Stored;
+        public event EventHandler<BlockNumberEventArgs> SnapshotTaken;
     }
 }

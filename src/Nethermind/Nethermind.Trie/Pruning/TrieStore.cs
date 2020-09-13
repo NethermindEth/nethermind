@@ -18,12 +18,16 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 
 namespace Nethermind.Trie.Pruning
 {
+    /// <summary>
+    /// Currently the responsibility of this class is to decide how many blocks should be kept as active roots,
+    /// manage the reorgs, snapshotting, and some of the cache pruning decision making.
+    /// (does it sound like single responsibility to you?) 
+    /// </summary>
     public class TrieStore : ITrieStore
     {
         public TrieStore(
@@ -38,15 +42,13 @@ namespace Nethermind.Trie.Pruning
             _keyValueStore = keyValueStore ?? throw new ArgumentNullException(nameof(keyValueStore));
             _pruningStrategy = pruningStrategy ?? throw new ArgumentNullException(nameof(pruningStrategy));
             _snapshotStrategy = snapshotStrategy ?? throw new ArgumentNullException(nameof(snapshotStrategy));
-
-            MemorySize =
-                MemorySizes.SmallObjectOverhead +
-                5 * MemorySizes.RefSize -
-                MemorySizes.SmallObjectFreeDataSize +
-                40 /* linked list */;
         }
+        
+        public int CommittedNodeCount { get; private set; }
+        
+        public int PersistedNodesCount { get; private set; }
 
-        public void Commit(TrieType trieType, long blockNumber, NodeCommitInfo nodeCommitInfo)
+        public void CommitOneNode(long blockNumber, NodeCommitInfo nodeCommitInfo)
         {
             if (blockNumber < 0)
                 throw new ArgumentOutOfRangeException(nameof(blockNumber));
@@ -62,16 +64,16 @@ namespace Nethermind.Trie.Pruning
 
             if (!nodeCommitInfo.IsEmptyBlockMarker)
             {
+                Debug.Assert(CurrentPackage != null, "Current package is null when enqueing a trie node.");
+                
                 TrieNode trieNode = nodeCommitInfo.Node;
-                _commitCount++;
-
                 if (trieNode!.Keccak == null)
                 {
                     throw new InvalidOperationException(
                         $"Hash of the node {trieNode} should be known at the time of committing.");
                 }
-
-                Debug.Assert(CurrentPackage != null, "Current package is null when enqueing a trie node.");
+                
+                CommittedNodeCount++;
 
                 if (_trieNodeCache.IsInMemory(trieNode.Keccak))
                 {
@@ -89,11 +91,8 @@ namespace Nethermind.Trie.Pruning
                 }
                 else
                 {
-                    long previousPackageMemory = CurrentPackage.MemorySize;
-                    if(_logger.IsTrace) _logger.Trace($"Enqueuing {trieNode}");
-                    CurrentPackage.Enqueue(trieNode);
+                    trieNode!.LastSeen = blockNumber;
                     _trieNodeCache.Set(trieNode.Keccak, trieNode);
-                    AddToMemory(CurrentPackage.MemorySize - previousPackageMemory);
                 }
             }
         }
@@ -121,7 +120,7 @@ namespace Nethermind.Trie.Pruning
             }
         }
 
-        public void Unwind()
+        public void UndoOneBlock()
         {
             if (!_blockCommitsQueue.Any())
             {
@@ -136,13 +135,13 @@ namespace Nethermind.Trie.Pruning
             _blockCommitsQueue.RemoveLast();
         }
 
-        public event EventHandler<BlockNumberEventArgs>? Stored;
+        public event EventHandler<BlockNumberEventArgs>? SnapshotTaken;
 
         public void Flush()
         {
             if (_logger.IsDebug)
                 _logger.Debug($"Flushing trie cache - in memory {_trieNodeCache.Count} " +
-                              $"| commit count {_commitCount} " +
+                              $"| commit count {CommittedNodeCount} " +
                               $"| save count {PersistedNodesCount}");
 
             CurrentPackage?.Seal();
@@ -152,7 +151,7 @@ namespace Nethermind.Trie.Pruning
 
             if (_logger.IsDebug)
                 _logger.Debug($"Flushed trie cache - in memory {_trieNodeCache.Count} " +
-                              $"| commit count {_commitCount} " +
+                              $"| commit count {CommittedNodeCount} " +
                               $"| save count {PersistedNodesCount}");
         }
 
@@ -191,23 +190,17 @@ namespace Nethermind.Trie.Pruning
             return cachedRlp;
         }
 
-        public long MemorySize { get; private set; }
-
         #region Private
-
-        private const int LinkedListNodeMemorySize = 48;
 
         private readonly ITrieNodeCache _trieNodeCache;
 
         private readonly IKeyValueStore _keyValueStore;
-        
+
         private readonly IPruningStrategy _pruningStrategy;
-        
+
         private readonly IPersistenceStrategy _snapshotStrategy;
 
         private readonly ILogger _logger;
-
-        private int _commitCount;
 
         private LinkedList<BlockCommitPackage> _blockCommitsQueue = new LinkedList<BlockCommitPackage>();
 
@@ -215,16 +208,16 @@ namespace Nethermind.Trie.Pruning
 
         private bool IsCurrentPackageSealed => CurrentPackage == null || CurrentPackage.IsSealed;
 
-        public int PersistedNodesCount { get; private set; }
+        private long OldestKeptBlockNumber => _blockCommitsQueue.First!.Value.BlockNumber;
+
+        private long NewestKeptBlockNumber { get; set; }
 
         private void BeginNewPackage(long blockNumber)
         {
-            CurrentPackage?.LogContent(_logger);
-
             if (_logger.IsDebug)
-                _logger.Debug($"Beginning new {nameof(BlockCommitPackage)} - {blockNumber} | memory {MemorySize}");
+                _logger.Debug($"Beginning new {nameof(BlockCommitPackage)} - {blockNumber}");
 
-            Debug.Assert(CurrentPackage == null || CurrentPackage.BlockNumber == blockNumber - 1,
+            Debug.Assert(CurrentPackage == null || blockNumber == CurrentPackage.BlockNumber + 1,
                 "Newly begun block is not a successor of the last one");
 
             Debug.Assert(IsCurrentPackageSealed, "Not sealed when beginning new block");
@@ -233,22 +226,16 @@ namespace Nethermind.Trie.Pruning
             _blockCommitsQueue.AddLast(newPackage);
             NewestKeptBlockNumber = Math.Max(blockNumber, NewestKeptBlockNumber);
 
-            while(_pruningStrategy.ShouldPrune(OldestKeptBlockNumber, NewestKeptBlockNumber, MemorySize))
+            // TODO: memory should be taken from the cache now
+            while (_pruningStrategy.ShouldPrune(OldestKeptBlockNumber, NewestKeptBlockNumber, 0))
             {
                 TryPruningOldBlock();
             }
 
-            long newMemory = newPackage.MemorySize + LinkedListNodeMemorySize;
-            AddToMemory(newMemory);
-
             Debug.Assert(CurrentPackage == newPackage,
                 "Current package is not equal the new package just after adding");
         }
-
-        private long OldestKeptBlockNumber => _blockCommitsQueue.First!.Value.BlockNumber;
-
-        private long NewestKeptBlockNumber { get; set; }
-
+        
         private void FinishBlockCommitOnState(long blockNumber, TrieNode? root)
         {
             if (_logger.IsTrace) _logger.Trace($"Enqueued packages {_blockCommitsQueue.Count}");
@@ -263,22 +250,15 @@ namespace Nethermind.Trie.Pruning
                 if (_logger.IsTrace)
                     _logger.Trace(
                         $"Incrementing refs from block {blockNumber} root {package.Root?.ToString() ?? "NULL"} ");
-
                 
                 package.Seal();
-                _trieNodeCache.Dump();
             }
-        }
-
-        private void AddToMemory(long newMemory)
-        {
-            MemorySize += newMemory;
         }
 
         internal bool TryPruningOldBlock()
         {
-            BlockCommitPackage blockCommit = _blockCommitsQueue.First?.Value;
-            bool canPrune = blockCommit?.IsSealed ?? false;
+            BlockCommitPackage? blockCommit = _blockCommitsQueue.First?.Value;
+            bool canPrune = blockCommit != null && blockCommit.IsSealed; 
             if (canPrune)
             {
                 Prune(blockCommit);
@@ -291,53 +271,53 @@ namespace Nethermind.Trie.Pruning
         private void Prune(BlockCommitPackage commitPackage)
         {
             if (_logger.IsDebug)
-                _logger.Debug(
-                    $"Start pruning {nameof(BlockCommitPackage)} - {commitPackage.BlockNumber} | memory {MemorySize}");
+                _logger.Debug($"Start pruning {nameof(BlockCommitPackage)} - {commitPackage.BlockNumber}");
 
             Debug.Assert(commitPackage != null && commitPackage.IsSealed,
                 $"Invalid {nameof(commitPackage)} - {commitPackage} received for pruning.");
-
-            long memoryToDrop = commitPackage.MemorySize + LinkedListNodeMemorySize;
-
+            
             bool shouldPersistSnapshot = _snapshotStrategy.ShouldPersistSnapshot(commitPackage.BlockNumber);
             if (shouldPersistSnapshot)
             {
-                commitPackage.Root?.PersistRecursively(_logger, _trieNodeCache, Persist);
-                _trieNodeCache.Prune(); // TODO: use the other strategy
+                commitPackage.Root?.PersistRecursively(
+                    _logger, _trieNodeCache, tn => Persist(tn, commitPackage.BlockNumber));
+                
+                // the pruning responsibility can be divided by this and the cache now
+                _trieNodeCache.Prune(commitPackage.BlockNumber);
             }
             
-            MemorySize -= memoryToDrop;
             if (_logger.IsDebug)
-                _logger.Debug(
-                    $"End pruning {nameof(BlockCommitPackage)} - {commitPackage.BlockNumber} | memory {MemorySize}");
+                _logger.Debug($"End pruning {nameof(BlockCommitPackage)} - {commitPackage.BlockNumber}");
 
             _trieNodeCache.Dump();
             if (shouldPersistSnapshot)
             {
-                Stored?.Invoke(this, new BlockNumberEventArgs(commitPackage.BlockNumber));
+                SnapshotTaken?.Invoke(this, new BlockNumberEventArgs(commitPackage.BlockNumber));
             }
         }
 
-        private void Persist(TrieNode currentNode)
+        private void Persist(TrieNode currentNode, long snapshotId)
         {
             if (currentNode == null)
             {
                 throw new ArgumentNullException(nameof(currentNode));
             }
-            
+
             if (currentNode.Keccak == null)
             {
                 throw new InvalidOperationException(
                     $"An attempt to {nameof(Persist)} a node without a resolved {nameof(TrieNode.Keccak)}");
             }
+
+            if (_logger.IsTrace) _logger.Trace($"Persisting {nameof(TrieNode)} {currentNode}.");
             
-            if (_logger.IsTrace)
-                _logger.Trace($"Persisting {nameof(TrieNode)} {currentNode}.");
             _keyValueStore[currentNode.Keccak.Bytes] = currentNode.FullRlp;
             currentNode.IsPersisted = true;
+            currentNode.LastSeen = snapshotId;
+
             PersistedNodesCount++;
         }
-        
+
         #endregion
     }
 }

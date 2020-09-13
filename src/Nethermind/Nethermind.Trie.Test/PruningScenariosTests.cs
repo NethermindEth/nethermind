@@ -166,7 +166,7 @@ namespace Nethermind.Trie.Test
                 GC.Collect();
                 GC.WaitForFullGCComplete(1000);
                 GC.WaitForPendingFinalizers();
-                _trieNodeCache.Prune();
+                _trieNodeCache.Prune(int.MaxValue);
                 _trieNodeCache.Count.Should().Be(i);
                 return this;
             }
