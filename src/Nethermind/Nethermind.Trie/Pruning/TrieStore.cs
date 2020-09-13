@@ -379,6 +379,7 @@ namespace Nethermind.Trie.Pruning
             if (shouldPersistSnapshot)
             {
                 commitPackage.Root?.PersistRecursively(_logger, _trieNodeCache, Persist);
+                _trieNodeCache.Prune();
             }
             
             // _trieNodeCache.Prune();

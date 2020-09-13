@@ -71,7 +71,7 @@ namespace Nethermind.Trie.Pruning
 
         public void Remove(Keccak hash)
         {
-            _actualCache.TryRemove(hash, out _);
+            _actualCache.Remove(hash);
         }
 
         public void Dump()
@@ -100,7 +100,7 @@ namespace Nethermind.Trie.Pruning
                 if (value.IsPersisted)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Removing persisted {value} from memory.");
-                    _actualCache.TryRemove(key, out _);
+                    _actualCache.Remove(key);
                 }
             }
         }
@@ -109,8 +109,8 @@ namespace Nethermind.Trie.Pruning
 
         private ILogger _logger;
         
-        private ConcurrentDictionary<Keccak, TrieNode> _actualCache
-            = new ConcurrentDictionary<Keccak, TrieNode>();        
+        private Dictionary<Keccak, TrieNode> _actualCache
+            = new Dictionary<Keccak, TrieNode>();        
 
         #endregion
     }
