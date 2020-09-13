@@ -88,7 +88,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 new ConstantInterval(8192),
                 _api.LogManager);
             
-            _api.TrieStore.Stored += TreeStoreOnStored; 
+            _api.TrieStore.SnapshotTaken += TreeStoreOnStored; 
             
             _api.StateProvider = new StateProvider(
                 new StateTree(_api.TrieStore, _api.LogManager),
