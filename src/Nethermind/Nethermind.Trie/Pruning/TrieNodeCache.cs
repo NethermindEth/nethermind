@@ -91,14 +91,14 @@ namespace Nethermind.Trie.Pruning
         {
             foreach ((Keccak key, TrieNode value) in _actualCache)
             {
-                if (value.Refs == 0)
+                //if (value.Refs == 0)
+                //{
+                //    if (_logger.IsTrace) _logger.Trace($"Pruning in cache: {value}.");
+                //    _actualCache.TryRemove(key, out _);
+                //}
+                //else if (value.IsPersisted)
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Pruning in cache: {value}.");
-                    _actualCache.TryRemove(key, out _);
-                }
-                else if (value.IsPersisted)
-                {
-                    if(_logger.IsTrace) _logger.Trace($"Removing persisted {value} from memory.");
+                    if (_logger.IsTrace) _logger.Trace($"Removing persisted {value} from memory.");
                     _actualCache.TryRemove(key, out _);
                 }
             }

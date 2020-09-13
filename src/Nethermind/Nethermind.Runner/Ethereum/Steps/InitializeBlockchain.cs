@@ -85,7 +85,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 trieNodeCache,
                 _api.DbProvider.StateDb,
                 new DepthAndMemoryBased(1024, 256.MB()),
-                new ConstantInterval(1024),
+                new ConstantInterval(8192),
                 _api.LogManager);
             
             _api.TrieStore.Stored += TreeStoreOnStored; 

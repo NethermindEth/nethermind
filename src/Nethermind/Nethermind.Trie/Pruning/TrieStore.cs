@@ -133,7 +133,7 @@ namespace Nethermind.Trie.Pruning
             if (_logger.IsDebug)
                 _logger.Debug($"Unwinding {CurrentPackage}");
 
-            DecrementRefs(CurrentPackage!);
+            //DecrementRefs(CurrentPackage!);
             _blockCommitsQueue.RemoveLast();
         }
 
@@ -276,7 +276,7 @@ namespace Nethermind.Trie.Pruning
                         $"Incrementing refs from block {blockNumber} root {package.Root?.ToString() ?? "NULL"} ");
 
                 
-                package.Root?.IncrementRefsRecursively(_logger, _trieNodeCache);
+                //package.Root?.IncrementRefsRecursively(_logger, _trieNodeCache);
 
                 package.Seal();
                 _trieNodeCache.Dump();
@@ -318,64 +318,65 @@ namespace Nethermind.Trie.Pruning
             bool shouldPersistSnapshot = _snapshotStrategy.ShouldPersistSnapshot(commitPackage.BlockNumber);
 
             // really I should just save from root...
-            while (localCarryQueue.TryDequeue(out TrieNode currentNode) ||
-                   commitPackage.TryDequeue(out currentNode))
-            {
-                Debug.Assert(
-                    currentNode.Keccak != null,
-                    $"Committed node {currentNode} has a NULL key");
-                Debug.Assert(
-                    currentNode.FullRlp != null,
-                    $"Committed node {currentNode} has a NULL {nameof(currentNode.FullRlp)}");
+            //while (localCarryQueue.TryDequeue(out TrieNode currentNode) ||
+            //       commitPackage.TryDequeue(out currentNode))
+            //{
+            //    Debug.Assert(
+            //        currentNode.Keccak != null,
+            //        $"Committed node {currentNode} has a NULL key");
+            //    Debug.Assert(
+            //        currentNode.FullRlp != null,
+            //        $"Committed node {currentNode} has a NULL {nameof(currentNode.FullRlp)}");
 
-                if (currentNode.Refs == 0)
-                {
-                    if (_logger.IsTrace)
-                        _logger.Trace($"Dropping (refs 0) {nameof(TrieNode)} {currentNode}.");
+            //    if (currentNode.Refs == 0)
+            //    {
+            //        if (_logger.IsTrace)
+            //            _logger.Trace($"Dropping (refs 0) {nameof(TrieNode)} {currentNode}.");
 
-                    DropNode(currentNode);
-                }
-                else
-                {
-                    if (shouldPersistSnapshot)
-                    {
-                        if (!currentNode.IsPersisted)
-                        {
-                            if (_logger.IsTrace)
-                                _logger.Trace($"Persisting {nameof(TrieNode)} {currentNode}.");
-                            Persist(currentNode);
-                            _trieNodeCache.Remove(currentNode.Keccak);
-                            currentNode.IsPersisted = true;
-                        }
-                        else
-                        {
-                            if (_logger.IsTrace)
-                                _logger.Trace($"Ignoring persisted {nameof(TrieNode)} {currentNode}.");
-                        }
-                    }
-                    else
-                    {
-                        // there was an incorrect drop of ref <= 1 here but it was wrong
-                        // imagine referenced by block 12 but not by block 11 and
+            //        DropNode(currentNode);
+            //    }
+            //    else
+            //    {
+            //        if (shouldPersistSnapshot)
+            //        {
+            //            if (!currentNode.IsPersisted)
+            //            {
+            //                if (_logger.IsTrace)
+            //                    _logger.Trace($"Persisting {nameof(TrieNode)} {currentNode}.");
+            //                Persist(currentNode);
+            //                _trieNodeCache.Remove(currentNode.Keccak);
+            //                currentNode.IsPersisted = true;
+            //            }
+            //            else
+            //            {
+            //                if (_logger.IsTrace)
+            //                    _logger.Trace($"Ignoring persisted {nameof(TrieNode)} {currentNode}.");
+            //            }
+            //        }
+            //        else
+            //        {
+            //            // there was an incorrect drop of ref <= 1 here but it was wrong
+            //            // imagine referenced by block 12 but not by block 11 and
 
-                        if (!currentNode.IsPersisted)
-                        {
-                            if (_logger.IsTrace)
-                                _logger.Trace($"Carrying (refs > 1) and not P {nameof(TrieNode)} {currentNode}.");
+            //            if (!currentNode.IsPersisted)
+            //            {
+            //                if (_logger.IsTrace)
+            //                    _logger.Trace($"Carrying (refs > 1) and not P {nameof(TrieNode)} {currentNode}.");
 
-                            _carryQueue.Enqueue(currentNode);
-                            _carriedCount++;
-                        }
-                        else
-                        {
-                            if (_logger.IsTrace)
-                                _logger.Trace($"Ignoring persisted {nameof(TrieNode)} {currentNode}.");
-                        }
-                    }
-                }
-            }
+            //                _carryQueue.Enqueue(currentNode);
+            //                _carriedCount++;
+            //            }
+            //            else
+            //            {
+            //                if (_logger.IsTrace)
+            //                    _logger.Trace($"Ignoring persisted {nameof(TrieNode)} {currentNode}.");
+            //            }
+            //        }
+            //    }
+            //}
 
-            DecrementRefs(commitPackage);
+            //DecrementRefs(commitPackage);
+            _trieNodeCache.Prune();
 
             MemorySize -= memoryToDrop;
             if (_logger.IsDebug)
@@ -418,32 +419,32 @@ namespace Nethermind.Trie.Pruning
             _trieNodeCache.Remove(trieNode.Keccak!);
         }
 
-        private void DecrementRefs(BlockCommitPackage package)
-        {
-            if (!package.IsSealed)
-            {
-                throw new InvalidOperationException(
-                    $"Current {nameof(BlockCommitPackage)} has to be sealed before the refs can be decremented.");
-            }
+        //private void DecrementRefs(BlockCommitPackage package)
+        //{
+        //    if (!package.IsSealed)
+        //    {
+        //        throw new InvalidOperationException(
+        //            $"Current {nameof(BlockCommitPackage)} has to be sealed before the refs can be decremented.");
+        //    }
 
-            TrieNode? root = package.Root;
-            if (_logger.IsTrace)
-                _logger.Trace(
-                    $"Decrementing refs from block {package.BlockNumber} root {root?.ToString() ?? "NULL"}");
+        //    TrieNode? root = package.Root;
+        //    if (_logger.IsTrace)
+        //        _logger.Trace(
+        //            $"Decrementing refs from block {package.BlockNumber} root {root?.ToString() ?? "NULL"}");
 
-            if (root != null)
-            {
-                if (root.Refs == 0)
-                {
-                    throw new InvalidDataException($"Found root node {root} with 0 refs.");
-                }
+        //    if (root != null)
+        //    {
+        //        if (root.Refs == 0)
+        //        {
+        //            throw new InvalidDataException($"Found root node {root} with 0 refs.");
+        //        }
 
-                root.DecrementRefsRecursively(_logger, _trieNodeCache);
+        //        root.DecrementRefsRecursively(_logger, _trieNodeCache);
 
-                _trieNodeCache.Prune();
-                _trieNodeCache.Dump();
-            }
-        }
+        //        //_trieNodeCache.Prune();
+        //        //_trieNodeCache.Dump();
+        //    }
+        //}
 
         #endregion
     }

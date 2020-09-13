@@ -192,14 +192,14 @@ namespace Nethermind.Trie
         /// <summary>
         /// Highly optimized
         /// </summary>
-        public byte[]? Value
+        public byte[] Value
         {
             get
             {
                 InitData();
                 if (IsLeaf)
                 {
-                    return (byte[]?) _data![1];
+                    return (byte[]) _data[1];
                 }
 
                 if (!AllowBranchValues)
@@ -208,7 +208,7 @@ namespace Nethermind.Trie
                     return Array.Empty<byte>();
                 }
 
-                if (_data![16] == null)
+                if (_data[16] is null)
                 {
                     if (_rlpStream == null)
                     {
@@ -217,7 +217,7 @@ namespace Nethermind.Trie
                     else
                     {
                         SeekChild(16);
-                        _data![16] = _rlpStream!.DecodeByteArray();
+                        _data[16] = _rlpStream!.DecodeByteArray();
                     }
                 }
 
@@ -574,131 +574,135 @@ namespace Nethermind.Trie
         }
 
         // TODO: can do it as visitors but seems an overkill
-        public void DecrementRefsRecursively(ILogger logger, ITrieNodeCache cache, bool isParentPersisted = false)
-        {
-            if (IsPersisted)
-            {
-                return;
-            }
+        //public void DecrementRefsRecursively(ILogger logger, ITrieNodeCache cache, bool isParentPersisted = false, bool isStorage = false)
+        //{
+        //    if (IsPersisted)
+        //    {
+        //        return;
+        //    }
 
-            if (!IsPersisted && isParentPersisted)
-            {
-                IsPersisted = true;
+        //    if (!IsPersisted && isParentPersisted)
+        //    {
+        //        IsPersisted = true;
 
-                // throw new InvalidDataException($"{this} is not persisted while parent is.");
-                // can happen
-            }
+        //        // throw new InvalidDataException($"{this} is not persisted while parent is.");
+        //        // can happen
+        //    }
 
-            if (!IsLeaf)
-            {
-                if (_data != null)
-                {
-                    for (int i = 0; i < _data.Length; i++)
-                    {
-                        TrieNode child = _data[i] as TrieNode;
-                        if (child != null) // both unresolved and NULL are handled here
-                        {
-                            // if (child.Refs < Refs)
-                            // {
-                            //     throw new InvalidDataException(
-                            //         $"Child {child} should always have greater or equal number of refs than {this}.");
-                            // }
+        //    if (!IsLeaf)
+        //    {
+        //        if (_data != null)
+        //        {
+        //            for (int i = 0; i < _data.Length; i++)
+        //            {
+        //                if (_data[i] is TrieNode child) // both unresolved and NULL are handled here
+        //                {
+        //                    // if (child.Refs < Refs)
+        //                    // {
+        //                    //     throw new InvalidDataException(
+        //                    //         $"Child {child} should always have greater or equal number of refs than {this}.");
+        //                    // }
 
-                            if (logger.IsTrace) logger.Trace($"Decrementing refs recursively on child {i} {child}");
-                            child.DecrementRefsRecursively(logger, cache, IsPersisted);
-                            // if (child.Refs == 0)
-                            // {
-                            //     _data[i] = _unresolvedChild;
-                            // }
-                            //
-                            // if (child.IsPersisted)
-                            // {
-                            //     _data[i] = _unresolvedChild;
-                            // }
-                        }
-                    }
-                }
-            }
-            else
-            {
-                if ((Value?.Length ?? 0) > 64) // if not storage
-                {
-                    if (_storageRoot == null)
-                    {
-                        Keccak storageRoot =
-                            _accountDecoder.DecodeStorageRootOnly(Value.AsRlpStream());
-                        _storageRoot = cache.GetOrCreateUnknown(storageRoot);
-                    }
+        //                    if (logger.IsTrace) logger.Trace($"Decrementing refs recursively on child {i} {child}");
+        //                    child.DecrementRefsRecursively(logger, cache, IsPersisted, isStorage);
+        //                    // if (child.Refs == 0)
+        //                    // {
+        //                    //     _data[i] = _unresolvedChild;
+        //                    // }
+        //                    //
+        //                    // if (child.IsPersisted)
+        //                    // {
+        //                    //     _data[i] = _unresolvedChild;
+        //                    // }
+        //                }
+        //            }
+        //        }
+        //    }
+        //    else if (!isStorage)
+        //    {
+        //        byte[] value = Value;
+        //        if ((value?.Length ?? 0) > 64) // if not storage
+        //        {
+        //            if (_storageRoot == null)
+        //            {
+        //                Keccak storageRoot =
+        //                    _accountDecoder.DecodeStorageRootOnly(value.AsRlpStream());
+        //                _storageRoot = cache.GetOrCreateUnknown(storageRoot);
+        //            }
 
-                    if (logger.IsTrace) logger.Trace($"Decrementing refs recursively on storage root {_storageRoot} of {this}");
-                    _storageRoot?.DecrementRefsRecursively(logger, cache, IsPersisted);
-                }
-            }
+        //            if (logger.IsTrace) logger.Trace($"Decrementing refs recursively on storage root {_storageRoot} of {this}");
+        //            _storageRoot?.DecrementRefsRecursively(logger, cache, IsPersisted, true);
+        //        }
+        //    }
 
-            Refs--;
-        }
+        //    if(--Refs == 0)
+        //    {
+        //        cache.Remove(Keccak);
+        //    }
+        //}
 
         // TODO: can do it as visitors but seems an overkill
-        public void IncrementRefsRecursively(ILogger logger, ITrieNodeCache cache, bool isParentPersisted = false)
-        {
-            if (IsPersisted)
-            {
-                return;
-            }
+        //public void IncrementRefsRecursively(ILogger logger, ITrieNodeCache cache, bool isParentPersisted = false, bool isStorage = false)
+        //{
+        //    if (IsPersisted)
+        //    {
+        //        return;
+        //    }
 
-            if (!IsPersisted && isParentPersisted)
-            {
-                IsPersisted = true;
-                // throw new InvalidDataException($"{this} is not persisted while parent is.");
+        //    if (!IsPersisted && isParentPersisted)
+        //    {
+        //        IsPersisted = true;
+        //        // throw new InvalidDataException($"{this} is not persisted while parent is.");
 
-                // there is a possibility that there has existed a persisted (storage root)A->B->C
-                // and we just created a (storage root)B->C and then resolved A
-                // and then read A and made A->B a pair that has B that is not marked as persisted and A which has been resolved
-            }
+        //        // there is a possibility that there has existed a persisted (storage root)A->B->C
+        //        // and we just created a (storage root)B->C and then resolved A
+        //        // and then read A and made A->B a pair that has B that is not marked as persisted and A which has been resolved
+        //    }
 
-            if (!IsLeaf)
-            {
-                if (_data != null)
-                {
-                    for (int i = 0; i < _data.Length; i++)
-                    {
-                        object o = _data[i];
-                        if (o is TrieNode child)
-                        {
-                            // if (child.Refs < Refs)
-                            // {
-                            //     throw new InvalidDataException(
-                            //         $"Child {child} should always have greater or equal number of refs than {this}.");
-                            // }
+        //    if (!IsLeaf)
+        //    {
+        //        if (_data != null)
+        //        {
+        //            for (int i = 0; i < _data.Length; i++)
+        //            {
+        //                object o = _data[i];
+        //                if (o is TrieNode child)
+        //                {
+        //                    // if (child.Refs < Refs)
+        //                    // {
+        //                    //     throw new InvalidDataException(
+        //                    //         $"Child {child} should always have greater or equal number of refs than {this}.");
+        //                    // }
 
-                            if (logger.IsTrace) logger.Trace($"Incrementing refs recursively on child {i} {child} of {this}");
-                            child.IncrementRefsRecursively(logger, cache, IsPersisted);
-                            // if(child.IsPersisted)
-                            // {
-                            //     _data[i] = _unresolvedChild;
-                            // }
-                        }
-                    }
-                }
-            }
-            else
-            {
-                if ((Value?.Length ?? 0) > 64) // if not storage
-                {
-                    if (_storageRoot == null)
-                    {
-                        Keccak storageRoot =
-                            _accountDecoder.DecodeStorageRootOnly(Value.AsRlpStream());
-                        _storageRoot = cache.GetOrCreateUnknown(storageRoot);
-                    }
+        //                    if (logger.IsTrace) logger.Trace($"Incrementing refs recursively on child {i} {child} of {this}");
+        //                    child.IncrementRefsRecursively(logger, cache, IsPersisted);
+        //                    // if(child.IsPersisted)
+        //                    // {
+        //                    //     _data[i] = _unresolvedChild;
+        //                    // }
+        //                }
+        //            }
+        //        }
+        //    }
+        //    else if (!isStorage)
+        //    {
+        //        byte[] value = Value;
+        //        if ((value?.Length ?? 0) > 64) // if not storage
+        //        {
+        //            if (_storageRoot == null)
+        //            {
+        //                Keccak storageRoot =
+        //                    _accountDecoder.DecodeStorageRootOnly(value.AsRlpStream());
+        //                _storageRoot = cache.GetOrCreateUnknown(storageRoot);
+        //            }
 
-                    if (logger.IsTrace) logger.Trace($"Incrementing refs recursively on storage root {_storageRoot} of {this}");
-                    _storageRoot?.IncrementRefsRecursively(logger, cache, IsPersisted);
-                }
-            }
+        //            if (logger.IsTrace) logger.Trace($"Incrementing refs recursively on storage root {_storageRoot} of {this}");
+        //            _storageRoot?.IncrementRefsRecursively(logger, cache, IsPersisted, true);
+        //        }
+        //    }
 
-            Refs++;
-        }
+        //    Refs++;
+        //}
 
         private TrieNode? _storageRoot;
 
@@ -751,7 +755,7 @@ namespace Nethermind.Trie
 
         private RlpStream? _rlpStream;
 
-        private object?[]? _data;
+        private object[] _data;
 
         private int _refs;
 
