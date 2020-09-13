@@ -100,7 +100,7 @@ namespace Nethermind.Core.Test.Blockchain
 
             Storage = new StorageProvider(StateDb, State, LimboLogs.Instance);
             Storage.Set(new StorageCell(TestItem.AddressA, UInt256.One), Bytes.FromHexString("0xabcdef"));
-            Storage.Commit();
+            Storage.CommitAndUpdateStorageRoots();
 
             State.Commit(SpecProvider.GenesisSpec);
             State.CommitTree(0);

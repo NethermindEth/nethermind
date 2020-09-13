@@ -374,7 +374,7 @@ namespace Nethermind.Evm.Test
             TestState.UpdateCodeHash(deploymentAddress, codeHash, MuirGlacier.Instance);
             
             Storage.Set(new StorageCell(deploymentAddress, 7), new byte[] {7});
-            Storage.Commit();
+            Storage.CommitAndUpdateStorageRoots();
             Storage.CommitTrees(0);
             TestState.Commit(MuirGlacier.Instance);
             TestState.CommitTree(0);

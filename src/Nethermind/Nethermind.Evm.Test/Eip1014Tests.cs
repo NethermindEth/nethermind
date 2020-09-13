@@ -121,7 +121,7 @@ namespace Nethermind.Evm.Test
 
             TestState.CreateAccount(expectedAddress, 1.Ether());
             Storage.Set(new StorageCell(expectedAddress, 1), new byte[] {1, 2, 3, 4, 5});
-            Storage.Commit();
+            Storage.CommitAndUpdateStorageRoots();
             Storage.CommitTrees(0);
             TestState.Commit(Spec);
             TestState.CommitTree(0);

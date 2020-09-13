@@ -51,7 +51,7 @@ namespace Nethermind.Evm.Test
         {
             TestState.CreateAccount(Recipient, 0);
             Storage.Set(new StorageCell(Recipient, 0), new [] {originalValue});
-            Storage.Commit();
+            Storage.CommitAndUpdateStorageRoots();
             TestState.Commit(RopstenSpecProvider.Instance.GenesisSpec);
             
             var receipt = Execute(Bytes.FromHexString(codeHex));
@@ -80,7 +80,7 @@ namespace Nethermind.Evm.Test
         {
             TestState.CreateAccount(Recipient, 0);
             Storage.Set(new StorageCell(Recipient, 0), new [] {originalValue});
-            Storage.Commit();
+            Storage.CommitAndUpdateStorageRoots();
             TestState.Commit(RopstenSpecProvider.Instance.GenesisSpec);
             
             var receipt = Execute(BlockNumber, 21000 + gasUsed + (2300 - 800), Bytes.FromHexString(codeHex));
@@ -93,7 +93,7 @@ namespace Nethermind.Evm.Test
         {
             TestState.CreateAccount(Recipient, 0);
             Storage.Set(new StorageCell(Recipient, 0), new [] {originalValue});
-            Storage.Commit();
+            Storage.CommitAndUpdateStorageRoots();
             TestState.Commit(RopstenSpecProvider.Instance.GenesisSpec);
             
             var receipt = Execute(BlockNumber, 21000 + gasUsed + (2301 - 800), Bytes.FromHexString(codeHex));
@@ -106,7 +106,7 @@ namespace Nethermind.Evm.Test
         {
             TestState.CreateAccount(Recipient, 0);
             Storage.Set(new StorageCell(Recipient, 0), new [] {originalValue});
-            Storage.Commit();
+            Storage.CommitAndUpdateStorageRoots();
             TestState.Commit(RopstenSpecProvider.Instance.GenesisSpec);
             
             var receipt = Execute(BlockNumber, 21000 + gasUsed + (2299 - 800), Bytes.FromHexString(codeHex));

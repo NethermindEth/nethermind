@@ -743,7 +743,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 storageProvider.Set(new StorageCell(TestItem.AddressB, (UInt256)i), i.ToBigEndianByteArray());
             }
 
-            storageProvider.Commit();
+            storageProvider.CommitAndUpdateStorageRoots();
             storageProvider.CommitTrees(0);
 
             stateProvider.Commit(MainnetSpecProvider.Instance.GenesisSpec, null);

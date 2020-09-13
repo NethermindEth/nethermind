@@ -1117,7 +1117,7 @@ namespace Nethermind.Trie.Test
                 streamWriter.WriteLine(
                     $"Commit block {blockNumber} | empty: {isEmptyBlock}");
 
-                storageProvider.Commit();
+                storageProvider.CommitAndUpdateStorageRoots();
                 stateProvider.Commit(MuirGlacier.Instance);
 
                 storageProvider.CommitTrees(blockNumber);

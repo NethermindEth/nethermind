@@ -65,6 +65,7 @@ namespace Nethermind.Trie.Pruning
             if (!nodeCommitInfo.IsEmptyBlockMarker)
             {
                 Debug.Assert(CurrentPackage != null, "Current package is null when enqueing a trie node.");
+                Debug.Assert(!nodeCommitInfo.Node.LastSeen.HasValue, "Committing a block.");
                 
                 TrieNode trieNode = nodeCommitInfo.Node;
                 if (trieNode!.Keccak == null)
@@ -72,7 +73,7 @@ namespace Nethermind.Trie.Pruning
                     throw new InvalidOperationException(
                         $"Hash of the node {trieNode} should be known at the time of committing.");
                 }
-                
+
                 CommittedNodeCount++;
 
                 if (_trieNodeCache.IsInMemory(trieNode.Keccak))
@@ -85,6 +86,7 @@ namespace Nethermind.Trie.Pruning
                                 $"Replacing a {nameof(trieNode)} object {trieNode} with its cached representation {cachedReplacement}.");
                         if (!nodeCommitInfo.IsRoot)
                         {
+                            cachedReplacement.LastSeen = blockNumber; // TODO: this line is not tested yet and if missing it may lead to lost storage
                             nodeCommitInfo.NodeParent!.ReplaceChildRef(nodeCommitInfo.ChildPositionAtParent, cachedReplacement);
                         }
                     }
@@ -307,6 +309,9 @@ namespace Nethermind.Trie.Pruning
                 throw new InvalidOperationException(
                     $"An attempt to {nameof(Persist)} a node without a resolved {nameof(TrieNode.Keccak)}");
             }
+            
+            Debug.Assert(currentNode.LastSeen.HasValue, $"Cannot persist a dangling node (without {(nameof(TrieNode.LastSeen))} value set).");
+            // Debug.Assert(currentNode.LastSeen <= snapshotId, $"Cannot persist nodes from the future ({(nameof(TrieNode.LastSeen))} {currentNode.LastSeen} > {nameof(snapshotId)} {snapshotId}).");
 
             if (_logger.IsTrace) _logger.Trace($"Persisting {nameof(TrieNode)} {currentNode}.");
             

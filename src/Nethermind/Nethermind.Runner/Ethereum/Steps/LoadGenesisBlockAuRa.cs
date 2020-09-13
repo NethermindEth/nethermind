@@ -49,7 +49,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 if (_api.StorageProvider == null) throw new StepDependencyException(nameof(_api.StorageProvider));
 
                 _api.StateProvider.CreateAccount(Address.Zero, UInt256.Zero);
-                _api.StorageProvider.Commit();
+                _api.StorageProvider.CommitAndUpdateStorageRoots();
                 _api.StateProvider.Commit(Homestead.Instance);
             }
         }

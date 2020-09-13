@@ -702,10 +702,14 @@ namespace Nethermind.Trie
                         Keccak keccak = _rlpStream.DecodeKeccak();
                         TrieNode cachedOrUnknown = tree.FindCachedOrUnknown(keccak);
                         _data![i] = cachedOrUnknown;
-                        if (IsPersisted && !cachedOrUnknown.IsPersisted)
+                        if (!cachedOrUnknown.IsPersisted)
                         {
                             cachedOrUnknown.MarkPersistedRecursively(tree, NullLogger.Instance);
                         }
+                        // if (IsPersisted && !cachedOrUnknown.IsPersisted)
+                        // {
+                        //     cachedOrUnknown.MarkPersistedRecursively(tree, NullLogger.Instance);
+                        // }
                         //
                         // if (!IsPersisted && !cachedOrUnknown.IsPersisted)
                         // {

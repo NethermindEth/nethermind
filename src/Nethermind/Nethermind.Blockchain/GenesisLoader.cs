@@ -100,7 +100,7 @@ namespace Nethermind.Blockchain
             // we no longer need the allocations - 0.5MB RAM, 9000 objects for mainnet
             _chainSpec.Allocations = null;
 
-            _storageProvider.Commit();
+            _storageProvider.CommitAndUpdateStorageRoots();
             _stateProvider.Commit(_specProvider.GenesisSpec);
 
             _storageProvider.CommitTrees(0);
