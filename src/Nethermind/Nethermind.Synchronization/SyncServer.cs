@@ -345,6 +345,8 @@ namespace Nethermind.Synchronization
         // TODO - not a fan of this function name - CatchUpCHT, AddMissingCHTBlocks, ...?
         public Task BuildCHT()
         {
+            return Task.CompletedTask; // removing LES code
+
             return Task.Run(() =>
             {
                 lock (_chtLock)

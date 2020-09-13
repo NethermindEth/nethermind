@@ -98,7 +98,6 @@ namespace Nethermind.Trie.Pruning
                 }
                 else if (value.IsPersisted)
                 {
-                    // TODO: remove refs (as the node is still being held by other nodes and this will grow in memory)
                     if(_logger.IsTrace) _logger.Trace($"Removing persisted {value} from memory.");
                     _actualCache.TryRemove(key, out _);
                 }
