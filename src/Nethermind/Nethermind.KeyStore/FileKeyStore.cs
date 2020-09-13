@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -77,7 +77,7 @@ namespace Nethermind.KeyStore
             ICryptoRandom cryptoRandom,
             ILogManager logManager)
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<FileKeyStore>() ?? throw new ArgumentNullException(nameof(logManager));
             _config = keyStoreConfig ?? throw new ArgumentNullException(nameof(keyStoreConfig));
             _jsonSerializer = jsonSerializer ?? throw new ArgumentNullException(nameof(jsonSerializer));
             _symmetricEncrypter = symmetricEncrypter ?? throw new ArgumentNullException(nameof(symmetricEncrypter));

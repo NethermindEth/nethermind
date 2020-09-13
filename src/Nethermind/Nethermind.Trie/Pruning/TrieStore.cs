@@ -34,7 +34,7 @@ namespace Nethermind.Trie.Pruning
             IPersistenceStrategy? snapshotStrategy,
             ILogManager? logManager)
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<TrieStore>() ?? throw new ArgumentNullException(nameof(logManager));
             _trieNodeCache = trieNodeCache ?? throw new ArgumentNullException(nameof(trieNodeCache));
             _keyValueStore = keyValueStore ?? throw new ArgumentNullException(nameof(keyValueStore));
             _pruningStrategy = pruningStrategy ?? throw new ArgumentNullException(nameof(pruningStrategy));

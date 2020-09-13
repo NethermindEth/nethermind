@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -63,7 +63,7 @@ namespace Nethermind.State
         public StorageProvider(ITrieStore trieStore, IStateProvider stateProvider, ILogManager logManager)
         {
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager.GetClassLogger<StorageProvider>() ?? throw new ArgumentNullException(nameof(logManager));
             _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
         }

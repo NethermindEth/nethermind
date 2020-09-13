@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -106,7 +106,7 @@ namespace Nethermind.Trie
             bool allowCommits,
             ILogManager logManager)
         {
-            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager.GetClassLogger<PatriciaTree>() ?? throw new ArgumentNullException(nameof(logManager));
             TrieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
             _parallelBranches = parallelBranches;
             _allowCommits = allowCommits;

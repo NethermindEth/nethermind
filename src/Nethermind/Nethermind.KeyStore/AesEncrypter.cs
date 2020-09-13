@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -31,7 +31,7 @@ namespace Nethermind.KeyStore
         public AesEncrypter(IKeyStoreConfig keyStoreConfig, ILogManager logManager)
         {
             _config = keyStoreConfig ?? throw new ArgumentNullException(nameof(keyStoreConfig));
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<AesEncrypter>() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         public byte[] Encrypt(byte[] content, byte[] key, byte[] iv, string cipherType)

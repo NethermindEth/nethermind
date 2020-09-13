@@ -38,7 +38,7 @@ namespace Nethermind.Network
 
         public ProtocolValidator(INodeStatsManager nodeStatsManager, IBlockTree blockTree, ILogManager logManager)
         {
-            _logger = logManager?.GetClassLogger();
+            _logger = logManager?.GetClassLogger<ProtocolValidator>();
             _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
         }

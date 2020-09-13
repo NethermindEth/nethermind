@@ -52,7 +52,7 @@ namespace Nethermind.State
         public StateProvider(StateTree stateTree, IDb codeDb, ILogManager logManager)
         {
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
             _tree = stateTree ?? throw new ArgumentNullException(nameof(stateTree));
         }

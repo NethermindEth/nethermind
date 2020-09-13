@@ -37,7 +37,7 @@ namespace Nethermind.Network.Discovery
 
         public NettyDiscoveryHandler(IDiscoveryManager discoveryManager, IDatagramChannel channel, IMessageSerializationService messageSerializationService, ITimestamper timestamper, ILogManager logManager)
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<NettyDiscoveryHandler>() ?? throw new ArgumentNullException(nameof(logManager));
             _discoveryManager = discoveryManager ?? throw new ArgumentNullException(nameof(discoveryManager));
             _channel = channel ?? throw new ArgumentNullException(nameof(channel));
             _messageSerializationService = messageSerializationService ?? throw new ArgumentNullException(nameof(messageSerializationService));
