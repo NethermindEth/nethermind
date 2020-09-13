@@ -45,10 +45,6 @@ namespace Nethermind.Trie.Pruning
         {
             if (!_actualCache.TryGetValue(hash, out TrieNode trieNode))
             {
-                if (hash.ToString().StartsWith("0x581af"))
-                {
-                    
-                }
                 trieNode = new TrieNode(NodeType.Unknown, hash);
                 if(_logger.IsTrace) _logger.Trace($"Creating new node {trieNode}");
                 _actualCache.TryAdd(trieNode.Keccak!, trieNode);
