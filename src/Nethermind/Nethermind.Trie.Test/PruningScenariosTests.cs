@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Diagnostics;
 using FluentAssertions;
 using Nethermind.Core;
@@ -162,6 +163,10 @@ namespace Nethermind.Trie.Test
             
             public PruningContext VerifyCached(int i)
             {
+                GC.Collect();
+                GC.WaitForFullGCComplete(1000);
+                GC.WaitForPendingFinalizers();
+                _trieNodeCache.Prune();
                 _trieNodeCache.Count.Should().Be(i);
                 return this;
             }
