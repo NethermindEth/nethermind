@@ -778,7 +778,7 @@ namespace Nethermind.Trie
                 }
             }
 
-            IsPersisted = true;
+            action(this);
         }
 
         #region private

@@ -312,8 +312,8 @@ namespace Nethermind.Trie.Pruning
 
             long memoryToDrop = commitPackage.MemorySize + LinkedListNodeMemorySize;
 
-            Queue<TrieNode> localCarryQueue = _carryQueue;
-            _carryQueue = new Queue<TrieNode>();
+            // Queue<TrieNode> localCarryQueue = _carryQueue;
+            // _carryQueue = new Queue<TrieNode>();
             
             bool shouldPersistSnapshot = _snapshotStrategy.ShouldPersistSnapshot(commitPackage.BlockNumber);
 
@@ -376,8 +376,12 @@ namespace Nethermind.Trie.Pruning
             //}
 
             //DecrementRefs(commitPackage);
+            if (shouldPersistSnapshot)
+            {
+                commitPackage.Root?.PersistRecursively(_logger, _trieNodeCache, Persist);
+            }
+            
             _trieNodeCache.Prune();
-            commitPackage.Root?.PersistRecursively(_logger, _trieNodeCache, Persist);
 
             MemorySize -= memoryToDrop;
             if (_logger.IsDebug)
