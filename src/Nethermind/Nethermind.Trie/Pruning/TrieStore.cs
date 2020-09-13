@@ -405,6 +405,7 @@ namespace Nethermind.Trie.Pruning
             }
             
             _keyValueStore[currentNode.Keccak.Bytes] = currentNode.FullRlp;
+            currentNode.IsPersisted = true;
             PersistedNodesCount++;
         }
 
