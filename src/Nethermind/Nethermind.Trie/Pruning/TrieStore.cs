@@ -86,8 +86,12 @@ namespace Nethermind.Trie.Pruning
                                 $"Replacing a {nameof(trieNode)} object {trieNode} with its cached representation {cachedReplacement}.");
                         if (!nodeCommitInfo.IsRoot)
                         {
-                            cachedReplacement.LastSeen = blockNumber; // TODO: this line is not tested yet and if missing it may lead to lost storage
+                            cachedReplacement.LastSeen = blockNumber; // TODO: this line is not tested yet and if missing it may lead to lost storage - scenario is that we
                             nodeCommitInfo.NodeParent!.ReplaceChildRef(nodeCommitInfo.ChildPositionAtParent, cachedReplacement);
+                        }
+                        else
+                        {
+                            cachedReplacement.LastSeen = blockNumber; // TODO: roof can still get lost here due to varying resolutions, I guess
                         }
                     }
                 }
