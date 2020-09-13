@@ -63,7 +63,7 @@ namespace Nethermind.Baseline.JsonRpc
             _metadata = LoadMetadata();
             InitTrees();
         }
-        
+
         public async Task<ResultWrapper<Keccak>> baseline_insertLeaf(Address address, Address contractAddress, Keccak hash)
         {
             if (hash == Keccak.Zero)
