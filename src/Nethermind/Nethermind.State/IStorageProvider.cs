@@ -32,7 +32,7 @@ namespace Nethermind.State
         
         void Restore(int snapshot);
 
-        void CommitAndUpdateStorageRoots();
+        void Commit();
         
         void Commit(IStorageTracer stateTracer);
         

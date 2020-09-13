@@ -55,7 +55,7 @@ namespace Nethermind.Store.Test
                 storageProvider.Set(storageCell, new byte[] {(byte)i});    
             }
 
-            storageProvider.CommitAndUpdateStorageRoots();
+            storageProvider.Commit();
             stateProvider.Commit(Istanbul.Instance);
 
             storageProvider.CommitTrees(0);

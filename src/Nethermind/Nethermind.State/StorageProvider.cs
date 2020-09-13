@@ -159,7 +159,7 @@ namespace Nethermind.State
             }
         }
 
-        public void CommitAndUpdateStorageRoots()
+        public void Commit()
         {
             Commit(null);
         }

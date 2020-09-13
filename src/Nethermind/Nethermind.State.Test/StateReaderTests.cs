@@ -100,7 +100,7 @@ namespace Nethermind.Store.Test
 
             void CommitEverything()
             {
-                storageProvider.CommitAndUpdateStorageRoots();
+                storageProvider.Commit();
                 storageProvider.CommitTrees(0);
                 provider.Commit(spec);
                 provider.CommitTree(0);
@@ -152,7 +152,7 @@ namespace Nethermind.Store.Test
 
             void CommitEverything()
             {
-                storageProvider.CommitAndUpdateStorageRoots();
+                storageProvider.Commit();
                 storageProvider.CommitTrees(0);
                 provider.Commit(spec);
                 provider.CommitTree(0);
@@ -216,7 +216,7 @@ namespace Nethermind.Store.Test
 
             byte[] initialValue = new byte[] {1, 2, 3};
             storage.Set(storageCell, initialValue);
-            storage.CommitAndUpdateStorageRoots();
+            storage.Commit();
             storage.CommitTrees(2);
             state.Commit(MuirGlacier.Instance);
             state.CommitTree(2);
@@ -244,7 +244,7 @@ namespace Nethermind.Store.Test
                 new StorageProvider(dbProvider, processorStateProvider, LimboLogs.Instance);
             
             processorStorageProvider.Set(storageCell, newValue);
-            processorStorageProvider.CommitAndUpdateStorageRoots();
+            processorStorageProvider.Commit();
             processorStorageProvider.CommitTrees(3);
             processorStateProvider.Commit(MuirGlacier.Instance);
             processorStateProvider.CommitTree(3);

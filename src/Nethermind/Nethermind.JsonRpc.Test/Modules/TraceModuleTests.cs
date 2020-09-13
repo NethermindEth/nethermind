@@ -81,7 +81,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             IStorageProvider storageProvider = new StorageProvider(_stateDb, _stateProvider, LimboLogs.Instance);
             storageProvider.Set(new StorageCell(TestItem.AddressA, UInt256.One), Bytes.FromHexString("0xabcdef"));
-            storageProvider.CommitAndUpdateStorageRoots();
+            storageProvider.Commit();
 
             _stateProvider.Commit(specProvider.GenesisSpec);
             _stateProvider.CommitTree(0);
