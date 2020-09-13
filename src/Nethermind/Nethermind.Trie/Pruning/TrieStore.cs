@@ -408,22 +408,24 @@ namespace Nethermind.Trie.Pruning
                     $"An attempt to {nameof(Persist)} a node without a resolved {nameof(TrieNode.Keccak)}");
             }
             
+            if (_logger.IsTrace)
+                _logger.Trace($"Persisting {nameof(TrieNode)} {currentNode}.");
             _keyValueStore[currentNode.Keccak.Bytes] = currentNode.FullRlp;
             currentNode.IsPersisted = true;
             PersistedNodesCount++;
         }
 
-        private void DropNode(TrieNode trieNode)
-        {
-            if (!trieNode.IsPersisted)
-            {
-                DroppedNodesCount++;
-                if (_logger.IsTrace)
-                    _logger.Trace($"Pruning in store: {nameof(TrieNode)} {trieNode}. ({DroppedNodesCount / ((decimal) DroppedNodesCount + PersistedNodesCount):P2})");
-            }
-
-            _trieNodeCache.Remove(trieNode.Keccak!);
-        }
+        // private void DropNode(TrieNode trieNode)
+        // {
+        //     if (!trieNode.IsPersisted)
+        //     {
+        //         DroppedNodesCount++;
+        //         if (_logger.IsTrace)
+        //             _logger.Trace($"Pruning in store: {nameof(TrieNode)} {trieNode}. ({DroppedNodesCount / ((decimal) DroppedNodesCount + PersistedNodesCount):P2})");
+        //     }
+        //
+        //     _trieNodeCache.Remove(trieNode.Keccak!);
+        // }
 
         //private void DecrementRefs(BlockCommitPackage package)
         //{

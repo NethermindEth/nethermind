@@ -97,6 +97,7 @@ namespace Nethermind.Trie.Pruning
                 //    _actualCache.TryRemove(key, out _);
                 //}
                 //else if (value.IsPersisted)
+                if (value.IsPersisted)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Removing persisted {value} from memory.");
                     _actualCache.TryRemove(key, out _);

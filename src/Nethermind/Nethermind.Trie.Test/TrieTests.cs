@@ -1011,6 +1011,7 @@ namespace Nethermind.Trie.Test
         [TestCase(128, 256, 128, 988091870)]
         [TestCase(128, 256, 128, 2107374965)]
         [TestCase(128, 256, 128, null)]
+        [TestCase(4, 16, 4, 1242692908)]
         public void Fuzz_accounts_with_storage(
             int accountsCount,
             int blocksCount,

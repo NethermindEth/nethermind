@@ -759,7 +759,7 @@ namespace Nethermind.Trie
                         object o = _data[i];
                         if (o is TrieNode child)
                         {
-                            if (logger.IsTrace) logger.Trace($"Mark persisted on child {i} {child} of {this}");
+                            if (logger.IsTrace) logger.Trace($"Persist recursively on child {i} {child} of {this}");
                             child.PersistRecursively(logger, cache, action);
                         }
                     }
@@ -773,7 +773,7 @@ namespace Nethermind.Trie
                         _accountDecoder.DecodeStorageRootOnly(Value.AsRlpStream());
                     _storageRoot = cache.GetOrCreateUnknown(storageRoot);
 
-                    if (logger.IsTrace) logger.Trace($"Mark persisted recursively on storage root {_storageRoot} of {this}");
+                    if (logger.IsTrace) logger.Trace($"Persist recursively on storage root {_storageRoot} of {this}");
                     _storageRoot?.PersistRecursively(logger, cache, action);
                 }
             }
