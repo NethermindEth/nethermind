@@ -742,6 +742,44 @@ namespace Nethermind.Trie
 
             IsPersisted = true;
         }
+        
+        public void PersistRecursively(ILogger logger, ITrieNodeCache cache, Action<TrieNode> action)
+        {
+            if (IsPersisted)
+            {
+                return;
+            }
+            
+            if (!IsLeaf)
+            {
+                if (_data != null)
+                {
+                    for (int i = 0; i < _data.Length; i++)
+                    {
+                        object o = _data[i];
+                        if (o is TrieNode child)
+                        {
+                            if (logger.IsTrace) logger.Trace($"Mark persisted on child {i} {child} of {this}");
+                            child.PersistRecursively(logger, cache, action);
+                        }
+                    }
+                }
+            }
+            else
+            {
+                if ((Value?.Length ?? 0) > 64) // if not storage
+                {
+                    Keccak storageRoot =
+                        _accountDecoder.DecodeStorageRootOnly(Value.AsRlpStream());
+                    _storageRoot = cache.GetOrCreateUnknown(storageRoot);
+
+                    if (logger.IsTrace) logger.Trace($"Mark persisted recursively on storage root {_storageRoot} of {this}");
+                    _storageRoot?.PersistRecursively(logger, cache, action);
+                }
+            }
+
+            IsPersisted = true;
+        }
 
         #region private
 
