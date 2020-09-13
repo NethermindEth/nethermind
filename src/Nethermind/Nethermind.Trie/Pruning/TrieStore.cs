@@ -309,25 +309,27 @@ namespace Nethermind.Trie.Pruning
                 throw new ArgumentNullException(nameof(currentNode));
             }
 
-            if (currentNode.Keccak == null)
+            if (currentNode.Keccak != null)
             {
-                // this would be short node?
-                _logger.Warn($"Skipping persistence of the node with RLP {currentNode.FullRlp?.ToHexString()}");
-                return;
-                throw new InvalidOperationException(
-                    $"An attempt to persist a node without a resolved {nameof(TrieNode.Keccak)}");
+                Debug.Assert(currentNode.LastSeen.HasValue, $"Cannot persist a dangling node (without {(nameof(TrieNode.LastSeen))} value set).");
+                // Note that the LastSeen value here can be 'in the future' (greater than snapshotId
+                // if we replaced a newly added node with an older copy and updated the LastSeen value.
+                // Here we reach it from the old root so it appears to be out of place but it is correct as we need
+                // to prevent it from being removed from cache and also want to have it persisted.
+
+                if (_logger.IsTrace) _logger.Trace($"Persisting {nameof(TrieNode)} {currentNode}.");
+            
+                _keyValueStore[currentNode.Keccak.Bytes] = currentNode.FullRlp;
+                currentNode.IsPersisted = true;
+                currentNode.LastSeen = snapshotId;
+
+                PersistedNodesCount++;   
             }
-            
-            Debug.Assert(currentNode.LastSeen.HasValue, $"Cannot persist a dangling node (without {(nameof(TrieNode.LastSeen))} value set).");
-            // Debug.Assert(currentNode.LastSeen <= snapshotId, $"Cannot persist nodes from the future ({(nameof(TrieNode.LastSeen))} {currentNode.LastSeen} > {nameof(snapshotId)} {snapshotId}).");
-
-            if (_logger.IsTrace) _logger.Trace($"Persisting {nameof(TrieNode)} {currentNode}.");
-            
-            _keyValueStore[currentNode.Keccak.Bytes] = currentNode.FullRlp;
-            currentNode.IsPersisted = true;
-            currentNode.LastSeen = snapshotId;
-
-            PersistedNodesCount++;
+            else
+            {
+                Debug.Assert(currentNode.FullRlp != null && currentNode.FullRlp.Length < 32,
+                    "We only expect persistence call without Keccak for the nodes that are kept inside the parent RLP (less than 32 bytes).");
+            }
         }
 
         #endregion
