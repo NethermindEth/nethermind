@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 
 namespace Nethermind.Trie.Pruning
@@ -310,8 +311,11 @@ namespace Nethermind.Trie.Pruning
 
             if (currentNode.Keccak == null)
             {
+                // this would be short node?
+                _logger.Warn($"Skipping persistence of the node with RLP {currentNode.FullRlp?.ToHexString()}");
+                return;
                 throw new InvalidOperationException(
-                    $"An attempt to {nameof(Persist)} a node without a resolved {nameof(TrieNode.Keccak)}");
+                    $"An attempt to persist a node without a resolved {nameof(TrieNode.Keccak)}");
             }
             
             Debug.Assert(currentNode.LastSeen.HasValue, $"Cannot persist a dangling node (without {(nameof(TrieNode.LastSeen))} value set).");
