@@ -171,12 +171,6 @@ namespace Nethermind.Trie.Test
                 return this;
             }
 
-            public PruningContext VerifyDropped(int i)
-            {
-                _trieStore.DroppedNodesCount.Should().Be(i);
-                return this;
-            }
-
             public PruningContext DumpCache()
             {
                 _trieNodeCache.Dump();
@@ -224,8 +218,7 @@ namespace Nethermind.Trie.Test
                 .PruneOldBlock()
                 .PruneOldBlock()
                 // .VerifyPersisted(9) // this can be 9 if we merge the storage and state tries
-                .VerifyPersisted(12) 
-                .VerifyDropped(0);
+                .VerifyPersisted(12);
         }
         
         [Test]
@@ -241,8 +234,7 @@ namespace Nethermind.Trie.Test
                 .CommitEmptyBlock()
                 .PruneOldBlock()
                 .PruneOldBlock()
-                .VerifyPersisted(1) 
-                .VerifyDropped(0);
+                .VerifyPersisted(1);
         }
 
         [Test]
@@ -373,8 +365,7 @@ namespace Nethermind.Trie.Test
                 .SetStorage(1, 2)
                 .Commit()
                 .PruneOldBlock()
-                .VerifyPersisted(0)
-                .VerifyDropped(0);
+                .VerifyPersisted(0);
         }
 
         [Test]
@@ -387,8 +378,7 @@ namespace Nethermind.Trie.Test
                 .SetStorage(1, 2)
                 .Commit()
                 .PruneOldBlock()
-                .VerifyPersisted(4) // account leaf, storage branch, 2x storage leaf
-                .VerifyDropped(0);
+                .VerifyPersisted(4);  // account leaf, storage branch, 2x storage leaf
         }
 
         [Test]
@@ -399,8 +389,7 @@ namespace Nethermind.Trie.Test
                 .CreateAccount(2)
                 .Commit()
                 .PruneOldBlock()
-                .VerifyPersisted(3) // branch and two leaves 
-                .VerifyDropped(0);
+                .VerifyPersisted(3); // branch and two leaves 
         }
     }
 }

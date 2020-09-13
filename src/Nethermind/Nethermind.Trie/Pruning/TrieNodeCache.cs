@@ -28,7 +28,7 @@ namespace Nethermind.Trie.Pruning
         {
             _logger = NullLogger.Instance;
         }
-        
+
         public TrieNodeCache(ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -43,26 +43,12 @@ namespace Nethermind.Trie.Pruning
 
         public TrieNode GetOrCreateUnknown(Keccak hash)
         {
-            TrieNode trieNode = null;
-            bool isMissing = false;
-            
-            if (!_actualCache.TryGetValue(hash, out WeakReference<TrieNode> trieNodeRef))
-            {
-                isMissing = true;
-            }
-            else
-            {
-                if (!trieNodeRef.TryGetTarget(out trieNode))
-                {
-                    isMissing = true;
-                }
-            }
-
+            bool isMissing = !_actualCache.TryGetValue(hash, out TrieNode trieNode);
             if (isMissing)
             {
                 trieNode = new TrieNode(NodeType.Unknown, hash);
-                if(_logger.IsTrace) _logger.Trace($"Creating new node {trieNode}");
-                _actualCache.TryAdd(trieNode.Keccak!, new WeakReference<TrieNode>(trieNode));
+                if (_logger.IsTrace) _logger.Trace($"Creating new node {trieNode}");
+                _actualCache.TryAdd(trieNode.Keccak!, trieNode);
             }
 
             return trieNode;
@@ -70,21 +56,7 @@ namespace Nethermind.Trie.Pruning
 
         public TrieNode? GetOrNull(Keccak hash)
         {
-            TrieNode trieNode = null;
-            bool isMissing = false;
-            
-            if (!_actualCache.TryGetValue(hash, out WeakReference<TrieNode> trieNodeRef))
-            {
-                isMissing = true;
-            }
-            else
-            {
-                if (!trieNodeRef.TryGetTarget(out trieNode))
-                {
-                    isMissing = true;
-                }
-            }
-
+            bool isMissing = !_actualCache.TryGetValue(hash, out TrieNode trieNode);
             if (isMissing)
             {
                 return null;
@@ -99,8 +71,8 @@ namespace Nethermind.Trie.Pruning
             {
                 // throw new InvalidOperationException("Cannot cache unknown node.");
             }
-            
-            _actualCache[hash] = new WeakReference<TrieNode>(trieNode);
+
+            _actualCache[hash] = trieNode;
         }
 
         public void Remove(Keccak hash)
@@ -114,12 +86,9 @@ namespace Nethermind.Trie.Pruning
             {
                 _logger.Trace($"Trie node cache ({_actualCache.Count})");
                 // return;
-                foreach (KeyValuePair<Keccak, WeakReference<TrieNode>> keyValuePair in _actualCache)
+                foreach (KeyValuePair<Keccak, TrieNode> keyValuePair in _actualCache)
                 {
-                    if (keyValuePair.Value.TryGetTarget(out TrieNode trieNode))
-                    {
-                        _logger.Trace($"  {trieNode}");
-                    }
+                    _logger.Trace($"  {keyValuePair.Value}");
                 }
             }
         }
@@ -127,25 +96,12 @@ namespace Nethermind.Trie.Pruning
         public void Prune()
         {
             List<Keccak> toRemove = new List<Keccak>();
-            foreach ((Keccak key, WeakReference<TrieNode> value) in _actualCache)
+            foreach ((Keccak key, TrieNode value) in _actualCache)
             {
-                //if (value.Refs == 0)
-                //{
-                //    if (_logger.IsTrace) _logger.Trace($"Pruning in cache: {value}.");
-                //    _actualCache.TryRemove(key, out _);
-                //}
-                //else if (value.IsPersisted)
-                if (!value.TryGetTarget(out TrieNode node))
+                if (value.IsPersisted)
                 {
+                    if (_logger.IsTrace) _logger.Trace($"Removing persisted {value} from memory.");
                     toRemove.Add(key);
-                }
-                else
-                {
-                    if (node.IsPersisted)
-                    {
-                        if (_logger.IsTrace) _logger.Trace($"Removing persisted {value} from memory.");
-                        toRemove.Add(key);
-                    }
                 }
             }
 
@@ -158,9 +114,9 @@ namespace Nethermind.Trie.Pruning
         #region private
 
         private ILogger _logger;
-        
-        private Dictionary<Keccak, WeakReference<TrieNode>> _actualCache
-            = new Dictionary<Keccak, WeakReference<TrieNode>>();        
+
+        private Dictionary<Keccak, TrieNode> _actualCache
+            = new Dictionary<Keccak, TrieNode>();
 
         #endregion
     }
