@@ -41,10 +41,14 @@ namespace Nethermind.Trie.Pruning
             return _actualCache.ContainsKey(hash);
         }
 
-        public TrieNode Get(Keccak hash)
+        public TrieNode GetOrCreateUnknown(Keccak hash)
         {
             if (!_actualCache.TryGetValue(hash, out TrieNode trieNode))
             {
+                if (hash.ToString().StartsWith("0x581af"))
+                {
+                    
+                }
                 trieNode = new TrieNode(NodeType.Unknown, hash);
                 if(_logger.IsTrace) _logger.Trace($"Creating new node {trieNode}");
                 _actualCache.TryAdd(trieNode.Keccak!, trieNode);
@@ -53,7 +57,7 @@ namespace Nethermind.Trie.Pruning
             return trieNode;
         }
 
-        public TrieNode? StrictlyGet(Keccak hash)
+        public TrieNode? GetOrNull(Keccak hash)
         {
             _actualCache.TryGetValue(hash, out TrieNode value);
             return value;

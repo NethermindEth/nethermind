@@ -24,9 +24,9 @@ namespace Nethermind.Trie.Pruning
         
         bool IsInMemory(Keccak hash);
         
-        TrieNode Get(Keccak hash);
+        TrieNode GetOrCreateUnknown(Keccak hash);
         
-        TrieNode? StrictlyGet(Keccak hash);
+        TrieNode? GetOrNull(Keccak hash);
         
         void Set(Keccak hash, TrieNode trieNode);
         

@@ -1006,30 +1006,20 @@ namespace Nethermind.Trie.Test
                 verifiedBlocks++;
             }
         }
-
-        // [TestCase(256, 128, 32)]
-        // [TestCase(128, 128, 8)]
-        // [TestCase(96, 192, 96)]
-        // [TestCase(96, 256, 128)]
-        [TestCase(128, 256, 128)]
-        // [TestCase(64, 512, 32)]
-        // [TestCase(8, 1024, 128)]
-        // [TestCase(8, 16, 8)]
-        // [TestCase(4, 32, 4)]
-        // [TestCase(4, 16, 4)]
+        
+        [TestCase(96, 192, 96, 1541344441)]
+        [TestCase(128, 256, 128, 988091870)]
+        [TestCase(128, 256, 128, 2107374965)]
+        [TestCase(128, 256, 128, null)]
         public void Fuzz_accounts_with_storage(
             int accountsCount,
             int blocksCount,
-            int lookupLimit)
+            int lookupLimit,
+            int? seed)
         {
-            int seed = _random.Next(int.MaxValue);
-
-            // int seed = 1541344441; // (decrement refs issue) [TestCase(96, 192, 96)] FIXED
-            // int seed = 580514763; // (decrement refs issue) [TestCase(96, 256, 128)] FIXED
-            // int seed = 483020425; // (key not present) [TestCase(128, 256, 128)]
-            // int seed = 1299777953; // (decrement refs issue) [TestCase(128, 512, 128)]
-            _random = new Random(seed);
-            _logger.Info($"RANDOM SEED {seed}");
+            int usedSeed = seed ?? _random.Next(int.MaxValue);
+            _random = new Random(usedSeed);
+            _logger.Info($"RANDOM SEED {usedSeed}");
 
             string fileName = Path.GetTempFileName();
             //string fileName = "C:\\Temp\\fuzz.txt";

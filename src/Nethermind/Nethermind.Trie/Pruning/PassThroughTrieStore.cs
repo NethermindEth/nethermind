@@ -53,9 +53,14 @@ namespace Nethermind.Trie.Pruning
         {
         }
 
+        public TrieNode? FindCachedOrNull(Keccak hash)
+        {
+            return _trieNodeCache.GetOrNull(hash);
+        }
+
         public TrieNode FindCachedOrUnknown(Keccak hash)
         {
-            return _trieNodeCache.Get(hash);
+            return _trieNodeCache.GetOrCreateUnknown(hash);
         }
 
         public byte[]? LoadRlp(Keccak hash, bool allowCaching)

@@ -40,7 +40,6 @@ namespace Nethermind.Trie
 
         public int Id = Interlocked.Increment(ref _idCounter);
 
-        public long LastConnectedBlock;
 #endif
 
         public TrieNode(NodeType nodeType)
@@ -170,7 +169,7 @@ namespace Nethermind.Trie
         public bool IsLeaf => NodeType == NodeType.Leaf;
         public bool IsBranch => NodeType == NodeType.Branch;
         public bool IsExtension => NodeType == NodeType.Extension;
-        
+
         public byte[]? Path => Key?.Path;
 
         internal HexPrefix? Key
@@ -371,7 +370,7 @@ namespace Nethermind.Trie
 
             return rlp;
         }
-        
+
         public Keccak? GetChildHash(int i)
         {
             if (_rlpStream == null)
@@ -575,21 +574,21 @@ namespace Nethermind.Trie
         }
 
         // TODO: can do it as visitors but seems an overkill
-        public void DecrementRefsRecursively(ILogger logger, bool isParentPersisted = false)
+        public void DecrementRefsRecursively(ILogger logger, ITrieNodeCache cache, bool isParentPersisted = false)
         {
             if (IsPersisted)
             {
                 return;
             }
-            
+
             if (!IsPersisted && isParentPersisted)
             {
                 IsPersisted = true;
-                
+
                 // throw new InvalidDataException($"{this} is not persisted while parent is.");
                 // can happen
             }
-            
+
             if (!IsLeaf)
             {
                 if (_data != null)
@@ -604,9 +603,9 @@ namespace Nethermind.Trie
                             //     throw new InvalidDataException(
                             //         $"Child {child} should always have greater or equal number of refs than {this}.");
                             // }
-                            
-                            if(logger.IsTrace) logger.Trace($"Decrementing refs recursively on child {i} {child}");
-                            child.DecrementRefsRecursively(logger, IsPersisted);
+
+                            if (logger.IsTrace) logger.Trace($"Decrementing refs recursively on child {i} {child}");
+                            child.DecrementRefsRecursively(logger, cache, IsPersisted);
                             // if (child.Refs == 0)
                             // {
                             //     _data[i] = _unresolvedChild;
@@ -620,18 +619,33 @@ namespace Nethermind.Trie
                     }
                 }
             }
+            else
+            {
+                if ((Value?.Length ?? 0) > 64) // if not storage
+                {
+                    if (_storageRoot == null)
+                    {
+                        Keccak storageRoot =
+                            _accountDecoder.DecodeStorageRootOnly(Value.AsRlpStream());
+                        _storageRoot = cache.GetOrCreateUnknown(storageRoot);
+                    }
+
+                    if (logger.IsTrace) logger.Trace($"Decrementing refs recursively on storage root {_storageRoot} of {this}");
+                    _storageRoot?.DecrementRefsRecursively(logger, cache, IsPersisted);
+                }
+            }
 
             Refs--;
         }
 
         // TODO: can do it as visitors but seems an overkill
-        public void IncrementRefsRecursively(ILogger logger, long block, List<Keccak> storageRoots, bool isParentPersisted = false)
+        public void IncrementRefsRecursively(ILogger logger, ITrieNodeCache cache, bool isParentPersisted = false)
         {
             if (IsPersisted)
             {
                 return;
             }
-            
+
             if (!IsPersisted && isParentPersisted)
             {
                 IsPersisted = true;
@@ -656,14 +670,14 @@ namespace Nethermind.Trie
                             //     throw new InvalidDataException(
                             //         $"Child {child} should always have greater or equal number of refs than {this}.");
                             // }
-                            
-                            if(logger.IsTrace) logger.Trace($"Incrementing refs recursively on child {i} {child} of {this}");
-                            child.IncrementRefsRecursively(logger, block, storageRoots, IsPersisted);
+
+                            if (logger.IsTrace) logger.Trace($"Incrementing refs recursively on child {i} {child} of {this}");
+                            child.IncrementRefsRecursively(logger, cache, IsPersisted);
                             // if(child.IsPersisted)
                             // {
                             //     _data[i] = _unresolvedChild;
                             // }
-                        }   
+                        }
                     }
                 }
             }
@@ -671,23 +685,24 @@ namespace Nethermind.Trie
             {
                 if ((Value?.Length ?? 0) > 64) // if not storage
                 {
-                    Keccak storageRoot =
-                        _accountDecoder.DecodeStorageRootOnly(Value.AsRlpStream());
-                    if (storageRoot != Keccak.EmptyTreeHash)
+                    if (_storageRoot == null)
                     {
-                        storageRoots.Add(storageRoot);
+                        Keccak storageRoot =
+                            _accountDecoder.DecodeStorageRootOnly(Value.AsRlpStream());
+                        _storageRoot = cache.GetOrCreateUnknown(storageRoot);
                     }
+
+                    if (logger.IsTrace) logger.Trace($"Incrementing refs recursively on storage root {_storageRoot} of {this}");
+                    _storageRoot?.IncrementRefsRecursively(logger, cache, IsPersisted);
                 }
             }
 
-#if DEBUG
-            LastConnectedBlock = block;
-#endif
-            
             Refs++;
         }
-        
-        public void MarkPersistedRecursively(ILogger logger)
+
+        private TrieNode? _storageRoot;
+
+        public void MarkPersistedRecursively(ILogger logger, ITrieNodeResolver cache)
         {
             if (!IsLeaf)
             {
@@ -698,14 +713,26 @@ namespace Nethermind.Trie
                         object o = _data[i];
                         if (o is TrieNode child)
                         {
-                            if(logger.IsTrace) logger.Trace($"Mark persisted on child {i} {child} of {this}");
-                            child.MarkPersistedRecursively(logger);
+                            if (logger.IsTrace) logger.Trace($"Mark persisted on child {i} {child} of {this}");
+                            child.MarkPersistedRecursively(logger, cache);
                             // if(child.IsPersisted)
                             // {
                             //     _data[i] = _unresolvedChild;
                             // }
-                        }   
+                        }
                     }
+                }
+            }
+            else
+            {
+                if ((Value?.Length ?? 0) > 64) // if not storage
+                {
+                    Keccak storageRoot =
+                        _accountDecoder.DecodeStorageRootOnly(Value.AsRlpStream());
+                    _storageRoot = cache.FindCachedOrUnknown(storageRoot);
+
+                    if (logger.IsTrace) logger.Trace($"Mark persisted recursively on storage root {_storageRoot} of {this}");
+                    _storageRoot?.MarkPersistedRecursively(logger, cache);
                 }
             }
 
@@ -799,23 +826,23 @@ namespace Nethermind.Trie
                         _data![i] = cachedOrUnknown;
                         if (IsPersisted && !cachedOrUnknown.IsPersisted)
                         {
-                            cachedOrUnknown.MarkPersistedRecursively(NullLogger.Instance);
+                            cachedOrUnknown.MarkPersistedRecursively(NullLogger.Instance, tree);
                         }
 
                         if (!IsPersisted && !cachedOrUnknown.IsPersisted)
                         {
                             // generally I start to think that whatever we resolve in this method - it should be persisted, not true?
                             // let us try
-                            cachedOrUnknown.MarkPersistedRecursively(NullLogger.Instance);
+                            cachedOrUnknown.MarkPersistedRecursively(NullLogger.Instance, tree);
                             // Refs += cachedOrUnknown.Refs;
                         }
-                        
+
                         // if (cachedOrUnknown.Refs < Refs)
                         // {
                         //     throw new InvalidDataException(
                         //         $"Child {cachedOrUnknown} should always have greater or equal number of refs than {this}.");
                         // }
-                        
+
                         break;
                     default:
                     {

@@ -25,13 +25,7 @@ namespace Nethermind.Trie.Pruning
     internal class BlockCommitPackage
     {
         public TrieNode? Root { get; set; }
-        
-        /// <summary>
-        /// Cannot hold Keccaks only here as we need the physical references to prevent them from being resolved
-        /// from fresh.
-        /// </summary>
-        public List<TrieNode> StorageRoots { get; set; } = new List<TrieNode>();
-        
+
         public long BlockNumber { get; }
 
         public bool IsSealed { get; set; }

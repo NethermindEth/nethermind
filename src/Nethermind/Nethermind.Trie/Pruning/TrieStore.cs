@@ -76,7 +76,7 @@ namespace Nethermind.Trie.Pruning
 
                 if (_trieNodeCache.IsInMemory(trieNode.Keccak))
                 {
-                    TrieNode cachedReplacement = _trieNodeCache.Get(trieNode.Keccak);
+                    TrieNode cachedReplacement = _trieNodeCache.GetOrCreateUnknown(trieNode.Keccak);
                     if (!ReferenceEquals(cachedReplacement, trieNode))
                     {
                         if (_logger.IsTrace)
@@ -161,9 +161,14 @@ namespace Nethermind.Trie.Pruning
                               $"| save count {PersistedNodesCount}");
         }
 
+        public TrieNode? FindCachedOrNull(Keccak hash)
+        {
+            return _trieNodeCache.GetOrNull(hash);
+        }
+
         public TrieNode? FindCachedOrUnknown(Keccak hash)
         {
-            return _trieNodeCache.Get(hash);
+            return _trieNodeCache.GetOrCreateUnknown(hash);
         }
 
         public byte[]? LoadRlp(Keccak keccak, bool allowCaching)
@@ -255,10 +260,6 @@ namespace Nethermind.Trie.Pruning
 
         private long NewestKeptBlockNumber { get; set; }
 
-        private List<Keccak> _emptyList = new List<Keccak>();
-
-        private List<Keccak> _storageRootsCollector = new List<Keccak>();
-        
         private void FinishBlockCommitOnState(long blockNumber, TrieNode? root)
         {
             if (_logger.IsTrace) _logger.Trace($"Enqueued packages {_blockCommitsQueue.Count}");
@@ -275,19 +276,7 @@ namespace Nethermind.Trie.Pruning
                         $"Incrementing refs from block {blockNumber} root {package.Root?.ToString() ?? "NULL"} ");
 
                 
-                package.Root?.IncrementRefsRecursively(_logger, package.BlockNumber, _storageRootsCollector);
-                for (int index = 0; index < _storageRootsCollector.Count; index++)
-                {
-                    Keccak storageRootHash = _storageRootsCollector[index];
-                    TrieNode storageRoot = _trieNodeCache.Get(storageRootHash);
-                    package.StorageRoots.Add(storageRoot);
-                    if (_logger.IsTrace)
-                        _logger.Trace(
-                            $"Incrementing refs from block {blockNumber} storage root {storageRoot} ");
-                    storageRoot.IncrementRefsRecursively(_logger, package.BlockNumber, _emptyList);
-                }
-                
-                _storageRootsCollector.Clear();
+                package.Root?.IncrementRefsRecursively(_logger, _trieNodeCache);
 
                 package.Seal();
                 _trieNodeCache.Dump();
@@ -449,17 +438,7 @@ namespace Nethermind.Trie.Pruning
                     throw new InvalidDataException($"Found root node {root} with 0 refs.");
                 }
 
-                root.DecrementRefsRecursively(_logger);
-                foreach (TrieNode storageRoot in package.StorageRoots)
-                {
-                    if (!storageRoot.IsPersisted)
-                    {
-                        if (_logger.IsTrace)
-                            _logger.Trace(
-                                $"Decrementing refs from block {package.BlockNumber} storage root {storageRoot} ");
-                        storageRoot.DecrementRefsRecursively(_logger);
-                    }
-                }
+                root.DecrementRefsRecursively(_logger, _trieNodeCache);
 
                 _trieNodeCache.Prune();
                 _trieNodeCache.Dump();
