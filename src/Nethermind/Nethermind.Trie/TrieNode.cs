@@ -706,11 +706,11 @@ namespace Nethermind.Trie
                         {
                             cachedOrUnknown.MarkPersistedRecursively(tree, NullLogger.Instance);
                         }
-
-                        if (!IsPersisted && !cachedOrUnknown.IsPersisted)
-                        {
-                            cachedOrUnknown.MarkPersistedRecursively(tree, NullLogger.Instance);
-                        }
+                        //
+                        // if (!IsPersisted && !cachedOrUnknown.IsPersisted)
+                        // {
+                        //     cachedOrUnknown.MarkPersistedRecursively(tree, NullLogger.Instance);
+                        // }
 
                         break;
                     default:
