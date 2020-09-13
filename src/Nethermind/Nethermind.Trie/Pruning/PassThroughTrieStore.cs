@@ -27,9 +27,9 @@ namespace Nethermind.Trie.Pruning
         private readonly IKeyValueStore _keyValueStore;
         private readonly ILogger _logger;
 
-        public PassThroughTrieStore(IKeyValueStore keyValueStore, ILogManager logManager)
+        public PassThroughTrieStore(IKeyValueStore? keyValueStore, ILogManager? logManager)
         {
-            _trieNodeCache = new TrieNodeCache();
+            _trieNodeCache = new TrieNodeCache(logManager);
             _keyValueStore = keyValueStore ?? throw new ArgumentNullException(nameof(keyValueStore));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }

@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 
@@ -23,12 +24,7 @@ namespace Nethermind.Trie.Pruning
 {
     public class TrieNodeCache : ITrieNodeCache
     {
-        public TrieNodeCache()
-        {
-            _logger = NullLogger.Instance;
-        }
-
-        public TrieNodeCache(ILogManager logManager)
+        public TrieNodeCache(ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
@@ -112,21 +108,15 @@ namespace Nethermind.Trie.Pruning
 
         #region private
 
+        private static bool HasBeenRemoved(TrieNode trieNode, long snapshotId)
+        {
+            Debug.Assert(trieNode.LastSeen.HasValue, $"Any node that is cache should have {nameof(TrieNode.LastSeen)} set.");
+            return trieNode.LastSeen < snapshotId;
+        }
+        
         private ILogger _logger;
 
-        private Dictionary<Keccak, TrieNode> _actualCache
-            = new Dictionary<Keccak, TrieNode>();
-
-        private bool HasBeenRemoved(TrieNode trieNode, long snapshotId)
-        {
-            if (!trieNode.LastSeen.HasValue)
-            {
-                throw new Exception("interesting");
-            }
-            
-            bool isNotANewlyCreatedNode = trieNode.LastSeen.HasValue;
-            return isNotANewlyCreatedNode && trieNode.LastSeen < snapshotId;
-        }
+        private Dictionary<Keccak, TrieNode> _actualCache = new Dictionary<Keccak, TrieNode>();
 
         #endregion
     }

@@ -239,7 +239,7 @@ namespace Nethermind.Trie.Test
 
         public void Test_add_many(int i)
         {
-            _trieNodeCache = new TrieNodeCache();
+            _trieNodeCache = new TrieNodeCache(LimboLogs.Instance);
             MemDb memDb = new MemDb();
             TrieStore trieStore = new TrieStore(_trieNodeCache, memDb, new MemoryLimit(128.MB()), Full.Archive, _logManager);
             PatriciaTree patriciaTree = new PatriciaTree(trieStore, Keccak.EmptyTreeHash, true, true, _logManager);
@@ -266,7 +266,7 @@ namespace Nethermind.Trie.Test
 
         public void Test_try_delete_and_read_missing_nodes(int i)
         {
-            _trieNodeCache = new TrieNodeCache();_trieNodeCache = new TrieNodeCache();
+            _trieNodeCache = new TrieNodeCache(LimboLogs.Instance);
             MemDb memDb = new MemDb();
             TrieStore trieStore = new TrieStore(_trieNodeCache, memDb, new MemoryLimit(128.MB()), Full.Archive, _logManager);
             PatriciaTree patriciaTree = new PatriciaTree(trieStore, Keccak.EmptyTreeHash, true, true, _logManager);
@@ -309,7 +309,7 @@ namespace Nethermind.Trie.Test
 
         public void Test_update_many(int i)
         {
-            _trieNodeCache = new TrieNodeCache();_trieNodeCache = new TrieNodeCache();
+            _trieNodeCache = new TrieNodeCache(LimboLogs.Instance);
             MemDb memDb = new MemDb();
             TrieStore trieStore = new TrieStore(_trieNodeCache, memDb, new MemoryLimit(128.MB()), Full.Archive, _logManager);
             PatriciaTree patriciaTree = new PatriciaTree(trieStore, _logManager);
@@ -343,7 +343,7 @@ namespace Nethermind.Trie.Test
 
         public void Test_update_many_next_block(int i)
         {
-            _trieNodeCache = new TrieNodeCache();_trieNodeCache = new TrieNodeCache();
+            _trieNodeCache = new TrieNodeCache(LimboLogs.Instance);
             MemDb memDb = new MemDb();
             TrieStore trieStore = new TrieStore(_trieNodeCache, memDb, new DepthAndMemoryBased(1, 128.MB()), Full.Archive, _logManager);
             PatriciaTree patriciaTree = new PatriciaTree(trieStore, _logManager);
@@ -382,7 +382,7 @@ namespace Nethermind.Trie.Test
 
         public void Test_add_and_delete_many_same_block(int i)
         {
-            _trieNodeCache = new TrieNodeCache();_trieNodeCache = new TrieNodeCache();
+            _trieNodeCache = new TrieNodeCache(LimboLogs.Instance);
             MemDb memDb = new MemDb();
             TrieStore trieStore = new TrieStore(_trieNodeCache, memDb, new MemoryLimit(128.MB()), Full.Archive, _logManager);
             PatriciaTree patriciaTree = new PatriciaTree(trieStore, _logManager);
@@ -416,7 +416,7 @@ namespace Nethermind.Trie.Test
 
         public void Test_add_and_delete_many_next_block(int i)
         {
-            _trieNodeCache = new TrieNodeCache();_trieNodeCache = new TrieNodeCache();
+            _trieNodeCache = new TrieNodeCache(LimboLogs.Instance);
             MemDb memDb = new MemDb();
             TrieStore trieStore = new TrieStore(_trieNodeCache, memDb, new MemoryLimit(128.MB()), Full.Archive, _logManager);
             PatriciaTree patriciaTree = new PatriciaTree(trieStore, _logManager);
