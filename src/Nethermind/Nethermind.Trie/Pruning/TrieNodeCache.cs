@@ -97,8 +97,7 @@ namespace Nethermind.Trie.Pruning
                     if (_logger.IsTrace) _logger.Trace($"Removing persisted {value} from memory.");
                     toRemove.Add(key);
                 }
-
-                if (HasBeenRemoved(value, snapshotId))
+                else if (HasBeenRemoved(value, snapshotId))
                 {
                     if (_logger.IsTrace) _logger.Trace($"Removing {value} from memory (no longer referenced).");
                     toRemove.Add(key);

@@ -76,7 +76,7 @@ namespace Nethermind.Trie
         /// Sealed node is the one that is already immutable except for reference counting and resolving existing data
         /// </summary>
         public bool IsSealed => !IsDirty;
-        
+
         public bool IsPersisted { get; set; }
 
         /// <summary>
@@ -361,7 +361,7 @@ namespace Nethermind.Trie
         }
 
         public long? LastSeen { get; set; }
-        
+
         public bool IsChildDirty(int i)
         {
             if (IsExtension)
@@ -538,7 +538,15 @@ namespace Nethermind.Trie
 
         private TrieNode? _storageRoot;
 
-        public void MarkPersistedRecursively(ILogger logger, ITrieNodeResolver cache)
+        /// <summary>
+        /// There are two similar methods and we should see how they can be merged
+        /// (probably by adding some parameters)
+        /// This one is force-fixing the IsPersisted state and the other one is allowing external caller to persist
+        /// this node and its descendants.
+        /// </summary>
+        /// <param name="cache"></param>
+        /// <param name="logger"></param>
+        private void MarkPersistedRecursively(ITrieNodeResolver cache, ILogger logger)
         {
             if (!IsLeaf)
             {
@@ -550,35 +558,28 @@ namespace Nethermind.Trie
                         if (o is TrieNode child)
                         {
                             if (logger.IsTrace) logger.Trace($"Mark persisted on child {i} {child} of {this}");
-                            child.MarkPersistedRecursively(logger, cache);
+                            child.MarkPersistedRecursively(cache, logger);
                         }
                     }
                 }
             }
-            else
+            else if (TryResolveStorageRoot(cache))
             {
-                if ((Value?.Length ?? 0) > 64) // if not storage
-                {
-                    Keccak storageRoot =
-                        _accountDecoder.DecodeStorageRootOnly(Value.AsRlpStream());
-                    _storageRoot = cache.FindCachedOrUnknown(storageRoot);
-
-                    if (logger.IsTrace) logger.Trace($"Mark persisted recursively on storage root {_storageRoot} of {this}");
-                    _storageRoot?.MarkPersistedRecursively(logger, cache);
-                }
+                if (logger.IsTrace) logger.Trace($"Mark persisted recursively on storage root {_storageRoot} of {this}");
+                _storageRoot?.MarkPersistedRecursively(cache, logger);
             }
 
             IsPersisted = true;
         }
-        
-        public void PersistRecursively(ILogger logger, ITrieNodeCache cache, Action<TrieNode> action)
+
+        public void PersistRecursively(Action<TrieNode> action, ITrieNodeResolver resolver, ILogger logger)
         {
             if (IsPersisted)
             {
                 if (logger.IsTrace) logger.Trace($"Ignoring {this} - alredy persisted");
                 return;
             }
-            
+
             if (!IsLeaf)
             {
                 if (_data != null)
@@ -589,28 +590,40 @@ namespace Nethermind.Trie
                         if (o is TrieNode child)
                         {
                             if (logger.IsTrace) logger.Trace($"Persist recursively on child {i} {child} of {this}");
-                            child.PersistRecursively(logger, cache, action);
+                            child.PersistRecursively(action, resolver, logger);
                         }
                     }
                 }
             }
-            else
+            else if (TryResolveStorageRoot(resolver))
             {
-                if ((Value?.Length ?? 0) > 64) // if not storage
-                {
-                    Keccak storageRoot =
-                        _accountDecoder.DecodeStorageRootOnly(Value.AsRlpStream());
-                    _storageRoot = cache.GetOrCreateUnknown(storageRoot);
-
-                    if (logger.IsTrace) logger.Trace($"Persist recursively on storage root {_storageRoot} of {this}");
-                    _storageRoot?.PersistRecursively(logger, cache, action);
-                }
+                if (logger.IsTrace) logger.Trace($"Persist recursively on storage root {_storageRoot} of {this}");
+                _storageRoot!.PersistRecursively(action, resolver, logger);
             }
 
             action(this);
         }
 
         #region private
+
+        private bool TryResolveStorageRoot(ITrieNodeResolver resolver)
+        {
+            bool hasStorage = false;
+            if (IsLeaf)
+            {
+                if ((Value?.Length ?? 0) > 64) // if not a storage leaf
+                {
+                    Keccak storageRoot = _accountDecoder.DecodeStorageRootOnly(Value.AsRlpStream());
+                    if (storageRoot != Keccak.EmptyTreeHash)
+                    {
+                        hasStorage = true;
+                        _storageRoot = resolver.FindCachedOrUnknown(storageRoot);
+                    }
+                }
+            }
+
+            return hasStorage;
+        }
 
         private static object _nullNode = new object();
 
@@ -691,12 +704,12 @@ namespace Nethermind.Trie
                         _data![i] = cachedOrUnknown;
                         if (IsPersisted && !cachedOrUnknown.IsPersisted)
                         {
-                            cachedOrUnknown.MarkPersistedRecursively(NullLogger.Instance, tree);
+                            cachedOrUnknown.MarkPersistedRecursively(tree, NullLogger.Instance);
                         }
 
                         if (!IsPersisted && !cachedOrUnknown.IsPersisted)
                         {
-                            cachedOrUnknown.MarkPersistedRecursively(NullLogger.Instance, tree);
+                            cachedOrUnknown.MarkPersistedRecursively(tree, NullLogger.Instance);
                         }
 
                         break;

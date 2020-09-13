@@ -279,8 +279,7 @@ namespace Nethermind.Trie.Pruning
             bool shouldPersistSnapshot = _snapshotStrategy.ShouldPersistSnapshot(commitPackage.BlockNumber);
             if (shouldPersistSnapshot)
             {
-                commitPackage.Root?.PersistRecursively(
-                    _logger, _trieNodeCache, tn => Persist(tn, commitPackage.BlockNumber));
+                commitPackage.Root?.PersistRecursively(tn => Persist(tn, commitPackage.BlockNumber), this, _logger);
                 
                 // the pruning responsibility can be divided by this and the cache now
                 _trieNodeCache.Prune(commitPackage.BlockNumber);
