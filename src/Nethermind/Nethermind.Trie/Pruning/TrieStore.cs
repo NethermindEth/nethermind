@@ -381,7 +381,7 @@ namespace Nethermind.Trie.Pruning
                 commitPackage.Root?.PersistRecursively(_logger, _trieNodeCache, Persist);
             }
             
-            _trieNodeCache.Prune();
+            // _trieNodeCache.Prune();
 
             MemorySize -= memoryToDrop;
             if (_logger.IsDebug)
