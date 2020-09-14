@@ -82,7 +82,6 @@ namespace Nethermind.Runner.Ethereum.Steps
             Signer signer = new Signer(_api.SpecProvider.ChainId, _api.OriginalSignerKey, _api.LogManager);
             _api.EngineSigner = signer;
             _api.EngineSignerStore = signer;
-            _api.WalletSigner = new WalletTxSigner(_api.Wallet, _api.SpecProvider.ChainId);
 
             _api.StateProvider = new StateProvider(
                 _api.DbProvider.StateDb,
@@ -98,15 +97,15 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.Config<ITxPoolConfig>(),
                 _api.StateProvider,
                 _api.LogManager);
-
-            TxSealer standardSealer = new TxSealer(_api.WalletSigner, _api.Timestamper);
-            NonceReservingTxSealer nonceReservingTxSealer =
-                new NonceReservingTxSealer(_api.WalletSigner, _api.Timestamper, _api.TxPool);
             
             IVaultConfig vaultConfig = _api.Config<IVaultConfig>(); 
             if (!vaultConfig.Enabled)
             {
-                _api.WalletTxSender = new TxPoolSender(_api.TxPool, standardSealer, nonceReservingTxSealer);
+                ITxSigner txSigner = new WalletTxSigner(_api.Wallet, _api.SpecProvider.ChainId);
+                TxSealer standardSealer = new TxSealer(txSigner, _api.Timestamper);
+                NonceReservingTxSealer nonceReservingTxSealer =
+                    new NonceReservingTxSealer(txSigner, _api.Timestamper, _api.TxPool);
+                _api.TxSender = new TxPoolSender(_api.TxPool, standardSealer, nonceReservingTxSealer);
             }
             else
             {
@@ -115,7 +114,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 ITxSigner vaultSigner = new VaultTxSigner(wallet, _api.ChainSpec.ChainId);
                 
                 // change vault to provide, use sealer to set the gas price as well
-                _api.WalletTxSender = new VaultTxSender(vaultSigner, vaultConfig, _api.ChainSpec.ChainId);
+                _api.TxSender = new VaultTxSender(vaultSigner, vaultConfig, _api.ChainSpec.ChainId);
             }
 
             IBloomConfig? bloomConfig = _api.Config<IBloomConfig>();

@@ -52,7 +52,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly IBlockchainBridge _blockchainBridge;
         private readonly IBlockFinder _blockFinder;
         private readonly IStateReader _stateReader;
-        private readonly ITxSigner _signer;
         private readonly ITxPool _txPoolBridge;
         private readonly ITxSender _txSender;
         private readonly IWallet _wallet;
@@ -71,7 +70,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
             IBlockchainBridge blockchainBridge,
             IBlockFinder blockFinder,
             IStateReader stateReader,
-            ITxSigner signer,
             ITxPool _txPool,
             ITxSender txSender,
             IWallet wallet,
@@ -82,7 +80,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
-            _signer = signer ?? throw new ArgumentNullException(nameof(signer));
             _txPoolBridge = _txPool ?? throw new ArgumentNullException(nameof(_txPool));
             _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
