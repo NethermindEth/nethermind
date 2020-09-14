@@ -59,9 +59,9 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             context.ConfigProvider = configProvider;
             context.RpcModuleProvider = rpcModuleProvider;
             var signer = new Signer(ChainId.Mainnet, TestItem.PrivateKeyA, LimboLogs.Instance);
-            context.Signer = signer;
-            context.TxSender = new NullTxSender();
-            context.SignerStore = signer;
+            context.TxWalletSender = new NullTxSender();
+            context.WalletSigner = signer;
+            context.EngineSignerStore = signer;
             
             context.KeyStore = Substitute.For<IKeyStore>();
             context.SyncModeSelector = Substitute.For<ISyncModeSelector>();
@@ -91,7 +91,8 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
                     TxPool = Substitute.For<ITxPool>(),
                     BlockTree = Substitute.For<IBlockTree>(),
                     Wallet = Substitute.For<IWallet>(),
-                    SpecProvider = Substitute.For<ISpecProvider>()
+                    SpecProvider = Substitute.For<ISpecProvider>(),
+                    TxWalletSender = Substitute.For<ITxSender>()
                 };
 
             RegisterRpcModules registerRpcModules = new RegisterRpcModules(context);

@@ -36,7 +36,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         {
             if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
             if (_api.SnapshotManager == null) throw new StepDependencyException(nameof(_api.SnapshotManager));
-            if (_api.Signer == null) throw new StepDependencyException(nameof(_api.Signer));
+            if (_api.EngineSigner == null) throw new StepDependencyException(nameof(_api.EngineSigner));
             if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
             if (_api.Sealer == null) throw new StepDependencyException(nameof(_api.Sealer));
 

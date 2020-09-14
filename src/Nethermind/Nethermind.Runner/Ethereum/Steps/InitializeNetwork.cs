@@ -359,7 +359,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_api.EthereumEcdsa == null) throw new StepDependencyException(nameof(_api.EthereumEcdsa));
             if (_api.SpecProvider == null) throw new StepDependencyException(nameof(_api.SpecProvider));
             if (_api.TxPool == null) throw new StepDependencyException(nameof(_api.TxPool));
-            if (_api.TxSender == null) throw new StepDependencyException(nameof(_api.TxSender));
+            if (_api.TxWalletSender == null) throw new StepDependencyException(nameof(_api.TxWalletSender));
             if (_api.EthereumJsonSerializer == null) throw new StepDependencyException(nameof(_api.EthereumJsonSerializer));
 
             /* rlpx */
@@ -429,7 +429,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     initConfig.BaseDbPath,
                     _api.BlockTree,
                     _api.TxPool,
-                    _api.TxSender,
+                    _api.TxWalletSender,
                     _api.SpecProvider,
                     _api.ReceiptFinder,
                     _api.Wallet,

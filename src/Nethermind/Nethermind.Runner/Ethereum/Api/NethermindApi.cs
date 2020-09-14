@@ -118,8 +118,9 @@ namespace Nethermind.Runner.Ethereum.Api
         public IRpcModuleProvider? RpcModuleProvider { get; set; }
         public ISealer? Sealer { get; set; }
         public ISealValidator? SealValidator { get; set; }
-        public ISigner? Signer { get; set; }
-        public ISignerStore? SignerStore { get; set; }
+        public ISigner? EngineSigner { get; set; }
+        public ITxSigner? WalletSigner { get; set; }
+        public ISignerStore? EngineSignerStore { get; set; }
         public ISpecProvider? SpecProvider { get; set; }
         public ISyncModeSelector? SyncModeSelector { get; set; }
         public ISyncPeerPool? SyncPeerPool { get; set; }
@@ -131,7 +132,7 @@ namespace Nethermind.Runner.Ethereum.Api
         public IStaticNodesManager? StaticNodesManager { get; set; }
         public ITimestamper Timestamper { get; } = Core.Timestamper.Default;
         public ITransactionProcessor? TransactionProcessor { get; set; }
-        public ITxSender? TxSender { get; set; }
+        public ITxSender? TxWalletSender { get; set; }
         public ITxPool? TxPool { get; set; }
         public ITxPoolInfoProvider? TxPoolInfoProvider { get; set; }
         public IValidatorStore? ValidatorStore { get; set; }
