@@ -64,6 +64,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
             if (_api.Wallet == null) throw new StepDependencyException(nameof(_api.Wallet));
             if (_api.SpecProvider == null) throw new StepDependencyException(nameof(_api.SpecProvider));
+            if (_api.TxSender == null) throw new StepDependencyException(nameof(_api.TxSender));
 
             ILogger logger = _api.LogManager.GetClassLogger();
             IJsonRpcConfig jsonRpcConfig = _api.Config<IJsonRpcConfig>();
@@ -93,7 +94,6 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _api.DbProvider,
                     _api.TxPool,
                     _api.TxSender,
-                    _api.Signer,
                     _api.Wallet,
                     _api.BlockTree,
                     _api.EthereumEcdsa,
@@ -149,10 +149,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                 IDbProvider dbProvider = _api.DbProvider!;
                 IStateReader stateReader = new StateReader(dbProvider.StateDb, dbProvider.CodeDb, _api.LogManager);
 
-                ITxSealer txSealer = new TxSealer(_api.Signer, _api.Timestamper);
-                ITxSender txSender = new TxPoolSender(_api.TxPool, txSealer);
                 BaselineModuleFactory baselineModuleFactory = new BaselineModuleFactory(
-                    txSender,
+                    _api.TxSender,
                     stateReader,
                     logFinder,
                     _api.BlockTree,
@@ -185,7 +183,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.BlockTree,
                 _api.ReceiptFinder,
                 _api.Enode,
-                _api.SignerStore,
+                _api.EngineSignerStore,
                 _api.KeyStore,
                 _api.LogManager);
 

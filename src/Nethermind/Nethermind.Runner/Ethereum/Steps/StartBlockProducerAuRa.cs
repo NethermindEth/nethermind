@@ -52,7 +52,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         protected override void BuildProducer()
         {
-            if (_api.Signer == null) throw new StepDependencyException(nameof(_api.Signer));
+            if (_api.EngineSigner == null) throw new StepDependencyException(nameof(_api.EngineSigner));
             if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
 
             _auraConfig = _api.Config<IAuraConfig>();
@@ -85,7 +85,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_api.ValidatorStore == null) throw new StepDependencyException(nameof(_api.ValidatorStore));
             if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
             if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
-            if (_api.Signer == null) throw new StepDependencyException(nameof(_api.Signer));
+            if (_api.EngineSigner == null) throw new StepDependencyException(nameof(_api.EngineSigner));
 
             var chainSpecAuRa = _api.ChainSpec.AuRa;
 
@@ -102,7 +102,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     NullTxPool.Instance,
                     _api.Config<IMiningConfig>(),
                     _api.LogManager,
-                    _api.Signer,
+                    _api.EngineSigner,
                     _api.ReportingContractValidatorCache,
                     chainSpecAuRa.PosdaoTransition,
                     true)
@@ -181,19 +181,19 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
             if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
-            if (_api.Signer == null) throw new StepDependencyException(nameof(_api.Signer));
+            if (_api.EngineSigner == null) throw new StepDependencyException(nameof(_api.EngineSigner));
 
             IList<ITxSource> txSources = new List<ITxSource> {base.CreateTxSourceForProducer(processingEnv, readOnlyTxProcessorSource)};
             bool needSigner = false;
 
             needSigner |= CheckAddPosdaoTransactions(txSources, _api.ChainSpec.AuRa.PosdaoTransition);
-            needSigner |= CheckAddRandomnessTransactions(txSources, _api.ChainSpec.AuRa.RandomnessContractAddress, _api.Signer);
+            needSigner |= CheckAddRandomnessTransactions(txSources, _api.ChainSpec.AuRa.RandomnessContractAddress, _api.EngineSigner);
 
             ITxSource txSource = txSources.Count > 1 ? new CompositeTxSource(txSources.ToArray()) : txSources[0];
 
             if (needSigner)
             {
-                TxSealer transactionSealer = new TxSealer(_api.Signer, _api.Timestamper); 
+                TxSealer transactionSealer = new TxSealer(_api.EngineSigner, _api.Timestamper); 
                 txSource = new GeneratedTxSource(txSource, transactionSealer, processingEnv.StateReader, _api.LogManager);
             }
 
