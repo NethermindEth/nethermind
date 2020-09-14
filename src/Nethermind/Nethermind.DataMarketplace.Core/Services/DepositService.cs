@@ -90,6 +90,7 @@ namespace Nethermind.DataMarketplace.Core.Services
         {
             var txData = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, ContractData.DepositAbiSig,
                 deposit.Id.Bytes, deposit.Units, deposit.ExpiryTime);
+            var nonce = await _blockchainBridge.GetNonceAsync(onBehalfOf);
             Transaction transaction = new Transaction
             {
                 Value = deposit.Value,
@@ -97,7 +98,8 @@ namespace Nethermind.DataMarketplace.Core.Services
                 To = _contractAddress,
                 SenderAddress = onBehalfOf,
                 GasLimit = (long) GasLimit,
-                GasPrice = gasPrice
+                GasPrice = gasPrice,
+                Nonce = nonce
             };
             // check  
             _wallet.Sign(transaction, await _blockchainBridge.GetNetworkIdAsync());
