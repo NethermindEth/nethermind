@@ -132,7 +132,7 @@ namespace Nethermind.Runner.Ethereum.Api
         public IStaticNodesManager? StaticNodesManager { get; set; }
         public ITimestamper Timestamper { get; } = Core.Timestamper.Default;
         public ITransactionProcessor? TransactionProcessor { get; set; }
-        public ITxSender? TxWalletSender { get; set; }
+        public ITxSender? WalletTxSender { get; set; }
         public ITxPool? TxPool { get; set; }
         public ITxPoolInfoProvider? TxPoolInfoProvider { get; set; }
         public IValidatorStore? ValidatorStore { get; set; }

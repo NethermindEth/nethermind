@@ -106,7 +106,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             IVaultConfig vaultConfig = _api.Config<IVaultConfig>(); 
             if (!vaultConfig.Enabled)
             {
-                _api.TxWalletSender = new TxPoolSender(_api.TxPool, standardSealer, nonceReservingTxSealer);
+                _api.WalletTxSender = new TxPoolSender(_api.TxPool, standardSealer, nonceReservingTxSealer);
             }
             else
             {
@@ -115,7 +115,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 ITxSigner vaultSigner = new VaultTxSigner(wallet, _api.ChainSpec.ChainId);
                 
                 // change vault to provide, use sealer to set the gas price as well
-                _api.TxWalletSender = new VaultTxSender(vaultSigner, vaultConfig, _api.ChainSpec.ChainId);
+                _api.WalletTxSender = new VaultTxSender(vaultSigner, vaultConfig, _api.ChainSpec.ChainId);
             }
 
             IBloomConfig? bloomConfig = _api.Config<IBloomConfig>();
