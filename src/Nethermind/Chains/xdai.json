@@ -48,6 +48,8 @@
     "eip1052Transition": 1604400,
     "eip1283Transition": 1604400,
     "eip1283DisableTransition": 2508800,
+    "eip152Transition": 7298030,
+    "eip1108Transition": 7298030,
     "eip1283ReenableTransition": 7298030,
     "eip1344Transition": 7298030,
     "eip1706Transition": 7298030,
