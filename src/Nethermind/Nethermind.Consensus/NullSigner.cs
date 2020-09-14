@@ -27,9 +27,7 @@ namespace Nethermind.Consensus
         
         public Address Address { get; } = Address.Zero;
 
-        public void Sign(Transaction tx)
-        {
-        }
+        public ValueTask Sign(Transaction tx) => default;
 
         public Signature Sign(Keccak message) { return new Signature(new byte[65]); }
 

@@ -32,9 +32,10 @@ namespace Nethermind.Wallet
             _chainId = chainId;
         }
         
-        public void Sign(Transaction tx)
+        public ValueTask Sign(Transaction tx)
         {
             _wallet.Sign(tx, _chainId);
+            return default;
         }
     }
 }
