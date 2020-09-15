@@ -79,6 +79,9 @@ namespace Nethermind.Runner.Ethereum.Steps
             
             Account.AccountStartNonce = _api.ChainSpec.Parameters.AccountStartNonce;
             
+            Signer signer = new Signer(_api.SpecProvider.ChainId, _api.OriginalSignerKey, _api.LogManager);
+            _api.EngineSigner = signer;
+            _api.EngineSignerStore = signer;
 
             TrieNodeCache trieNodeCache = new TrieNodeCache(_api.LogManager);
             _api.TrieStore = new TrieStore(
@@ -95,10 +98,6 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.DbProvider.CodeDb,
                 _api.LogManager);
 
-            Signer signer = new Signer(_api.SpecProvider.ChainId, _api.OriginalSignerKey, _api.LogManager);
-            _api.Signer = signer;
-            _api.SignerStore = signer;
-
             _api.EthereumEcdsa = new EthereumEcdsa(_api.SpecProvider.ChainId, _api.LogManager);
             _api.TxPool = new TxPool.TxPool(
                 new PersistentTxStorage(_api.DbProvider.PendingTxsDb),
@@ -109,13 +108,13 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.StateProvider,
                 _api.LogManager);
             
-            TxSealer standardSealer = new TxSealer(_api.Signer, _api.Timestamper);
-            NonceReservingTxSealer nonceReservingTxSealer =
-                new NonceReservingTxSealer(_api.Signer, _api.Timestamper, _api.TxPool);
-
             IVaultConfig vaultConfig = _api.Config<IVaultConfig>(); 
             if (!vaultConfig.Enabled)
             {
+                ITxSigner txSigner = new WalletTxSigner(_api.Wallet, _api.SpecProvider.ChainId);
+                TxSealer standardSealer = new TxSealer(txSigner, _api.Timestamper);
+                NonceReservingTxSealer nonceReservingTxSealer =
+                    new NonceReservingTxSealer(txSigner, _api.Timestamper, _api.TxPool);
                 _api.TxSender = new TxPoolSender(_api.TxPool, standardSealer, nonceReservingTxSealer);
             }
             else

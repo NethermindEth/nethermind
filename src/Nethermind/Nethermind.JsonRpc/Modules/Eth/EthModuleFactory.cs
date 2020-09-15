@@ -46,7 +46,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly bool _isMining;
         private readonly ITxPool _txPool;
         private readonly ITxSender _txSender;
-        private readonly ITxSigner _txSigner;
         private readonly IWallet _wallet;
         private readonly IFilterStore _filterStore;
         private readonly IFilterManager _filterManager;
@@ -57,7 +56,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
             IDbProvider dbProvider,
             ITxPool txPool,
             ITxSender txSender,
-            ITxSigner txSigner,
             IWallet wallet,
             IBlockTree blockTree,
             IEthereumEcdsa ethereumEcdsa,
@@ -72,7 +70,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
-            _txSigner = txSigner ?? throw new ArgumentNullException(nameof(txSigner));
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _ethereumEcdsa = ethereumEcdsa ?? throw new ArgumentNullException(nameof(ethereumEcdsa));
@@ -114,7 +111,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 blockchainBridge,
                 readOnlyTxProcessingEnv.BlockTree,
                 readOnlyTxProcessingEnv.StateReader,
-                _txSigner,
                 _txPool,
                 _txSender,
                 _wallet,

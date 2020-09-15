@@ -122,7 +122,6 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Bridge,
                 BlockFinder,
                 StateReader,
-                txSigner,
                 TxPool,
                 TxSender,
                 TestWallet,

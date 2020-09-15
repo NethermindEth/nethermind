@@ -39,7 +39,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
             if (_api.EthereumEcdsa == null) throw new StepDependencyException(nameof(_api.EthereumEcdsa));
             if (_api.DbProvider == null) throw new StepDependencyException(nameof(_api.DbProvider));
-            if (_api.Signer == null) throw new StepDependencyException(nameof(_api.Signer));
+            if (_api.EngineSigner == null) throw new StepDependencyException(nameof(_api.EngineSigner));
         
             _api.RewardCalculatorSource = NoBlockRewards.Instance;
             CliqueConfig cliqueConfig = new CliqueConfig {BlockPeriod = _api.ChainSpec.Clique.Period, Epoch = _api.ChainSpec.Clique.Epoch};
@@ -48,7 +48,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             _api.RecoveryStep = new CompositeDataRecoveryStep(_api.RecoveryStep, new AuthorRecoveryStep(_api.SnapshotManager));
             if (_api.Config<IInitConfig>().IsMining)
             {
-                _api.Sealer = new CliqueSealer(_api.Signer, cliqueConfig, _api.SnapshotManager, _api.LogManager);
+                _api.Sealer = new CliqueSealer(_api.EngineSigner, cliqueConfig, _api.SnapshotManager, _api.LogManager);
             }
             else
             {

@@ -35,7 +35,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             _api.RewardCalculatorSource = new RewardCalculator(_api.SpecProvider);
             DifficultyCalculator difficultyCalculator = new DifficultyCalculator(_api.SpecProvider);
             _api.Sealer = _api.Config<IInitConfig>().IsMining
-                ? (ISealer) new EthashSealer(new Ethash(_api.LogManager), _api.Signer, _api.LogManager)
+                ? (ISealer) new EthashSealer(new Ethash(_api.LogManager), _api.EngineSigner, _api.LogManager)
                 : NullSealEngine.Instance;
             _api.SealValidator = new EthashSealValidator(_api.LogManager, difficultyCalculator, _api.CryptoRandom, new Ethash(_api.LogManager));
         }

@@ -57,7 +57,6 @@ namespace Nethermind.JsonRpc.Test.Modules
                 dbProvider,
                 txPool,
                 Substitute.For<ITxSender>(),
-                Substitute.For<ITxSigner>(),
                 NullWallet.Instance,
                 blockTree,
                 new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance), 

@@ -88,7 +88,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         {
             if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
             if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
-            if (_api.Signer == null) throw new StepDependencyException(nameof(_api.Signer));
+            if (_api.EngineSigner == null) throw new StepDependencyException(nameof(_api.EngineSigner));
 
             var chainSpecAuRa = _api.ChainSpec.AuRa;
             
@@ -110,11 +110,11 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _api.ReceiptStorage, 
                     _api.ValidatorStore,
                     _api.FinalizationManager,
-                    new TxPoolSender(_api.TxPool, new NonceReservingTxSealer(_api.Signer, _api.Timestamper, _api.TxPool)), 
+                    new TxPoolSender(_api.TxPool, new NonceReservingTxSealer(_api.EngineSigner, _api.Timestamper, _api.TxPool)), 
                     _api.TxPool,
                     _api.Config<IMiningConfig>(),
                     _api.LogManager,
-                    _api.Signer,
+                    _api.EngineSigner,
                     _api.ReportingContractValidatorCache,
                     chainSpecAuRa.PosdaoTransition,
                     false)
@@ -194,7 +194,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             AuRaStepCalculator auRaStepCalculator = new AuRaStepCalculator(_api.ChainSpec.AuRa.StepDuration, _api.Timestamper, _api.LogManager);
             _api.SealValidator = _sealValidator = new AuRaSealValidator(_api.ChainSpec.AuRa, auRaStepCalculator, _api.BlockTree, _api.ValidatorStore, validSealerStrategy, _api.EthereumEcdsa, _api.LogManager);
             _api.RewardCalculatorSource = AuRaRewardCalculator.GetSource(_api.ChainSpec.AuRa, _api.AbiEncoder);
-            _api.Sealer = new AuRaSealer(_api.BlockTree, _api.ValidatorStore, auRaStepCalculator, _api.Signer, validSealerStrategy, _api.LogManager);
+            _api.Sealer = new AuRaSealer(_api.BlockTree, _api.ValidatorStore, auRaStepCalculator, _api.EngineSigner, validSealerStrategy, _api.LogManager);
         }
 
         private IReadOnlyTransactionProcessorSource GetReadOnlyTransactionProcessorSource() => 
