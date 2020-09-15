@@ -52,13 +52,15 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
-        public void Method_resolution_is_not_case_sensitive()
+        public void Method_resolution_is_case_sensitive()
         {
             SingletonModulePool<INetModule> pool = new SingletonModulePool<INetModule>(new NetModule(LimboLogs.Instance, Substitute.For<INetBridge>()), true);
             _moduleProvider.Register(pool);
 
-            ModuleResolution resolution = _moduleProvider.Check("net_VeRsIoN");
-            Assert.AreEqual(ModuleResolution.Enabled, resolution);
+            _moduleProvider.Check("net_VeRsIoN").Should().Be(ModuleResolution.Unknown);
+            _moduleProvider.Check("net_Version").Should().Be(ModuleResolution.Unknown);
+            _moduleProvider.Check("Net_Version").Should().Be(ModuleResolution.Unknown);
+            _moduleProvider.Check("net_version").Should().Be(ModuleResolution.Enabled);
         }
 
         [TestCase("eth_.*", ModuleResolution.Unknown)]
