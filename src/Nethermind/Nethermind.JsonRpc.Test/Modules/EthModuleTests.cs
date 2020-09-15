@@ -25,13 +25,10 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Blockchain;
-using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Int256;
 using Nethermind.Facade;
 using Nethermind.JsonRpc.Data;
-using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
@@ -600,7 +597,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void Eth_chain_id()
         {
-            string serialized = _test.TestEthRpc("eth_chainid");
+            string serialized = _test.TestEthRpc("eth_chainId");
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x1\",\"id\":67}", serialized);
         }
 

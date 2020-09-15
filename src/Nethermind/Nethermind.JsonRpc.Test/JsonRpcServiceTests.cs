@@ -18,6 +18,7 @@ using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.Linq;
 using System.Reflection;
+using FluentAssertions;
 using FluentAssertions.Specialized;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -93,6 +94,15 @@ namespace Nethermind.JsonRpc.Test
             ethModule.eth_call(Arg.Any<TransactionForRpc>()).ReturnsForAnyArgs(x => ResultWrapper<string>.Success("0x1"));
             JsonRpcSuccessResponse response = TestRequest(ethModule, "eth_call", serialized) as JsonRpcSuccessResponse;
             Assert.AreEqual("0x1", response?.Result);
+        }
+        
+        [Test]
+        public void Case_sensitivity_test()
+        {
+            IEthModule ethModule = Substitute.For<IEthModule>();
+            ethModule.eth_chainId().ReturnsForAnyArgs(ResultWrapper<long>.Success(1));
+            TestRequest(ethModule, "eth_chainID").Should().BeOfType<JsonRpcErrorResponse>();
+            TestRequest(ethModule, "eth_chainId").Should().BeOfType<JsonRpcSuccessResponse>();
         }
         
         [Test]

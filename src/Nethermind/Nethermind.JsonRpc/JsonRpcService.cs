@@ -101,7 +101,7 @@ namespace Nethermind.JsonRpc
 
         private async Task<JsonRpcResponse> ExecuteRequestAsync(JsonRpcRequest rpcRequest)
         {
-            string methodName = rpcRequest.Method.Trim().ToLower();
+            string methodName = rpcRequest.Method.Trim();
 
             (MethodInfo MethodInfo, bool ReadOnly) result = _rpcModuleProvider.Resolve(methodName);
             if (result.MethodInfo != null)
@@ -326,7 +326,7 @@ namespace Nethermind.JsonRpc
                 return (ErrorCodes.InvalidRequest, "Method is required");
             }
 
-            methodName = methodName.Trim().ToLower();
+            methodName = methodName.Trim();
 
             ModuleResolution result = _rpcModuleProvider.Check(methodName);
             return result switch
