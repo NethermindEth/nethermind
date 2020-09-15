@@ -11,7 +11,7 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install libsnappy-dev libc6-dev libc6
-    - name: Cloning Nethermind
+    - name: Cloning Nethermind repo
       run: |
         git clone https://github.com/NethermindEth/nethermind.git --recursive
         cd nethermind
