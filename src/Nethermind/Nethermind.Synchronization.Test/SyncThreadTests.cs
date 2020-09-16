@@ -252,15 +252,16 @@ namespace Nethermind.Synchronization.Test
             ISnapshotableDb codeDb = dbProvider.CodeDb;
             ISnapshotableDb stateDb = dbProvider.StateDb;
 
-            var stateReader = new StateReader(new TrieStore(stateDb, LimboLogs.Instance), codeDb, logManager);
-            var stateProvider = new StateProvider(stateDb, codeDb, logManager);
+            TrieStore trieStore = new TrieStore(stateDb, LimboLogs.Instance);
+            var stateReader = new StateReader(trieStore, codeDb, logManager);
+            var stateProvider = new StateProvider(trieStore, codeDb, logManager);
             stateProvider.CreateAccount(TestItem.AddressA, 10000.Ether());
             stateProvider.Commit(specProvider.GenesisSpec);
             stateProvider.CommitTree(0);
             stateProvider.RecalculateStateRoot();
             stateDb.Commit();
 
-            var storageProvider = new StorageProvider(stateDb, stateProvider, logManager);
+            var storageProvider = new StorageProvider(trieStore, stateProvider, logManager);
             var receiptStorage = new InMemoryReceiptStorage();
 
             var ecdsa = new EthereumEcdsa(specProvider.ChainId, logManager);
@@ -287,8 +288,8 @@ namespace Nethermind.Synchronization.Test
             var nodeStatsManager = new NodeStatsManager(new StatsConfig(), logManager);
             var syncPeerPool = new SyncPeerPool(tree, nodeStatsManager, 25, logManager);
 
-            StateProvider devState = new StateProvider(stateDb, codeDb, logManager);
-            StorageProvider devStorage = new StorageProvider(stateDb, devState, logManager);
+            StateProvider devState = new StateProvider(trieStore, codeDb, logManager);
+            StorageProvider devStorage = new StorageProvider(trieStore, devState, logManager);
             var devEvm = new VirtualMachine(devState, devStorage, blockhashProvider, specProvider, logManager);
             var devTxProcessor = new TransactionProcessor(specProvider, devState, devStorage, devEvm, logManager);
             var devBlockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, devTxProcessor, stateDb, codeDb, devState, devStorage, txPool, receiptStorage, logManager);

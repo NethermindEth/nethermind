@@ -92,7 +92,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             _api.TrieStore.SnapshotTaken += TreeStoreOnStored; 
             
             _api.StateProvider = new StateProvider(
-                new StateTree(_api.TrieStore, _api.LogManager),
+                _api.TrieStore,
                 _api.DbProvider.CodeDb,
                 _api.LogManager);
 

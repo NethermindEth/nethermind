@@ -31,7 +31,7 @@ namespace Nethermind.Trie.Pruning
     public class TrieStore : ITrieStore
     {
         public TrieStore(IKeyValueStore? keyValueStore, ILogManager? logManager) 
-            :this(keyValueStore, No.Pruning, No.Persistence, logManager) { }
+            :this(keyValueStore, No.Pruning, Full.Archive, logManager) { }
         
         public TrieStore(
             IKeyValueStore? keyValueStore,
@@ -149,6 +149,12 @@ namespace Nethermind.Trie.Pruning
                             $"Incrementing refs from block {blockNumber} root {package.Root?.ToString() ?? "NULL"} ");
 
                     package.Seal();
+                    
+                    bool shouldPersistSnapshot = _snapshotStrategy.ShouldPersistSnapshot(package.BlockNumber);
+                    if (shouldPersistSnapshot)
+                    {
+                        package.Root?.PersistRecursively(tn => Persist(tn, package.BlockNumber), this, _logger);
+                    }
                 }
             }
         }

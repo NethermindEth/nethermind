@@ -25,6 +25,7 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 using Metrics = Nethermind.Db.Metrics;
 
 [assembly: InternalsVisibleTo("Nethermind.State.Test")]
@@ -49,22 +50,12 @@ namespace Nethermind.State
         private Change[] _changes = new Change[StartCapacity];
         private int _currentPosition = -1;
 
-        public StateProvider(StateTree stateTree, IDb codeDb, ILogManager logManager)
+        public StateProvider(ITrieStore trieStore, IDb codeDb, ILogManager logManager)
         {
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = logManager.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
-            _tree = stateTree ?? throw new ArgumentNullException(nameof(stateTree));
-        }
-
-        public StateProvider(IDbProvider dbProvider, ILogManager logManager)
-            : this(new StateTree(dbProvider.StateDb), dbProvider.CodeDb, logManager)
-        {
-        }
-        
-        public StateProvider(ISnapshotableDb stateDb, IDb codeDb, ILogManager logManager)
-            : this(new StateTree(stateDb), codeDb, logManager)
-        {
+            _tree = new StateTree(trieStore, logManager);
         }
 
         public void Accept(ITreeVisitor visitor, Keccak stateRoot)

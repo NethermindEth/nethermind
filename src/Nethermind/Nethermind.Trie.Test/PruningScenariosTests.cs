@@ -59,8 +59,7 @@ namespace Nethermind.Trie.Test
                 _persistenceStrategy = persistenceStrategy;
                 _pruningStrategy = pruningStrategy;
                 _trieStore = new TrieStore(_dbProvider.StateDb, _pruningStrategy, _persistenceStrategy, _logManager);
-                StateTree stateTree = new StateTree(_trieStore, _logManager);
-                _stateProvider = new StateProvider(stateTree, _dbProvider.CodeDb, _logManager);
+                _stateProvider = new StateProvider(_trieStore, _dbProvider.CodeDb, _logManager);
                 _storageProvider = new StorageProvider(_trieStore, _stateProvider, _logManager);
                 _stateReader = new StateReader(_trieStore, _dbProvider.CodeDb, _logManager);
             }

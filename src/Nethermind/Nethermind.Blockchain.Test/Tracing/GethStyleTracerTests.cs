@@ -30,6 +30,7 @@ using Nethermind.Specs;
 using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
+using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NUnit.Framework;
 
@@ -44,25 +45,22 @@ namespace Nethermind.Blockchain.Test.Tracing
         [SetUp]
         public void Setup()
         {
-            IDb blocksDb = new MemDb();
-            IDb headersDb = new MemDb();
-            IDb blocksInfoDb = new MemDb();
-            ISnapshotableDb stateDb = new StateDb();
-            ISnapshotableDb codeDb = new StateDb();
+            IDbProvider dbProvider = new MemDbProvider();
             
-            ChainLevelInfoRepository repository = new ChainLevelInfoRepository(blocksInfoDb);
+            ChainLevelInfoRepository repository = new ChainLevelInfoRepository(dbProvider);
             ISpecProvider specProvider = MainnetSpecProvider.Instance;
-            _blockTree = new BlockTree(blocksDb, headersDb, blocksInfoDb, repository, specProvider, NullTxPool.Instance, NullBloomStorage.Instance, new SyncConfig(), LimboLogs.Instance);
-            
-            StateProvider stateProvider = new StateProvider(stateDb, codeDb, LimboLogs.Instance);
-            StorageProvider storageProvider = new StorageProvider(stateDb, stateProvider, LimboLogs.Instance);
+            _blockTree = new BlockTree(dbProvider, repository, specProvider, NullTxPool.Instance, NullBloomStorage.Instance, new SyncConfig(), LimboLogs.Instance);
+
+            TrieStore trieStore = new TrieStore(dbProvider.StateDb, LimboLogs.Instance);
+            StateProvider stateProvider = new StateProvider(trieStore, dbProvider.CodeDb, LimboLogs.Instance);
+            StorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, LimboLogs.Instance);
             
             BlockhashProvider blockhashProvider = new BlockhashProvider(_blockTree, LimboLogs.Instance);
             
             VirtualMachine virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, specProvider, LimboLogs.Instance);
             
             TransactionProcessor transactionProcessor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, LimboLogs.Instance);
-            BlockProcessor blockProcessor = new BlockProcessor(specProvider, TestBlockValidator.AlwaysValid, NoBlockRewards.Instance, transactionProcessor, stateDb, codeDb, stateProvider, storageProvider, NullTxPool.Instance, NullReceiptStorage.Instance, LimboLogs.Instance);
+            BlockProcessor blockProcessor = new BlockProcessor(specProvider, TestBlockValidator.AlwaysValid, NoBlockRewards.Instance, transactionProcessor, dbProvider.StateDb, dbProvider.CodeDb, stateProvider, storageProvider, NullTxPool.Instance, NullReceiptStorage.Instance, LimboLogs.Instance);
             
             _processor = new BlockchainProcessor(_blockTree, blockProcessor, new CompositeDataRecoveryStep(), LimboLogs.Instance, BlockchainProcessor.Options.NoReceipts);
             Block genesis = Build.A.Block.Genesis.TestObject;

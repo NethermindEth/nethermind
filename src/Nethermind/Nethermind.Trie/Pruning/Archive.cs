@@ -13,25 +13,21 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-
-using Nethermind.Core.Crypto;
+// 
 
 namespace Nethermind.Trie.Pruning
 {
-    public interface ITrieNodeCache
+    public class Archive : IPersistenceStrategy
     {
-        int Count { get; }
-        
-        bool IsInMemory(Keccak hash);
-        
-        TrieNode GetOrCreateUnknown(Keccak hash);
-        
-        TrieNode? GetOrNull(Keccak hash);
-        
-        void Set(Keccak hash, TrieNode trieNode);
-        
-        void Dump();
-        
-        void Prune(long snapshotId);
+        private Archive()
+        {
+        }
+
+        public static Archive Instance { get; } = new Archive();
+
+        public bool ShouldPersistSnapshot(long blockNumber)
+        {
+            return true;
+        }
     }
 }

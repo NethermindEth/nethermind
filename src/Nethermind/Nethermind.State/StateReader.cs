@@ -17,7 +17,6 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -36,7 +35,6 @@ namespace Nethermind.State
 
         public StateReader(ITrieStore trieStore, IDb codeDb, ILogManager logManager)
         {
-            if (trieStore == null) throw new ArgumentNullException(nameof(trieStore));
             _logger = logManager?.GetClassLogger<StateReader>() ?? throw new ArgumentNullException(nameof(logManager));
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
             _state = new StateTree(trieStore, logManager);

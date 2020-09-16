@@ -29,6 +29,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.State;
+using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
 using NSubstitute;
@@ -57,7 +58,7 @@ namespace Nethermind.Blockchain.Test.TxPools
             _noTxStorage = NullTxStorage.Instance;
             _inMemoryTxStorage = new InMemoryTxStorage();
             _persistentTxStorage = new PersistentTxStorage(new MemDb());
-            _stateProvider = new StateProvider(new StateDb(), new MemDb(), _logManager);
+            _stateProvider = new StateProvider(new TrieStore(new StateDb(), _logManager), new MemDb(), _logManager);
         }
 
         [Test]

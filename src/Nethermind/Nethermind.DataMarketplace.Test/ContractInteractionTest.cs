@@ -48,6 +48,7 @@ using NSubstitute;
 using NUnit.Framework;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.DataMarketplace.Test
 {
@@ -112,8 +113,9 @@ namespace Nethermind.DataMarketplace.Test
             IReleaseSpec spec = _releaseSpec;
             ISpecProvider specProvider = new SingleReleaseSpecProvider(spec, 99);
             StateDb stateDb = new StateDb();
-            _state = new StateProvider(stateDb, new StateDb(), _logManager);
-            StorageProvider storageProvider = new StorageProvider(stateDb, _state, _logManager);
+            TrieStore trieStore = new TrieStore(stateDb, _logManager);
+            _state = new StateProvider(trieStore, new StateDb(), _logManager);
+            StorageProvider storageProvider = new StorageProvider(trieStore, _state, _logManager);
             _state.CreateAccount(_consumerAccount, 1000.Ether());
             _state.CreateAccount(_providerAccount, 1.Ether());
             _state.Commit(spec);

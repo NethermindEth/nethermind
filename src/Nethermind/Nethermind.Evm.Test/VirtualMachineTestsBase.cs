@@ -31,6 +31,7 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Synchronization.BeamSync;
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
@@ -80,8 +81,9 @@ namespace Nethermind.Evm.Test
                 new MemDb(), beamStateDb, StaticSelector.Full, logManager);
             IDb codeDb = UseBeamSync ? beamSyncCodeDb : new StateDb();
             _stateDb = UseBeamSync ? beamSyncDb : new StateDb();
-            TestState = new StateProvider(new StateTree(_stateDb, logManager), codeDb, logManager);
-            Storage = new StorageProvider(_stateDb, TestState, logManager);
+            var trieStore = new TrieStore(_stateDb, logManager);
+            TestState = new StateProvider(trieStore, codeDb, logManager);
+            Storage = new StorageProvider(trieStore, TestState, logManager);
             _ethereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId, logManager);
             IBlockhashProvider blockhashProvider = TestBlockhashProvider.Instance;
             Machine = new VirtualMachine(TestState, Storage, blockhashProvider, SpecProvider, logManager);

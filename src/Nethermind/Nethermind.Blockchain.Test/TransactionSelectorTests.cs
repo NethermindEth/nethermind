@@ -116,7 +116,8 @@ namespace Nethermind.Blockchain.Test
         {
             StateDb stateDb = new StateDb();
             MemDb codeDb = new MemDb();
-            StateProvider stateProvider = new StateProvider(stateDb, codeDb, LimboLogs.Instance);
+            var trieStore = new TrieStore(stateDb, LimboLogs.Instance);
+            StateProvider stateProvider = new StateProvider(trieStore, codeDb, LimboLogs.Instance);
             StateReader stateReader = new StateReader(new TrieStore(stateDb, LimboLogs.Instance), codeDb, LimboLogs.Instance);
 
             void SetAccountStates(IEnumerable<Address> missingAddresses)

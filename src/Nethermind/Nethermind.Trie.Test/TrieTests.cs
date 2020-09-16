@@ -1035,9 +1035,7 @@ namespace Nethermind.Trie.Test
             MemDb memDb = new MemDb();
 
             TrieStore trieStore = new TrieStore(memDb, new DepthAndMemoryBased(lookupLimit, 1.MB()), new ConstantInterval(lookupLimit), _logManager);
-            StateTree stateTree = new StateTree(trieStore, _logManager);
-
-            StateProvider stateProvider = new StateProvider(stateTree, new MemDb(), _logManager);
+            StateProvider stateProvider = new StateProvider(trieStore, new MemDb(), _logManager);
             StorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, _logManager);
 
             Account[] accounts = new Account[accountsCount];
@@ -1113,7 +1111,7 @@ namespace Nethermind.Trie.Test
 
                 storageProvider.CommitTrees(blockNumber);
                 stateProvider.CommitTree(blockNumber);
-                rootQueue.Enqueue(stateTree.RootHash);
+                rootQueue.Enqueue(stateProvider.StateRoot);
             }
 
             streamWriter.Flush();

@@ -29,6 +29,7 @@ using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
+using Metrics = Nethermind.Trie.Pruning.Metrics;
 
 namespace Nethermind.Store.Test
 {
@@ -44,7 +45,7 @@ namespace Nethermind.Store.Test
         {
             IReleaseSpec spec = MainnetSpecProvider.Instance.GetSpec(MainnetSpecProvider.ConstantinopleFixBlockNumber);
             StateDb stateDb = new StateDb(new MemDb());
-            StateProvider provider = new StateProvider(stateDb, Substitute.For<IDb>(), Logger);
+            StateProvider provider = new StateProvider(new TrieStore(stateDb, Logger), Substitute.For<IDb>(), Logger);
             provider.CreateAccount(_address1, 0);
             provider.AddToBalance(_address1, 1, spec);
             provider.Commit(spec);
@@ -85,8 +86,9 @@ namespace Nethermind.Store.Test
             StorageCell storageCell = new StorageCell(_address1, UInt256.One);
             IReleaseSpec spec = MuirGlacier.Instance;
             StateDb stateDb = new StateDb(new MemDb());
-            StateProvider provider = new StateProvider(stateDb, new MemDb(), Logger);
-            StorageProvider storageProvider = new StorageProvider(stateDb, provider, Logger);
+            TrieStore trieStore = new TrieStore(stateDb, Logger);
+            StateProvider provider = new StateProvider(trieStore, new MemDb(), Logger);
+            StorageProvider storageProvider = new StorageProvider(trieStore, provider, Logger);
 
             void UpdateStorageValue(byte[] newValue)
             {
@@ -146,9 +148,9 @@ namespace Nethermind.Store.Test
         {
             StorageCell storageCell = new StorageCell(_address1, UInt256.One);
             IReleaseSpec spec = MuirGlacier.Instance;
-            StateDb stateDb = new StateDb(new MemDb());
-            StateProvider provider = new StateProvider(stateDb, new MemDb(), Logger);
-            StorageProvider storageProvider = new StorageProvider(stateDb, provider, Logger);
+            TrieStore trieStore = new TrieStore(new StateDb(), Logger);
+            StateProvider provider = new StateProvider(trieStore, new MemDb(), Logger);
+            StorageProvider storageProvider = new StorageProvider(trieStore, provider, Logger);
 
             void CommitEverything()
             {
@@ -163,7 +165,7 @@ namespace Nethermind.Store.Test
             CommitEverything();
             Keccak stateRoot0 = provider.StateRoot;
 
-            stateDb.Commit();
+            StateDb stateDb = new StateDb(new MemDb());
             StateReader reader = new StateReader(new TrieStore(stateDb, LimboLogs.Instance), Substitute.For<IDb>(), Logger);
             Keccak storageRoot = reader.GetStorageRoot(stateRoot0, _address1);
             reader.GetStorage(storageRoot, storageCell.Index + 1).Should().BeEquivalentTo(new byte[] {0});
@@ -204,8 +206,9 @@ namespace Nethermind.Store.Test
             
             /* all testing will be touching just a single storage cell */
             StorageCell storageCell = new StorageCell(_address1, UInt256.One);
-            StateProvider state = new StateProvider(dbProvider, Logger);
-            StorageProvider storage = new StorageProvider(dbProvider, state, Logger);
+            TrieStore trieStore = new TrieStore(dbProvider.StateDb, Logger);
+            StateProvider state = new StateProvider(trieStore, dbProvider.CodeDb, Logger);
+            StorageProvider storage = new StorageProvider(trieStore, state, Logger);
 
             /* to start with we need to create an account that we will be setting storage at */
             state.CreateAccount(storageCell.Address, UInt256.One);
@@ -235,13 +238,13 @@ namespace Nethermind.Store.Test
                It is a different stack of objects than the one that is used by the blockchain bridge. */
             
             byte[] newValue = new byte[] {1, 2, 3, 4, 5};
-            
+
             StateProvider processorStateProvider =
-                new StateProvider(dbProvider, LimboLogs.Instance);
+                new StateProvider(trieStore, new MemDb(), LimboLogs.Instance);
             processorStateProvider.StateRoot = state.StateRoot;
             
             StorageProvider processorStorageProvider =
-                new StorageProvider(dbProvider, processorStateProvider, LimboLogs.Instance);
+                new StorageProvider(trieStore, processorStateProvider, LimboLogs.Instance);
             
             processorStorageProvider.Set(storageCell, newValue);
             processorStorageProvider.Commit();
