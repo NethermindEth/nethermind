@@ -36,7 +36,7 @@ namespace Nethermind.Blockchain.Processing
         
         public ReadOnlyTxProcessingEnv(
             IReadOnlyDbProvider readOnlyDbProvider,
-            ITrieStore trieStore,
+            ITrieNodeResolver trieStore,
             ReadOnlyBlockTree readOnlyBlockTree,
             ISpecProvider specProvider,
             ILogManager logManager)
@@ -44,12 +44,13 @@ namespace Nethermind.Blockchain.Processing
             ISnapshotableDb stateDb = readOnlyDbProvider.StateDb;
             IDb codeDb = readOnlyDbProvider.CodeDb;
 
+            ReadOnlyTrieStore readOnlyTrieStore = new ReadOnlyTrieStore(trieStore);
             // TODO: this will not properly load data... need to have a caching wrapper around the state DB...
-            StateReader = new StateReader(trieStore, codeDb, logManager);
+            StateReader = new StateReader(readOnlyTrieStore, codeDb, logManager);
             // TODO: this will not properly load data... need to have a caching wrapper around the state DB...
-            StateProvider = new StateProvider(new StateTree(trieStore, logManager), codeDb, logManager);
+            StateProvider = new StateProvider(new StateTree(readOnlyTrieStore, logManager), codeDb, logManager);
             // TODO: this will not properly load data... need to have a caching wrapper around the state DB...
-            StorageProvider = new StorageProvider(trieStore, StateProvider, logManager);
+            StorageProvider = new StorageProvider(readOnlyTrieStore, StateProvider, logManager);
 
             BlockTree = readOnlyBlockTree;
             BlockhashProvider = new BlockhashProvider(BlockTree, logManager);

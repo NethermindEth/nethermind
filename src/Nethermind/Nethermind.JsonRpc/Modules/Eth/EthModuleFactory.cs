@@ -38,6 +38,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
     public class EthModuleFactory : ModuleFactoryBase<IEthModule>
     {
         private readonly IBlockTree _blockTree;
+        private readonly ITrieNodeResolver _trieStore;
         private readonly IDbProvider _dbProvider;
         private readonly IEthereumEcdsa _ethereumEcdsa;
         private readonly IReceiptFinder _receiptFinder;
@@ -58,6 +59,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             ITxSender txSender,
             IWallet wallet,
             IBlockTree blockTree,
+            ITrieNodeResolver trieStore,
             IEthereumEcdsa ethereumEcdsa,
             IBlockProcessor blockProcessor,
             IReceiptFinder receiptFinder,
@@ -72,6 +74,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
             _ethereumEcdsa = ethereumEcdsa ?? throw new ArgumentNullException(nameof(ethereumEcdsa));
             _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
@@ -86,10 +89,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
         
         public override IEthModule Create()
         {
+            ReadOnlyTrieStore readOnlyTrieStore = new ReadOnlyTrieStore(_trieStore);
             ReadOnlyBlockTree readOnlyTree = new ReadOnlyBlockTree(_blockTree);
             IReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
             ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(
-                readOnlyDbProvider, new PassThroughTrieStore(readOnlyDbProvider.StateDb, _logManager), readOnlyTree, _specProvider, _logManager);
+                readOnlyDbProvider, readOnlyTrieStore, readOnlyTree, _specProvider, _logManager);
             
             var blockchainBridge = new BlockchainBridge(
                 readOnlyTxProcessingEnv,

@@ -30,6 +30,9 @@ namespace Nethermind.Trie.Pruning
     /// </summary>
     public class TrieStore : ITrieStore
     {
+        public TrieStore(IKeyValueStore? keyValueStore, ILogManager? logManager) 
+            :this(keyValueStore, No.Pruning, No.Persistence, logManager) { }
+        
         public TrieStore(
             IKeyValueStore? keyValueStore,
             IPruningStrategy? pruningStrategy,
@@ -87,7 +90,7 @@ namespace Nethermind.Trie.Pruning
             if (!nodeCommitInfo.IsEmptyBlockMarker)
             {
                 Debug.Assert(CurrentPackage != null, "Current package is null when enqueing a trie node.");
-                Debug.Assert(!nodeCommitInfo.Node.LastSeen.HasValue, "Committing a block.");
+                Debug.Assert(!nodeCommitInfo.Node!.LastSeen.HasValue, "Committing a block.");
 
                 TrieNode trieNode = nodeCommitInfo.Node;
                 if (trieNode!.Keccak == null)
@@ -117,7 +120,7 @@ namespace Nethermind.Trie.Pruning
                 {
                     SaveInCache(trieNode);
                 }
-                
+
                 trieNode.LastSeen = blockNumber;
                 CommittedNodeCount++;
             }
@@ -200,7 +203,7 @@ namespace Nethermind.Trie.Pruning
                 {
                     throw new TrieException($"Node {keccak} is missing from the DB");
                 }
-                
+
                 Metrics.LoadedFromDbNodesCount++;
                 PatriciaTree.NodeCache.Set(keccak, dbValue);
             }
@@ -277,9 +280,9 @@ namespace Nethermind.Trie.Pruning
         private readonly ILogger _logger;
 
         private LinkedList<BlockCommitPackage> _blockCommitsQueue = new LinkedList<BlockCommitPackage>();
-        
+
         private int _committedNodeCount;
-        
+
         private int _persistedNodesCount;
 
         private BlockCommitPackage? CurrentPackage => _blockCommitsQueue.Last?.Value;
@@ -326,7 +329,7 @@ namespace Nethermind.Trie.Pruning
 
             return canPrune;
         }
-        
+
         private void SaveInCache(TrieNode trieNode)
         {
             Debug.Assert(trieNode.Keccak != null, "Cannot store in cache nodes without resolved key.");

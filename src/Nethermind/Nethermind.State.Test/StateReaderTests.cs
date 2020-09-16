@@ -69,7 +69,7 @@ namespace Nethermind.Store.Test
             provider.CommitTree(0);
             stateDb.Commit();
 
-            StateReader reader = new StateReader(new PassThroughTrieStore(stateDb, LimboLogs.Instance), Substitute.For<IDb>(), Logger);
+            StateReader reader = new StateReader(new TrieStore(stateDb, LimboLogs.Instance), Substitute.For<IDb>(), Logger);
 
             Task a = StartTask(reader, stateRoot0, 1);
             Task b = StartTask(reader, stateRoot1, 2);
@@ -131,7 +131,7 @@ namespace Nethermind.Store.Test
 
             stateDb.Commit();
 
-            StateReader reader = new StateReader(new PassThroughTrieStore(stateDb, LimboLogs.Instance), Substitute.For<IDb>(), Logger);
+            StateReader reader = new StateReader(new TrieStore(stateDb, LimboLogs.Instance), Substitute.For<IDb>(), Logger);
 
             Task a = StartStorageTask(reader, stateRoot0, storageCell, new byte[] {1});
             Task b = StartStorageTask(reader, stateRoot1, storageCell, new byte[] {2});
@@ -164,7 +164,7 @@ namespace Nethermind.Store.Test
             Keccak stateRoot0 = provider.StateRoot;
 
             stateDb.Commit();
-            StateReader reader = new StateReader(new PassThroughTrieStore(stateDb, LimboLogs.Instance), Substitute.For<IDb>(), Logger);
+            StateReader reader = new StateReader(new TrieStore(stateDb, LimboLogs.Instance), Substitute.For<IDb>(), Logger);
             Keccak storageRoot = reader.GetStorageRoot(stateRoot0, _address1);
             reader.GetStorage(storageRoot, storageCell.Index + 1).Should().BeEquivalentTo(new byte[] {0});
             reader.GetStorage(Keccak.EmptyTreeHash, storageCell.Index + 1).Should().BeEquivalentTo(new byte[] {0});
@@ -222,7 +222,7 @@ namespace Nethermind.Store.Test
             state.CommitTree(2);
 
             StateReader reader = new StateReader(
-                new PassThroughTrieStore(dbProvider.StateDb, LimboLogs.Instance), dbProvider.CodeDb, Logger);
+                new TrieStore(dbProvider.StateDb, LimboLogs.Instance), dbProvider.CodeDb, Logger);
 
             var account = reader.GetAccount(state.StateRoot, _address1);
             var retrieved =  reader.GetStorage(account.StorageRoot, storageCell.Index);

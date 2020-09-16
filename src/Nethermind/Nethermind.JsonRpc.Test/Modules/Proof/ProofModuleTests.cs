@@ -39,6 +39,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.State.Proofs;
 using Nethermind.Db.Blooms;
+using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NUnit.Framework;
 
@@ -73,6 +74,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             ProofModuleFactory moduleFactory = new ProofModuleFactory(
                 _dbProvider,
                 _blockTree,
+                new TrieStore(_dbProvider.StateDb, LimboLogs.Instance), 
                 new CompositeDataRecoveryStep(new TxSignaturesRecoveryStep(new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance), NullTxPool.Instance, LimboLogs.Instance)),
                 receiptStorage,
                 _specProvider,

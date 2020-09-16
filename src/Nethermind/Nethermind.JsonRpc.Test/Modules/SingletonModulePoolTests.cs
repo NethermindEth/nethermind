@@ -29,6 +29,7 @@ using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
+using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using NSubstitute;
@@ -59,6 +60,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Substitute.For<ITxSender>(),
                 NullWallet.Instance,
                 blockTree,
+                new TrieStore(dbProvider.StateDb, LimboLogs.Instance), 
                 new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance), 
                 NullBlockProcessor.Instance, 
                 new InMemoryReceiptStorage(), 

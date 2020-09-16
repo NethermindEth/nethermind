@@ -104,7 +104,7 @@ namespace Nethermind.Clique.Test
 
                 ISpecProvider specProvider = RinkebySpecProvider.Instance;
 
-                StateReader stateReader = new StateReader(new PassThroughTrieStore(stateDb, nodeLogManager), codeDb, nodeLogManager);
+                StateReader stateReader = new StateReader(new TrieStore(stateDb, nodeLogManager), codeDb, nodeLogManager);
                 StateProvider stateProvider = new StateProvider(stateDb, codeDb, nodeLogManager);
                 stateProvider.CreateAccount(TestItem.PrivateKeyD.Address, 100.Ether());
                 stateProvider.Commit(GoerliSpecProvider.Instance.GenesisSpec);

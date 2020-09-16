@@ -91,7 +91,7 @@ namespace Nethermind.Trie
             bool allowCommits,
             ILogManager logManager)
             : this(
-                new PassThroughTrieStore(keyValueStore, logManager),
+                new TrieStore(keyValueStore, logManager),
                 rootHash,
                 parallelBranches,
                 allowCommits,

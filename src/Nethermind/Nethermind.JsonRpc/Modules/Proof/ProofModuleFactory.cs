@@ -39,10 +39,12 @@ namespace Nethermind.JsonRpc.Modules.Proof
         private readonly IDbProvider _dbProvider;
         private readonly ILogManager _logManager;
         private readonly IBlockTree _blockTree;
+        private readonly ITrieStore _trieStore;
 
         public ProofModuleFactory(
             IDbProvider dbProvider,
             IBlockTree blockTree,
+            ITrieStore trieStore,
             IBlockDataRecoveryStep recoveryStep,
             IReceiptFinder receiptFinder,
             ISpecProvider specProvider,
@@ -54,14 +56,16 @@ namespace Nethermind.JsonRpc.Modules.Proof
             _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
         }
         
         public override IProofModule Create()
         {
+            ReadOnlyTrieStore readOnlyTrieStore = new ReadOnlyTrieStore(_trieStore);
             ReadOnlyBlockTree readOnlyTree = new ReadOnlyBlockTree(_blockTree);
             IReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
             ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(
-                readOnlyDbProvider, new PassThroughTrieStore(readOnlyDbProvider.StateDb, _logManager), readOnlyTree, _specProvider, _logManager);
+                readOnlyDbProvider, readOnlyTrieStore, readOnlyTree, _specProvider, _logManager);
             ReadOnlyChainProcessingEnv readOnlyChainProcessingEnv = new ReadOnlyChainProcessingEnv(readOnlyTxProcessingEnv, Always.Valid, _recoveryStep, NoBlockRewards.Instance, new InMemoryReceiptStorage(), readOnlyDbProvider, _specProvider, _logManager);
             
             Tracer tracer = new Tracer(

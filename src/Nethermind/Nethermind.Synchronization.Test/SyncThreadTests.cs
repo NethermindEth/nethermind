@@ -252,7 +252,7 @@ namespace Nethermind.Synchronization.Test
             ISnapshotableDb codeDb = dbProvider.CodeDb;
             ISnapshotableDb stateDb = dbProvider.StateDb;
 
-            var stateReader = new StateReader(new PassThroughTrieStore(stateDb, LimboLogs.Instance), codeDb, logManager);
+            var stateReader = new StateReader(new TrieStore(stateDb, LimboLogs.Instance), codeDb, logManager);
             var stateProvider = new StateProvider(stateDb, codeDb, logManager);
             stateProvider.CreateAccount(TestItem.AddressA, 10000.Ether());
             stateProvider.Commit(specProvider.GenesisSpec);

@@ -96,6 +96,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _api.TxSender,
                     _api.Wallet,
                     _api.BlockTree,
+                    _api.TrieStore,
                     _api.EthereumEcdsa,
                     _api.MainBlockProcessor,
                     _api.ReceiptFinder,
@@ -107,7 +108,12 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.RpcModuleProvider.Register(new BoundedModulePool<IEthModule>(8, ethModuleFactory));
             }
 
-            ProofModuleFactory proofModuleFactory = new ProofModuleFactory(_api.DbProvider, _api.BlockTree, _api.RecoveryStep, _api.ReceiptFinder, _api.SpecProvider, _api.LogManager);
+            ProofModuleFactory proofModuleFactory = new ProofModuleFactory(
+                _api.DbProvider,
+                _api.BlockTree,
+                _api.TrieStore,
+                _api.RecoveryStep, _api.ReceiptFinder, _api.SpecProvider, _api.LogManager);
+            
             _api.RpcModuleProvider.Register(new BoundedModulePool<IProofModule>(2, proofModuleFactory));
 
             DebugModuleFactory debugModuleFactory = new DebugModuleFactory(
@@ -118,13 +124,24 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.RecoveryStep, 
                 _api.RewardCalculatorSource, 
                 _api.ReceiptStorage,
-                new ReceiptMigration(_api), 
+                new ReceiptMigration(_api),
+                _api.TrieStore, 
                 _api.ConfigProvider, 
                 _api.SpecProvider, 
                 _api.LogManager);
             _api.RpcModuleProvider.Register(new BoundedModulePool<IDebugModule>(8, debugModuleFactory));
 
-            TraceModuleFactory traceModuleFactory = new TraceModuleFactory(_api.DbProvider, _api.BlockTree, rpcConfig, _api.RecoveryStep, _api.RewardCalculatorSource, _api.ReceiptStorage, _api.SpecProvider, _api.LogManager);
+            TraceModuleFactory traceModuleFactory = new TraceModuleFactory(
+                _api.DbProvider,
+                _api.BlockTree,
+                _api.TrieStore,
+                rpcConfig,
+                _api.RecoveryStep,
+                _api.RewardCalculatorSource,
+                _api.ReceiptStorage,
+                _api.SpecProvider,
+                _api.LogManager);
+            
             _api.RpcModuleProvider.Register(new BoundedModulePool<ITraceModule>(8, traceModuleFactory));
             
             PersonalModule personalModule = new PersonalModule(

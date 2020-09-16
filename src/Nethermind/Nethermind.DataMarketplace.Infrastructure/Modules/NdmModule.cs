@@ -54,7 +54,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
             var readOnlyDbProvider = new ReadOnlyDbProvider(services.RocksProvider, false);
             var readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(
                 readOnlyDbProvider,
-                new PassThroughTrieStore(readOnlyDbProvider.StateDb, logManager),
+                new TrieStore(readOnlyDbProvider.StateDb, logManager),
                 readOnlyTree,
                 services.SpecProvider,
                 logManager);

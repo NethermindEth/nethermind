@@ -248,7 +248,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
             _stateLocal = new StateDb(_stateBeamLocal);
             _codeLocal = new StateDb(_codeBeamLocal);
 
-            _stateReader = new StateReader(new PassThroughTrieStore(_stateLocal, LimboLogs.Instance), _codeLocal, LimboLogs.Instance);
+            _stateReader = new StateReader(new TrieStore(_stateLocal, LimboLogs.Instance), _codeLocal, LimboLogs.Instance);
             _stateBeamLocal.StateChanged += (sender, args) =>
             {
                 if (_stateBeamLocal.CurrentState == SyncFeedState.Active)

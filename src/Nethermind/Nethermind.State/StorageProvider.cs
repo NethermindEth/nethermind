@@ -56,7 +56,7 @@ namespace Nethermind.State
         }
         
         public StorageProvider(ISnapshotableDb stateDb, IStateProvider stateProvider, ILogManager logManager)
-            : this(new PassThroughTrieStore(stateDb, logManager), stateProvider, logManager)
+            : this(new TrieStore(stateDb, logManager), stateProvider, logManager)
         {
         }
 

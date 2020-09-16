@@ -148,7 +148,7 @@ namespace Nethermind.Trie.Test
 
             public PruningContext CommitEmptyBlock()
             {
-                Commit(); // same, just for better test redability
+                Commit(); // same, just for better test readability
                 return this;
             }
 

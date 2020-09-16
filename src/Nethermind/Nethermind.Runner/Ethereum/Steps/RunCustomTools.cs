@@ -53,7 +53,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     StateDb stateDb = new StateDb(_api.DbProvider!.StateDb.Innermost);
                     StateDb codeDb = new StateDb(_api.DbProvider.StateDb.Innermost);
                     StateReader stateReader = new StateReader(
-                        new PassThroughTrieStore(stateDb, _api.LogManager), codeDb, _api.LogManager);
+                        new ReadOnlyTrieStore(_api.TrieStore!), codeDb, _api.LogManager);
                     stateReader.RunTreeVisitor(supplyVerifier, _api.BlockTree!.Genesis.StateRoot);
 
                     Block head = _api.BlockTree!.Head;
