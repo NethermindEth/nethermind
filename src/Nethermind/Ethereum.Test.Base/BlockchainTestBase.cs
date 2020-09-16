@@ -48,6 +48,7 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.State.Repositories;
+using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
 using NUnit.Framework;
@@ -69,8 +70,9 @@ namespace Ethereum.Test.Base
         }
 
         [SetUp]
-        public void Setup()
+        public void Setup(ILogManager logManager)
         {
+            _logManager = logManager;
         }
 
         private class DifficultyCalculatorWrapper : IDifficultyCalculator
@@ -115,7 +117,8 @@ namespace Ethereum.Test.Base
             IRewardCalculator rewardCalculator = new RewardCalculator(specProvider);
 
             IEthereumEcdsa ecdsa = new EthereumEcdsa(specProvider.ChainId, _logManager);
-            IStateProvider stateProvider = new StateProvider(new StateTree(stateDb, _logManager), codeDb, _logManager);
+            TrieStore trieStore = new TrieStore(stateDb, _logManager);
+            IStateProvider stateProvider = new StateProvider(trieStore, codeDb, _logManager);
             ITxPool transactionPool = new TxPool(NullTxStorage.Instance, new Timestamper(), ecdsa, specProvider, new TxPoolConfig(), stateProvider, _logManager);
             IReceiptStorage receiptStorage = NullReceiptStorage.Instance;
             var blockInfoDb = new MemDb();
@@ -125,7 +128,7 @@ namespace Ethereum.Test.Base
             IHeaderValidator headerValidator = new HeaderValidator(blockTree, Sealer, specProvider, _logManager);
             IOmmersValidator ommersValidator = new OmmersValidator(blockTree, headerValidator, _logManager);
             IBlockValidator blockValidator = new BlockValidator(txValidator, headerValidator, ommersValidator, specProvider, _logManager);
-            IStorageProvider storageProvider = new StorageProvider(stateDb, stateProvider, _logManager);
+            IStorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, _logManager);
             IVirtualMachine virtualMachine = new VirtualMachine(
                 stateProvider,
                 storageProvider,

@@ -31,6 +31,7 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
+using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
 namespace Ethereum.Test.Base
@@ -74,9 +75,10 @@ namespace Ethereum.Test.Base
                 Assert.Fail("Expected genesis spec to be Frontier for blockchain tests");
             }
 
-            IStateProvider stateProvider = new StateProvider(stateDb, codeDb, _logManager);
+            TrieStore trieStore = new TrieStore(stateDb, _logManager);
+            IStateProvider stateProvider = new StateProvider(trieStore, codeDb, _logManager);
             IBlockhashProvider blockhashProvider = new TestBlockhashProvider();
-            IStorageProvider storageProvider = new StorageProvider(stateDb, stateProvider, _logManager);
+            IStorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, _logManager);
             IVirtualMachine virtualMachine = new VirtualMachine(
                 stateProvider,
                 storageProvider,
