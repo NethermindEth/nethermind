@@ -70,9 +70,8 @@ namespace Ethereum.Test.Base
         }
 
         [SetUp]
-        public void Setup(ILogManager logManager)
+        public void Setup()
         {
-            _logManager = logManager;
         }
 
         private class DifficultyCalculatorWrapper : IDifficultyCalculator
