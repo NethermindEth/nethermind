@@ -228,8 +228,6 @@ namespace Nethermind.Trie
                         {
                             throw new TrieException($"Trie returned a malformed RLP for node {Keccak}");
                         }
-
-                        _rlpStream = FullRlp.AsRlpStream();
                     }
                 }
                 else
@@ -237,6 +235,7 @@ namespace Nethermind.Trie
                     return;
                 }
 
+                _rlpStream = FullRlp.AsRlpStream();
                 if (_rlpStream == null)
                 {
                     throw new InvalidAsynchronousStateException(

@@ -23,13 +23,11 @@ namespace Nethermind.Trie.Pruning
 {
     public class PassThroughTrieStore : ITrieStore
     {
-        private readonly ITrieNodeCache _trieNodeCache;
         private readonly IKeyValueStore _keyValueStore;
         private readonly ILogger _logger;
 
         public PassThroughTrieStore(IKeyValueStore? keyValueStore, ILogManager? logManager)
         {
-            _trieNodeCache = new TrieNodeCache(logManager);
             _keyValueStore = keyValueStore ?? throw new ArgumentNullException(nameof(keyValueStore));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
@@ -49,18 +47,11 @@ namespace Nethermind.Trie.Pruning
             }
         }
 
-        public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root)
-        {
-        }
-
-        public TrieNode? FindCachedOrNull(Keccak hash)
-        {
-            return _trieNodeCache.GetOrNull(hash);
-        }
+        public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root) { }
 
         public TrieNode FindCachedOrUnknown(Keccak hash)
         {
-            return _trieNodeCache.GetOrCreateUnknown(hash);
+            return new TrieNode(NodeType.Unknown, hash);
         }
 
         public byte[]? LoadRlp(Keccak hash, bool allowCaching)
@@ -68,10 +59,11 @@ namespace Nethermind.Trie.Pruning
             return _keyValueStore[hash.Bytes];
         }
 
-        public void UndoOneBlock()
-        {
-        }
+        public void UndoOneBlock() { }
 
-        public event EventHandler<BlockNumberEventArgs> SnapshotTaken;
+        public event EventHandler<BlockNumberEventArgs> SnapshotTaken {
+            add { }
+            remove { }
+        }
     }
 }

@@ -82,10 +82,8 @@ namespace Nethermind.Runner.Ethereum.Steps
             Signer signer = new Signer(_api.SpecProvider.ChainId, _api.OriginalSignerKey, _api.LogManager);
             _api.EngineSigner = signer;
             _api.EngineSignerStore = signer;
-
-            TrieNodeCache trieNodeCache = new TrieNodeCache(_api.LogManager);
+            
             _api.TrieStore = new TrieStore(
-                trieNodeCache,
                 _api.DbProvider.StateDb,
                 new DepthAndMemoryBased(1024, 256.MB()),
                 new ConstantInterval(8192),

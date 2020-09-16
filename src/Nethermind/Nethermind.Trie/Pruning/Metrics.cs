@@ -13,38 +13,26 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-
-using System;
-using Nethermind.Core.Crypto;
+// 
 
 namespace Nethermind.Trie.Pruning
 {
-    public class NullTrieStore : ITrieStore
+    public static class Metrics
     {
-        private NullTrieStore() { }
-
-        public static NullTrieStore Instance { get; } = new NullTrieStore();
-
-        public void CommitOneNode(long blockNumber, NodeCommitInfo nodeCommitInfo) { }
-
-        public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root) { }
-
-        public TrieNode FindCachedOrUnknown(Keccak hash)
-        {
-            return new TrieNode(NodeType.Unknown, hash);
-        }
-
-        public byte[] LoadRlp(Keccak hash, bool allowCaching)
-        {
-            return Array.Empty<byte>();
-        }
-
-        public void UndoOneBlock() { }
-
-        public event EventHandler<BlockNumberEventArgs> SnapshotTaken
-        {
-            add { }
-            remove { }
-        }
+        public static long CachedNodesCount { get; set; }
+        
+        public static long PersistedNodeCount { get; set; }
+        
+        public static long CommittedNodesCount { get; set; }
+        
+        public static long PrunedNodesCount { get; set; }
+        
+        public static long LoadedFromDbNodesCount { get; set; }
+        
+        public static long LoadedFromCacheNodesCount { get; set; }
+        
+        public static long LoadedFromRlpCacheNodesCount { get; set; }
+        
+        public static long ReplacedNodesCount { get; set; }
     }
 }

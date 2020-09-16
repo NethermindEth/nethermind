@@ -19,7 +19,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 
 namespace Nethermind.Trie.Pruning
@@ -32,22 +31,45 @@ namespace Nethermind.Trie.Pruning
     public class TrieStore : ITrieStore
     {
         public TrieStore(
-            ITrieNodeCache? trieNodeCache,
             IKeyValueStore? keyValueStore,
             IPruningStrategy? pruningStrategy,
             IPersistenceStrategy? snapshotStrategy,
             ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger<TrieStore>() ?? throw new ArgumentNullException(nameof(logManager));
-            _trieNodeCache = trieNodeCache ?? throw new ArgumentNullException(nameof(trieNodeCache));
             _keyValueStore = keyValueStore ?? throw new ArgumentNullException(nameof(keyValueStore));
             _pruningStrategy = pruningStrategy ?? throw new ArgumentNullException(nameof(pruningStrategy));
             _snapshotStrategy = snapshotStrategy ?? throw new ArgumentNullException(nameof(snapshotStrategy));
         }
-        
-        public int CommittedNodeCount { get; private set; }
-        
-        public int PersistedNodesCount { get; private set; }
+
+        public int CommittedNodeCount
+        {
+            get => _committedNodeCount;
+            private set
+            {
+                Metrics.CommittedNodesCount = value;
+                _committedNodeCount = value;
+            }
+        }
+
+        public int PersistedNodesCount
+        {
+            get => _persistedNodesCount;
+            private set
+            {
+                Metrics.PersistedNodeCount = value;
+                _persistedNodesCount = value;
+            }
+        }
+
+        public int CachedNodesCount
+        {
+            get
+            {
+                Metrics.CachedNodesCount = _trieNodeCache.Count;
+                return _trieNodeCache.Count;
+            }
+        }
 
         public void CommitOneNode(long blockNumber, NodeCommitInfo nodeCommitInfo)
         {
@@ -60,14 +82,13 @@ namespace Nethermind.Trie.Pruning
                 BeginNewPackage(blockNumber);
             }
 
-            if (_logger.IsTrace)
-                _logger.Trace($"Committing {blockNumber} {nodeCommitInfo}");
+            if (_logger.IsTrace) _logger.Trace($"Committing {blockNumber} {nodeCommitInfo}");
 
             if (!nodeCommitInfo.IsEmptyBlockMarker)
             {
                 Debug.Assert(CurrentPackage != null, "Current package is null when enqueing a trie node.");
                 Debug.Assert(!nodeCommitInfo.Node.LastSeen.HasValue, "Committing a block.");
-                
+
                 TrieNode trieNode = nodeCommitInfo.Node;
                 if (trieNode!.Keccak == null)
                 {
@@ -75,11 +96,9 @@ namespace Nethermind.Trie.Pruning
                         $"Hash of the node {trieNode} should be known at the time of committing.");
                 }
 
-                CommittedNodeCount++;
-
-                if (_trieNodeCache.IsInMemory(trieNode.Keccak))
+                if (IsInMemory(trieNode.Keccak))
                 {
-                    TrieNode cachedReplacement = _trieNodeCache.GetOrCreateUnknown(trieNode.Keccak);
+                    TrieNode cachedReplacement = FindCachedOrUnknown(trieNode.Keccak);
                     if (!ReferenceEquals(cachedReplacement, trieNode))
                     {
                         if (_logger.IsTrace)
@@ -87,26 +106,21 @@ namespace Nethermind.Trie.Pruning
                                 $"Replacing a {nameof(trieNode)} object {trieNode} with its cached representation {cachedReplacement}.");
                         if (!nodeCommitInfo.IsRoot)
                         {
-                            cachedReplacement.LastSeen = blockNumber; // TODO: this line is not tested yet and if missing it may lead to lost storage - scenario is that we
                             nodeCommitInfo.NodeParent!.ReplaceChildRef(nodeCommitInfo.ChildPositionAtParent, cachedReplacement);
                         }
-                        else
-                        {
-                            cachedReplacement.LastSeen = blockNumber; // TODO: roof can still get lost here due to varying resolutions, I guess
-                        }
+
+                        trieNode = cachedReplacement;
+                        Metrics.ReplacedNodesCount++;
                     }
                 }
                 else
                 {
-                    trieNode!.LastSeen = blockNumber;
-                    _trieNodeCache.Set(trieNode.Keccak, trieNode);
+                    SaveInCache(trieNode);
                 }
+                
+                trieNode.LastSeen = blockNumber;
+                CommittedNodeCount++;
             }
-        }
-
-        public bool IsInMemory(Keccak keccak)
-        {
-            return _trieNodeCache.IsInMemory(keccak);
         }
 
         public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root)
@@ -117,13 +131,22 @@ namespace Nethermind.Trie.Pruning
                 BeginNewPackage(blockNumber);
             }
 
-            if (trieType == TrieType.Storage)
+            if (trieType == TrieType.State) // storage tries happen before state commits
             {
-                // do nothing, we will extract roots from accounts
-            }
-            else
-            {
-                FinishBlockCommitOnState(blockNumber, root);
+                if (_logger.IsTrace) _logger.Trace($"Enqueued packages {_blockCommitsQueue.Count}");
+                BlockCommitPackage package = CurrentPackage;
+                if (package != null)
+                {
+                    package.Root = root;
+                    if (_logger.IsTrace)
+                        _logger.Trace(
+                            $"Current root (block {blockNumber}): {package.Root}, block {package.BlockNumber}");
+                    if (_logger.IsTrace)
+                        _logger.Trace(
+                            $"Incrementing refs from block {blockNumber} root {package.Root?.ToString() ?? "NULL"} ");
+
+                    package.Seal();
+                }
             }
         }
 
@@ -135,10 +158,8 @@ namespace Nethermind.Trie.Pruning
                     $"Trying to unwind a {nameof(BlockCommitPackage)} when the queue is empty.");
             }
 
-            if (_logger.IsDebug)
-                _logger.Debug($"Unwinding {CurrentPackage}");
+            if (_logger.IsDebug) _logger.Debug($"Unwinding {CurrentPackage}");
 
-            //DecrementRefs(CurrentPackage!);
             _blockCommitsQueue.RemoveLast();
         }
 
@@ -162,46 +183,92 @@ namespace Nethermind.Trie.Pruning
                               $"| save count {PersistedNodesCount}");
         }
 
-        public TrieNode? FindCachedOrNull(Keccak hash)
-        {
-            return _trieNodeCache.GetOrNull(hash);
-        }
-
-        public TrieNode? FindCachedOrUnknown(Keccak hash)
-        {
-            return _trieNodeCache.GetOrCreateUnknown(hash);
-        }
-
         public byte[]? LoadRlp(Keccak keccak, bool allowCaching)
         {
-            if (!allowCaching)
+            byte[] rlp = null;
+            if (allowCaching)
             {
-                return _keyValueStore[keccak.Bytes];
+                // TODO: static NodeCache in PatriciaTrie stays for now to simplify the PR
+                rlp = PatriciaTree.NodeCache.Get(keccak);
+                Metrics.LoadedFromRlpCacheNodesCount++;
             }
 
-            // TODO: to not modify too many other parts of the solution I leave the cache as a static field of
-            // the PatriciaTree class for now
-            byte[] cachedRlp = PatriciaTree.NodeCache.Get(keccak);
-            if (cachedRlp == null)
+            if (rlp is null)
             {
                 byte[] dbValue = _keyValueStore[keccak.Bytes];
                 if (dbValue == null)
                 {
                     throw new TrieException($"Node {keccak} is missing from the DB");
                 }
-
+                
+                Metrics.LoadedFromDbNodesCount++;
                 PatriciaTree.NodeCache.Set(keccak, dbValue);
-                return dbValue;
             }
 
-            return cachedRlp;
+            return rlp;
+        }
+
+        public bool IsInMemory(Keccak hash) => _trieNodeCache.ContainsKey(hash);
+
+        public TrieNode FindCachedOrUnknown(Keccak hash)
+        {
+            bool isMissing = !_trieNodeCache.TryGetValue(hash, out TrieNode trieNode);
+            if (isMissing)
+            {
+                trieNode = new TrieNode(NodeType.Unknown, hash);
+                if (_logger.IsTrace) _logger.Trace($"Creating new node {trieNode}");
+                _trieNodeCache.TryAdd(trieNode.Keccak!, trieNode);
+            }
+            else
+            {
+                Metrics.LoadedFromCacheNodesCount++;
+            }
+
+            return trieNode;
+        }
+
+        public void Dump()
+        {
+            if (_logger.IsTrace)
+            {
+                _logger.Trace($"Trie node cache ({_trieNodeCache.Count})");
+                // return;
+                foreach (KeyValuePair<Keccak, TrieNode> keyValuePair in _trieNodeCache)
+                {
+                    _logger.Trace($"  {keyValuePair.Value}");
+                }
+            }
+        }
+
+        public void Prune(long snapshotId)
+        {
+            List<Keccak> toRemove = new List<Keccak>(); // TODO: resettable
+            foreach ((Keccak key, TrieNode value) in _trieNodeCache)
+            {
+                if (value.IsPersisted)
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Removing persisted {value} from memory.");
+                    toRemove.Add(key);
+                }
+                else if (HasBeenRemoved(value, snapshotId))
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Removing {value} from memory (no longer referenced).");
+                    toRemove.Add(key);
+                }
+            }
+
+            foreach (Keccak keccak in toRemove)
+            {
+                _trieNodeCache.Remove(keccak);
+                Metrics.PrunedNodesCount++;
+            }
         }
 
         #region Private
 
-        private readonly ITrieNodeCache _trieNodeCache;
-
         private readonly IKeyValueStore _keyValueStore;
+
+        private Dictionary<Keccak, TrieNode> _trieNodeCache = new Dictionary<Keccak, TrieNode>();
 
         private readonly IPruningStrategy _pruningStrategy;
 
@@ -210,6 +277,10 @@ namespace Nethermind.Trie.Pruning
         private readonly ILogger _logger;
 
         private LinkedList<BlockCommitPackage> _blockCommitsQueue = new LinkedList<BlockCommitPackage>();
+        
+        private int _committedNodeCount;
+        
+        private int _persistedNodesCount;
 
         private BlockCommitPackage? CurrentPackage => _blockCommitsQueue.Last?.Value;
 
@@ -242,30 +313,11 @@ namespace Nethermind.Trie.Pruning
             Debug.Assert(CurrentPackage == newPackage,
                 "Current package is not equal the new package just after adding");
         }
-        
-        private void FinishBlockCommitOnState(long blockNumber, TrieNode? root)
-        {
-            if (_logger.IsTrace) _logger.Trace($"Enqueued packages {_blockCommitsQueue.Count}");
-
-            BlockCommitPackage package = CurrentPackage;
-            if (package != null)
-            {
-                package.Root = root;
-                if (_logger.IsTrace)
-                    _logger.Trace(
-                        $"Current root (block {blockNumber}): {package.Root}, block {package.BlockNumber}");
-                if (_logger.IsTrace)
-                    _logger.Trace(
-                        $"Incrementing refs from block {blockNumber} root {package.Root?.ToString() ?? "NULL"} ");
-                
-                package.Seal();
-            }
-        }
 
         internal bool TryPruningOldBlock()
         {
             BlockCommitPackage? blockCommit = _blockCommitsQueue.First?.Value;
-            bool canPrune = blockCommit != null && blockCommit.IsSealed; 
+            bool canPrune = blockCommit != null && blockCommit.IsSealed;
             if (canPrune)
             {
                 Prune(blockCommit);
@@ -273,6 +325,12 @@ namespace Nethermind.Trie.Pruning
             }
 
             return canPrune;
+        }
+        
+        private void SaveInCache(TrieNode trieNode)
+        {
+            Debug.Assert(trieNode.Keccak != null, "Cannot store in cache nodes without resolved key.");
+            _trieNodeCache[trieNode.Keccak!] = trieNode;
         }
 
         private void Prune(BlockCommitPackage commitPackage)
@@ -282,20 +340,20 @@ namespace Nethermind.Trie.Pruning
 
             Debug.Assert(commitPackage != null && commitPackage.IsSealed,
                 $"Invalid {nameof(commitPackage)} - {commitPackage} received for pruning.");
-            
+
             bool shouldPersistSnapshot = _snapshotStrategy.ShouldPersistSnapshot(commitPackage.BlockNumber);
             if (shouldPersistSnapshot)
             {
                 commitPackage.Root?.PersistRecursively(tn => Persist(tn, commitPackage.BlockNumber), this, _logger);
-                
+
                 // the pruning responsibility can be divided by this and the cache now
-                _trieNodeCache.Prune(commitPackage.BlockNumber);
+                Prune(commitPackage.BlockNumber);
             }
-            
+
             if (_logger.IsDebug)
                 _logger.Debug($"End pruning {nameof(BlockCommitPackage)} - {commitPackage.BlockNumber}");
 
-            _trieNodeCache.Dump();
+            Dump();
             if (shouldPersistSnapshot)
             {
                 SnapshotTaken?.Invoke(this, new BlockNumberEventArgs(commitPackage.BlockNumber));
@@ -318,18 +376,24 @@ namespace Nethermind.Trie.Pruning
                 // to prevent it from being removed from cache and also want to have it persisted.
 
                 if (_logger.IsTrace) _logger.Trace($"Persisting {nameof(TrieNode)} {currentNode}.");
-            
+
                 _keyValueStore[currentNode.Keccak.Bytes] = currentNode.FullRlp;
                 currentNode.IsPersisted = true;
                 currentNode.LastSeen = snapshotId;
 
-                PersistedNodesCount++;   
+                PersistedNodesCount++;
             }
             else
             {
                 Debug.Assert(currentNode.FullRlp != null && currentNode.FullRlp.Length < 32,
                     "We only expect persistence call without Keccak for the nodes that are kept inside the parent RLP (less than 32 bytes).");
             }
+        }
+
+        private static bool HasBeenRemoved(TrieNode trieNode, long snapshotId)
+        {
+            Debug.Assert(trieNode.LastSeen.HasValue, $"Any node that is cache should have {nameof(TrieNode.LastSeen)} set.");
+            return trieNode.LastSeen < snapshotId;
         }
 
         #endregion

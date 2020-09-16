@@ -262,7 +262,7 @@ namespace Nethermind.State
                         }
 
                         StorageTree tree = GetOrCreateStorage(change.StorageCell.Address);
-                        Metrics.StorageTreeWrites++;
+                        Db.Metrics.StorageTreeWrites++;
                         toUpdateRoots.Add(change.StorageCell.Address);
                         tree.Set(change.StorageCell.Index, change.Value);
                         if (isTracing)
@@ -360,7 +360,7 @@ namespace Nethermind.State
         {
             StorageTree tree = GetOrCreateStorage(storageCell.Address);
 
-            Metrics.StorageTreeReads++;
+            Db.Metrics.StorageTreeReads++;
             byte[] value = tree.Get(storageCell.Index);
             PushToRegistryOnly(storageCell, value);
             return value;

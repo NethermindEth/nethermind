@@ -47,7 +47,6 @@ namespace Nethermind.Trie.Test
             private ILogManager _logManager;
             private ILogger _logger;
             private TrieStore _trieStore;
-            private TrieNodeCache _trieNodeCache;
             private IPersistenceStrategy _persistenceStrategy;
             private IPruningStrategy _pruningStrategy;
 
@@ -57,11 +56,9 @@ namespace Nethermind.Trie.Test
                 _logManager = new TestLogManager(LogLevel.Trace);
                 _logger = _logManager.GetClassLogger();
                 _dbProvider = new MemDbProvider();
-                _trieNodeCache = new TrieNodeCache(_logManager);
                 _persistenceStrategy = persistenceStrategy;
                 _pruningStrategy = pruningStrategy;
-                _trieStore = new TrieStore(
-                    _trieNodeCache, _dbProvider.StateDb, _pruningStrategy, _persistenceStrategy, _logManager);
+                _trieStore = new TrieStore(_dbProvider.StateDb, _pruningStrategy, _persistenceStrategy, _logManager);
                 StateTree stateTree = new StateTree(_trieStore, _logManager);
                 _stateProvider = new StateProvider(stateTree, _dbProvider.CodeDb, _logManager);
                 _storageProvider = new StorageProvider(_trieStore, _stateProvider, _logManager);
@@ -166,14 +163,14 @@ namespace Nethermind.Trie.Test
                 GC.Collect();
                 GC.WaitForFullGCComplete(1000);
                 GC.WaitForPendingFinalizers();
-                _trieNodeCache.Prune(int.MaxValue);
-                _trieNodeCache.Count.Should().Be(i);
+                _trieStore.Prune(int.MaxValue);
+                _trieStore.CachedNodesCount.Should().Be(i);
                 return this;
             }
 
             public PruningContext DumpCache()
             {
-                _trieNodeCache.Dump();
+                _trieStore.Dump();
                 return this;
             }
         }
