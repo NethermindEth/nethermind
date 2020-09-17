@@ -18,7 +18,7 @@ jobs:
         git submodule update --init src/rocksdb-sharp src/int256 src/Dirichlet
     - name: Cloning posdao-test repo from POA
       run: |
-        git clone https://github.com/poanetwork/posdao-test-setup.git
+        git clone https://github.com/matilote/posdao-test-setup
     - name: Building Nethermind binary
       run: |
         cd nethermind
@@ -29,5 +29,4 @@ jobs:
     - name: Running POSDAO tests
       run: |
         cd posdao-test-setup
-        git checkout "matilote:patch-1"
         npm run all-nethermind-no-watcher
