@@ -206,6 +206,12 @@ namespace Nethermind.Core.Specs
         /// <remarks>THis is needed for SystemUser account compatibility with Parity.</remarks>
         /// <param name="address"></param>
         /// <returns></returns>
-        bool IsEip158IgnoredAccount(Address address);		
+        bool IsEip158IgnoredAccount(Address address);
+
+        /// <summary>
+        /// Should transactions be validated against chainId.
+        /// </summary>
+        /// <remarks>Backward compatibility for early Kovan blocks.</remarks>
+        bool ValidateChainId => true;
     }
 }
