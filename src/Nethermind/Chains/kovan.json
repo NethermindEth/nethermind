@@ -36,7 +36,7 @@
         "validateScoreTransition": "0x41a3c4",
         "validateStepTransition": "0x16e360",
         "maximumUncleCountTransition": "0x4d50f8",
-        "maximumUncleCount": "0x5"
+        "maximumUncleCount": "0x0"
       }
     }
   },
