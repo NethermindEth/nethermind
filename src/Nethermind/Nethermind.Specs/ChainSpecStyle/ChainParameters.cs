@@ -69,5 +69,11 @@ namespace Nethermind.Specs.ChainSpecStyle
         /// </summary>
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>
         public long? ValidateChainIdTransition { get; set; }
+        
+        /// <summary>
+        /// Optional, will be included for block 0 by default - Transition block before which the state root in transaction’s receipt can be stripped.
+        /// </summary>
+        /// <returns></returns>
+        public long? ValidateReceiptsTransition { get; set; }
     }
 }

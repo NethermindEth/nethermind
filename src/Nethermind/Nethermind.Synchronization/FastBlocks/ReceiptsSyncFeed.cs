@@ -176,7 +176,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 }
                 else
                 {
-                    Keccak receiptsRoot = new ReceiptTrie(blockInfo.BlockNumber, _specProvider, receipts).RootHash;
+                    Keccak receiptsRoot = new ReceiptTrie(_specProvider.GetSpec(blockInfo.BlockNumber), receipts).RootHash;
                     if (receiptsRoot != header.ReceiptsRoot)
                     {
                         preparedReceipts = null;

@@ -33,6 +33,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.State.Proofs;
 using Nethermind.TxPool;
+using Org.BouncyCastle.Asn1;
 
 namespace Nethermind.Blockchain.Processing
 {
@@ -233,23 +234,24 @@ namespace Nethermind.Blockchain.Processing
 
         protected virtual TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options)
         {
+            IReleaseSpec releaseSpec = _specProvider.GetSpec(block.Number);
             TxReceipt[] receipts = ProcessTransactions(block, options, blockTracer);
-            SetReceiptsRoot(block, receipts);
+            
+            // Kovan hack:
+            if (releaseSpec.ValidateReceipts) block.Header.ReceiptsRoot = GetReceiptsRoot(releaseSpec, receipts);
             ApplyMinerRewards(block, blockTracer);
 
-            _stateProvider.Commit(_specProvider.GetSpec(block.Number));
+            _stateProvider.Commit(releaseSpec);
             _stateProvider.RecalculateStateRoot();
+            
             block.Header.StateRoot = _stateProvider.StateRoot;
             block.Header.Hash = block.Header.CalculateHash();
 
             return receipts;
         }
 
-        private void SetReceiptsRoot(Block block, TxReceipt[] txReceipts)
-        {
-            ReceiptTrie receiptTrie = new ReceiptTrie(block.Number, _specProvider, txReceipts);
-            block.Header.ReceiptsRoot = receiptTrie.RootHash;
-        }
+        private Keccak GetReceiptsRoot(IReleaseSpec releaseSpec, TxReceipt[] txReceipts) => 
+            new ReceiptTrie(releaseSpec, txReceipts).RootHash;
 
         private void StoreTxReceipts(Block block, TxReceipt[] txReceipts)
         {
@@ -283,7 +285,8 @@ namespace Nethermind.Blockchain.Processing
                 TxRoot = bh.TxRoot,
                 TotalDifficulty = bh.TotalDifficulty,
                 AuRaStep = bh.AuRaStep,
-                AuRaSignature = bh.AuRaSignature
+                AuRaSignature = bh.AuRaSignature,
+                ReceiptsRoot = bh.ReceiptsRoot,
             };
 
             return new Block(header, suggestedBlock.Transactions, suggestedBlock.Ommers);

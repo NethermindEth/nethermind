@@ -213,5 +213,11 @@ namespace Nethermind.Core.Specs
         /// </summary>
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>
         bool ValidateChainId => true;
+        
+        /// <summary>
+        /// Should validate ReceiptsRoot.
+        /// </summary>
+        /// <remarks>Backward compatibility for early Kovan blocks.</remarks>
+        bool ValidateReceipts => true;
     }
 }

@@ -130,7 +130,7 @@ namespace Nethermind.Synchronization.Blocks
 
         private void ValidateReceipts(Block block, TxReceipt[] blockReceipts)
         {
-            Keccak receiptsRoot = new ReceiptTrie(block.Number, _specProvider, blockReceipts).RootHash;
+            Keccak receiptsRoot = new ReceiptTrie(_specProvider.GetSpec(block.Number), blockReceipts).RootHash;
             if (receiptsRoot != block.ReceiptsRoot)
             {
                 throw new EthSyncException($"Wrong receipts root for downloaded block {block.ToString(Block.Format.Short)}.");

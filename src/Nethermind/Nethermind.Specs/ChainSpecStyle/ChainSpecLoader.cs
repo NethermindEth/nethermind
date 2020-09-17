@@ -109,6 +109,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                 TransactionPermissionContract = chainSpecJson.Params.TransactionPermissionContract,
                 TransactionPermissionContractTransition = chainSpecJson.Params.TransactionPermissionContractTransition,
                 ValidateChainIdTransition = chainSpecJson.Params.ValidateChainIdTransition,
+                ValidateReceiptsTransition = chainSpecJson.Params.ValidateReceiptsTransition,
             };
         }
 
