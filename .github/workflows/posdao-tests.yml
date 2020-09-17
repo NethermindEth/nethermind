@@ -25,7 +25,7 @@ jobs:
         mkdir bin
         cd src/Nethermind
         dotnet build Nethermind.sln -c Release
-        cp -r Nethermind.Runner/bin/release/netcoreapp3.1/* /home/runner/work/nethermind/nethermind/nethermind/bin/
+        cp -r Nethermind.Runner/bin/Release/netcoreapp3.1/* /home/runner/work/nethermind/nethermind/nethermind/bin/
     - name: Running POSDAO tests
       run: |
         cd posdao-test-setup
