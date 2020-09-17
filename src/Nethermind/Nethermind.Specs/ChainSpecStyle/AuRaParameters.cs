@@ -56,7 +56,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         public long MaximumUncleCountTransition { get; set; }
         
-        public int MaximumUncleCount { get; set; }
+        public long MaximumUncleCount { get; set; }
         
         public Address BlockRewardContractAddress { get; set; }
         
