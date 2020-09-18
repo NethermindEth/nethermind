@@ -112,6 +112,11 @@ namespace Nethermind.Synchronization.FastBlocks
 
             _lowestRequestedHeaderNumber = startNumber + 1;
 
+            if (blockTree.ChainId == ChainId.Kovan)
+            {
+                _fastSyncExpectedDifficultyAuRaOverride = new Dictionary<long, ulong> {{148240, 19430113280}};
+            }
+
             Activate();
         }
 
@@ -511,6 +516,8 @@ namespace Nethermind.Synchronization.FastBlocks
             return added;
         }
 
+        private readonly IDictionary<long, ulong> _fastSyncExpectedDifficultyAuRaOverride;
+
         private AddBlockResult InsertHeader(BlockHeader header)
         {
             if (header.IsGenesis)
@@ -521,8 +528,16 @@ namespace Nethermind.Synchronization.FastBlocks
             AddBlockResult insertOutcome = _blockTree.Insert(header);
             if (insertOutcome == AddBlockResult.Added || insertOutcome == AddBlockResult.AlreadyKnown)
             {
+                ulong nextHeaderDiff = 0;
                 _nextHeaderHash = header.ParentHash;
-                _nextHeaderDiff = (header.TotalDifficulty ?? 0) - header.Difficulty;
+                if (_fastSyncExpectedDifficultyAuRaOverride?.TryGetValue(header.Number, out nextHeaderDiff) == true)
+                {
+                    _nextHeaderDiff = nextHeaderDiff;
+                }
+                else
+                {
+                    _nextHeaderDiff = (header.TotalDifficulty ?? 0) - header.Difficulty;
+                }
             }
 
             return insertOutcome;
