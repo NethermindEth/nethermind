@@ -201,8 +201,6 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Logging", "Logging", "{94CF
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.RocksDbExtractor", "Nethermind.RocksDbExtractor\Nethermind.RocksDbExtractor.csproj", "{3B959FEB-2DD2-4DF9-921E-BEC664DCA107}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Precompiles.Benchmark", "Nethermind.Precompiles.Benchmark\Nethermind.Precompiles.Benchmark.csproj", "{1E36E03B-7457-42D0-A085-FC2BB23038F5}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Cryptography.Bls", "Nethermind.Cryptography.Bls\Nethermind.Cryptography.Bls.csproj", "{1A581DDC-020D-4725-89E3-437D15FEF97F}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Native", "Nethermind.Native\Nethermind.Native.csproj", "{77C56006-3DE8-4B3B-A0BB-CFD2E28CF8A9}"
@@ -603,14 +601,20 @@ Global
 		{4EC78EFC-3661-430A-8A88-CBF7F7BA707C}.Release|Any CPU.Build.0 = Release|Any CPU
 		{77C56006-3DE8-4B3B-A0BB-CFD2E28CF8A9}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{77C56006-3DE8-4B3B-A0BB-CFD2E28CF8A9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{77C56006-3DE8-4B3B-A0BB-CFD2E28CF8A9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{77C56006-3DE8-4B3B-A0BB-CFD2E28CF8A9}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{F4DE1E9A-2823-4F9C-A6D6-78606E6C0410}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{F4DE1E9A-2823-4F9C-A6D6-78606E6C0410}.Release|Any CPU.Build.0 = Release|Any CPU
-		{1E36E03B-7457-42D0-A085-FC2BB23038F5}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{1E36E03B-7457-42D0-A085-FC2BB23038F5}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F4DE1E9A-2823-4F9C-A6D6-78606E6C0410}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F4DE1E9A-2823-4F9C-A6D6-78606E6C0410}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{3E4BC2CB-CE74-4E1F-92D3-BA7639191065}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{3E4BC2CB-CE74-4E1F-92D3-BA7639191065}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3E4BC2CB-CE74-4E1F-92D3-BA7639191065}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3E4BC2CB-CE74-4E1F-92D3-BA7639191065}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{69FC5271-88BE-4A0A-9F86-3AEE4F63906E}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{69FC5271-88BE-4A0A-9F86-3AEE4F63906E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{69FC5271-88BE-4A0A-9F86-3AEE4F63906E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{69FC5271-88BE-4A0A-9F86-3AEE4F63906E}.Debug|Any CPU.Build.0 = Debug|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

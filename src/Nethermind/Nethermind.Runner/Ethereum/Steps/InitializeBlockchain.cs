@@ -83,14 +83,15 @@ namespace Nethermind.Runner.Ethereum.Steps
             Signer signer = new Signer(_api.SpecProvider.ChainId, _api.OriginalSignerKey, _api.LogManager);
             _api.EngineSigner = signer;
             _api.EngineSignerStore = signer;
-            
+
             _api.TrieStore = new TrieStore(
-                _api.DbProvider.StateDb,
+                _api.DbProvider.StateDb.Innermost,
                 new DepthAndMemoryBased(1024, 256.MB()),
                 new ConstantInterval(8192),
                 _api.LogManager);
             
-            _api.TrieStore.SnapshotTaken += TreeStoreOnStored; 
+            _api.TrieStore.SnapshotTaken += TreeStoreOnStored;
+            
             
             _api.StateProvider = new StateProvider(
                 _api.TrieStore,
@@ -151,9 +152,9 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.Config<ISyncConfig>(),
                 _api.LogManager);
 
-            _api.StateProvider.StateRoot = _api.BlockTree.Head.StateRoot;
+            _api.StateProvider.StateRoot = _api.BlockTree.Head?.StateRoot ?? Keccak.EmptyTreeHash;
             TrieStats stats = _api.StateProvider.CollectStats();
-            logger.Warn(stats.ToString());
+            logger.Warn($"Starting from {_api.BlockTree.Head?.Number} {_api.BlockTree.Head?.StateRoot}" + stats);
 
             // Init state if we need system calls before actual processing starts
             if (_api.BlockTree.Head != null)

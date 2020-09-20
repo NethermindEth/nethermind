@@ -207,6 +207,16 @@ namespace Nethermind.Trie.Test.Pruning
         }
 
         [Test]
+        public void Can_load_from_rlp()
+        {
+            MemDb memDb = new MemDb();
+            memDb[Keccak.Zero.Bytes] = new byte[] {1, 2, 3};
+
+            TrieStore trieStore = new TrieStore(memDb, _logManager);
+            trieStore.LoadRlp(Keccak.Zero, false).Should().NotBeNull();
+        }
+
+        [Test]
         public void Will_get_persisted_on_snapshot_if_referenced()
         {
             TrieNode a = new TrieNode(NodeType.Leaf, new byte[0]); // 192B
@@ -341,7 +351,7 @@ namespace Nethermind.Trie.Test.Pruning
             b.ResolveKey(NullTrieNodeResolver.Instance, true);
 
             MemDb memDb = new MemDb();
-            
+
             TrieStore trieStore = new TrieStore(memDb, new DepthAndMemoryBased(4, 16.MB()), No.Persistence, _logManager);
 
             trieStore.FinishBlockCommit(TrieType.State, 0, null);
@@ -369,22 +379,22 @@ namespace Nethermind.Trie.Test.Pruning
         {
             TrieNode storage1 = new TrieNode(NodeType.Leaf, new byte[32]);
             storage1.ResolveKey(NullTrieNodeResolver.Instance, true);
-            
+
             TrieNode a = new TrieNode(NodeType.Leaf);
             Account account = new Account(1, 1, storage1.Keccak, Keccak.OfAnEmptyString);
             a.Value = _accountDecoder.Encode(account).Bytes;
             a.Key = HexPrefix.Leaf("abc");
             a.ResolveKey(NullTrieNodeResolver.Instance, true);
-            
+
             TrieNode storage2 = new TrieNode(NodeType.Leaf, new byte[32]);
             storage2.ResolveKey(NullTrieNodeResolver.Instance, true);
-            
+
             TrieNode b = new TrieNode(NodeType.Leaf);
             Account accountB = new Account(2, 1, storage2.Keccak, Keccak.OfAnEmptyString);
             b.Value = _accountDecoder.Encode(accountB).Bytes;
             b.Key = HexPrefix.Leaf("abcd");
             b.ResolveKey(NullTrieNodeResolver.Instance, true);
-            
+
             TrieNode branch = new TrieNode(NodeType.Branch);
             branch.SetChild(0, a);
             branch.SetChild(1, b);
@@ -392,7 +402,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             MemDb memDb = new MemDb();
 
-            TrieStore trieStore = new TrieStore(memDb, new DepthAndMemoryBased(4, 16.MB()),new ConstantInterval(4), _logManager);
+            TrieStore trieStore = new TrieStore(memDb, new DepthAndMemoryBased(4, 16.MB()), new ConstantInterval(4), _logManager);
 
             trieStore.FinishBlockCommit(TrieType.State, 0, null);
             trieStore.CommitOneNode(1, new NodeCommitInfo(storage1));

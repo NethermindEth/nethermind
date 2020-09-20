@@ -150,11 +150,11 @@ namespace Nethermind.Trie.Pruning
 
                     package.Seal();
                     
-                    bool shouldPersistSnapshot = _snapshotStrategy.ShouldPersistSnapshot(package.BlockNumber);
-                    if (shouldPersistSnapshot)
-                    {
-                        package.Root?.PersistRecursively(tn => Persist(tn, package.BlockNumber), this, _logger);
-                    }
+                    // bool shouldPersistSnapshot = _snapshotStrategy.ShouldPersistSnapshot(package.BlockNumber);
+                    // if (shouldPersistSnapshot)
+                    // {
+                    //     package.Root?.PersistRecursively(tn => Persist(tn, package.BlockNumber), this, _logger);
+                    // }
                 }
             }
         }
@@ -204,14 +204,14 @@ namespace Nethermind.Trie.Pruning
 
             if (rlp is null)
             {
-                byte[] dbValue = _keyValueStore[keccak.Bytes];
-                if (dbValue == null)
+                rlp = _keyValueStore[keccak.Bytes];
+                if (rlp == null)
                 {
                     throw new TrieException($"Node {keccak} is missing from the DB");
                 }
 
                 Metrics.LoadedFromDbNodesCount++;
-                PatriciaTree.NodeCache.Set(keccak, dbValue);
+                PatriciaTree.NodeCache.Set(keccak, rlp);
             }
 
             return rlp;
@@ -353,8 +353,8 @@ namespace Nethermind.Trie.Pruning
             bool shouldPersistSnapshot = _snapshotStrategy.ShouldPersistSnapshot(commitPackage.BlockNumber);
             if (shouldPersistSnapshot)
             {
+                if(_logger.IsDebug) _logger.Debug($"Persisting from root {commitPackage.Root} in {commitPackage.BlockNumber}");
                 commitPackage.Root?.PersistRecursively(tn => Persist(tn, commitPackage.BlockNumber), this, _logger);
-
                 // the pruning responsibility can be divided by this and the cache now
                 Prune(commitPackage.BlockNumber);
             }
@@ -365,6 +365,7 @@ namespace Nethermind.Trie.Pruning
             Dump();
             if (shouldPersistSnapshot)
             {
+                if(_logger.IsDebug) _logger.Debug($"Snapshot taken {commitPackage.Root} in {commitPackage.BlockNumber}");
                 SnapshotTaken?.Invoke(this, new BlockNumberEventArgs(commitPackage.BlockNumber));
             }
         }
@@ -384,8 +385,7 @@ namespace Nethermind.Trie.Pruning
                 // Here we reach it from the old root so it appears to be out of place but it is correct as we need
                 // to prevent it from being removed from cache and also want to have it persisted.
 
-                if (_logger.IsTrace) _logger.Trace($"Persisting {nameof(TrieNode)} {currentNode}.");
-
+                if (_logger.IsTrace) _logger.Trace($"Persisting {nameof(TrieNode)} {currentNode} in snapshot {snapshotId}.");
                 _keyValueStore[currentNode.Keccak.Bytes] = currentNode.FullRlp;
                 currentNode.IsPersisted = true;
                 currentNode.LastSeen = snapshotId;
