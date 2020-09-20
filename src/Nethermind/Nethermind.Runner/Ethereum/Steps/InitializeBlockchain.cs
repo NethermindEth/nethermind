@@ -37,6 +37,7 @@ using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
 using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Synchronization.BeamSync;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
@@ -149,6 +150,10 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.BloomStorage,
                 _api.Config<ISyncConfig>(),
                 _api.LogManager);
+
+            _api.StateProvider.StateRoot = _api.BlockTree.Head.StateRoot;
+            TrieStats stats = _api.StateProvider.CollectStats();
+            logger.Warn(stats.ToString());
 
             // Init state if we need system calls before actual processing starts
             if (_api.BlockTree.Head != null)
