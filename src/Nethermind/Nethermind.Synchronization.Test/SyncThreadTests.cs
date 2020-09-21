@@ -257,7 +257,7 @@ namespace Nethermind.Synchronization.Test
             var stateProvider = new StateProvider(trieStore, codeDb, logManager);
             stateProvider.CreateAccount(TestItem.AddressA, 10000.Ether());
             stateProvider.Commit(specProvider.GenesisSpec);
-            stateProvider.CommitTree(0);
+            stateProvider.CommitBlock(0);
             stateProvider.RecalculateStateRoot();
             stateDb.Commit();
 

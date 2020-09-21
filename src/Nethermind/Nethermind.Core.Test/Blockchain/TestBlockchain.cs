@@ -105,7 +105,7 @@ namespace Nethermind.Core.Test.Blockchain
             Storage.Commit();
 
             State.Commit(SpecProvider.GenesisSpec);
-            State.CommitTree(0);
+            State.CommitBlock(0);
 
             TxPool = new TxPool.TxPool(
                 txStorage,

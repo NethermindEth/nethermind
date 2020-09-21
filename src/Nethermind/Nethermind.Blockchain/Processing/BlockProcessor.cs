@@ -151,7 +151,7 @@ namespace Nethermind.Blockchain.Processing
         {
             if (_logger.IsTrace) _logger.Trace($"Committing the branch - {newBranchStateRoot} | {_stateProvider.StateRoot}");
             _storageProvider.CommitTrees(blockNumber);
-            _stateProvider.CommitTree(blockNumber);
+            _stateProvider.CommitBlock(blockNumber);
         }
         
         private void CommitBranch()

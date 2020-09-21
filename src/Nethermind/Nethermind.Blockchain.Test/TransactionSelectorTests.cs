@@ -134,7 +134,7 @@ namespace Nethermind.Blockchain.Test
                 }
 
                 stateProvider.Commit(Homestead.Instance);
-                stateProvider.CommitTree(0);
+                stateProvider.CommitBlock(0);
             }
 
             ITxPool transactionPool = Substitute.For<ITxPool>();

@@ -742,7 +742,7 @@ namespace Nethermind.State
             _needsStateRootUpdate = false;
         }
 
-        public void CommitTree(long blockNumber)
+        public void CommitBlock(long blockNumber)
         {
             if (_needsStateRootUpdate)
             {
@@ -750,6 +750,11 @@ namespace Nethermind.State
             }
 
             _tree.Commit(blockNumber);
+        }
+        
+        public void CommitBranch()
+        {
+            // placeholder for the three level Commit->CommitBlock->CommitBranch
         }
     }
 }

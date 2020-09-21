@@ -124,7 +124,7 @@ namespace Nethermind.Evm.Test
             Storage.Commit();
             Storage.CommitTrees(0);
             TestState.Commit(Spec);
-            TestState.CommitTree(0);
+            TestState.CommitBlock(0);
             
             Keccak storageRoot = TestState.GetAccount(expectedAddress).StorageRoot;
             storageRoot.Should().NotBe(PatriciaTree.EmptyTreeHash);

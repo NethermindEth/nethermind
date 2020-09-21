@@ -63,7 +63,7 @@ namespace Nethermind.Evm.Test
             _stateProvider = new StateProvider(trieStore, new MemDb(), LimboLogs.Instance);
             _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
             _stateProvider.Commit(_specProvider.GenesisSpec);
-            _stateProvider.CommitTree(0);
+            _stateProvider.CommitBlock(0);
 
             StorageProvider storageProvider = new StorageProvider(trieStore, _stateProvider, LimboLogs.Instance);
             VirtualMachine virtualMachine = new VirtualMachine(_stateProvider, storageProvider, Substitute.For<IBlockhashProvider>(), _specProvider, LimboLogs.Instance);

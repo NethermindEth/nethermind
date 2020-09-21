@@ -42,7 +42,7 @@ namespace Nethermind.Evm.Test
         {
             TestState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether());
             TestState.Commit(SpecProvider.GenesisSpec);
-            TestState.CommitTree(0);
+            TestState.CommitBlock(0);
 
             byte[] initByteCode = Prepare.EvmCode
                 .ForInitOf(
@@ -101,7 +101,7 @@ namespace Nethermind.Evm.Test
         {
             TestState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether());
             TestState.Commit(SpecProvider.GenesisSpec);
-            TestState.CommitTree(0);
+            TestState.CommitBlock(0);
 
             byte[] baseInitCodeStore = Prepare.EvmCode
                 .PushData(2)
@@ -206,7 +206,7 @@ namespace Nethermind.Evm.Test
         {
             TestState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether());
             TestState.Commit(SpecProvider.GenesisSpec);
-            TestState.CommitTree(0);
+            TestState.CommitBlock(0);
 
             byte[] baseInitCodeStore = Prepare.EvmCode
                 .PushData(2)
@@ -377,7 +377,7 @@ namespace Nethermind.Evm.Test
             Storage.Commit();
             Storage.CommitTrees(0);
             TestState.Commit(MuirGlacier.Instance);
-            TestState.CommitTree(0);
+            TestState.CommitBlock(0);
             
             long gasLimit = 1000000;
 
