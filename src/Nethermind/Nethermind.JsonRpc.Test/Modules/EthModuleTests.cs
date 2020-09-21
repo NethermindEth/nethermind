@@ -597,7 +597,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void Eth_chain_id()
         {
-            string serialized = _test.TestEthRpc("eth_chainid");
+            string serialized = _test.TestEthRpc("eth_chainId");
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x1\",\"id\":67}", serialized);
         }
 

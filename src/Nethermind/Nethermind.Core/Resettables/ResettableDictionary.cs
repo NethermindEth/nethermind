@@ -36,7 +36,6 @@ namespace Nethermind.Core.Resettables
         {
             _comparer = comparer;
             _wrapped = new Dictionary<TKey, TValue>(startCapacity, _comparer);
-            
             _startCapacity = startCapacity;
             _resetRatio = resetRatio;
             _currentCapacity = _startCapacity;
@@ -126,10 +125,6 @@ namespace Nethermind.Core.Resettables
             if (_wrapped.Count < _currentCapacity / _resetRatio && _currentCapacity != _startCapacity)
             {
                 _currentCapacity = Math.Max(_startCapacity, _currentCapacity / _resetRatio);
-                
-                // probably the strangest change required - comparer was not passed here which would suggest a very deep
-                // error in the previously used code...?
-                // or maybe the reset was never used?
                 _wrapped = new Dictionary<TKey, TValue>(_currentCapacity, _comparer);
             }
             else

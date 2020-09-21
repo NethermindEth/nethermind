@@ -34,7 +34,7 @@ namespace Nethermind.JsonRpc.Modules
         private List<ModuleType> _enabledModules = new List<ModuleType>();
         
         private Dictionary<string, ResolvedMethodInfo> _methods
-            = new Dictionary<string, ResolvedMethodInfo>(StringComparer.InvariantCultureIgnoreCase);
+            = new Dictionary<string, ResolvedMethodInfo>(StringComparer.InvariantCulture);
         
         private Dictionary<ModuleType, (Func<bool, IModule> RentModule, Action<IModule> ReturnModule)> _pools
             = new Dictionary<ModuleType, (Func<bool, IModule> RentModule, Action<IModule> ReturnModule)>();
@@ -127,7 +127,7 @@ namespace Nethermind.JsonRpc.Modules
         {
             var methods = type.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly);
             return methods.ToDictionary(
-                x => x.Name.Trim().ToLower(),
+                x => x.Name.Trim(),
                 x => (x, x.GetCustomAttribute<JsonRpcMethodAttribute>()?.IsReadOnly ?? true));
         }
         
@@ -149,7 +149,7 @@ namespace Nethermind.JsonRpc.Modules
 
             public override string ToString()
             {
-                return MethodInfo.Name.ToLowerInvariant();
+                return MethodInfo.Name;
             }
         }
     }
