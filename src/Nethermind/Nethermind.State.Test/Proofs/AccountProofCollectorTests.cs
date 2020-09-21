@@ -491,7 +491,7 @@ namespace Nethermind.Store.Test.Proofs
         public void Shows_empty_values_when_account_is_missing()
         {
             IDb memDb = new MemDb();
-            StateTree tree = new StateTree(memDb);
+            StateTree tree = new StateTree(new TrieStore(memDb, LimboLogs.Instance), LimboLogs.Instance);
 
             byte[] code = new byte[] {1, 2, 3};
             Account account2 = Build.An.Account.WithBalance(2).TestObject;
