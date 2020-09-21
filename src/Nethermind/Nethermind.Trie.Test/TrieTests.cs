@@ -852,16 +852,21 @@ namespace Nethermind.Trie.Test
             byte[] value = _accountDecoder.Encode(account).Bytes;
             return value;
         }
-        
+
         // [TestCase(256, 128, 128, 32)]
         // [TestCase(128, 128, 8, 8)]
-        [TestCase(4, 16, 4, 4)]
+        [TestCase(4, 16, 4, 4, null)]
         public void Fuzz_accounts_with_reorganizations(
             int accountsCount,
             int blocksCount,
             int uniqueValuesCount,
-            int lookupLimit)
+            int lookupLimit,
+            int? seed)
         {
+            int usedSeed = seed ?? _random.Next(int.MaxValue);
+            _random = new Random(usedSeed);
+
+            _logger.Info($"RANDOM SEED {usedSeed}");
             string fileName = Path.GetTempFileName();
             //string fileName = "C:\\Temp\\fuzz.txt";
             _logger.Info(
@@ -1003,7 +1008,7 @@ namespace Nethermind.Trie.Test
                 verifiedBlocks++;
             }
         }
-        
+
         // [TestCase(96, 192, 96, 1541344441)]
         // [TestCase(128, 256, 128, 988091870)]
         // [TestCase(128, 256, 128, 2107374965)]
