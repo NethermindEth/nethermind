@@ -56,7 +56,7 @@ namespace Nethermind.Core.Test.Blockchain
         public IStorageProvider Storage { get; set; }
         public IReceiptStorage ReceiptStorage { get; set; }
         public ITxPool TxPool { get; set; }
-        public ISnapshotableDb CodeDb => DbProvider.CodeDb;
+        public IDb CodeDb => DbProvider.CodeDb;
         public IBlockProcessor BlockProcessor { get; set; }
         public IBlockTree BlockTree { get; set; }
         public IBlockFinder BlockFinder { get; set; }
@@ -105,7 +105,7 @@ namespace Nethermind.Core.Test.Blockchain
             Storage.Commit();
 
             State.Commit(SpecProvider.GenesisSpec);
-            State.CommitBlock(0);
+            State.CommitTree(0);
 
             TxPool = new TxPool.TxPool(
                 txStorage,

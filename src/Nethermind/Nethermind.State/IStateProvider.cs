@@ -27,16 +27,14 @@ namespace Nethermind.State
         void RecalculateStateRoot();
         
         Keccak StateRoot { get; set; }
+        
+        void CreateAccount(Address address, in UInt256 balance);
 
         void DeleteAccount(Address address);
-
-        void CreateAccount(Address address, in UInt256 balance);
 
         bool AccountExists(Address address);
 
         bool IsDeadAccount(Address address);
-
-        bool IsEmptyAccount(Address address);
 
         Account GetAccount(Address address);
         
@@ -46,11 +44,11 @@ namespace Nethermind.State
         
         Keccak GetStorageRoot(Address address);
 
-        Keccak GetCodeHash(Address address);
-        
-        byte[] GetCode(Address address);
-
         byte[] GetCode(Keccak codeHash);
+        
+        Keccak UpdateCode(byte[] code);
+        
+        Keccak GetCodeHash(Address address);
 
         void UpdateCodeHash(Address address, Keccak codeHash, IReleaseSpec spec);
 
@@ -61,27 +59,25 @@ namespace Nethermind.State
         void UpdateStorageRoot(Address address, Keccak storageRoot);
 
         void IncrementNonce(Address address);
-
-        Keccak UpdateCode(byte[] code);
-
-        void Reset();
-
-        void CommitBlock(long blockNumber);
         
-        void Restore(int snapshot);
+        void DecrementNonce(Address address);
 
+        /* snapshots */
+        
         void Commit(IReleaseSpec releaseSpec);
         
         void Commit(IReleaseSpec releaseSpec, IStateTracer stateTracer);
         
+        void Reset();
+
+        void Restore(int snapshot);
+        
+        void CommitTree(long blockNumber);
+        
         int TakeSnapshot();
         
-        string DumpState();
-        
-        TrieStats CollectStats();
-        
+        /* visitors */
+
         void Accept(ITreeVisitor visitor, Keccak stateRoot);
-        
-        void DecrementNonce(Address address);
     }
 }

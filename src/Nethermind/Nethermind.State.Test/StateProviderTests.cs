@@ -51,7 +51,7 @@ namespace Nethermind.Store.Test
             StateProvider frontierProvider = new StateProvider(trieStore, Substitute.For<IDb>(), Logger);
             frontierProvider.CreateAccount(_address1, 0);
             frontierProvider.Commit(Frontier.Instance);
-            frontierProvider.CommitBlock(0);
+            frontierProvider.CommitTree(0);
             
             StateProvider provider = new StateProvider(trieStore, Substitute.For<IDb>(), Logger);
             provider.StateRoot = frontierProvider.StateRoot;
@@ -84,7 +84,7 @@ namespace Nethermind.Store.Test
             StateProvider provider = new StateProvider(new TrieStore(new StateDb(), Logger), Substitute.For<IDb>(), Logger);
             provider.CreateAccount(TestItem.AddressA, 1.Ether());
             provider.Commit(MuirGlacier.Instance);
-            provider.CommitBlock(0);
+            provider.CommitTree(0);
 
             string state = provider.DumpState();
             state.Should().NotBeEmpty();
@@ -96,9 +96,9 @@ namespace Nethermind.Store.Test
             StateProvider provider = new StateProvider(new TrieStore(new StateDb(), Logger), Substitute.For<IDb>(), Logger);
             provider.CreateAccount(TestItem.AddressA, 1.Ether());
             provider.Commit(MuirGlacier.Instance);
-            provider.CommitBlock(0);
+            provider.CommitTree(0);
 
-            var stats = provider.CollectStats();
+            var stats = provider.CollectStats(Substitute.For<IDb>(), Logger);
             stats.AccountCount.Should().Be(1);
         }
         
@@ -140,7 +140,7 @@ namespace Nethermind.Store.Test
             StateProvider provider = new StateProvider(new TrieStore(new StateDb(), Logger), Substitute.For<IDb>(), Logger);
             provider.CreateAccount(TestItem.AddressA, 1.Ether());
             provider.Commit(MuirGlacier.Instance);
-            provider.CommitBlock(0);
+            provider.CommitTree(0);
 
             TrieStatsCollector visitor = new TrieStatsCollector(new MemDb(), LimboLogs.Instance);
             provider.Accept(visitor, provider.StateRoot);

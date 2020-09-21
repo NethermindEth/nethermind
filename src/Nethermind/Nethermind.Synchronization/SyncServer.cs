@@ -52,7 +52,7 @@ namespace Nethermind.Synchronization
         private readonly IBlockValidator _blockValidator;
         private readonly ISealValidator _sealValidator;
         private readonly ISnapshotableDb _stateDb;
-        private readonly ISnapshotableDb _codeDb;
+        private readonly IDb _codeDb;
         private readonly ISyncConfig _syncConfig;
         private readonly CanonicalHashTrie? _cht;
         private object _dummyValue = new object();
@@ -63,7 +63,7 @@ namespace Nethermind.Synchronization
 
         public SyncServer(
             ISnapshotableDb stateDb,
-            ISnapshotableDb codeDb,
+            IDb codeDb,
             IBlockTree blockTree,
             IReceiptFinder receiptFinder,
             IBlockValidator blockValidator,

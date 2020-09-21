@@ -145,7 +145,7 @@ namespace Nethermind.Evm.Test
             TestState.Commit(SpecProvider.GenesisSpec);
             GetLogManager().GetClassLogger().Debug("Committed initial state");
             GetLogManager().GetClassLogger().Debug("Committing initial tree");
-            TestState.CommitBlock(0);
+            TestState.CommitTree(0);
             GetLogManager().GetClassLogger().Debug("Committed initial tree");
 
             Transaction transaction = Build.A.Transaction

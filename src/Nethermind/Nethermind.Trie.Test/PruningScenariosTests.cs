@@ -140,7 +140,7 @@ namespace Nethermind.Trie.Test
                 _storageProvider.Commit();
                 _storageProvider.CommitTrees(_blockNumber);
                 _stateProvider.Commit(MuirGlacier.Instance);
-                _stateProvider.CommitBlock(_blockNumber);
+                _stateProvider.CommitTree(_blockNumber);
                 _blockNumber++;
                 return this;
             }

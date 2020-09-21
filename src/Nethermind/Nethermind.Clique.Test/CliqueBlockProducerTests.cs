@@ -108,7 +108,7 @@ namespace Nethermind.Clique.Test
                 StateProvider stateProvider = new StateProvider(trieStore1, codeDb, nodeLogManager);
                 stateProvider.CreateAccount(TestItem.PrivateKeyD.Address, 100.Ether());
                 stateProvider.Commit(GoerliSpecProvider.Instance.GenesisSpec);
-                stateProvider.CommitBlock(0);
+                stateProvider.CommitTree(0);
 
                 TxPool.TxPool txPool = new TxPool.TxPool(new InMemoryTxStorage(), _timestamper, _ethereumEcdsa, GoerliSpecProvider.Instance, new TxPoolConfig(), stateProvider, _logManager);
                 _pools[privateKey] = txPool;

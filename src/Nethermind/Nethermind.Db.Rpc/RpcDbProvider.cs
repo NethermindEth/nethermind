@@ -17,7 +17,6 @@
 using Nethermind.JsonRpc.Client;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
-using Nethermind.Db.Blooms;
 
 namespace Nethermind.Db.Rpc
 {
@@ -29,7 +28,7 @@ namespace Nethermind.Db.Rpc
         {
             _recordDbProvider = recordDbProvider;
             StateDb = new StateDb(new ReadOnlyDb(new RpcDb(DbNames.State, serializer, client, logManager, recordDbProvider?.StateDb), true));
-            CodeDb = new StateDb(new ReadOnlyDb(new RpcDb(DbNames.Code, serializer, client, logManager, recordDbProvider?.CodeDb), true));
+            CodeDb = new ReadOnlyDb(new RpcDb(DbNames.Code, serializer, client, logManager, recordDbProvider?.CodeDb), true);
             ReceiptsDb = new ReadOnlyColumnsDb<ReceiptsColumns>(new RpcColumnsDb<ReceiptsColumns>(DbNames.Receipts, serializer, client, logManager, recordDbProvider?.ReceiptsDb), true);
             BlocksDb = new ReadOnlyDb(new RpcDb(DbNames.Blocks, serializer, client, logManager, recordDbProvider?.BlocksDb), true);
             HeadersDb = new ReadOnlyDb(new RpcDb(DbNames.Headers, serializer, client, logManager, recordDbProvider?.HeadersDb), true);
@@ -41,7 +40,7 @@ namespace Nethermind.Db.Rpc
         }
         
         public ISnapshotableDb StateDb { get; }
-        public ISnapshotableDb CodeDb { get; }        
+        public IDb CodeDb { get; }        
         public IColumnsDb<ReceiptsColumns> ReceiptsDb { get; }
         public IDb BlocksDb { get; }
         public IDb HeadersDb { get; }

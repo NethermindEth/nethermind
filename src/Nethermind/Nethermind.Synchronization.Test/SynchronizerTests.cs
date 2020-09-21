@@ -302,7 +302,7 @@ namespace Nethermind.Synchronization.Test
                 ISyncConfig syncConfig = synchronizerType == SynchronizerType.Fast ? SyncConfig.WithFastSync : SyncConfig.WithFullSyncOnly;
                 MemDbProvider dbProvider = new MemDbProvider();
                 ISnapshotableDb stateDb = dbProvider.StateDb;
-                ISnapshotableDb codeDb = dbProvider.CodeDb;
+                IDb codeDb = dbProvider.CodeDb;
                 MemDb blockInfoDb = new MemDb();
                 BlockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), new SingleReleaseSpecProvider(Constantinople.Instance, 1), NullTxPool.Instance, NullBloomStorage.Instance, _logManager);
                 NodeStatsManager stats = new NodeStatsManager(new StatsConfig(), _logManager);

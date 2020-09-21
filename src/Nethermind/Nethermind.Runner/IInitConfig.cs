@@ -93,6 +93,8 @@ namespace Nethermind.Runner
         [ConfigItem(Description = "Just scan rewards for blocks + genesis")]
         VerifyRewards,
         [ConfigItem(Description = "Just scan and sum supply on all accounts")]
-        VerifySupply
+        VerifySupply,
+        [ConfigItem(Description = "Verifies if full state is stored")]
+        VerifyTrie
     }
 }

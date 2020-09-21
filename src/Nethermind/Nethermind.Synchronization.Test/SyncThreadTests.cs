@@ -249,7 +249,7 @@ namespace Nethermind.Synchronization.Test
             IDb blockDb = dbProvider.BlocksDb;
             IDb headerDb = dbProvider.HeadersDb;
             IDb blockInfoDb = dbProvider.BlockInfosDb;
-            ISnapshotableDb codeDb = dbProvider.CodeDb;
+            IDb codeDb = dbProvider.CodeDb;
             ISnapshotableDb stateDb = dbProvider.StateDb;
 
             TrieStore trieStore = new TrieStore(stateDb, LimboLogs.Instance);
@@ -257,7 +257,7 @@ namespace Nethermind.Synchronization.Test
             var stateProvider = new StateProvider(trieStore, codeDb, logManager);
             stateProvider.CreateAccount(TestItem.AddressA, 10000.Ether());
             stateProvider.Commit(specProvider.GenesisSpec);
-            stateProvider.CommitBlock(0);
+            stateProvider.CommitTree(0);
             stateProvider.RecalculateStateRoot();
             stateDb.Commit();
 

@@ -19,7 +19,7 @@ namespace Nethermind.Db
     public class MemDbProvider : IDbProvider
     {
         public ISnapshotableDb StateDb { get; } = new StateDb();
-        public ISnapshotableDb CodeDb { get; } = new StateDb();
+        public IDb CodeDb { get; } = new MemDb();
         public IColumnsDb<ReceiptsColumns> ReceiptsDb { get; } = new MemColumnsDb<ReceiptsColumns>();
         public IDb BlocksDb { get; } = new MemDb();
         public IDb HeadersDb { get; } = new MemDb();

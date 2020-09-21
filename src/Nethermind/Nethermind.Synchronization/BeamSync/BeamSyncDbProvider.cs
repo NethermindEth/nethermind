@@ -37,7 +37,7 @@ namespace Nethermind.Synchronization.BeamSync
             _stateDb = new BeamSyncDb(otherProvider.StateDb.Innermost, otherProvider.BeamStateDb, syncModeSelector, logManager, syncConfig.BeamSyncContextTimeout, syncConfig.BeamSyncPreProcessorTimeout);
             BeamSyncFeed = new CompositeStateSyncFeed<StateSyncBatch?>(logManager, _codeDb, _stateDb);
             StateDb = new StateDb(_stateDb);
-            CodeDb = new StateDb(_codeDb);
+            CodeDb = _codeDb;
         }
 
         public void EnableVerifiedMode()
@@ -47,7 +47,7 @@ namespace Nethermind.Synchronization.BeamSync
         }
         
         public ISnapshotableDb StateDb { get; }
-        public ISnapshotableDb CodeDb { get; }
+        public IDb CodeDb { get; }
         public IColumnsDb<ReceiptsColumns> ReceiptsDb => _otherProvider.ReceiptsDb;
         public IDb BlocksDb => _otherProvider.BlocksDb;
         public IDb HeadersDb => _otherProvider.HeadersDb;

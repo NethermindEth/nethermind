@@ -33,7 +33,6 @@ namespace Nethermind.Db
             NestedStateDb = new ReadOnlyDb(wrappedProvider.StateDb, createInMemoryWriteStore);
             StateDb = new StateDb(NestedStateDb);
             NestedCodeDb = new ReadOnlyDb(wrappedProvider.CodeDb, createInMemoryWriteStore);
-            CodeDb = new StateDb(NestedCodeDb);
             // StateDb = new ReadOnlyDb(wrappedProvider.StateDb, createInMemoryWriteStore);
             // CodeDb = new ReadOnlyDb(wrappedProvider.CodeDb, createInMemoryWriteStore);
             NestedReceiptsDb = new ReadOnlyColumnsDb<ReceiptsColumns>(wrappedProvider.ReceiptsDb, createInMemoryWriteStore);
@@ -52,7 +51,7 @@ namespace Nethermind.Db
         }
 
         public ISnapshotableDb StateDb { get; }
-        public ISnapshotableDb CodeDb { get; }
+        public IDb CodeDb => NestedCodeDb;
         public IColumnsDb<ReceiptsColumns> ReceiptsDb => NestedReceiptsDb;
         public IDb BlocksDb => NestedBlocksDb;
         public IDb HeadersDb => NestedHeadersDb;
@@ -76,7 +75,7 @@ namespace Nethermind.Db
         public void ClearTempChanges()
         {
             StateDb.Restore(-1);
-            CodeDb.Restore(-1);
+            NestedCodeDb.Restore(-1);
             NestedReceiptsDb.Restore(-1);
             NestedBlocksDb.Restore(-1);
             NestedHeadersDb.Restore(-1);

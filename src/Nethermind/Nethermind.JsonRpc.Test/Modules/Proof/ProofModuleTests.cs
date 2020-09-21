@@ -749,7 +749,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             storageProvider.CommitTrees(0);
 
             stateProvider.Commit(MainnetSpecProvider.Instance.GenesisSpec, null);
-            stateProvider.CommitBlock(0);
+            stateProvider.CommitTree(0);
 
             _dbProvider.StateDb.Commit();
 
@@ -830,8 +830,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 AddAccount(stateProvider, Address.SystemUser, 1.Ether());
             }
 
-            stateProvider.CommitBlock(0);
-            _dbProvider.CodeDb.Commit();
+            stateProvider.CommitTree(0);
             _dbProvider.StateDb.Commit();
 
             return stateProvider;

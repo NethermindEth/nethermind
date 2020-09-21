@@ -203,7 +203,7 @@ namespace Nethermind.Store.Test
             storageProvider.Commit();
             _stateProvider.Commit(Frontier.Instance);
             storageProvider.CommitTrees(0);
-            _stateProvider.CommitBlock(0);
+            _stateProvider.CommitTree(0);
             
             // block 2
             Keccak stateRoot = _stateProvider.StateRoot;

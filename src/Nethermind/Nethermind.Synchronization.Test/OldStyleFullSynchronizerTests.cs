@@ -75,7 +75,7 @@ namespace Nethermind.Synchronization.Test
         }
 
         private ISnapshotableDb _stateDb;
-        private ISnapshotableDb _codeDb;
+        private IDb _codeDb;
         private IDb _receiptsDb;
         private IBlockTree _blockTree;
         private IBlockTree _remoteBlockTree;

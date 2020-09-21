@@ -266,12 +266,15 @@ namespace Nethermind.State
                 }
             }
 
+            // TODO: it seems that we are unnecessarily recalculating root hashes all the time in storage?
             foreach (Address address in toUpdateRoots)
             {
                 // since the accounts could be empty accounts that are removing (EIP-158)
                 if (_stateProvider.AccountExists(address))
                 {
                     Keccak root = RecalculateRootHash(address);
+                    
+                    // _logger.Warn($"Recalculating storage root {address}->{root} ({toUpdateRoots.Count})");
                     _stateProvider.UpdateStorageRoot(address, root);
                 }
             }
@@ -315,10 +318,13 @@ namespace Nethermind.State
 
         public void CommitTrees(long blockNumber)
         {
+            // _logger.Warn($"Storage block commit {blockNumber}");
             foreach (KeyValuePair<Address, StorageTree> storage in _storages)
             {
                 storage.Value.Commit(blockNumber);
             }
+            
+            // TODO: maybe I could update storage roots only now?
 
             // only needed here as there is no control over cached storage size otherwise
             _storages.Reset();

@@ -1110,7 +1110,7 @@ namespace Nethermind.Trie.Test
                 stateProvider.Commit(MuirGlacier.Instance);
 
                 storageProvider.CommitTrees(blockNumber);
-                stateProvider.CommitBlock(blockNumber);
+                stateProvider.CommitTree(blockNumber);
                 rootQueue.Enqueue(stateProvider.StateRoot);
             }
 

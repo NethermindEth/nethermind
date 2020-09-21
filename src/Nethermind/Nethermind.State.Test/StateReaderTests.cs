@@ -49,25 +49,25 @@ namespace Nethermind.Store.Test
             provider.CreateAccount(_address1, 0);
             provider.AddToBalance(_address1, 1, spec);
             provider.Commit(spec);
-            provider.CommitBlock(0);
+            provider.CommitTree(0);
             Keccak stateRoot0 = provider.StateRoot;
 
             provider.AddToBalance(_address1, 1, spec);
             provider.Commit(spec);
-            provider.CommitBlock(0);
+            provider.CommitTree(0);
             Keccak stateRoot1 = provider.StateRoot;
 
             provider.AddToBalance(_address1, 1, spec);
             provider.Commit(spec);
-            provider.CommitBlock(0);
+            provider.CommitTree(0);
             Keccak stateRoot2 = provider.StateRoot;
 
             provider.AddToBalance(_address1, 1, spec);
             provider.Commit(spec);
-            provider.CommitBlock(0);
+            provider.CommitTree(0);
             Keccak stateRoot3 = provider.StateRoot;
 
-            provider.CommitBlock(0);
+            provider.CommitTree(0);
             stateDb.Commit();
 
             StateReader reader = new StateReader(new TrieStore(stateDb, LimboLogs.Instance), Substitute.For<IDb>(), Logger);
@@ -105,7 +105,7 @@ namespace Nethermind.Store.Test
                 storageProvider.Commit();
                 storageProvider.CommitTrees(0);
                 provider.Commit(spec);
-                provider.CommitBlock(0);
+                provider.CommitTree(0);
             }
 
             provider.CreateAccount(_address1, 1);
@@ -157,7 +157,7 @@ namespace Nethermind.Store.Test
                 storageProvider.Commit();
                 storageProvider.CommitTrees(0);
                 provider.Commit(spec);
-                provider.CommitBlock(0);
+                provider.CommitTree(0);
             }
 
             provider.CreateAccount(_address1, 1);
@@ -213,7 +213,7 @@ namespace Nethermind.Store.Test
             /* to start with we need to create an account that we will be setting storage at */
             state.CreateAccount(storageCell.Address, UInt256.One);
             state.Commit(MuirGlacier.Instance);
-            state.CommitBlock(1);
+            state.CommitTree(1);
             
             /* at this stage we have an account with empty storage at the address that we want to test */
 
@@ -222,7 +222,7 @@ namespace Nethermind.Store.Test
             storage.Commit();
             storage.CommitTrees(2);
             state.Commit(MuirGlacier.Instance);
-            state.CommitBlock(2);
+            state.CommitTree(2);
 
             StateReader reader = new StateReader(
                 new TrieStore(dbProvider.StateDb, LimboLogs.Instance), dbProvider.CodeDb, Logger);
@@ -250,7 +250,7 @@ namespace Nethermind.Store.Test
             processorStorageProvider.Commit();
             processorStorageProvider.CommitTrees(3);
             processorStateProvider.Commit(MuirGlacier.Instance);
-            processorStateProvider.CommitBlock(3);
+            processorStateProvider.CommitTree(3);
             
             /* At this stage the DB should have the storage value updated to 5.
                We will try to retrieve the value by taking the state root from the processor.*/

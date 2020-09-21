@@ -119,7 +119,7 @@ namespace Nethermind.DataMarketplace.Test
             _state.CreateAccount(_consumerAccount, 1000.Ether());
             _state.CreateAccount(_providerAccount, 1.Ether());
             _state.Commit(spec);
-            _state.CommitBlock(0);
+            _state.CommitTree(0);
 
             VirtualMachine machine = new VirtualMachine(_state, storageProvider, Substitute.For<IBlockhashProvider>(),
                 specProvider, _logManager);

@@ -41,7 +41,7 @@ namespace Nethermind.Db.Rocks
             allInitializers.Add(Task.Run(() => HeadersDb = new HeadersRocksDb(basePath, dbConfig, _logManager)));
             allInitializers.Add(Task.Run(() => BlockInfosDb = new BlockInfosRocksDb(basePath, dbConfig, _logManager)));
             allInitializers.Add(Task.Run(() => StateDb = new StateDb(new StateRocksDb(basePath, dbConfig, _logManager))));
-            allInitializers.Add(Task.Run(() => CodeDb = new StateDb(new CodeRocksDb(basePath, dbConfig, _logManager))));
+            allInitializers.Add(Task.Run(() => CodeDb = new CodeRocksDb(basePath, dbConfig, _logManager)));
             allInitializers.Add(Task.Run(() => PendingTxsDb = new PendingTxsRocksDb(basePath, dbConfig, _logManager)));
             allInitializers.Add(Task.Run(() => BloomDb = new BloomRocksDb(basePath, dbConfig, _logManager)));
             allInitializers.Add(Task.Run(() => ChtDb = new CanonicalHashRocksDb(basePath, dbConfig, _logManager)));
@@ -64,7 +64,7 @@ namespace Nethermind.Db.Rocks
         }
 
         public ISnapshotableDb StateDb { get; private set; }
-        public ISnapshotableDb CodeDb { get; private set; }
+        public IDb CodeDb { get; private set; }
         public IColumnsDb<ReceiptsColumns> ReceiptsDb { get; private set; }
         public IDb BlocksDb { get; private set; }
         public IDb HeadersDb { get; private set; }

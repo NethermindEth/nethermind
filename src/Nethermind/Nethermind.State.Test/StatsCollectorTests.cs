@@ -59,7 +59,7 @@ namespace Nethermind.Store.Test
             stateProvider.Commit(Istanbul.Instance);
 
             storageProvider.CommitTrees(0);
-            stateProvider.CommitBlock(0);
+            stateProvider.CommitTree(0);
             
             stateDb.Commit();
             

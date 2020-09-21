@@ -111,7 +111,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
         private ITransactionPermissionContract.TxPermissions GetTxType(Transaction tx) =>
             tx.IsContractCreation
                 ? ITransactionPermissionContract.TxPermissions.Create
-                : _stateProvider.GetCodeHash(tx.To) != Keccak.OfAnEmptyString
+                : _stateProvider.HasCode(tx.To)
                     ? ITransactionPermissionContract.TxPermissions.Call
                     : ITransactionPermissionContract.TxPermissions.Basic;
         

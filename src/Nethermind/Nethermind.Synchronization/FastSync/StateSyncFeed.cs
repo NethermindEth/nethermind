@@ -80,7 +80,7 @@ namespace Nethermind.Synchronization.FastSync
         private long _blockNumber;
 
         public StateSyncFeed(
-            ISnapshotableDb codeDb,
+            IDb codeDb,
             ISnapshotableDb stateDb,
             IDb tempDb,
             ISyncModeSelector syncModeSelector,

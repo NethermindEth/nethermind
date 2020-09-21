@@ -40,9 +40,7 @@ namespace Nethermind.Trie
             return true;
         }
 
-        public void VisitTree(Keccak rootHash, TrieVisitContext trieVisitContext)
-        {
-        }
+        public void VisitTree(Keccak rootHash, TrieVisitContext trieVisitContext) { }
 
         public void VisitMissingNode(Keccak nodeHash, TrieVisitContext trieVisitContext)
         {

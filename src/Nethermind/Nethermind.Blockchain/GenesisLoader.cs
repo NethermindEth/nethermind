@@ -104,11 +104,10 @@ namespace Nethermind.Blockchain
             _stateProvider.Commit(_specProvider.GenesisSpec);
 
             _storageProvider.CommitTrees(0);
-            _stateProvider.CommitBlock(0);
+            _stateProvider.CommitTree(0);
 
             _dbProvider.StateDb.Commit();
-            _dbProvider.CodeDb.Commit();
-            
+
             genesis.Header.StateRoot = _stateProvider.StateRoot;
             genesis.Header.Hash = genesis.Header.CalculateHash();
             

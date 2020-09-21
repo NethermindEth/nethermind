@@ -26,7 +26,7 @@ namespace Nethermind.Db
     public interface IDbProvider : IDisposable
     {
         ISnapshotableDb StateDb { get; }
-        ISnapshotableDb CodeDb { get; }
+        IDb CodeDb { get; }
         IColumnsDb<ReceiptsColumns> ReceiptsDb { get; }
         IDb BlocksDb { get; }
         IDb HeadersDb { get; }

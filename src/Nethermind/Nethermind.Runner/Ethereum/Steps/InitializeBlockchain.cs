@@ -153,8 +153,12 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.LogManager);
 
             _api.StateProvider.StateRoot = _api.BlockTree.Head?.StateRoot ?? Keccak.EmptyTreeHash;
-            TrieStats stats = _api.StateProvider.CollectStats();
-            logger.Warn($"Starting from {_api.BlockTree.Head?.Number} {_api.BlockTree.Head?.StateRoot}" + stats);
+
+            if (_api.Config<IInitConfig>().DiagnosticMode == DiagnosticMode.VerifyTrie)
+            {
+                TrieStats stats = _api.StateProvider.CollectStats(_api.DbProvider.CodeDb, _api.LogManager);
+                logger.Info($"Starting from {_api.BlockTree.Head?.Number} {_api.BlockTree.Head?.StateRoot}" + stats);
+            }
 
             // Init state if we need system calls before actual processing starts
             if (_api.BlockTree.Head != null)
