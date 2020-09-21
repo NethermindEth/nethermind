@@ -229,7 +229,7 @@ namespace Nethermind.DataMarketplace.Test
             
             private BlockReceiptsTracer _receiptsTracer;
 
-            private int _txIndex = 0;
+            private int _txIndex;
 
             public ValueTask<Keccak> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
             {

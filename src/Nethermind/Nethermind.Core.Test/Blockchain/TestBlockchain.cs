@@ -169,7 +169,7 @@ namespace Nethermind.Core.Test.Blockchain
         }
 
         protected virtual BlockProcessor CreateBlockProcessor() =>
-            new BlockProcessor(SpecProvider, Always.Valid, new RewardCalculator(SpecProvider), TxProcessor, StateDb, CodeDb, State, Storage, TxPool, ReceiptStorage, LimboLogs.Instance);
+            new BlockProcessor(SpecProvider, Always.Valid, new RewardCalculator(SpecProvider), TxProcessor, State, Storage, TxPool, ReceiptStorage, LimboLogs.Instance);
 
         public async Task AddBlock(params Transaction[] transactions)
         {

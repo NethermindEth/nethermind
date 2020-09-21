@@ -28,12 +28,8 @@ using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
-using Nethermind.Core.Caching;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
@@ -121,8 +117,6 @@ namespace Nethermind.AuRa.Test.Transactions
                     Always.Valid,
                     new RewardCalculator(SpecProvider),
                     TxProcessor,
-                    StateDb,
-                    CodeDb,
                     State,
                     Storage,
                     TxPool,

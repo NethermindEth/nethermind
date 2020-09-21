@@ -61,8 +61,6 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.BlockValidator,
                 _api.RewardCalculatorSource.Get(_api.TransactionProcessor),
                 _api.TransactionProcessor,
-                _api.DbProvider.StateDb,
-                _api.DbProvider.CodeDb,
                 _api.StateProvider,
                 _api.StorageProvider,
                 _api.TxPool,

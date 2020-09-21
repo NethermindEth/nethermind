@@ -40,9 +40,9 @@ namespace Nethermind.DataMarketplace.Test.Services
     public class DepositServiceTests : ContractInteractionTest
     {
         [SetUp]
-        public void Setup()
+        public async Task Setup()
         {
-            Prepare();
+            await Prepare();
         }
 
         [Test]

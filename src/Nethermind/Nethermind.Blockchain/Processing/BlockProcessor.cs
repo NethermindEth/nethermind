@@ -24,7 +24,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
@@ -40,8 +39,6 @@ namespace Nethermind.Blockchain.Processing
     {
         private readonly ILogger _logger;
         private readonly ITxPool _txPool;
-        private readonly ISnapshotableDb _codeDb;
-        private readonly ISnapshotableDb _stateDb;
         private readonly ISpecProvider _specProvider;
         private readonly IStateProvider _stateProvider;
         private readonly IReceiptStorage _receiptStorage;
@@ -61,8 +58,6 @@ namespace Nethermind.Blockchain.Processing
             IBlockValidator blockValidator,
             IRewardCalculator rewardCalculator,
             ITransactionProcessor transactionProcessor,
-            ISnapshotableDb stateDb,
-            ISnapshotableDb codeDb,
             IStateProvider stateProvider,
             IStorageProvider storageProvider,
             ITxPool txPool,
@@ -78,8 +73,6 @@ namespace Nethermind.Blockchain.Processing
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
             _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
-            _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
-            _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
 
             _receiptsTracer = new BlockReceiptsTracer();
         }
@@ -151,15 +144,7 @@ namespace Nethermind.Blockchain.Processing
 
         private Keccak CreateCheckpoint()
         {
-            Keccak currentBranchStateRoot = _stateProvider.StateRoot;
-
-            /* Below is a non-critical assertion that nonetheless should be addressed when it happens. */
-            if (_stateDb.HasUncommittedChanges || _codeDb.HasUncommittedChanges)
-            {
-                if (_logger.IsError) _logger.Error($"Uncommitted state when processing from a branch root {currentBranchStateRoot}.");
-            }
-
-            return currentBranchStateRoot;
+            return _stateProvider.StateRoot;
         }
 
         private void PreCommitBlock(Keccak newBranchStateRoot, long blockNumber)
@@ -171,15 +156,12 @@ namespace Nethermind.Blockchain.Processing
         
         private void CommitBranch()
         {
-            _stateDb.Commit();
-            _codeDb.Commit();
+            // nowadays we could commit branch via TrieStore or similar (after this responsibility has been moved
         }
 
         private void RestoreBranch(Keccak branchingPointStateRoot)
         {
             if (_logger.IsTrace) _logger.Trace($"Restoring the branch checkpoint - {branchingPointStateRoot}");
-            _stateDb.Restore(ISnapshotableDb.NoChangesCheckpoint);
-            _codeDb.Restore(ISnapshotableDb.NoChangesCheckpoint);
             _storageProvider.Reset();
             _stateProvider.Reset();
             _stateProvider.StateRoot = branchingPointStateRoot;

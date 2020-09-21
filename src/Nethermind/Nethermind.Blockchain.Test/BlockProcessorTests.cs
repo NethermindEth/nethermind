@@ -16,7 +16,6 @@
 
 using System;
 using System.Collections.Generic;
-using FluentAssertions;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
@@ -53,8 +52,6 @@ namespace Nethermind.Blockchain.Test
                 TestBlockValidator.AlwaysValid,
                 NoBlockRewards.Instance,
                 transactionProcessor,
-                stateDb,
-                codeDb,
                 stateProvider,
                 new StorageProvider(trieStore, stateProvider, LimboLogs.Instance),
                 NullTxPool.Instance,
@@ -85,8 +82,6 @@ namespace Nethermind.Blockchain.Test
                 TestBlockValidator.AlwaysValid,
                 new RewardCalculator(MainnetSpecProvider.Instance),
                 transactionProcessor,
-                stateDb,
-                codeDb,
                 stateProvider,
                 new StorageProvider(trieStore, stateProvider, LimboLogs.Instance),
                 NullTxPool.Instance,

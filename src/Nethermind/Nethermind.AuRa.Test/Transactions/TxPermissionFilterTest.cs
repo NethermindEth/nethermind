@@ -16,7 +16,6 @@
 // 
 
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Threading.Tasks;
@@ -29,7 +28,6 @@ using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Transactions;
-using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -260,8 +258,6 @@ namespace Nethermind.AuRa.Test.Transactions
                     Always.Valid,
                     new RewardCalculator(SpecProvider),
                     TxProcessor,
-                    StateDb,
-                    CodeDb,
                     State,
                     Storage,
                     TxPool,

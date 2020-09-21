@@ -100,8 +100,6 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Always.Valid,
                 new RewardCalculator(specProvider),
                 txProcessor,
-                dbProvider.StateDb,
-                dbProvider.CodeDb,
                 _stateProvider,
                 storageProvider,
                 txPool,
