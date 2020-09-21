@@ -42,5 +42,6 @@ namespace Nethermind.Blockchain.Synchronization
         public int BeamSyncPreProcessorTimeout { get; set; } = 15;
         public bool BeamSyncFixMode { get; set; } = false;
         public bool BeamSyncVerifiedMode { get; set; } = false;
+        public long[] TotalDifficultyOverrides { get; set; }
     }
 }

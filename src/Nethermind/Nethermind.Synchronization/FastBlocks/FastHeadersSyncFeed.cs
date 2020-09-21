@@ -112,12 +112,25 @@ namespace Nethermind.Synchronization.FastBlocks
 
             _lowestRequestedHeaderNumber = startNumber + 1;
 
-            if (blockTree.ChainId == ChainId.Kovan)
-            {
-                _fastSyncExpectedDifficultyAuRaOverride = new Dictionary<long, ulong> {{148240, 19430113280}};
-            }
+            _fastSyncExpectedDifficultyAuRaOverride =  GetTotalDifficultyOverrides(); 
 
             Activate();
+        }
+
+        private Dictionary<long, ulong>? GetTotalDifficultyOverrides()
+        {
+            long[] overrides = _syncConfig.TotalDifficultyOverrides;
+            if (overrides == null)
+            {
+                return null;
+            }
+            else
+            {
+                var even = overrides.Where((o, i) => i % 2 == 0);
+                var odd = overrides.Where((o, i) => i % 2 == 1);
+                var difficultyOverrides = even.Zip(odd).ToDictionary(e => e.First, e => (ulong)e.Second);
+                return difficultyOverrides?.Count > 0 ? difficultyOverrides : null;
+            }
         }
 
         public override bool IsMultiFeed => true;
@@ -516,7 +529,7 @@ namespace Nethermind.Synchronization.FastBlocks
             return added;
         }
 
-        private readonly IDictionary<long, ulong> _fastSyncExpectedDifficultyAuRaOverride;
+        private readonly IDictionary<long, ulong>? _fastSyncExpectedDifficultyAuRaOverride;
 
         private AddBlockResult InsertHeader(BlockHeader header)
         {
