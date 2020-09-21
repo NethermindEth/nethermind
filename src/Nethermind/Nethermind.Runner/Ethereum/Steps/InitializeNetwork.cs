@@ -91,6 +91,10 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_networkConfig.DiagTracerEnabled)
             {
                 NetworkDiagTracer.IsEnabled = true;
+            }
+
+            if (NetworkDiagTracer.IsEnabled)
+            {
                 NetworkDiagTracer.Start();
             }
             
