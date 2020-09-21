@@ -237,8 +237,7 @@ namespace Nethermind.Blockchain.Processing
             IReleaseSpec releaseSpec = _specProvider.GetSpec(block.Number);
             TxReceipt[] receipts = ProcessTransactions(block, options, blockTracer);
             
-            // Kovan hack:
-            if (releaseSpec.ValidateReceipts) block.Header.ReceiptsRoot = GetReceiptsRoot(releaseSpec, receipts);
+            block.Header.ReceiptsRoot = GetReceiptsRoot(releaseSpec, receipts);
             ApplyMinerRewards(block, blockTracer);
 
             _stateProvider.Commit(releaseSpec);
@@ -250,8 +249,23 @@ namespace Nethermind.Blockchain.Processing
             return receipts;
         }
 
-        private Keccak GetReceiptsRoot(IReleaseSpec releaseSpec, TxReceipt[] txReceipts) => 
-            new ReceiptTrie(releaseSpec, txReceipts).RootHash;
+        private Keccak GetReceiptsRoot(IReleaseSpec releaseSpec, TxReceipt[] txReceipts)
+        {
+            // Kovan hack:
+            if (!releaseSpec.ValidateReceipts)
+            {
+                txReceipts.SetIgnoreOutput(true);
+            }
+            
+            Keccak receiptsRoot = new ReceiptTrie(releaseSpec, txReceipts).RootHash;
+            
+            if (!releaseSpec.ValidateReceipts)
+            {
+                txReceipts.SetIgnoreOutput(false);
+            }
+
+            return receiptsRoot;
+        }
 
         private void StoreTxReceipts(Block block, TxReceipt[] txReceipts)
         {
