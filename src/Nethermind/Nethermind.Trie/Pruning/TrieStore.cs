@@ -149,12 +149,8 @@ namespace Nethermind.Trie.Pruning
                             $"Incrementing refs from block {blockNumber} root {package.Root?.ToString() ?? "NULL"} ");
 
                     package.Seal();
-                    
-                    // bool shouldPersistSnapshot = _snapshotStrategy.ShouldPersistSnapshot(package.BlockNumber);
-                    // if (shouldPersistSnapshot)
-                    // {
-                    //     package.Root?.PersistRecursively(tn => Persist(tn, package.BlockNumber), this, _logger);
-                    // }
+
+                    TryRemovingOldBlock();
                 }
             }
         }
@@ -182,7 +178,7 @@ namespace Nethermind.Trie.Pruning
                               $"| save count {PersistedNodesCount}");
 
             CurrentPackage?.Seal();
-            while (TryPruningOldBlock())
+            while (TryRemovingOldBlock())
             {
             }
 
@@ -273,6 +269,11 @@ namespace Nethermind.Trie.Pruning
             }
         }
 
+        public void ClearCache()
+        {
+            _trieNodeCache.Clear();
+        }
+
         #region Private
 
         private readonly IKeyValueStore _keyValueStore;
@@ -312,28 +313,27 @@ namespace Nethermind.Trie.Pruning
             BlockCommitPackage newPackage = new BlockCommitPackage(blockNumber);
             _blockCommitsQueue.AddLast(newPackage);
             NewestKeptBlockNumber = Math.Max(blockNumber, NewestKeptBlockNumber);
-
+            
             // TODO: memory should be taken from the cache now
             while (_pruningStrategy.ShouldPrune(OldestKeptBlockNumber, NewestKeptBlockNumber, 0))
             {
-                TryPruningOldBlock();
+                TryRemovingOldBlock();
             }
 
             Debug.Assert(CurrentPackage == newPackage,
                 "Current package is not equal the new package just after adding");
         }
 
-        internal bool TryPruningOldBlock()
+        internal bool TryRemovingOldBlock()
         {
             BlockCommitPackage? blockCommit = _blockCommitsQueue.First?.Value;
-            bool canPrune = blockCommit != null && blockCommit.IsSealed;
-            if (canPrune)
+            bool hasAnySealedBlockInQueue = blockCommit != null && blockCommit.IsSealed;
+            if (hasAnySealedBlockInQueue)
             {
-                Prune(blockCommit);
-                _blockCommitsQueue.RemoveFirst();
+                RemoveOldBlock(blockCommit);
             }
 
-            return canPrune;
+            return hasAnySealedBlockInQueue;
         }
 
         private void SaveInCache(TrieNode trieNode)
@@ -342,8 +342,10 @@ namespace Nethermind.Trie.Pruning
             _trieNodeCache[trieNode.Keccak!] = trieNode;
         }
 
-        private void Prune(BlockCommitPackage commitPackage)
+        private void RemoveOldBlock(BlockCommitPackage commitPackage)
         {
+            _blockCommitsQueue.RemoveFirst();
+            
             if (_logger.IsDebug)
                 _logger.Debug($"Start pruning {nameof(BlockCommitPackage)} - {commitPackage.BlockNumber}");
 
@@ -355,8 +357,7 @@ namespace Nethermind.Trie.Pruning
             {
                 if(_logger.IsDebug) _logger.Debug($"Persisting from root {commitPackage.Root} in {commitPackage.BlockNumber}");
                 commitPackage.Root?.PersistRecursively(tn => Persist(tn, commitPackage.BlockNumber), this, _logger);
-                // the pruning responsibility can be divided by this and the cache now
-                Prune(commitPackage.BlockNumber);
+                Prune(commitPackage.BlockNumber); // for now can only prune on snapshot?
             }
 
             if (_logger.IsDebug)

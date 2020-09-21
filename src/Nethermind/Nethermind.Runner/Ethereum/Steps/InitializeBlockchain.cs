@@ -90,6 +90,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 new ConstantInterval(8192),
                 _api.LogManager);
             
+            _api.ReadOnlyTrieStore = new ReadOnlyTrieStore(_api.TrieStore);
             _api.TrieStore.SnapshotTaken += TreeStoreOnStored;
             
             
@@ -215,7 +216,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.LogManager);
 
             ReadOnlyDbProvider readOnly = new ReadOnlyDbProvider(_api.DbProvider, false);
-            StateReader stateReader = new StateReader(_api.TrieStore, readOnly.CodeDb, _api.LogManager);
+            StateReader stateReader = new StateReader(_api.ReadOnlyTrieStore, readOnly.CodeDb, _api.LogManager);
             _api.TxPoolInfoProvider = new TxPoolInfoProvider(stateReader, _api.TxPool);
 
             _api.MainBlockProcessor = CreateBlockProcessor();

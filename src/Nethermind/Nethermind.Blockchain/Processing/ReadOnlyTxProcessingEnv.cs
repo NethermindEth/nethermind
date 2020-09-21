@@ -41,15 +41,11 @@ namespace Nethermind.Blockchain.Processing
             ISpecProvider specProvider,
             ILogManager logManager)
         {
-            ISnapshotableDb stateDb = readOnlyDbProvider.StateDb;
             IDb codeDb = readOnlyDbProvider.CodeDb;
 
             ReadOnlyTrieStore readOnlyTrieStore = new ReadOnlyTrieStore(trieStore);
-            // TODO: this will not properly load data... need to have a caching wrapper around the state DB...
             StateReader = new StateReader(readOnlyTrieStore, codeDb, logManager);
-            // TODO: this will not properly load data... need to have a caching wrapper around the state DB...
             StateProvider = new StateProvider(readOnlyTrieStore, codeDb, logManager);
-            // TODO: this will not properly load data... need to have a caching wrapper around the state DB...
             StorageProvider = new StorageProvider(readOnlyTrieStore, StateProvider, logManager);
 
             BlockTree = readOnlyBlockTree;

@@ -273,15 +273,15 @@ namespace Nethermind.Trie.Test.Pruning
         [Test]
         public void Will_get_dropped_on_snapshot_if_it_was_a_transient_node()
         {
-            TrieNode a = new TrieNode(NodeType.Leaf, new byte[0]);
+            TrieNode a = new TrieNode(NodeType.Leaf, new byte[] {1});
             a.ResolveKey(NullTrieNodeResolver.Instance, true);
 
-            TrieNode b = new TrieNode(NodeType.Leaf, new byte[1]);
+            TrieNode b = new TrieNode(NodeType.Leaf, new byte[] {2});
             b.ResolveKey(NullTrieNodeResolver.Instance, true);
 
             MemDb memDb = new MemDb();
 
-            TrieStore trieStore = new TrieStore(memDb, new DepthAndMemoryBased(4, 16.MB()), No.Persistence, _logManager);
+            TrieStore trieStore = new TrieStore(memDb, new DepthAndMemoryBased(4, 16.MB()), new ConstantInterval(4), _logManager);
 
             trieStore.FinishBlockCommit(TrieType.State, 0, null);
             trieStore.CommitOneNode(1, new NodeCommitInfo(a));
@@ -352,7 +352,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             MemDb memDb = new MemDb();
 
-            TrieStore trieStore = new TrieStore(memDb, new DepthAndMemoryBased(4, 16.MB()), No.Persistence, _logManager);
+            TrieStore trieStore = new TrieStore(memDb, new DepthAndMemoryBased(4, 16.MB()), new ConstantInterval(4), _logManager);
 
             trieStore.FinishBlockCommit(TrieType.State, 0, null);
             trieStore.CommitOneNode(1, new NodeCommitInfo(a));
@@ -424,7 +424,7 @@ namespace Nethermind.Trie.Test.Pruning
             memDb[a.Keccak!.Bytes].Should().NotBeNull();
             memDb[storage1.Keccak!.Bytes].Should().NotBeNull();
             trieStore.IsInMemory(a.Keccak).Should().BeFalse();
-            trieStore.IsInMemory(storage1.Keccak).Should().BeTrue();
+            trieStore.IsInMemory(storage1.Keccak).Should().BeFalse();
         }
     }
 }

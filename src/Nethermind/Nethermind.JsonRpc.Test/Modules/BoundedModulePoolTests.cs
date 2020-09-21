@@ -72,7 +72,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                     Substitute.For<ITxSender>(),
                     NullWallet.Instance,
                     blockTree, 
-                    new TrieStore(dbProvider.StateDb, LimboLogs.Instance), 
+                    new ReadOnlyTrieStore(new TrieStore(dbProvider.StateDb, LimboLogs.Instance)), 
                     new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance), 
                     NullBlockProcessor.Instance, 
                     new InMemoryReceiptStorage(), 

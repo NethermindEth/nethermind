@@ -19,7 +19,9 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
 namespace Nethermind.Store.Test
@@ -65,7 +67,7 @@ namespace Nethermind.Store.Test
         {
             MemDb db = new MemDb();
             Account account = new Account(1);
-            StateTree stateTree = new StateTree(db);
+            StateTree stateTree = new StateTree(new TrieStore(db, LimboLogs.Instance), LimboLogs.Instance);
             stateTree.Set(TestItem.AddressA, account);
             stateTree.Commit(0);
 

@@ -80,7 +80,8 @@ namespace Nethermind.Core.Test
 
         private static void Log(string text, Exception ex = null)
         {
-            TestContext.Out.WriteLine(text);
+            Console.WriteLine(text);
+            // TestContext.Out.WriteLine(text);
 
             if (ex != null)
             {

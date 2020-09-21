@@ -23,7 +23,9 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Synchronization.Test
 {
@@ -48,10 +50,11 @@ namespace Nethermind.Synchronization.Test
         {
             if (Empty == null)
             {
-                //            _logger = new ConsoleAsyncLogger(LogLevel.Debug);
-//            _logManager = new OneLoggerLogManager(_logger);
-
-                StorageTree remoteStorageTree = SetStorage(new MemDb());
+                // _logger = new ConsoleAsyncLogger(LogLevel.Debug);
+                // _logManager = new OneLoggerLogManager(_logger);
+                
+                // this setup is just for finding the storage root
+                StorageTree remoteStorageTree = SetStorage(new TrieStore(new MemDb(), LimboLogs.Instance));
                 Keccak storageRoot = remoteStorageTree.RootHash;
 
                 Empty = Build.An.Account.WithBalance(0).TestObject;
@@ -66,13 +69,14 @@ namespace Nethermind.Synchronization.Test
             }
         }
 
-        private static (string Name, Action<StateTree, StateDb, StateDb> Action)[] _scenarios;
+        private static (string Name, Action<StateTree, ITrieStore, IDb> Action)[] _scenarios;
 
-        public static (string Name, Action<StateTree, StateDb, StateDb> Action)[] Scenarios => LazyInitializer.EnsureInitialized(ref _scenarios, InitScenarios);
+        public static (string Name, Action<StateTree, ITrieStore, IDb> Action)[] Scenarios
+            => LazyInitializer.EnsureInitialized(ref _scenarios, InitScenarios);
 
-        private static (string Name, Action<StateTree, StateDb, StateDb> Action)[] InitScenarios()
+        private static (string Name, Action<StateTree, ITrieStore, IDb> Action)[] InitScenarios()
         {
-            return new (string, Action<StateTree, StateDb, StateDb>)[]
+            return new (string, Action<StateTree, ITrieStore, IDb>)[]
             {
                 ("empty", (tree, stateDb, codeDb) =>
                 {
@@ -92,7 +96,7 @@ namespace Nethermind.Synchronization.Test
                 {
                     var code = Bytes.FromHexString("e3a120b10e2d527612073b26eecdfd717e6a320cf44b4afac2b0732d9fcbe2b7fa0cf601");
                     Keccak codeHash = Keccak.Compute(code);
-                    StorageTree remoteStorageTree = new StorageTree(stateDb);
+                    StorageTree remoteStorageTree = new StorageTree(stateDb, Keccak.EmptyTreeHash, LimboLogs.Instance);
                     remoteStorageTree.Set((UInt256) 1, new byte[] {1});
                     remoteStorageTree.Commit(0);
                     remoteStorageTree.UpdateRootHash();
@@ -322,9 +326,9 @@ namespace Nethermind.Synchronization.Test
             };
         }
 
-        private static StorageTree SetStorage(IDb db)
+        private static StorageTree SetStorage(ITrieStore trieStore)
         {
-            StorageTree remoteStorageTree = new StorageTree(db);
+            StorageTree remoteStorageTree = new StorageTree(trieStore, Keccak.EmptyTreeHash, LimboLogs.Instance);
 
             remoteStorageTree.Set((UInt256) 1, new byte[] {1});
             remoteStorageTree.Set((UInt256) 2, new byte[] {2});

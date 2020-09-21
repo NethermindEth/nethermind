@@ -41,17 +41,14 @@ namespace Nethermind.Trie.Pruning
 
         public void CommitOneNode(long blockNumber, NodeCommitInfo nodeCommitInfo)
         {
-            throw new NotSupportedException();
         }
 
         public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root)
         {
-            throw new NotSupportedException();
         }
 
         public void UndoOneBlock()
         {
-            throw new NotSupportedException();
         }
 
         public event EventHandler<BlockNumberEventArgs> SnapshotTaken

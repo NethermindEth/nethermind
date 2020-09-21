@@ -47,8 +47,8 @@ namespace Nethermind.Synchronization.Test.BeamSync
         private int _needMoreDataInvocations;
         private StateTree _remoteStateTrie;
         private StateDb _remoteState;
-        private StateDb _remoteCode;
-        public static (string Name, Action<StateTree, StateDb, StateDb> Action)[] Scenarios => TrieScenarios.Scenarios;
+        private IDb _remoteCode;
+        public static (string Name, Action<StateTree, ITrieStore, IDb> Action)[] Scenarios => TrieScenarios.Scenarios;
 
         [SetUp]
         public void Setup()
@@ -69,7 +69,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
             BeamSyncDbProvider dbProvider = new BeamSyncDbProvider(StaticSelector.Beam, new MemDbProvider(), new SyncConfig(), LimboLogs.Instance);
             // has to be state DB on the outside
             Assert.IsInstanceOf(typeof(StateDb), dbProvider.StateDb);
-            Assert.IsInstanceOf(typeof(StateDb), dbProvider.CodeDb);
+            Assert.IsInstanceOf(typeof(BeamSyncDb), dbProvider.CodeDb);
         }
 
         [Test]
@@ -82,7 +82,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
         [TestCase("leaf_read")]
         public void Propagates_exception(string name)
         {
-            (string Name, Action<StateTree, StateDb, StateDb> SetupTree) scenario = TrieScenarios.Scenarios.SingleOrDefault(s => s.Name == name);
+            (string Name, Action<StateTree, ITrieStore, IDb> SetupTree) scenario = TrieScenarios.Scenarios.SingleOrDefault(s => s.Name == name);
             Setup(scenario);
             BeamSyncContext.LoopIterationsToFailInTest.Value = 4;
             Assert.Throws<Exception>(() =>
@@ -92,7 +92,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
         [TestCase("leaf_read")]
         public void Invokes_need_more_data_in_each_loop(string name)
         {
-            (string Name, Action<StateTree, StateDb, StateDb> SetupTree) scenario = TrieScenarios.Scenarios.SingleOrDefault(s => s.Name == name);
+            (string Name, Action<StateTree, ITrieStore, IDb> SetupTree) scenario = TrieScenarios.Scenarios.SingleOrDefault(s => s.Name == name);
             Setup(scenario);
             RunRounds(4);
 
@@ -102,7 +102,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
         [TestCase("leaf_read")]
         public void Does_ask_for_what_has_already_been_sent(string name)
         {
-            (string Name, Action<StateTree, StateDb, StateDb> SetupTree) scenario = TrieScenarios.Scenarios.SingleOrDefault(s => s.Name == name);
+            (string Name, Action<StateTree, ITrieStore, IDb> SetupTree) scenario = TrieScenarios.Scenarios.SingleOrDefault(s => s.Name == name);
             Setup(scenario);
 
             RunRounds(1);
@@ -115,7 +115,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
         [TestCase("leaf_read")]
         public async Task Empty_response_brings_it_back_in_the_loop(string name)
         {
-            (string Name, Action<StateTree, StateDb, StateDb> SetupTree) scenario = TrieScenarios.Scenarios.SingleOrDefault(s => s.Name == name);
+            (string Name, Action<StateTree, ITrieStore, IDb> SetupTree) scenario = TrieScenarios.Scenarios.SingleOrDefault(s => s.Name == name);
             Setup(scenario);
 
             RunRounds(1);
@@ -130,7 +130,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
         [TestCase("leaf_read")]
         public async Task Can_prepare_empty_request(string name)
         {
-            (string Name, Action<StateTree, StateDb, StateDb> SetupTree) scenario = TrieScenarios.Scenarios.SingleOrDefault(s => s.Name == name);
+            (string Name, Action<StateTree, ITrieStore, IDb> SetupTree) scenario = TrieScenarios.Scenarios.SingleOrDefault(s => s.Name == name);
             Setup(scenario);
 
             StateSyncBatch request = await _stateBeamLocal.PrepareRequest();
@@ -140,7 +140,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
         [TestCase("leaf_read")]
         public async Task Full_response_works(string name)
         {
-            (string Name, Action<StateTree, StateDb, StateDb> SetupTree) scenario = TrieScenarios.Scenarios.SingleOrDefault(s => s.Name == name);
+            (string Name, Action<StateTree, ITrieStore, IDb> SetupTree) scenario = TrieScenarios.Scenarios.SingleOrDefault(s => s.Name == name);
             Setup(scenario);
 
             RunRounds(1);
@@ -155,7 +155,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
         [TestCase("leaf_read")]
         public async Task Full_response_stops_it(string name)
         {
-            (string Name, Action<StateTree, StateDb, StateDb> SetupTree) scenario = TrieScenarios.Scenarios.SingleOrDefault(s => s.Name == name);
+            (string Name, Action<StateTree, ITrieStore, IDb> SetupTree) scenario = TrieScenarios.Scenarios.SingleOrDefault(s => s.Name == name);
             Setup(scenario);
 
 #pragma warning disable 4014
@@ -181,7 +181,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
         [TestCase("leaf_read")]
         public async Task Can_resolve_from_local(string name)
         {
-            (string Name, Action<StateTree, StateDb, StateDb> SetupTree) scenario = TrieScenarios.Scenarios.SingleOrDefault(s => s.Name == name);
+            (string Name, Action<StateTree, ITrieStore, IDb> SetupTree) scenario = TrieScenarios.Scenarios.SingleOrDefault(s => s.Name == name);
             Setup(scenario);
 
             RunRounds(1);
@@ -197,7 +197,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
         [TestCase("leaf_read")]
         public void Expires_when_much_in_the_past(string name)
         {
-            (string Name, Action<StateTree, StateDb, StateDb> SetupTree) scenario = TrieScenarios.Scenarios.SingleOrDefault(s => s.Name == name);
+            (string Name, Action<StateTree, ITrieStore, IDb> SetupTree) scenario = TrieScenarios.Scenarios.SingleOrDefault(s => s.Name == name);
             Setup(scenario);
 
             BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow.AddSeconds(-100);
@@ -208,7 +208,7 @@ namespace Nethermind.Synchronization.Test.BeamSync
         [TestCase("leaf_read")]
         public async Task Invalid_response_brings_it_back(string name)
         {
-            (string Name, Action<StateTree, StateDb, StateDb> SetupTree) scenario = TrieScenarios.Scenarios.SingleOrDefault(s => s.Name == name);
+            (string Name, Action<StateTree, ITrieStore, IDb> SetupTree) scenario = TrieScenarios.Scenarios.SingleOrDefault(s => s.Name == name);
             Setup(scenario);
 
             RunRounds(1);
@@ -233,13 +233,15 @@ namespace Nethermind.Synchronization.Test.BeamSync
             }
         }
 
-        private void Setup((string Name, Action<StateTree, StateDb, StateDb> SetupTree) scenario)
+        private void Setup((string Name, Action<StateTree, ITrieStore, IDb> SetupTree) scenario)
         {
+            
             TrieScenarios.InitOnce();
             _remoteState = new StateDb(new MemDb());
-            _remoteCode = new StateDb(new MemDb());
-            _remoteStateTrie = new StateTree(_remoteState);
-            scenario.SetupTree(_remoteStateTrie, _remoteState, _remoteCode);
+            TrieStore remoteTrieStore = new TrieStore(_remoteState.Innermost, LimboLogs.Instance);
+            _remoteCode = new MemDb();
+            _remoteStateTrie = new StateTree(remoteTrieStore, LimboLogs.Instance);
+            scenario.SetupTree(_remoteStateTrie, remoteTrieStore, _remoteCode);
             _remoteStateTrie.UpdateRootHash();
 
             MemDb beamStateDb = new MemDb();

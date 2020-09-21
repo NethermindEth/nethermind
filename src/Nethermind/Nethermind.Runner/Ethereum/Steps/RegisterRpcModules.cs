@@ -96,7 +96,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _api.TxSender,
                     _api.Wallet,
                     _api.BlockTree,
-                    _api.TrieStore,
+                    _api.ReadOnlyTrieStore,
                     _api.EthereumEcdsa,
                     _api.MainBlockProcessor,
                     _api.ReceiptFinder,
@@ -111,7 +111,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             ProofModuleFactory proofModuleFactory = new ProofModuleFactory(
                 _api.DbProvider,
                 _api.BlockTree,
-                _api.TrieStore,
+                _api.ReadOnlyTrieStore,
                 _api.RecoveryStep, _api.ReceiptFinder, _api.SpecProvider, _api.LogManager);
             
             _api.RpcModuleProvider.Register(new BoundedModulePool<IProofModule>(2, proofModuleFactory));
@@ -134,7 +134,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             TraceModuleFactory traceModuleFactory = new TraceModuleFactory(
                 _api.DbProvider,
                 _api.BlockTree,
-                _api.TrieStore,
+                _api.ReadOnlyTrieStore,
                 rpcConfig,
                 _api.RecoveryStep,
                 _api.RewardCalculatorSource,
@@ -164,7 +164,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (baselineConfig.Enabled)
             {
                 IDbProvider dbProvider = _api.DbProvider!;
-                IStateReader stateReader = new StateReader(_api.TrieStore, dbProvider.CodeDb, _api.LogManager);
+                IStateReader stateReader = new StateReader(_api.ReadOnlyTrieStore, dbProvider.CodeDb, _api.LogManager);
 
                 BaselineModuleFactory baselineModuleFactory = new BaselineModuleFactory(
                     _api.TxSender,

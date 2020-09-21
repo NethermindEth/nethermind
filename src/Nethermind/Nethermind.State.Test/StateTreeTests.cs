@@ -18,8 +18,10 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
 namespace Nethermind.Store.Test
@@ -44,7 +46,7 @@ namespace Nethermind.Store.Test
         public void No_reads_when_setting_on_empty()
         {
             MemDb db = new MemDb();
-            StateTree tree = new StateTree(db);
+            StateTree tree = new StateTree(new TrieStore(db, LimboLogs.Instance), LimboLogs.Instance);
             tree.Set(TestItem.AddressA, _account0);
             tree.Set(TestItem.AddressB, _account0);
             tree.Set(TestItem.AddressC, _account0);
@@ -56,7 +58,7 @@ namespace Nethermind.Store.Test
         public void Minimal_writes_when_setting_on_empty()
         {
             MemDb db = new MemDb();
-            StateTree tree = new StateTree(db);
+            StateTree tree = new StateTree(new TrieStore(db, LimboLogs.Instance), LimboLogs.Instance);
             tree.Set(TestItem.AddressA, _account0);
             tree.Set(TestItem.AddressB, _account0);
             tree.Set(TestItem.AddressC, _account0);
@@ -68,12 +70,12 @@ namespace Nethermind.Store.Test
         public void Minimal_writes_when_setting_on_empty_scenario_2()
         {
             MemDb db = new MemDb();
-            StateTree tree = new StateTree(db);
+            StateTree tree = new StateTree(new TrieStore(db, LimboLogs.Instance), LimboLogs.Instance);
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), _account0);
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), _account0);
             tree.Commit(0);
-            Assert.AreEqual(7, db.WritesCount, "writes"); // extension, branch, leaf, extension, branch, leaf, leaf
+            Assert.AreEqual(6, db.WritesCount, "writes"); // extension, branch, leaf, extension, branch, 2x same leaf
             Assert.AreEqual(7, Trie.Metrics.TreeNodeHashCalculations, "hashes");
             Assert.AreEqual(7, Trie.Metrics.TreeNodeRlpEncodings, "encodings");
         }
@@ -82,7 +84,7 @@ namespace Nethermind.Store.Test
         public void Minimal_writes_when_setting_on_empty_scenario_3()
         {
             MemDb db = new MemDb();
-            StateTree tree = new StateTree(db);
+            StateTree tree = new StateTree(new TrieStore(db, LimboLogs.Instance), LimboLogs.Instance);
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), _account0);
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), _account0);
@@ -97,7 +99,7 @@ namespace Nethermind.Store.Test
         public void Minimal_writes_when_setting_on_empty_scenario_4()
         {
             MemDb db = new MemDb();
-            StateTree tree = new StateTree(db);
+            StateTree tree = new StateTree(new TrieStore(db, LimboLogs.Instance), LimboLogs.Instance);
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), _account0);
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), _account0);
@@ -113,7 +115,7 @@ namespace Nethermind.Store.Test
         public void Minimal_writes_when_setting_on_empty_scenario_5()
         {
             MemDb db = new MemDb();
-            StateTree tree = new StateTree(db);
+            StateTree tree = new StateTree(new TrieStore(db, LimboLogs.Instance), LimboLogs.Instance);
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb0"), _account0);
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb1eeeeeb1"), _account0);
@@ -130,7 +132,7 @@ namespace Nethermind.Store.Test
         public void Scenario_traverse_extension_read_full_match()
         {
             MemDb db = new MemDb();
-            StateTree tree = new StateTree(db);
+            StateTree tree = new StateTree(new TrieStore(db, LimboLogs.Instance), LimboLogs.Instance);
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"), _account1);
             Account account = tree.Get(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"));
@@ -147,7 +149,7 @@ namespace Nethermind.Store.Test
         public void Scenario_traverse_extension_read_missing()
         {
             MemDb db = new MemDb();
-            StateTree tree = new StateTree(db);
+            StateTree tree = new StateTree(new TrieStore(db, LimboLogs.Instance), LimboLogs.Instance);
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"), _account1);
             Account account = tree.Get(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddddddddddddddddddd"));
@@ -163,7 +165,7 @@ namespace Nethermind.Store.Test
         public void Scenario_traverse_extension_new_branching()
         {
             MemDb db = new MemDb();
-            StateTree tree = new StateTree(db);
+            StateTree tree = new StateTree(new TrieStore(db, LimboLogs.Instance), LimboLogs.Instance);
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"), _account1);
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddddddddddddddddddd"), _account2);
@@ -178,7 +180,7 @@ namespace Nethermind.Store.Test
         public void Scenario_traverse_extension_delete_missing()
         {
             MemDb db = new MemDb();
-            StateTree tree = new StateTree(db);
+            StateTree tree = new StateTree(new TrieStore(db, LimboLogs.Instance), LimboLogs.Instance);
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"), _account1);
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeddddddddddddddddddddddddd"), null);
@@ -194,7 +196,7 @@ namespace Nethermind.Store.Test
         public void Scenario_traverse_extension_create_new_extension()
         {
             MemDb db = new MemDb();
-            StateTree tree = new StateTree(db);
+            StateTree tree = new StateTree(new TrieStore(db, LimboLogs.Instance), LimboLogs.Instance);
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"), _account1);
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeaaaaaaaaaaaaaaaab00000000"), _account2);
@@ -211,7 +213,7 @@ namespace Nethermind.Store.Test
         public void Scenario_traverse_leaf_update_new_value()
         {
             MemDb db = new MemDb();
-            StateTree tree = new StateTree(db);
+            StateTree tree = new StateTree(new TrieStore(db, LimboLogs.Instance), LimboLogs.Instance);
             tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), _account0);
             tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), _account1);
             tree.UpdateRootHash();
@@ -225,7 +227,7 @@ namespace Nethermind.Store.Test
         public void Scenario_traverse_leaf_update_no_change()
         {
             MemDb db = new MemDb();
-            StateTree tree = new StateTree(db);
+            StateTree tree = new StateTree(new TrieStore(db, LimboLogs.Instance), LimboLogs.Instance);
             tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), _account0);
             tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), _account0);
             tree.UpdateRootHash();
@@ -239,7 +241,7 @@ namespace Nethermind.Store.Test
         public void Scenario_traverse_leaf_read_matching_leaf()
         {
             MemDb db = new MemDb();
-            StateTree tree = new StateTree(db);
+            StateTree tree = new StateTree(new TrieStore(db, LimboLogs.Instance), LimboLogs.Instance);
             tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), _account0);
             tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), null);
             tree.UpdateRootHash();
@@ -253,7 +255,7 @@ namespace Nethermind.Store.Test
         public void Scenario_traverse_leaf_delete_missing()
         {
             MemDb db = new MemDb();
-            StateTree tree = new StateTree(db);
+            StateTree tree = new StateTree(new TrieStore(db, LimboLogs.Instance), LimboLogs.Instance);
             tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), _account0);
             tree.Set(new Keccak("1111111111111111111111111111111ddddddddddddddddddddddddddddddddd"), null);
             tree.UpdateRootHash();
@@ -267,7 +269,7 @@ namespace Nethermind.Store.Test
         public void Scenario_traverse_leaf_update_with_extension()
         {
             MemDb db = new MemDb();
-            StateTree tree = new StateTree(db);
+            StateTree tree = new StateTree(new TrieStore(db, LimboLogs.Instance), LimboLogs.Instance);
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111111111111111111111111111"), _account0);
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000000000000000000000000000"), _account1);
             tree.UpdateRootHash();
@@ -281,7 +283,7 @@ namespace Nethermind.Store.Test
         public void Scenario_traverse_leaf_delete_matching_leaf()
         {
             MemDb db = new MemDb();
-            StateTree tree = new StateTree(db);
+            StateTree tree = new StateTree(new TrieStore(db, LimboLogs.Instance), LimboLogs.Instance);
             tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), _account0);
             Account account = tree.Get(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"));
             Assert.NotNull(account);
@@ -296,7 +298,7 @@ namespace Nethermind.Store.Test
         public void Scenario_traverse_leaf_read_missing()
         {
             MemDb db = new MemDb();
-            StateTree tree = new StateTree(db);
+            StateTree tree = new StateTree(new TrieStore(db, LimboLogs.Instance), LimboLogs.Instance);
             tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), _account0);
             Account account = tree.Get(new Keccak("111111111111111111111111111111111111111111111111111111111ddddddd"));
             Assert.Null(account);
@@ -311,7 +313,7 @@ namespace Nethermind.Store.Test
         public void Scenario_traverse_branch_update_missing()
         {
             MemDb db = new MemDb();
-            StateTree tree = new StateTree(db);
+            StateTree tree = new StateTree(new TrieStore(db, LimboLogs.Instance), LimboLogs.Instance);
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000"), _account0);
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111"), _account1);
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb22222"), _account2);
@@ -326,7 +328,7 @@ namespace Nethermind.Store.Test
         public void Scenario_traverse_branch_read_missing()
         {
             MemDb db = new MemDb();
-            StateTree tree = new StateTree(db);
+            StateTree tree = new StateTree(new TrieStore(db, LimboLogs.Instance), LimboLogs.Instance);
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000"), _account0);
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111"), _account1);
             Account account = tree.Get(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb22222"));
@@ -342,7 +344,7 @@ namespace Nethermind.Store.Test
         public void Scenario_traverse_branch_delete_missing()
         {
             MemDb db = new MemDb();
-            StateTree tree = new StateTree(db);
+            StateTree tree = new StateTree(new TrieStore(db, LimboLogs.Instance), LimboLogs.Instance);
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000"), _account0);
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111"), _account1);
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb22222"), null);
@@ -357,7 +359,7 @@ namespace Nethermind.Store.Test
         public void Minimal_hashes_when_setting_on_empty()
         {
             MemDb db = new MemDb();
-            StateTree tree = new StateTree(db);
+            StateTree tree = new StateTree(new TrieStore(db, LimboLogs.Instance), LimboLogs.Instance);
             tree.Set(TestItem.AddressA, _account0);
             tree.Set(TestItem.AddressB, _account0);
             tree.Set(TestItem.AddressC, _account0);
@@ -369,7 +371,7 @@ namespace Nethermind.Store.Test
         public void Minimal_encodings_when_setting_on_empty()
         {
             MemDb db = new MemDb();
-            StateTree tree = new StateTree(db);
+            StateTree tree = new StateTree(new TrieStore(db, LimboLogs.Instance), LimboLogs.Instance);
             tree.Set(TestItem.AddressA, _account0);
             tree.Set(TestItem.AddressB, _account0);
             tree.Set(TestItem.AddressC, _account0);
@@ -381,7 +383,7 @@ namespace Nethermind.Store.Test
         public void Zero_decodings_when_setting_on_empty()
         {
             MemDb db = new MemDb();
-            StateTree tree = new StateTree(db);
+            StateTree tree = new StateTree(new TrieStore(db, LimboLogs.Instance), LimboLogs.Instance);
             tree.Set(TestItem.AddressA, _account0);
             tree.Set(TestItem.AddressB, _account0);
             tree.Set(TestItem.AddressC, _account0);
@@ -393,7 +395,7 @@ namespace Nethermind.Store.Test
         public void No_writes_on_continues_update()
         {
             MemDb db = new MemDb();
-            StateTree tree = new StateTree(db);
+            StateTree tree = new StateTree(new TrieStore(db, LimboLogs.Instance), LimboLogs.Instance);
             tree.Set(TestItem.AddressA, _account0);
             tree.Set(TestItem.AddressA, _account1);
             tree.Set(TestItem.AddressA, _account2);
@@ -407,7 +409,7 @@ namespace Nethermind.Store.Test
         public void No_writes_on_reverted_update()
         {
             MemDb db = new MemDb();
-            StateTree tree = new StateTree(db);
+            StateTree tree = new StateTree(new TrieStore(db, LimboLogs.Instance), LimboLogs.Instance);
             tree.Set(TestItem.AddressA, _account0);
             tree.Commit(0);
             Assert.AreEqual(1, db.WritesCount, "writes before"); // extension, branch, two leaves
@@ -421,7 +423,7 @@ namespace Nethermind.Store.Test
         public void No_writes_without_commit()
         {
             MemDb db = new MemDb();
-            StateTree tree = new StateTree(db);
+            StateTree tree = new StateTree(new TrieStore(db, LimboLogs.Instance), LimboLogs.Instance);
             tree.Set(TestItem.AddressA, _account0);
             Assert.AreEqual(0, db.WritesCount, "writes");
         }
@@ -430,7 +432,7 @@ namespace Nethermind.Store.Test
         public void Can_ask_about_root_hash_without_commiting()
         {
             MemDb db = new MemDb();
-            StateTree tree = new StateTree(db);
+            StateTree tree = new StateTree(new TrieStore(db, LimboLogs.Instance), LimboLogs.Instance);
             tree.Set(TestItem.AddressA, _account0);
             tree.UpdateRootHash();
             Assert.AreEqual("0x545a417202afcb10925b2afddb70a698710bb1cf4ab32942c42e9f019d564fdc", tree.RootHash.ToString(true));
@@ -440,7 +442,7 @@ namespace Nethermind.Store.Test
         public void Can_ask_about_root_hash_without_when_emptied()
         {
             MemDb db = new MemDb();
-            StateTree tree = new StateTree(db);
+            StateTree tree = new StateTree(new TrieStore(db, LimboLogs.Instance), LimboLogs.Instance);
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), _account0);
             tree.UpdateRootHash();
             Assert.AreNotEqual(PatriciaTree.EmptyTreeHash, tree.RootHash);
@@ -467,7 +469,7 @@ namespace Nethermind.Store.Test
         public void hash_empty_tree_root_hash_initially()
         {
             MemDb db = new MemDb();
-            StateTree tree = new StateTree(db);
+            StateTree tree = new StateTree(new TrieStore(db, LimboLogs.Instance), LimboLogs.Instance);
             Assert.AreEqual(PatriciaTree.EmptyTreeHash, tree.RootHash);
         }
         
@@ -475,7 +477,7 @@ namespace Nethermind.Store.Test
         public void Can_save_null()
         {
             MemDb db = new MemDb();
-            StateTree tree = new StateTree(db);
+            StateTree tree = new StateTree(new TrieStore(db, LimboLogs.Instance), LimboLogs.Instance);
             tree.Set(TestItem.AddressA, null);
         }
     }

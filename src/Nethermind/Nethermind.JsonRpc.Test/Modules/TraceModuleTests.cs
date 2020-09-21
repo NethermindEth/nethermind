@@ -71,7 +71,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             IEthereumEcdsa ethereumEcdsa = new EthereumEcdsa(specProvider.ChainId, LimboLogs.Instance);
             ITxStorage txStorage = new InMemoryTxStorage();
             _stateDb = new StateDb();
-            TrieStore trieStore = new TrieStore(_stateDb, LimboLogs.Instance);
+            ITrieStore trieStore = new ReadOnlyTrieStore(new TrieStore(_stateDb, LimboLogs.Instance));
             _stateProvider = new StateProvider(trieStore, new MemDb(), LimboLogs.Instance);
             _stateProvider.CreateAccount(TestItem.AddressA, 1000.Ether());
             _stateProvider.CreateAccount(TestItem.AddressB, 1000.Ether());

@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.IO;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Serialization.Rlp;
@@ -50,11 +51,19 @@ namespace Nethermind.Trie
                     for (int i = 0; i < 16; i++)
                     {
                         TrieNode child = GetChild(nodeResolver, i);
-                        child?.ResolveKey(nodeResolver, false);
-                        if (child != null && visitor.ShouldVisit(child.Keccak))
+                        if (child != null)
                         {
-                            trieVisitContext.BranchChildIndex = i;
-                            child.Accept(visitor, nodeResolver, trieVisitContext);
+                            child.ResolveKey(nodeResolver, false);
+                            if (visitor.ShouldVisit(child.Keccak!))
+                            {
+                                trieVisitContext.BranchChildIndex = i;
+                                child.Accept(visitor, nodeResolver, trieVisitContext);
+                            }
+
+                            if (child.IsPersisted)
+                            {
+                                UnresolveChild(i);
+                            }
                         }
                     }
 
@@ -67,8 +76,13 @@ namespace Nethermind.Trie
                 {
                     visitor.VisitExtension(this, trieVisitContext);
                     TrieNode child = GetChild(nodeResolver, 0);
+                    if (child == null)
+                    {
+                        throw new InvalidDataException($"Child of an extension {Key} should not be null.");
+                    }
+                    
                     child.ResolveKey(nodeResolver, false);
-                    if (child != null && visitor.ShouldVisit(child.Keccak))
+                    if (visitor.ShouldVisit(child.Keccak!))
                     {
                         trieVisitContext.Level++;
                         trieVisitContext.BranchChildIndex = null;
@@ -111,6 +125,11 @@ namespace Nethermind.Trie
                 default:
                     throw new TrieException($"An attempt was made to visit a node {Keccak} of type {NodeType}");
             }
+        }
+
+        private void UnresolveChild(int i)
+        {
+            _data![i] = null;
         }
     }
 }

@@ -103,9 +103,9 @@ namespace Nethermind.Clique.Test
 
                 ISpecProvider specProvider = RinkebySpecProvider.Instance;
 
-                var trieStore1 = new TrieStore(stateDb, nodeLogManager);
-                StateReader stateReader = new StateReader(trieStore1, codeDb, nodeLogManager);
-                StateProvider stateProvider = new StateProvider(trieStore1, codeDb, nodeLogManager);
+                var trieStore = new TrieStore(stateDb, nodeLogManager);
+                StateReader stateReader = new StateReader(trieStore, codeDb, nodeLogManager);
+                StateProvider stateProvider = new StateProvider(trieStore, codeDb, nodeLogManager);
                 stateProvider.CreateAccount(TestItem.PrivateKeyD.Address, 100.Ether());
                 stateProvider.Commit(GoerliSpecProvider.Instance.GenesisSpec);
                 stateProvider.CommitTree(0);
@@ -128,16 +128,16 @@ namespace Nethermind.Clique.Test
                 _genesis.Header.StateRoot = _genesis3Validators.Header.StateRoot = stateProvider.StateRoot;
                 _genesis.Header.Hash = _genesis.Header.CalculateHash();
                 _genesis3Validators.Header.Hash = _genesis3Validators.Header.CalculateHash();
-
-                var trieStore = new TrieStore(stateDb, nodeLogManager);
+                
                 StorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, nodeLogManager);
                 TransactionProcessor transactionProcessor = new TransactionProcessor(GoerliSpecProvider.Instance, stateProvider, storageProvider, new VirtualMachine(stateProvider, storageProvider, blockhashProvider, specProvider, nodeLogManager), nodeLogManager);
                 BlockProcessor blockProcessor = new BlockProcessor(GoerliSpecProvider.Instance, Always.Valid, NoBlockRewards.Instance, transactionProcessor, stateProvider, storageProvider, txPool, NullReceiptStorage.Instance, nodeLogManager);
                 BlockchainProcessor processor = new BlockchainProcessor(blockTree, blockProcessor, new AuthorRecoveryStep(snapshotManager), nodeLogManager, BlockchainProcessor.Options.NoReceipts);
                 processor.Start();
 
-                StateProvider minerStateProvider = new StateProvider(trieStore, codeDb, nodeLogManager);
-                StorageProvider minerStorageProvider = new StorageProvider(trieStore, minerStateProvider, nodeLogManager);
+                var minerTrieStore = new ReadOnlyTrieStore(trieStore);
+                StateProvider minerStateProvider = new StateProvider(minerTrieStore, codeDb, nodeLogManager);
+                StorageProvider minerStorageProvider = new StorageProvider(minerTrieStore, minerStateProvider, nodeLogManager);
                 VirtualMachine minerVirtualMachine = new VirtualMachine(minerStateProvider, minerStorageProvider, blockhashProvider, specProvider, nodeLogManager);
                 TransactionProcessor minerTransactionProcessor = new TransactionProcessor(GoerliSpecProvider.Instance, minerStateProvider, minerStorageProvider, minerVirtualMachine, nodeLogManager);
                 BlockProcessor minerBlockProcessor = new BlockProcessor(GoerliSpecProvider.Instance, Always.Valid, NoBlockRewards.Instance, minerTransactionProcessor, minerStateProvider, minerStorageProvider, txPool, NullReceiptStorage.Instance,  nodeLogManager);

@@ -46,6 +46,7 @@ namespace Nethermind.Db.Test.Rpc
             ValidateDb<ReadOnlyDb>(
                 rpcDbProvider.BlocksDb, 
                 rpcDbProvider.BloomDb, 
+                rpcDbProvider.CodeDb,
                 rpcDbProvider.ConfigsDb, 
                 rpcDbProvider.HeadersDb,
                 rpcDbProvider.ReceiptsDb, 
@@ -53,9 +54,7 @@ namespace Nethermind.Db.Test.Rpc
                 rpcDbProvider.EthRequestsDb, 
                 rpcDbProvider.PendingTxsDb);
 
-            ValidateDb<StateDb>(
-                rpcDbProvider.StateDb,
-                rpcDbProvider.CodeDb);
+            ValidateDb<StateDb>(rpcDbProvider.StateDb);
         }
     }
 }

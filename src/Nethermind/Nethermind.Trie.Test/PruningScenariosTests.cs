@@ -93,7 +93,7 @@ namespace Nethermind.Trie.Test
 
             public PruningContext PruneOldBlock()
             {
-                _trieStore.TryPruningOldBlock();
+                _trieStore.TryRemovingOldBlock();
                 return this;
             }
 

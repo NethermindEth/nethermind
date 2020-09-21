@@ -66,7 +66,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
 
             ISnapshotableDb stateDb = new StateDb();
             ISnapshotableDb codeDb = new StateDb();
-            TrieStore trieStore = new TrieStore(stateDb, LimboLogs.Instance);
+            ITrieStore trieStore = new ReadOnlyTrieStore(new TrieStore(stateDb, LimboLogs.Instance));
             StateProvider stateProvider = new StateProvider(trieStore, codeDb, LimboLogs.Instance);
             StorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, LimboLogs.Instance);
 
@@ -82,6 +82,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             Block genesis = Build.A.Block.Genesis.TestObject;
             _blockTree.SuggestBlock(genesis);
             _processor.Process(genesis, ProcessingOptions.None, NullBlockTracer.Instance);
+            
             _tracer = new Tracer(stateProvider, _processor);
         }
 

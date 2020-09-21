@@ -24,6 +24,8 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Proofs;
 using Nethermind.Db.Blooms;
+using Nethermind.Logging;
+using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Eip1186
@@ -42,8 +44,9 @@ namespace Nethermind.JsonRpc.Test.Eip1186
             byte[] e = Bytes.FromHexString("0x00000000001eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee");
 
             IDb memDb = new MemDb();
-            StateTree tree = new StateTree(memDb);
-            StorageTree storageTree = new StorageTree(memDb);
+            TrieStore trieStore = new TrieStore(memDb, LimboLogs.Instance);
+            StateTree tree = new StateTree(trieStore, LimboLogs.Instance);
+            StorageTree storageTree = new StorageTree(trieStore, Keccak.EmptyTreeHash, LimboLogs.Instance);
             storageTree.Set(Keccak.Compute(a).Bytes, Rlp.Encode(Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000")));
             storageTree.Set(Keccak.Compute(b).Bytes, Rlp.Encode(Bytes.FromHexString("0xab34000000000000000000000000000000000000000000000000000000000000000000000000000000")));
             storageTree.Set(Keccak.Compute(c).Bytes, Rlp.Encode(Bytes.FromHexString("0xab56000000000000000000000000000000000000000000000000000000000000000000000000000000")));
@@ -75,8 +78,9 @@ namespace Nethermind.JsonRpc.Test.Eip1186
             byte[] e = Bytes.FromHexString("0x00000000001eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee");
 
             IDb memDb = new MemDb();
-            StateTree tree = new StateTree(memDb);
-            StorageTree storageTree = new StorageTree(memDb);
+            TrieStore trieStore = new TrieStore(memDb, LimboLogs.Instance);
+            StateTree tree = new StateTree(trieStore, LimboLogs.Instance);
+            StorageTree storageTree = new StorageTree(trieStore, Keccak.EmptyTreeHash, LimboLogs.Instance);
             storageTree.Set(Keccak.Compute(a).Bytes, Rlp.Encode(Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000")));
             storageTree.Set(Keccak.Compute(b).Bytes, Rlp.Encode(Bytes.FromHexString("0xab34000000000000000000000000000000000000000000000000000000000000000000000000000000")));
             storageTree.Set(Keccak.Compute(c).Bytes, Rlp.Encode(Bytes.FromHexString("0xab56000000000000000000000000000000000000000000000000000000000000000000000000000000")));
