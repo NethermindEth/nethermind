@@ -158,7 +158,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     Handle(getBodiesMsg);
                     break;
                 case Eth62MessageCode.BlockBodies:
-                    HandleBodies(message.Content, size);
+                    BlockBodiesMessage bodiesMsg = Deserialize<BlockBodiesMessage>(message.Content);
+                    ReportIn(bodiesMsg);
+                    HandleBodies(bodiesMsg, size);
                     break;
                 case Eth62MessageCode.NewBlock:
                     NewBlockMessage newBlockMsg = Deserialize<NewBlockMessage>(message.Content);

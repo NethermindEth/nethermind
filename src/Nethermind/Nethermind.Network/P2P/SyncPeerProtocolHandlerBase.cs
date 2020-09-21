@@ -336,12 +336,10 @@ namespace Nethermind.Network.P2P
             _headersRequests.Handle(message.BlockHeaders, size);
         }
 
-        protected void HandleBodies(IByteBuffer buffer, long size)
+        protected void HandleBodies(BlockBodiesMessage blockBodiesMessage, long size)
         {
             Metrics.Eth62BlockBodiesReceived++;
-
-            BlockBodiesMessage message = Deserialize<BlockBodiesMessage>(buffer);
-            _bodiesRequests.Handle(message.Bodies, size);
+            _bodiesRequests.Handle(blockBodiesMessage.Bodies, size);
         }
 
         protected void Handle(GetReceiptsMessage msg)
