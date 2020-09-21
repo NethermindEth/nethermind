@@ -272,8 +272,11 @@ namespace Nethermind.Runner.Ethereum.Steps
         {
             // the kind of hacks when you run out of time...
             long blockNumber = e.BlockNumber;
-            Keccak stateHeadHash = _api.BlockTree!.FindHash(blockNumber);
-            (_api.BlockTree as BlockTree)!.SaveStateHead(stateHeadHash);
+            Keccak? stateHeadHash = _api.BlockTree!.FindHash(blockNumber);
+            if (stateHeadHash != null)
+            {
+                (_api.BlockTree as BlockTree)!.SaveStateHead(stateHeadHash);
+            }
         }
 
         protected virtual  HeaderValidator CreateHeaderValidator() =>
