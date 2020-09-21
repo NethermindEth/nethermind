@@ -18,7 +18,9 @@
 
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
+using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
 namespace Ethereum.Trie.Test
@@ -29,7 +31,7 @@ namespace Ethereum.Trie.Test
         [Test]
         public void Storage_trie_set_reset_with_empty()
         {
-            StorageTree tree = new StorageTree(new MemDb());
+            StorageTree tree = new StorageTree(new TrieStore(new MemDb(), LimboLogs.Instance), Keccak.EmptyTreeHash, LimboLogs.Instance);
             Keccak rootBefore = tree.RootHash;
             tree.Set(1, new byte[] { 1 });
             tree.Set(1, new byte[] { });
@@ -41,7 +43,7 @@ namespace Ethereum.Trie.Test
         [Test]
         public void Storage_trie_set_reset_with_long_zero()
         {
-            StorageTree tree = new StorageTree(new MemDb());
+            StorageTree tree = new StorageTree(new TrieStore(new MemDb(), LimboLogs.Instance), Keccak.EmptyTreeHash, LimboLogs.Instance);
             Keccak rootBefore = tree.RootHash;
             tree.Set(1, new byte[] { 1 });
             tree.Set(1, new byte[] { 0, 0, 0, 0, 0 });
@@ -53,7 +55,7 @@ namespace Ethereum.Trie.Test
         [Test]
         public void Storage_trie_set_reset_with_short_zero()
         {
-            StorageTree tree = new StorageTree(new MemDb());
+            StorageTree tree = new StorageTree(new TrieStore(new MemDb(), LimboLogs.Instance), Keccak.EmptyTreeHash, LimboLogs.Instance);
             Keccak rootBefore = tree.RootHash;
             tree.Set(1, new byte[] { 1 });
             tree.Set(1, new byte[] { 0 });

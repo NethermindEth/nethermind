@@ -351,7 +351,7 @@ namespace Ethereum.Test.Base
                     differences.Add($"{accountState.Key} nonce exp: {accountState.Value.Nonce}, actual: {nonce}");
                 }
 
-                byte[] code = accountExists ? stateProvider.GetCode(stateProvider.GetCodeHash(accountState.Key)) : new byte[0];
+                byte[] code = accountExists ? stateProvider.GetCode(accountState.Key) : new byte[0];
                 if (!Bytes.AreEqual(accountState.Value.Code, code))
                 {
                     differences.Add($"{accountState.Key} code exp: {accountState.Value.Code?.Length}, actual: {code?.Length}");

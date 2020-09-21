@@ -24,6 +24,11 @@ namespace Nethermind.State
 {
     public static class StateProviderExtensions
     {
+        public static byte[] GetCode(this IStateProvider stateProvider, Address address)
+        {
+            return stateProvider.GetCode(stateProvider.GetCodeHash(address));
+        }
+        
         public static bool HasCode(this IStateProvider stateProvider, Address address)
         {
             return stateProvider.GetCodeHash(address) != Keccak.OfAnEmptyString;
