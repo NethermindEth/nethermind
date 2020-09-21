@@ -27,12 +27,11 @@ namespace Nethermind.Blockchain.Synchronization
         public static ISyncConfig WithFastBlocks { get; } = new SyncConfig {FastSync = true, FastBlocks = true};
 
         public bool SynchronizationEnabled { get; set; } = true;
-        
         public long? FastSyncCatchUpHeightDelta { get; set; } = 8192;
-
         public bool FastBlocks { get; set; }
         public bool UseGethLimitsInFastBlocks { get; set; } = true;
         public bool BeamSync { get; set; }
+        public bool Pruning { get; set; }
         public bool FastSync { get; set; }
         public bool PruningEnabled { get; set; } = true;
         public bool DownloadHeadersInFastSync { get; set; } = true;

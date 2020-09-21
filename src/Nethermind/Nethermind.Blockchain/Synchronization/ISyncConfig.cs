@@ -30,6 +30,9 @@ namespace Nethermind.Blockchain.Synchronization
         
         [ConfigItem(Description = "Enables beam sync that can be useful to create some JSON RPC queries while the node is fast syncing in the background.", DefaultValue = "false")]
         bool BeamSync { get; set; }
+        
+        [ConfigItem(Description = "Enables pruning (beta).", DefaultValue = "false")]
+        bool Pruning { get; set; }
 
         [ConfigItem(Description = "If set to 'true' then the Fast Sync (eth/63) synchronization algorithm will be used.", DefaultValue = "false")]
         bool FastSync { get; set; }

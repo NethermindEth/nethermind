@@ -84,12 +84,23 @@ namespace Nethermind.Runner.Ethereum.Steps
             _api.EngineSigner = signer;
             _api.EngineSignerStore = signer;
 
-            _api.TrieStore = new TrieStore(
-                _api.DbProvider.StateDb.Innermost,
-                new DepthAndMemoryBased(1024, 256.MB()),
-                new ConstantInterval(8192),
-                _api.LogManager);
-            
+            if (syncConfig.Pruning)
+            {
+                _api.TrieStore = new TrieStore(
+                    _api.DbProvider.StateDb.Innermost,
+                    new DepthAndMemoryBased(1024, 256.MB()),
+                    new ConstantInterval(8192),
+                    _api.LogManager);
+            }
+            else
+            {
+                _api.TrieStore = new TrieStore(
+                    _api.DbProvider.StateDb.Innermost,
+                    No.Pruning,
+                    Full.Archive,
+                    _api.LogManager);
+            }
+
             _api.ReadOnlyTrieStore = new ReadOnlyTrieStore(_api.TrieStore);
             _api.TrieStore.SnapshotTaken += TreeStoreOnStored;
             
