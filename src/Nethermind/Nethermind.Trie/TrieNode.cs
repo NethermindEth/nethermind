@@ -226,7 +226,7 @@ namespace Nethermind.Trie
 
                         if (FullRlp == null)
                         {
-                            throw new TrieException($"Trie returned a malformed RLP for node {Keccak}");
+                            throw new TrieException($"Trie returned a NULL RLP for node {Keccak}");
                         }
                     }
                 }
@@ -701,20 +701,12 @@ namespace Nethermind.Trie
                         Keccak keccak = _rlpStream.DecodeKeccak();
                         TrieNode cachedOrUnknown = tree.FindCachedOrUnknown(keccak);
                         _data![i] = cachedOrUnknown;
-                        // if (!cachedOrUnknown.IsPersisted)
-                        // {
-                        //     cachedOrUnknown.MarkPersistedRecursively(tree, NullLogger.Instance);
-                        // }
+
                         if (IsPersisted && !cachedOrUnknown.IsPersisted)
                         {
                             cachedOrUnknown.MarkPersistedRecursively(tree, NullLogger.Instance);
                         }
-                        //
-                        // if (!IsPersisted && !cachedOrUnknown.IsPersisted)
-                        // {
-                        //     cachedOrUnknown.MarkPersistedRecursively(tree, NullLogger.Instance);
-                        // }
-
+                        
                         break;
                     default:
                     {

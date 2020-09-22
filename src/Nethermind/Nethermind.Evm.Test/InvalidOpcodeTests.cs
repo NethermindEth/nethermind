@@ -267,7 +267,7 @@ namespace Nethermind.Evm.Test
         {
             ILogger logger = _logManager.GetClassLogger();
             var validOpcodes = _validOpcodes[blockNumber];
-            for (int i = 0; i <= 1; i++)
+            for (int i = 0; i <= byte.MaxValue; i++)
             {
                 logger.Info($"============ Testing opcode {i}==================");
                 byte[] code = Prepare.EvmCode
