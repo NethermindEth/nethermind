@@ -35,6 +35,13 @@ namespace Nethermind.Synchronization.FastBlocks
 {
     public class HeadersSyncFeed : SyncFeed<HeadersSyncBatch?>
     {
+        private readonly IDictionary<int, IDictionary<long, ulong>> _historicalOverrides = new Dictionary<int, IDictionary<long, ulong>>()
+        {
+            // Kovan has some wrong difficulty in early blocks before using proper AuRa difficulty calculation
+            // In order to support that we need to support another pivot
+            { ChainId.Kovan, new Dictionary<long, ulong>() { {148240, 19430113280} } }
+        };
+        
         private readonly ILogger _logger;
         private readonly ISyncPeerPool _syncPeerPool;
         private readonly ISyncReport _syncReport;
@@ -112,27 +119,9 @@ namespace Nethermind.Synchronization.FastBlocks
 
             _lowestRequestedHeaderNumber = startNumber + 1;
 
-            _fastSyncExpectedDifficultyAuRaOverride =  GetTotalDifficultyOverrides(); 
+            _historicalOverrides.TryGetValue(_blockTree.ChainId, out _expectedDifficultyOverride); 
 
             Activate();
-        }
-
-        // Kovan has some wrong difficulty in early blocks before using proper AuRa difficulty calculation
-        // In order to support that we need to support another pivot
-        private Dictionary<long, ulong>? GetTotalDifficultyOverrides()
-        {
-            long[] overrides = _syncConfig.TotalDifficultyOverrides;
-            if (overrides == null)
-            {
-                return null;
-            }
-            else
-            {
-                var even = overrides.Where((o, i) => i % 2 == 0);
-                var odd = overrides.Where((o, i) => i % 2 == 1);
-                var difficultyOverrides = even.Zip(odd).ToDictionary(e => e.First, e => (ulong)e.Second);
-                return difficultyOverrides?.Count > 0 ? difficultyOverrides : null;
-            }
         }
 
         public override bool IsMultiFeed => true;
@@ -531,7 +520,7 @@ namespace Nethermind.Synchronization.FastBlocks
             return added;
         }
 
-        private readonly IDictionary<long, ulong>? _fastSyncExpectedDifficultyAuRaOverride;
+        private readonly IDictionary<long, ulong>? _expectedDifficultyOverride;
 
         private AddBlockResult InsertHeader(BlockHeader header)
         {
@@ -545,7 +534,7 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 ulong nextHeaderDiff = 0;
                 _nextHeaderHash = header.ParentHash;
-                if (_fastSyncExpectedDifficultyAuRaOverride?.TryGetValue(header.Number, out nextHeaderDiff) == true)
+                if (_expectedDifficultyOverride?.TryGetValue(header.Number, out nextHeaderDiff) == true)
                 {
                     _nextHeaderDiff = nextHeaderDiff;
                 }

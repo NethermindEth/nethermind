@@ -78,7 +78,5 @@ namespace Nethermind.Blockchain.Synchronization
         
         [ConfigItem(Description = "When beam syncing should verify each state item loaded from DB (dev use).", DefaultValue = "false")]
         public bool BeamSyncVerifiedMode { get; set; }
-        
-        public long[] TotalDifficultyOverrides { get; set; } 
     }
 }
