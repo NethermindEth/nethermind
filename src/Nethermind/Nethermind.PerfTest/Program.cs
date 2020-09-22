@@ -32,6 +32,7 @@ using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Db.Rocks;
@@ -46,6 +47,7 @@ using Nethermind.Specs;
 using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
+using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
 using Metrics = Nethermind.Trie.Metrics;
@@ -196,6 +198,11 @@ namespace Nethermind.PerfTest
                 return _blockTree.IsMainChain(blockHash);
             }
 
+            public BlockHeader FindBestSuggestedHeader()
+            {
+                return _blockTree.BestSuggestedHeader;
+            }
+
             public bool IsKnownBlock(long number, Keccak blockHash)
             {
                 return _blockTree.IsKnownBlock(number, blockHash);
@@ -278,8 +285,9 @@ namespace Nethermind.PerfTest
             var receiptsDb = dbProvider.ReceiptsDb;
 
             /* state & storage */
-            var stateProvider = new StateProvider(stateDb, codeDb, _logManager);
-            var storageProvider = new StorageProvider(stateDb, stateProvider, _logManager);
+            var trieStore = new TrieStore(stateDb, new DepthAndMemoryBased(8192, 1.GB()), new ConstantInterval(8192), _logManager);
+            var stateProvider = new StateProvider(trieStore, codeDb, _logManager);
+            var storageProvider = new StorageProvider(trieStore, stateProvider, _logManager);
 
             var ethereumSigner = new EthereumEcdsa(specProvider.ChainId, _logManager);
 
@@ -328,7 +336,7 @@ namespace Nethermind.PerfTest
             var blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, specProvider, _logManager);
 
             /* blockchain processing */
-            var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, processor, stateDb, codeDb, stateProvider, storageProvider, transactionPool, receiptStorage, _logManager);
+            var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, processor, stateProvider, storageProvider, transactionPool, receiptStorage, _logManager);
             var blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, recoveryStep, _logManager, BlockchainProcessor.Options.Default);
 
             foreach ((Address address, ChainSpecAllocation allocation) in chainSpec.Allocations)
