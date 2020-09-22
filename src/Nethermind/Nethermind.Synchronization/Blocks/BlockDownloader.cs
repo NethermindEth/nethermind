@@ -416,7 +416,7 @@ namespace Nethermind.Synchronization.Blocks
             {
                 IList<Keccak> hashesToRequest = context.GetHashesByOffset(offset, peer.MaxReceiptsPerRequest());
                 Task<TxReceipt[][]> request = peer.SyncPeer.GetReceipts(hashesToRequest, cancellation);
-                await request.ContinueWith(t => DownloadFailHandler(request, "bodies"));
+                await request.ContinueWith(t => DownloadFailHandler(request, "receipts"));
 
                 TxReceipt[][] result = request.Result;
                 

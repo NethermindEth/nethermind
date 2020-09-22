@@ -24,5 +24,13 @@ namespace Nethermind.Blockchain.Receipts
     {
         public static TxReceipt ForTransaction(this TxReceipt[] receipts, Keccak txHash)
             => receipts.FirstOrDefault(r => r.TxHash == txHash);
+        
+        public static void SetIgnoreOutput(this TxReceipt[] receipts, bool value)
+        {
+            for (int i = 0; i < receipts.Length; i++)
+            {
+                receipts[i].SkipStateAndStatusInRlp = value;
+            }
+        }
     }
 }
