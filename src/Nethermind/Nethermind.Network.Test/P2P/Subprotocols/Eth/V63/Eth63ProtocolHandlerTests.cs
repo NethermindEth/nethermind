@@ -152,7 +152,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
 
             protocolHandler.HandleMessage(statusPacket);
             protocolHandler.HandleMessage(getReceiptsPacket);
-            session.Received().DeliverMessage(Arg.Is<ReceiptsMessage>(r => r.TxReceipts.Length == 60));
+            session.Received().DeliverMessage(Arg.Is<ReceiptsMessage>(r => r.TxReceipts.Length == 14));
         }
     }
 }
