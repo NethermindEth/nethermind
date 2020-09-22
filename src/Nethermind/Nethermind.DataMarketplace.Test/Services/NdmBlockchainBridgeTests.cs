@@ -76,7 +76,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             var code = new byte[] {0, 1, 2};
             var address = TestItem.AddressA;
             _stateReader.GetCode(Arg.Any<Keccak>(), address).Returns(code);
-            _blockFinder.Head.Returns(_anyBlock);
+            _blockchainBridge.BeamHead.Returns(_anyBlock);
             var result = await _ndmBridge.GetCodeAsync(address);
             _stateReader.Received().GetCode(_anyBlock.StateRoot, address);
             result.Should().BeSameAs(code);
@@ -113,7 +113,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         public async Task get_latest_block_should_return_head_number()
         {
             var block = Build.A.Block.TestObject;
-            _blockFinder.Head.Returns(block);
+            _blockchainBridge.BeamHead.Returns(block);
             _blockFinder.FindBlock(block.Hash).Returns(block);
             var result = await _ndmBridge.GetLatestBlockAsync();
             result.Should().Be(block);
@@ -125,7 +125,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         {
             UInt256 nonce = 1;
             var address = TestItem.AddressA;
-            _blockFinder.Head.Returns(_anyBlock);
+            _blockchainBridge.BeamHead.Returns(_anyBlock);
             _stateReader.GetNonce(_anyBlock.StateRoot, address).Returns(nonce);
             var result = await _ndmBridge.GetNonceAsync(address);
             _stateReader.Received().GetNonce(_anyBlock.StateRoot, address);
@@ -174,7 +174,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             var head = Build.A.Block.TestObject;
             var transaction = Build.A.Transaction.TestObject;
             var data = new byte[] {0, 1, 2};
-            _blockFinder.Head.Returns(head);
+            _blockchainBridge.BeamHead.Returns(head);
             var output = new BlockchainBridge.CallOutput(data, 0, null);
             _blockchainBridge.Call(head?.Header, transaction).Returns(output);
             var result = await _ndmBridge.CallAsync(transaction);
