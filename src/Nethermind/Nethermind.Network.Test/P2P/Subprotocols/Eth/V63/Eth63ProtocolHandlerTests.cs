@@ -28,6 +28,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Network.Rlpx;
 using Nethermind.Specs;
 using Nethermind.Stats;
+using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
 using NSubstitute;
@@ -38,6 +39,15 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
     [TestFixture]
     public class Eth63ProtocolHandlerTests
     {
+        private ISession _session = Substitute.For<ISession>();
+        
+        [SetUp]
+        public void Setup()
+        {
+            _session.Node.Returns(new Node("127.0.0.1", 1000, true));
+            NetworkDiagTracer.IsEnabled = true;
+        }
+        
         [Test]
         public async Task Can_request_and_handle_receipts()
         {
@@ -49,7 +59,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
             serializationService.Register(receiptMessageSerializer);
 
             Eth63ProtocolHandler protocolHandler = new Eth63ProtocolHandler(
-                Substitute.For<ISession>(),
+                _session,
                 serializationService,
                 Substitute.For<INodeStatsManager>(),
                 Substitute.For<ISyncServer>(),
@@ -91,11 +101,10 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
             serializationService.Register(statusMessageSerializer);
             serializationService.Register(receiptMessageSerializer);
             serializationService.Register(getReceiptMessageSerializer);
-
-            ISession session = Substitute.For<ISession>();
+            
             ISyncServer syncServer = Substitute.For<ISyncServer>();
             Eth63ProtocolHandler protocolHandler = new Eth63ProtocolHandler(
-                session,
+                _session,
                 serializationService,
                 Substitute.For<INodeStatsManager>(),
                 syncServer,
@@ -127,11 +136,10 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
             serializationService.Register(statusMessageSerializer);
             serializationService.Register(receiptMessageSerializer);
             serializationService.Register(getReceiptMessageSerializer);
-
-            ISession session = Substitute.For<ISession>();
+            
             ISyncServer syncServer = Substitute.For<ISyncServer>();
             Eth63ProtocolHandler protocolHandler = new Eth63ProtocolHandler(
-                session,
+                _session,
                 serializationService,
                 Substitute.For<INodeStatsManager>(),
                 syncServer,
@@ -152,7 +160,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
 
             protocolHandler.HandleMessage(statusPacket);
             protocolHandler.HandleMessage(getReceiptsPacket);
-            session.Received().DeliverMessage(Arg.Is<ReceiptsMessage>(r => r.TxReceipts.Length == 14));
+            _session.Received().DeliverMessage(Arg.Is<ReceiptsMessage>(r => r.TxReceipts.Length == 14));
         }
     }
 }
