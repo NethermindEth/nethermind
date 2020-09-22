@@ -112,7 +112,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             }
 
             Block block = searchResult.Object;
-            ReceiptTrie receiptTrie = new ReceiptTrie(block.Number, _specProvider, txReceipts);
+            ReceiptTrie receiptTrie = new ReceiptTrie(_specProvider.GetSpec(block.Number), txReceipts);
             receiptTrie.UpdateRootHash();
             if (block.ReceiptsRoot != receiptTrie.RootHash)
             {

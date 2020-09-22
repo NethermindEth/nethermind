@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using FluentAssertions;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Specs;
@@ -84,6 +85,17 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         public void Roundtrip()
         {            
             TxReceipt[][] data = {new[] {Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.WithBlockNumber(0).TestObject}, new[] {Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject}};
+            Test(data);
+        }
+        
+        [Test]
+        public void Roundtrip_with_IgnoreOutputs()
+        {            
+            TxReceipt[][] data = {new[] {Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.WithBlockNumber(0).TestObject}, new[] {Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject}};
+            foreach (TxReceipt[] receipts in data)
+            {
+                receipts.SetIgnoreOutput(true);
+            }
             Test(data);
         }
         

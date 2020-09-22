@@ -94,5 +94,9 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
         public Address TransactionPermissionContract { get; set; }
 
         public long ? TransactionPermissionContractTransition { get; set; }
+        
+        public long? ValidateChainIdTransition { get; set; }
+        
+        public long? ValidateReceiptsTransition { get; set; }
     }
 }
