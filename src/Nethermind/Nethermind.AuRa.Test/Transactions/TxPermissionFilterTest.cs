@@ -247,8 +247,18 @@ namespace Nethermind.AuRa.Test.Transactions
 
                 TransactionPermissionContractVersions =
                     new LruCache<Keccak, UInt256>(PermissionBasedTxFilter.Cache.MaxCacheSize, nameof(TransactionPermissionContract));
-                var transactionPermissionContract = new VersionedTransactionPermissionContract(new AbiEncoder(), _contractAddress, 1,
-                    new ReadOnlyTxProcessorSource(DbProvider, new TrieStore(DbProvider.StateDb, LimboLogs.Instance), BlockTree, SpecProvider, LimboLogs.Instance), TransactionPermissionContractVersions);
+                var trieStore = new ReadOnlyTrieStore(new TrieStore(DbProvider.StateDb, LimboLogs.Instance));
+                var txProcessorSource = new ReadOnlyTxProcessorSource(
+                    DbProvider,
+                    trieStore,
+                    BlockTree,
+                    SpecProvider,
+                    LimboLogs.Instance);
+                var transactionPermissionContract = new VersionedTransactionPermissionContract(
+                    new AbiEncoder(),
+                    _contractAddress, 1,
+                    txProcessorSource,
+                    TransactionPermissionContractVersions);
 
                 TxPermissionFilterCache = new PermissionBasedTxFilter.Cache();
                 PermissionBasedTxFilter = new PermissionBasedTxFilter(transactionPermissionContract, TxPermissionFilterCache, State, LimboLogs.Instance);
