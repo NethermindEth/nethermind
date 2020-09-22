@@ -35,15 +35,6 @@ using Nethermind.Db.Rocks.Config;
 using Nethermind.Runner.Analytics;
 using Nethermind.TxPool;
 using NUnit.Framework;
-using Nethermind.Seq.Config;
-using Nethermind.Runner.Hive;
-using Nethermind.Consensus.AuRa.Config;
-using Nethermind.Consensus;
-using Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo;
-using Nethermind.KeyStore.Config;
-using Nethermind.Stats;
-using Nethermind.Vault.Config;
-using Nethermind.Wallet;
 
 namespace Nethermind.Runner.Test
 {
@@ -55,7 +46,7 @@ namespace Nethermind.Runner.Test
         public void Setup()
         {
         }
-    
+
         [TestCase("*")]
         public void Required_config_files_exist(string configWildcard)
         {
@@ -66,43 +57,36 @@ namespace Nethermind.Runner.Test
             }
         }
 
-        [TestCase(typeof(IInitConfig))]
-        [TestCase(typeof(IBaselineConfig))]
-        [TestCase(typeof(ISyncConfig))]
-        [TestCase(typeof(IAuraConfig))]
-        [TestCase(typeof(IMiningConfig))]
-        [TestCase(typeof(INdmConfig))]
-        [TestCase(typeof(INdmMongoConfig))]
-        [TestCase(typeof(IDbConfig))]
-        [TestCase(typeof(IBloomConfig))]
-        [TestCase(typeof(IEthStatsConfig))]
-        [TestCase(typeof(IGrpcConfig))]
-        [TestCase(typeof(IJsonRpcConfig))]
-        [TestCase(typeof(IKeyStoreConfig))]
-        [TestCase(typeof(IMetricsConfig))]
-        [TestCase(typeof(IStatsConfig))]
-        [TestCase(typeof(IDiscoveryConfig))]
-        [TestCase(typeof(INetworkConfig))]
-        [TestCase(typeof(IKafkaConfig))]
-        [TestCase(typeof(IAnalyticsConfig))]
-        [TestCase(typeof(IHiveConfig))]
-        [TestCase(typeof(ISeqConfig))]
-        [TestCase(typeof(ITxPoolConfig))]
-        [TestCase(typeof(IVaultConfig))]
-        [TestCase(typeof(IWalletConfig))]
-        public void All_default_values_are_correct(Type configType)
+        [Test]
+        public void All_default_values_are_correct()
         {
-            ConfigProvider configProvider = new ConfigProvider();
+            var dlls = Directory.GetFiles(AppDomain.CurrentDomain.BaseDirectory, "Nethermind.*.dll");
+            foreach (string dll in dlls)
+            {
+                TestContext.WriteLine($"Verify defaults on {dll}");
+                Assembly assembly = Assembly.LoadFile(dll);
+                var configs =
+                    assembly.GetTypes().Where(t => typeof(IConfig).IsAssignableFrom(t) && t.IsInterface).ToArray();
+
+                foreach (Type configType in configs)
+                {
+                    TestContext.WriteLine($"  {configType.Name}");
+                    VerifyDefaults(configType);
+                }
+            }
+        }
+
+        private static void VerifyDefaults(Type configType)
+        {
             PropertyInfo[] properties = configType.GetProperties();
 
             Type implementationType = configType.Assembly.GetTypes().SingleOrDefault(t => t.IsClass && configType.IsAssignableFrom(t));
-            object instance = Activator.CreateInstance(implementationType);     
+            object instance = Activator.CreateInstance(implementationType);
 
-
-            foreach(PropertyInfo property in properties)
+            foreach (PropertyInfo property in properties)
             {
                 ConfigItemAttribute attribute = property.GetCustomAttribute<ConfigItemAttribute>();
-                if(attribute == null)
+                if (attribute == null)
                 {
                     //there are properties without attribute - we don't pay attention to them 
                     continue;
@@ -112,7 +96,7 @@ namespace Nethermind.Runner.Test
                 string actualValue;
 
                 object value = property.GetValue(instance);
-                if(value == null)
+                if (value == null)
                 {
                     actualValue = "null";
                 }
@@ -123,7 +107,7 @@ namespace Nethermind.Runner.Test
                 else if (value is int[])
                 {
                     //there is a case when we have default value as [4, 8, 8] and we need to compare this string to int[] so removing brackets and whitespaces
-                    int[] items = (int[])value;
+                    int[] items = (int[]) value;
                     expectedValue = expectedValue.Trim('[').Trim(']');
                     expectedValue = expectedValue.Replace(" ", "");
                     string[] numbers = expectedValue.Split(',');
@@ -132,6 +116,7 @@ namespace Nethermind.Runner.Test
                     {
                         Assert.AreEqual(items[i].ToString(), numbers[i]);
                     }
+
                     continue;
                 }
                 else
@@ -239,7 +224,7 @@ namespace Nethermind.Runner.Test
         {
             Test<IInitConfig, bool>(configWildcard, c => c.IsMining, true);
         }
-        
+
         [TestCase("baseline", true)]
         [TestCase("spaceneth", true)]
         [TestCase("^baseline ^spaceneth", false)]
@@ -254,7 +239,7 @@ namespace Nethermind.Runner.Test
         {
             Test<INdmConfig, bool>(configWildcard, c => c.Enabled, ndmEnabled);
         }
-        
+
         [TestCase("*")]
         public void Analytics_defaults(string configWildcard)
         {
@@ -263,7 +248,7 @@ namespace Nethermind.Runner.Test
             Test<IAnalyticsConfig, bool>(configWildcard, c => c.StreamTransactions, false);
             Test<IAnalyticsConfig, bool>(configWildcard, c => c.LogPublishedData, false);
         }
-        
+
         [TestCase("fast")]
         public void Caches_in_fast_blocks(string configWildcard)
         {
@@ -272,14 +257,14 @@ namespace Nethermind.Runner.Test
             Test<IDbConfig, bool>(configWildcard, c => c.BlocksDbCacheIndexAndFilterBlocks, false);
             Test<IDbConfig, bool>(configWildcard, c => c.BlockInfosDbCacheIndexAndFilterBlocks, false);
         }
-        
+
         [TestCase("^archive", false)]
         [TestCase("archive", false)]
         public void Cache_state_index(string configWildcard, bool expectedValue)
         {
             Test<IDbConfig, bool>(configWildcard, c => c.CacheIndexAndFilterBlocks, expectedValue);
         }
-        
+
         [TestCase("mainnet archive", 4096000000)]
         [TestCase("mainnet ^archive", 2048000000)]
         [TestCase("volta archive", 256000000)]
@@ -325,7 +310,7 @@ namespace Nethermind.Runner.Test
             Test<INetworkConfig, string>(configWildcard, c => c.LocalIp, (string) null);
             Test<INetworkConfig, int>(configWildcard, c => c.ActivePeersMaxCount, activePeers);
         }
-        
+
         [TestCase("*")]
         public void Network_diag_tracer_disabled_by_default(string configWildcard)
         {
@@ -333,8 +318,9 @@ namespace Nethermind.Runner.Test
         }
 
         [TestCase("mainnet", 2048)]
-        [TestCase("^baseline ^mainnet ^spaceneth ^volta ^sokol ^poacore", 1024)]
+        [TestCase("^baseline ^mainnet ^spaceneth ^volta ^energy ^sokol ^poacore", 1024)]
         [TestCase("baseline", 512)]
+        [TestCase("energy", 512)]
         [TestCase("volta", 512)]
         [TestCase("sokol", 512)]
         [TestCase("poacore", 512)]
@@ -446,9 +432,9 @@ namespace Nethermind.Runner.Test
             {
                 Test<IInitConfig, bool>(configWildcard, c => c.EnableUnsecuredDevWallet, false);
             }
-            
+
             Test<IInitConfig, string>(configWildcard, c => c.LogFileName, (cf, p) => p.Should().Be(cf.Replace("cfg", "logs.txt"), cf));
-            
+
             Test<IInitConfig, string>(configWildcard, c => c.PluginsDirectory, "plugins");
         }
 
@@ -474,13 +460,13 @@ namespace Nethermind.Runner.Test
             Test<IBloomConfig, bool>(configWildcard, c => c.MigrationStatistics, false);
             Test<IBloomConfig, int[]>(configWildcard, c => c.IndexLevelBucketSizes, (cf, p) => p.Should().BeEquivalentTo(levels ?? new BloomConfig().IndexLevelBucketSizes));
         }
-        
+
         [TestCase("*")]
         public void BufferResponses_rpc_is_off(string configWildcard)
         {
             Test<IJsonRpcConfig, bool>(configWildcard, c => c.BufferResponses, false);
         }
-        
+
         [TestCase("*")]
         public void Arena_order_is_default(string configWildcard)
         {
@@ -491,19 +477,19 @@ namespace Nethermind.Runner.Test
         public void No_additional_commas_in_config_files()
         {
             char pathSeparator = Path.AltDirectorySeparatorChar;
-            string configDirectory = $"{AppDomain.CurrentDomain.BaseDirectory}{pathSeparator}configs";          
+            string configDirectory = $"{AppDomain.CurrentDomain.BaseDirectory}{pathSeparator}configs";
 
             IEnumerable<string> filesPaths = Directory.EnumerateFiles(configDirectory);
 
             foreach (string filePath in filesPaths)
             {
                 string content = File.ReadAllText(filePath)
-                                        .Replace("\n", "")
-                                        .Replace(" ", "");
-                
+                    .Replace("\n", "")
+                    .Replace(" ", "");
+
                 IEnumerable<int> commaIndexes = AllIndexesOf(content, ",");
 
-                foreach(int commaIndex in commaIndexes)
+                foreach (int commaIndex in commaIndexes)
                 {
                     var nextChar = content.ElementAt(commaIndex + 1);
                     Assert.AreNotEqual('}', nextChar, $"Additional comma found in {filePath}");
@@ -546,6 +532,8 @@ namespace Nethermind.Runner.Test
             "goerli_archive.cfg",
             "goerli_beam.cfg",
             "goerli.cfg",
+            "kovan.cfg",
+            "kovan_archive.cfg",
             "mainnet_archive.cfg",
             "mainnet_beam.cfg",
             "mainnet.cfg",
@@ -563,6 +551,10 @@ namespace Nethermind.Runner.Test
             "spaceneth_persistent.cfg",
             "volta.cfg",
             "volta_archive.cfg",
+            "volta.cfg",
+            "volta_archive.cfg",
+            "energyweb.cfg",
+            "energyweb_archive.cfg",
         };
 
         [ConfigFileGroup("beam")]
@@ -593,6 +585,10 @@ namespace Nethermind.Runner.Test
         private IEnumerable<string> VoltaConfigs
             => Configs.Where(config => config.Contains("volta"));
 
+        [ConfigFileGroup("energy")]
+        private IEnumerable<string> EnergyConfigs
+            => Configs.Where(config => config.Contains("energy"));
+
         [ConfigFileGroup("xdai")]
         private IEnumerable<string> XDaiConfigs
             => Configs.Where(config => config.Contains("xdai"));
@@ -604,11 +600,15 @@ namespace Nethermind.Runner.Test
         [ConfigFileGroup("rinkeby")]
         private IEnumerable<string> RinkebyConfigs
             => Configs.Where(config => config.Contains("rinkeby"));
-        
+
+        [ConfigFileGroup("kovan")]
+        private IEnumerable<string> KovanConfigs
+            => Configs.Where(config => config.Contains("kovan"));
+
         [ConfigFileGroup("spaceneth")]
         private IEnumerable<string> SpacenethConfigs
             => Configs.Where(config => config.Contains("spaceneth"));
-        
+
         [ConfigFileGroup("baseline")]
         private IEnumerable<string> BaselineConfigs
             => Configs.Where(config => config.Contains("baseline"));
@@ -627,7 +627,12 @@ namespace Nethermind.Runner.Test
 
         [ConfigFileGroup("aura")]
         private IEnumerable<string> AuraConfigs
-            => PoaCoreConfigs.Union(SokolConfigs).Union(XDaiConfigs).Union(VoltaConfigs);
+            => PoaCoreConfigs
+                .Union(SokolConfigs)
+                .Union(XDaiConfigs)
+                .Union(VoltaConfigs)
+                .Union(EnergyConfigs)
+                .Union(KovanConfigs);
 
         [ConfigFileGroup("aura_non_validating")]
         private IEnumerable<string> AuraNonValidatingConfigs
