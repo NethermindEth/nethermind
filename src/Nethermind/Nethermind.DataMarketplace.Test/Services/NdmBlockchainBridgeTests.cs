@@ -76,7 +76,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             var code = new byte[] {0, 1, 2};
             var address = TestItem.AddressA;
             _stateReader.GetCode(Arg.Any<Keccak>(), address).Returns(code);
-            _blockchainBridge.BeamHead.Returns(_anyBlock);
+            _blockFinder.Head.Returns(_anyBlock);
             var result = await _ndmBridge.GetCodeAsync(address);
             _stateReader.Received().GetCode(_anyBlock.StateRoot, address);
             result.Should().BeSameAs(code);
