@@ -180,6 +180,7 @@ namespace Nethermind.Runner
                 _monitoringService.RegisterMetrics(typeof(Nethermind.Evm.Metrics));
                 _monitoringService.RegisterMetrics(typeof(Nethermind.JsonRpc.Metrics));
                 _monitoringService.RegisterMetrics(typeof(Nethermind.Trie.Metrics));
+                _monitoringService.RegisterMetrics(typeof(Nethermind.Trie.Pruning.Metrics));
                 _monitoringService.RegisterMetrics(typeof(Nethermind.Network.Metrics));
                 _monitoringService.RegisterMetrics(typeof(Nethermind.Synchronization.Metrics));
                 _monitoringService.RegisterMetrics(typeof(Nethermind.TxPool.Metrics));
