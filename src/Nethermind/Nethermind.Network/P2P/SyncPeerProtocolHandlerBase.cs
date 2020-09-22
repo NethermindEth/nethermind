@@ -371,6 +371,7 @@ namespace Nethermind.Network.P2P
 
                 if (sizeEstimate > SoftOutgoingMessageSizeLimit)
                 {
+                    Array.Resize(ref txReceipts, i + 1);
                     break;
                 }
             }
