@@ -29,7 +29,7 @@ namespace Nethermind.Blockchain.Receipts
         {
             for (int i = 0; i < receipts.Length; i++)
             {
-                receipts[i].IgnoreOutput = value;
+                receipts[i].SkipStateAndStatusInRlp = value;
             }
         }
     }

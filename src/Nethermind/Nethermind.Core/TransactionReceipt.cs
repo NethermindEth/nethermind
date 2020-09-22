@@ -51,7 +51,7 @@ namespace Nethermind.Core
         /// Ignores receipt output on RLP serialization.
         /// Output is either StateRoot or StatusCode depending on eip configuration.
         /// </summary>
-        public bool IgnoreOutput { get; set; }
+        public bool SkipStateAndStatusInRlp { get; set; }
     }
 
     public ref struct TxReceiptStructRef

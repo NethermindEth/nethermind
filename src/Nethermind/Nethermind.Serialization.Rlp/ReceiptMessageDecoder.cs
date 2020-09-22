@@ -47,7 +47,7 @@ namespace Nethermind.Serialization.Rlp
             else if (firstItem.Length >= 1 && firstItem.Length <= 4)
             {
                 txReceipt.GasUsedTotal = (long) firstItem.ToUnsignedBigInteger();
-                txReceipt.IgnoreOutput = true;
+                txReceipt.SkipStateAndStatusInRlp = true;
             }
             else
             {
@@ -95,7 +95,7 @@ namespace Nethermind.Serialization.Rlp
 
             bool isEip658Receipts = (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts;
 
-            if (!item.IgnoreOutput)
+            if (!item.SkipStateAndStatusInRlp)
             {
                 contentLength += isEip658Receipts 
                     ? Rlp.LengthOf(item.StatusCode) 
@@ -147,7 +147,7 @@ namespace Nethermind.Serialization.Rlp
             bool isEip658receipts = (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts;
 
             rlpStream.StartSequence(totalLength);
-            if (!item.IgnoreOutput)
+            if (!item.SkipStateAndStatusInRlp)
             {
                 if (isEip658receipts)
                 {
