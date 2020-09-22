@@ -1,0 +1,35 @@
+name: POSDAO Tests
+
+on:
+  push:
+    tags:
+    - '*'
+
+jobs:
+  posdao-tests:
+    name: Nethermind POSDAO Tests
+    runs-on: ubuntu-latest
+    steps:
+    - name: Installing Linux packages
+      run: |
+        sudo apt-get update
+        sudo apt-get install libsnappy-dev libc6-dev libc6
+    - name: Cloning Nethermind repo
+      run: |
+        git clone https://github.com/NethermindEth/nethermind.git --recursive
+        cd nethermind
+        git submodule update --init src/rocksdb-sharp src/int256 src/Dirichlet
+    - name: Cloning posdao-test repo from POA
+      run: |
+        git clone https://github.com/poanetwork/posdao-test-setup
+    - name: Building Nethermind binary
+      run: |
+        cd nethermind
+        mkdir bin
+        cd src/Nethermind
+        dotnet build Nethermind.sln -c Release
+        cp -r Nethermind.Runner/bin/Release/netcoreapp3.1/* /home/runner/work/nethermind/nethermind/nethermind/bin/
+    - name: Running POSDAO tests
+      run: |
+        cd posdao-test-setup
+        npm run all-nethermind-no-watcher
