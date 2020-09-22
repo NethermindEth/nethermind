@@ -117,6 +117,8 @@ namespace Nethermind.Synchronization.FastBlocks
             Activate();
         }
 
+        // Kovan has some wrong difficulty in early blocks before using proper AuRa difficulty calculation
+        // In order to support that we need to support another pivot
         private Dictionary<long, ulong>? GetTotalDifficultyOverrides()
         {
             long[] overrides = _syncConfig.TotalDifficultyOverrides;

@@ -249,23 +249,8 @@ namespace Nethermind.Blockchain.Processing
             return receipts;
         }
 
-        private Keccak GetReceiptsRoot(IReleaseSpec releaseSpec, TxReceipt[] txReceipts)
-        {
-            // Kovan hack:
-            if (!releaseSpec.ValidateReceipts)
-            {
-                txReceipts.SetIgnoreOutput(true);
-            }
-            
-            Keccak receiptsRoot = new ReceiptTrie(releaseSpec, txReceipts).RootHash;
-            
-            if (!releaseSpec.ValidateReceipts)
-            {
-                txReceipts.SetIgnoreOutput(false);
-            }
-
-            return receiptsRoot;
-        }
+        private Keccak GetReceiptsRoot(IReleaseSpec releaseSpec, TxReceipt[] txReceipts) => 
+            new ReceiptTrie(releaseSpec, txReceipts).RootHash;
 
         private void StoreTxReceipts(Block block, TxReceipt[] txReceipts)
         {
@@ -299,8 +284,7 @@ namespace Nethermind.Blockchain.Processing
                 TxRoot = bh.TxRoot,
                 TotalDifficulty = bh.TotalDifficulty,
                 AuRaStep = bh.AuRaStep,
-                AuRaSignature = bh.AuRaSignature,
-                ReceiptsRoot = bh.ReceiptsRoot,
+                AuRaSignature = bh.AuRaSignature
             };
 
             return new Block(header, suggestedBlock.Transactions, suggestedBlock.Ommers);
