@@ -106,26 +106,25 @@ namespace Nethermind.Synchronization.Blocks
             block.Body = body;
         }
 
-        public void SetReceipts(int index, TxReceipt[] receipts)
+        public bool TrySetReceipts(int index, TxReceipt[] receipts)
         {
             if (!_downloadReceipts)
             {
-                throw new InvalidOperationException($"Unexpected call to {nameof(SetReceipts)} when not downloading receipts");
+                throw new InvalidOperationException($"Unexpected call to {nameof(TrySetReceipts)} when not downloading receipts");
             }
 
             int mappedIndex = _indexMapping[index];
             Block block = Blocks[_indexMapping[index]];
             receipts ??= Array.Empty<TxReceipt>();
 
-            if (_receiptsRecovery.TryRecover(block, receipts))
+            bool result = _receiptsRecovery.TryRecover(block, receipts); 
+            if (result)
             {
                 ValidateReceipts(block, receipts);
                 ReceiptsForBlocks![mappedIndex] = receipts;
             }
-            else
-            {
-                throw new EthSyncException($"Missing receipts for block {block.ToString(Block.Format.Short)}.");
-            }
+
+            return result;
         }
 
         private void ValidateReceipts(Block block, TxReceipt[] blockReceipts)
