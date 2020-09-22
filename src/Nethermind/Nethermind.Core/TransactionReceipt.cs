@@ -47,7 +47,11 @@ namespace Nethermind.Core
         public LogEntry[] Logs { get; set; }
         public string Error { get; set; }
 
-        public bool IgnoreOutput { get; set; } = false;
+        /// <summary>
+        /// Ignores receipt output on RLP serialization.
+        /// Output is either StateRoot or StatusCode depending on eip configuration.
+        /// </summary>
+        public bool IgnoreOutput { get; set; }
     }
 
     public ref struct TxReceiptStructRef
