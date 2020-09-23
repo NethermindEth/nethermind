@@ -90,21 +90,24 @@ namespace Nethermind.Facade
         {
             get
             {
+                Block result;
                 if (_isBeamSyncing)
                 {
                     bool headIsGenesis = _blockTree.Head?.IsGenesis ?? false;
 
                     /*
-                     * when we are in the process of synchronising state
+                     * when we are in the process of synchronising state in beam sync
                      * head remains Genesis block
                      * and we want to allow users to use the API
                      */
-                    return headIsGenesis ? _blockTree.BestSuggestedBody : _blockTree.Head;
+                    result = headIsGenesis ? _blockTree.BestSuggestedBody : _blockTree.Head;
                 }
                 else
                 {
-                    return _blockTree.Head;
+                    result = _blockTree.Head;    
                 }
+                
+                return result;
             }
         }
 
