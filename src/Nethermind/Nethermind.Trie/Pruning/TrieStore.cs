@@ -267,6 +267,8 @@ namespace Nethermind.Trie.Pruning
                 _trieNodeCache.Remove(keccak);
                 Metrics.PrunedNodesCount++;
             }
+            
+            Metrics.CachedNodesCount = _trieNodeCache.Count;
         }
 
         public void ClearCache()
@@ -340,6 +342,7 @@ namespace Nethermind.Trie.Pruning
         {
             Debug.Assert(trieNode.Keccak != null, "Cannot store in cache nodes without resolved key.");
             _trieNodeCache[trieNode.Keccak!] = trieNode;
+            Metrics.CachedNodesCount = _trieNodeCache.Count;
         }
 
         private void RemoveOldBlock(BlockCommitPackage commitPackage)
