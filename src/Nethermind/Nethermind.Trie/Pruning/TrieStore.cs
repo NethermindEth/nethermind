@@ -195,7 +195,6 @@ namespace Nethermind.Trie.Pruning
             {
                 // TODO: static NodeCache in PatriciaTrie stays for now to simplify the PR
                 rlp = PatriciaTree.NodeCache.Get(keccak);
-                Metrics.LoadedFromRlpCacheNodesCount++;
             }
 
             if (rlp is null)
@@ -208,6 +207,10 @@ namespace Nethermind.Trie.Pruning
 
                 Metrics.LoadedFromDbNodesCount++;
                 PatriciaTree.NodeCache.Set(keccak, rlp);
+            }
+            else
+            {
+                Metrics.LoadedFromRlpCacheNodesCount++;
             }
 
             return rlp;
