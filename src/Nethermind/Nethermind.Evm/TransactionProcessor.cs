@@ -124,7 +124,7 @@ namespace Nethermind.Evm
                 // hacky fix for the potential recovery issue
                 if (transaction.Signature != null)
                 {
-                    transaction.SenderAddress = _ecdsa.RecoverAddress(transaction);
+                    transaction.SenderAddress = _ecdsa.RecoverAddress(transaction, !spec.ValidateChainId);
                 }
 
                 if (sender != transaction.SenderAddress)

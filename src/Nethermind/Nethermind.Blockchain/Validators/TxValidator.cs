@@ -77,19 +77,13 @@ namespace Nethermind.Blockchain.Validators
             {
                 return false;
             }
-
-            if (!spec.ValidateChainId)
-            {
-                return true;
-            }
             
-            if (!spec.IsEip155Enabled)
+            if (spec.IsEip155Enabled)
             {
-                return signature.V == 27 || signature.V == 28;
+                return (signature.ChainId ?? _chainIdValue) == _chainIdValue;
             }
 
-            return (signature.ChainId ?? _chainIdValue) == _chainIdValue;
-
+            return !spec.ValidateChainId || (signature.V == 27 || signature.V == 28);
         }
     }
 }
