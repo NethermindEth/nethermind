@@ -362,8 +362,16 @@ namespace Nethermind.Trie.Pruning
             if (shouldPersistSnapshot)
             {
                 if(_logger.IsDebug) _logger.Debug($"Persisting from root {commitPackage.Root} in {commitPackage.BlockNumber}");
+                
+                Stopwatch stopwatch = Stopwatch.StartNew();
                 commitPackage.Root?.PersistRecursively(tn => Persist(tn, commitPackage.BlockNumber), this, _logger);
+                stopwatch.Stop();
+                Metrics.SnapshotPersistenceTime = stopwatch.ElapsedMilliseconds;
+                
+                stopwatch.Restart();
                 Prune(commitPackage.BlockNumber); // for now can only prune on snapshot?
+                stopwatch.Stop();
+                Metrics.PruningTime = stopwatch.ElapsedMilliseconds;
             }
 
             if (_logger.IsDebug)

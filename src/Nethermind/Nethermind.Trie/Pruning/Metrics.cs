@@ -34,5 +34,9 @@ namespace Nethermind.Trie.Pruning
         public static long LoadedFromRlpCacheNodesCount { get; set; }
         
         public static long ReplacedNodesCount { get; set; }
+        
+        public static long SnapshotPersistenceTime { get; set; }
+        
+        public static long PruningTime { get; set; }
     }
 }
