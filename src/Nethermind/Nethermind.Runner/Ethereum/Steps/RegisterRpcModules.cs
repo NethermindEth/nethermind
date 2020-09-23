@@ -36,6 +36,7 @@ using Nethermind.Baseline.Config;
 using Nethermind.Baseline.JsonRpc;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Db;
 using Nethermind.Runner.Ethereum.Api;
 using Nethermind.State;
@@ -101,6 +102,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _api.ReceiptFinder,
                     _api.SpecProvider,
                     rpcConfig,
+                    _api.Config<ISyncConfig>(),
                     _api.BloomStorage,
                     _api.LogManager,
                     initConfig.IsMining);

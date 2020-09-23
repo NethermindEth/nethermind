@@ -107,7 +107,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 SpecProvider,
                 LimboLogs.Instance);
             
-            Bridge ??= new BlockchainBridge(processingEnv, TxPool, ReceiptStorage, filterStore, filterManager, EthereumEcdsa, NullBloomStorage.Instance, Timestamper, LimboLogs.Instance, false);
+            Bridge ??= new BlockchainBridge(processingEnv, TxPool, ReceiptStorage, filterStore, filterManager, EthereumEcdsa, NullBloomStorage.Instance, Timestamper, LimboLogs.Instance, false, false);
             BlockFinder ??= BlockTree;
             
             ITxSigner txSigner = new WalletTxSigner(TestWallet, specProvider?.ChainId ?? 0);

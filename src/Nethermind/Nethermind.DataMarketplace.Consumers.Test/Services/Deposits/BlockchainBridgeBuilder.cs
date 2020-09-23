@@ -66,6 +66,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
                 NullBloomStorage.Instance,
                 Timestamper.Default,
                 LimboLogs.Instance,
+                false,
                 false);
             
             WalletTxSigner txSigner = new WalletTxSigner(wallet, ChainId.Mainnet);
