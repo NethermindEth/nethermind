@@ -972,7 +972,7 @@ namespace Nethermind.Synchronization.Test
 
         [TestCase(32)]
         [TestCase(1)]
-        public async Task Throws_on_transaction_count_different_than_receipts_count_in_block(int threshold)
+        public async Task Does_not_throw_on_transaction_count_different_than_receipts_count_in_block(int threshold)
         {
             InMemoryReceiptStorage inMemoryReceiptStorage = new InMemoryReceiptStorage();
             BlockDownloader downloader = new BlockDownloader(_feed, _peerPool, _blockTree, Always.Valid, Always.Valid, NullSyncReport.Instance, inMemoryReceiptStorage, RopstenSpecProvider.Instance, LimboLogs.Instance);
@@ -998,7 +998,7 @@ namespace Nethermind.Synchronization.Test
             syncPeer.HeadNumber.Returns(2);
 
             Func<Task> action = async () => await downloader.DownloadBlocks(peerInfo, new BlocksRequest(DownloaderOptions.WithReceipts), CancellationToken.None);
-            action.Should().Throw<EthSyncException>();
+            action.Should().NotThrow();
         }
 
         [TestCase(32)]

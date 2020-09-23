@@ -419,9 +419,18 @@ namespace Nethermind.Synchronization.Blocks
                 await request.ContinueWith(t => DownloadFailHandler(request, "receipts"));
 
                 TxReceipt[][] result = request.Result;
+                
+                int validResponsesCount = 0;
                 for (int i = 0; i < result.Length; i++)
                 {
-                    context.SetReceipts(i + offset, result[i]);
+                    if(context.TrySetReceipts(i + offset, result[i]))
+                    {
+                        validResponsesCount++;
+                    }
+                    else
+                    {
+                        break;
+                    }
                 }
 
                 if (result.Length == 0)
