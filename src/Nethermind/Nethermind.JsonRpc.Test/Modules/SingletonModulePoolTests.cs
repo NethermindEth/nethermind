@@ -64,6 +64,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 new InMemoryReceiptStorage(), 
                 specProvider, 
                 new JsonRpcConfig(),
+                new SyncConfig(),
                 NullBloomStorage.Instance,
                 LimboLogs.Instance, false);
         }

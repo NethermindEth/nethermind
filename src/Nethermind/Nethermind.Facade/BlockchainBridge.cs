@@ -48,6 +48,7 @@ namespace Nethermind.Facade
         private readonly IStateReader _stateReader;
         private readonly IEthereumEcdsa _ecdsa;
         private readonly ITimestamper _timestamper;
+        private readonly bool _isBeamSyncing;
         private readonly IFilterManager _filterManager;
         private readonly IStateProvider _stateProvider;
         private readonly IReceiptFinder _receiptFinder;
@@ -65,6 +66,7 @@ namespace Nethermind.Facade
             ITimestamper timestamper,
             ILogManager logManager,
             bool isMining,
+            bool isBeamSyncing,
             int findLogBlockDepthLimit = 1000,
             CancellationToken cancellationToken = default(CancellationToken))
         {
@@ -79,6 +81,7 @@ namespace Nethermind.Facade
             _filterManager = filterManager ?? throw new ArgumentException(nameof(filterManager));
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
+            _isBeamSyncing = isBeamSyncing;
             IsMining = isMining;
             _logFinder = new LogFinder(_blockTree, _receiptFinder, bloomStorage, logManager, new ReceiptsRecovery(), findLogBlockDepthLimit);
         }
@@ -87,14 +90,21 @@ namespace Nethermind.Facade
         {
             get
             {
-                bool headIsGenesis = _blockTree.Head?.IsGenesis ?? false;
+                if (_isBeamSyncing)
+                {
+                    bool headIsGenesis = _blockTree.Head?.IsGenesis ?? false;
 
-                /*
-                 * when we are in the process of synchronising state
-                 * head remains Genesis block
-                 * and we want to allow users to use the API
-                 */
-                return headIsGenesis ? _blockTree.BestSuggestedBody : _blockTree.Head;
+                    /*
+                     * when we are in the process of synchronising state
+                     * head remains Genesis block
+                     * and we want to allow users to use the API
+                     */
+                    return headIsGenesis ? _blockTree.BestSuggestedBody : _blockTree.Head;
+                }
+                else
+                {
+                    return _blockTree.Head;
+                }
             }
         }
 

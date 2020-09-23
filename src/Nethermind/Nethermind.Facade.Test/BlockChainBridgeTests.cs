@@ -92,6 +92,7 @@ namespace Nethermind.Facade.Test
                 _bloomStorage,
                 _timestamper,
                 LimboLogs.Instance,
+                false,
                 false);
         }
 
