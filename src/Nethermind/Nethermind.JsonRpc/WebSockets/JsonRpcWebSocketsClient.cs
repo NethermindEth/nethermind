@@ -47,7 +47,7 @@ namespace Nethermind.JsonRpc.WebSockets
         public async Task ReceiveAsync(Memory<byte> data)
         {
             Stopwatch stopwatch = Stopwatch.StartNew();
-            JsonRpcResult result = await _jsonRpcProcessor.ProcessAsync(Encoding.UTF8.GetString(data.ToArray()));
+            using JsonRpcResult result = await _jsonRpcProcessor.ProcessAsync(Encoding.UTF8.GetString(data.ToArray()));
             if (result.IsCollection)
             {
                 await SendRawAsync(_jsonSerializer.Serialize(result.Responses));
