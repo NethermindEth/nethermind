@@ -257,18 +257,19 @@ namespace Nethermind.Trie.Pruning
                 {
                     if (_logger.IsTrace) _logger.Trace($"Removing persisted {value} from memory.");
                     toRemove.Add(key);
+                    Metrics.PrunedPersistedNodesCount++;
                 }
                 else if (HasBeenRemoved(value, snapshotId))
                 {
                     if (_logger.IsTrace) _logger.Trace($"Removing {value} from memory (no longer referenced).");
                     toRemove.Add(key);
+                    Metrics.PrunedTransientNodesCount++;
                 }
             }
 
             foreach (Keccak keccak in toRemove)
             {
                 _trieNodeCache.Remove(keccak);
-                Metrics.PrunedNodesCount++;
             }
             
             Metrics.CachedNodesCount = _trieNodeCache.Count;

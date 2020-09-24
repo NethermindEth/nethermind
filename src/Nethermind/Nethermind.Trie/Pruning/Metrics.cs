@@ -25,7 +25,9 @@ namespace Nethermind.Trie.Pruning
         
         public static long CommittedNodesCount { get; set; }
         
-        public static long PrunedNodesCount { get; set; }
+        public static long PrunedPersistedNodesCount { get; set; }
+        
+        public static long PrunedTransientNodesCount { get; set; }
         
         public static long LoadedFromDbNodesCount { get; set; }
         
