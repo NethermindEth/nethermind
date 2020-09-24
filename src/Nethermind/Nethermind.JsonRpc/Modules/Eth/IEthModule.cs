@@ -144,7 +144,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         [JsonRpcMethod(IsImplemented = true, Description = "Reads filter changes", IsReadOnly = true)]
         ResultWrapper<IEnumerable<FilterLog>> eth_getFilterLogs(UInt256 filterId);
         
-        [JsonRpcMethod(IsImplemented = true, Description = "Reads logs", IsReadOnly = true)]
+        [JsonRpcMethod(IsImplemented = true, Description = "Reads logs", IsReadOnly = false)]
         ResultWrapper<IEnumerable<FilterLog>> eth_getLogs(Filter filter);
         
         [JsonRpcMethod(Description = "", IsImplemented = false, IsReadOnly = true)]

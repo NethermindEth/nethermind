@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -35,6 +36,7 @@ namespace Nethermind.Blockchain.Find
         private readonly int _maxBlockDepth;
         private readonly IBlockFinder _blockFinder;
         private readonly ILogger _logger;
+        private int _parallelExecutions = 0;
 
         public LogFinder(IBlockFinder blockFinder, IReceiptFinder receiptFinder, IBloomStorage bloomStorage, ILogManager logManager, IReceiptsRecovery receiptsRecovery, int maxBlockDepth = 1000)
         {
@@ -87,20 +89,41 @@ namespace Nethermind.Blockchain.Find
 
             IEnumerable<long> FilterBlocks(LogFilter f, long from, long to)
             {
-                var enumeration = _bloomStorage.GetBlooms(from, to);
-                foreach (var bloom in enumeration)
+                try
                 {
-                    if (f.Matches(bloom) && enumeration.TryGetBlockNumber(out var blockNumber))
+                    var enumeration = _bloomStorage.GetBlooms(from, to);
+                    foreach (var bloom in enumeration)
                     {
-                        yield return blockNumber;
+                        if (f.Matches(bloom) && enumeration.TryGetBlockNumber(out var blockNumber))
+                        {
+                            yield return blockNumber;
+                        }
                     }
+                }
+                finally
+                {
+                    Interlocked.Decrement(ref _parallelExecutions);
                 }
             }
 
-            return FilterBlocks(filter, fromBlock.Number, toBlock.Number)
-                .AsParallel() // can yield big performance improvements
-                .AsOrdered() // we want to keep block order
-                .WithDegreeOfParallelism(1)
+            IEnumerable<long> filterBlocks = FilterBlocks(filter, fromBlock.Number, toBlock.Number);
+
+            // we want to support one parallel eth_getLogs call for maximum performance
+            // we don't want support more than one eth_getLogs call so we don't starve CPU and threads
+            int parallelExecutions = Interlocked.Increment(ref _parallelExecutions);
+            if (parallelExecutions == 1)
+            {
+                if (_logger.IsTrace) _logger.Trace("Allowing parallel eth_getLogs");
+                filterBlocks = filterBlocks.AsParallel() // can yield big performance improvements
+                    .AsOrdered() // we want to keep block order
+                    .WithDegreeOfParallelism(Environment.ProcessorCount); // explicitly provide number of threads, as we increased ThreadPool by this threshold 
+            }
+            else
+            {
+                if (_logger.IsTrace) _logger.Trace($"Not allowing parallel eth_getLogs, already parallel executions: {parallelExecutions - 1}");
+            }
+            
+            return filterBlocks
                 .SelectMany(blockNumber => FindLogsInBlock(filter, FindBlockHash(blockNumber), blockNumber));
         }
 

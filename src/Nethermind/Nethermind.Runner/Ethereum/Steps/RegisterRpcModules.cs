@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Cli.Modules;
@@ -91,6 +92,10 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
             else
             {
+                // lets add threads to support 1 parallel eth_getLogs
+                ThreadPool.GetMinThreads(out var workerThreads, out var completionPortThreads);
+                ThreadPool.SetMinThreads(workerThreads + Environment.ProcessorCount, completionPortThreads);
+                
                 EthModuleFactory ethModuleFactory = new EthModuleFactory(
                     _api.DbProvider,
                     _api.TxPool,
