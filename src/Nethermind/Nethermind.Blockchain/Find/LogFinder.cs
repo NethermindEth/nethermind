@@ -56,7 +56,7 @@ namespace Nethermind.Blockchain.Find
             _receiptsRecovery = receiptsRecovery ?? throw new ArgumentNullException(nameof(receiptsRecovery));
             _logger = logManager?.GetClassLogger<LogFinder>() ?? throw new ArgumentNullException(nameof(logManager));
             _maxBlockDepth = maxBlockDepth;
-            _rpcConfigGetLogsThreads = rpcConfigGetLogsThreads ?? Math.Max(1, Environment.ProcessorCount / 2);
+            _rpcConfigGetLogsThreads = rpcConfigGetLogsThreads ?? Math.Max(1, Environment.ProcessorCount / 4);
         }
 
         public IEnumerable<FilterLog> FindLogs(LogFilter filter)
