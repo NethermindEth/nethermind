@@ -31,6 +31,7 @@
         <EmbeddedResource Include="Contracts\RegisterContract.json" />
         <EmbeddedResource Include="Contracts\ReportingValidatorContract.json" />
         <EmbeddedResource Include="Contracts\RewardContract.json" />
+        <EmbeddedResource Include="Contracts\TxPriority.json" />
         <EmbeddedResource Include="Contracts\ValidatorContract.json" />
         <EmbeddedResource Include="Contracts\TransactionPermissionContractV1.json" />
         <EmbeddedResource Include="Contracts\TransactionPermissionContractV2.json" />
