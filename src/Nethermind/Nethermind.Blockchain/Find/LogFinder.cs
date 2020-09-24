@@ -31,6 +31,7 @@ namespace Nethermind.Blockchain.Find
     public class LogFinder : ILogFinder
     {
         private static int ParallelExecutions = 0;
+        private static int ParallelLock = 0;
         
         private readonly IReceiptFinder _receiptFinder;
         private readonly IBloomStorage _bloomStorage;
@@ -88,7 +89,7 @@ namespace Nethermind.Blockchain.Find
                 return blockHash;
             }
 
-            IEnumerable<long> FilterBlocks(LogFilter f, long from, long to)
+            IEnumerable<long> FilterBlocks(LogFilter f, long @from, long to, bool runParallel)
             {
                 try
                 {
@@ -103,26 +104,32 @@ namespace Nethermind.Blockchain.Find
                 }
                 finally
                 {
+                    if (runParallel)
+                    {
+                        Interlocked.CompareExchange(ref ParallelLock, 0, 1);
+                    }
                     Interlocked.Decrement(ref ParallelExecutions);
                 }
             }
 
-            IEnumerable<long> filterBlocks = FilterBlocks(filter, fromBlock.Number, toBlock.Number);
-            ThreadPool.GetAvailableThreads(out var workerThreads, out var completionPortThreads);
-
             // we want to support one parallel eth_getLogs call for maximum performance
             // we don't want support more than one eth_getLogs call so we don't starve CPU and threads
-            int parallelExecutions = Interlocked.Increment(ref ParallelExecutions);
-            if (parallelExecutions == 1)
+            int parallelLock = Interlocked.CompareExchange(ref ParallelLock, 1, 0);
+            int parallelExecutions = Interlocked.Increment(ref ParallelExecutions) - 1;
+            bool canRunParallel = parallelLock == 0;
+            
+            IEnumerable<long> filterBlocks = FilterBlocks(filter, fromBlock.Number, toBlock.Number, canRunParallel);
+
+            if (canRunParallel)
             {
-                if (_logger.IsInfo) _logger.Info($"Allowing parallel eth_getLogs. Available threads: {workerThreads}, {completionPortThreads}");
+                if (_logger.IsInfo) _logger.Info($"Allowing parallel eth_getLogs, already parallel executions: {parallelExecutions}.");
                 filterBlocks = filterBlocks.AsParallel() // can yield big performance improvements
                     .AsOrdered() // we want to keep block order
                     .WithDegreeOfParallelism(Environment.ProcessorCount); // explicitly provide number of threads, as we increased ThreadPool by this threshold 
             }
             else
             {
-                if (_logger.IsInfo) _logger.Info($"Not allowing parallel eth_getLogs, already parallel executions: {parallelExecutions - 1}. Available threads: {workerThreads}, {completionPortThreads}");
+                if (_logger.IsInfo) _logger.Info($"Not allowing parallel eth_getLogs, already parallel executions: {parallelExecutions}.");
             }
             
             return filterBlocks
