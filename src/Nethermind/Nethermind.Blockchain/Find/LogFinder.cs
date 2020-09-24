@@ -108,20 +108,21 @@ namespace Nethermind.Blockchain.Find
             }
 
             IEnumerable<long> filterBlocks = FilterBlocks(filter, fromBlock.Number, toBlock.Number);
+            ThreadPool.GetAvailableThreads(out var workerThreads, out var completionPortThreads);
 
             // we want to support one parallel eth_getLogs call for maximum performance
             // we don't want support more than one eth_getLogs call so we don't starve CPU and threads
             int parallelExecutions = Interlocked.Increment(ref ParallelExecutions);
             if (parallelExecutions == 1)
             {
-                if (_logger.IsInfo) _logger.Info("Allowing parallel eth_getLogs");
+                if (_logger.IsInfo) _logger.Info($"Allowing parallel eth_getLogs. Available threads: {workerThreads}, {completionPortThreads}");
                 filterBlocks = filterBlocks.AsParallel() // can yield big performance improvements
                     .AsOrdered() // we want to keep block order
                     .WithDegreeOfParallelism(Environment.ProcessorCount); // explicitly provide number of threads, as we increased ThreadPool by this threshold 
             }
             else
             {
-                if (_logger.IsInfo) _logger.Info($"Not allowing parallel eth_getLogs, already parallel executions: {parallelExecutions - 1}");
+                if (_logger.IsInfo) _logger.Info($"Not allowing parallel eth_getLogs, already parallel executions: {parallelExecutions - 1}. Available threads: {workerThreads}, {completionPortThreads}");
             }
             
             return filterBlocks
