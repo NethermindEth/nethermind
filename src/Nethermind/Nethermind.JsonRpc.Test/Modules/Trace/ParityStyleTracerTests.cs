@@ -74,7 +74,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             
             BlockProcessor blockProcessor = new BlockProcessor(specProvider, Always.Valid, NoBlockRewards.Instance, transactionProcessor, stateDb, codeDb, stateProvider, storageProvider, NullTxPool.Instance, NullReceiptStorage.Instance, LimboLogs.Instance);
             
-            var txRecovery = new TxSignaturesRecoveryStep(new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance), NullTxPool.Instance, LimboLogs.Instance);
+            var txRecovery = new TxSignaturesRecoveryStep(new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance), NullTxPool.Instance, specProvider, LimboLogs.Instance);
             _processor = new BlockchainProcessor(_blockTree, blockProcessor, txRecovery, LimboLogs.Instance, BlockchainProcessor.Options.NoReceipts);
 
             Block genesis = Build.A.Block.Genesis.TestObject;

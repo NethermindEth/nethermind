@@ -237,7 +237,7 @@ namespace Nethermind.Blockchain.Processing
             IReleaseSpec releaseSpec = _specProvider.GetSpec(block.Number);
             TxReceipt[] receipts = ProcessTransactions(block, options, blockTracer);
             
-            block.Header.ReceiptsRoot = GetReceiptsRoot(releaseSpec, receipts);
+            block.Header.ReceiptsRoot = receipts.GetReceiptsRoot(releaseSpec, block.ReceiptsRoot);
             ApplyMinerRewards(block, blockTracer);
 
             _stateProvider.Commit(releaseSpec);
@@ -248,9 +248,6 @@ namespace Nethermind.Blockchain.Processing
 
             return receipts;
         }
-
-        private Keccak GetReceiptsRoot(IReleaseSpec releaseSpec, TxReceipt[] txReceipts) => 
-            new ReceiptTrie(releaseSpec, txReceipts).RootHash;
 
         private void StoreTxReceipts(Block block, TxReceipt[] txReceipts)
         {
@@ -284,7 +281,8 @@ namespace Nethermind.Blockchain.Processing
                 TxRoot = bh.TxRoot,
                 TotalDifficulty = bh.TotalDifficulty,
                 AuRaStep = bh.AuRaStep,
-                AuRaSignature = bh.AuRaSignature
+                AuRaSignature = bh.AuRaSignature,
+                ReceiptsRoot = bh.ReceiptsRoot
             };
 
             return new Block(header, suggestedBlock.Transactions, suggestedBlock.Ommers);
