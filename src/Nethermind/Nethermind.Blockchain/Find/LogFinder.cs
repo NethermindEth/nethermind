@@ -37,10 +37,18 @@ namespace Nethermind.Blockchain.Find
         private readonly IBloomStorage _bloomStorage;
         private readonly IReceiptsRecovery _receiptsRecovery;
         private readonly int _maxBlockDepth;
+        private readonly int _rpcConfigGetLogsThreads;
         private readonly IBlockFinder _blockFinder;
         private readonly ILogger _logger;
         
-        public LogFinder(IBlockFinder blockFinder, IReceiptFinder receiptFinder, IBloomStorage bloomStorage, ILogManager logManager, IReceiptsRecovery receiptsRecovery, int maxBlockDepth = 1000)
+        public LogFinder(
+            IBlockFinder blockFinder, 
+            IReceiptFinder receiptFinder, 
+            IBloomStorage bloomStorage, 
+            ILogManager logManager, 
+            IReceiptsRecovery receiptsRecovery, 
+            int maxBlockDepth = 1000, 
+            int? rpcConfigGetLogsThreads = null)
         {
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
             _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
@@ -48,6 +56,7 @@ namespace Nethermind.Blockchain.Find
             _receiptsRecovery = receiptsRecovery ?? throw new ArgumentNullException(nameof(receiptsRecovery));
             _logger = logManager?.GetClassLogger<LogFinder>() ?? throw new ArgumentNullException(nameof(logManager));
             _maxBlockDepth = maxBlockDepth;
+            _rpcConfigGetLogsThreads = rpcConfigGetLogsThreads ?? Math.Max(1, Environment.ProcessorCount / 2);
         }
 
         public IEnumerable<FilterLog> FindLogs(LogFilter filter)
@@ -125,7 +134,7 @@ namespace Nethermind.Blockchain.Find
                 if (_logger.IsTrace) _logger.Trace($"Allowing parallel eth_getLogs, already parallel executions: {parallelExecutions}.");
                 filterBlocks = filterBlocks.AsParallel() // can yield big performance improvements
                     .AsOrdered() // we want to keep block order
-                    .WithDegreeOfParallelism(Math.Max(1, Environment.ProcessorCount - 2)); // explicitly provide number of threads, as we increased ThreadPool by this threshold 
+                    .WithDegreeOfParallelism(_rpcConfigGetLogsThreads); // explicitly provide number of threads, as we increased ThreadPool by this threshold
             }
             else
             {

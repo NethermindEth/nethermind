@@ -42,5 +42,6 @@ namespace Nethermind.JsonRpc
         public int ReportIntervalSeconds { get; set; } = 300;
         public bool BufferResponses { get; set; }
         public string CallsFilterFilePath { get; set; } = "Data/jsonrpc.filter";
+        public int? GetLogsThreads { get; set; }
     }
 }
