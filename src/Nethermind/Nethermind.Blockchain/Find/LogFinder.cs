@@ -30,14 +30,15 @@ namespace Nethermind.Blockchain.Find
 {
     public class LogFinder : ILogFinder
     {
+        private static int ParallelExecutions = 0;
+        
         private readonly IReceiptFinder _receiptFinder;
         private readonly IBloomStorage _bloomStorage;
         private readonly IReceiptsRecovery _receiptsRecovery;
         private readonly int _maxBlockDepth;
         private readonly IBlockFinder _blockFinder;
         private readonly ILogger _logger;
-        private int _parallelExecutions = 0;
-
+        
         public LogFinder(IBlockFinder blockFinder, IReceiptFinder receiptFinder, IBloomStorage bloomStorage, ILogManager logManager, IReceiptsRecovery receiptsRecovery, int maxBlockDepth = 1000)
         {
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
@@ -102,7 +103,7 @@ namespace Nethermind.Blockchain.Find
                 }
                 finally
                 {
-                    Interlocked.Decrement(ref _parallelExecutions);
+                    Interlocked.Decrement(ref ParallelExecutions);
                 }
             }
 
@@ -110,7 +111,7 @@ namespace Nethermind.Blockchain.Find
 
             // we want to support one parallel eth_getLogs call for maximum performance
             // we don't want support more than one eth_getLogs call so we don't starve CPU and threads
-            int parallelExecutions = Interlocked.Increment(ref _parallelExecutions);
+            int parallelExecutions = Interlocked.Increment(ref ParallelExecutions);
             if (parallelExecutions == 1)
             {
                 if (_logger.IsInfo) _logger.Info("Allowing parallel eth_getLogs");
