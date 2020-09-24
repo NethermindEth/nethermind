@@ -30,19 +30,27 @@ namespace Nethermind.JsonRpc.WebSockets
 
         private readonly JsonRpcProcessor _jsonRpcProcessor;
         private readonly IJsonSerializer _jsonSerializer;
+        private readonly IJsonRpcLocalStats _jsonRpcLocalStats;
 
         public string Name { get; } = "json-rpc";
 
-        public JsonRpcWebSocketsModule(JsonRpcProcessor jsonRpcProcessor, IJsonSerializer jsonSerializer)
+        public JsonRpcWebSocketsModule(
+            JsonRpcProcessor jsonRpcProcessor,
+            IJsonSerializer jsonSerializer,
+            IJsonRpcLocalStats jsonRpcLocalStats)
         {
             _jsonRpcProcessor = jsonRpcProcessor;
             _jsonSerializer = jsonSerializer;
+            _jsonRpcLocalStats = jsonRpcLocalStats;
         }
 
         public IWebSocketsClient CreateClient(WebSocket webSocket, string client)
         {
-            var socketsClient = new JsonRpcWebSocketsClient(new WebSocketsClient(webSocket, client, _jsonSerializer),
-                _jsonRpcProcessor, _jsonSerializer);
+            var socketsClient = new JsonRpcWebSocketsClient(
+                new WebSocketsClient(webSocket, client, _jsonSerializer),
+                _jsonRpcProcessor, 
+                _jsonSerializer,
+                _jsonRpcLocalStats);
             _clients.TryAdd(socketsClient.Id, socketsClient);
 
             return socketsClient;

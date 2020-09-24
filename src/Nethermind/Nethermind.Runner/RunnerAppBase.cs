@@ -157,7 +157,8 @@ namespace Nethermind.Runner
                 : (IRpcModuleProvider)NullModuleProvider.Instance;
             EthereumJsonSerializer jsonSerializer = new EthereumJsonSerializer();
             WebSocketsManager webSocketsManager = new WebSocketsManager();
-
+            JsonRpcLocalStats jsonRpcLocalStats = new JsonRpcLocalStats(Timestamper.Default, jsonRpcConfig, logManager);
+            
             if (seqConfig.MinLevel != "Off")
             {
                 if (_logger?.IsInfo ?? false)
@@ -277,12 +278,13 @@ namespace Nethermind.Runner
                     new JsonRpcProcessor(jsonRpcService, jsonSerializer, jsonRpcConfig, fileSystem, logManager);
                 if (initConfig.WebSocketsEnabled)
                 {
-                    webSocketsManager.AddModule(new JsonRpcWebSocketsModule(jsonRpcProcessor, jsonSerializer), true);
+                    webSocketsManager.AddModule(new JsonRpcWebSocketsModule(jsonRpcProcessor, jsonSerializer, jsonRpcLocalStats), true);
                 }
 
                 Bootstrap.Instance.JsonRpcService = jsonRpcService;
                 Bootstrap.Instance.LogManager = logManager;
                 Bootstrap.Instance.JsonSerializer = jsonSerializer;
+                Bootstrap.Instance.JsonRpcLocalStats = jsonRpcLocalStats;
                 _jsonRpcRunner = new JsonRpcRunner(
                     configProvider,
                     rpcModuleProvider,

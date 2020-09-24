@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Text;
 using Microsoft.AspNetCore.Builder;
@@ -49,7 +50,7 @@ namespace Nethermind.Runner
                 p => p.AllowAnyMethod().AllowAnyHeader().WithOrigins(corsOrigins)));
         }
 
-        public void Configure(IApplicationBuilder app, IWebHostEnvironment env, IJsonRpcProcessor jsonRpcProcessor, IJsonRpcService jsonRpcService)
+        public void Configure(IApplicationBuilder app, IWebHostEnvironment env, IJsonRpcProcessor jsonRpcProcessor, IJsonRpcService jsonRpcService, IJsonRpcLocalStats jsonRpcLocalStats)
         {
             _jsonSerializer = CreateJsonSerializer();
             
@@ -84,6 +85,7 @@ namespace Nethermind.Runner
                 }
                 else if (ctx.Connection.LocalPort == jsonRpcConfig.Port && ctx.Request.Method == "POST")
                 {
+                    Stopwatch stopwatch = Stopwatch.StartNew();
                     using StreamReader reader = new StreamReader(ctx.Request.Body, Encoding.UTF8);
                     string request = await reader.ReadToEndAsync();
                     JsonRpcResult result = await jsonRpcProcessor.ProcessAsync(request);
@@ -111,6 +113,16 @@ namespace Nethermind.Runner
                         }
 
                         await ctx.Response.CompleteAsync();
+
+                        if (result.IsCollection)
+                        {
+                            jsonRpcLocalStats.ReportCalls(result.Reports);
+                            jsonRpcLocalStats.ReportCall(new RpcReport("# collection serialization #", stopwatch.ElapsedMicroseconds(), true));
+                        }
+                        else
+                        {
+                            jsonRpcLocalStats.ReportCall(result.Report, stopwatch.ElapsedMicroseconds());
+                        }
                     }
                     finally
                     {

@@ -15,8 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Diagnostics;
 using System.Text;
 using System.Threading.Tasks;
+using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Json;
 using Nethermind.WebSockets;
 
@@ -27,27 +29,35 @@ namespace Nethermind.JsonRpc.WebSockets
         private readonly IWebSocketsClient _client;
         private readonly JsonRpcProcessor _jsonRpcProcessor;
         private readonly IJsonSerializer _jsonSerializer;
+        private readonly IJsonRpcLocalStats _jsonRpcLocalStats;
         public string Id => _client.Id;
         public string Client { get; }
 
         public JsonRpcWebSocketsClient(IWebSocketsClient client,
-            JsonRpcProcessor jsonRpcProcessor, IJsonSerializer jsonSerializer)
+            JsonRpcProcessor jsonRpcProcessor,
+            IJsonSerializer jsonSerializer,
+            IJsonRpcLocalStats jsonRpcLocalStats)
         {
             _client = client;
             _jsonRpcProcessor = jsonRpcProcessor;
             _jsonSerializer = jsonSerializer;
+            _jsonRpcLocalStats = jsonRpcLocalStats;
         }
 
         public async Task ReceiveAsync(Memory<byte> data)
         {
+            Stopwatch stopwatch = Stopwatch.StartNew();
             JsonRpcResult result = await _jsonRpcProcessor.ProcessAsync(Encoding.UTF8.GetString(data.ToArray()));
             if (result.IsCollection)
             {
                 await SendRawAsync(_jsonSerializer.Serialize(result.Responses));
+                _jsonRpcLocalStats.ReportCalls(result.Reports);
+                _jsonRpcLocalStats.ReportCall(new RpcReport("# collection serialization #", stopwatch.ElapsedMicroseconds(), true));
             }
             else
             {
                 await SendRawAsync(_jsonSerializer.Serialize(result.Response));
+                _jsonRpcLocalStats.ReportCall(result.Report, stopwatch.ElapsedMicroseconds());
             }
         }
 
