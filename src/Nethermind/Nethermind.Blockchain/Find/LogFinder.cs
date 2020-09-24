@@ -99,8 +99,8 @@ namespace Nethermind.Blockchain.Find
 
             return FilterBlocks(filter, fromBlock.Number, toBlock.Number)
                 .AsParallel() // can yield big performance improvements
-                .WithDegreeOfParallelism(Environment.ProcessorCount / 2)
                 .AsOrdered() // we want to keep block order
+                .WithDegreeOfParallelism(Environment.ProcessorCount / 2)
                 .SelectMany(blockNumber => FindLogsInBlock(filter, FindBlockHash(blockNumber), blockNumber));
         }
 
