@@ -134,7 +134,7 @@ namespace Nethermind.Blockchain.Find
                 if (_logger.IsTrace) _logger.Trace($"Allowing parallel eth_getLogs, already parallel executions: {parallelExecutions}.");
                 filterBlocks = filterBlocks.AsParallel() // can yield big performance improvements
                     .AsOrdered() // we want to keep block order
-                    .WithDegreeOfParallelism(_rpcConfigGetLogsThreads); // explicitly provide number of threads, as we increased ThreadPool by this threshold
+                    .WithDegreeOfParallelism(_rpcConfigGetLogsThreads); // explicitly provide number of threads
             }
             else
             {
