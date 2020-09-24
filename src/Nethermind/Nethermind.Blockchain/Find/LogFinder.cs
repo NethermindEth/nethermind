@@ -113,14 +113,14 @@ namespace Nethermind.Blockchain.Find
             int parallelExecutions = Interlocked.Increment(ref _parallelExecutions);
             if (parallelExecutions == 1)
             {
-                if (_logger.IsTrace) _logger.Trace("Allowing parallel eth_getLogs");
+                if (_logger.IsInfo) _logger.Info("Allowing parallel eth_getLogs");
                 filterBlocks = filterBlocks.AsParallel() // can yield big performance improvements
                     .AsOrdered() // we want to keep block order
                     .WithDegreeOfParallelism(Environment.ProcessorCount); // explicitly provide number of threads, as we increased ThreadPool by this threshold 
             }
             else
             {
-                if (_logger.IsTrace) _logger.Trace($"Not allowing parallel eth_getLogs, already parallel executions: {parallelExecutions - 1}");
+                if (_logger.IsInfo) _logger.Info($"Not allowing parallel eth_getLogs, already parallel executions: {parallelExecutions - 1}");
             }
             
             return filterBlocks
