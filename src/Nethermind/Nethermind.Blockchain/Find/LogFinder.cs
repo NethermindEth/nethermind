@@ -125,7 +125,7 @@ namespace Nethermind.Blockchain.Find
                 if (_logger.IsInfo) _logger.Info($"Allowing parallel eth_getLogs, already parallel executions: {parallelExecutions}.");
                 filterBlocks = filterBlocks.AsParallel() // can yield big performance improvements
                     .AsOrdered() // we want to keep block order
-                    .WithDegreeOfParallelism(Environment.ProcessorCount); // explicitly provide number of threads, as we increased ThreadPool by this threshold 
+                    .WithDegreeOfParallelism(Math.Max(1, Environment.ProcessorCount - 1)); // explicitly provide number of threads, as we increased ThreadPool by this threshold 
             }
             else
             {
