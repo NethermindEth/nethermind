@@ -20,7 +20,7 @@
     <PackageReference Include="NLog.Targets.Seq" Version="1.2.0" />
     <PackageReference Include="NLog" Version="4.7.2" />
     <PackageReference Include="Seq.Api" Version="5.1.2" />
-    <PackageReference Include="System.IO.Abstractions" Version="11.0.7" />
+    <PackageReference Include="System.IO.Abstractions" Version="12.1.10" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Cli\Nethermind.Cli.csproj" />
