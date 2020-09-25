@@ -15,69 +15,13 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.Filters;
-using Nethermind.Blockchain.Processing;
-using Nethermind.Blockchain.Receipts;
-using Nethermind.Config;
-using Nethermind.Core;
-using Nethermind.Core.Specs;
-using Nethermind.Crypto;
-using Nethermind.Logging;
-using Nethermind.DataMarketplace.Channels;
-using Nethermind.DataMarketplace.Core;
-using Nethermind.Db;
-using Nethermind.Db.Blooms;
 using Nethermind.Facade.Proxy;
-using Nethermind.Grpc;
-using Nethermind.JsonRpc.Modules;
-using Nethermind.KeyStore;
-using Nethermind.Monitoring;
-using Nethermind.Network;
-using Nethermind.Serialization.Json;
-using Nethermind.Stats;
-using Nethermind.TxPool;
-using Nethermind.Wallet;
-using Nethermind.WebSockets;
+using Nethermind.Runner;
 
 namespace Nethermind.DataMarketplace.Initializers
 {
     public interface INdmInitializer
     {
-        Task<INdmCapabilityConnector> InitAsync(
-            IConfigProvider configProvider,
-            IDbProvider dbProvider,
-            string baseDbPath,
-            IBlockTree blockTree,
-            ITxPool txPool,
-            ITxSender txSender,
-            ISpecProvider specProvider,
-            IReceiptFinder receiptFinder,
-            IWallet wallet,
-            IFilterStore filterStore,
-            IFilterManager filterManager,
-            ITimestamper timestamper,
-            IEthereumEcdsa ecdsa,
-            IRpcModuleProvider rpcModuleProvider,
-            IKeyStore keyStore,
-            IJsonSerializer jsonSerializer,
-            ICryptoRandom cryptoRandom,
-            IEnode enode,
-            INdmConsumerChannelManager consumerChannelManager,
-            INdmDataPublisher dataPublisher,
-            IGrpcServer grpcServer,
-            INodeStatsManager nodeStatsManager,
-            IProtocolsManager protocolsManager,
-            IProtocolValidator protocolValidator,
-            IMessageSerializationService messageSerializationService,
-            bool enableUnsecuredDevWallet,
-            IWebSocketsManager webSocketsManager,
-            ILogManager logManager,
-            IBlockProcessor blockProcessor,
-            IJsonRpcClientProxy? jsonRpcClientProxy,
-            IEthJsonRpcClientProxy? ethJsonRpcClientProxy,
-            IHttpClient httpClient,
-            IMonitoringService monitoringService,
-            IBloomStorage bloomStorage);
+        Task<INdmCapabilityConnector> InitAsync(INethermindApi nethermindApi, IHttpClient httpClient);
     }
 }

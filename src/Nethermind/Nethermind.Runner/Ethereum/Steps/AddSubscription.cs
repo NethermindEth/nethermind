@@ -31,7 +31,7 @@ namespace Nethermind.Runner.Ethereum.Steps
     [RunnerStepDependencies(typeof(InitializeBlockchain), typeof(StartGrpcProducer), typeof(StartKafkaProducer), typeof(StartLogProducer))]
     public class AddSubscriptions : IStep
     {
-        private readonly NethermindApi _api;
+        private readonly INethermindApi _api;
         private ILogger _logger;
 
         public AddSubscriptions(NethermindApi api)

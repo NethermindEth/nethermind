@@ -42,7 +42,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
     {
         private static readonly BlockHeader EmptyHeader = new BlockHeader(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.Zero, 0L, 0L, UInt256.Zero, Array.Empty<byte>());
         
-        private readonly NethermindApi _api;
+        private readonly INethermindApi _api;
         private readonly ILogger _logger;
         private Stopwatch? _stopwatch;
         private readonly MeasuredProgress _progress = new MeasuredProgress();
@@ -53,7 +53,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
         private readonly StringBuilder _builder = new StringBuilder();
         private readonly IBloomConfig _bloomConfig;
         
-        public BloomMigration(NethermindApi api)
+        public BloomMigration(INethermindApi api)
         {
             _api = api;
             _logger = api.LogManager.GetClassLogger<BloomMigration>();

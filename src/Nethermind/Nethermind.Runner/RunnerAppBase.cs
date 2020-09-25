@@ -17,23 +17,12 @@
 using System;
 using System.IO;
 using System.IO.Abstractions;
-using System.Linq;
-using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.CommandLineUtils;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
-using Nethermind.DataMarketplace.Channels;
-using Nethermind.DataMarketplace.Channels.Grpc;
-using Nethermind.DataMarketplace.Consumers.Infrastructure;
-using Nethermind.DataMarketplace.Core;
-using Nethermind.DataMarketplace.Core.Configs;
-using Nethermind.DataMarketplace.Core.Services;
-using Nethermind.DataMarketplace.Infrastructure.Modules;
-using Nethermind.DataMarketplace.Initializers;
-using Nethermind.DataMarketplace.WebSockets;
 using Nethermind.Grpc;
 using Nethermind.Grpc.Servers;
 using Nethermind.JsonRpc;
@@ -211,49 +200,16 @@ namespace Nethermind.Runner
                 });
             }
 
-            INdmDataPublisher? ndmDataPublisher = null;
-            INdmConsumerChannelManager? ndmConsumerChannelManager = null;
-            INdmInitializer? ndmInitializer = null;
-            INdmConfig ndmConfig = configProvider.GetConfig<INdmConfig>();
-            bool ndmEnabled = ndmConfig.Enabled;
-            if (ndmEnabled)
-            {
-                ndmDataPublisher = new NdmDataPublisher();
-                ndmConsumerChannelManager = new NdmConsumerChannelManager();
-                string initializerName = ndmConfig.InitializerName;
-                if (_logger?.IsInfo ?? false) _logger!.Info($"NDM initializer: {initializerName}");
-                Type ndmInitializerType = AppDomain.CurrentDomain.GetAssemblies()
-                    .SelectMany(a => a.GetTypes())
-                    .FirstOrDefault(t =>
-                        t.GetCustomAttribute<NdmInitializerAttribute>()?.Name == initializerName);
-                
-                NdmModule ndmModule = new NdmModule();
-                NdmConsumersModule ndmConsumersModule = new NdmConsumersModule();
-                ndmInitializer =
-                    new NdmInitializerFactory(ndmInitializerType, ndmModule, ndmConsumersModule, logManager)
-                    .CreateOrFail();
+            ApiBuilder apiBuilder = new ApiBuilder(configProvider, jsonSerializer, logManager);
+            INethermindApi nethermindApi = apiBuilder.Create();
+            nethermindApi.RpcModuleProvider = rpcModuleProvider;
+            nethermindApi.ConfigProvider = configProvider;
+            nethermindApi.EthereumJsonSerializer = jsonSerializer;
+            nethermindApi.WebSocketsManager = webSocketsManager;
+            nethermindApi.GrpcServer = grpcServer;
+            nethermindApi.MonitoringService = _monitoringService;            
 
-                if (grpcServer != null)
-                {
-                    ndmConsumerChannelManager.Add(new GrpcNdmConsumerChannel(grpcServer));
-                }
-
-                NdmWebSocketsModule ndmWebSocketsModule =
-                    new NdmWebSocketsModule(ndmConsumerChannelManager, ndmDataPublisher, jsonSerializer);
-                webSocketsManager.AddModule(ndmWebSocketsModule);
-            }
-
-            _ethereumRunner = new EthereumRunner(
-                rpcModuleProvider,
-                configProvider,
-                logManager,
-                grpcServer,
-                ndmConsumerChannelManager,
-                ndmDataPublisher,
-                ndmInitializer,
-                webSocketsManager,
-                jsonSerializer,
-                _monitoringService);
+            _ethereumRunner = new EthereumRunner(nethermindApi);
 
             IAnalyticsConfig analyticsConfig = configProvider.GetConfig<IAnalyticsConfig>();
             if (analyticsConfig.PluginsEnabled ||

@@ -27,6 +27,7 @@ namespace Nethermind.Runner.Ethereum.Steps
     public class InitializeBlockchainClique : InitializeBlockchain
     {
         private readonly CliqueNethermindApi _api;
+        private INethermindApi _nethermindApi => _api;
 
         public InitializeBlockchainClique(CliqueNethermindApi api) : base(api)
         {
@@ -46,7 +47,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             _api.SnapshotManager = new SnapshotManager(cliqueConfig, _api.DbProvider.BlocksDb, _api.BlockTree, _api.EthereumEcdsa, _api.LogManager);
             _api.SealValidator = new CliqueSealValidator(cliqueConfig, _api.SnapshotManager, _api.LogManager);
             _api.RecoveryStep = new CompositeDataRecoveryStep(_api.RecoveryStep, new AuthorRecoveryStep(_api.SnapshotManager));
-            if (_api.Config<IInitConfig>().IsMining)
+            if (_nethermindApi.Config<IInitConfig>().IsMining)
             {
                 _api.Sealer = new CliqueSealer(_api.EngineSigner, cliqueConfig, _api.SnapshotManager, _api.LogManager);
             }

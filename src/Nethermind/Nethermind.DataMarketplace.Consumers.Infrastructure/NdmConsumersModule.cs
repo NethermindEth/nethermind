@@ -65,7 +65,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
 {
     public class NdmConsumersModule : INdmConsumersModule
     {
-        public INdmConsumerServices Init(INdmServices services)
+        public INdmConsumerServices Init(INdmApi services)
         {
             AddDecoders();
             ILogManager logManager = services.RequiredServices.LogManager;

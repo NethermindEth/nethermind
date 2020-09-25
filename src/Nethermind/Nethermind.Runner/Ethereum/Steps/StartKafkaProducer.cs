@@ -29,10 +29,10 @@ namespace Nethermind.Runner.Ethereum.Steps
     [RunnerStepDependencies(typeof(StartBlockProcessor))]
     public class StartKafkaProducer : IStep
     {
-        private readonly NethermindApi _api;
+        private readonly INethermindApi _api;
         private ILogger _logger;
 
-        public StartKafkaProducer(NethermindApi api)
+        public StartKafkaProducer(INethermindApi api)
         {
             _api = api;
             _logger = api.LogManager.GetClassLogger();

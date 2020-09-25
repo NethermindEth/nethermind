@@ -24,9 +24,9 @@ namespace Nethermind.Runner.Ethereum.Steps
     [RunnerStepDependencies(typeof(StartBlockProcessor))]
     public class StartWebSocketProducer : IStep
     {
-        private readonly NethermindApi _api;
+        private readonly INethermindApi _api;
 
-        public StartWebSocketProducer(NethermindApi api)
+        public StartWebSocketProducer(INethermindApi api)
         {
             _api = api;
         }

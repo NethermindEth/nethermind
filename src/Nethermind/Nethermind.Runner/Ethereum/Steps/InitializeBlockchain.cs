@@ -17,7 +17,6 @@
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
@@ -27,8 +26,6 @@ using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
-using Nethermind.Core.Caching;
-using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
@@ -40,8 +37,6 @@ using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Synchronization.BeamSync;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
-using Nethermind.Vault;
-using Nethermind.Vault.Config;
 using Nethermind.Wallet;
 
 namespace Nethermind.Runner.Ethereum.Steps
@@ -49,7 +44,7 @@ namespace Nethermind.Runner.Ethereum.Steps
     [RunnerStepDependencies(typeof(InitRlp), typeof(InitDatabase), typeof(SetupKeyStore))]
     public class InitializeBlockchain : IStep
     {
-        private readonly NethermindApi _api;
+        private readonly INethermindApi _api;
 
         public InitializeBlockchain(NethermindApi api)
         {
@@ -98,24 +93,26 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.StateProvider,
                 _api.LogManager);
             
-            IVaultConfig vaultConfig = _api.Config<IVaultConfig>(); 
-            if (!vaultConfig.Enabled)
-            {
+            // TODO: plugin ecosystem
+            // insert vault via plugin ecosystem
+            // IVaultConfig vaultConfig = _api.Config<IVaultConfig>(); 
+            // if (!vaultConfig.Enabled)
+            // {
                 ITxSigner txSigner = new WalletTxSigner(_api.Wallet, _api.SpecProvider.ChainId);
                 TxSealer standardSealer = new TxSealer(txSigner, _api.Timestamper);
                 NonceReservingTxSealer nonceReservingTxSealer =
                     new NonceReservingTxSealer(txSigner, _api.Timestamper, _api.TxPool);
                 _api.TxSender = new TxPoolSender(_api.TxPool, standardSealer, nonceReservingTxSealer);
-            }
-            else
-            {
-                IVaultService vaultService = new VaultService(vaultConfig, _api.LogManager);
-                IVaultWallet wallet = new VaultWallet(vaultService, vaultConfig.VaultId, _api.LogManager);
-                ITxSigner vaultSigner = new VaultTxSigner(wallet, _api.ChainSpec.ChainId);
-                
-                // change vault to provide, use sealer to set the gas price as well
-                _api.TxSender = new VaultTxSender(vaultSigner, vaultConfig, _api.ChainSpec.ChainId);
-            }
+            // }
+            // else
+            // {
+            //     IVaultService vaultService = new VaultService(vaultConfig, _api.LogManager);
+            //     IVaultWallet wallet = new VaultWallet(vaultService, vaultConfig.VaultId, _api.LogManager);
+            //     ITxSigner vaultSigner = new VaultTxSigner(wallet, _api.ChainSpec.ChainId);
+            //     
+            //     // change vault to provide, use sealer to set the gas price as well
+            //     _api.TxSender = new VaultTxSender(vaultSigner, vaultConfig, _api.ChainSpec.ChainId);
+            // }
 
             IBloomConfig? bloomConfig = _api.Config<IBloomConfig>();
 
@@ -197,8 +194,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.LogManager);
 
             ReadOnlyDbProvider readOnly = new ReadOnlyDbProvider(_api.DbProvider, false);
-            StateReader stateReader = new StateReader(readOnly.StateDb, readOnly.CodeDb, _api.LogManager);
-            _api.TxPoolInfoProvider = new TxPoolInfoProvider(stateReader, _api.TxPool);
+            _api.StateReader = new StateReader(readOnly.StateDb, readOnly.CodeDb, _api.LogManager);
+            _api.TxPoolInfoProvider = new TxPoolInfoProvider(_api.StateReader, _api.TxPool);
 
             _api.MainBlockProcessor = CreateBlockProcessor();
 

@@ -23,7 +23,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 {
     public class InitializeNetworkAuRa : InitializeNetwork
     {
-        public InitializeNetworkAuRa(AuRaNethermindApi context) : base(context)
+        public InitializeNetworkAuRa(AuRaNethermindApi api) : base(api)
         {
         }
 

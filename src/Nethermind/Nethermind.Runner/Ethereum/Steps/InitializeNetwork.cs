@@ -15,19 +15,13 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Net.Http;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Crypto;
-using Nethermind.DataMarketplace.Core.Configs;
-using Nethermind.DataMarketplace.Initializers;
-using Nethermind.DataMarketplace.Subprotocols.Serializers;
 using Nethermind.Db;
-using Nethermind.Facade.Proxy;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
@@ -41,7 +35,6 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Network.StaticNodes;
-using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.LesSync;
 using Nethermind.Synchronization.ParallelSync;
@@ -68,14 +61,14 @@ namespace Nethermind.Runner.Ethereum.Steps
         private const string PeersDbPath = "peers";
         private const string ChtDbPath = "canonicalHashTrie";
 
-        protected readonly NethermindApi _api;
+        protected readonly INethermindApi _api;
         private readonly ILogger _logger;
         private readonly INetworkConfig _networkConfig;
         protected readonly ISyncConfig _syncConfig;
 
-        public InitializeNetwork(NethermindApi context)
+        public InitializeNetwork(INethermindApi api)
         {
-            _api = context;
+            _api = api;
             _logger = _api.LogManager.GetClassLogger();
             _networkConfig = _api.Config<INetworkConfig>();
             _syncConfig = _api.Config<ISyncConfig>();
@@ -266,7 +259,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             IPResolver ipResolver = new IPResolver(_networkConfig, _api.LogManager);
 
             IDiscoveryMsgSerializersProvider msgSerializersProvider = new DiscoveryMsgSerializersProvider(
-                _api._messageSerializationService,
+                _api.MessageSerializationService,
                 _api.EthereumEcdsa,
                 privateKeyProvider,
                 discoveryMessageFactory,
@@ -311,7 +304,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 nodesLocator,
                 discoveryManager,
                 nodeTable,
-                _api._messageSerializationService,
+                _api.MessageSerializationService,
                 _api.CryptoRandom,
                 discoveryStorage,
                 _networkConfig,
@@ -365,22 +358,20 @@ namespace Nethermind.Runner.Ethereum.Steps
             /* rlpx */
             EciesCipher eciesCipher = new EciesCipher(_api.CryptoRandom);
             Eip8MessagePad eip8Pad = new Eip8MessagePad(_api.CryptoRandom);
-            _api._messageSerializationService.Register(new AuthEip8MessageSerializer(eip8Pad));
-            _api._messageSerializationService.Register(new AckEip8MessageSerializer(eip8Pad));
-            _api._messageSerializationService.Register(Assembly.GetAssembly(typeof(HelloMessageSerializer)));
-            _api._messageSerializationService.Register(new ReceiptsMessageSerializer(_api.SpecProvider));
+            _api.MessageSerializationService.Register(new AuthEip8MessageSerializer(eip8Pad));
+            _api.MessageSerializationService.Register(new AckEip8MessageSerializer(eip8Pad));
+            _api.MessageSerializationService.Register(Assembly.GetAssembly(typeof(HelloMessageSerializer)));
+            _api.MessageSerializationService.Register(new ReceiptsMessageSerializer(_api.SpecProvider));
 
-            HandshakeService encryptionHandshakeServiceA = new HandshakeService(_api._messageSerializationService, eciesCipher,
+            HandshakeService encryptionHandshakeServiceA = new HandshakeService(_api.MessageSerializationService, eciesCipher,
                 _api.CryptoRandom, new Ecdsa(), _api.NodeKey.Unprotect(), _api.LogManager);
-
-            _api._messageSerializationService.Register(Assembly.GetAssembly(typeof(HiMessageSerializer)));
 
             IDiscoveryConfig discoveryConfig = _api.Config<IDiscoveryConfig>();
             IInitConfig initConfig = _api.Config<IInitConfig>();
 
             _api.SessionMonitor = new SessionMonitor(_networkConfig, _api.LogManager);
             _api.RlpxPeer = new RlpxPeer(
-                _api._messageSerializationService,
+                _api.MessageSerializationService,
                 _api.NodeKey.PublicKey,
                 _networkConfig.P2PPort,
                 encryptionHandshakeServiceA,
@@ -400,67 +391,12 @@ namespace Nethermind.Runner.Ethereum.Steps
             NetworkStorage peerStorage = new NetworkStorage(peersDb, _api.LogManager);
 
             ProtocolValidator protocolValidator = new ProtocolValidator(_api.NodeStatsManager, _api.BlockTree, _api.LogManager);
-            _api.ProtocolsManager = new ProtocolsManager(_api.SyncPeerPool, _api.SyncServer, _api.TxPool, _api.DiscoveryApp, _api._messageSerializationService, _api.RlpxPeer, _api.NodeStatsManager, protocolValidator, peerStorage, _api.SpecProvider, _api.LogManager);
+            _api.ProtocolsManager = new ProtocolsManager(_api.SyncPeerPool, _api.SyncServer, _api.TxPool, _api.DiscoveryApp, _api.MessageSerializationService, _api.RlpxPeer, _api.NodeStatsManager, protocolValidator, peerStorage, _api.SpecProvider, _api.LogManager);
+            _api.ProtocolValidator = protocolValidator;
 
-            if (!(_api.NdmInitializer is null))
+            foreach (var plugin in _api.Plugins)
             {
-                if (_api.WebSocketsManager == null) throw new StepDependencyException(nameof(_api.WebSocketsManager));
-                if (_api.GrpcServer == null) throw new StepDependencyException(nameof(_api.GrpcServer));
-                if (_api.NdmDataPublisher == null) throw new StepDependencyException(nameof(_api.NdmDataPublisher));
-                if (_api.NdmConsumerChannelManager == null) throw new StepDependencyException(nameof(_api.NdmConsumerChannelManager));
-                if (_api.BloomStorage == null) throw new StepDependencyException(nameof(_api.BloomStorage));
-                if (_api.ReceiptFinder == null) throw new StepDependencyException(nameof(_api.ReceiptFinder));
-
-                if (_logger.IsInfo) _logger.Info($"Initializing NDM...");
-                _api.HttpClient = new DefaultHttpClient(new HttpClient(), _api.EthereumJsonSerializer, _api.LogManager);
-                INdmConfig ndmConfig = _api.Config<INdmConfig>();
-                if (ndmConfig.ProxyEnabled)
-                {
-                    _api.JsonRpcClientProxy = new JsonRpcClientProxy(_api.HttpClient, ndmConfig.JsonRpcUrlProxies,
-                        _api.LogManager);
-                    _api.EthJsonRpcClientProxy = new EthJsonRpcClientProxy(_api.JsonRpcClientProxy);
-                }
-
-                FilterStore filterStore = new FilterStore();
-                FilterManager filterManager = new FilterManager(filterStore, _api.MainBlockProcessor, _api.TxPool, _api.LogManager);
-                INdmCapabilityConnector capabilityConnector = await _api.NdmInitializer.InitAsync(
-                    _api.ConfigProvider,
-                    _api.DbProvider,
-                    initConfig.BaseDbPath,
-                    _api.BlockTree,
-                    _api.TxPool,
-                    _api.TxSender,
-                    _api.SpecProvider,
-                    _api.ReceiptFinder,
-                    _api.Wallet,
-                    filterStore,
-                    filterManager,
-                    _api.Timestamper,
-                    _api.EthereumEcdsa,
-                    _api.RpcModuleProvider,
-                    _api.KeyStore,
-                    _api.EthereumJsonSerializer,
-                    _api.CryptoRandom,
-                    _api.Enode,
-                    _api.NdmConsumerChannelManager,
-                    _api.NdmDataPublisher,
-                    _api.GrpcServer,
-                    _api.NodeStatsManager,
-                    _api.ProtocolsManager,
-                    protocolValidator,
-                    _api._messageSerializationService,
-                    initConfig.EnableUnsecuredDevWallet,
-                    _api.WebSocketsManager,
-                    _api.LogManager,
-                    _api.MainBlockProcessor,
-                    _api.JsonRpcClientProxy,
-                    _api.EthJsonRpcClientProxy,
-                    _api.HttpClient,
-                    _api.MonitoringService,
-                    _api.BloomStorage);
-
-                capabilityConnector.Init();
-                if (_logger.IsInfo) _logger.Info($"NDM initialized.");
+                await plugin.InitNetworkProtocol(_api);
             }
 
             PeerLoader peerLoader = new PeerLoader(_networkConfig, discoveryConfig, _api.NodeStatsManager, peerStorage, _api.LogManager);

@@ -2,6 +2,8 @@ using System.Linq;
 
 namespace Nethermind.Cli.Modules
 {
+    // TODO: CLI should be capable of loading plugins same as other parts of the system   
+    
     [CliModule("baseline")]
     public class BaselineCliModule : CliModuleBase
     {

@@ -23,7 +23,6 @@ using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Specs;
 using Nethermind.Wallet;
 
 namespace Nethermind.DataMarketplace.Tools.Refunder

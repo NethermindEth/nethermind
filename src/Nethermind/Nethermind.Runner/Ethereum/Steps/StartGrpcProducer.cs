@@ -25,9 +25,9 @@ namespace Nethermind.Runner.Ethereum.Steps
     [RunnerStepDependencies(typeof(StartBlockProcessor))]
     public class StartGrpcProducer : IStep
     {
-        private readonly NethermindApi _api;
+        private readonly INethermindApi _api;
 
-        public StartGrpcProducer(NethermindApi api)
+        public StartGrpcProducer(INethermindApi api)
         {
             _api = api;
         }

@@ -38,9 +38,9 @@ namespace Nethermind.Runner.Ethereum.Steps
     [RunnerStepDependencies]
     public class SetupKeyStore : IStep
     {
-        private readonly NethermindApi _api;
+        private readonly INethermindApi _api;
 
-        public SetupKeyStore(NethermindApi api)
+        public SetupKeyStore(INethermindApi api)
         {
             _api = api;
         }

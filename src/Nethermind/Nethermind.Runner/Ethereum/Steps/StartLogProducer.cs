@@ -27,9 +27,9 @@ namespace Nethermind.Runner.Ethereum.Steps
     [RunnerStepDependencies(typeof(StartBlockProcessor))]
     public class StartLogProducer : IStep
     {
-        private readonly NethermindApi _api;
+        private readonly INethermindApi _api;
 
-        public StartLogProducer(NethermindApi api)
+        public StartLogProducer(INethermindApi api)
         {
             _api = api;
         }

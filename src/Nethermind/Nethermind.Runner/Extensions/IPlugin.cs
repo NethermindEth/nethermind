@@ -16,6 +16,7 @@
 // 
 
 using System;
+using System.Threading.Tasks;
 
 namespace Nethermind.Runner.Extensions
 {
@@ -27,6 +28,10 @@ namespace Nethermind.Runner.Extensions
         
         public string Author { get; }
         
-        void Init(INethermindApi api);
+        Task Init(INethermindApi api);
+        
+        Task InitNetworkProtocol(INethermindApi api);
+        
+        Task InitRpcModules(INethermindApi api);
     }
 }

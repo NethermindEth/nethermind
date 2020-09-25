@@ -31,9 +31,9 @@ namespace Nethermind.Runner.Ethereum.Steps
     [RunnerStepDependencies(typeof(ReviewBlockTree))]
     public class RunCustomTools : IStep
     {
-        private readonly NethermindApi _api;
+        private readonly INethermindApi _api;
         
-        public RunCustomTools(NethermindApi api)
+        public RunCustomTools(INethermindApi api)
         {
             _api = api;
         }

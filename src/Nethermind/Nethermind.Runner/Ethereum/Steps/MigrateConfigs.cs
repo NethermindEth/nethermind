@@ -24,9 +24,9 @@ namespace Nethermind.Runner.Ethereum.Steps
 {
     public class MigrateConfigs : IStep
     {
-        private readonly NethermindApi _api;
+        private readonly INethermindApi _api;
 
-        public MigrateConfigs(NethermindApi api)
+        public MigrateConfigs(INethermindApi api)
         {
             _api = api;
         }

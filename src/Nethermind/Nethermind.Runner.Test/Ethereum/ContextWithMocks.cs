@@ -18,7 +18,6 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Config;
 using Nethermind.Core.Specs;
@@ -40,7 +39,6 @@ namespace Nethermind.Runner.Test.Ethereum
         public static NethermindApi ContextWithMocks() =>
             new NethermindApi(Substitute.For<IConfigProvider>(), LimboLogs.Instance)
             {
-                LogManager = LimboLogs.Instance,
                 Enode = Substitute.For<IEnode>(),
                 TxPool = Substitute.For<ITxPool>(),
                 Wallet = Substitute.For<IWallet>(),

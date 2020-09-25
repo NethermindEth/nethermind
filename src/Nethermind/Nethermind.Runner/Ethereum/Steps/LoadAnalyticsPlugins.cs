@@ -31,10 +31,10 @@ namespace Nethermind.Runner.Ethereum.Steps
     [RunnerStepDependencies(typeof(InitializeNetwork))]
     public class LoadAnalyticsPlugins : IStep
     {
-        private readonly NethermindApi _api;
+        private readonly INethermindApi _api;
         private readonly ILogger _logger;
 
-        public LoadAnalyticsPlugins(NethermindApi context)
+        public LoadAnalyticsPlugins(INethermindApi context)
         {
             _api = context ?? throw new ArgumentNullException(nameof(context));
             _logger = context.LogManager.GetClassLogger();

@@ -17,57 +17,26 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.DataMarketplace.Channels;
-using Nethermind.DataMarketplace.Core;
-using Nethermind.DataMarketplace.Initializers;
-using Nethermind.Grpc;
-using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
-using Nethermind.Monitoring;
 using Nethermind.Network;
 using Nethermind.Network.Config;
-using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Runner.Ethereum.Steps;
-using Nethermind.Serialization.Json;
-using Nethermind.State;
-using Nethermind.WebSockets;
 
 namespace Nethermind.Runner.Ethereum
 {
     public class EthereumRunner : IRunner
     {
-        private NethermindApi _api;
+        private INethermindApi _api;
 
         private ILogger _logger;
 
-        public EthereumRunner(
-            IRpcModuleProvider rpcModuleProvider,
-            IConfigProvider configurationProvider,
-            ILogManager logManager,
-            IGrpcServer? grpcServer,
-            INdmConsumerChannelManager? ndmConsumerChannelManager,
-            INdmDataPublisher? ndmDataPublisher,
-            INdmInitializer? ndmInitializer,
-            IWebSocketsManager webSocketsManager,
-            IJsonSerializer ethereumJsonSerializer,
-            IMonitoringService monitoringService)
+        public EthereumRunner(INethermindApi api)
         {
-            _logger = logManager.GetClassLogger();
-            _api = new EthereumRunnerContextFactory(configurationProvider, ethereumJsonSerializer, logManager).Context;
-            _api.LogManager = logManager;
-            _api.GrpcServer = grpcServer;
-            _api.NdmConsumerChannelManager = ndmConsumerChannelManager;
-            _api.NdmDataPublisher = ndmDataPublisher;
-            _api.NdmInitializer = ndmInitializer;
-            _api.WebSocketsManager = webSocketsManager;
-            _api.EthereumJsonSerializer = ethereumJsonSerializer;
-            _api.MonitoringService = monitoringService;
-
-            _api.ConfigProvider = configurationProvider ?? throw new ArgumentNullException(nameof(configurationProvider));
-            _api.RpcModuleProvider = rpcModuleProvider ?? throw new ArgumentNullException(nameof(rpcModuleProvider));
-
+            _api = api;
+            _logger = api.LogManager.GetClassLogger();
+            
+            // this should be outside of Ethereum Runner I guess
             INetworkConfig networkConfig = _api.Config<INetworkConfig>();
             _api.IpResolver = new IPResolver(networkConfig, _api.LogManager);
             networkConfig.ExternalIp = _api.IpResolver.ExternalIp.ToString();
@@ -78,6 +47,8 @@ namespace Nethermind.Runner.Ethereum
         {
             if (_logger.IsDebug) _logger.Debug("Initializing Ethereum");
 
+            // all plugins init
+            
             EthereumStepsLoader stepsLoader = new EthereumStepsLoader(GetType().Assembly);
             EthereumStepsManager stepsManager = new EthereumStepsManager(stepsLoader, _api, _api.LogManager);
             await stepsManager.InitializeAll(cancellationToken);

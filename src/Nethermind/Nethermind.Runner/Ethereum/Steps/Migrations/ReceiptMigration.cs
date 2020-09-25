@@ -64,16 +64,16 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
 
         private readonly IInitConfig _initConfig;
 
-        public ReceiptMigration(NethermindApi context)
+        public ReceiptMigration(INethermindApi api)
         {
-            _logger = context.LogManager.GetClassLogger<ReceiptMigration>();
-            _receiptStorage = context.ReceiptStorage ?? throw new StepDependencyException(nameof(context.ReceiptStorage));
-            _dbProvider = context.DbProvider ?? throw new StepDependencyException(nameof(context.DbProvider));
-            _disposeStack = context.DisposeStack ?? throw new StepDependencyException(nameof(context.DisposeStack));
-            _blockTree = context.BlockTree ?? throw new StepDependencyException(nameof(context.BlockTree));
-            _syncModeSelector = context.SyncModeSelector ?? throw new StepDependencyException(nameof(context.SyncModeSelector));
-            _chainLevelInfoRepository = context.ChainLevelInfoRepository ?? throw new StepDependencyException(nameof(context.ChainLevelInfoRepository));
-            _initConfig = context.Config<IInitConfig>() ?? throw new StepDependencyException("initConfig");
+            _logger = api.LogManager.GetClassLogger<ReceiptMigration>();
+            _receiptStorage = api.ReceiptStorage ?? throw new StepDependencyException(nameof(api.ReceiptStorage));
+            _dbProvider = api.DbProvider ?? throw new StepDependencyException(nameof(api.DbProvider));
+            _disposeStack = api.DisposeStack ?? throw new StepDependencyException(nameof(api.DisposeStack));
+            _blockTree = api.BlockTree ?? throw new StepDependencyException(nameof(api.BlockTree));
+            _syncModeSelector = api.SyncModeSelector ?? throw new StepDependencyException(nameof(api.SyncModeSelector));
+            _chainLevelInfoRepository = api.ChainLevelInfoRepository ?? throw new StepDependencyException(nameof(api.ChainLevelInfoRepository));
+            _initConfig = api.Config<IInitConfig>() ?? throw new StepDependencyException("initConfig");
         }
 
         public async ValueTask DisposeAsync()

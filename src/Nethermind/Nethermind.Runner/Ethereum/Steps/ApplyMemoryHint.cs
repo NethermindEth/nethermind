@@ -29,21 +29,21 @@ namespace Nethermind.Runner.Ethereum.Steps
     [RunnerStepDependencies(typeof(MigrateConfigs))]
     public sealed class ApplyMemoryHint : IStep
     {
-        private readonly NethermindApi _api;
+        private readonly INethermindApi _api;
         private IInitConfig _initConfig;
         private IDbConfig _dbConfig;
         private INetworkConfig _networkConfig;
         private ISyncConfig _syncConfig;
         private ITxPoolConfig _txPoolConfig;
 
-        public ApplyMemoryHint(NethermindApi context)
+        public ApplyMemoryHint(INethermindApi api)
         {
-            _api = context ?? throw new ArgumentNullException(nameof(context));
-            _initConfig = context.Config<IInitConfig>();
-            _dbConfig = context.Config<IDbConfig>();
-            _networkConfig = context.Config<INetworkConfig>();
-            _syncConfig = context.Config<ISyncConfig>();
-            _txPoolConfig = context.Config<ITxPoolConfig>();
+            _api = api ?? throw new ArgumentNullException(nameof(api));
+            _initConfig = api.Config<IInitConfig>();
+            _dbConfig = api.Config<IDbConfig>();
+            _networkConfig = api.Config<INetworkConfig>();
+            _syncConfig = api.Config<ISyncConfig>();
+            _txPoolConfig = api.Config<ITxPoolConfig>();
         }
 
         public Task Execute(CancellationToken _)

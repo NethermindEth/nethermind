@@ -16,41 +16,28 @@
 
 using System;
 using System.Collections;
-using System.Collections.Generic;
 using System.IO;
 using System.IO.Abstractions;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using FluentAssertions.Execution;
-using log4net.Core;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
-using Nethermind.DataMarketplace.Channels;
-using Nethermind.DataMarketplace.Core;
-using Nethermind.DataMarketplace.Initializers;
-using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.EthStats;
-using Nethermind.Grpc;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
-using Nethermind.Monitoring;
 using Nethermind.Network.Config;
 using Nethermind.PubSub.Kafka;
 using Nethermind.Runner.Ethereum;
 using Nethermind.Serialization.Json;
 using Nethermind.Stats;
 using Nethermind.Db.Blooms;
+using Nethermind.Runner.Ethereum.Api;
 using Nethermind.TxPool;
-using Nethermind.WebSockets;
-using NSubstitute;
 using NUnit.Framework;
-using NUnit.Framework.Constraints;
-using YamlDotNet.Serialization.TypeInspectors;
 
 namespace Nethermind.Runner.Test
 {
@@ -61,11 +48,7 @@ namespace Nethermind.Runner.Test
         {
             get
             {
-                ISet<string> ignoredConfigs = new HashSet<string>()
-                {
-                };
-
-                foreach (var config in Directory.GetFiles("configs").Where(c => !ignoredConfigs.Contains(Path.GetFileName(c))))
+                foreach (var config in Directory.GetFiles("configs"))
                 {
                     yield return new TestCaseData(config);
                 }
@@ -106,17 +89,11 @@ namespace Nethermind.Runner.Test
             {
                 configProvider.GetConfig<IInitConfig>().BaseDbPath = tempPath;
 
-                EthereumRunner runner = new EthereumRunner(
-                    new RpcModuleProvider(new FileSystem(), new JsonRpcConfig(), LimboLogs.Instance),
-                    configProvider,
-                    TestLogManager.Instance,
-                    Substitute.For<IGrpcServer>(),
-                    Substitute.For<INdmConsumerChannelManager>(),
-                    Substitute.For<INdmDataPublisher>(),
-                    Substitute.For<INdmInitializer>(),
-                    Substitute.For<IWebSocketsManager>(),
-                    new EthereumJsonSerializer(),
-                    Substitute.For<IMonitoringService>());
+                NethermindApi nethermindApi = new NethermindApi(configProvider, TestLogManager.Instance);
+                nethermindApi.RpcModuleProvider =
+                    new RpcModuleProvider(new FileSystem(), new JsonRpcConfig(), TestLogManager.Instance);
+                nethermindApi.EthereumJsonSerializer = new EthereumJsonSerializer();
+                EthereumRunner runner = new EthereumRunner(nethermindApi);
 
                 await runner.Start(CancellationToken.None);
                 await runner.StopAsync();
@@ -162,17 +139,11 @@ namespace Nethermind.Runner.Test
             {
                 configProvider.GetConfig<IInitConfig>().BaseDbPath = tempPath;
 
-                runner = new EthereumRunner(
-                    new RpcModuleProvider(new FileSystem(), new JsonRpcConfig(), LimboLogs.Instance),
-                    configProvider,
-                    TestLogManager.Instance,
-                    Substitute.For<IGrpcServer>(),
-                    Substitute.For<INdmConsumerChannelManager>(),
-                    Substitute.For<INdmDataPublisher>(),
-                    Substitute.For<INdmInitializer>(),
-                    Substitute.For<IWebSocketsManager>(),
-                    new EthereumJsonSerializer(),
-                    Substitute.For<IMonitoringService>());
+                NethermindApi nethermindApi = new NethermindApi(configProvider, TestLogManager.Instance);
+                nethermindApi.RpcModuleProvider =
+                    new RpcModuleProvider(new FileSystem(), new JsonRpcConfig(), TestLogManager.Instance);
+                nethermindApi.EthereumJsonSerializer = new EthereumJsonSerializer();
+                runner = new EthereumRunner(nethermindApi);
 
                 CancellationTokenSource cts = new CancellationTokenSource();
                 Task task = runner.Start(cts.Token);

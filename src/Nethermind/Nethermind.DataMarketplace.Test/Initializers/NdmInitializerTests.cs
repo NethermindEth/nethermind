@@ -139,12 +139,13 @@ namespace Nethermind.DataMarketplace.Test.Initializers
         {
             _baseDbPath = "db";
             _ndmConfig.DatabasePath = "ndm";
-            await _ndmInitializer.InitAsync(_configProvider, _dbProvider, _baseDbPath, _blockTree,
-                _txPool, _txSender, _specProvider, _receiptFinder, _wallet, _filterStore, _filterManager, _timestamper, _ecdsa,
-                _rpcModuleProvider, _keyStore, _jsonSerializer, _cryptoRandom, _enode, _consumerChannelManager,
-                _dataPublisher, _grpcServer, _nodeStatsManager, _protocolsManager, _protocolValidator,
-                _messageSerializationService, _enableUnsecuredDevWallet, _webSocketsManager, _logManager,
-                _blockProcessor, _jsonRpcClientProxy, _ethJsonRpcClientProxy, _httpClient, _monitoringService, _bloomStorage);
+            // WTF
+            // await _ndmInitializer.InitAsync(_configProvider, _dbProvider, _baseDbPath, _blockTree,
+            //     _txPool, _txSender, _specProvider, _receiptFinder, _wallet, _filterStore, _filterManager, _timestamper, _ecdsa,
+            //     _rpcModuleProvider, _keyStore, _jsonSerializer, _cryptoRandom, _enode, _consumerChannelManager,
+            //     _dataPublisher, _grpcServer, _nodeStatsManager, _protocolsManager, _protocolValidator,
+            //     _messageSerializationService, _enableUnsecuredDevWallet, _webSocketsManager, _logManager,
+            //     _blockProcessor, _jsonRpcClientProxy, _ethJsonRpcClientProxy, _httpClient, _monitoringService, _bloomStorage);
             _ndmInitializer.DbPath.Should().Be(Path.Combine(_baseDbPath, _ndmConfig.DatabasePath));
         }
     }

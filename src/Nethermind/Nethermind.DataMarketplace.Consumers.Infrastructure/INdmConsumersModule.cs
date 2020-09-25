@@ -20,6 +20,6 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
 {
     public interface INdmConsumersModule
     {
-        INdmConsumerServices Init(INdmServices services);
+        void Init(INdmApi services);
     }
 }

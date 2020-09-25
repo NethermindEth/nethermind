@@ -38,6 +38,11 @@ using Nethermind.Blockchain.Processing;
 
 namespace Nethermind.Facade
 {
+    public interface IBlockchainBridgeFactory
+    {
+        IBlockchainBridge CreateBlockchainBridge();
+    }
+    
     [Todo(Improve.Refactor, "I want to remove BlockchainBridge, split it into something with logging, state and tx processing. Then we can start using independent modules.")]
     public class BlockchainBridge : IBlockchainBridge
     {

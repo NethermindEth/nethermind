@@ -35,11 +35,11 @@ namespace Nethermind.Runner.Ethereum.Steps
     [RunnerStepDependencies(typeof(StartBlockProcessor), typeof(InitializeBlockchain))]
     public class LoadGenesisBlock : IStep
     {
-        private readonly NethermindApi _api;
+        private readonly INethermindApi _api;
         private readonly ILogger _logger;
         private IInitConfig? _initConfig;
 
-        public LoadGenesisBlock(NethermindApi api)
+        public LoadGenesisBlock(INethermindApi api)
         {
             _api = api;
             _logger = _api.LogManager.GetClassLogger();

@@ -27,7 +27,6 @@ namespace Nethermind.Facade
 {
     public interface IBlockchainBridge
     {
-        int GetNetworkId();
         Block BeamHead { get; }
         bool IsMining { get; }
         void RecoverTxSenders(Block block);

@@ -42,6 +42,8 @@ namespace Nethermind.Runner.Ethereum.Steps
     public class StartBlockProducerAuRa : StartBlockProducer
     {
         private readonly AuRaNethermindApi _api;
+        private INethermindApi _nethermindApi => _api;
+        
         private IAuraConfig? _auraConfig;
         private IAuRaValidator? _validator;
 
@@ -55,7 +57,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_api.EngineSigner == null) throw new StepDependencyException(nameof(_api.EngineSigner));
             if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
 
-            _auraConfig = _api.Config<IAuraConfig>();
+            _auraConfig = _nethermindApi.Config<IAuraConfig>();
             ILogger logger = _api.LogManager.GetClassLogger();
             if (logger.IsWarn) logger.Warn("Starting AuRa block producer & sealer");
 
@@ -100,7 +102,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _api.FinalizationManager,
                     NullTxSender.Instance,
                     NullTxPool.Instance,
-                    _api.Config<IMiningConfig>(),
+                    _nethermindApi.Config<IMiningConfig>(),
                     _api.LogManager,
                     _api.EngineSigner,
                     _api.ReportingContractValidatorCache,
@@ -250,7 +252,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             var blockGasLimitContractTransitions = _api.ChainSpec.AuRa.BlockGasLimitContractTransitions;
 
             IGasLimitCalculator gasLimitCalculator =
-                new TargetAdjustedGasLimitCalculator(_api.SpecProvider, _api.Config<IMiningConfig>());
+                new TargetAdjustedGasLimitCalculator(_api.SpecProvider, _nethermindApi.Config<IMiningConfig>());
             if (blockGasLimitContractTransitions?.Any() == true)
             {
                 AuRaContractGasLimitOverride auRaContractGasLimitOverride =

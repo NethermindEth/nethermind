@@ -26,6 +26,8 @@ using Nethermind.Network;
 
 namespace Nethermind.Cli.Modules
 {
+    // TODO: CLI should be capable of loading plugins same as other parts of the system
+    
     [CliModule("node")]
     public class NodeCliModule : CliModuleBase
     {

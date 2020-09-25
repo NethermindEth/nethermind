@@ -32,10 +32,10 @@ namespace Nethermind.Runner.Ethereum.Steps
     [RunnerStepDependencies(typeof(StartBlockProcessor), typeof(InitializeNetwork), typeof(InitializeBlockchain))]
     public class StartEthStatsClient : IStep
     {
-        private readonly NethermindApi _api;
+        private readonly INethermindApi _api;
         private ILogger _logger;
 
-        public StartEthStatsClient(NethermindApi api)
+        public StartEthStatsClient(INethermindApi api)
         {
             _api = api;
             _logger = _api.LogManager.GetClassLogger();

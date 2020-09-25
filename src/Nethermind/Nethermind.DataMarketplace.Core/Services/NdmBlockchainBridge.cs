@@ -93,7 +93,7 @@ namespace Nethermind.DataMarketplace.Core.Services
                 receipt?.BlockHash, receipt?.GasUsed ?? 0));
         }
 
-        public Task<int> GetNetworkIdAsync() => Task.FromResult(_blockchainBridge.GetNetworkId());
+        public Task<long> GetNetworkIdAsync() => Task.FromResult(_blockchainBridge.GetChainId());
 
         public Task<byte[]> CallAsync(Transaction transaction)
         {

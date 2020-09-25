@@ -25,9 +25,9 @@ namespace Nethermind.Runner.Ethereum.Steps
     [RunnerStepDependencies(typeof(FilterBootnodes))]
     public class UpdateDiscoveryConfig : IStep
     {
-        private readonly NethermindApi _api;
+        private readonly INethermindApi _api;
 
-        public UpdateDiscoveryConfig(NethermindApi api)
+        public UpdateDiscoveryConfig(INethermindApi api)
         {
             _api = api;
         }

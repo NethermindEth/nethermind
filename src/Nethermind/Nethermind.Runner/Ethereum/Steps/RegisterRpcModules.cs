@@ -17,8 +17,6 @@
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Cli.Modules;
-using Nethermind.DataMarketplace.Core.Configs;
-using Nethermind.Facade;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
@@ -34,31 +32,28 @@ using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Baseline.Config;
 using Nethermind.Baseline.JsonRpc;
+using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Db;
-using Nethermind.Runner.Ethereum.Api;
 using Nethermind.State;
-using Nethermind.Vault.JsonRpc;
-using Nethermind.Vault.Config;
 using Nethermind.Runner.Ethereum.Steps.Migrations;
-using Nethermind.TxPool;
-using Nethermind.Vault;
+using Nethermind.Runner.Extensions;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
     [RunnerStepDependencies(typeof(InitializeNetwork), typeof(SetupKeyStore), typeof(InitializeBlockchain))]
     public class RegisterRpcModules : IStep
     {
-        private readonly NethermindApi _api;
+        private readonly INethermindApi _api;
 
-        public RegisterRpcModules(NethermindApi api)
+        public RegisterRpcModules(INethermindApi api)
         {
             _api = api;
         }
 
-        public virtual Task Execute(CancellationToken cancellationToken)
+        public virtual async Task Execute(CancellationToken cancellationToken)
         {
             if (_api.RpcModuleProvider == null) throw new StepDependencyException(nameof(_api.RpcModuleProvider));
             if (_api.TxPool == null) throw new StepDependencyException(nameof(_api.TxPool));
@@ -71,41 +66,30 @@ namespace Nethermind.Runner.Ethereum.Steps
             IJsonRpcConfig jsonRpcConfig = _api.Config<IJsonRpcConfig>();
             if (!jsonRpcConfig.Enabled)
             {
-                return Task.CompletedTask;
+                return;
             }
 
             // the following line needs to be called in order to make sure that the CLI library is referenced from runner and built alongside
             if (logger.IsDebug) logger.Debug($"Resolving CLI ({nameof(CliModuleLoader)})");
 
+            // TODO: possibly hide it
+            _api.FilterStore = new FilterStore();
+            _api.FilterManager = new FilterManager(_api.FilterStore, _api.MainBlockProcessor, _api.TxPool, _api.LogManager);
+            
             IInitConfig initConfig = _api.Config<IInitConfig>();
-            INdmConfig ndmConfig = _api.Config<INdmConfig>();
             IJsonRpcConfig rpcConfig = _api.Config<IJsonRpcConfig>();
             IBaselineConfig baselineConfig = _api.Config<IBaselineConfig>();
-            IVaultConfig vaultConfig = _api.Config<IVaultConfig>();
             INetworkConfig networkConfig = _api.Config<INetworkConfig>();
-            if (ndmConfig.Enabled && !(_api.NdmInitializer is null) && ndmConfig.ProxyEnabled)
-            {
-                EthModuleProxyFactory proxyFactory = new EthModuleProxyFactory(_api.EthJsonRpcClientProxy, _api.Wallet);
-                _api.RpcModuleProvider.Register(new SingletonModulePool<IEthModule>(proxyFactory, true));
-                if (logger.IsInfo) logger.Info("Enabled JSON RPC Proxy for NDM.");
-            }
-            else
             {
                 EthModuleFactory ethModuleFactory = new EthModuleFactory(
-                    _api.DbProvider,
                     _api.TxPool,
                     _api.TxSender,
                     _api.Wallet,
                     _api.BlockTree,
-                    _api.EthereumEcdsa,
-                    _api.MainBlockProcessor,
-                    _api.ReceiptFinder,
-                    _api.SpecProvider,
-                    rpcConfig,
-                    _api.Config<ISyncConfig>(),
-                    _api.BloomStorage,
+                    _api.Config<IJsonRpcConfig>(),
                     _api.LogManager,
-                    initConfig.IsMining);
+                    _api.StateReader,
+                    _api);
                 _api.RpcModuleProvider.Register(new BoundedModulePool<IEthModule>(8, ethModuleFactory));
             }
 
@@ -166,15 +150,16 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             TxPoolModule txPoolModule = new TxPoolModule(_api.BlockTree, _api.TxPoolInfoProvider, _api.LogManager);
             _api.RpcModuleProvider.Register(new SingletonModulePool<ITxPoolModule>(txPoolModule, true));
-
             
-            if (vaultConfig.Enabled)
-            {
-                VaultService vaultService = new VaultService(vaultConfig, _api.LogManager);
-                VaultModule vaultModule = new VaultModule(vaultService, _api.LogManager);
-                _api.RpcModuleProvider.Register(new SingletonModulePool<IVaultModule>(vaultModule, true));
-                if (logger?.IsInfo ?? false) logger!.Info($"Vault RPC Module has been enabled");
-            }
+            // TODO: plugin ecosystem move to Baseline plugin
+            // IVaultConfig vaultConfig = _api.Config<IVaultConfig>();
+            // if (vaultConfig.Enabled)
+            // {
+            //     VaultService vaultService = new VaultService(vaultConfig, _api.LogManager);
+            //     VaultModule vaultModule = new VaultModule(vaultService, _api.LogManager);
+            //     _api.RpcModuleProvider.Register(new SingletonModulePool<IVaultModule>(vaultModule, true));
+            //     if (logger?.IsInfo ?? false) logger!.Info($"Vault RPC Module has been enabled");
+            // }
 
             NetModule netModule = new NetModule(_api.LogManager, new NetBridge(_api.Enode, _api.SyncServer));
             _api.RpcModuleProvider.Register(new SingletonModulePool<INetModule>(netModule, true));
@@ -190,8 +175,11 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.LogManager);
 
             _api.RpcModuleProvider.Register(new SingletonModulePool<IParityModule>(parityModule, true));
-            
-            return Task.CompletedTask;
+
+            foreach (IPlugin plugin in _api.Plugins)
+            {
+                await plugin.InitRpcModules(_api);
+            }
         }
     }
 }
