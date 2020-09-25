@@ -1,3 +1,4 @@
+using Nethermind.Api;
 using Nethermind.Core;
 using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Consumers.Shared;
@@ -8,7 +9,6 @@ using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo;
 using Nethermind.Db;
 using Nethermind.Facade.Proxy;
-using Nethermind.Runner;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.DataMarketplace.Infrastructure

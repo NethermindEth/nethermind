@@ -14,35 +14,12 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using FluentAssertions;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.Filters;
-using Nethermind.Blockchain.Processing;
-using Nethermind.Blockchain.Receipts;
-using Nethermind.Config;
-using Nethermind.Core;
-using Nethermind.Core.Specs;
-using Nethermind.Crypto;
-using Nethermind.DataMarketplace.Channels;
-using Nethermind.DataMarketplace.Core;
+using Nethermind.Api;
 using Nethermind.DataMarketplace.Core.Configs;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Infrastructure;
 using Nethermind.DataMarketplace.Infrastructure.Modules;
-using Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo;
-using Nethermind.Db;
 using Nethermind.Facade.Proxy;
-using Nethermind.Grpc;
-using Nethermind.JsonRpc.Modules;
-using Nethermind.KeyStore;
-using Nethermind.Logging;
-using Nethermind.Monitoring;
-using Nethermind.Serialization.Json;
-using Nethermind.Db.Blooms;
-using Nethermind.Runner;
-using Nethermind.Runner.Ethereum.Api;
-using Nethermind.TxPool;
-using Nethermind.Wallet;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -50,80 +27,16 @@ namespace Nethermind.DataMarketplace.Test.Infrastructure
 {
     public class NdmModuleTests
     {
-        private IConfigProvider _configProvider;
-        private IConfigManager _configManager;
-        private INdmConfig _ndmConfig;
         private string _baseDbPath;
-        private IDbProvider _rocksProvider;
-        private IMongoProvider _mongoProvider;
-        private ILogManager _logManager;
-        private IBlockTree _blockTree;
-        private ISpecProvider _specProvider;
-        private ITxPool _transactionPool;
-        private ITxSender _txSender;
-        private IReceiptStorage _receiptStorage;
-        private IFilterStore _filterStore;
-        private IFilterManager _filterManager;
-        private IWallet _wallet;
-        private ITimestamper _timestamper;
-        private IEthereumEcdsa _ecdsa;
-        private IKeyStore _keyStore;
-        private IRpcModuleProvider _rpcModuleProvider;
-        private IJsonSerializer _jsonSerializer;
-        private ICryptoRandom _cryptoRandom;
-        private IEnode _enode;
-        private INdmConsumerChannelManager _ndmConsumerChannelManager;
-        private INdmDataPublisher _ndmDataPublisher;
-        private IGrpcServer _grpcServer;
-        private IEthRequestService _ethRequestService;
-        private INdmNotifier _notifier;
         private bool _enableUnsecuredDevWallet;
-        private IBlockProcessor _blockProcessor;
         private INdmModule _ndmModule;
-        private IJsonRpcClientProxy _jsonRpcClientProxy;
-        private IEthJsonRpcClientProxy _ethJsonRpcClientProxy;
-        private IHttpClient _httpClient;
-        private IMonitoringService _monitoringService;
-        private IBloomStorage _bloomStorage;
 
         [SetUp]
         public void Setup()
         {
-            _configProvider = Substitute.For<IConfigProvider>();
-            _configManager = Substitute.For<IConfigManager>();
-            _ndmConfig = new NdmConfig();
             _baseDbPath = "db";
-            _rocksProvider = Substitute.For<IDbProvider>();
-            _mongoProvider = Substitute.For<IMongoProvider>();
-            _logManager = LimboLogs.Instance;
-            _blockTree = Substitute.For<IBlockTree>();
-            _specProvider = Substitute.For<ISpecProvider>();
-            _transactionPool = Substitute.For<ITxPool>();
-            _txSender = Substitute.For<ITxSender>();
-            _receiptStorage = Substitute.For<IReceiptStorage>();
-            _filterStore = Substitute.For<IFilterStore>();
-            _filterManager = Substitute.For<IFilterManager>();
-            _wallet = Substitute.For<IWallet>();
-            _timestamper = Substitute.For<ITimestamper>();
-            _ecdsa = Substitute.For<IEthereumEcdsa>();
-            _keyStore = Substitute.For<IKeyStore>();
-            _rpcModuleProvider = Substitute.For<IRpcModuleProvider>();
-            _jsonSerializer = Substitute.For<IJsonSerializer>();
-            _cryptoRandom = Substitute.For<ICryptoRandom>();
-            _enode = Substitute.For<IEnode>();
-            _ndmConsumerChannelManager = Substitute.For<INdmConsumerChannelManager>();
-            _ndmDataPublisher = Substitute.For<INdmDataPublisher>();
-            _grpcServer = Substitute.For<IGrpcServer>();
-            _ethRequestService = Substitute.For<IEthRequestService>();
-            _notifier = Substitute.For<INdmNotifier>();
             _enableUnsecuredDevWallet = false;
-            _blockProcessor = Substitute.For<IBlockProcessor>();
-            _jsonRpcClientProxy = Substitute.For<IJsonRpcClientProxy>();
-            _ethJsonRpcClientProxy = Substitute.For<IEthJsonRpcClientProxy>();
-            _httpClient = Substitute.For<IHttpClient>();
-            _monitoringService = Substitute.For<IMonitoringService>();
             _ndmModule = new NdmModule();
-            _bloomStorage = Substitute.For<IBloomStorage>();
         }
 
         [Test]

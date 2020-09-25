@@ -3,6 +3,8 @@ using System.Linq;
 using System.Net.Http;
 using System.Reflection;
 using System.Threading.Tasks;
+using Nethermind.Api;
+using Nethermind.Api.Extensions;
 using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Channels.Grpc;
 using Nethermind.DataMarketplace.Consumers.Infrastructure;
@@ -17,8 +19,6 @@ using Nethermind.Facade.Proxy;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
-using Nethermind.Runner;
-using Nethermind.Runner.Extensions;
 
 namespace Nethermind.DataMarketplace.Initializers
 {
