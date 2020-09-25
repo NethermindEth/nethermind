@@ -23,8 +23,6 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Analytics;
 using Nethermind.Grpc;
 using Nethermind.Logging;
-using Nethermind.Runner.Ethereum.Api;
-using YamlDotNet.Serialization.TypeInspectors;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
