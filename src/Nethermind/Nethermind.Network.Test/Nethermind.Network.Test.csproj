@@ -36,8 +36,8 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.AspNetCore.DataProtection.Abstractions" Version="3.1.5" />
-    <PackageReference Include="Microsoft.AspNetCore.DataProtection.Extensions" Version="3.1.5" />
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection.Abstractions" Version="3.1.8" />
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection.Extensions" Version="3.1.8" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="16.6.1" />
     <PackageReference Include="NSubstitute" Version="4.2.1" />
     <PackageReference Include="NUnit" Version="3.12.0" />
