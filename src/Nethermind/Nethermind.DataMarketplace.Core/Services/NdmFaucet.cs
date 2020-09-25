@@ -190,7 +190,7 @@ namespace Nethermind.DataMarketplace.Core.Services
                     SenderAddress = _faucetAddress,
                     Nonce = nonce
                 };
-                _wallet.Sign(transaction, await _blockchainBridge.GetNetworkIdAsync());
+                _wallet.Sign(transaction, (int)await _blockchainBridge.GetNetworkIdAsync());
                 Keccak? transactionHash = await _blockchainBridge.SendOwnTransactionAsync(transaction);
                 if (transactionHash == null)
                 {

@@ -256,7 +256,7 @@ namespace Nethermind.DataMarketplace.Test
 
             public long GetChainId()
             {
-                throw new NotImplementedException();
+                return 1;
             }
 
             public byte[] GetCode(Address address)

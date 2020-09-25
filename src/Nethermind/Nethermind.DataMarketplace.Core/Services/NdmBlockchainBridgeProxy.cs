@@ -90,7 +90,7 @@ namespace Nethermind.DataMarketplace.Core.Services
                 : MapTransaction(transactionTask.Result.Result, receiptTask.Result?.Result);
         }
 
-        public async Task<int> GetNetworkIdAsync()
+        public async Task<long> GetNetworkIdAsync()
         {
             var result = await _proxy.eth_chainId();
 

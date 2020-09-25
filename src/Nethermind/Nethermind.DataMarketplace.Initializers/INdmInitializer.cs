@@ -15,13 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Threading.Tasks;
-using Nethermind.Facade.Proxy;
-using Nethermind.Runner;
+using Nethermind.DataMarketplace.Infrastructure;
 
 namespace Nethermind.DataMarketplace.Initializers
 {
     public interface INdmInitializer
     {
-        Task<INdmCapabilityConnector> InitAsync(INethermindApi nethermindApi, IHttpClient httpClient);
+        Task<INdmCapabilityConnector> InitAsync(INdmApi nethermindApi);
     }
 }

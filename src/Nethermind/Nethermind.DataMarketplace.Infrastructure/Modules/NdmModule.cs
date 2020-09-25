@@ -15,16 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.IO;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.Processing;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Infrastructure.Rlp;
-using Nethermind.Db;
-using Nethermind.Facade;
-using Nethermind.JsonRpc;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Modules
 {
@@ -62,13 +56,13 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
             }
 
             api.GasPriceService
-                = new GasPriceService(api.HttpClient, api.ConfigManager, config.Id, api.Timestamper, logManager);
+                = new GasPriceService(api.HttpClient, api.ConfigManager, config.Id, api.Timestamper, api.LogManager);
             api.TransactionService
-                = new TransactionService(api.BlockchainBridge, api.Wallet, api.ConfigManager, config.Id, logManager);
+                = new TransactionService(api.BlockchainBridge, api.Wallet, api.ConfigManager, config.Id, api.LogManager);
             api.DepositService
-                = new DepositService(api.BlockchainBridge, api.AbiEncoder, api.Wallet, contractAddress);
+                = new DepositService(api.BlockchainBridge, api.AbiEncoder, api.Wallet, api.ContractAddress);
             api.JsonRpcNdmConsumerChannel
-                = new JsonRpcNdmConsumerChannel(logManager);
+                = new JsonRpcNdmConsumerChannel(api.LogManager);
             
             if (config.JsonRpcDataChannelEnabled)
             {

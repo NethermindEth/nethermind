@@ -15,7 +15,7 @@ namespace Nethermind.DataMarketplace.Infrastructure
 {
     public interface INdmApi : INethermindApi
     {
-        public ConfigManager? ConfigManager { get; set; }
+        public IConfigManager? ConfigManager { get; set; }
         public IEthRequestService? EthRequestService { get; set; }
         public INdmFaucet? NdmFaucet { get; set; }
         public Address? ContractAddress { get; set; }
@@ -38,5 +38,6 @@ namespace Nethermind.DataMarketplace.Infrastructure
         
         // TODO: handle this override somehow (maybe override Config<> so it returns this? 
         public INdmConfig? NdmConfig { get; set; }
+        public string? BaseDbPath { get; set; }
     }
 }

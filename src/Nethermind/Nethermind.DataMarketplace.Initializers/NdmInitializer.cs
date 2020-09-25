@@ -21,6 +21,7 @@ using System.Threading.Tasks;
 using MongoDB.Driver;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.DataMarketplace.Consumers.Infrastructure;
 using Nethermind.Logging;
 using Nethermind.DataMarketplace.Core.Configs;
 using Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo;
@@ -30,6 +31,7 @@ using Nethermind.DataMarketplace.Infrastructure.Rlp;
 using Nethermind.DataMarketplace.Core.Repositories;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Infrastructure;
+using Nethermind.DataMarketplace.Infrastructure.Modules;
 using Nethermind.DataMarketplace.Infrastructure.Notifiers;
 using Nethermind.DataMarketplace.Subprotocols.Factories;
 using Nethermind.Db;
@@ -109,46 +111,44 @@ namespace Nethermind.DataMarketplace.Initializers
 
             // TODO: WTF, why not a wrapper...???? ayayayayaya
             ndmApi.ConfigManager = new ConfigManager(defaultConfig, configRepository);
-            NdmConfig? ndmConfig = await ndmApi.ConfigManager.GetAsync(defaultConfig.Id);
-            if (ndmConfig is null)
+            ndmApi.NdmConfig = await ndmApi.ConfigManager.GetAsync(defaultConfig.Id);
+            if (ndmApi.NdmConfig is null)
             {
-                ndmConfig = defaultConfig;
+                ndmApi.NdmConfig = defaultConfig;
                 if (defaultConfig.StoreConfigInDatabase)
                 {
-                    await ndmApi.ConfigManager.UpdateAsync(ndmConfig);
+                    await ndmApi.ConfigManager.UpdateAsync((NdmConfig)ndmApi.NdmConfig);
                 }
             }
 
             IWebSocketsModule webSocketsModule = ndmApi.WebSocketsManager!.GetModule("ndm");
             ndmApi.NdmNotifier = new NdmNotifier(webSocketsModule);
-            ndmApi.EthRequestService = new EthRequestService(ndmConfig.FaucetHost, logManager);
-            string baseDbPath = configProvider.GetConfig<InitConfig>().BaseDbPath;
+            ndmApi.EthRequestService = new EthRequestService(ndmApi.NdmConfig.FaucetHost, logManager);
+            string baseDbPath = configProvider.GetConfig<IInitConfig>().BaseDbPath;
             
-            // TODO: WTF, why not a wrapper...???? ayayayayaya
-            DbPath = Path.Combine(baseDbPath, ndmConfig.DatabasePath);
+            ndmApi.BaseDbPath = DbPath = Path.Combine(baseDbPath, ndmApi.NdmConfig.DatabasePath);
 
             _ndmModule.Init(ndmApi);
-
-            INdmFaucet faucet;
-            if (ndmConfig.FaucetEnabled)
+            
+            if (ndmApi.NdmConfig.FaucetEnabled)
             {
                 // faucet should be separate from NDM? but it uses MongoDB?
                 // so maybe we could extract Mongo DB beyond NDM? why would it be related?
-                if (string.IsNullOrWhiteSpace(ndmConfig.FaucetAddress))
+                if (string.IsNullOrWhiteSpace(ndmApi.NdmConfig.FaucetAddress))
                 {
-                    faucet = EmptyFaucet.Instance;
+                    ndmApi.NdmFaucet = EmptyFaucet.Instance;
                     _logger.Warn("Faucet cannot be started due to missing faucet address configuration.");
                 }
                 else
                 {
-                    Address faucetAddress = new Address(ndmConfig.FaucetAddress);
-                    faucet = new NdmFaucet(
+                    Address faucetAddress = new Address(ndmApi.NdmConfig.FaucetAddress);
+                    ndmApi.NdmFaucet = new NdmFaucet(
                         ndmApi.BlockchainBridge,
                         ethRequestRepository,
                         faucetAddress,
-                        ndmConfig.FaucetWeiRequestMaxValue,
-                        ndmConfig.FaucetEthDailyRequestsTotalValue,
-                        ndmConfig.FaucetEnabled,
+                        ndmApi.NdmConfig.FaucetWeiRequestMaxValue,
+                        ndmApi.NdmConfig.FaucetEthDailyRequestsTotalValue,
+                        ndmApi.NdmConfig.FaucetEnabled,
                         ndmApi.Timestamper,
                         ndmApi.Wallet,
                         logManager);
@@ -156,15 +156,15 @@ namespace Nethermind.DataMarketplace.Initializers
             }
             else
             {
-                faucet = EmptyFaucet.Instance;
+                ndmApi.NdmFaucet = EmptyFaucet.Instance;
             }
 
-            Address consumerAddress = string.IsNullOrWhiteSpace(ndmConfig.ConsumerAddress)
+            ndmApi.ConsumerAddress = string.IsNullOrWhiteSpace(ndmApi.NdmConfig.ConsumerAddress)
                 ? Address.Zero
-                : new Address(ndmConfig.ConsumerAddress);
-            Address providerAddress = string.IsNullOrWhiteSpace(ndmConfig.ProviderAddress)
+                : new Address(ndmApi.NdmConfig.ConsumerAddress);
+            ndmApi.ProviderAddress = string.IsNullOrWhiteSpace(ndmApi.NdmConfig.ProviderAddress)
                 ? Address.Zero
-                : new Address(ndmConfig.ProviderAddress);
+                : new Address(ndmApi.NdmConfig.ProviderAddress);
             
             _ndmConsumersModule.Init(ndmApi);
         }

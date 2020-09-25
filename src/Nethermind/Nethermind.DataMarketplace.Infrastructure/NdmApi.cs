@@ -39,6 +39,7 @@ using Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Evm;
+using Nethermind.Facade;
 using Nethermind.Facade.Proxy;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc.Modules;
@@ -76,7 +77,7 @@ namespace Nethermind.DataMarketplace.Infrastructure
             _nethermindApi = nethermindApi;
         }
 
-        public ConfigManager? ConfigManager { get; set; }
+        public IConfigManager? ConfigManager { get; set; }
         public IEthRequestService? EthRequestService { get; set; }
         public INdmFaucet? NdmFaucet { get; set; }
         public Address? ContractAddress { get; set; }
@@ -96,7 +97,9 @@ namespace Nethermind.DataMarketplace.Infrastructure
         public IHttpClient? HttpClient { get; set; }
         public IMongoProvider? MongoProvider { get; set; }
         public IDbProvider? RocksProvider { get; set; }
-        public INdmConfig? NdmConfig { get; set; }
+        
+        public INdmConfig? NdmConfig { get; set; } // strange way of overriding NDM config
+        public string BaseDbPath { get; set; } // strange way of adding NDM
 
         public IAbiEncoder AbiEncoder => _nethermindApi.AbiEncoder;
 
@@ -206,10 +209,18 @@ namespace Nethermind.DataMarketplace.Infrastructure
             set => _nethermindApi.FileSystem = value;
         }
 
-        public IFilterStore FilterStore => _nethermindApi.FilterStore;
-
-        public IFilterManager FilterManager => _nethermindApi.FilterManager;
-
+        public IFilterStore FilterStore
+        {
+            get => _nethermindApi.FilterStore;
+            set => _nethermindApi.FilterStore = value;
+        }
+        
+        public IFilterManager FilterManager
+        {
+            get => _nethermindApi.FilterManager;
+            set => _nethermindApi.FilterManager = value;
+        }
+        
         public IGrpcServer? GrpcServer
         {
             get => _nethermindApi.GrpcServer;
@@ -370,6 +381,12 @@ namespace Nethermind.DataMarketplace.Infrastructure
             set => _nethermindApi.StateProvider = value;
         }
 
+        public IStateReader? StateReader
+        {
+            get => _nethermindApi.StateReader;
+            set => _nethermindApi.StateReader = value;
+        }
+
         public IStorageProvider? StorageProvider
         {
             get => _nethermindApi.StorageProvider;
@@ -447,5 +464,10 @@ namespace Nethermind.DataMarketplace.Infrastructure
         }
 
         public List<IPlugin> Plugins => _nethermindApi.Plugins;
+        
+        public IBlockchainBridge CreateBlockchainBridge()
+        {
+            return _nethermindApi.CreateBlockchainBridge();
+        }
     }
 }

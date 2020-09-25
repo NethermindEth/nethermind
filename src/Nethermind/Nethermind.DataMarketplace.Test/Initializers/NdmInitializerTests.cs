@@ -17,34 +17,15 @@
 using System.IO;
 using System.Threading.Tasks;
 using FluentAssertions;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.Filters;
-using Nethermind.Blockchain.Processing;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
-using Nethermind.Core;
-using Nethermind.Core.Specs;
-using Nethermind.Crypto;
-using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Consumers.Infrastructure;
-using Nethermind.DataMarketplace.Core;
+using Nethermind.DataMarketplace.Consumers.Shared;
 using Nethermind.DataMarketplace.Core.Configs;
 using Nethermind.DataMarketplace.Infrastructure;
+using Nethermind.DataMarketplace.Infrastructure.Modules;
 using Nethermind.DataMarketplace.Initializers;
-using Nethermind.Db;
-using Nethermind.Facade.Proxy;
-using Nethermind.Grpc;
-using Nethermind.JsonRpc.Modules;
-using Nethermind.KeyStore;
 using Nethermind.Logging;
-using Nethermind.Monitoring;
-using Nethermind.Network;
-using Nethermind.Serialization.Json;
-using Nethermind.Stats;
-using Nethermind.Db.Blooms;
-using Nethermind.TxPool;
-using Nethermind.Wallet;
-using Nethermind.WebSockets;
+using Nethermind.Runner;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -55,41 +36,10 @@ namespace Nethermind.DataMarketplace.Test.Initializers
         private INdmModule _ndmModule;
         private INdmConsumersModule _ndmConsumersModule;
         private IConfigProvider _configProvider;
-        private IDbProvider _dbProvider;
-        private string _baseDbPath;
-        private IBlockTree _blockTree;
-        private ITxPool _txPool;
-        private ITxSender _txSender;
-        private ISpecProvider _specProvider;
-        private IReceiptFinder _receiptFinder;
-        private IWallet _wallet;
-        private IFilterStore _filterStore;
-        private IFilterManager _filterManager;
-        private ITimestamper _timestamper;
-        private IEthereumEcdsa _ecdsa;
-        private IRpcModuleProvider _rpcModuleProvider;
-        private IKeyStore _keyStore;
-        private IJsonSerializer _jsonSerializer;
-        private ICryptoRandom _cryptoRandom;
-        private IEnode _enode;
-        private INdmConsumerChannelManager _consumerChannelManager;
-        private INdmDataPublisher _dataPublisher;
-        private IGrpcServer _grpcServer;
-        private INodeStatsManager _nodeStatsManager;
-        private IProtocolsManager _protocolsManager;
-        private IProtocolValidator _protocolValidator;
-        private IMessageSerializationService _messageSerializationService;
         private bool _enableUnsecuredDevWallet;
-        private IWebSocketsManager _webSocketsManager;
-        private ILogManager _logManager;
-        private IBlockProcessor _blockProcessor;
-        private IJsonRpcClientProxy _jsonRpcClientProxy;
-        private IEthJsonRpcClientProxy _ethJsonRpcClientProxy;
-        private IHttpClient _httpClient;
-        private IMonitoringService _monitoringService;
         private NdmConfig _ndmConfig;
+        private InitConfig _initConfig;
         private NdmInitializer _ndmInitializer;
-        private IBloomStorage _bloomStorage;
 
         [SetUp]
         public void Setup()
@@ -97,56 +47,28 @@ namespace Nethermind.DataMarketplace.Test.Initializers
             _ndmModule = Substitute.For<INdmModule>();
             _ndmConsumersModule = Substitute.For<INdmConsumersModule>();
             _configProvider = Substitute.For<IConfigProvider>();
-            _dbProvider = Substitute.For<IDbProvider>();
-            _blockTree = Substitute.For<IBlockTree>();
-            _txPool = Substitute.For<ITxPool>();
-            _txSender = Substitute.For<ITxSender>();
-            _specProvider = Substitute.For<ISpecProvider>();
-            _receiptFinder = Substitute.For<IReceiptFinder>();
-            _wallet = Substitute.For<IWallet>();
-            _filterStore = Substitute.For<IFilterStore>();
-            _filterManager = Substitute.For<IFilterManager>();
-            _timestamper = Substitute.For<ITimestamper>();
-            _ecdsa = Substitute.For<IEthereumEcdsa>();
-            _rpcModuleProvider = Substitute.For<IRpcModuleProvider>();
-            _keyStore = Substitute.For<IKeyStore>();
-            _jsonSerializer = Substitute.For<IJsonSerializer>();
-            _cryptoRandom = Substitute.For<ICryptoRandom>();
-            _enode = Substitute.For<IEnode>();
-            _consumerChannelManager = Substitute.For<INdmConsumerChannelManager>();
-            _dataPublisher = Substitute.For<INdmDataPublisher>();
-            _grpcServer = Substitute.For<IGrpcServer>();
-            _nodeStatsManager = Substitute.For<INodeStatsManager>();
-            _protocolsManager = Substitute.For<IProtocolsManager>();
-            _protocolValidator = Substitute.For<IProtocolValidator>();
-            _messageSerializationService = Substitute.For<IMessageSerializationService>();
-            _webSocketsManager = Substitute.For<IWebSocketsManager>();
-            _logManager = LimboLogs.Instance;
-            _blockProcessor = Substitute.For<IBlockProcessor>();
-            _jsonRpcClientProxy = Substitute.For<IJsonRpcClientProxy>();
-            _ethJsonRpcClientProxy = Substitute.For<IEthJsonRpcClientProxy>();
-            _httpClient = Substitute.For<IHttpClient>();
-            _monitoringService = Substitute.For<IMonitoringService>();
             _enableUnsecuredDevWallet = false;
             _ndmConfig = new NdmConfig {Enabled = true, StoreConfigInDatabase = false};
+            _initConfig = new InitConfig();
             _configProvider.GetConfig<INdmConfig>().Returns(_ndmConfig);
-            _ndmInitializer = new NdmInitializer(_ndmModule, _ndmConsumersModule, _logManager);
-            _bloomStorage = Substitute.For<IBloomStorage>();
+            _ndmInitializer = new NdmInitializer(_ndmModule, _ndmConsumersModule, LimboLogs.Instance);
         }
 
         [Test]
         public async Task database_path_should_be_base_db_and_ndm_db_path()
         {
-            _baseDbPath = "db";
+            _initConfig.BaseDbPath = "db";
             _ndmConfig.DatabasePath = "ndm";
-            // WTF
-            // await _ndmInitializer.InitAsync(_configProvider, _dbProvider, _baseDbPath, _blockTree,
-            //     _txPool, _txSender, _specProvider, _receiptFinder, _wallet, _filterStore, _filterManager, _timestamper, _ecdsa,
-            //     _rpcModuleProvider, _keyStore, _jsonSerializer, _cryptoRandom, _enode, _consumerChannelManager,
-            //     _dataPublisher, _grpcServer, _nodeStatsManager, _protocolsManager, _protocolValidator,
-            //     _messageSerializationService, _enableUnsecuredDevWallet, _webSocketsManager, _logManager,
-            //     _blockProcessor, _jsonRpcClientProxy, _ethJsonRpcClientProxy, _httpClient, _monitoringService, _bloomStorage);
-            _ndmInitializer.DbPath.Should().Be(Path.Combine(_baseDbPath, _ndmConfig.DatabasePath));
+            INethermindApi nethermindApi = Substitute.For<INethermindApi>();
+            INdmApi ndmApi = new NdmApi(nethermindApi);
+            var configProvider = Substitute.For<IConfigProvider>();
+            ndmApi.ConfigProvider = configProvider;
+            configProvider.GetConfig<INdmConfig>().Returns(_ndmConfig);
+            configProvider.GetConfig<IInitConfig>().Returns(_initConfig);
+            ndmApi.AccountService = Substitute.For<IAccountService>();
+
+            await _ndmInitializer.InitAsync(ndmApi);
+            _ndmInitializer.DbPath.Should().Be(Path.Combine(_initConfig.BaseDbPath, _ndmConfig.DatabasePath));
         }
     }
 }

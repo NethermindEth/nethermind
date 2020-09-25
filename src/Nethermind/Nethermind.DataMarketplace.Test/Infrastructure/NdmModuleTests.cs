@@ -39,6 +39,8 @@ using Nethermind.Logging;
 using Nethermind.Monitoring;
 using Nethermind.Serialization.Json;
 using Nethermind.Db.Blooms;
+using Nethermind.Runner;
+using Nethermind.Runner.Ethereum.Api;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using NSubstitute;
@@ -127,15 +129,11 @@ namespace Nethermind.DataMarketplace.Test.Infrastructure
         [Test]
         public void init_should_return_services()
         {
-            var services = _ndmModule.Init(new NdmRequiredServices(_configProvider, _configManager, _ndmConfig,
-                _baseDbPath, _rocksProvider, _mongoProvider, _logManager, _blockTree, _transactionPool, _txSender, _specProvider,
-                _receiptStorage, _filterStore, _filterManager, _wallet, _timestamper, _ecdsa, _keyStore,
-                _rpcModuleProvider, _jsonSerializer, _cryptoRandom, _enode, _ndmConsumerChannelManager,
-                _ndmDataPublisher, _grpcServer, _ethRequestService, _notifier, _enableUnsecuredDevWallet,
-                _blockProcessor, _jsonRpcClientProxy, _ethJsonRpcClientProxy, _httpClient, _monitoringService, _bloomStorage));
-            services.Should().NotBeNull();
-            services.CreatedServices.Should().NotBeNull();
-            services.RequiredServices.Should().NotBeNull();
+            NdmApi ndmApi = new NdmApi(Substitute.For<INethermindApi>());
+            ndmApi.HttpClient = Substitute.For<IHttpClient>();
+            ndmApi.ConfigManager = Substitute.For<IConfigManager>();
+            ndmApi.NdmConfig = new NdmConfig();
+            _ndmModule.Init(ndmApi);
         }
     }
 }

@@ -16,6 +16,7 @@
 
 using System;
 using Nethermind.DataMarketplace.Consumers.Infrastructure;
+using Nethermind.DataMarketplace.Infrastructure.Modules;
 using Nethermind.Logging;
 
 namespace Nethermind.DataMarketplace.Initializers
