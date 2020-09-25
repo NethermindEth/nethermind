@@ -65,7 +65,7 @@ namespace Nethermind.JsonRpc.WebSockets
             {
                 resultData = result.IsCollection ? _jsonSerializer.Serialize(result.Responses) : _jsonSerializer.Serialize(result.Response);
             }
-            catch (TargetInvocationException e) when (e.InnerException is OperationCanceledException)
+            catch (Exception e) when (e.InnerException is OperationCanceledException)
             {
                 resultData = SerializeTimeoutException();
             }

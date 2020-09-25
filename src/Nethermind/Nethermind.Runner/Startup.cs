@@ -119,7 +119,7 @@ namespace Nethermind.Runner
                             await resultStream.CopyToAsync(ctx.Response.Body);
                         }
                     }
-                    catch (TargetInvocationException e) when (e.InnerException is OperationCanceledException)
+                    catch (Exception e) when (e.InnerException is OperationCanceledException)
                     {
                         SerializeTimeoutException(jsonRpcService, resultStream);
                     }

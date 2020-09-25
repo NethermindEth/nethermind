@@ -177,7 +177,7 @@ namespace Nethermind.JsonRpc
             {
                 return GetErrorResponse(methodName, ErrorCodes.InvalidParams, e.Message, e.Data, request.Id, returnAction);
             }
-            catch (TargetInvocationException e) when (e.InnerException is OperationCanceledException)
+            catch (Exception e) when (e.InnerException is OperationCanceledException)
             {
                 string errorMessage = $"{methodName} request was canceled due to enabled timeout.";
                 return GetErrorResponse(methodName, ErrorCodes.Timeout, errorMessage, null, request.Id, returnAction);
