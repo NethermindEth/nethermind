@@ -57,6 +57,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly IWallet _wallet;
 
         private readonly ILogger _logger;
+        private TimeSpan _cancellationTokenTimeout;
 
         private bool HasStateForBlock(BlockHeader header)
         {
@@ -83,6 +84,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _txPoolBridge = _txPool ?? throw new ArgumentNullException(nameof(_txPool));
             _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
+            _cancellationTokenTimeout = TimeSpan.FromMilliseconds(rpcConfig.TracerTimeout);
         }
 
         public ResultWrapper<string> eth_protocolVersion()
@@ -634,12 +636,14 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public ResultWrapper<IEnumerable<FilterLog>> eth_getLogs(Filter filter)
         {
+            CancellationToken cancellationToken = new CancellationTokenSource(_cancellationTokenTimeout).Token;
+            
             BlockParameter fromBlock = filter.FromBlock;
             BlockParameter toBlock = filter.ToBlock;
 
             try
             {
-                return ResultWrapper<IEnumerable<FilterLog>>.Success(_blockchainBridge.GetLogs(fromBlock, toBlock, filter.Address, filter.Topics));
+                return ResultWrapper<IEnumerable<FilterLog>>.Success(_blockchainBridge.GetLogs(fromBlock, toBlock, filter.Address, filter.Topics, cancellationToken));
             }
             catch (ArgumentException e)
             {

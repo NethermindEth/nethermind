@@ -58,24 +58,28 @@ namespace Nethermind.Blockchain.Find
             _rpcConfigGetLogsThreads = Math.Max(1, Environment.ProcessorCount / 4);
         }
 
-        public IEnumerable<FilterLog> FindLogs(LogFilter filter)
+        public IEnumerable<FilterLog> FindLogs(LogFilter filter, CancellationToken cancellationToken = default)
         {
             BlockHeader FindHeader(BlockParameter blockParameter, string name) => _blockFinder.FindHeader(blockParameter) ?? throw new ArgumentException(ILogFinder.NotFoundError, name);
 
+            cancellationToken.ThrowIfCancellationRequested();
             var toBlock = FindHeader(filter.ToBlock, nameof(filter.ToBlock));
+            cancellationToken.ThrowIfCancellationRequested();
             var fromBlock = FindHeader(filter.FromBlock, nameof(filter.FromBlock));
 
             if (fromBlock.Number > toBlock.Number && toBlock.Number != 0)
             {
                 throw new ArgumentException("'From' block is later than 'to' block.");
             }
+            
+            cancellationToken.ThrowIfCancellationRequested();
 
             bool shouldUseBloom = ShouldUseBloomDatabase(fromBlock, toBlock);
             bool canUseBloom = CanUseBloomDatabase(toBlock, fromBlock);
             bool useBloom = shouldUseBloom && canUseBloom;
             return useBloom
-                ? FilterLogsWithBloomsIndex(filter, fromBlock, toBlock)
-                : FilterLogsIteratively(filter, fromBlock, toBlock);
+                ? FilterLogsWithBloomsIndex(filter, fromBlock, toBlock, cancellationToken)
+                : FilterLogsIteratively(filter, fromBlock, toBlock, cancellationToken);
         }
 
         private bool ShouldUseBloomDatabase(BlockHeader fromBlock, BlockHeader toBlock)
@@ -84,10 +88,11 @@ namespace Nethermind.Blockchain.Find
             return blocksToSearch > 1; // if we are searching only in 1 block skip bloom index altogether, this can be tweaked
         }
 
-        private IEnumerable<FilterLog> FilterLogsWithBloomsIndex(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock)
+        private IEnumerable<FilterLog> FilterLogsWithBloomsIndex(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken)
         {
-            Keccak FindBlockHash(long blockNumber)
+            Keccak FindBlockHash(long blockNumber, CancellationToken token)
             {
+                token.ThrowIfCancellationRequested();
                 var blockHash = _blockFinder.FindBlockHash(blockNumber);
                 if (blockHash == null)
                 {
@@ -97,13 +102,14 @@ namespace Nethermind.Blockchain.Find
                 return blockHash;
             }
 
-            IEnumerable<long> FilterBlocks(LogFilter f, long @from, long to, bool runParallel)
+            IEnumerable<long> FilterBlocks(LogFilter f, long @from, long to, bool runParallel, CancellationToken token)
             {
                 try
                 {
                     var enumeration = _bloomStorage.GetBlooms(from, to);
                     foreach (var bloom in enumeration)
                     {
+                        token.ThrowIfCancellationRequested();
                         if (f.Matches(bloom) && enumeration.TryGetBlockNumber(out var blockNumber))
                         {
                             yield return blockNumber;
@@ -126,7 +132,7 @@ namespace Nethermind.Blockchain.Find
             int parallelExecutions = Interlocked.Increment(ref ParallelExecutions) - 1;
             bool canRunParallel = parallelLock == 0;
             
-            IEnumerable<long> filterBlocks = FilterBlocks(filter, fromBlock.Number, toBlock.Number, canRunParallel);
+            IEnumerable<long> filterBlocks = FilterBlocks(filter, fromBlock.Number, toBlock.Number, canRunParallel, cancellationToken);
 
             if (canRunParallel)
             {
@@ -141,7 +147,7 @@ namespace Nethermind.Blockchain.Find
             }
             
             return filterBlocks
-                .SelectMany(blockNumber => FindLogsInBlock(filter, FindBlockHash(blockNumber), blockNumber));
+                .SelectMany(blockNumber => FindLogsInBlock(filter, FindBlockHash(blockNumber, cancellationToken), blockNumber, cancellationToken));
         }
 
         private bool CanUseBloomDatabase(BlockHeader toBlock, BlockHeader fromBlock)
@@ -169,12 +175,12 @@ namespace Nethermind.Blockchain.Find
             return true;
         }
 
-        private IEnumerable<FilterLog> FilterLogsIteratively(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock)
+        private IEnumerable<FilterLog> FilterLogsIteratively(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken)
         {
             int count = 0;
             while (count < _maxBlockDepth && toBlock.Number >= (fromBlock?.Number ?? long.MaxValue))
             {
-                foreach (var filterLog in FindLogsInBlock(filter, toBlock))
+                foreach (var filterLog in FindLogsInBlock(filter, toBlock, cancellationToken))
                 {
                     yield return filterLog;
                 }
@@ -188,24 +194,24 @@ namespace Nethermind.Blockchain.Find
             }
         }
 
-        private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, BlockHeader block) =>
+        private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, BlockHeader block, CancellationToken cancellationToken) =>
             filter.Matches(block.Bloom)
-                ? FindLogsInBlock(filter, block.Hash, block.Number)
+                ? FindLogsInBlock(filter, block.Hash, block.Number, cancellationToken)
                 : Enumerable.Empty<FilterLog>();
 
-        private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, Keccak blockHash, long blockNumber)
+        private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, Keccak blockHash, long blockNumber, CancellationToken cancellationToken)
         {
             if (blockHash != null)
             {
                 return _receiptFinder.TryGetReceiptsIterator(blockNumber, blockHash, out var iterator)
-                    ? FilterLogsInBlockLowMemoryAllocation(filter, ref iterator)
-                    : FilterLogsInBlockHighMemoryAllocation(filter, blockHash, blockNumber);
+                    ? FilterLogsInBlockLowMemoryAllocation(filter, ref iterator, cancellationToken)
+                    : FilterLogsInBlockHighMemoryAllocation(filter, blockHash, blockNumber, cancellationToken);
             }
 
             return Array.Empty<FilterLog>();
         }
 
-        private static IEnumerable<FilterLog> FilterLogsInBlockLowMemoryAllocation(LogFilter filter, ref ReceiptsIterator iterator)
+        private static IEnumerable<FilterLog> FilterLogsInBlockLowMemoryAllocation(LogFilter filter, ref ReceiptsIterator iterator, CancellationToken cancellationToken)
         {
             List<FilterLog> logList = null;
             using (iterator)
@@ -213,11 +219,15 @@ namespace Nethermind.Blockchain.Find
                 long logIndexInBlock = 0;
                 while (iterator.TryGetNext(out var receipt))
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    
                     LogEntriesIterator logsIterator = receipt.Logs == null ? new LogEntriesIterator(receipt.LogsRlp) : new LogEntriesIterator(receipt.Logs);
                     if (filter.Matches(ref receipt.Bloom))
                     {
                         while (logsIterator.TryGetNext(out var log))
                         {
+                            cancellationToken.ThrowIfCancellationRequested();
+                            
                             if (filter.Accepts(ref log))
                             {
                                 logList ??= new List<FilterLog>();
@@ -257,7 +267,7 @@ namespace Nethermind.Blockchain.Find
             return logList ?? (IEnumerable<FilterLog>) Array.Empty<FilterLog>();
         }
 
-        private IEnumerable<FilterLog> FilterLogsInBlockHighMemoryAllocation(LogFilter filter, Keccak blockHash, long blockNumber)
+        private IEnumerable<FilterLog> FilterLogsInBlockHighMemoryAllocation(LogFilter filter, Keccak blockHash, long blockNumber, CancellationToken cancellationToken)
         {
             TxReceipt[] GetReceipts(Keccak hash, long number)
             {
@@ -284,6 +294,8 @@ namespace Nethermind.Blockchain.Find
                     }
                 }
             }
+            
+            cancellationToken.ThrowIfCancellationRequested();
 
             var receipts = GetReceipts(blockHash, blockNumber);
             long logIndexInBlock = 0;
@@ -291,12 +303,16 @@ namespace Nethermind.Blockchain.Find
             {
                 for (var i = 0; i < receipts.Length; i++)
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    
                     var receipt = receipts[i];
 
                     if (filter.Matches(receipt.Bloom))
                     {
                         for (var j = 0; j < receipt.Logs.Length; j++)
                         {
+                            cancellationToken.ThrowIfCancellationRequested();
+                            
                             var log = receipt.Logs[j];
                             if (filter.Accepts(log))
                             {

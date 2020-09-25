@@ -237,11 +237,15 @@ namespace Nethermind.Facade
         public FilterType GetFilterType(int filterId) => _filterStore.GetFilterType(filterId);
         public FilterLog[] GetFilterLogs(int filterId) => _filterManager.GetLogs(filterId);
 
-        public IEnumerable<FilterLog> GetLogs(BlockParameter fromBlock, BlockParameter toBlock, object address = null,
-            IEnumerable<object> topics = null)
+        public IEnumerable<FilterLog> GetLogs(
+            BlockParameter fromBlock, 
+            BlockParameter toBlock, 
+            object address = null,
+            IEnumerable<object> topics = null, 
+            CancellationToken cancellationToken = default)
         {
             LogFilter filter = _filterStore.CreateLogFilter(fromBlock, toBlock, address, topics, false);
-            return _logFinder.FindLogs(filter);
+            return _logFinder.FindLogs(filter, cancellationToken);
         }
 
         public int NewFilter(BlockParameter fromBlock, BlockParameter toBlock,
