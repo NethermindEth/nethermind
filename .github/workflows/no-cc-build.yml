@@ -177,9 +177,9 @@ jobs:
     - name: Nethermind.WebSockets.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.WebSockets.Test
-        #    - name: Nethermind.DataMarketplace.Test
-        #run: |
-        #dotnet test -c Release src/Nethermind/Nethermind.DataMarketplace.Test
+    - name: Nethermind.DataMarketplace.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.DataMarketplace.Test
     - name: Nethermind.DataMarketplace.Channels.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.DataMarketplace.Channels.Test

@@ -42,6 +42,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Consensus.AuRa",
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.DataMarketplace.Consumers.Infrastructure", "Nethermind.DataMarketplace.Consumers.Infrastructure\Nethermind.DataMarketplace.Consumers.Infrastructure.csproj", "{BCBEC563-EE83-4D21-A5C0-9F0B15F8A6C5}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Crypto", "Nethermind.Crypto\Nethermind.Crypto.csproj", "{E5D8E5ED-17D8-4E79-A311-6709A68656E0}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -132,11 +134,16 @@ Global
 		{BCBEC563-EE83-4D21-A5C0-9F0B15F8A6C5}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{BCBEC563-EE83-4D21-A5C0-9F0B15F8A6C5}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{BCBEC563-EE83-4D21-A5C0-9F0B15F8A6C5}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E5D8E5ED-17D8-4E79-A311-6709A68656E0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E5D8E5ED-17D8-4E79-A311-6709A68656E0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E5D8E5ED-17D8-4E79-A311-6709A68656E0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E5D8E5ED-17D8-4E79-A311-6709A68656E0}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{B0D27BA8-A2DB-43B1-88F2-B1FDE7246BDF} = {3C490400-0577-4F8D-9C59-F4FF46D0AC1E}
 		{6D2B915C-3F83-4A53-93C0-750A7BA299CD} = {3C490400-0577-4F8D-9C59-F4FF46D0AC1E}
 		{05E9C8E4-E304-4588-8E61-ED906CEB6677} = {3C490400-0577-4F8D-9C59-F4FF46D0AC1E}
 		{63E6459C-3228-4172-9AE7-6DC83B95478C} = {3C490400-0577-4F8D-9C59-F4FF46D0AC1E}
+		{E5D8E5ED-17D8-4E79-A311-6709A68656E0} = {3C490400-0577-4F8D-9C59-F4FF46D0AC1E}
 	EndGlobalSection
 EndGlobal
