@@ -404,8 +404,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             FixCallTx(transactionCall, head);
 
-            var tokenTimeout = TimeSpan.FromMilliseconds(_rpcConfig.Timeout);
-            CancellationToken cancellationToken = new CancellationTokenSource(tokenTimeout).Token;
+            using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource(_cancellationTokenTimeout);
+            CancellationToken cancellationToken = cancellationTokenSource.Token;
             BlockchainBridge.CallOutput result = _blockchainBridge.EstimateGas(head, transactionCall.ToTransaction(), cancellationToken);
 
             if (result.Error == null)
@@ -636,14 +636,27 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public ResultWrapper<IEnumerable<FilterLog>> eth_getLogs(Filter filter)
         {
-            CancellationToken cancellationToken = new CancellationTokenSource(_cancellationTokenTimeout).Token;
+            IEnumerable<FilterLog> GetLogs(BlockParameter blockParameter, BlockParameter toBlockParameter, CancellationTokenSource cancellationTokenSource)
+            {
+                try
+                {
+                    foreach (FilterLog log in _blockchainBridge.GetLogs(blockParameter, toBlockParameter, filter.Address, filter.Topics, cancellationTokenSource.Token))
+                    {
+                        yield return log;
+                    }
+                }
+                finally
+                {
+                    cancellationTokenSource.Dispose();
+                }
+            }
             
             BlockParameter fromBlock = filter.FromBlock;
             BlockParameter toBlock = filter.ToBlock;
 
             try
             {
-                return ResultWrapper<IEnumerable<FilterLog>>.Success(_blockchainBridge.GetLogs(fromBlock, toBlock, filter.Address, filter.Topics, cancellationToken));
+                return ResultWrapper<IEnumerable<FilterLog>>.Success(GetLogs(fromBlock, toBlock, new CancellationTokenSource(_cancellationTokenTimeout)));
             }
             catch (ArgumentException e)
             {

@@ -184,7 +184,8 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         private IReadOnlyCollection<ParityLikeTxTrace> TraceBlock(Block block, ParityTraceTypes traceTypes)
         {
-            CancellationToken cancellationToken = new CancellationTokenSource(_cancellationTokenTimeout).Token;
+            using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource(_cancellationTokenTimeout);
+            CancellationToken cancellationToken = cancellationTokenSource.Token;
 
             ParityLikeBlockTracer listener = new ParityLikeBlockTracer(traceTypes, cancellationToken);
             _tracer.Trace(block, listener);
@@ -194,7 +195,8 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         private ParityLikeTxTrace TraceTx(Block block, Keccak txHash, ParityTraceTypes traceTypes)
         {
-            CancellationToken cancellationToken = new CancellationTokenSource(_cancellationTokenTimeout).Token;
+            using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource(_cancellationTokenTimeout);
+            CancellationToken cancellationToken = cancellationTokenSource.Token;
 
             ParityLikeBlockTracer listener = new ParityLikeBlockTracer(txHash, traceTypes, cancellationToken);
             _tracer.Trace(block, listener);

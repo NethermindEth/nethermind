@@ -399,7 +399,8 @@ namespace Nethermind.Evm.Test.Tracing
         public void Throw_operation_canceled_after_given_timeout()
         {
             var timeout = TimeSpan.FromSeconds(1);
-            CancellationToken cancellationToken = new CancellationTokenSource(timeout).Token;
+            using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource(timeout);
+            CancellationToken cancellationToken = cancellationTokenSource.Token;
             GethTraceOptions optionsMock = Substitute.For<GethTraceOptions>();
             var tracer = new GethLikeTxTracer(optionsMock, cancellationToken);
 
@@ -416,7 +417,8 @@ namespace Nethermind.Evm.Test.Tracing
         public void Tracers_cancellation_tokens_does_not_affect_each_other()
         {
             GethTraceOptions optionsMock = Substitute.For<GethTraceOptions>();
-            CancellationToken cancellationToken = new CancellationTokenSource(TimeSpan.FromMilliseconds(1)).Token;
+            using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource(TimeSpan.FromMilliseconds(1));
+            CancellationToken cancellationToken = cancellationTokenSource.Token;
             var tracer = new GethLikeTxTracer(optionsMock, cancellationToken);
 
             CancellationToken cancellationToken2 = new CancellationTokenSource().Token;
