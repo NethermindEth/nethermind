@@ -25,31 +25,31 @@ namespace Nethermind.JsonRpc.Modules.Trace
     [RpcModule(ModuleType.Trace)]
     public interface ITraceModule : IModule
     {
-        [JsonRpcMethod(Description = "", IsImplemented = false, IsReadOnly = false)]
+        [JsonRpcMethod(Description = "", IsImplemented = false, IsSharable = false)]
         ResultWrapper<ParityTxTraceFromReplay> trace_call(TransactionForRpc message, string[] traceTypes, BlockParameter blockParameter);
         
-        [JsonRpcMethod(Description = "", IsImplemented = false, IsReadOnly = false)]
+        [JsonRpcMethod(Description = "", IsImplemented = false, IsSharable = false)]
         ResultWrapper<ParityTxTraceFromReplay[]> trace_callMany((TransactionForRpc message, string[] traceTypes, BlockParameter numberOrTag)[] calls);
         
-        [JsonRpcMethod(Description = "Traces a call to eth_sendRawTransaction without making the call, returning the traces", IsImplemented = true, IsReadOnly = false)]
+        [JsonRpcMethod(Description = "Traces a call to eth_sendRawTransaction without making the call, returning the traces", IsImplemented = true, IsSharable = false)]
         ResultWrapper<ParityTxTraceFromReplay> trace_rawTransaction(byte[] data, string[] traceTypes);
         
-        [JsonRpcMethod(Description = "", IsImplemented = true, IsReadOnly = false)]
+        [JsonRpcMethod(Description = "", IsImplemented = true, IsSharable = false)]
         ResultWrapper<ParityTxTraceFromReplay> trace_replayTransaction(Keccak txHash, string[] traceTypes);
         
-        [JsonRpcMethod(Description = "", IsImplemented = true, IsReadOnly = false)]
+        [JsonRpcMethod(Description = "", IsImplemented = true, IsSharable = false)]
         ResultWrapper<ParityTxTraceFromReplay[]> trace_replayBlockTransactions(BlockParameter numberOrTag, string[] traceTypes);
         
-        [JsonRpcMethod(Description = "", IsImplemented = false, IsReadOnly = false)]
+        [JsonRpcMethod(Description = "", IsImplemented = false, IsSharable = false)]
         ResultWrapper<ParityTxTraceFromStore[]> trace_filter(BlockParameter fromBlock, BlockParameter toBlock, Address toAddress, int after, int count);
         
-        [JsonRpcMethod(Description = "", IsImplemented = true, IsReadOnly = false)]
+        [JsonRpcMethod(Description = "", IsImplemented = true, IsSharable = false)]
         ResultWrapper<ParityTxTraceFromStore[]> trace_block(BlockParameter numberOrTag);
         
-        [JsonRpcMethod(Description = "", IsImplemented = false, IsReadOnly = false)]
+        [JsonRpcMethod(Description = "", IsImplemented = false, IsSharable = false)]
         ResultWrapper<ParityTxTraceFromStore[]> trace_get(Keccak txHash, int[] positions);
         
-        [JsonRpcMethod(Description = "", IsImplemented = true, IsReadOnly = false)]
+        [JsonRpcMethod(Description = "", IsImplemented = true, IsSharable = false)]
         ResultWrapper<ParityTxTraceFromStore[]> trace_transaction(Keccak txHash);
     }
 }
