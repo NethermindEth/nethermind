@@ -48,7 +48,7 @@ namespace Nethermind.JsonRpc.Modules
             
             if (!_semaphore.Wait(1000))
             {
-                throw new TimeoutException($"Unable to rent an instance of {typeof(T).Name}");
+                throw new TimeoutException($"Unable to rent an instance of {typeof(T).Name}. Too many concurrent requests.");
             }
 
             _bag.TryTake(out T result);
