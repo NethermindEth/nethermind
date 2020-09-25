@@ -177,7 +177,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 else
                 {
                     IReleaseSpec releaseSpec = _specProvider.GetSpec(blockInfo.BlockNumber);
-                    preparedReceipts = releaseSpec.ValidateReceipts && new ReceiptTrie(releaseSpec, receipts).RootHash != header.ReceiptsRoot 
+                    preparedReceipts = receipts.GetReceiptsRoot(releaseSpec, header.ReceiptsRoot) != header.ReceiptsRoot 
                         ? null 
                         : receipts;
                 }
@@ -221,7 +221,6 @@ namespace Nethermind.Synchronization.FastBlocks
                         {
                             try
                             {
-                                receipts.SetIgnoreOutput(false);
                                 _receiptStorage.Insert(block, prepared);
                                 _syncStatusList.MarkInserted(block.Number);
                                 validResponsesCount++;

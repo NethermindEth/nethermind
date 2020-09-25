@@ -67,16 +67,19 @@ namespace Nethermind.Crypto
             Address recovered = RecoverAddress(tx);
             return recovered.Equals(sender);
         }
-        
+
         /// <summary>
         /// 
         /// </summary>
         /// <param name="tx"></param>
+        /// <param name="useTxChainId"></param>
         /// <returns></returns>
-        public Address RecoverAddress(Transaction tx)
+        public Address RecoverAddress(Transaction tx, bool useTxChainId = false)
         {
-            bool applyEip155 = tx.Signature.V == _chainIdValue * 2 + 35 || tx.Signature.V == _chainIdValue * 2 + 36;
-            Keccak hash = Keccak.Compute(Rlp.Encode(tx, true, applyEip155, _chainIdValue).Bytes);
+            useTxChainId &= tx.Signature.ChainId.HasValue;
+            bool applyEip155 = useTxChainId || tx.Signature.V == _chainIdValue * 2 + 35 || tx.Signature.V == _chainIdValue * 2 + 36;
+            var chainId = useTxChainId ? tx.Signature.ChainId.Value : _chainIdValue;
+            Keccak hash = Keccak.Compute(Rlp.Encode(tx, true, applyEip155, chainId).Bytes);
             return RecoverAddress(tx.Signature, hash);
         }
 
