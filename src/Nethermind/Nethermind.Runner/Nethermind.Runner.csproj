@@ -80,29 +80,10 @@
     <Content Include="plugins\**">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Update="configs\spaceneth_persistent.cfg">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Update="configs\ndm_provider_mainnet_proxy.cfg">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Update="configs\energyweb.cfg">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Update="..\Chains\energyweb.json">
-      <Link>chainspec\energyweb.json</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Update="configs\baseline.cfg">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
     <Content Update="Data\static-nodes-baseline.json">
       <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-    </Content>
-    <Content Update="configs\baseline_ropsten.cfg">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
   <ItemGroup>
@@ -122,10 +103,10 @@
     <None Remove="out\**" />
     <None Remove="keystore\**" />
   </ItemGroup>
-  <Target Name="StoreGitHashBeforeBuild" BeforeTargets="BeforeBuild">
-    <Exec Command="git describe --tags --long &gt; git-hash" />
-  </Target>
-  <Target Name="StoreGitHash" BeforeTargets="BeforePublish">
-    <Exec Command="git describe --tags --long &gt; git-hash" />
-  </Target>
+<!--  <Target Name="StoreGitHashBeforeBuild" BeforeTargets="BeforeBuild">-->
+<!--    <Exec Command="git describe &#45;&#45;tags &#45;&#45;long &gt; git-hash" />-->
+<!--  </Target>-->
+<!--  <Target Name="StoreGitHash" BeforeTargets="BeforePublish">-->
+<!--    <Exec Command="git describe &#45;&#45;tags &#45;&#45;long &gt; git-hash" />-->
+<!--  </Target>-->
  </Project>
