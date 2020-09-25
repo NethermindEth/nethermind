@@ -31,9 +31,9 @@ namespace Nethermind.JsonRpc
         string Host { get; set; }
 
         [ConfigItem(
-            Description = "JSON RPC tracers' timeout value given in miliseconds.",
+            Description = "JSON RPC' timeout value given in milliseconds.",
             DefaultValue = "20000")] 
-        int TracerTimeout { get; set; }
+        int Timeout { get; set; }
 
         [ConfigItem(
             Description = "Base file path for diagnostic JSON RPC recorder.",

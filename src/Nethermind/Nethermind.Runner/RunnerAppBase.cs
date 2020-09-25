@@ -278,7 +278,8 @@ namespace Nethermind.Runner
                     new JsonRpcProcessor(jsonRpcService, jsonSerializer, jsonRpcConfig, fileSystem, logManager);
                 if (initConfig.WebSocketsEnabled)
                 {
-                    webSocketsManager.AddModule(new JsonRpcWebSocketsModule(jsonRpcProcessor, jsonSerializer, jsonRpcLocalStats), true);
+                    webSocketsManager.AddModule(
+                        new JsonRpcWebSocketsModule(jsonRpcProcessor, jsonRpcService, jsonSerializer, jsonRpcLocalStats), true);
                 }
 
                 Bootstrap.Instance.JsonRpcService = jsonRpcService;

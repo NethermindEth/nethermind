@@ -43,7 +43,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             _debugBridge = debugBridge ?? throw new ArgumentNullException(nameof(debugBridge));
             _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
             _logger = logManager.GetClassLogger();
-            _traceTimeout = TimeSpan.FromMilliseconds(_jsonRpcConfig.TracerTimeout); 
+            _traceTimeout = TimeSpan.FromMilliseconds(_jsonRpcConfig.Timeout); 
         }
 
         public ResultWrapper<ChainLevelForRpc> debug_getChainLevel(in long number)

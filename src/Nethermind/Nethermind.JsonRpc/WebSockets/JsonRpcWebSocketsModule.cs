@@ -29,6 +29,7 @@ namespace Nethermind.JsonRpc.WebSockets
             new ConcurrentDictionary<string, IWebSocketsClient>();
 
         private readonly JsonRpcProcessor _jsonRpcProcessor;
+        private readonly JsonRpcService _jsonRpcService;
         private readonly IJsonSerializer _jsonSerializer;
         private readonly IJsonRpcLocalStats _jsonRpcLocalStats;
 
@@ -36,10 +37,12 @@ namespace Nethermind.JsonRpc.WebSockets
 
         public JsonRpcWebSocketsModule(
             JsonRpcProcessor jsonRpcProcessor,
+            JsonRpcService jsonRpcService,
             IJsonSerializer jsonSerializer,
             IJsonRpcLocalStats jsonRpcLocalStats)
         {
             _jsonRpcProcessor = jsonRpcProcessor;
+            _jsonRpcService = jsonRpcService;
             _jsonSerializer = jsonSerializer;
             _jsonRpcLocalStats = jsonRpcLocalStats;
         }
@@ -48,7 +51,8 @@ namespace Nethermind.JsonRpc.WebSockets
         {
             var socketsClient = new JsonRpcWebSocketsClient(
                 new WebSocketsClient(webSocket, client, _jsonSerializer),
-                _jsonRpcProcessor, 
+                _jsonRpcProcessor,
+                _jsonRpcService,
                 _jsonSerializer,
                 _jsonRpcLocalStats);
             _clients.TryAdd(socketsClient.Id, socketsClient);

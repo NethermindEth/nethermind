@@ -84,7 +84,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _txPoolBridge = _txPool ?? throw new ArgumentNullException(nameof(_txPool));
             _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
-            _cancellationTokenTimeout = TimeSpan.FromMilliseconds(rpcConfig.TracerTimeout);
+            _cancellationTokenTimeout = TimeSpan.FromMilliseconds(rpcConfig.Timeout);
         }
 
         public ResultWrapper<string> eth_protocolVersion()
@@ -404,7 +404,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             FixCallTx(transactionCall, head);
 
-            var tokenTimeout = TimeSpan.FromMilliseconds(_rpcConfig.TracerTimeout);
+            var tokenTimeout = TimeSpan.FromMilliseconds(_rpcConfig.Timeout);
             CancellationToken cancellationToken = new CancellationTokenSource(tokenTimeout).Token;
             BlockchainBridge.CallOutput result = _blockchainBridge.EstimateGas(head, transactionCall.ToTransaction(), cancellationToken);
 

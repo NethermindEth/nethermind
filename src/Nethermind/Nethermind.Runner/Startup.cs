@@ -17,6 +17,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Reflection;
 using System.Text;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -93,7 +94,7 @@ namespace Nethermind.Runner
                     ctx.Response.ContentType = "application/json";
 
                     Stream resultStream = jsonRpcConfig.BufferResponses ? new MemoryStream() : ctx.Response.Body;
-                    
+
                     try
                     {
                         if (result.IsCollection)
@@ -111,25 +112,30 @@ namespace Nethermind.Runner
                             resultStream.Seek(0, SeekOrigin.Begin);
                             await resultStream.CopyToAsync(ctx.Response.Body);
                         }
-
-                        await ctx.Response.CompleteAsync();
-
-                        if (result.IsCollection)
-                        {
-                            jsonRpcLocalStats.ReportCalls(result.Reports);
-                            jsonRpcLocalStats.ReportCall(new RpcReport("# collection serialization #", stopwatch.ElapsedMicroseconds(), true));
-                        }
-                        else
-                        {
-                            jsonRpcLocalStats.ReportCall(result.Report, stopwatch.ElapsedMicroseconds());
-                        }
+                    }
+                    catch (TargetInvocationException e) when (e.InnerException is OperationCanceledException)
+                    {
+                        JsonRpcErrorResponse? error = jsonRpcService.GetErrorResponse(ErrorCodes.Timeout, "Request was canceled due to enabled timeout.");
+                        _jsonSerializer.Serialize(resultStream, error);
                     }
                     finally
                     {
+                        await ctx.Response.CompleteAsync();
+                        
                         if (jsonRpcConfig.BufferResponses)
                         {
                             await resultStream.DisposeAsync();
                         }
+                    }
+                    
+                    if (result.IsCollection)
+                    {
+                        jsonRpcLocalStats.ReportCalls(result.Reports);
+                        jsonRpcLocalStats.ReportCall(new RpcReport("# collection serialization #", stopwatch.ElapsedMicroseconds(), true));
+                    }
+                    else
+                    {
+                        jsonRpcLocalStats.ReportCall(result.Report, stopwatch.ElapsedMicroseconds());
                     }
                 }
             });
