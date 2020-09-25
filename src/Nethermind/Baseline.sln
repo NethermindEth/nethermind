@@ -10,6 +10,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Provide.NChain",
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Provide.Vault", "Nethermind.Provide.Vault\Nethermind.Provide.Vault.csproj", "{E88AB748-F764-4B8F-9BC8-4EDC0968CDCA}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Nethermind", "Nethermind", "{E4D07050-1288-4344-B79D-470C2DC86146}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU

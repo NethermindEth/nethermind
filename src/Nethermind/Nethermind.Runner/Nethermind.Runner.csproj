@@ -103,10 +103,10 @@
     <None Remove="out\**" />
     <None Remove="keystore\**" />
   </ItemGroup>
-<!--  <Target Name="StoreGitHashBeforeBuild" BeforeTargets="BeforeBuild">-->
-<!--    <Exec Command="git describe &#45;&#45;tags &#45;&#45;long &gt; git-hash" />-->
-<!--  </Target>-->
-<!--  <Target Name="StoreGitHash" BeforeTargets="BeforePublish">-->
-<!--    <Exec Command="git describe &#45;&#45;tags &#45;&#45;long &gt; git-hash" />-->
-<!--  </Target>-->
+  <Target Name="StoreGitHashBeforeBuild" BeforeTargets="BeforeBuild">
+    <Exec Command="git describe --tags --long &gt; git-hash" />
+  </Target>
+  <Target Name="StoreGitHash" BeforeTargets="BeforePublish">
+    <Exec Command="git describe --tags --long &gt; git-hash" />
+  </Target>
  </Project>
