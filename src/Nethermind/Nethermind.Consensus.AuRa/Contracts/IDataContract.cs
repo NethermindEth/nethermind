@@ -13,27 +13,17 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System;
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 
-namespace Nethermind.Blockchain.Contracts
+namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public class LogEntryAddressAndTopicEqualityComparer : IEqualityComparer<LogEntry>
+    public interface IDataContract<out T>
     {
-        public static readonly LogEntryAddressAndTopicEqualityComparer Instance = new LogEntryAddressAndTopicEqualityComparer();
-        
-        public bool Equals(LogEntry x, LogEntry y)
-        {
-            return ReferenceEquals(x, y) || (x != null && x.LoggersAddress == y?.LoggersAddress && x.Topics.SequenceEqual(y?.Topics ?? Array.Empty<Keccak>()));
-        }
-
-        public int GetHashCode(LogEntry obj)
-        {
-            return obj.Topics.Aggregate(obj.LoggersAddress.GetHashCode(), (i, keccak) => i ^ keccak.GetHashCode());
-        }
+        IEnumerable<T> GetAll(BlockHeader blockHeader);
+        IEnumerable<T> GetChangesFromBlock(BlockHeader header, TxReceipt[] receipts);
+        bool IncrementalChanges { get; } 
     }
 }

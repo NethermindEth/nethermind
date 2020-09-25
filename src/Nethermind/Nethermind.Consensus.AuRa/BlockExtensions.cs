@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
+using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
 
 namespace Nethermind.Consensus.AuRa
@@ -50,6 +51,32 @@ namespace Nethermind.Consensus.AuRa
 
             foundEntry = null;
             return false;
+        }
+        
+        public static IEnumerable<LogEntry> FindLogs(this BlockHeader blockHeader, TxReceipt[] receipts, LogEntry matchEntry, IEqualityComparer<LogEntry> comparer = null)
+        {
+            comparer ??= LogEntryAddressAndTopicEqualityComparer.Instance;
+            
+            if (blockHeader.Bloom.Matches(matchEntry))
+            {
+                // iterating backwards, we are interested only in the last one
+                for (int i = 0; i < receipts.Length; i--)
+                {
+                    var receipt = receipts[i];
+                    if (receipt.Bloom.Matches(matchEntry))
+                    {
+                        // tracing forwards, parity inconsistency 
+                        for (int j = 0; j < receipt.Logs.Length; j++)
+                        {
+                            var receiptLog = receipt.Logs[j];
+                            if (comparer.Equals(matchEntry, receiptLog))
+                            {
+                                yield return receiptLog;
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

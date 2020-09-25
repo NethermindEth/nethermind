@@ -127,7 +127,7 @@ namespace Nethermind.AuRa.Test
             {
                 var blockHash = blockTreeBuilder.ChainLevelInfoRepository.LoadLevel(i).MainChainBlock.BlockHash;
                 var block = blockTreeBuilder.TestObject.FindBlock(blockHash, BlockTreeLookupOptions.None);
-                _blockProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(block));
+                _blockProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(block, Array.Empty<TxReceipt>()));
             }
 
             var isBlockFinalized = Enumerable.Range(start, chainLength).Select(i => blockTreeBuilder.ChainLevelInfoRepository.LoadLevel(i).MainChainBlock.IsFinalized);
@@ -158,7 +158,7 @@ namespace Nethermind.AuRa.Test
             {
                 var blockHash = blockTreeBuilder1.ChainLevelInfoRepository.LoadLevel(level).BlockInfos[index].BlockHash;
                 var block = blockTreeBuilder1.TestObject.FindBlock(blockHash, BlockTreeLookupOptions.None);
-                _blockProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(block));
+                _blockProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(block, Array.Empty<TxReceipt>()));
             }
 
             Block genesis = Build.A.Block.Genesis.TestObject;

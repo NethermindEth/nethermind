@@ -324,7 +324,7 @@ namespace Nethermind.Blockchain.Test.Filters
             _filterStore.GetFilters<BlockFilter>().Returns(filters.OfType<BlockFilter>().ToArray());
             _filterManager = new FilterManager(_filterStore, _blockProcessor, _txPool, _logManager);
 
-            _blockProcessor.BlockProcessed += Raise.EventWith(_blockProcessor, new BlockProcessedEventArgs(block));
+            _blockProcessor.BlockProcessed += Raise.EventWith(_blockProcessor, new BlockProcessedEventArgs(block, Array.Empty<TxReceipt>()));
 
             var index = 1;
             foreach (var receipt in receipts)

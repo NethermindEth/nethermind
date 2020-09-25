@@ -68,8 +68,6 @@ namespace Nethermind.Consensus.AuRa.Contracts
         private readonly IStateProvider _stateProvider;
         private readonly ISigner _signer;
 
-        private static readonly IEqualityComparer<LogEntry> LogEntryEqualityComparer = new LogEntryAddressAndTopicEqualityComparer();
-
         private ConstantContract Constant { get; }
 
         public ValidatorContract(
@@ -97,7 +95,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// </summary>
         public void FinalizeChange(BlockHeader blockHeader) => TryCall(blockHeader, nameof(FinalizeChange), Address.SystemUser, UnlimitedGas, out _);
 
-        internal static readonly string GetValidatorsFunction = AbiDefinition.GetFunctionName(nameof(GetValidators));
+        internal static readonly string GetValidatorsFunction = AbiDefinition.GetName(nameof(GetValidators));
 
         /// <summary>
         /// Get current validator set (last enacted or initial if no changes ever made)
@@ -122,11 +120,8 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// </summary>
         public bool CheckInitiateChangeEvent(BlockHeader blockHeader, TxReceipt[] receipts, out Address[] addresses)
         {
-            var logEntry = new LogEntry(ContractAddress, 
-                Array.Empty<byte>(),
-                new[] {GetEventHash(InitiateChange), blockHeader.ParentHash});
-
-            if (blockHeader.TryFindLog(receipts, logEntry, LogEntryEqualityComparer, out var foundEntry))
+            var logEntry = GetSearchLogEntry(blockHeader, InitiateChange);
+            if (blockHeader.TryFindLog(receipts, logEntry, LogEntryAddressAndTopicEqualityComparer.Instance, out var foundEntry))
             {
                 addresses = DecodeAddresses(foundEntry.Data);
                 return true;                
@@ -139,14 +134,9 @@ namespace Nethermind.Consensus.AuRa.Contracts
         private Address[] DecodeAddresses(byte[] data)
         {
             var objects = DecodeReturnData(nameof(GetValidators), data);
-            return GetAddresses(objects);
+            return (Address[]) objects[0];;
         }
-
-        private static Address[] GetAddresses(object[] objects)
-        {
-            return (Address[]) objects[0];
-        }
-
+        
         public void EnsureSystemAccount()
         {
             EnsureSystemAccount(_stateProvider);

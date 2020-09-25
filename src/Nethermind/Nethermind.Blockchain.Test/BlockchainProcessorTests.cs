@@ -90,7 +90,7 @@ namespace Nethermind.Blockchain.Test
                                 if (_allowedToFail.Contains(hash))
                                 {
                                     _allowedToFail.Remove(hash);
-                                    BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(suggestedBlocks.Last()));
+                                    BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(suggestedBlocks.Last(), Array.Empty<TxReceipt>()));
                                     throw new InvalidBlockException(hash);
                                 }
 
@@ -105,7 +105,7 @@ namespace Nethermind.Blockchain.Test
                         }
                         else
                         {
-                            BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(suggestedBlocks.Last()));
+                            BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(suggestedBlocks.Last(), Array.Empty<TxReceipt>()));
                             return suggestedBlocks.ToArray();
                         }
                     }

@@ -13,27 +13,33 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 
-namespace Nethermind.Blockchain.Contracts
+namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public class LogEntryAddressAndTopicEqualityComparer : IEqualityComparer<LogEntry>
+    internal class DataContract<T> : IDataContract<T>
     {
-        public static readonly LogEntryAddressAndTopicEqualityComparer Instance = new LogEntryAddressAndTopicEqualityComparer();
-        
-        public bool Equals(LogEntry x, LogEntry y)
-        {
-            return ReferenceEquals(x, y) || (x != null && x.LoggersAddress == y?.LoggersAddress && x.Topics.SequenceEqual(y?.Topics ?? Array.Empty<Keccak>()));
-        }
+        private readonly Func<BlockHeader, IEnumerable<T>> _getAll;
+        private readonly Func<BlockHeader, TxReceipt[], IEnumerable<T>> _getChangesFromBlock;
 
-        public int GetHashCode(LogEntry obj)
+        public DataContract(
+            Func<BlockHeader, IEnumerable<T>> getAll, 
+            Func<BlockHeader, TxReceipt[], IEnumerable<T>> getChangesFromBlock,
+            bool incrementalChanges)
         {
-            return obj.Topics.Aggregate(obj.LoggersAddress.GetHashCode(), (i, keccak) => i ^ keccak.GetHashCode());
+            IncrementalChanges = incrementalChanges;
+            _getAll = getAll;
+            _getChangesFromBlock = getChangesFromBlock;
         }
+        
+        public IEnumerable<T> GetAll(BlockHeader blockHeader) => _getAll(blockHeader);
+
+        public IEnumerable<T> GetChangesFromBlock(BlockHeader header, TxReceipt[] receipts) => _getChangesFromBlock(header, receipts);
+
+        public bool IncrementalChanges { get; }
     }
 }

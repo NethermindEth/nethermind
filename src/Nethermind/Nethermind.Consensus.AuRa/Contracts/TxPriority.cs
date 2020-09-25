@@ -15,10 +15,13 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
+using System.Collections.Generic;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
 using Nethermind.Evm;
+using Nethermind.Int256;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa.Contracts
@@ -38,10 +41,66 @@ namespace Nethermind.Consensus.AuRa.Contracts
             : base(abiEncoder, contractAddress)
         {
             Constant = GetConstant(readOnlyTransactionProcessorSource);
+            SendersWhitelist = new DataContract<Address>(GetSendersWhitelist, SendersWhitelistSet, false);
+            MinGasPrice = new DataContract<Destination>(GetMinGasPrices, MinGasPriceSet, true);
+            Priority = new DataContract<Destination>(GetPriorities, PrioritySet, true);
         }
 
-        public Address[] GetSendersWhitelist(BlockHeader parentHeader) => Constant.Call<Address[]>(parentHeader, nameof(GetSendersWhitelist), Address.Zero);
+        private Address[] GetSendersWhitelist(BlockHeader parentHeader) => Constant.Call<Address[]>(parentHeader, nameof(GetSendersWhitelist), Address.Zero);
         
-        public Address[] GetSendersWhitelist(BlockHeader parentHeader) => Constant.Call<Address[]>(parentHeader, nameof(GetSendersWhitelist), Address.Zero);
+        private Destination[] GetMinGasPrices(BlockHeader parentHeader) => Constant.Call<Destination[]>(parentHeader, nameof(GetMinGasPrices), Address.Zero);
+        
+        private Destination[] GetPriorities(BlockHeader parentHeader) => Constant.Call<Destination[]>(parentHeader, nameof(GetPriorities), Address.Zero);
+        
+        private IEnumerable<Destination> PrioritySet(BlockHeader blockHeader, TxReceipt[] receipts)
+        {
+            var logEntry = GetSearchLogEntry(blockHeader, nameof(PrioritySet));
+
+            foreach (LogEntry log in blockHeader.FindLogs(receipts, logEntry))
+            {
+                yield return DecodeDestination(log.Data);
+            }
+        }
+        
+        private IEnumerable<Destination> MinGasPriceSet(BlockHeader blockHeader, TxReceipt[] receipts)
+        {
+            var logEntry = GetSearchLogEntry(blockHeader, nameof(MinGasPriceSet));
+
+            foreach (LogEntry log in blockHeader.FindLogs(receipts, logEntry))
+            {
+                yield return DecodeDestination(log.Data);
+            }
+        }
+        
+        private IEnumerable<Address> SendersWhitelistSet(BlockHeader blockHeader, TxReceipt[] receipts)
+        {
+            var logEntry = GetSearchLogEntry(blockHeader, nameof(MinGasPriceSet));
+
+            return blockHeader.TryFindLog(receipts, logEntry, LogEntryAddressAndTopicEqualityComparer.Instance, out LogEntry foundEntry) 
+                ? DecodeAddresses(foundEntry.Data) 
+                : Array.Empty<Address>();
+        }
+        
+        private Address[] DecodeAddresses(byte[] data)
+        {
+            var objects = DecodeReturnData(nameof(GetSendersWhitelist), data);
+            return (Address[]) objects[0];;
+        }
+
+        private Destination DecodeDestination(byte[] data)
+        {
+            throw new NotImplementedException();
+        }
+
+        public struct Destination
+        {
+            private Address Target { get; set; }
+            private byte[] FnSignature { get; set; }
+            private UInt256 Value { get; set; }
+        }
+
+        public IDataContract<Address> SendersWhitelist { get; }
+        public IDataContract<Destination> MinGasPrice { get; }
+        public IDataContract<Destination> Priority { get; }
     }
 }

@@ -167,15 +167,21 @@ namespace Nethermind.Blockchain.Contracts
                 return tracer.ReturnValue;
             }
         }
-        
-        protected Keccak GetEventHash(string eventName)
-        {
-            return AbiDefinition.Events[eventName].GetHash();
-        }
-        
+
         protected object[] DecodeReturnData(string functionName, byte[] data)
         {
-            return AbiEncoder.Decode(AbiDefinition.GetFunction(functionName).GetReturnInfo(), data);
+            AbiEncodingInfo abiEncodingInfo = AbiDefinition.GetFunction(functionName).GetReturnInfo();
+            return DecodeData(abiEncodingInfo, data);
         }
+
+        protected object[] DecodeData(AbiEncodingInfo abiEncodingInfo, byte[] data) => AbiEncoder.Decode(abiEncodingInfo, data);
+        
+        protected LogEntry GetSearchLogEntry(BlockHeader blockHeader, string eventName, byte[] data = null)
+        {
+            return new LogEntry(ContractAddress, 
+                data ?? Array.Empty<byte>(),
+                new[] {AbiDefinition.GetEvent(eventName).GetHash(), blockHeader.ParentHash});
+        }
+
     }
 }
