@@ -150,8 +150,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.BloomStorage,
                 _api.LogManager,
                 new ReceiptsRecovery(), 
-                1024,
-                rpcConfig.GetLogsThreads);
+                1024);
 
             if (baselineConfig.Enabled)
             {

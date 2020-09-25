@@ -84,10 +84,5 @@ namespace Nethermind.JsonRpc
             Description = "A path to a file that contains a list of new-line separated approved JSON RPC calls",
             DefaultValue = "Data/jsonrpc.filter")]
         string CallsFilterFilePath { get; set; }
-
-        [ConfigItem(
-            Description = "Max number of threads used by eth_getLogs",
-            DefaultValue = "ProcessorCount / 2")]
-        public int? GetLogsThreads { get; set; }
     }
 }
