@@ -25,7 +25,6 @@ using Nethermind.Logging;
 
 namespace Nethermind.DataMarketplace.Core.Services
 {
-    // TODO: WTF here -> should be done as a standard proxy on JSON RPC modules
     public class ProxyService : IProxyService
     {
         private readonly IJsonRpcClientProxy? _jsonRpcClientProxy;
@@ -44,29 +43,26 @@ namespace Nethermind.DataMarketplace.Core.Services
 
         public async Task<NdmProxy?> GetAsync()
         {
-            // TODO: fix this
-            // NdmConfig? config = await _configManager.GetAsync(_configId);
-            // return new NdmProxy(config?.ProxyEnabled ?? false, config?.JsonRpcUrlProxies ?? Enumerable.Empty<string>());
-            return null;
+            NdmConfig? config = await _configManager.GetAsync(_configId);
+            return new NdmProxy(config?.ProxyEnabled ?? false, config?.JsonRpcUrlProxies ?? Enumerable.Empty<string>());
         }
 
         public async Task SetAsync(IEnumerable<string> urls)
         {
-            // TODO: fix this
-            // var providedUrls = urls?.ToArray() ?? Array.Empty<string>();
-            // _jsonRpcClientProxy?.SetUrls(providedUrls);
-            // NdmConfig? config = await _configManager.GetAsync(_configId);
-            // if (config == null)
-            // {
-            //     if(_logger.IsError) _logger.Error($"Failed to retrieve config {_configId} to update JSON RPC procy");
-            //     throw new InvalidOperationException($"Failed to retrieve config {_configId} to update JSON RPC procy");
-            // }
-            // else
-            // {
-            //     config.JsonRpcUrlProxies = providedUrls;
-            //     await _configManager.UpdateAsync(config);
-            //     if (_logger.IsInfo) _logger.Info("Updated JSON RPC Proxy configuration.");   
-            // }
+            var providedUrls = urls?.ToArray() ?? Array.Empty<string>();
+            _jsonRpcClientProxy?.SetUrls(providedUrls);
+            NdmConfig? config = await _configManager.GetAsync(_configId);
+            if (config == null)
+            {
+                if(_logger.IsError) _logger.Error($"Failed to retrieve config {_configId} to update JSON RPC procy");
+                throw new InvalidOperationException($"Failed to retrieve config {_configId} to update JSON RPC procy");
+            }
+            else
+            {
+                config.JsonRpcUrlProxies = providedUrls;
+                await _configManager.UpdateAsync(config);
+                if (_logger.IsInfo) _logger.Info("Updated JSON RPC Proxy configuration.");   
+            }
         }
     }
 }
