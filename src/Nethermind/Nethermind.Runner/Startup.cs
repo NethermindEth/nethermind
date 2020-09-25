@@ -53,6 +53,12 @@ namespace Nethermind.Runner
 
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env, IJsonRpcProcessor jsonRpcProcessor, IJsonRpcService jsonRpcService, IJsonRpcLocalStats jsonRpcLocalStats)
         {
+            void SerializeTimeoutException(IJsonRpcService service, Stream resultStream)
+            {
+                JsonRpcErrorResponse? error = service.GetErrorResponse(ErrorCodes.Timeout, "Request was canceled due to enabled timeout.");
+                _jsonSerializer.Serialize(resultStream, error);
+            }
+
             _jsonSerializer = CreateJsonSerializer();
             
             foreach (JsonConverter converter in jsonRpcService.Converters)
@@ -115,8 +121,11 @@ namespace Nethermind.Runner
                     }
                     catch (TargetInvocationException e) when (e.InnerException is OperationCanceledException)
                     {
-                        JsonRpcErrorResponse? error = jsonRpcService.GetErrorResponse(ErrorCodes.Timeout, "Request was canceled due to enabled timeout.");
-                        _jsonSerializer.Serialize(resultStream, error);
+                        SerializeTimeoutException(jsonRpcService, resultStream);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        SerializeTimeoutException(jsonRpcService, resultStream);
                     }
                     finally
                     {

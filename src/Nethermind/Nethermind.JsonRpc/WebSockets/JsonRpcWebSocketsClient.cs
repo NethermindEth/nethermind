@@ -50,19 +50,28 @@ namespace Nethermind.JsonRpc.WebSockets
 
         public async Task ReceiveAsync(Memory<byte> data)
         {
+            string SerializeTimeoutException()
+            {
+                JsonRpcErrorResponse error = _jsonRpcService.GetErrorResponse(ErrorCodes.Timeout, "Request was canceled due to enabled timeout.");
+                return _jsonSerializer.Serialize(error);
+            }
+
             Stopwatch stopwatch = Stopwatch.StartNew();
             using JsonRpcResult result = await _jsonRpcProcessor.ProcessAsync(Encoding.UTF8.GetString(data.ToArray()));
 
             string resultData;
-            
+
             try
             {
                 resultData = result.IsCollection ? _jsonSerializer.Serialize(result.Responses) : _jsonSerializer.Serialize(result.Response);
             }
             catch (TargetInvocationException e) when (e.InnerException is OperationCanceledException)
             {
-                JsonRpcErrorResponse? error = _jsonRpcService.GetErrorResponse(ErrorCodes.Timeout, "Request was canceled due to enabled timeout.");
-                resultData = _jsonSerializer.Serialize(error);
+                resultData = SerializeTimeoutException();
+            }
+            catch (OperationCanceledException)
+            {
+                resultData = SerializeTimeoutException();
             }
             
             await SendRawAsync(resultData);
@@ -77,7 +86,7 @@ namespace Nethermind.JsonRpc.WebSockets
                 _jsonRpcLocalStats.ReportCall(result.Report, stopwatch.ElapsedMicroseconds());
             }
         }
-
+        
         public Task SendRawAsync(string data) => _client.SendRawAsync(data);
         public Task SendAsync(WebSocketsMessage message) => _client.SendAsync(message);
     }
