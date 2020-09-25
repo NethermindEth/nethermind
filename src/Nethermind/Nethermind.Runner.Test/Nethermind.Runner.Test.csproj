@@ -18,6 +18,7 @@
         <PackageReference Include="Microsoft.NET.Test.Sdk" Version="16.7.1" />
     </ItemGroup>
     <ItemGroup>
+        <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
         <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
         <ProjectReference Include="..\Nethermind.Runner\Nethermind.Runner.csproj" />
         <Content Include="..\Chains\AuRaTest.json" CopyToOutputDirectory="PreserveNewest">

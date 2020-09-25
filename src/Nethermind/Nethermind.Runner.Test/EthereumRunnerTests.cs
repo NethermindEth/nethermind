@@ -21,6 +21,7 @@ using System.IO.Abstractions;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions.Execution;
+using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Db.Rocks.Config;
@@ -89,7 +90,7 @@ namespace Nethermind.Runner.Test
             {
                 configProvider.GetConfig<IInitConfig>().BaseDbPath = tempPath;
 
-                NethermindApi nethermindApi = new NethermindApi(configProvider, TestLogManager.Instance);
+                INethermindApi nethermindApi = new NethermindApi(configProvider, TestLogManager.Instance);
                 nethermindApi.RpcModuleProvider =
                     new RpcModuleProvider(new FileSystem(), new JsonRpcConfig(), TestLogManager.Instance);
                 nethermindApi.EthereumJsonSerializer = new EthereumJsonSerializer();

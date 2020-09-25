@@ -16,6 +16,7 @@
 
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Api;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
 using Nethermind.Db;

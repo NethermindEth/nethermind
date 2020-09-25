@@ -20,6 +20,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using FluentAssertions;
+using Nethermind.Api;
 using Nethermind.Baseline.Config;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;

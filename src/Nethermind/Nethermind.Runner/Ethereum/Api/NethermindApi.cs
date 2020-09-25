@@ -17,6 +17,8 @@
 using System.Collections.Generic;
 using System.IO.Abstractions;
 using Nethermind.Abi;
+using Nethermind.Api;
+using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Processing;
@@ -45,7 +47,6 @@ using Nethermind.Network;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.Rlpx;
 using Nethermind.PubSub;
-using Nethermind.Runner.Extensions;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;

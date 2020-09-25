@@ -33,7 +33,7 @@ namespace Nethermind.Serialization.Json
             _longConverter = new LongConverter(conversion);
         }
 
-        public override void WriteJson(JsonWriter writer, long? value, Newtonsoft.Json.JsonSerializer serializer)
+        public override void WriteJson(JsonWriter writer, long? value, JsonSerializer serializer)
         {
             if (!value.HasValue)
             {
@@ -44,7 +44,7 @@ namespace Nethermind.Serialization.Json
             _longConverter.WriteJson(writer, value.Value, serializer);
         }
 
-        public override long? ReadJson(JsonReader reader, Type objectType, long? existingValue, bool hasExistingValue, Newtonsoft.Json.JsonSerializer serializer)
+        public override long? ReadJson(JsonReader reader, Type objectType, long? existingValue, bool hasExistingValue, JsonSerializer serializer)
         {
             if (reader.TokenType == JsonToken.Null)
             {

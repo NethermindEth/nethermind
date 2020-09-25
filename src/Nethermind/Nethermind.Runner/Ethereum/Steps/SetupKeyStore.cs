@@ -18,6 +18,7 @@ using System.IO.Abstractions;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Crypto;
 using Nethermind.KeyStore;

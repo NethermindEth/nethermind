@@ -18,7 +18,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
-namespace Nethermind.Runner.Ethereum.Api
+namespace Nethermind.Core
 {
     public class DisposableStack : Stack<IAsyncDisposable>
     {

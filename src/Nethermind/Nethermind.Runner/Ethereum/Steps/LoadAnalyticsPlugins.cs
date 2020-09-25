@@ -20,6 +20,7 @@ using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Api;
 using Nethermind.Blockchain.Analytics;
 using Nethermind.Grpc;
 using Nethermind.Logging;

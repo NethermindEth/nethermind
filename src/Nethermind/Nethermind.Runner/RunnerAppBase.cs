@@ -20,6 +20,7 @@ using System.IO.Abstractions;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.CommandLineUtils;
+using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;

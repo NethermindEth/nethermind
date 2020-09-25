@@ -16,6 +16,7 @@
 
 using System;
 using System.Linq;
+using Nethermind.Api;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;

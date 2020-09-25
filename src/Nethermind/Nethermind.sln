@@ -162,6 +162,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "RocksDb", "RocksDb", "{086D
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Int256", "..\int256\src\Nethermind.Int256\Nethermind.Int256.csproj", "{8DD63B3B-4C27-4115-8726-1843688F23E2}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Api", "Nethermind.Api\Nethermind.Api.csproj", "{5D8E2F39-9B57-48C0-8D0B-C85E21DED3DA}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -432,6 +434,10 @@ Global
 		{8DD63B3B-4C27-4115-8726-1843688F23E2}.Release|Any CPU.Build.0 = Release|Any CPU
 		{8DD63B3B-4C27-4115-8726-1843688F23E2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{8DD63B3B-4C27-4115-8726-1843688F23E2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5D8E2F39-9B57-48C0-8D0B-C85E21DED3DA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5D8E2F39-9B57-48C0-8D0B-C85E21DED3DA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5D8E2F39-9B57-48C0-8D0B-C85E21DED3DA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5D8E2F39-9B57-48C0-8D0B-C85E21DED3DA}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

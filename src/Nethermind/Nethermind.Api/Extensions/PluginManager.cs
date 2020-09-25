@@ -19,7 +19,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace Nethermind.Runner.Extensions
+namespace Nethermind.Api.Extensions
 {
     public class PluginManager : IPluginManager
     {

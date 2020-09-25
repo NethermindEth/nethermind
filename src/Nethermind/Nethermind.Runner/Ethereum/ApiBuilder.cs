@@ -17,6 +17,7 @@
 using System;
 using System.IO;
 using System.Threading;
+using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Logging;

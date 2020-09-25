@@ -25,7 +25,6 @@ using Nethermind.Crypto;
 using Nethermind.KeyStore;
 using Nethermind.Logging;
 using Nethermind.Secp256k1;
-using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Wallet
 {

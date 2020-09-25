@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -86,7 +87,7 @@ namespace Nethermind.Serialization.Rlp
         
         public void Encode(MemoryStream stream, Account item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            throw new System.NotImplementedException();
+            throw new NotImplementedException();
         }
     }
 }

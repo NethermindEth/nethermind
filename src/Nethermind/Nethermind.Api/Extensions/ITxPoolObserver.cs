@@ -17,7 +17,7 @@
 
 using Nethermind.Core;
 
-namespace Nethermind.Runner.Extensions
+namespace Nethermind.Api.Extensions
 {
     public interface ITxPoolObserver
     {

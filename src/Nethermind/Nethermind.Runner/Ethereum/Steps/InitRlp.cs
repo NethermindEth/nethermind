@@ -17,6 +17,7 @@
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Api;
 using Nethermind.Core.Attributes;
 using Nethermind.Network;
 using Nethermind.Runner.Ethereum.Api;

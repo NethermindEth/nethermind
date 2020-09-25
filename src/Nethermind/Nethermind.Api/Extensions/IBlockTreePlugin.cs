@@ -23,7 +23,7 @@ using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Runner.Extensions
+namespace Nethermind.Api.Extensions
 {
     public interface IBlockTreePlugin : IPlugin
     {

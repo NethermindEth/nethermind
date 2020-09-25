@@ -23,6 +23,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Extensions;

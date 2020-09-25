@@ -15,7 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-namespace Nethermind.Runner.Extensions
+namespace Nethermind.Api.Extensions
 {
     public interface ITxPoolPlugin : IPlugin
     {

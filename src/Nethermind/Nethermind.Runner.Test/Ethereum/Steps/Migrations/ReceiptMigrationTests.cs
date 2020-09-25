@@ -18,6 +18,7 @@ using System;
 using System.Threading;
 using DotNetty.Transport.Channels;
 using FluentAssertions;
+using Nethermind.Api;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;

@@ -19,10 +19,10 @@ using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.IO;
 using System.Linq;
+using System.Text;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle.Json;
@@ -42,7 +42,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             _serializer.RegisterConverter(new StepDurationJsonConverter());
         }
 
-        public ChainSpec Load(byte[] data) => Load(System.Text.Encoding.UTF8.GetString(data));
+        public ChainSpec Load(byte[] data) => Load(Encoding.UTF8.GetString(data));
 
         public ChainSpec Load(string jsonData)
         {

@@ -14,13 +14,13 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Clique;
 using Nethermind.Runner.Ethereum.Api;
-using Nethermind.Wallet;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {

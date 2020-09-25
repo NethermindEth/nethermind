@@ -21,26 +21,26 @@ using System.Linq;
 using System.Reflection;
 using Nethermind.Logging;
 
-namespace Nethermind.Runner.Extensions
+namespace Nethermind.Api.Extensions
 {
     public class PluginLoader : IPluginLoader
     {
         private readonly IFileSystem _fileSystem;
         private readonly IPluginManager _pluginManager;
-        private readonly IInitConfig _initConfig;
+        private readonly string _pluginsDirectory;
         private readonly ILogger _logger;
 
-        public PluginLoader(IPluginManager pluginManager, IInitConfig initConfig, IFileSystem fileSystem, ILogManager logManager)
+        public PluginLoader(IPluginManager pluginManager, string pluginPath, IFileSystem fileSystem, ILogManager logManager)
         {
             _logger = logManager.GetClassLogger();
             _pluginManager = pluginManager ?? throw new ArgumentNullException(nameof(pluginManager));
-            _initConfig = initConfig ?? throw new ArgumentNullException(nameof(initConfig));
+            _pluginsDirectory = pluginPath ?? throw new ArgumentNullException(nameof(pluginPath));
             _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
         }
 
         public void Load()
         {
-            string fullPluginsDir = _fileSystem.Path.Combine(AppDomain.CurrentDomain.BaseDirectory!, _initConfig.PluginsDirectory);
+            string fullPluginsDir = _fileSystem.Path.Combine(AppDomain.CurrentDomain.BaseDirectory!, _pluginsDirectory);
             if (!_fileSystem.Directory.Exists(fullPluginsDir))
             {
                 if (_logger.IsWarn) _logger.Warn($"Plugins folder {fullPluginsDir} was not found. Skipping.");

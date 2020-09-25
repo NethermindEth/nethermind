@@ -17,6 +17,7 @@
 using System.IO;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.DataMarketplace.Consumers.Infrastructure;
 using Nethermind.DataMarketplace.Consumers.Shared;

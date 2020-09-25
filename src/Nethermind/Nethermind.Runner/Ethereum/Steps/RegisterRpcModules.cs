@@ -16,6 +16,8 @@
 
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Api;
+using Nethermind.Api.Extensions;
 using Nethermind.Cli.Modules;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -38,7 +40,6 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Db;
 using Nethermind.State;
 using Nethermind.Runner.Ethereum.Steps.Migrations;
-using Nethermind.Runner.Extensions;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {

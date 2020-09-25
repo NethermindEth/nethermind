@@ -18,10 +18,10 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Network.Config;
-using Nethermind.Runner.Ethereum.Api;
 using Nethermind.TxPool;
 
 namespace Nethermind.Runner.Ethereum.Steps

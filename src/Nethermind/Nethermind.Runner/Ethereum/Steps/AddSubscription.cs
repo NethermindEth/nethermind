@@ -20,11 +20,11 @@ using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Api;
 using Nethermind.Blockchain.Analytics;
 using Nethermind.Logging;
 using Nethermind.PubSub;
 using Nethermind.Runner.Analytics;
-using Nethermind.Runner.Ethereum.Api;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {

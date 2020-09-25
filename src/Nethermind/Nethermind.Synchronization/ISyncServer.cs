@@ -16,12 +16,12 @@
 
 using System;
 using System.Collections.Generic;
-using Nethermind.Synchronization.LesSync;
+using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using System.Threading.Tasks;
 using Nethermind.Synchronization.FastSync;
+using Nethermind.Synchronization.LesSync;
 
 namespace Nethermind.Synchronization
 {

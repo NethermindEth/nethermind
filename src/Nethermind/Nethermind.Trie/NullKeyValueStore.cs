@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Threading;
 
 namespace Nethermind.Trie
@@ -30,7 +31,7 @@ namespace Nethermind.Trie
         public byte[] this[byte[] key]
         {
             get => null;
-            set => throw new System.NotSupportedException();
+            set => throw new NotSupportedException();
         }
     }
 }

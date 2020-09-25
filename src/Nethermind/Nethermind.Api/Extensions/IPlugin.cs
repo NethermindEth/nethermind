@@ -18,7 +18,7 @@
 using System;
 using System.Threading.Tasks;
 
-namespace Nethermind.Runner.Extensions
+namespace Nethermind.Api.Extensions
 {
     public interface IPlugin : IDisposable
     {

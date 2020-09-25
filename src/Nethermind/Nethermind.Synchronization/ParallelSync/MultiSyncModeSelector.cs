@@ -18,7 +18,6 @@ using System;
 using System.ComponentModel;
 using System.Timers;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Synchronization.Peers;

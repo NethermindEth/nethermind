@@ -16,7 +16,6 @@
 
 using System;
 using System.Linq;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Specs.Forks;
 

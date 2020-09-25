@@ -15,19 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
-using System.Collections.Generic;
-
-namespace Nethermind.Runner.Extensions
+namespace Nethermind.Api.Extensions
 {
-    public interface IPluginManager
+    public interface IPluginLoader
     {
-        IReadOnlyCollection<T> Get<T>() where T : IPlugin;
-
-        void Register<T>() where T : IPlugin;
-        
-        void Register(Type type);
-
-        void Register(IPlugin plugin);
+        void Load();
     }
 }

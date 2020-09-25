@@ -17,6 +17,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Runner.Hive;

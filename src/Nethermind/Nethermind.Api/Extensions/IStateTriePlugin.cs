@@ -17,7 +17,7 @@
 
 using Nethermind.Trie;
 
-namespace Nethermind.Runner.Extensions
+namespace Nethermind.Api.Extensions
 {
     public interface IStateTriePlugin : IPlugin
     {

@@ -23,7 +23,7 @@ namespace Nethermind.Serialization.Json
 {
     public class KeccakConverter : JsonConverter<Keccak>
     {
-        public override void WriteJson(JsonWriter writer, Keccak value, Newtonsoft.Json.JsonSerializer serializer)
+        public override void WriteJson(JsonWriter writer, Keccak value, JsonSerializer serializer)
         {
             if (value == null)
             {
@@ -35,7 +35,7 @@ namespace Nethermind.Serialization.Json
             }
         }
 
-        public override Keccak ReadJson(JsonReader reader, Type objectType, Keccak existingValue, bool hasExistingValue, Newtonsoft.Json.JsonSerializer serializer)
+        public override Keccak ReadJson(JsonReader reader, Type objectType, Keccak existingValue, bool hasExistingValue, JsonSerializer serializer)
         {
             string s = (string) reader.Value;
             return string.IsNullOrWhiteSpace(s) ? null : new Keccak(Bytes.FromHexString(s));

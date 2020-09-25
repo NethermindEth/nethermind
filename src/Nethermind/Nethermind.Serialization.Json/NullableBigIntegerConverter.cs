@@ -34,12 +34,12 @@ namespace Nethermind.Serialization.Json
             _bigIntegerConverter = new BigIntegerConverter(conversion);
         }
 
-        public override void WriteJson(JsonWriter writer, BigInteger? value, Newtonsoft.Json.JsonSerializer serializer)
+        public override void WriteJson(JsonWriter writer, BigInteger? value, JsonSerializer serializer)
         {
             _bigIntegerConverter.WriteJson(writer, value.Value, serializer);
         }
 
-        public override BigInteger? ReadJson(JsonReader reader, Type objectType, BigInteger? existingValue, bool hasExistingValue, Newtonsoft.Json.JsonSerializer serializer)
+        public override BigInteger? ReadJson(JsonReader reader, Type objectType, BigInteger? existingValue, bool hasExistingValue, JsonSerializer serializer)
         {
             if (reader.TokenType == JsonToken.Null)
             {
