@@ -23,7 +23,6 @@ using FluentAssertions;
 using Nethermind.Baseline.Config;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
-using Nethermind.DataMarketplace.Core.Configs;
 using Nethermind.EthStats;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc;
@@ -233,12 +232,12 @@ namespace Nethermind.Runner.Test
             Test<IBaselineConfig, bool>(configWildcard, c => c.Enabled, enabled);
         }
 
-        [TestCase("ndm", true)]
-        [TestCase("^ndm", false)]
-        public void Ndm_enabled_only_for_ndm_configs(string configWildcard, bool ndmEnabled)
-        {
-            Test<INdmConfig, bool>(configWildcard, c => c.Enabled, ndmEnabled);
-        }
+        // [TestCase("ndm", true)]
+        // [TestCase("^ndm", false)]
+        // public void Ndm_enabled_only_for_ndm_configs(string configWildcard, bool ndmEnabled)
+        // {
+        //     Test<INdmConfig, bool>(configWildcard, c => c.Enabled, ndmEnabled);
+        // }
 
         [TestCase("*")]
         public void Analytics_defaults(string configWildcard)
