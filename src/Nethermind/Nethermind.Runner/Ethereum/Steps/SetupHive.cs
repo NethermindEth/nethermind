@@ -26,9 +26,9 @@ namespace Nethermind.Runner.Ethereum.Steps
     [RunnerStepDependencies(typeof(SetupKeyStore), typeof(LoadGenesisBlock))]
     public class SetupHive : IStep
     {
-        private readonly NethermindApi _api;
+        private readonly INethermindApi _api;
 
-        public SetupHive(NethermindApi api)
+        public SetupHive(INethermindApi api)
         {
             _api = api;
         }

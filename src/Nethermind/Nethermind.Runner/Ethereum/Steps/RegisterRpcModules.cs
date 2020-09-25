@@ -35,7 +35,6 @@ using Nethermind.Baseline.JsonRpc;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Db;
 using Nethermind.State;
 using Nethermind.Runner.Ethereum.Steps.Migrations;

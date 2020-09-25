@@ -27,7 +27,7 @@ namespace Nethermind.Runner.Ethereum.Steps
     [RunnerStepDependencies(typeof(ApplyMemoryHint))]
     public class InitRlp : IStep
     {
-        public InitRlp(NethermindApi _)
+        public InitRlp(INethermindApi _)
         {
         }
 

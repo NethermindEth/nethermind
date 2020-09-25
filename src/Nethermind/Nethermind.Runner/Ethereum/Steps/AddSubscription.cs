@@ -34,7 +34,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         private readonly INethermindApi _api;
         private ILogger _logger;
 
-        public AddSubscriptions(NethermindApi api)
+        public AddSubscriptions(INethermindApi api)
         {
             _api = api;
             _logger = api.LogManager.GetClassLogger();

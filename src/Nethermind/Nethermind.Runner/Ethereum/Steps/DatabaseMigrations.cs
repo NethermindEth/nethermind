@@ -37,9 +37,9 @@ namespace Nethermind.Runner.Ethereum.Steps
     [RunnerStepDependencies(typeof(InitRlp), typeof(InitDatabase), typeof(InitializeBlockchain), typeof(InitializeNetwork), typeof(ResetDatabaseMigrations))]
     public class DatabaseMigrations : IStep
     {
-        private readonly NethermindApi _api;
+        private readonly INethermindApi _api;
 
-        public DatabaseMigrations(NethermindApi api)
+        public DatabaseMigrations(INethermindApi api)
         {
             _api = api;
         }

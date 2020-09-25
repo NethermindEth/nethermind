@@ -164,6 +164,6 @@ namespace Nethermind.Runner.Ethereum.Api
         public ProtectedPrivateKey? NodeKey { get; set; }
         public ProtectedPrivateKey? OriginalSignerKey { get; set; }
 
-        public List<IPlugin> Plugins { get; }
+        public List<IPlugin> Plugins { get; } = new List<IPlugin>();
     }
 }
