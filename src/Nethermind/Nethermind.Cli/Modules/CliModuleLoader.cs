@@ -161,13 +161,13 @@ namespace Nethermind.Cli.Modules
                     continue;
                 }
 
-                moduleTypes.AddRange(assembly.GetTypes().Where(IsCliModule));
+                moduleTypes.AddRange(assembly.GetExportedTypes().Where(IsCliModule));
             }
             
             // If we load the current assembly the same way as other assemblies the types
             // would not match and the modules would not be discovered.
             // This is because the assembly is loaded twice and the CliModuleBase type exists twice.
-            moduleTypes.AddRange(GetType().Assembly.GetTypes().Where(IsCliModule));
+            moduleTypes.AddRange(GetType().Assembly.GetExportedTypes().Where(IsCliModule));
             
             foreach (Type moduleType in moduleTypes.OrderBy(mt => mt.Name))
             {

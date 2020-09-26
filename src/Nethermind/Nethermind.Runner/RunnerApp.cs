@@ -51,26 +51,15 @@ namespace Nethermind.Runner
             {
                 Console.WriteLine($"Could not find plugins directory at: {pluginsDirectory}");
             }
-
-            var loadedAssemblies = AppDomain.CurrentDomain.GetAssemblies().ToList();
-            loadedAssemblies
-                .SelectMany(x => x.GetReferencedAssemblies())
-                .Distinct()
-                .Where(y => loadedAssemblies.Any((a) => a.FullName == y.FullName) == false)
-                .ToList()
-                .ForEach(x => loadedAssemblies.Add(AppDomain.CurrentDomain.Load(x)));
-
+            
             Type configurationType = typeof(IConfig);
-            List<Type> configTypes = AppDomain.CurrentDomain.GetAssemblies()
-                .SelectMany(a => a.GetTypes())
-                .Where(t => configurationType.IsAssignableFrom(t) && !t.IsInterface)
-                .ToList();
+            IEnumerable<Type> configTypes = TypeDiscovery.FindNethermindTypes(configurationType, true);
 
             CommandLineApplication app = new CommandLineApplication {Name = "Nethermind.Runner"};
             app.HelpOption("-?|-h|--help");
             app.VersionOption("-v|--version", () => ClientVersion.Version, () => ClientVersion.Description);
 
-            NLog.GlobalDiagnosticsContext.Set("version", ClientVersion.Version);
+            GlobalDiagnosticsContext.Set("version", ClientVersion.Version);
 
             CommandOption configFile = app.Option("-c|--config <configFile>", "config file path", CommandOptionType.SingleValue);
             CommandOption dbBasePath = app.Option("-d|--baseDbPath <baseDbPath>", "base db path", CommandOptionType.SingleValue);
@@ -87,7 +76,7 @@ namespace Nethermind.Runner
                 
                 foreach (PropertyInfo propertyInfo in configType.GetProperties(BindingFlags.Public | BindingFlags.Instance))
                 {
-                    Type? interfaceType = configType.GetInterface("I" + configType.Name);
+                    Type? interfaceType = configType.GetInterface(configType.Name);
                     PropertyInfo? interfaceProperty = interfaceType?.GetProperty(propertyInfo.Name);
 
                     ConfigItemAttribute? configItemAttribute = interfaceProperty?.GetCustomAttribute<ConfigItemAttribute>();
@@ -187,8 +176,7 @@ namespace Nethermind.Runner
 
                 Console.WriteLine($"Reading config file from {configFilePath}");
                 configProvider.AddSource(new JsonConfigSource(configFilePath));
-                configTypes.ForEach(configType => configProvider.RegisterCategory(configType.Name, configType));
-
+                configProvider.Initialize();
                 return configProvider;
             }
 

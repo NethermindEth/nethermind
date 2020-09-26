@@ -130,9 +130,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             _api.ChainLevelInfoRepository = new ChainLevelInfoRepository(_api.DbProvider.BlockInfosDb);
 
             _api.BlockTree = new BlockTree(
-                _api.DbProvider.BlocksDb,
-                _api.DbProvider.HeadersDb,
-                _api.DbProvider.BlockInfosDb,
+                _api.DbProvider,
                 _api.ChainLevelInfoRepository,
                 _api.SpecProvider,
                 _api.TxPool,

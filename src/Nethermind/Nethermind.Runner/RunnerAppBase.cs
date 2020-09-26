@@ -163,18 +163,15 @@ namespace Nethermind.Runner
             if (metricsConfig.Enabled)
             {
                 Metrics.Version = VersionToMetrics.ConvertToNumber(ClientVersion.Version);
+                
+                // TODO: auto register metrics
                 MetricsUpdater metricsUpdater = new MetricsUpdater(metricsConfig);
                 _monitoringService = new MonitoringService(metricsUpdater, metricsConfig, logManager);
-                _monitoringService.RegisterMetrics(typeof(Nethermind.Blockchain.Metrics));
-                _monitoringService.RegisterMetrics(typeof(Nethermind.Db.Metrics));
-                _monitoringService.RegisterMetrics(typeof(Nethermind.Evm.Metrics));
-                _monitoringService.RegisterMetrics(typeof(Nethermind.JsonRpc.Metrics));
-                _monitoringService.RegisterMetrics(typeof(Nethermind.Trie.Metrics));
-                _monitoringService.RegisterMetrics(typeof(Nethermind.Network.Metrics));
-                _monitoringService.RegisterMetrics(typeof(Nethermind.Synchronization.Metrics));
-                _monitoringService.RegisterMetrics(typeof(Nethermind.TxPool.Metrics));
-                _monitoringService.RegisterMetrics(typeof(Metrics));
-                _monitoringService.RegisterMetrics(typeof(Nethermind.Consensus.AuRa.Metrics));
+                var metrics = TypeDiscovery.FindNethermindTypes(nameof(Metrics));
+                foreach (var metric in metrics)
+                {
+                    _monitoringService.RegisterMetrics(metric);    
+                }
 
                 await _monitoringService.StartAsync().ContinueWith(x =>
                 {

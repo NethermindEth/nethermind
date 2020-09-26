@@ -44,7 +44,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             List<Type> allStepTypes = new List<Type>();
             foreach (Assembly stepsAssembly in _stepsAssemblies)
             {
-                allStepTypes.AddRange(stepsAssembly.GetTypes()
+                allStepTypes.AddRange(stepsAssembly.GetExportedTypes()
                     .Where(t => !t.IsInterface && !t.IsAbstract && IsStepType(t)));
             }
             

@@ -65,7 +65,7 @@ namespace Nethermind.Runner.Test
                 TestContext.WriteLine($"Verify defaults on {dll}");
                 Assembly assembly = Assembly.LoadFile(dll);
                 var configs =
-                    assembly.GetTypes().Where(t => typeof(IConfig).IsAssignableFrom(t) && t.IsInterface).ToArray();
+                    assembly.GetExportedTypes().Where(t => typeof(IConfig).IsAssignableFrom(t) && t.IsInterface).ToArray();
 
                 foreach (Type configType in configs)
                 {
@@ -79,7 +79,7 @@ namespace Nethermind.Runner.Test
         {
             PropertyInfo[] properties = configType.GetProperties();
 
-            Type implementationType = configType.Assembly.GetTypes().SingleOrDefault(t => t.IsClass && configType.IsAssignableFrom(t));
+            Type implementationType = configType.Assembly.GetExportedTypes().SingleOrDefault(t => t.IsClass && configType.IsAssignableFrom(t));
             object instance = Activator.CreateInstance(implementationType);
 
             foreach (PropertyInfo property in properties)

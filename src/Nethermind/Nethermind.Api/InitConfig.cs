@@ -15,12 +15,9 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using Nethermind.Api;
 
-namespace Nethermind.Runner
+namespace Nethermind.Api
 {
-    
-    
     public class InitConfig : IInitConfig
     {
         public bool EnableUnsecuredDevWallet { get; set; } = false;
@@ -48,6 +45,7 @@ namespace Nethermind.Runner
         public bool UseMemDb
         {
             get => DiagnosticMode == DiagnosticMode.MemDb;
+            // ReSharper disable once ValueParameterNotUsed
             set => DiagnosticMode = DiagnosticMode.MemDb;
         }
     }

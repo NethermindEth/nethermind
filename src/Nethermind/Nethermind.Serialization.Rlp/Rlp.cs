@@ -78,7 +78,7 @@ namespace Nethermind.Serialization.Rlp
 
         public static void RegisterDecoders(Assembly assembly)
         {
-            foreach (var type in assembly.GetTypes())
+            foreach (var type in assembly.GetExportedTypes())
             {
                 if (!type.IsClass)
                 {

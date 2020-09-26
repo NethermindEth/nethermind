@@ -128,7 +128,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 
                 if (_logger.IsInfo) _logger.Warn($"Loading assembly {path}");
                 Assembly assembly = Assembly.LoadFile(Path.Combine(fullPluginsDir, path));
-                foreach (Type type in assembly.GetTypes())
+                foreach (Type type in assembly.GetExportedTypes())
                 {
                     AnalyticsLoaderAttribute? loader = type.GetCustomAttribute<AnalyticsLoaderAttribute>();
                     if (loader != null)
