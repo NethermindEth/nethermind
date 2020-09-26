@@ -8,6 +8,7 @@
         <Authors>Nethermind</Authors>
         <PackageVersion>1.0.0</PackageVersion>
         <LangVersion>8.0</LangVersion>
+        <Nullable>enable</Nullable>
     </PropertyGroup>
     
     <ItemGroup>
@@ -21,8 +22,6 @@
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\Nethermind.Baseline\Nethermind.Baseline.csproj" />
-      <ProjectReference Include="..\Nethermind.DataMarketplace.Core\Nethermind.DataMarketplace.Core.csproj" />
       <ProjectReference Include="..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj" />
     </ItemGroup>
 </Project>

@@ -181,11 +181,7 @@ namespace Nethermind.Cli
         private static void LoadCliModules()
         {
             ModuleLoader = new CliModuleLoader(_engine, _nodeManager, _cliConsole);
-            var modules = typeof(Program).Assembly.GetTypes().Where(t => t.GetCustomAttribute<CliModuleAttribute>() != null);
-            foreach (Type module in modules)
-            {
-                ModuleLoader.LoadModule(module);
-            }
+            ModuleLoader.DiscoverAndLoadModules();
         }
     }
 }

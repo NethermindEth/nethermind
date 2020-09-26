@@ -120,6 +120,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Seq", "Nethermin
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.PubSub.Kafka", "Nethermind.PubSub.Kafka\Nethermind.PubSub.Kafka.csproj", "{CB679CED-547E-42A8-B6F1-3D2BC2FC7D75}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.DataMarketplace.Cli", "Nethermind.DataMarketplace.Cli\Nethermind.DataMarketplace.Cli.csproj", "{BE3646E1-60F4-4F27-A3E3-4D3EB68B699B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Cli", "Nethermind.Cli\Nethermind.Cli.csproj", "{38D66446-4E41-4F35-953C-9FE54DE39CE7}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -366,6 +370,14 @@ Global
 		{CB679CED-547E-42A8-B6F1-3D2BC2FC7D75}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{CB679CED-547E-42A8-B6F1-3D2BC2FC7D75}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{CB679CED-547E-42A8-B6F1-3D2BC2FC7D75}.Release|Any CPU.Build.0 = Release|Any CPU
+		{BE3646E1-60F4-4F27-A3E3-4D3EB68B699B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BE3646E1-60F4-4F27-A3E3-4D3EB68B699B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BE3646E1-60F4-4F27-A3E3-4D3EB68B699B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BE3646E1-60F4-4F27-A3E3-4D3EB68B699B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{38D66446-4E41-4F35-953C-9FE54DE39CE7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{38D66446-4E41-4F35-953C-9FE54DE39CE7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{38D66446-4E41-4F35-953C-9FE54DE39CE7}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{38D66446-4E41-4F35-953C-9FE54DE39CE7}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{B0D27BA8-A2DB-43B1-88F2-B1FDE7246BDF} = {3C490400-0577-4F8D-9C59-F4FF46D0AC1E}
@@ -411,5 +423,6 @@ Global
 		{321CD766-B6E6-4E70-8A9F-4D505C5D04B7} = {3C490400-0577-4F8D-9C59-F4FF46D0AC1E}
 		{DDF2855A-5D96-48AB-8BFE-DF792847D42C} = {3C490400-0577-4F8D-9C59-F4FF46D0AC1E}
 		{CB679CED-547E-42A8-B6F1-3D2BC2FC7D75} = {3C490400-0577-4F8D-9C59-F4FF46D0AC1E}
+		{38D66446-4E41-4F35-953C-9FE54DE39CE7} = {3C490400-0577-4F8D-9C59-F4FF46D0AC1E}
 	EndGlobalSection
 EndGlobal

@@ -1,13 +1,14 @@
 using System.Linq;
+using Nethermind.Cli;
+using Nethermind.Cli.Modules;
 
-namespace Nethermind.Cli.Modules
+namespace Nethermind.Baseline.Cli
 {
-    // TODO: CLI should be capable of loading plugins same as other parts of the system   
-    
     [CliModule("baseline")]
     public class BaselineCliModule : CliModuleBase
     {
-        public BaselineCliModule(ICliEngine cliEngine, INodeManager nodeManager) : base(cliEngine, nodeManager)
+        public BaselineCliModule(ICliEngine cliEngine, INodeManager nodeManager)
+            : base(cliEngine, nodeManager)
         {
         }
 

@@ -36,9 +36,10 @@ namespace Nethermind.Cli.Modules
         private readonly ICliConsole _cliConsole;
         private readonly ICliEngine _engine;
 
-        public List<string> ModuleNames { get; set; } = new List<string>();
-        public Dictionary<string, List<string>> MethodsByModules { get; set; } = new Dictionary<string, List<string>>();
+        public List<string> ModuleNames { get; } = new List<string>();
         
+        public Dictionary<string, List<string>> MethodsByModules { get; } = new Dictionary<string, List<string>>();
+
         public CliModuleLoader(ICliEngine engine, IJsonRpcClient client, ICliConsole cliConsole)
         {
             _engine = engine ?? throw new ArgumentNullException(nameof(engine));
@@ -74,11 +75,18 @@ namespace Nethermind.Cli.Modules
 
         private void LoadModule(CliModuleBase module)
         {
-            var cliModuleAttribute = module.GetType().GetCustomAttribute<CliModuleAttribute>();
+            CliModuleAttribute? cliModuleAttribute = module.GetType().GetCustomAttribute<CliModuleAttribute>();
+            if (cliModuleAttribute == null)
+            {
+                _cliConsole.WriteErrorLine(
+                    $"Could not load module {module.GetType().Name} bacause of a missing {nameof(CliModuleAttribute)}.");
+                return;
+            }
+            
             _cliConsole.WriteLine($"module ({cliModuleAttribute.ModuleName})");
             ModuleNames.Add(cliModuleAttribute.ModuleName);
             MethodsByModules[cliModuleAttribute.ModuleName] = new List<string>();
-            
+
             var methods = module.GetType().GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly);
             foreach (MethodInfo methodInfo in methods.OrderBy(m => m.Name))
             {
@@ -87,8 +95,8 @@ namespace Nethermind.Cli.Modules
 
                 bool isProperty = cliProperty != null;
 
-                string objectName = cliProperty?.ObjectName ?? cliFunction?.ObjectName;
-                string itemName = cliProperty?.PropertyName ?? cliFunction?.FunctionName;
+                string? objectName = cliProperty?.ObjectName ?? cliFunction?.ObjectName;
+                string? itemName = cliProperty?.PropertyName ?? cliFunction?.FunctionName;
 
                 if (objectName == null)
                 {
@@ -107,38 +115,105 @@ namespace Nethermind.Cli.Modules
                 var @delegate = CreateDelegate(methodInfo, module);
                 DelegateWrapper nativeDelegate = new DelegateWrapper(_engine.JintEngine, @delegate);
 
-                if (isProperty)
+                if (itemName != null)
                 {
-                    _cliConsole.WriteKeyword($"  {objectName}");
-                    _cliConsole.WriteLine($".{itemName}");
-                    
-                    MethodsByModules[objectName].Add(itemName);
-                    AddProperty(instance, itemName, nativeDelegate);
-                }
-                else
-                {
-                    _cliConsole.WriteKeyword($"  {objectName}");
-                    _cliConsole.WriteLine($".{itemName}({string.Join(", ", methodInfo.GetParameters().Select(p => p.Name))})");
+                    if (isProperty)
+                    {
+                        _cliConsole.WriteKeyword($"  {objectName}");
+                        _cliConsole.WriteLine($".{itemName}");
 
-                    MethodsByModules[objectName].Add(itemName + "(");
-                    AddMethod(instance, itemName, nativeDelegate);
+                        MethodsByModules[objectName].Add(itemName);
+                        AddProperty(instance, itemName, nativeDelegate);
+                    }
+                    else
+                    {
+                        _cliConsole.WriteKeyword($"  {objectName}");
+                        _cliConsole.WriteLine($".{itemName}({string.Join(", ", methodInfo.GetParameters().Select(p => p.Name))})");
+
+                        MethodsByModules[objectName].Add(itemName + "(");
+                        AddMethod(instance, itemName, nativeDelegate);
+                    }
                 }
             }
-            
+
             _cliConsole.WriteLine();
         }
-        
+
+        public void DiscoverAndLoadModules()
+        {
+            List<Type> moduleTypes = new List<Type>();
+            
+            string[] allDlls = Directory.GetFiles(AppDomain.CurrentDomain.BaseDirectory, "*.dll");
+            foreach (string dll in allDlls)
+            {
+                if (GetType().Assembly.FullName!.Contains(Path.GetFileNameWithoutExtension(dll)))
+                {
+                    continue;;
+                }
+                
+                Assembly assembly;
+                try
+                {
+                    assembly = Assembly.LoadFile(dll); // dangerous but we assume plugins are safe for now
+                }
+                catch (Exception)
+                {
+                    continue;
+                }
+
+                moduleTypes.AddRange(assembly.GetTypes().Where(IsCliModule));
+            }
+            
+            // If we load the current assembly the same way as other assemblies the types
+            // would not match and the modules would not be discovered.
+            // This is because the assembly is loaded twice and the CliModuleBase type exists twice.
+            moduleTypes.AddRange(GetType().Assembly.GetTypes().Where(IsCliModule));
+            
+            foreach (Type moduleType in moduleTypes.OrderBy(mt => mt.Name))
+            {
+                LoadModule(moduleType);
+            }
+        }
+
+        private bool IsCliModule(Type type)
+        {
+            bool isCliModule = typeof(CliModuleBase).IsAssignableFrom(type); 
+            bool hasAttribute = type.GetCustomAttribute<CliModuleAttribute>() != null;
+            if (isCliModule && !hasAttribute)
+            {
+                _cliConsole.WriteInteresting(
+                    $"Type {type.Name} is a CLI module but is not marked with a {nameof(CliModuleAttribute)}");
+            }
+            
+            if (!isCliModule && hasAttribute)
+            {
+                _cliConsole.WriteInteresting(
+                    $"Type {type.Name} is marked with a {nameof(CliModuleAttribute)} but does not extend {nameof(CliModuleBase)}");
+            }
+
+            return hasAttribute;
+        }
+
+        // ReSharper disable once MemberCanBePrivate.Global
         public void LoadModule(Type type)
-        {   
-            var ctor = type.GetConstructor(new[] {typeof(ICliEngine), typeof(INodeManager)});
-            CliModuleBase module = (CliModuleBase) ctor.Invoke(new object[] {_engine, _client});
-            LoadModule(module);
+        {
+            ConstructorInfo? ctor = type.GetConstructor(new[] {typeof(ICliEngine), typeof(INodeManager)});
+            if (ctor != null)
+            {
+                CliModuleBase module = (CliModuleBase) ctor.Invoke(new object[] {_engine, _client});
+                LoadModule(module);
+            }
+            else
+            {
+                _cliConsole.WriteErrorLine(
+                    $"Could not load module {type.Name} because of a missing module constructor");
+            }
         }
 
         private Dictionary<string, ObjectInstance> _objects = new Dictionary<string, ObjectInstance>();
 
         private void AddMethod(ObjectInstance instance, string name, DelegateWrapper delegateWrapper)
-        {   
+        {
             instance.FastAddProperty(name, delegateWrapper, true, false, true);
         }
 
