@@ -24,26 +24,22 @@ namespace Nethermind.Cli.Converters
     public class BigIntegerTypeConverter : TypeConverter
     {
         public override bool CanConvertFrom(ITypeDescriptorContext context, Type sourceType) =>
-            sourceType == typeof(double) 
-            || sourceType == typeof(decimal) 
-            || sourceType == typeof(float) 
+            sourceType == typeof(double)
+            || sourceType == typeof(decimal)
+            || sourceType == typeof(float)
             || base.CanConvertFrom(context, sourceType);
 
         public override bool CanConvertTo(ITypeDescriptorContext context, Type destinationType) => destinationType == typeof(BigInteger);
 
         public override object ConvertFrom(ITypeDescriptorContext context, CultureInfo culture, object value)
         {
-            switch (value)
+            return value switch
             {
-                case float f:
-                    return (BigInteger) f;
-                case double d:
-                    return (BigInteger) d;
-                case decimal d:
-                    return (BigInteger) d;
-                default:
-                    return base.ConvertFrom(context, culture, value);
-            }
+                float f => (BigInteger) f,
+                double d => (BigInteger) d,
+                decimal d => (BigInteger) d,
+                _ => base.ConvertFrom(context, culture, value)
+            } ?? throw new InvalidOperationException();
         }
     }
 }

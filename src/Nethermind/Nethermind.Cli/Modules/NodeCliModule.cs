@@ -16,25 +16,20 @@
 
 using System;
 using System.IO;
-using System.Reflection;
 using Jint.Native;
 using Nethermind.Config;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
-using Nethermind.Network;
 
 namespace Nethermind.Cli.Modules
 {
-    // TODO: CLI should be capable of loading plugins same as other parts of the system
-    
     [CliModule("node")]
     public class NodeCliModule : CliModuleBase
     {
         [CliFunction("node", "setNodeKey")]
         public string SetNodeKey(string key)
         {
-            string path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "node.key.plain");
+            string path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory!, "node.key.plain");
             File.WriteAllBytes("node.key.plain", new PrivateKey(Bytes.FromHexString(key)).KeyBytes);
             return path;
         }
@@ -64,16 +59,16 @@ namespace Nethermind.Cli.Modules
             return uri;
         }
         
-        private string GetVariable(string name, string defaultValue)
+        private static string? GetVariable(string name, string defaultValue)
         {
-            var value = Environment.GetEnvironmentVariable(name.ToUpperInvariant());
+            string? value = Environment.GetEnvironmentVariable(name.ToUpperInvariant());
             return string.IsNullOrWhiteSpace(value) ? value : defaultValue;
         }
         
         [CliProperty("node", "address")]
         public string Address()
         {
-            return new Enode(Enode().ToString()).Address.ToString();
+            return new Enode(Enode()).Address.ToString();
         }
         
         [CliProperty("node", "enode")]

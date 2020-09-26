@@ -16,7 +16,6 @@
 
 using System;
 using System.ComponentModel;
-using System.Globalization;
 using System.Linq;
 using Jint.Runtime.Interop;
 
@@ -35,26 +34,31 @@ namespace Nethermind.Cli.Converters
         
         public object Convert(object value, Type type, IFormatProvider formatProvider)
         {
-            var converter = GetConverter(type, GetFromType(value));
-            return converter != null ? converter.ConvertFrom(value) : _defaultConverter.Convert(value, type, formatProvider);
+            TypeConverter? converter = GetConverter(type, GetFromType(value));
+            return converter?.ConvertFrom(value) ?? _defaultConverter.Convert(value, type, formatProvider);
         }
 
-        public bool TryConvert(object value, Type type, IFormatProvider formatProvider, out object converted)
+        public bool TryConvert(object value, Type type, IFormatProvider formatProvider, out object? converted)
         {
-            var converter = GetConverter(type, GetFromType(value));
+            TypeConverter? converter = GetConverter(type, GetFromType(value));
+
+            bool result;
             if (converter != null)
             {
                 converted = converter.ConvertFrom(value);
-                return true;
+                result = true;
             }
             else
             {
-                return _defaultConverter.TryConvert(value, type, formatProvider, out converted);
+                result = _defaultConverter.TryConvert(value, type, formatProvider, out converted);
             }
+
+            return result;
         }
         
-        private static Type GetFromType(object value) => value?.GetType() ?? typeof(object);
+        private static Type GetFromType(object? value) => value?.GetType() ?? typeof(object);
         
-        private TypeConverter GetConverter(Type toType, Type fromType) => _converters.FirstOrDefault(c => c.CanConvertTo(toType) && c.CanConvertFrom(fromType));
+        private TypeConverter? GetConverter(Type toType, Type fromType) =>
+            _converters.FirstOrDefault(c => c.CanConvertTo(toType) && c.CanConvertFrom(fromType));
     }
 }

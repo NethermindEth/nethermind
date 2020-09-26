@@ -17,8 +17,6 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
-using System.Linq;
-using System.Reflection;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 
@@ -26,8 +24,10 @@ namespace Nethermind.Cli.Console
 {
     public class CliConsole : ICliConsole
     {
-        private static ColorScheme _colorScheme;
+        private static ColorScheme _colorScheme = DraculaColorScheme.Instance;
+        
         private static Terminal _terminal;
+        
         private static readonly Dictionary<string, Terminal> Terminals = new Dictionary<string, Terminal>
         {
             ["cmd.exe"] = Terminal.Cmd,
@@ -51,9 +51,7 @@ namespace Nethermind.Cli.Console
             {
                 Colorful.Console.Clear();
             }
-
-            Assembly assembly = typeof(CliConsole).Assembly;
-            AssemblyInformationalVersionAttribute versionAttribute = assembly.GetCustomAttributes(false).OfType<AssemblyInformationalVersionAttribute>().FirstOrDefault();
+            
             string version = ClientVersion.Version;
 
             Colorful.Console.WriteLine("**********************************************", _colorScheme.Comment);

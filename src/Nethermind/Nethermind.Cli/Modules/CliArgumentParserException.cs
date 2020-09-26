@@ -13,20 +13,14 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
 using System;
-using System.Threading.Tasks;
-using Jint.Native;
-using Nethermind.JsonRpc.Client;
 
-namespace Nethermind.Cli
+namespace Nethermind.Cli.Modules
 {
-    public interface INodeManager : IJsonRpcClient
+    public class CliArgumentParserException : Exception
     {
-        string? CurrentUri { get; }
-
-        void SwitchUri(Uri uri);
-        
-        Task<JsValue> PostJint(string method, params object[] parameters);
+        public CliArgumentParserException(string message) : base(message) { }
     }
 }

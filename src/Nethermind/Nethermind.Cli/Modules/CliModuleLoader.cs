@@ -148,7 +148,7 @@ namespace Nethermind.Cli.Modules
             {
                 if (GetType().Assembly.FullName!.Contains(Path.GetFileNameWithoutExtension(dll)))
                 {
-                    continue;;
+                    continue;
                 }
                 
                 Assembly assembly;

@@ -17,63 +17,56 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using System.Net.Mime;
-using System.Reflection;
 using Jint.Native;
-using Jint.Parser.Ast;
 using Nethermind.Cli.Console;
 using Nethermind.Cli.Modules;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
-using Console = Colorful.Console;
 
 namespace Nethermind.Cli
 {
-    static class Program
+    public static class Program
     {
+        private static readonly ColorScheme ColorScheme = DraculaColorScheme.Instance;
+        private static readonly CliConsole CliConsole = new CliConsole();
+        private static readonly StatementHistoryManager HistoryManager = new StatementHistoryManager(CliConsole);
+        
+        private static readonly ILogManager LogManager = new OneLoggerLogManager(new CliLogger(CliConsole));
         private static readonly IJsonSerializer Serializer = new EthereumJsonSerializer();
-        private static INodeManager _nodeManager;
-        private static ILogManager _logManager;
-        private static ICliEngine _engine;
-        private static Terminal _terminal;
-        private static CliConsole _cliConsole;
-        private static StatementHistoryManager _historyManager;
-        private static ColorScheme _colorScheme;
+        
+        private static readonly Terminal Terminal = CliConsole.Init(DraculaColorScheme.Instance);
+        private static readonly ICliEngine Engine = new CliEngine(CliConsole);
+        private static readonly INodeManager NodeManager = new NodeManager(Engine, Serializer, CliConsole, LogManager);
+        
+        private static readonly CliModuleLoader ModuleLoader = new CliModuleLoader(Engine, NodeManager, CliConsole);
 
-        // ReSharper disable once InconsistentNaming
-        private static CliModuleLoader ModuleLoader;
-
-        static void Main(string[] args)
+        public static void Main()
         {
-            _cliConsole = new CliConsole();
-            _colorScheme = new DraculaColorScheme();
-            _terminal = _cliConsole.Init(_colorScheme);
-            _logManager = new OneLoggerLogManager(new CliLogger(_cliConsole));
-            _historyManager = new StatementHistoryManager(_cliConsole);
-
             RegisterConverters();
-            InitEngine();
-            InitNodeManager();
-            LoadCliModules();
+            Engine.JintEngine.SetValue("serialize", new Action<JsValue>(v =>
+            {
+                string text = Serializer.Serialize(v.ToObject(), true);
+                CliConsole.WriteGood(text);
+            }));
             
+            ModuleLoader.DiscoverAndLoadModules();
             ReadLine.AutoCompletionHandler = new AutoCompletionHandler(ModuleLoader);
-            _historyManager.Init();
             
+            NodeManager.SwitchUri(new Uri("http://localhost:8545"));
+            HistoryManager.Init();
             TestConnection();
-            _cliConsole.WriteLine();
-            
+            CliConsole.WriteLine();
             RunEvalLoop();
         }
 
         private static void TestConnection()
         {
-            _cliConsole.WriteLine($"Connecting to {_nodeManager.CurrentUri}");
-            JsValue result = _engine.Execute("web3.clientVersion");
+            CliConsole.WriteLine($"Connecting to {NodeManager.CurrentUri}");
+            JsValue result = Engine.Execute("web3.clientVersion");
             if (result != JsValue.Null)
             {
-                _cliConsole.WriteGood("Connected");
+                CliConsole.WriteGood("Connected");
             }
         }
 
@@ -101,9 +94,9 @@ namespace Nethermind.Cli
             {
                 try
                 {
-                    if (_terminal != Terminal.Cmder)
+                    if (Terminal != Terminal.Cmder)
                     {
-                        Colorful.Console.ForegroundColor = _colorScheme.Text;
+                        Colorful.Console.ForegroundColor = ColorScheme.Text;
                     }
 
                     const int bufferSize = 1024 * 16;
@@ -111,11 +104,11 @@ namespace Nethermind.Cli
                     using (Stream inStream = System.Console.OpenStandardInput(bufferSize))
                     {
                         Colorful.Console.SetIn(new StreamReader(inStream, Colorful.Console.InputEncoding, false, bufferSize));
-                        _cliConsole.WriteLessImportant("nethermind> ");
-                        statement = _terminal == Terminal.Cygwin ? Colorful.Console.ReadLine() : ReadLine.Read();
+                        CliConsole.WriteLessImportant("nethermind> ");
+                        statement = Terminal == Terminal.Cygwin ? Colorful.Console.ReadLine() : ReadLine.Read();
                         statement = RemoveDangerousCharacters(statement);
 
-                        _historyManager.UpdateHistory(statement);
+                        HistoryManager.UpdateHistory(statement);
                     }
 
                     if (statement == "exit")
@@ -123,12 +116,12 @@ namespace Nethermind.Cli
                         break;
                     }
 
-                    JsValue result = _engine.Execute(statement);
+                    JsValue result = Engine.Execute(statement);
                     WriteResult(result);
                 }
                 catch (Exception e)
                 {
-                    _cliConsole.WriteException(e);
+                    CliConsole.WriteException(e);
                 }
             }
         }
@@ -137,35 +130,19 @@ namespace Nethermind.Cli
         {
             if (result.IsObject() && result.AsObject().Class == "Function")
             {
-                _cliConsole.WriteGood(result.ToString());
-                _cliConsole.WriteLine();
+                CliConsole.WriteGood(result.ToString());
+                CliConsole.WriteLine();
             }
             else if (!result.IsNull())
             {
                 string text = Serializer.Serialize(result.ToObject(), true);
-                _cliConsole.WriteGood(text);
+                CliConsole.WriteGood(text);
             }
             else
             {
-                _cliConsole.WriteLessImportant("null");
-                _cliConsole.WriteLine();
+                CliConsole.WriteLessImportant("null");
+                CliConsole.WriteLine();
             }
-        }
-
-        private static void InitNodeManager()
-        {
-            _nodeManager = new NodeManager(_engine, Serializer, _cliConsole, _logManager);
-            _nodeManager.SwitchUri(new Uri("http://localhost:8545"));
-        }
-
-        private static void InitEngine()
-        {
-            _engine = new CliEngine(_cliConsole);
-            _engine.JintEngine.SetValue("serialize", new Action<JsValue>(v =>
-            {
-                string text = Serializer.Serialize(v.ToObject(), true);
-                _cliConsole.WriteGood(text);
-            }));
         }
 
         private static void RegisterConverters()
@@ -176,12 +153,6 @@ namespace Nethermind.Cli
             Serializer.RegisterConverter(new ParityTraceResultConverter());
             Serializer.RegisterConverter(new ParityVmOperationTraceConverter());
             Serializer.RegisterConverter(new ParityVmTraceConverter());
-        }
-
-        private static void LoadCliModules()
-        {
-            ModuleLoader = new CliModuleLoader(_engine, _nodeManager, _cliConsole);
-            ModuleLoader.DiscoverAndLoadModules();
         }
     }
 }
