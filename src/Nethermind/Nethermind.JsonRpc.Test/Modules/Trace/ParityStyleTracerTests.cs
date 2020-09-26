@@ -98,7 +98,8 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             Transaction transactionMock = Substitute.For<Transaction>();
             ParityTraceTypes type = ParityTraceTypes.Trace; 
             Address address = new Address(new byte[] {0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1}); 
-            CancellationToken cancellationToken = new CancellationTokenSource(timeout).Token;
+            using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource(timeout);
+            CancellationToken cancellationToken = cancellationTokenSource.Token;
             
             ParityLikeTxTracer tracer = new ParityLikeTxTracer(_blockTree.Head, transactionMock, type, cancellationToken);
 

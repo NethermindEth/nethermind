@@ -171,12 +171,12 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void trace_timeout_is_separate_for_rpc_calls()
         {
-            _jsonRpcConfig.TracerTimeout = 25;
+            _jsonRpcConfig.Timeout = 25;
             
             var searchParameter = new BlockParameter(number: 0); 
             Assert.DoesNotThrow(() => _traceModule.trace_block(searchParameter)); 
 
-            Thread.Sleep(_jsonRpcConfig.TracerTimeout + 25); //additional second just to show that in this time span timeout should occur if given one for whole class 
+            Thread.Sleep(_jsonRpcConfig.Timeout + 25); //additional second just to show that in this time span timeout should occur if given one for whole class 
 
             Assert.DoesNotThrow(() => _traceModule.trace_block(searchParameter));
         }

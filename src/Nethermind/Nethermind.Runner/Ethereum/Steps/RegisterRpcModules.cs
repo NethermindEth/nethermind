@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
@@ -77,6 +78,10 @@ namespace Nethermind.Runner.Ethereum.Steps
             // IBaselineConfig baselineConfig = _api.Config<IBaselineConfig>();
             INetworkConfig networkConfig = _api.Config<INetworkConfig>();
             {
+                // lets add threads to support parallel eth_getLogs
+                ThreadPool.GetMinThreads(out var workerThreads, out var completionPortThreads);
+                ThreadPool.SetMinThreads(workerThreads + Environment.ProcessorCount, completionPortThreads + Environment.ProcessorCount);
+                
                 EthModuleFactory ethModuleFactory = new EthModuleFactory(
                     _api.TxPool,
                     _api.TxSender,
@@ -124,7 +129,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.ReceiptFinder,
                 _api.BloomStorage,
                 _api.LogManager,
-                new ReceiptsRecovery(), 1024);
+                new ReceiptsRecovery(), 
+                1024);
 
             // TODO: plugin ecosystem move to Baseline plugin
             // if (baselineConfig.Enabled)
