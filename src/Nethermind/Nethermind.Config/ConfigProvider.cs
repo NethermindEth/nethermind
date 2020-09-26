@@ -36,7 +36,7 @@ namespace Nethermind.Config
             {
                 if (!_implementations.ContainsKey(configType))
                 {
-                    throw new Exception($"Missing config type {configType.Name}");
+                    Initialize();
                 }
                 
                 T config = (T)Activator.CreateInstance(_implementations[configType]);
@@ -97,7 +97,7 @@ namespace Nethermind.Config
         public void Initialize()
         {
             Type type = typeof(IConfig);
-            IEnumerable<Type> interfaces = TypeDiscovery.FindNethermindTypes(type).Where(x => x.IsInterface);
+            IEnumerable<Type> interfaces = TypeDiscovery.FindNethermindTypes(type, true).Where(x => x.IsInterface);
             foreach (Type @interface in interfaces)
             {
                 Type implementation = TypeDiscovery.FindNethermindTypes(@interface).SingleOrDefault();

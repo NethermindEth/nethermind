@@ -49,7 +49,7 @@ namespace Nethermind.Core
         private static int LoadOnce(List<Assembly> loadedAssemblies)
         {
             // can potentially use https://docs.microsoft.com/en-us/dotnet/standard/assembly/unloadability
-            
+
             int loaded = 0;
 
             loadedAssemblies
@@ -75,7 +75,8 @@ namespace Nethermind.Core
             }
 
             return _nethermindAssemblies
-                .SelectMany(a => a?.GetExportedTypes().Where(t => baseType.IsAssignableFrom(t) && baseType != t) ?? Array.Empty<Type>());
+                .SelectMany(a => (a?.IsDynamic ?? false ? a.GetTypes() : a?.GetExportedTypes())?
+                    .Where(t => baseType.IsAssignableFrom(t) && baseType != t) ?? Array.Empty<Type>());
         }
 
         public static IEnumerable<Type> FindNethermindTypes(string typeName, bool aggressive = false)
@@ -86,7 +87,8 @@ namespace Nethermind.Core
             }
 
             return _nethermindAssemblies
-                .SelectMany(a => a?.GetExportedTypes().Where(t => t.Name == typeName) ?? Array.Empty<Type>());
+                .SelectMany(a => (a?.IsDynamic ?? false ? a.GetTypes() : a?.GetExportedTypes())?
+                    .Where(t => t.Name == typeName) ?? Array.Empty<Type>());
         }
     }
 }
