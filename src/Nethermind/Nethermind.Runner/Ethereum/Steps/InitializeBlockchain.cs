@@ -34,7 +34,6 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
-using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Synchronization.BeamSync;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
@@ -47,7 +46,8 @@ namespace Nethermind.Runner.Ethereum.Steps
     {
         private readonly INethermindApi _api;
 
-        public InitializeBlockchain(NethermindApi api)
+        // ReSharper disable once MemberCanBeProtected.Global
+        public InitializeBlockchain(INethermindApi api)
         {
             _api = api;
         }
