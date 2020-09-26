@@ -18,6 +18,8 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Filters.Topics;
@@ -30,6 +32,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Db.Blooms;
+using Nethermind.Evm;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -285,6 +288,33 @@ namespace Nethermind.Blockchain.Test.Find
             StoreTreeBlooms(withBloomDb);
             var logs = _logFinder.FindLogs(filter).ToArray();
             logs.Length.Should().Be(expectedCount);
+        }
+        
+        [Test]
+        public async Task Throw_operation_canceled_after_given_timeout([Values(2, 0.01)] double waitTime)
+        {
+            var timeout = TimeSpan.FromMilliseconds(10);
+            using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource(timeout);
+            CancellationToken cancellationToken = cancellationTokenSource.Token;
+
+            StoreTreeBlooms(true);
+            _receiptStorage = NullReceiptStorage.Instance;
+            _logFinder = new LogFinder(_blockTree, _receiptStorage, _bloomStorage, LimboLogs.Instance, _receiptsRecovery);
+            var logFilter = AllBlockFilter().Build();
+            var logs = _logFinder.FindLogs(logFilter, cancellationToken);
+            
+            await Task.Delay(timeout * waitTime);
+
+            Func<FilterLog[]> action = () => logs.ToArray();
+
+            if (waitTime > 1)
+            {
+                action.Should().Throw<AggregateException>().WithInnerException<OperationCanceledException>();
+            }
+            else
+            {
+                action.Should().NotThrow();
+            }
         }
 
         private static FilterBuilder AllBlockFilter() => FilterBuilder.New().FromEarliestBlock().ToPendingBlock();

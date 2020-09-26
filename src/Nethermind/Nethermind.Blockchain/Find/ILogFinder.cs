@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
+using System.Threading;
 using Nethermind.Blockchain.Filters;
 
 namespace Nethermind.Blockchain.Find
@@ -23,6 +24,6 @@ namespace Nethermind.Blockchain.Find
     {
         public const string NotFoundError = "Block not found.";
         
-        IEnumerable<FilterLog> FindLogs(LogFilter filter);
+        IEnumerable<FilterLog> FindLogs(LogFilter filter, CancellationToken cancellationToken = default);
     }
 }

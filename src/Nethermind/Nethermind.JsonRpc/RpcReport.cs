@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,17 +13,21 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System;
-
-namespace Nethermind.JsonRpc.Modules
+namespace Nethermind.JsonRpc
 {
-    public class JsonRpcMethodAttribute : Attribute
+    public readonly struct RpcReport
     {
-        public string Description { get; set; }
+        public RpcReport(string method, long handlingTimeMicroseconds, bool success)
+        {
+            Method = method;
+            HandlingTimeMicroseconds = handlingTimeMicroseconds;
+            Success = success;
+        }
 
-        public bool IsImplemented { get; set; } = true;
-
-        public bool IsSharable { get; set; } = true;
+        public string Method { get; }
+        public long HandlingTimeMicroseconds { get; }
+        public bool Success { get; }
     }
 }

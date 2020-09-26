@@ -50,7 +50,7 @@ namespace Nethermind.Facade
         FilterType GetFilterType(int filterId);
         FilterLog[] GetFilterLogs(int filterId);
         
-        IEnumerable<FilterLog> GetLogs(BlockParameter fromBlock, BlockParameter toBlock, object address = null, IEnumerable<object> topics = null);
+        IEnumerable<FilterLog> GetLogs(BlockParameter fromBlock, BlockParameter toBlock, object address = null, IEnumerable<object> topics = null, CancellationToken cancellationToken = default);
         void RunTreeVisitor(ITreeVisitor treeVisitor, Keccak stateRoot);
         
     }

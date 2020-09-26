@@ -777,7 +777,8 @@ namespace Nethermind.Evm.Test.Tracing
         [Test]
         public void Throws_operation_canceled_after_timeout()
         {
-            CancellationToken cancellationToken = new CancellationTokenSource(TimeSpan.FromMilliseconds(300)).Token;
+            using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource(TimeSpan.FromMilliseconds(300));
+            CancellationToken cancellationToken = cancellationTokenSource.Token;
 
             (var block, var transaction) = PrepareTx(BlockNumber, 100000, new byte[]{0,0,0});
             ParityLikeTxTracer tracer = new ParityLikeTxTracer(block, transaction, ParityTraceTypes.Trace, cancellationToken);

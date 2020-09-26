@@ -74,7 +74,7 @@ namespace Nethermind.JsonRpc
                 (int? errorCode, string errorMessage) = Validate(rpcRequest);
                 if (errorCode.HasValue)
                 {
-                    return GetErrorResponse(rpcRequest.Method, errorCode.Value, errorMessage, null, rpcRequest.Id);
+                    return GetErrorResponse(rpcRequest.Method, errorCode.Value, errorMessage, null, rpcRequest.Id, null);
                 }
 
                 try
@@ -84,18 +84,18 @@ namespace Nethermind.JsonRpc
                 catch (TargetInvocationException ex)
                 {
                     if (_logger.IsError) _logger.Error($"Error during method execution, request: {rpcRequest}", ex.InnerException);
-                    return GetErrorResponse(rpcRequest.Method, ErrorCodes.InternalError, "Internal error", ex.InnerException?.ToString(), rpcRequest.Id);
+                    return GetErrorResponse(rpcRequest.Method, ErrorCodes.InternalError, "Internal error", ex.InnerException?.ToString(), rpcRequest.Id, null);
                 }
                 catch (Exception ex)
                 {
                     if (_logger.IsError) _logger.Error($"Error during method execution, request: {rpcRequest}", ex);
-                    return GetErrorResponse(rpcRequest.Method, ErrorCodes.InternalError, "Internal error", ex.ToString(), rpcRequest.Id);
+                    return GetErrorResponse(rpcRequest.Method, ErrorCodes.InternalError, "Internal error", ex.ToString(), rpcRequest.Id, null);
                 }
             }
             catch (Exception ex)
             {
                 if (_logger.IsError) _logger.Error($"Error during validation, request: {rpcRequest}", ex);
-                return GetErrorResponse(null, ErrorCodes.ParseError, "Parse error", null, null);
+                return GetErrorResponse(null, ErrorCodes.ParseError, "Parse error", null, null, null);
             }
         }
 
@@ -104,12 +104,9 @@ namespace Nethermind.JsonRpc
             string methodName = rpcRequest.Method.Trim();
 
             (MethodInfo MethodInfo, bool ReadOnly) result = _rpcModuleProvider.Resolve(methodName);
-            if (result.MethodInfo != null)
-            {
-                return await ExecuteAsync(rpcRequest, methodName, result);
-            }
-
-            return GetErrorResponse(methodName, ErrorCodes.MethodNotFound, "Method not found", $"{rpcRequest.Method}", rpcRequest.Id);
+            return result.MethodInfo != null 
+                ? await ExecuteAsync(rpcRequest, methodName, result) 
+                : GetErrorResponse(methodName, ErrorCodes.MethodNotFound, "Method not found", $"{rpcRequest.Method}", rpcRequest.Id, null);
         }
 
         private async Task<JsonRpcResponse> ExecuteAsync(JsonRpcRequest request, string methodName, (MethodInfo Info, bool ReadOnly) method)
@@ -138,7 +135,7 @@ namespace Nethermind.JsonRpc
 
                 if (hasIncorrectParameters)
                 {
-                    return GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", $"Incorrect parameters count, expected: {expectedParameters.Length}, actual: {expectedParameters.Length - missingParamsCount}", request.Id);
+                    return GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", $"Incorrect parameters count, expected: {expectedParameters.Length}, actual: {expectedParameters.Length - missingParamsCount}", request.Id, null);
                 }
             }
 
@@ -150,13 +147,15 @@ namespace Nethermind.JsonRpc
                 if (parameters == null)
                 {
                     if (_logger.IsWarn) _logger.Warn($"Incorrect JSON RPC parameters when calling {methodName}: {string.Join(", ", providedParameters ?? new string[0])}");
-                    return GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", null, request.Id);
+                    return GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", null, request.Id, null);
                 }
             }
 
             //execute method
             IResultWrapper resultWrapper = null;
             IModule module = _rpcModuleProvider.Rent(methodName, method.ReadOnly);
+            bool returnImmediately = methodName != "eth_getLogs";
+            Action returnAction = returnImmediately ? (Action) null : () => _rpcModuleProvider.Return(methodName, module);
             try
             {
                 BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
@@ -176,42 +175,45 @@ namespace Nethermind.JsonRpc
             }
             catch (TargetParameterCountException e)
             {
-                return GetErrorResponse(methodName, ErrorCodes.InvalidParams, e.Message, e.Data, request.Id);
+                return GetErrorResponse(methodName, ErrorCodes.InvalidParams, e.Message, e.Data, request.Id, returnAction);
             }
-            catch (TargetInvocationException e) when (e.InnerException is OperationCanceledException operationCanceled)
+            catch (Exception e) when (e.InnerException is OperationCanceledException)
             {
-                string errorMessage = $"{methodName} request was canceled due to enabled timeout on tracers.";
-                return GetErrorResponse(methodName, ErrorCodes.TracerTimeout, errorMessage, null, request.Id);
+                string errorMessage = $"{methodName} request was canceled due to enabled timeout.";
+                return GetErrorResponse(methodName, ErrorCodes.Timeout, errorMessage, null, request.Id, returnAction);
             }
             catch (TargetInvocationException invocationException) when (invocationException.InnerException is BeamSyncException beamSyncException)
             {
-                return GetErrorResponse(methodName, ErrorCodes.ResourceUnavailable, beamSyncException.Message, invocationException.Data, request.Id);
+                return GetErrorResponse(methodName, ErrorCodes.ResourceUnavailable, beamSyncException.Message, invocationException.Data, request.Id, returnAction);
             }
             finally
             {
-                _rpcModuleProvider.Return(methodName, module);
+                if (returnImmediately)
+                {
+                    _rpcModuleProvider.Return(methodName, module);
+                }
             }
 
             if (resultWrapper is null)
             {
                 string errorMessage = $"Method {methodName} execution result does not implement IResultWrapper";
                 if (_logger.IsError) _logger.Error(errorMessage);
-                return GetErrorResponse(methodName, ErrorCodes.InternalError, errorMessage, null, request.Id);
+                return GetErrorResponse(methodName, ErrorCodes.InternalError, errorMessage, null, request.Id, returnAction);
             }
 
             Result result = resultWrapper.GetResult();
             if (result == null)
             {
                 if (_logger.IsError) _logger.Error($"Error during method: {methodName} execution: no result");
-                return GetErrorResponse(methodName, resultWrapper.GetErrorCode(), "Internal error", resultWrapper.GetData(), request.Id);
+                return GetErrorResponse(methodName, resultWrapper.GetErrorCode(), "Internal error", resultWrapper.GetData(), request.Id, returnAction);
             }
 
             if (result.ResultType == ResultType.Failure)
             {
-                return GetErrorResponse(methodName, resultWrapper.GetErrorCode(), resultWrapper.GetResult().Error, resultWrapper.GetData(), request.Id);
+                return GetErrorResponse(methodName, resultWrapper.GetErrorCode(), resultWrapper.GetResult().Error, resultWrapper.GetData(), request.Id, returnAction);
             }
 
-            return GetSuccessResponse(resultWrapper.GetData(), request.Id);
+            return GetSuccessResponse(resultWrapper.GetData(), request.Id, returnAction);
         }
 
         private object[] DeserializeParameters(ParameterInfo[] expectedParameters, string[] providedParameters, int missingParamsCount)
@@ -278,9 +280,9 @@ namespace Nethermind.JsonRpc
             }
         }
 
-        private JsonRpcResponse GetSuccessResponse(object result, object id)
+        private JsonRpcResponse GetSuccessResponse(object result, object id, Action disposableAction)
         {
-            JsonRpcResponse response = new JsonRpcSuccessResponse
+            JsonRpcResponse response = new JsonRpcSuccessResponse(disposableAction)
             {
                 Result = result,
                 Id = id
@@ -291,15 +293,15 @@ namespace Nethermind.JsonRpc
 
         public JsonRpcErrorResponse GetErrorResponse(int errorCode, string errorMessage)
         {
-            return GetErrorResponse(null, errorCode, errorMessage, null, null);
+            return GetErrorResponse(null, errorCode, errorMessage, null, null, null);
         }
 
         public JsonConverter[] Converters { get; }
 
-        private JsonRpcErrorResponse GetErrorResponse(string methodName, int errorCode, string errorMessage, object errorData, object id)
+        private JsonRpcErrorResponse GetErrorResponse(string methodName, int errorCode, string errorMessage, object errorData, object id, Action disposableAction)
         {
             if (_logger.IsDebug) _logger.Debug($"Sending error response, method: {methodName ?? "none"}, id: {id}, errorType: {errorCode}, message: {errorMessage}");
-            JsonRpcErrorResponse response = new JsonRpcErrorResponse
+            JsonRpcErrorResponse response = new JsonRpcErrorResponse(disposableAction)
             {
                 Error = new Error
                 {

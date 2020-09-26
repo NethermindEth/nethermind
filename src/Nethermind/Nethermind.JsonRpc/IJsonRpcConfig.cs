@@ -31,9 +31,9 @@ namespace Nethermind.JsonRpc
         string Host { get; set; }
 
         [ConfigItem(
-            Description = "JSON RPC tracers' timeout value given in miliseconds.",
+            Description = "JSON RPC' timeout value given in milliseconds.",
             DefaultValue = "20000")] 
-        int TracerTimeout { get; set; }
+        int Timeout { get; set; }
 
         [ConfigItem(
             Description = "Base file path for diagnostic JSON RPC recorder.",
@@ -73,16 +73,16 @@ namespace Nethermind.JsonRpc
         [ConfigItem(
             Description = "Interval between the JSON RPC stats report log",
             DefaultValue = "300")]
-        public int ReportIntervalSeconds { get; set; }
+        int ReportIntervalSeconds { get; set; }
         
         [ConfigItem(
             Description = "Buffer responses before sending them to client. This allows to set Content-Length in response instead of using Transfer-Encoding: chunked. This may degrade performance on big responses.",
             DefaultValue = "false")]
-        public bool BufferResponses { get; set; }
+        bool BufferResponses { get; set; }
         
         [ConfigItem(
             Description = "A path to a file that contains a list of new-line separated approved JSON RPC calls",
             DefaultValue = "Data/jsonrpc.filter")]
-        public string CallsFilterFilePath { get; set; }
+        string CallsFilterFilePath { get; set; }
     }
 }

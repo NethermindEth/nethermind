@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,17 +13,22 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System;
+using System.Collections.Generic;
 
-namespace Nethermind.JsonRpc.Modules
+namespace Nethermind.JsonRpc
 {
-    public class JsonRpcMethodAttribute : Attribute
+    public interface IJsonRpcLocalStats
     {
-        public string Description { get; set; }
+        void ReportCall(in RpcReport report, long elapsedMicroseconds = 0);
 
-        public bool IsImplemented { get; set; } = true;
-
-        public bool IsSharable { get; set; } = true;
+        public void ReportCalls(in IReadOnlyList<RpcReport> reports)
+        {
+            for (int i = 0; i < reports.Count; i++)
+            {
+                ReportCall(reports[i]);
+            }
+        }
     }
 }

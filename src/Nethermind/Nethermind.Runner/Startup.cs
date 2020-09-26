@@ -15,7 +15,9 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Diagnostics;
 using System.IO;
+using System.Reflection;
 using System.Text;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -49,8 +51,14 @@ namespace Nethermind.Runner
                 p => p.AllowAnyMethod().AllowAnyHeader().WithOrigins(corsOrigins)));
         }
 
-        public void Configure(IApplicationBuilder app, IWebHostEnvironment env, IJsonRpcProcessor jsonRpcProcessor, IJsonRpcService jsonRpcService)
+        public void Configure(IApplicationBuilder app, IWebHostEnvironment env, IJsonRpcProcessor jsonRpcProcessor, IJsonRpcService jsonRpcService, IJsonRpcLocalStats jsonRpcLocalStats)
         {
+            void SerializeTimeoutException(IJsonRpcService service, Stream resultStream)
+            {
+                JsonRpcErrorResponse? error = service.GetErrorResponse(ErrorCodes.Timeout, "Request was canceled due to enabled timeout.");
+                _jsonSerializer.Serialize(resultStream, error);
+            }
+
             _jsonSerializer = CreateJsonSerializer();
             
             foreach (JsonConverter converter in jsonRpcService.Converters)
@@ -84,14 +92,15 @@ namespace Nethermind.Runner
                 }
                 else if (ctx.Connection.LocalPort == jsonRpcConfig.Port && ctx.Request.Method == "POST")
                 {
+                    Stopwatch stopwatch = Stopwatch.StartNew();
                     using StreamReader reader = new StreamReader(ctx.Request.Body, Encoding.UTF8);
                     string request = await reader.ReadToEndAsync();
-                    JsonRpcResult result = await jsonRpcProcessor.ProcessAsync(request);
+                    using JsonRpcResult result = await jsonRpcProcessor.ProcessAsync(request);
 
                     ctx.Response.ContentType = "application/json";
 
                     Stream resultStream = jsonRpcConfig.BufferResponses ? new MemoryStream() : ctx.Response.Body;
-                    
+
                     try
                     {
                         if (result.IsCollection)
@@ -109,15 +118,33 @@ namespace Nethermind.Runner
                             resultStream.Seek(0, SeekOrigin.Begin);
                             await resultStream.CopyToAsync(ctx.Response.Body);
                         }
-
-                        await ctx.Response.CompleteAsync();
+                    }
+                    catch (Exception e) when (e.InnerException is OperationCanceledException)
+                    {
+                        SerializeTimeoutException(jsonRpcService, resultStream);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        SerializeTimeoutException(jsonRpcService, resultStream);
                     }
                     finally
                     {
+                        await ctx.Response.CompleteAsync();
+                        
                         if (jsonRpcConfig.BufferResponses)
                         {
                             await resultStream.DisposeAsync();
                         }
+                    }
+                    
+                    if (result.IsCollection)
+                    {
+                        jsonRpcLocalStats.ReportCalls(result.Reports);
+                        jsonRpcLocalStats.ReportCall(new RpcReport("# collection serialization #", stopwatch.ElapsedMicroseconds(), true));
+                    }
+                    else
+                    {
+                        jsonRpcLocalStats.ReportCall(result.Report, stopwatch.ElapsedMicroseconds());
                     }
                 }
             });

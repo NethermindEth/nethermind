@@ -14,34 +14,53 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
 
 namespace Nethermind.JsonRpc
 {
-    public struct JsonRpcResult
+    public readonly struct JsonRpcResult : IDisposable
     {
         public bool IsCollection { get; }
         public IReadOnlyList<JsonRpcResponse> Responses { get; }
+        public IReadOnlyList<RpcReport> Reports { get; }
         public JsonRpcResponse Response { get; }
+        public RpcReport Report { get; }
 
-        private JsonRpcResult(IReadOnlyList<JsonRpcResponse> responses)
+        private JsonRpcResult(IReadOnlyList<JsonRpcResponse> responses, IReadOnlyList<RpcReport> reports)
         {
             IsCollection = true;
             Responses = responses;
+            Reports = reports;
             Response = null;
+            Report = default;
         }
         
-        private JsonRpcResult(JsonRpcResponse response)
+        private JsonRpcResult(JsonRpcResponse response, RpcReport report)
         {
             IsCollection = false;
             Responses = null;
+            Reports = null;
             Response = response;
+            Report = report;
         }
 
-        public static JsonRpcResult Single(JsonRpcResponse response)
-            => new JsonRpcResult(response);
+        public static JsonRpcResult Single(JsonRpcResponse response, RpcReport report)
+            => new JsonRpcResult(response, report);
 
-        public static JsonRpcResult Collection(IReadOnlyList<JsonRpcResponse> responses)
-            => new JsonRpcResult(responses);
+        public static JsonRpcResult Collection(IReadOnlyList<JsonRpcResponse> responses, IReadOnlyList<RpcReport> reports)
+            => new JsonRpcResult(responses, reports);
+
+        public void Dispose()
+        {
+            Response?.Dispose();
+            if (Responses != null)
+            {
+                for (var i = 0; i < Responses.Count; i++)
+                {
+                    Responses[i]?.Dispose();
+                }
+            }
+        }
     }
 }

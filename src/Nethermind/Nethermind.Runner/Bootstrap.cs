@@ -34,12 +34,14 @@ namespace Nethermind.Runner
         public IJsonRpcService? JsonRpcService { private get; set; }
         public ILogManager? LogManager { private get; set; }
         public IJsonSerializer? JsonSerializer { private get; set; }
+        public IJsonRpcLocalStats? JsonRpcLocalStats { private get; set; }
 
         public void RegisterJsonRpcServices(IServiceCollection services)
         {
             services.AddSingleton(JsonRpcService);
             services.AddSingleton(LogManager);
             services.AddSingleton(JsonSerializer);
+            services.AddSingleton(JsonRpcLocalStats);
         }
     }
 }
