@@ -55,7 +55,12 @@ namespace Nethermind.Runner.Ethereum.Steps
         }
     }
 
-    [RunnerStepDependencies(typeof(LoadGenesisBlock), typeof(UpdateDiscoveryConfig), typeof(SetupKeyStore), typeof(InitializeNodeStats))]
+    [RunnerStepDependencies(
+        typeof(LoadGenesisBlock),
+        typeof(UpdateDiscoveryConfig),
+        typeof(SetupKeyStore),
+        typeof(InitializeNodeStats),
+        typeof(ResolveIps))]
     public class InitializeNetwork : IStep
     {
         private const string DiscoveryNodesDbPath = "discoveryNodes";

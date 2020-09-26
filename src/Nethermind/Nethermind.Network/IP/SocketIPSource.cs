@@ -14,9 +14,9 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
 using System.Net;
 using System.Net.Sockets;
+using System.Threading.Tasks;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 
@@ -31,22 +31,21 @@ namespace Nethermind.Network.IP
             _logger = logManager.GetClassLogger<SocketIPSource>();
         }
         
-        public bool TryGetIP(out IPAddress ipAddress)
+        public async Task<(bool, IPAddress)> TryGetIP()
         {
             try
             {
                 using Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, 0);
-                socket.Connect("www.google.com", 80);
+                await socket.ConnectAsync("www.google.com", 80);
                 IPEndPoint endPoint = socket.LocalEndPoint as IPEndPoint;
-                ipAddress = endPoint?.Address;
+                IPAddress ipAddress = endPoint?.Address;
                 if (_logger.IsDebug) _logger.Debug($"Local ip: {ipAddress}");
-                return ipAddress != null;
+                return (ipAddress != null, ipAddress);
             }
             catch (SocketException)
             {
                 if(_logger.IsError) _logger.Error($"Error while getting local ip from socket. You can set a manual override via config {nameof(NetworkConfig)}.{nameof(NetworkConfig.LocalIp)}");
-                ipAddress = null;
-                return false;
+                return (false, null);
             }
         }
     }

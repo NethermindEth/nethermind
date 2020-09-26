@@ -36,12 +36,6 @@ namespace Nethermind.Runner.Ethereum
         {
             _api = api;
             _logger = api.LogManager.GetClassLogger();
-            
-            // this should be outside of Ethereum Runner I guess
-            INetworkConfig networkConfig = _api.Config<INetworkConfig>();
-            _api.IpResolver = new IPResolver(networkConfig, _api.LogManager);
-            networkConfig.ExternalIp = _api.IpResolver.ExternalIp.ToString();
-            networkConfig.LocalIp = _api.IpResolver.LocalIp.ToString();
         }
 
         public async Task Start(CancellationToken cancellationToken)
