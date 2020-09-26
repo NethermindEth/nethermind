@@ -54,7 +54,7 @@ namespace Nethermind.Runner
             }
             
             Type configurationType = typeof(IConfig);
-            IEnumerable<Type> configTypes = TypeDiscovery.FindNethermindTypes(configurationType, true);
+            IEnumerable<Type> configTypes = new TypeDiscovery().FindNethermindTypes(configurationType, true);
 
             CommandLineApplication app = new CommandLineApplication {Name = "Nethermind.Runner"};
             app.HelpOption("-?|-h|--help");

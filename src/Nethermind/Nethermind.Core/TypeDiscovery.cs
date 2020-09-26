@@ -23,13 +23,13 @@ using System.Threading;
 
 namespace Nethermind.Core
 {
-    public static class TypeDiscovery
+    public class TypeDiscovery
     {
-        private static HashSet<Assembly> _nethermindAssemblies = new HashSet<Assembly>();
+        private HashSet<Assembly> _nethermindAssemblies = new HashSet<Assembly>();
 
-        private static int _allLoaded;
+        private int _allLoaded;
 
-        private static void LoadAll()
+        private void LoadAll()
         {
             if (Interlocked.CompareExchange(ref _allLoaded, 1, 0) == 0)
             {
@@ -46,7 +46,7 @@ namespace Nethermind.Core
             }
         }
 
-        private static int LoadOnce(List<Assembly> loadedAssemblies)
+        private int LoadOnce(List<Assembly> loadedAssemblies)
         {
             // can potentially use https://docs.microsoft.com/en-us/dotnet/standard/assembly/unloadability
 
@@ -67,7 +67,7 @@ namespace Nethermind.Core
             return loaded;
         }
 
-        public static IEnumerable<Type> FindNethermindTypes(Type baseType, bool aggressive = false)
+        public IEnumerable<Type> FindNethermindTypes(Type baseType, bool aggressive = false)
         {
             if (aggressive)
             {
@@ -79,7 +79,7 @@ namespace Nethermind.Core
                     .Where(t => baseType.IsAssignableFrom(t) && baseType != t) ?? Array.Empty<Type>());
         }
 
-        public static IEnumerable<Type> FindNethermindTypes(string typeName, bool aggressive = false)
+        public IEnumerable<Type> FindNethermindTypes(string typeName, bool aggressive = false)
         {
             if (aggressive)
             {

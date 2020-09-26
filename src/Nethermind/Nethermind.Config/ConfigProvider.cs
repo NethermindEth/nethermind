@@ -94,13 +94,15 @@ namespace Nethermind.Config
         
         private Dictionary<Type, Type> _implementations = new Dictionary<Type, Type>();
         
+        private TypeDiscovery _typeDiscovery = new TypeDiscovery();
+        
         public void Initialize()
         {
             Type type = typeof(IConfig);
-            IEnumerable<Type> interfaces = TypeDiscovery.FindNethermindTypes(type, true).Where(x => x.IsInterface);
+            IEnumerable<Type> interfaces = _typeDiscovery.FindNethermindTypes(type, true).Where(x => x.IsInterface);
             foreach (Type @interface in interfaces)
             {
-                Type implementation = TypeDiscovery.FindNethermindTypes(@interface).SingleOrDefault();
+                Type implementation = _typeDiscovery.FindNethermindTypes(@interface).SingleOrDefault();
                 if (implementation != null)
                 {
                     Categories.Add(@interface.Name.Substring(1), Activator.CreateInstance(implementation));

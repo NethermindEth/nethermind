@@ -168,7 +168,7 @@ namespace Nethermind.Runner
                 // TODO: auto register metrics
                 MetricsUpdater metricsUpdater = new MetricsUpdater(metricsConfig);
                 _monitoringService = new MonitoringService(metricsUpdater, metricsConfig, logManager);
-                var metrics = TypeDiscovery.FindNethermindTypes(nameof(Metrics));
+                var metrics = new TypeDiscovery().FindNethermindTypes(nameof(Metrics));
                 foreach (var metric in metrics)
                 {
                     _monitoringService.RegisterMetrics(metric);    
