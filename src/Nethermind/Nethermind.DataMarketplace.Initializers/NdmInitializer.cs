@@ -19,6 +19,7 @@ using System.IO;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using MongoDB.Driver;
+using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.DataMarketplace.Consumers.Infrastructure;
@@ -35,7 +36,6 @@ using Nethermind.DataMarketplace.Infrastructure.Modules;
 using Nethermind.DataMarketplace.Infrastructure.Notifiers;
 using Nethermind.DataMarketplace.Subprotocols.Factories;
 using Nethermind.Db;
-using Nethermind.Runner;
 using Nethermind.WebSockets;
 
 [assembly: InternalsVisibleTo("Nethermind.DataMarketplace.Test")]
