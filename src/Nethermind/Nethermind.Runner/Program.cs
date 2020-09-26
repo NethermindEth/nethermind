@@ -33,12 +33,14 @@ namespace Nethermind.Runner
                 if (eventArgs.ExceptionObject is Exception e)
                     logger.Error(FailureString, e);
                 else
-                    logger.Error(FailureString + eventArgs.ExceptionObject?.ToString());
+                    logger.Error(FailureString + eventArgs.ExceptionObject);
             };
 
             try
             {
+                Console.WriteLine(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.ffff") + " Nethermind strarting initialization.");
                 IRunnerApp runner = new RunnerApp();
+                Console.WriteLine(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.ffff") + " Runner app created.");
                 await runner.Run(args);
             }
             catch (AggregateException e)

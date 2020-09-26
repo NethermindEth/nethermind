@@ -74,10 +74,18 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
             
             Account.AccountStartNonce = _api.ChainSpec.Parameters.AccountStartNonce;
+
+            ISigner signer = NullSigner.Instance;
+            ISignerStore signerStore = NullSigner.Instance;
+            if (_api.Config<IMiningConfig>().Enabled)
+            {
+                Signer signerAndStore = new Signer(_api.SpecProvider.ChainId, _api.OriginalSignerKey, _api.LogManager);
+                signer = signerAndStore;
+                signerStore = signerAndStore;
+            }
             
-            Signer signer = new Signer(_api.SpecProvider.ChainId, _api.OriginalSignerKey, _api.LogManager);
             _api.EngineSigner = signer;
-            _api.EngineSignerStore = signer;
+            _api.EngineSignerStore = signerStore;
 
             _api.StateProvider = new StateProvider(
                 _api.DbProvider.StateDb,

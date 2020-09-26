@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -102,8 +103,11 @@ namespace Nethermind.Runner
                 }
                 else
                 {
-                    Console.WriteLine($"Loading standard NLog.config file from {"NLog.config".GetApplicationResourcePath()}.");
+                    Console.WriteLine(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.ffff") + $" Loading standard NLog.config file from {"NLog.config".GetApplicationResourcePath()}.");
+                    Stopwatch stopwatch = Stopwatch.StartNew();
                     LogManager.Configuration = new XmlLoggingConfiguration("NLog.config".GetApplicationResourcePath());
+                    stopwatch.Stop();
+                    Console.WriteLine(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.ffff") + $" NLog.config loaded in {stopwatch.ElapsedMilliseconds}ms.");
                 }
 
                 // TODO: dynamically switch log levels from CLI!
@@ -174,9 +178,10 @@ namespace Nethermind.Runner
                     }
                 }
 
-                Console.WriteLine($"Reading config file from {configFilePath}");
+                Console.WriteLine(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.ffff") + $" Reading config file from {configFilePath}");
                 configProvider.AddSource(new JsonConfigSource(configFilePath));
                 configProvider.Initialize();
+                Console.WriteLine(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.ffff") + $" Configuration initialized.");
                 return configProvider;
             }
 

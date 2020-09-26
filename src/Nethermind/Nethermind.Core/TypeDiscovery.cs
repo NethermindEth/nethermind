@@ -48,6 +48,8 @@ namespace Nethermind.Core
 
         private static int LoadOnce(List<Assembly> loadedAssemblies)
         {
+            // can potentially use https://docs.microsoft.com/en-us/dotnet/standard/assembly/unloadability
+            
             int loaded = 0;
 
             loadedAssemblies
