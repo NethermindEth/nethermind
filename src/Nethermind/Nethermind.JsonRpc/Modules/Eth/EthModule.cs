@@ -636,18 +636,14 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public ResultWrapper<IEnumerable<FilterLog>> eth_getLogs(Filter filter)
         {
-            IEnumerable<FilterLog> GetLogs(BlockParameter blockParameter, BlockParameter toBlockParameter, CancellationTokenSource cancellationTokenSource)
+            IEnumerable<FilterLog> GetLogs(BlockParameter blockParameter, BlockParameter toBlockParameter, CancellationTokenSource cancellationTokenSource, CancellationToken token)
             {
-                try
+                using (cancellationTokenSource)
                 {
-                    foreach (FilterLog log in _blockchainBridge.GetLogs(blockParameter, toBlockParameter, filter.Address, filter.Topics, cancellationTokenSource.Token))
+                    foreach (FilterLog log in _blockchainBridge.GetLogs(blockParameter, toBlockParameter, filter.Address, filter.Topics, token))
                     {
                         yield return log;
                     }
-                }
-                finally
-                {
-                    cancellationTokenSource.Dispose();
                 }
             }
             
@@ -656,7 +652,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             try
             {
-                return ResultWrapper<IEnumerable<FilterLog>>.Success(GetLogs(fromBlock, toBlock, new CancellationTokenSource(_cancellationTokenTimeout)));
+                CancellationTokenSource cancellationTokenSource = new CancellationTokenSource(_cancellationTokenTimeout);
+                return ResultWrapper<IEnumerable<FilterLog>>.Success(GetLogs(fromBlock, toBlock, cancellationTokenSource, cancellationTokenSource.Token));
             }
             catch (ArgumentException e)
             {
