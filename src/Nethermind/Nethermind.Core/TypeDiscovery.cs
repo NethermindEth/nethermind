@@ -75,7 +75,7 @@ namespace Nethermind.Core
             }
 
             return _nethermindAssemblies
-                .SelectMany(a => (a?.IsDynamic ?? false ? a.GetTypes() : a?.GetExportedTypes())?
+                .SelectMany(a => (a?.IsDynamic ?? false ? Array.Empty<Type>() : a?.GetExportedTypes())?
                     .Where(t => baseType.IsAssignableFrom(t) && baseType != t) ?? Array.Empty<Type>());
         }
 
@@ -87,7 +87,7 @@ namespace Nethermind.Core
             }
 
             return _nethermindAssemblies
-                .SelectMany(a => (a?.IsDynamic ?? false ? a.GetTypes() : a?.GetExportedTypes())?
+                .SelectMany(a => (a?.IsDynamic ?? false ? Array.Empty<Type>() : a?.GetExportedTypes())?
                     .Where(t => t.Name == typeName) ?? Array.Empty<Type>());
         }
     }
