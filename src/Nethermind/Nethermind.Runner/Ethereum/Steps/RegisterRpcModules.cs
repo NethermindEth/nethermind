@@ -18,7 +18,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
-using Nethermind.Cli.Modules;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
@@ -32,13 +31,9 @@ using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.JsonRpc.Modules.TxPool;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
-using Nethermind.Baseline.Config;
-using Nethermind.Baseline.JsonRpc;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Db;
-using Nethermind.State;
 using Nethermind.Runner.Ethereum.Steps.Migrations;
 
 namespace Nethermind.Runner.Ethereum.Steps
@@ -70,7 +65,8 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
 
             // the following line needs to be called in order to make sure that the CLI library is referenced from runner and built alongside
-            if (logger.IsDebug) logger.Debug($"Resolving CLI ({nameof(CliModuleLoader)})");
+            // TODO: load CLI
+            // if (logger.IsDebug) logger.Debug($"Resolving CLI ({nameof(CliModuleLoader)})");
 
             // TODO: possibly hide it
             _api.FilterStore = new FilterStore();
@@ -78,7 +74,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             
             IInitConfig initConfig = _api.Config<IInitConfig>();
             IJsonRpcConfig rpcConfig = _api.Config<IJsonRpcConfig>();
-            IBaselineConfig baselineConfig = _api.Config<IBaselineConfig>();
+            // IBaselineConfig baselineConfig = _api.Config<IBaselineConfig>();
             INetworkConfig networkConfig = _api.Config<INetworkConfig>();
             {
                 EthModuleFactory ethModuleFactory = new EthModuleFactory(
@@ -130,23 +126,24 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.LogManager,
                 new ReceiptsRecovery(), 1024);
 
-            if (baselineConfig.Enabled)
-            {
-                IDbProvider dbProvider = _api.DbProvider!;
-                IStateReader stateReader = new StateReader(dbProvider.StateDb, dbProvider.CodeDb, _api.LogManager);
-
-                BaselineModuleFactory baselineModuleFactory = new BaselineModuleFactory(
-                    _api.TxSender,
-                    stateReader,
-                    logFinder,
-                    _api.BlockTree,
-                    _api.AbiEncoder,
-                    _api.FileSystem,
-                    _api.LogManager);
-
-                _api.RpcModuleProvider.Register(new SingletonModulePool<IBaselineModule>(baselineModuleFactory, true));
-                if (logger?.IsInfo ?? false) logger!.Info($"Baseline RPC Module has been enabled");
-            }
+            // TODO: plugin ecosystem move to Baseline plugin
+            // if (baselineConfig.Enabled)
+            // {
+            //     IDbProvider dbProvider = _api.DbProvider!;
+            //     IStateReader stateReader = new StateReader(dbProvider.StateDb, dbProvider.CodeDb, _api.LogManager);
+            //
+            //     BaselineModuleFactory baselineModuleFactory = new BaselineModuleFactory(
+            //         _api.TxSender,
+            //         stateReader,
+            //         logFinder,
+            //         _api.BlockTree,
+            //         _api.AbiEncoder,
+            //         _api.FileSystem,
+            //         _api.LogManager);
+            //
+            //     _api.RpcModuleProvider.Register(new SingletonModulePool<IBaselineModule>(baselineModuleFactory, true));
+            //     if (logger?.IsInfo ?? false) logger!.Info($"Baseline RPC Module has been enabled");
+            // }
 
             TxPoolModule txPoolModule = new TxPoolModule(_api.BlockTree, _api.TxPoolInfoProvider, _api.LogManager);
             _api.RpcModuleProvider.Register(new SingletonModulePool<ITxPoolModule>(txPoolModule, true));
