@@ -26,7 +26,6 @@ using Nethermind.DataMarketplace.Infrastructure;
 using Nethermind.DataMarketplace.Infrastructure.Modules;
 using Nethermind.DataMarketplace.Initializers;
 using Nethermind.Logging;
-using Nethermind.Runner;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -39,7 +38,7 @@ namespace Nethermind.DataMarketplace.Test.Initializers
         private IConfigProvider _configProvider;
         private bool _enableUnsecuredDevWallet;
         private NdmConfig _ndmConfig;
-        private InitConfig _initConfig;
+        private IInitConfig _initConfig;
         private NdmInitializer _ndmInitializer;
 
         [SetUp]
@@ -50,7 +49,7 @@ namespace Nethermind.DataMarketplace.Test.Initializers
             _configProvider = Substitute.For<IConfigProvider>();
             _enableUnsecuredDevWallet = false;
             _ndmConfig = new NdmConfig {Enabled = true, StoreConfigInDatabase = false};
-            _initConfig = new InitConfig();
+            _initConfig = Substitute.For<IInitConfig>();
             _configProvider.GetConfig<INdmConfig>().Returns(_ndmConfig);
             _ndmInitializer = new NdmInitializer(_ndmModule, _ndmConsumersModule, LimboLogs.Instance);
         }

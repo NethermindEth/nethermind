@@ -21,7 +21,6 @@ using System.Linq;
 using System.Reflection;
 using FluentAssertions;
 using Nethermind.Api;
-using Nethermind.Baseline.Config;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.EthStats;
@@ -225,13 +224,13 @@ namespace Nethermind.Runner.Test
             Test<IInitConfig, bool>(configWildcard, c => c.IsMining, true);
         }
 
-        [TestCase("baseline", true)]
-        [TestCase("spaceneth", true)]
-        [TestCase("^baseline ^spaceneth", false)]
-        public void Baseline_is_disabled_by_default(string configWildcard, bool enabled)
-        {
-            Test<IBaselineConfig, bool>(configWildcard, c => c.Enabled, enabled);
-        }
+        // [TestCase("baseline", true)]
+        // [TestCase("spaceneth", true)]
+        // [TestCase("^baseline ^spaceneth", false)]
+        // public void Baseline_is_disabled_by_default(string configWildcard, bool enabled)
+        // {
+        //     Test<IBaselineConfig, bool>(configWildcard, c => c.Enabled, enabled);
+        // }
 
         // [TestCase("ndm", true)]
         // [TestCase("^ndm", false)]

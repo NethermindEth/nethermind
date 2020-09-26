@@ -16,7 +16,7 @@
 
 using Nethermind.Config;
 
-namespace Nethermind.Runner
+namespace Nethermind.Api
 {
     public interface IInitConfig : IConfig
     {
