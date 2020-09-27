@@ -16,7 +16,6 @@
 
 using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
-using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 {

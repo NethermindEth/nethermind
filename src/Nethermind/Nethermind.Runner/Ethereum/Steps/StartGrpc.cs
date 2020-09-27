@@ -20,6 +20,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Grpc;
+using Nethermind.Grpc.Producers;
 using Nethermind.Grpc.Servers;
 using Nethermind.Logging;
 
@@ -50,6 +51,11 @@ namespace Nethermind.Runner.Ethereum.Steps
                 });
             
                 _api.GrpcServer = grpcServer;
+                
+                GrpcPublisher grpcPublisher = new GrpcPublisher(_api.GrpcServer);
+                _api.Publishers.Add(grpcPublisher);
+                
+                _api.DisposeStack.Push(grpcPublisher);
                 _api.DisposeStack.Push(Disposable.Create(() => grpcRunner.StopAsync())); // do not await
             }
         }

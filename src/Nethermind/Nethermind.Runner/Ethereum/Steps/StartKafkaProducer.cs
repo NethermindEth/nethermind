@@ -24,7 +24,6 @@ using Nethermind.PubSub;
 using Nethermind.PubSub.Kafka;
 using Nethermind.PubSub.Kafka.Avro;
 using Nethermind.PubSub.Kafka.Models;
-using Nethermind.Runner.Ethereum.Api;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
@@ -52,6 +51,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             {
                 IPublisher kafkaPublisher = await PrepareKafkaProducer(_api.BlockTree, kafkaConfig);
                 _api.Publishers.Add(kafkaPublisher);
+                _api.DisposeStack.Push(kafkaPublisher);
             }
         }
 

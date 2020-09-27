@@ -36,6 +36,7 @@ using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Stats.Model;
+using LogLevel = DotNetty.Handlers.Logging.LogLevel;
 using Timer = System.Timers.Timer;
 
 namespace Nethermind.Network.Discovery
@@ -179,7 +180,7 @@ namespace Nethermind.Network.Discovery
             _discoveryHandler.OnChannelActivated += OnChannelActivated;
 
             channel.Pipeline
-                .AddLast(new LoggingHandler(DotNetty.Handlers.Logging.LogLevel.INFO))
+                .AddLast(new LoggingHandler(LogLevel.INFO))
                 .AddLast(_discoveryHandler);
         }
 
