@@ -19,39 +19,56 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.PubSub;
+using Nethermind.TxPool;
 
 namespace Nethermind.Analytics
 {
-    public class Analytics : INethermindPlugin
+    public class AnalyticsPlugin : INethermindPlugin
     {
         private INethermindApi _api;
+        private IAnalyticsConfig _analyticsConfig;
 
         public void Dispose()
         {
         }
 
         public string Name => "Analytics";
-        
+
         public string Description => "Various Analytics Extensions";
-        
+
         public string Author => "Nethermind";
-        
+
         public Task Init(INethermindApi api)
         {
             _api = api;
-            IAnalyticsConfig analyticsConfig = _api.Config<IAnalyticsConfig>();
+            _analyticsConfig = _api.Config<IAnalyticsConfig>();
             IInitConfig initConfig = _api.Config<IInitConfig>();
             if (initConfig.WebSocketsEnabled &&
-                (analyticsConfig.PluginsEnabled ||
-                 analyticsConfig.StreamBlocks ||
-                 analyticsConfig.StreamTransactions))
+                (_analyticsConfig.PluginsEnabled ||
+                 _analyticsConfig.StreamBlocks ||
+                 _analyticsConfig.StreamTransactions))
             {
                 AnalyticsWebSocketsModule webSocketsModule = new AnalyticsWebSocketsModule(_api.EthereumJsonSerializer);
                 _api.WebSocketsManager!.AddModule(webSocketsModule, true);
                 _api.Publishers.Add(webSocketsModule);
+
+                _api.TxPool.NewDiscovered += TxPoolOnNewDiscovered;
             }
 
             return Task.CompletedTask;
+        }
+
+        private void TxPoolOnNewDiscovered(object sender, TxEventArgs e)
+        {
+            if (_analyticsConfig.StreamTransactions)
+            {
+                foreach (IPublisher publisher in _api.Publishers)
+                {
+                    // TODO: probably need to serialize first
+                    publisher.PublishAsync(e.Transaction);
+                }
+            }
         }
 
         public Task InitNetworkProtocol()

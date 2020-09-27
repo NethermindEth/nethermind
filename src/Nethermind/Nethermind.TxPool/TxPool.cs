@@ -170,6 +170,8 @@ namespace Nethermind.TxPool
                 throw new ArgumentException($"{nameof(tx.Hash)} not set on {nameof(Transaction)}");
             }
             
+            NewDiscovered?.Invoke(this, new TxEventArgs(tx));
+            
             bool managedNonce = (handlingOptions & TxHandlingOptions.ManagedNonce) == TxHandlingOptions.ManagedNonce;
             bool isPersistentBroadcast = (handlingOptions & TxHandlingOptions.PersistentBroadcast) == TxHandlingOptions.PersistentBroadcast;
             if (isPersistentBroadcast)
@@ -396,6 +398,7 @@ namespace Nethermind.TxPool
             _ownTimer?.Dispose();
         }
 
+        public event EventHandler<TxEventArgs> NewDiscovered;
         public event EventHandler<TxEventArgs> NewPending;
         public event EventHandler<TxEventArgs> RemovedPending;
 

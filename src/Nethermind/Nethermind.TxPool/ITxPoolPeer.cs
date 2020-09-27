@@ -13,26 +13,16 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Int256;
 
 namespace Nethermind.TxPool
 {
-    public interface ITxPool
+    public interface ITxPoolPeer
     {
-        Transaction[] GetPendingTransactions();
-        Transaction[] GetOwnPendingTransactions();
-        void AddPeer(ITxPoolPeer peer);
-        void RemovePeer(PublicKey nodeId);
-        AddTxResult AddTransaction(Transaction tx, TxHandlingOptions handlingOptions);
-        void RemoveTransaction(Keccak hash, long blockNumber);
-        bool TryGetPendingTransaction(Keccak hash, out Transaction transaction);
-        UInt256 ReserveOwnTransactionNonce(Address address);
-        event EventHandler<TxEventArgs> NewDiscovered;
-        event EventHandler<TxEventArgs> NewPending;
-        event EventHandler<TxEventArgs> RemovedPending;
+        public PublicKey Id { get; }
+        void SendNewTransaction(Transaction tx, bool isPriority);
     }
 }
