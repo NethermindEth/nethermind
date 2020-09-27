@@ -17,6 +17,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using log4net;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.JsonRpc;
@@ -35,6 +36,7 @@ using Nethermind.Network.Config;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Cli.Modules;
 using Nethermind.Runner.Ethereum.Steps.Migrations;
 
 namespace Nethermind.Runner.Ethereum.Steps
@@ -68,6 +70,10 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             _api.LogFinder = logFinder;
             
+            // TODO: possibly hide it (but need to confirm that NDM does not really need it)
+            _api.FilterStore = new FilterStore();
+            _api.FilterManager = new FilterManager(_api.FilterStore, _api.MainBlockProcessor, _api.TxPool, _api.LogManager);
+            
             IJsonRpcConfig jsonRpcConfig = _api.Config<IJsonRpcConfig>();
             if (!jsonRpcConfig.Enabled)
             {
@@ -75,16 +81,11 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
 
             // the following line needs to be called in order to make sure that the CLI library is referenced from runner and built alongside
-            // TODO: load CLI
-            // if (logger.IsDebug) logger.Debug($"Resolving CLI ({nameof(CliModuleLoader)})");
+            ILogger logger = _api.LogManager.GetClassLogger();
+            if (logger.IsDebug) logger.Debug($"Resolving CLI ({nameof(CliModuleLoader)})");
 
-            // TODO: possibly hide it
-            _api.FilterStore = new FilterStore();
-            _api.FilterManager = new FilterManager(_api.FilterStore, _api.MainBlockProcessor, _api.TxPool, _api.LogManager);
-            
             IInitConfig initConfig = _api.Config<IInitConfig>();
             IJsonRpcConfig rpcConfig = _api.Config<IJsonRpcConfig>();
-            // IBaselineConfig baselineConfig = _api.Config<IBaselineConfig>();
             INetworkConfig networkConfig = _api.Config<INetworkConfig>();
             {
                 // lets add threads to support parallel eth_getLogs
@@ -120,17 +121,30 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.LogManager);
             _api.RpcModuleProvider.Register(new BoundedModulePool<IDebugModule>(debugModuleFactory, 8));
 
-            TraceModuleFactory traceModuleFactory = new TraceModuleFactory(_api.DbProvider, _api.BlockTree, rpcConfig, _api.RecoveryStep, _api.RewardCalculatorSource, _api.ReceiptStorage, _api.SpecProvider, _api.LogManager);
+            TraceModuleFactory traceModuleFactory = new TraceModuleFactory(
+                _api.DbProvider,
+                _api.BlockTree,
+                rpcConfig,
+                _api.RecoveryStep,
+                _api.RewardCalculatorSource, 
+                _api.ReceiptStorage,
+                _api.SpecProvider,
+                _api.LogManager);
             _api.RpcModuleProvider.Register(new BoundedModulePool<ITraceModule>(traceModuleFactory, 8));
             
             PersonalModule personalModule = new PersonalModule(
                 _api.EthereumEcdsa,
                 _api.Wallet,
                 _api.LogManager);
-            
             _api.RpcModuleProvider.Register(new SingletonModulePool<IPersonalModule>(personalModule, true));
 
-            AdminModule adminModule = new AdminModule(_api.BlockTree, networkConfig, _api.PeerManager, _api.StaticNodesManager, _api.Enode, initConfig.BaseDbPath);
+            AdminModule adminModule = new AdminModule(
+                _api.BlockTree,
+                networkConfig,
+                _api.PeerManager,
+                _api.StaticNodesManager,
+                _api.Enode,
+                initConfig.BaseDbPath);
             _api.RpcModuleProvider.Register(new SingletonModulePool<IAdminModule>(adminModule, true));
 
             TxPoolModule txPoolModule = new TxPoolModule(_api.BlockTree, _api.TxPoolInfoProvider, _api.LogManager);
@@ -148,7 +162,6 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.EngineSignerStore,
                 _api.KeyStore,
                 _api.LogManager);
-
             _api.RpcModuleProvider.Register(new SingletonModulePool<IParityModule>(parityModule, true));
 
             foreach (IPlugin plugin in _api.Plugins)

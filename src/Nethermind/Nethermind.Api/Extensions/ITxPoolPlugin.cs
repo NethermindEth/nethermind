@@ -17,7 +17,7 @@
 
 namespace Nethermind.Api.Extensions
 {
-    public interface ITxPoolPlugin : IPlugin
+    public interface ITxPoolPlugin : INethermindPlugin
     {
         public ITxPoolObserver Observer { get; }
     }

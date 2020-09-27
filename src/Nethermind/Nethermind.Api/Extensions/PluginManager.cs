@@ -24,36 +24,36 @@ namespace Nethermind.Api.Extensions
     public class PluginManager : IPluginManager
     {
         private readonly INethermindApi _nethermindApi;
-        private List<IPlugin> _plugins { get; } = new List<IPlugin>();
+        private List<INethermindPlugin> _plugins { get; } = new List<INethermindPlugin>();
 
         public PluginManager(INethermindApi nethermindApi)
         {
             _nethermindApi = nethermindApi ?? throw new ArgumentNullException(nameof(nethermindApi));
         }
         
-        public IReadOnlyCollection<T> Get<T>() where T : IPlugin
+        public IReadOnlyCollection<T> Get<T>() where T : INethermindPlugin
         {
             return _plugins.OfType<T>().ToArray();
         }
 
-        public void Register<T>() where T : IPlugin
+        public void Register<T>() where T : INethermindPlugin
         {
             Register(typeof(T));
         }
 
         public void Register(Type type)
         {
-            if (!typeof(IPlugin).IsAssignableFrom(type))
+            if (!typeof(INethermindPlugin).IsAssignableFrom(type))
             {
-                throw new ArgumentException($"Type {type.Name} doe snot implement {nameof(IPlugin)} interface");
+                throw new ArgumentException($"Type {type.Name} doe snot implement {nameof(INethermindPlugin)} interface");
             }
             
-            IPlugin plugin = (IPlugin)Activator.CreateInstance(type)!;
+            INethermindPlugin plugin = (INethermindPlugin)Activator.CreateInstance(type)!;
             plugin.Init(_nethermindApi);
             _plugins.Add(plugin);
         }
 
-        public void Register(IPlugin plugin)
+        public void Register(INethermindPlugin plugin)
         {
             _plugins.Add(plugin);
         }

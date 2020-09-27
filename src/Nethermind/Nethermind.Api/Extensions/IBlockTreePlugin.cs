@@ -25,7 +25,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Api.Extensions
 {
-    public interface IBlockTreePlugin : IPlugin
+    public interface IBlockTreePlugin : INethermindPlugin
     {
         public IBlockTreeVisitor Visitor { get; }
     }

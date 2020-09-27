@@ -22,12 +22,12 @@ namespace Nethermind.Api.Extensions
 {
     public interface IPluginManager
     {
-        IReadOnlyCollection<T> Get<T>() where T : IPlugin;
+        IReadOnlyCollection<T> Get<T>() where T : INethermindPlugin;
 
-        void Register<T>() where T : IPlugin;
+        void Register<T>() where T : INethermindPlugin;
         
         void Register(Type type);
 
-        void Register(IPlugin plugin);
+        void Register(INethermindPlugin plugin);
     }
 }

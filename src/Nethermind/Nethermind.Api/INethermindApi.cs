@@ -134,6 +134,6 @@ namespace Nethermind.Api
         ProtectedPrivateKey? NodeKey { get; set; }
         ProtectedPrivateKey? OriginalSignerKey { get; set; }
         
-        public List<IPlugin> Plugins { get; }
+        public List<INethermindPlugin> Plugins { get; }
     }
 }

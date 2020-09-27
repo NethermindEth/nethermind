@@ -19,7 +19,7 @@ using Nethermind.Trie;
 
 namespace Nethermind.Api.Extensions
 {
-    public interface IStateTriePlugin : IPlugin
+    public interface IStateTriePlugin : INethermindPlugin
     {
         public ITreeVisitor Visitor { get; }
     }

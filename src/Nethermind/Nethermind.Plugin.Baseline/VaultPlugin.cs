@@ -11,7 +11,7 @@ using Nethermind.Vault.JsonRpc;
 
 namespace Nethermind.Plugin.Baseline
 {
-    public class VaultPlugin : IPlugin
+    public class VaultPlugin : INethermindPlugin
     {
         private INethermindApi _api;
 
@@ -47,7 +47,7 @@ namespace Nethermind.Plugin.Baseline
                 VaultService vaultService = new VaultService(_vaultConfig, _api.LogManager);
                 VaultModule vaultModule = new VaultModule(vaultService, _api.LogManager);
                 _api.RpcModuleProvider!.Register(new SingletonModulePool<IVaultModule>(vaultModule, true));
-                if (_logger.IsInfo) _logger.Info($"Vault RPC Module has been enabled");
+                if (_logger.IsInfo) _logger.Info("Vault RPC Module has been enabled");
             }
             
             return Task.CompletedTask;

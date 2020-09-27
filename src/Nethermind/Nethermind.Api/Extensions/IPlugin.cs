@@ -20,7 +20,7 @@ using System.Threading.Tasks;
 
 namespace Nethermind.Api.Extensions
 {
-    public interface IPlugin : IDisposable
+    public interface INethermindPlugin : IDisposable
     {
         string Name { get; }
         

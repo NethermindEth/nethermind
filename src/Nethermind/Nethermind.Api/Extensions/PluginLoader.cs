@@ -58,7 +58,7 @@ namespace Nethermind.Api.Extensions
                 Assembly assembly = Assembly.LoadFile(_fileSystem.Path.Combine(fullPluginsDir, path));
                 foreach (Type type in assembly.GetExportedTypes())
                 {
-                    if (typeof(IPlugin).IsAssignableFrom(type))
+                    if (typeof(INethermindPlugin).IsAssignableFrom(type))
                     {
                         _pluginManager.Register(type);
                     }

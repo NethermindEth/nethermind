@@ -8,7 +8,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Plugin.Baseline
 {
-    public class BaselinePlugin : IPlugin
+    public class BaselinePlugin : INethermindPlugin
     {
         private INethermindApi _api;
         
