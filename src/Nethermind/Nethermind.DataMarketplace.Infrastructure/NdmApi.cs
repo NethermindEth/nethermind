@@ -21,6 +21,7 @@ using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
@@ -69,6 +70,7 @@ namespace Nethermind.DataMarketplace.Infrastructure
     public class NdmApi : INdmApi
     {
         private INethermindApi _nethermindApi;
+        private List<INethermindPlugin> _plugins;
 
         public NdmApi(INethermindApi nethermindApi)
         {
@@ -165,11 +167,7 @@ namespace Nethermind.DataMarketplace.Infrastructure
             set => _nethermindApi.ChainLevelInfoRepository = value;
         }
 
-        public IConfigProvider ConfigProvider
-        {
-            get => _nethermindApi.ConfigProvider;
-            set => _nethermindApi.ConfigProvider = value;
-        }
+        public IConfigProvider ConfigProvider => _nethermindApi.ConfigProvider;
 
         public ICryptoRandom CryptoRandom => _nethermindApi.CryptoRandom;
 
@@ -233,17 +231,15 @@ namespace Nethermind.DataMarketplace.Infrastructure
             set => _nethermindApi.IpResolver = value;
         }
         
-        public IJsonSerializer? EthereumJsonSerializer
-        {
-            get => _nethermindApi.EthereumJsonSerializer;
-            set => _nethermindApi.EthereumJsonSerializer = value;
-        }
+        public IJsonSerializer EthereumJsonSerializer => _nethermindApi.EthereumJsonSerializer;
 
         public IKeyStore? KeyStore
         {
             get => _nethermindApi.KeyStore;
             set => _nethermindApi.KeyStore = value;
         }
+
+        public ILogFinder LogFinder { get; set; }
 
         public ILogManager LogManager => _nethermindApi.LogManager;
 
@@ -431,8 +427,6 @@ namespace Nethermind.DataMarketplace.Infrastructure
             set => _nethermindApi.WebSocketsManager = value;
         }
 
-        public List<IProducer> Producers => _nethermindApi.Producers;
-
         public ProtectedPrivateKey? NodeKey
         {
             get => _nethermindApi.NodeKey;
@@ -444,9 +438,11 @@ namespace Nethermind.DataMarketplace.Infrastructure
             get => _nethermindApi.OriginalSignerKey;
             set => _nethermindApi.OriginalSignerKey = value;
         }
-
-        public List<IPlugin> Plugins => _nethermindApi.Plugins;
         
+        public List<IPublisher> Publishers => _nethermindApi.Publishers;
+        
+        public List<INethermindPlugin> Plugins => _nethermindApi.Plugins;
+
         public IBlockchainBridge CreateBlockchainBridge()
         {
             return _nethermindApi.CreateBlockchainBridge();

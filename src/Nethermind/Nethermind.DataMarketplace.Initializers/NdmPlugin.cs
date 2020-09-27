@@ -22,13 +22,13 @@ using Nethermind.Logging;
 
 namespace Nethermind.DataMarketplace.Initializers
 {
-    public class NdmPlugin : IPlugin
+    public class NdmPlugin : INethermindPlugin
     {
         private INdmInitializer? _ndmInitializer;
 
         private INdmApi? _ndmApi;
 
-        public async Task InitNetworkProtocol(INethermindApi api)
+        public async Task InitNetworkProtocol()
         {
             if (_ndmInitializer == null)
             {
@@ -36,18 +36,17 @@ namespace Nethermind.DataMarketplace.Initializers
                     $"Cannot {nameof(InitNetworkProtocol)} in NDM before preparing an NDM initializer.");
             }
             
-            ILogger logger = api.LogManager.GetClassLogger();
+            ILogger logger = _ndmApi.LogManager.GetClassLogger();
             if (logger.IsInfo) logger.Info("Initializing NDM network protocol...");
-
-            _ndmApi = new NdmApi(api);
-            _ndmApi.HttpClient = new DefaultHttpClient(new HttpClient(), api.EthereumJsonSerializer, api.LogManager);
-            INdmConfig ndmConfig = api.Config<INdmConfig>();
+            
+            _ndmApi.HttpClient = new DefaultHttpClient(new HttpClient(), _ndmApi.EthereumJsonSerializer, _ndmApi.LogManager);
+            INdmConfig ndmConfig = _ndmApi.Config<INdmConfig>();
             if (ndmConfig.ProxyEnabled)
             {
                 _ndmApi.JsonRpcClientProxy = new JsonRpcClientProxy(
                     _ndmApi.HttpClient,
                     ndmConfig.JsonRpcUrlProxies,
-                    api.LogManager);
+                    _ndmApi.LogManager);
                 _ndmApi.EthJsonRpcClientProxy = new EthJsonRpcClientProxy(_ndmApi.JsonRpcClientProxy);
             }
             
@@ -57,12 +56,12 @@ namespace Nethermind.DataMarketplace.Initializers
             if (logger.IsInfo) logger.Info("NDM network protocol initialized.");
         }
 
-        public Task InitRpcModules(INethermindApi api)
+        public Task InitRpcModules()
         {
-            ILogger logger = api.LogManager.GetClassLogger();
+            ILogger logger = _ndmApi.LogManager.GetClassLogger();
             
             // TODO: ensure we can override during Register calls
-            if (api.Config<INdmConfig>().ProxyEnabled)
+            if (_ndmApi.Config<INdmConfig>().ProxyEnabled)
             {
                 EthModuleProxyFactory proxyFactory = new EthModuleProxyFactory(
                     _ndmApi.EthJsonRpcClientProxy,
@@ -80,6 +79,7 @@ namespace Nethermind.DataMarketplace.Initializers
 
         public Task Init(INethermindApi api)
         {
+            _ndmApi = new NdmApi(api);
             // TODO: load messages nicely?
             api.MessageSerializationService.Register(Assembly.GetAssembly(typeof(HiMessageSerializer)));
 

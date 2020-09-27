@@ -60,13 +60,13 @@ namespace Nethermind.DataMarketplace.Test.Initializers
             _initConfig.BaseDbPath = "db";
             _ndmConfig.DatabasePath = "ndm";
             INethermindApi nethermindApi = Substitute.For<INethermindApi>();
-            INdmApi ndmApi = new NdmApi(nethermindApi);
             var configProvider = Substitute.For<IConfigProvider>();
-            ndmApi.ConfigProvider = configProvider;
             configProvider.GetConfig<INdmConfig>().Returns(_ndmConfig);
             configProvider.GetConfig<IInitConfig>().Returns(_initConfig);
+            nethermindApi.ConfigProvider.Returns(configProvider);
+            
+            INdmApi ndmApi = new NdmApi(nethermindApi);
             ndmApi.AccountService = Substitute.For<IAccountService>();
-
             await _ndmInitializer.InitAsync(ndmApi);
             _ndmInitializer.DbPath.Should().Be(Path.Combine(_initConfig.BaseDbPath, _ndmConfig.DatabasePath));
         }

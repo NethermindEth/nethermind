@@ -376,6 +376,11 @@ namespace Nethermind.DataMarketplace.Test
             {
                 throw new NotImplementedException();
             }
+
+            public IEnumerable<FilterLog> FindLogs(LogFilter filter, CancellationToken cancellationToken = default)
+            {
+                throw new NotImplementedException();
+            }
         }
     }
 }
