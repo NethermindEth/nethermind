@@ -130,10 +130,10 @@ namespace Nethermind.Api
         IWallet? Wallet { get; set; }
         IWebSocketsManager? WebSocketsManager { get; set; }
 
-        public List<IPublisher> Publishers { get; }
         ProtectedPrivateKey? NodeKey { get; set; }
         ProtectedPrivateKey? OriginalSignerKey { get; set; }
         
-        public List<INethermindPlugin> Plugins { get; }
+        List<INethermindPlugin> Plugins { get; }
+        List<IPublisher> Publishers { get; }
     }
 }

@@ -164,6 +164,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Cli", "Nethermin
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.PubSub", "Nethermind.PubSub\Nethermind.PubSub.csproj", "{9C2CA26C-ABD5-4232-9F90-F6AFE469A79F}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.DataMarketplace.Core", "Nethermind.DataMarketplace.Core\Nethermind.DataMarketplace.Core.csproj", "{47D3BEB6-E29C-467F-A615-BB9A1FE3DEA0}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Baseline", "Nethermind.Baseline\Nethermind.Baseline.csproj", "{6293A5CB-1D3E-4DC8-884A-DD888BD989F2}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -438,6 +442,14 @@ Global
 		{9C2CA26C-ABD5-4232-9F90-F6AFE469A79F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{9C2CA26C-ABD5-4232-9F90-F6AFE469A79F}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{9C2CA26C-ABD5-4232-9F90-F6AFE469A79F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{47D3BEB6-E29C-467F-A615-BB9A1FE3DEA0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{47D3BEB6-E29C-467F-A615-BB9A1FE3DEA0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{47D3BEB6-E29C-467F-A615-BB9A1FE3DEA0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{47D3BEB6-E29C-467F-A615-BB9A1FE3DEA0}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6293A5CB-1D3E-4DC8-884A-DD888BD989F2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6293A5CB-1D3E-4DC8-884A-DD888BD989F2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6293A5CB-1D3E-4DC8-884A-DD888BD989F2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6293A5CB-1D3E-4DC8-884A-DD888BD989F2}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -531,6 +543,8 @@ Global
 		{79330582-F005-494E-AE8D-D8C92A37CD72} = {94CF4207-DA03-4D26-AAA2-284475A6DF1E}
 		{B6A4B633-1630-4501-BF43-743D6A40FF86} = {94CF4207-DA03-4D26-AAA2-284475A6DF1E}
 		{99ABC9F6-C0DE-4579-8AFB-B42CDE0E840F} = {94CF4207-DA03-4D26-AAA2-284475A6DF1E}
+		{47D3BEB6-E29C-467F-A615-BB9A1FE3DEA0} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
+		{6293A5CB-1D3E-4DC8-884A-DD888BD989F2} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
