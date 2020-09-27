@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
@@ -33,17 +34,24 @@ namespace Nethermind.Runner.Ethereum.Steps
         {
             _api = api;
         }
-        
+
         public async Task Execute(CancellationToken cancellationToken)
         {
             ILogger logger = _api.LogManager.GetClassLogger();
             foreach (INethermindPlugin plugin in _api.Plugins)
             {
-                Stopwatch stopwatch = Stopwatch.StartNew();
-                await plugin.Init(_api);
-                stopwatch.Stop();
-                if(logger.IsInfo) logger.Info(
-                    $"Initialized {plugin.Name} plugin by {plugin.Author} in {stopwatch.ElapsedMilliseconds}ms");
+                try
+                {
+                    Stopwatch stopwatch = Stopwatch.StartNew();
+                    await plugin.Init(_api);
+                    stopwatch.Stop();
+                    if (logger.IsInfo)
+                        logger.Info($"Initialized plugin {plugin.Name} by {plugin.Author} in {stopwatch.ElapsedMilliseconds}ms");
+                }
+                catch (Exception e)
+                {
+                    if(logger.IsError) logger.Error($"Failed to initialize plugin {plugin.Name} by {plugin.Author}", e);
+                }
             }
         }
     }

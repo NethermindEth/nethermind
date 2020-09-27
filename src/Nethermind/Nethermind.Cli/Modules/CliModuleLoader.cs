@@ -38,7 +38,7 @@ namespace Nethermind.Cli.Modules
         private readonly ICliEngine _engine;
 
         public List<string> ModuleNames { get; } = new List<string>();
-        
+
         public Dictionary<string, List<string>> MethodsByModules { get; } = new Dictionary<string, List<string>>();
 
         public CliModuleLoader(ICliEngine engine, IJsonRpcClient client, ICliConsole cliConsole)
@@ -83,7 +83,7 @@ namespace Nethermind.Cli.Modules
                     $"Could not load module {module.GetType().Name} bacause of a missing {nameof(CliModuleAttribute)}.");
                 return;
             }
-            
+
             _cliConsole.WriteLine($"module ({cliModuleAttribute.ModuleName})");
             ModuleNames.Add(cliModuleAttribute.ModuleName);
             MethodsByModules[cliModuleAttribute.ModuleName] = new List<string>();
@@ -143,8 +143,17 @@ namespace Nethermind.Cli.Modules
         public void DiscoverAndLoadModules()
         {
             List<Type> moduleTypes = new List<Type>();
+
+            string baseDir = AppDomain.CurrentDomain.BaseDirectory!;
+            string pluginsDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory!, "plugins");
+            string searchPattern = "Nethermind*.dll";
+            string[] allDlls =
+                Directory.GetFiles(baseDir, searchPattern)
+                    .Union(Directory.GetFiles(pluginsDir, searchPattern)).ToArray();
+
+            AssemblyLoadContext.Default.Resolving += (context, name)
+                => AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.Combine(baseDir, name.Name + ".dll"));
             
-            string[] allDlls = Directory.GetFiles(AppDomain.CurrentDomain.BaseDirectory, "*.dll");
             foreach (string dll in allDlls)
             {
                 Assembly assembly;
@@ -168,14 +177,14 @@ namespace Nethermind.Cli.Modules
 
         private bool IsCliModule(Type type)
         {
-            bool isCliModule = typeof(CliModuleBase).IsAssignableFrom(type); 
+            bool isCliModule = typeof(CliModuleBase).IsAssignableFrom(type);
             bool hasAttribute = type.GetCustomAttribute<CliModuleAttribute>() != null;
             if (isCliModule && !hasAttribute)
             {
                 _cliConsole.WriteInteresting(
                     $"Type {type.Name} is a CLI module but is not marked with a {nameof(CliModuleAttribute)}");
             }
-            
+
             if (!isCliModule && hasAttribute)
             {
                 _cliConsole.WriteInteresting(
@@ -203,7 +212,7 @@ namespace Nethermind.Cli.Modules
 
         private Dictionary<string, ObjectInstance> _objects = new Dictionary<string, ObjectInstance>();
 
-        private void AddMethod(ObjectInstance instance, string name, DelegateWrapper delegateWrapper)
+        private static void AddMethod(ObjectInstance instance, string name, DelegateWrapper delegateWrapper)
         {
             instance.FastAddProperty(name, delegateWrapper, true, false, true);
         }

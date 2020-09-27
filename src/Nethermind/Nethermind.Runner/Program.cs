@@ -150,6 +150,15 @@ namespace Nethermind.Runner
 
                 ApiBuilder apiBuilder = new ApiBuilder(configProvider, logManager);
                 INethermindApi nethermindApi = apiBuilder.Create();
+                foreach (Type pluginType in pluginLoader.PluginTypes)
+                {
+                    INethermindPlugin? plugin = Activator.CreateInstance(pluginType) as INethermindPlugin;
+                    if (plugin != null)
+                    {
+                        nethermindApi.Plugins.Add(plugin);
+                    }
+                }
+                
                 nethermindApi.WebSocketsManager = new WebSocketsManager();
 
                 // TODO: move this publisher
