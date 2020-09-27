@@ -17,7 +17,6 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using log4net;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.JsonRpc;
@@ -164,7 +163,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.LogManager);
             _api.RpcModuleProvider.Register(new SingletonModulePool<IParityModule>(parityModule, true));
 
-            foreach (IPlugin plugin in _api.Plugins)
+            foreach (INethermindPlugin plugin in _api.Plugins)
             {
                 await plugin.InitRpcModules();
             }

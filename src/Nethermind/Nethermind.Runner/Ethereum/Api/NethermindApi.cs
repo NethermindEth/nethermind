@@ -162,7 +162,7 @@ namespace Nethermind.Runner.Ethereum.Api
 
         public ChainSpec? ChainSpec { get; set; }
         public DisposableStack DisposeStack { get; } = new DisposableStack();
-        public List<IPlugin> Plugins { get; } = new List<IPlugin>();
+        public List<INethermindPlugin> Plugins { get; } = new List<INethermindPlugin>();
         public List<IProducer> Producers { get; }= new List<IProducer>(); // this should be called publishers?
     }
 }
