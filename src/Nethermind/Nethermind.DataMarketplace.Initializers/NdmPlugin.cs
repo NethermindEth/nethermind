@@ -24,37 +24,37 @@ namespace Nethermind.DataMarketplace.Initializers
 {
     public class NdmPlugin : IPlugin
     {
-        private readonly INdmInitializer _ndmInitializer;
+        private INdmInitializer? _ndmInitializer;
 
-        public NdmPlugin(INdmInitializer ndmInitializer)
-        {
-            _ndmInitializer = ndmInitializer;
-        }
-
-        Task IPlugin.Init(INethermindApi api)
-        {
-            throw new NotImplementedException();
-        }
+        private INdmApi? _ndmApi;
 
         public async Task InitNetworkProtocol(INethermindApi api)
         {
+            if (_ndmInitializer == null)
+            {
+                throw new InvalidOperationException(
+                    $"Cannot {nameof(InitNetworkProtocol)} in NDM before preparing an NDM initializer.");
+            }
+            
             ILogger logger = api.LogManager.GetClassLogger();
-            if (logger.IsInfo) logger.Info($"Initializing NDM...");
+            if (logger.IsInfo) logger.Info("Initializing NDM network protocol...");
 
-            INdmApi ndmApi = new NdmApi(api);
-            ndmApi.HttpClient = new DefaultHttpClient(new HttpClient(), api.EthereumJsonSerializer, api.LogManager);
+            _ndmApi = new NdmApi(api);
+            _ndmApi.HttpClient = new DefaultHttpClient(new HttpClient(), api.EthereumJsonSerializer, api.LogManager);
             INdmConfig ndmConfig = api.Config<INdmConfig>();
             if (ndmConfig.ProxyEnabled)
             {
-                api.JsonRpcClientProxy = new JsonRpcClientProxy(ndmApi.HttpClient, ndmConfig.JsonRpcUrlProxies,
+                _ndmApi.JsonRpcClientProxy = new JsonRpcClientProxy(
+                    _ndmApi.HttpClient,
+                    ndmConfig.JsonRpcUrlProxies,
                     api.LogManager);
-                api.EthJsonRpcClientProxy = new EthJsonRpcClientProxy(api.JsonRpcClientProxy);
+                _ndmApi.EthJsonRpcClientProxy = new EthJsonRpcClientProxy(_ndmApi.JsonRpcClientProxy);
             }
             
-            INdmCapabilityConnector capabilityConnector = await _ndmInitializer.InitAsync(ndmApi);
+            INdmCapabilityConnector capabilityConnector = await _ndmInitializer.InitAsync(_ndmApi);
 
             capabilityConnector.Init();
-            if (logger.IsInfo) logger.Info($"NDM initialized.");
+            if (logger.IsInfo) logger.Info("NDM network protocol initialized.");
         }
 
         public Task InitRpcModules(INethermindApi api)
@@ -65,26 +65,25 @@ namespace Nethermind.DataMarketplace.Initializers
             if (api.Config<INdmConfig>().ProxyEnabled)
             {
                 EthModuleProxyFactory proxyFactory = new EthModuleProxyFactory(
-                    api.EthJsonRpcClientProxy,
-                    api.Wallet);
-                api.RpcModuleProvider.Register(new SingletonModulePool<IEthModule>(proxyFactory, true));
+                    _ndmApi.EthJsonRpcClientProxy,
+                    _ndmApi.Wallet);
+                _ndmApi.RpcModuleProvider.Register(new SingletonModulePool<IEthModule>(proxyFactory, true));
                 if (logger.IsInfo) logger.Info("Enabled JSON RPC Proxy for NDM.");
             }
 
             return Task.CompletedTask;
         }
 
-        public string Name { get; }
-        public string Description { get; }
-        public string Author { get; }
+        public string Name => "NDM";
+        public string Description => "Nethermind Data Marketplace";
+        public string Author => "Nethermind";
 
-        public void Init(INethermindApi api)
+        public Task Init(INethermindApi api)
         {
             // TODO: load messages nicely?
             api.MessageSerializationService.Register(Assembly.GetAssembly(typeof(HiMessageSerializer)));
 
             ILogger logger = api.LogManager.GetClassLogger();
-            INdmInitializer? ndmInitializer = null;
             INdmConfig ndmConfig = api.ConfigProvider.GetConfig<INdmConfig>();
             bool ndmEnabled = ndmConfig.Enabled;
             if (ndmEnabled)
@@ -92,15 +91,20 @@ namespace Nethermind.DataMarketplace.Initializers
                 INdmDataPublisher? ndmDataPublisher = new NdmDataPublisher();
                 INdmConsumerChannelManager? ndmConsumerChannelManager = new NdmConsumerChannelManager();
                 string initializerName = ndmConfig.InitializerName;
-                if (logger?.IsInfo ?? false) logger!.Info($"NDM initializer: {initializerName}");
-                Type ndmInitializerType = AppDomain.CurrentDomain.GetAssemblies()
+                if (logger.IsInfo) logger.Info($"NDM initializer: {initializerName}");
+                Type? ndmInitializerType = AppDomain.CurrentDomain.GetAssemblies()
                     .SelectMany(a => a.GetTypes())
                     .FirstOrDefault(t =>
                         t.GetCustomAttribute<NdmInitializerAttribute>()?.Name == initializerName);
+                if (ndmInitializerType == null)
+                {
+                    if(logger.IsError) logger.Error(
+                        $"NDM enabled but the initializer {initializerName} has not been found. Ensure that a plugin exists with the properly set {nameof(NdmInitializerAttribute)}");
+                }
 
                 NdmModule ndmModule = new NdmModule();
                 NdmConsumersModule ndmConsumersModule = new NdmConsumersModule();
-                ndmInitializer =
+                _ndmInitializer =
                     new NdmInitializerFactory(ndmInitializerType, ndmModule, ndmConsumersModule, api.LogManager)
                         .CreateOrFail();
 
@@ -111,9 +115,14 @@ namespace Nethermind.DataMarketplace.Initializers
                 }
 
                 NdmWebSocketsModule ndmWebSocketsModule =
-                    new NdmWebSocketsModule(ndmConsumerChannelManager, ndmDataPublisher, api.EthereumJsonSerializer);
+                    new NdmWebSocketsModule(
+                        ndmConsumerChannelManager,
+                        ndmDataPublisher,
+                        api.EthereumJsonSerializer); 
                 api.WebSocketsManager.AddModule(ndmWebSocketsModule);
             }
+
+            return Task.CompletedTask;
         }
 
         public void Dispose()

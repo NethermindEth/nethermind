@@ -86,15 +86,13 @@ namespace Nethermind.Api
         IDiscoveryApp? DiscoveryApp { get; set; }
         IEnode? Enode { get; set; }
         IEthereumEcdsa? EthereumEcdsa { get; set; }
-        IEthJsonRpcClientProxy? EthJsonRpcClientProxy { get; set; } // maybe only in NDM
         IFileSystem FileSystem { get; set; }
         IFilterStore FilterStore { get; set; }
         IFilterManager FilterManager { get; set; }
         IGrpcServer? GrpcServer { get; set; }
         IHeaderValidator? HeaderValidator { get; set; }
         IIPResolver? IpResolver { get; set; }
-        IJsonRpcClientProxy? JsonRpcClientProxy { get; set; } // maybe only in NDM
-        IJsonSerializer? EthereumJsonSerializer { get; set; }
+        IJsonSerializer EthereumJsonSerializer { get; set; }
         IKeyStore? KeyStore { get; set; }
         ILogManager LogManager { get; }
         IMessageSerializationService MessageSerializationService { get; }
@@ -129,7 +127,7 @@ namespace Nethermind.Api
         ITxPoolInfoProvider? TxPoolInfoProvider { get; set; }
         IWallet? Wallet { get; set; }
         IWebSocketsManager? WebSocketsManager { get; set; }
-        
+
         public List<IProducer> Producers { get; }
         ProtectedPrivateKey? NodeKey { get; set; }
         ProtectedPrivateKey? OriginalSignerKey { get; set; }

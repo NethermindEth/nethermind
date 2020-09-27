@@ -27,7 +27,6 @@ using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Config;
 using Nethermind.Consensus;
-using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -96,6 +95,8 @@ namespace Nethermind.DataMarketplace.Infrastructure
         public IHttpClient? HttpClient { get; set; }
         public IMongoProvider? MongoProvider { get; set; }
         public IDbProvider? RocksProvider { get; set; }
+        public IEthJsonRpcClientProxy? EthJsonRpcClientProxy { get; set; }
+        public IJsonRpcClientProxy? JsonRpcClientProxy { get; set; }
         
         public INdmConfig? NdmConfig { get; set; } // strange way of overriding NDM config
         public string BaseDbPath { get; set; } // strange way of adding NDM
@@ -196,12 +197,6 @@ namespace Nethermind.DataMarketplace.Infrastructure
             set => _nethermindApi.EthereumEcdsa = value;
         }
 
-        public IEthJsonRpcClientProxy? EthJsonRpcClientProxy
-        {
-            get => _nethermindApi.EthJsonRpcClientProxy;
-            set => _nethermindApi.EthJsonRpcClientProxy = value;
-        }
-
         public IFileSystem FileSystem
         {
             get => _nethermindApi.FileSystem;
@@ -237,13 +232,7 @@ namespace Nethermind.DataMarketplace.Infrastructure
             get => _nethermindApi.IpResolver;
             set => _nethermindApi.IpResolver = value;
         }
-
-        public IJsonRpcClientProxy? JsonRpcClientProxy
-        {
-            get => _nethermindApi.JsonRpcClientProxy;
-            set => _nethermindApi.JsonRpcClientProxy = value;
-        }
-
+        
         public IJsonSerializer? EthereumJsonSerializer
         {
             get => _nethermindApi.EthereumJsonSerializer;
@@ -428,12 +417,6 @@ namespace Nethermind.DataMarketplace.Infrastructure
         {
             get => _nethermindApi.TxPoolInfoProvider;
             set => _nethermindApi.TxPoolInfoProvider = value;
-        }
-
-        public IValidatorStore? ValidatorStore
-        {
-            get => _nethermindApi.ValidatorStore;
-            set => _nethermindApi.ValidatorStore = value;
         }
 
         public IWallet? Wallet

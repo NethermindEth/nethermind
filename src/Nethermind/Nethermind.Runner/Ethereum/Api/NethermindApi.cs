@@ -71,20 +71,21 @@ namespace Nethermind.Runner.Ethereum.Api
             CryptoRandom = new CryptoRandom();
             DisposeStack.Push(CryptoRandom);
         }
-        
-        public IAbiEncoder AbiEncoder { get; } = new AbiEncoder();
-        public ChainSpec? ChainSpec { get; set; }
-        public DisposableStack DisposeStack { get; } = new DisposableStack();
 
         public IBlockchainBridge CreateBlockchainBridge()
         {
             ReadOnlyBlockTree readOnlyTree = new ReadOnlyBlockTree(BlockTree);
             IReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(DbProvider, false);
-            ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, readOnlyTree, SpecProvider, LogManager);
+            ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(
+                readOnlyDbProvider,
+                readOnlyTree,
+                SpecProvider,
+                LogManager);
 
             IMiningConfig miningConfig = ConfigProvider.GetConfig<IMiningConfig>();
             ISyncConfig syncConfig = ConfigProvider.GetConfig<ISyncConfig>();
             IJsonRpcConfig rpcConfig = ConfigProvider.GetConfig<IJsonRpcConfig>();
+            
             return new BlockchainBridge(
                 readOnlyTxProcessingEnv,
                 TxPool,
@@ -101,6 +102,7 @@ namespace Nethermind.Runner.Ethereum.Api
             );
         }
 
+        public IAbiEncoder AbiEncoder { get; } = new AbiEncoder();
         public IBlockchainProcessor? BlockchainProcessor { get; set; }
         public IBlockDataRecoveryStep? RecoveryStep { get; set; }
         public IBlockProcessingQueue? BlockProcessingQueue { get; set; }
@@ -116,15 +118,13 @@ namespace Nethermind.Runner.Ethereum.Api
         public IDiscoveryApp? DiscoveryApp { get; set; }
         public IEnode? Enode { get; set; }
         public IEthereumEcdsa? EthereumEcdsa { get; set; }
-        public IEthJsonRpcClientProxy? EthJsonRpcClientProxy { get; set; }
         public IFileSystem FileSystem { get; set; } = new FileSystem();
-        public IFilterStore FilterStore { get; set; }
-        public IFilterManager FilterManager { get; set; }
+        public IFilterStore? FilterStore { get; set; }
+        public IFilterManager? FilterManager { get; set; }
         public IGrpcServer? GrpcServer { get; set; }
         public IHeaderValidator? HeaderValidator { get; set; }
         public IIPResolver? IpResolver { get; set; }
-        public IJsonRpcClientProxy? JsonRpcClientProxy { get; set; }
-        public IJsonSerializer? EthereumJsonSerializer { get; set; }
+        public IJsonSerializer EthereumJsonSerializer { get; set; } = new EthereumJsonSerializer();
         public IKeyStore? KeyStore { get; set; }
         public ILogManager LogManager { get; }
         public IMessageSerializationService MessageSerializationService { get; } = new MessageSerializationService();
@@ -160,10 +160,12 @@ namespace Nethermind.Runner.Ethereum.Api
         public IWallet? Wallet { get; set; }
         public IWebSocketsManager? WebSocketsManager { get; set; }
         
-        public List<IProducer> Producers { get; }= new List<IProducer>();
         public ProtectedPrivateKey? NodeKey { get; set; }
-        public ProtectedPrivateKey? OriginalSignerKey { get; set; }
+        public ProtectedPrivateKey? OriginalSignerKey { get; set; } // TODO: please explain what it does
 
+        public ChainSpec? ChainSpec { get; set; }
+        public DisposableStack DisposeStack { get; } = new DisposableStack();
         public List<IPlugin> Plugins { get; } = new List<IPlugin>();
+        public List<IProducer> Producers { get; }= new List<IProducer>(); // this should be called publishers?
     }
 }

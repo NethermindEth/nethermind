@@ -15,29 +15,31 @@ namespace Nethermind.DataMarketplace.Infrastructure
 {
     public interface INdmApi : INethermindApi
     {
-        public IConfigManager? ConfigManager { get; set; }
-        public IEthRequestService? EthRequestService { get; set; }
-        public INdmFaucet? NdmFaucet { get; set; }
-        public Address? ContractAddress { get; set; }
-        public Address? ConsumerAddress { get; set; }
-        public Address? ProviderAddress { get; set; }
-        public IConsumerService ConsumerService { get; set; }
-        public IAccountService AccountService { get; set; }
-        public IRlpDecoder<DataAsset>? DataAssetRlpDecoder { get; set; }
-        public IDepositService? DepositService { get; set; }
-        public GasPriceService? GasPriceService { get; set; }
-        public TransactionService? TransactionService { get; set; }
-        public INdmNotifier? NdmNotifier { get; set; }
-        public INdmDataPublisher? NdmDataPublisher { get; set; }
-        public IJsonRpcNdmConsumerChannel? JsonRpcNdmConsumerChannel { get; set; }
-        public INdmConsumerChannelManager? NdmConsumerChannelManager { get; set; }
-        public INdmBlockchainBridge? BlockchainBridge { get; set; }
-        public IHttpClient? HttpClient { get; set; }
-        public IMongoProvider? MongoProvider { get; set; }
-        public IDbProvider? RocksProvider { get; set; }
+        IConfigManager? ConfigManager { get; set; }
+        IEthRequestService? EthRequestService { get; set; }
+        INdmFaucet? NdmFaucet { get; set; }
+        Address? ContractAddress { get; set; }
+        Address? ConsumerAddress { get; set; }
+        Address? ProviderAddress { get; set; }
+        IConsumerService ConsumerService { get; set; }
+        IAccountService AccountService { get; set; }
+        IRlpDecoder<DataAsset>? DataAssetRlpDecoder { get; set; }
+        IDepositService? DepositService { get; set; }
+        GasPriceService? GasPriceService { get; set; }
+        TransactionService? TransactionService { get; set; }
+        INdmNotifier? NdmNotifier { get; set; }
+        INdmDataPublisher? NdmDataPublisher { get; set; }
+        IJsonRpcNdmConsumerChannel? JsonRpcNdmConsumerChannel { get; set; }
+        INdmConsumerChannelManager? NdmConsumerChannelManager { get; set; }
+        INdmBlockchainBridge? BlockchainBridge { get; set; }
+        IHttpClient? HttpClient { get; set; }
+        IMongoProvider? MongoProvider { get; set; }
+        IDbProvider? RocksProvider { get; set; }
+        IEthJsonRpcClientProxy? EthJsonRpcClientProxy { get; set; } // maybe only in NDM
+        IJsonRpcClientProxy? JsonRpcClientProxy { get; set; } // maybe only in NDM
         
         // TODO: handle this override somehow (maybe override Config<> so it returns this? 
-        public INdmConfig? NdmConfig { get; set; }
-        public string? BaseDbPath { get; set; }
+        INdmConfig? NdmConfig { get; set; }
+        string? BaseDbPath { get; set; }
     }
 }

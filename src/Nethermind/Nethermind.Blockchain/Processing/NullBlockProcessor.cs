@@ -16,7 +16,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing;
@@ -25,14 +24,9 @@ namespace Nethermind.Blockchain.Processing
 {
     public class NullBlockProcessor : IBlockProcessor
     {
-        private NullBlockProcessor()
-        {
-            
-        }
-        
-        private static NullBlockProcessor _instance;
-        
-        public static NullBlockProcessor Instance => _instance ?? LazyInitializer.EnsureInitialized(ref _instance, () => new NullBlockProcessor());
+        private NullBlockProcessor() { }
+
+        public static IBlockProcessor Instance { get; } = new NullBlockProcessor();
 
         public Block[] Process(Keccak newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer)
         {
