@@ -195,7 +195,7 @@ jobs:
     - name: Nethermind.DataMarketplace.WebSockets.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.DataMarketplace.WebSockets.Test
-  neth-tests5:
+  neth-runner:
     name: Nethermind Tests 5
     runs-on: ${{ matrix.os }}
     strategy:
