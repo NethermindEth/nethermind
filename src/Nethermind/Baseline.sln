@@ -6,8 +6,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Baseline.Test", 
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Vault.Test", "Nethermind.Vault.Test\Nethermind.Vault.Test.csproj", "{0EE4FB9B-D1EE-4869-8381-EBD94ED2FD5E}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Provide.NChain", "Nethermind.Provide.NChain\Nethermind.Provide.NChain.csproj", "{0F798EEF-4E92-4179-83DC-0BBD80F61F4F}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Provide.Vault", "Nethermind.Provide.Vault\Nethermind.Provide.Vault.csproj", "{E88AB748-F764-4B8F-9BC8-4EDC0968CDCA}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Nethermind", "Nethermind", "{E4D07050-1288-4344-B79D-470C2DC86146}"
@@ -36,6 +34,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Baseline.Plugin"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Api", "Nethermind.Api\Nethermind.Api.csproj", "{9DFE98E5-BC3D-44F0-9198-ABF1837ED989}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Runner", "Nethermind.Runner\Nethermind.Runner.csproj", "{30FEC93A-D590-4AA1-945D-5A44A3003199}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -54,10 +54,6 @@ Global
 		{0EE4FB9B-D1EE-4869-8381-EBD94ED2FD5E}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{0EE4FB9B-D1EE-4869-8381-EBD94ED2FD5E}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{0EE4FB9B-D1EE-4869-8381-EBD94ED2FD5E}.Release|Any CPU.Build.0 = Release|Any CPU
-		{0F798EEF-4E92-4179-83DC-0BBD80F61F4F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{0F798EEF-4E92-4179-83DC-0BBD80F61F4F}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{0F798EEF-4E92-4179-83DC-0BBD80F61F4F}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{0F798EEF-4E92-4179-83DC-0BBD80F61F4F}.Release|Any CPU.Build.0 = Release|Any CPU
 		{E88AB748-F764-4B8F-9BC8-4EDC0968CDCA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{E88AB748-F764-4B8F-9BC8-4EDC0968CDCA}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{E88AB748-F764-4B8F-9BC8-4EDC0968CDCA}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -110,6 +106,10 @@ Global
 		{9DFE98E5-BC3D-44F0-9198-ABF1837ED989}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{9DFE98E5-BC3D-44F0-9198-ABF1837ED989}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{9DFE98E5-BC3D-44F0-9198-ABF1837ED989}.Release|Any CPU.Build.0 = Release|Any CPU
+		{30FEC93A-D590-4AA1-945D-5A44A3003199}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{30FEC93A-D590-4AA1-945D-5A44A3003199}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{30FEC93A-D590-4AA1-945D-5A44A3003199}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{30FEC93A-D590-4AA1-945D-5A44A3003199}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{3394242A-4B4A-4A05-B151-59830CC9B28E} = {E4D07050-1288-4344-B79D-470C2DC86146}

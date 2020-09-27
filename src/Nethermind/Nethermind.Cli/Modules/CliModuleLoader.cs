@@ -20,6 +20,7 @@ using System.IO;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
+using System.Runtime.Loader;
 using Jint.Native;
 using Jint.Native.Object;
 using Jint.Runtime;
@@ -146,15 +147,10 @@ namespace Nethermind.Cli.Modules
             string[] allDlls = Directory.GetFiles(AppDomain.CurrentDomain.BaseDirectory, "*.dll");
             foreach (string dll in allDlls)
             {
-                if (GetType().Assembly.FullName!.Contains(Path.GetFileNameWithoutExtension(dll)))
-                {
-                    continue;
-                }
-                
                 Assembly assembly;
                 try
                 {
-                    assembly = Assembly.LoadFile(dll); // dangerous but we assume plugins are safe for now
+                    assembly = AssemblyLoadContext.Default.LoadFromAssemblyPath(dll);
                 }
                 catch (Exception)
                 {
@@ -163,12 +159,7 @@ namespace Nethermind.Cli.Modules
 
                 moduleTypes.AddRange(assembly.GetExportedTypes().Where(IsCliModule));
             }
-            
-            // If we load the current assembly the same way as other assemblies the types
-            // would not match and the modules would not be discovered.
-            // This is because the assembly is loaded twice and the CliModuleBase type exists twice.
-            moduleTypes.AddRange(GetType().Assembly.GetExportedTypes().Where(IsCliModule));
-            
+
             foreach (Type moduleType in moduleTypes.OrderBy(mt => mt.Name))
             {
                 LoadModule(moduleType);
