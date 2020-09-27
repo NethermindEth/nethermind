@@ -157,7 +157,6 @@ namespace Nethermind.Runner.Ethereum.Api
         public ITxSender? TxSender { get; set; }
         public ITxPool? TxPool { get; set; }
         public ITxPoolInfoProvider? TxPoolInfoProvider { get; set; }
-        public IValidatorStore? ValidatorStore { get; set; }
         public IWallet? Wallet { get; set; }
         public IWebSocketsManager? WebSocketsManager { get; set; }
         

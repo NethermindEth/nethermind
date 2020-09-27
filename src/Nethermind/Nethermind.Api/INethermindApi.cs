@@ -127,7 +127,6 @@ namespace Nethermind.Api
         ITxSender? TxSender { get; set; }
         ITxPool? TxPool { get; set; }
         ITxPoolInfoProvider? TxPoolInfoProvider { get; set; }
-        IValidatorStore? ValidatorStore { get; set; }
         IWallet? Wallet { get; set; }
         IWebSocketsManager? WebSocketsManager { get; set; }
         
