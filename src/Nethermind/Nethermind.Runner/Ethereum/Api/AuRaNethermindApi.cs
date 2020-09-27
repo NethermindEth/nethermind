@@ -24,31 +24,32 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Runner.Ethereum.Api
 {
     public class AuRaNethermindApi : NethermindApi
     {
-        public AuRaNethermindApi(IConfigProvider configProvider, ILogManager logManager)
-            : base(configProvider, logManager)
+        public AuRaNethermindApi(IConfigProvider configProvider, IJsonSerializer jsonSerializer, ILogManager logManager)
+            : base(configProvider, jsonSerializer, logManager)
         {
         }
-        
+
         public IBlockFinalizationManager? FinalizationManager { get; set; }
-        
+
         public PermissionBasedTxFilter.Cache? TxFilterCache { get; set; }
-        
+
         public IValidatorStore? ValidatorStore { get; set; }
-        
+
         public ICache<Keccak, UInt256> TransactionPermissionContractVersions { get; }
             = new LruCache<Keccak, UInt256>(
                 PermissionBasedTxFilter.Cache.MaxCacheSize,
                 nameof(TransactionPermissionContract));
-        
+
         public AuRaContractGasLimitOverride.Cache? GasLimitCalculatorCache { get; set; }
-        
+
         public IReportingValidator? ReportingValidator { get; set; }
-        
+
         public ReportingContractBasedValidator.Cache ReportingContractValidatorCache { get; } = new ReportingContractBasedValidator.Cache();
     }
 }

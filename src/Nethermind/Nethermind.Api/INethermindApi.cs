@@ -81,7 +81,7 @@ namespace Nethermind.Api
         IBlockValidator? BlockValidator { get; set; }
         IBloomStorage? BloomStorage { get; set; }
         IChainLevelInfoRepository? ChainLevelInfoRepository { get; set; }
-        IConfigProvider ConfigProvider { get; set; }
+        IConfigProvider ConfigProvider { get; }
         ICryptoRandom CryptoRandom { get; }
         IDbProvider? DbProvider { get; set; }
         IDiscoveryApp? DiscoveryApp { get; set; }
@@ -93,7 +93,7 @@ namespace Nethermind.Api
         IGrpcServer? GrpcServer { get; set; }
         IHeaderValidator? HeaderValidator { get; set; }
         IIPResolver? IpResolver { get; set; }
-        IJsonSerializer EthereumJsonSerializer { get; set; }
+        IJsonSerializer EthereumJsonSerializer { get; }
         IKeyStore? KeyStore { get; set; }
         ILogFinder LogFinder { get; set; }
         ILogManager LogManager { get; }
@@ -107,7 +107,7 @@ namespace Nethermind.Api
         IReceiptFinder? ReceiptFinder { get; set; }
         IRewardCalculatorSource? RewardCalculatorSource { get; set; }
         IRlpxPeer? RlpxPeer { get; set; }
-        IRpcModuleProvider? RpcModuleProvider { get; set; }
+        IRpcModuleProvider RpcModuleProvider { get; set; }
         ISealer? Sealer { get; set; }
         ISealValidator? SealValidator { get; set; }
         ISigner? EngineSigner { get; set; }
@@ -130,7 +130,7 @@ namespace Nethermind.Api
         IWallet? Wallet { get; set; }
         IWebSocketsManager? WebSocketsManager { get; set; }
 
-        public List<IProducer> Producers { get; }
+        public List<IPublisher> Publishers { get; }
         ProtectedPrivateKey? NodeKey { get; set; }
         ProtectedPrivateKey? OriginalSignerKey { get; set; }
         

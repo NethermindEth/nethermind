@@ -19,6 +19,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.Loader;
 using System.Threading;
 
 namespace Nethermind.Core
@@ -60,7 +61,7 @@ namespace Nethermind.Core
                 .ToList()
                 .ForEach(x =>
                 {
-                    AppDomain.CurrentDomain.Load(x);
+                    AssemblyLoadContext.Default.LoadFromAssemblyName(x);
                     loaded++;
                 });
 

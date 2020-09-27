@@ -26,7 +26,7 @@ using Nethermind.WebSockets;
 
 namespace Nethermind.Runner.Analytics
 {
-    public class AnalyticsWebSocketsModule : IWebSocketsModule, IProducer
+    public class AnalyticsWebSocketsModule : IWebSocketsModule, IPublisher
     {
         private readonly ConcurrentDictionary<string, IWebSocketsClient> _clients =
             new ConcurrentDictionary<string, IWebSocketsClient>();
@@ -68,6 +68,10 @@ namespace Nethermind.Runner.Analytics
         public async Task PublishAsync<T>(T data) where T : class
         {
             await SendAsync(new WebSocketsMessage("analytics", null, data));
+        }
+
+        public void Dispose()
+        {
         }
     }
 }

@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
@@ -36,6 +37,8 @@ using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Cli.Modules;
+using Nethermind.Core;
+using Nethermind.JsonRpc.Modules.Web3;
 using Nethermind.Runner.Ethereum.Steps.Migrations;
 
 namespace Nethermind.Runner.Ethereum.Steps
@@ -78,6 +81,10 @@ namespace Nethermind.Runner.Ethereum.Steps
             {
                 return;
             }
+            
+            _api.RpcModuleProvider = jsonRpcConfig.Enabled
+                ? new RpcModuleProvider(_api.FileSystem, jsonRpcConfig, _api.LogManager)
+                : (IRpcModuleProvider)NullModuleProvider.Instance;
 
             // the following line needs to be called in order to make sure that the CLI library is referenced from runner and built alongside
             ILogger logger = _api.LogManager.GetClassLogger();
@@ -163,10 +170,16 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.LogManager);
             _api.RpcModuleProvider.Register(new SingletonModulePool<IParityModule>(parityModule, true));
 
+            Web3Module web3Module = new Web3Module(_api.LogManager);
+            _api.RpcModuleProvider.Register(new SingletonModulePool<IWeb3Module>(web3Module, true));
+            
             foreach (INethermindPlugin plugin in _api.Plugins)
             {
                 await plugin.InitRpcModules();
             }
+            
+            if (logger.IsDebug) logger.Debug($"RPC modules  : {string.Join(", ", _api.RpcModuleProvider.Enabled.OrderBy(x => x))}");
+            ThisNodeInfo.AddInfo("RPC modules  :", $"{string.Join(", ", _api.RpcModuleProvider.Enabled.OrderBy(x => x))}");
         }
     }
 }

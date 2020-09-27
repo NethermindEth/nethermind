@@ -27,20 +27,18 @@ using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.JsonRpc;
-using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
-using Nethermind.Runner.LogBridge;
+using Nethermind.Runner.Logging;
 using Nethermind.WebSockets;
 using ILogger = Nethermind.Logging.ILogger;
 using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
 namespace Nethermind.Runner.Ethereum
 {
-    public class JsonRpcRunner : IRunner
+    public class JsonRpcRunner
     {
         private readonly ILogger _logger;
         private readonly IConfigProvider _configurationProvider;
-        private readonly IRpcModuleProvider _moduleProvider;
         private readonly ILogManager _logManager;
         private readonly IJsonRpcProcessor _jsonRpcProcessor;
         private readonly IWebSocketsManager _webSocketsManager;
@@ -49,16 +47,14 @@ namespace Nethermind.Runner.Ethereum
         private IInitConfig _initConfig;
 
         public JsonRpcRunner(
-            IConfigProvider configurationProvider,
-            IRpcModuleProvider moduleProvider,
-            ILogManager logManager,
             IJsonRpcProcessor jsonRpcProcessor,
-            IWebSocketsManager webSocketsManager)
+            IWebSocketsManager webSocketsManager,
+            IConfigProvider configurationProvider,
+            ILogManager logManager)
         {
             _jsonRpcConfig = configurationProvider.GetConfig<IJsonRpcConfig>();
             _initConfig = configurationProvider.GetConfig<IInitConfig>();
             _configurationProvider = configurationProvider;
-            _moduleProvider = moduleProvider ?? throw new ArgumentNullException(nameof(moduleProvider));
             _logManager = logManager;
             _jsonRpcProcessor = jsonRpcProcessor;
             _webSocketsManager = webSocketsManager;
@@ -120,15 +116,13 @@ namespace Nethermind.Runner.Ethereum
             string urlsString = string.Join(" ; ", urls);
             
             ThisNodeInfo.AddInfo("JSON RPC     :", $"{urlsString}");
-            ThisNodeInfo.AddInfo("RPC modules  :", $"{string.Join(", ", _moduleProvider.Enabled.OrderBy(x => x))}");
-            
+
             _webHost = webHost;
 
             if (!cancellationToken.IsCancellationRequested)
             {
                 _webHost.Start();
                 if (_logger.IsDebug) _logger.Debug($"JSON RPC     : {urlsString}");
-                if (_logger.IsDebug) _logger.Debug($"RPC modules  : {string.Join(", ", _moduleProvider.Enabled.OrderBy(x => x))}");
             }
 
             return Task.CompletedTask;

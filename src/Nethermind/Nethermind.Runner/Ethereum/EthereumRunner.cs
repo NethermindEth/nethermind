@@ -20,13 +20,11 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Core;
 using Nethermind.Logging;
-using Nethermind.Network;
-using Nethermind.Network.Config;
 using Nethermind.Runner.Ethereum.Steps;
 
 namespace Nethermind.Runner.Ethereum
 {
-    public class EthereumRunner : IRunner
+    public class EthereumRunner
     {
         private INethermindApi _api;
 
@@ -42,8 +40,6 @@ namespace Nethermind.Runner.Ethereum
         {
             if (_logger.IsDebug) _logger.Debug("Initializing Ethereum");
 
-            // all plugins init
-            
             EthereumStepsLoader stepsLoader = new EthereumStepsLoader(GetType().Assembly);
             EthereumStepsManager stepsManager = new EthereumStepsManager(stepsLoader, _api, _api.LogManager);
             await stepsManager.InitializeAll(cancellationToken);

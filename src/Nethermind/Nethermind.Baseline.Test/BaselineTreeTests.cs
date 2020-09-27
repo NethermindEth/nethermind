@@ -19,12 +19,13 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Baseline.Tree;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Trie;
 using NUnit.Framework;
-using Index = Nethermind.Baseline.BaselineTree.Index;
+using Index = Nethermind.Baseline.Tree.BaselineTree.Index;
 
 namespace Nethermind.Baseline.Test
 {

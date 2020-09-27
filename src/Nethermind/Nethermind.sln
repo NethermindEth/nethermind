@@ -102,9 +102,7 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.WebSockets", "Ne
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.EthStats", "Nethermind.EthStats\Nethermind.EthStats.csproj", "{0BA6F4AA-F445-40FF-B2A3-376A8260E729}"
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "PubSub", "PubSub", "{1B8FD0C8-4F0E-4E14-89A7-F7E69B9C7375}"
-EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.PubSub", "Nethermind.PubSub\Nethermind.PubSub.csproj", "{EB6140AE-86B8-4207-BF17-2826980BB908}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Kafka", "Kafka", "{1B8FD0C8-4F0E-4E14-89A7-F7E69B9C7375}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.PubSub.Kafka", "Nethermind.PubSub.Kafka\Nethermind.PubSub.Kafka.csproj", "{8BAA8D55-EFBE-425A-9027-CDED985C0C37}"
 EndProject
@@ -163,6 +161,8 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Api", "Nethermind.Api\Nethermind.Api.csproj", "{5D8E2F39-9B57-48C0-8D0B-C85E21DED3DA}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Cli", "Nethermind.Cli\Nethermind.Cli.csproj", "{241EC70E-DAB2-4679-8ABE-55E07C9771CE}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.PubSub", "Nethermind.PubSub\Nethermind.PubSub.csproj", "{9C2CA26C-ABD5-4232-9F90-F6AFE469A79F}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -326,10 +326,6 @@ Global
 		{0BA6F4AA-F445-40FF-B2A3-376A8260E729}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{0BA6F4AA-F445-40FF-B2A3-376A8260E729}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{0BA6F4AA-F445-40FF-B2A3-376A8260E729}.Release|Any CPU.Build.0 = Release|Any CPU
-		{EB6140AE-86B8-4207-BF17-2826980BB908}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{EB6140AE-86B8-4207-BF17-2826980BB908}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{EB6140AE-86B8-4207-BF17-2826980BB908}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{EB6140AE-86B8-4207-BF17-2826980BB908}.Release|Any CPU.Build.0 = Release|Any CPU
 		{8BAA8D55-EFBE-425A-9027-CDED985C0C37}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{8BAA8D55-EFBE-425A-9027-CDED985C0C37}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{8BAA8D55-EFBE-425A-9027-CDED985C0C37}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -438,6 +434,10 @@ Global
 		{241EC70E-DAB2-4679-8ABE-55E07C9771CE}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{241EC70E-DAB2-4679-8ABE-55E07C9771CE}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{241EC70E-DAB2-4679-8ABE-55E07C9771CE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9C2CA26C-ABD5-4232-9F90-F6AFE469A79F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9C2CA26C-ABD5-4232-9F90-F6AFE469A79F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9C2CA26C-ABD5-4232-9F90-F6AFE469A79F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9C2CA26C-ABD5-4232-9F90-F6AFE469A79F}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -499,7 +499,6 @@ Global
 		{F4DE1E9A-2823-4F9C-A6D6-78606E6C0410}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
-		{EB6140AE-86B8-4207-BF17-2826980BB908} = {1B8FD0C8-4F0E-4E14-89A7-F7E69B9C7375}
 		{8BAA8D55-EFBE-425A-9027-CDED985C0C37} = {1B8FD0C8-4F0E-4E14-89A7-F7E69B9C7375}
 		{DE56503A-E80F-4B16-A01E-60CAC2B0A84E} = {1B8FD0C8-4F0E-4E14-89A7-F7E69B9C7375}
 		{E513347C-7082-42B8-B3A8-39C3D6992A9B} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}

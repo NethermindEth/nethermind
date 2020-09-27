@@ -41,7 +41,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _api.WebSocketsManager?.GetModule("analytics") as AnalyticsWebSocketsModule;
                 if (analyticsModule != null)
                 {
-                    _api.Producers.Add(analyticsModule);
+                    _api.Publishers.Add(analyticsModule);
                 }
             }
 

@@ -17,20 +17,19 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Net;
 using System.Threading.Tasks;
 using Confluent.Kafka;
-using Nethermind.Blockchain;
+using Nethermind.Api;
 using Nethermind.Logging;
 using Nethermind.PubSub.Kafka.Avro;
+using Nethermind.PubSub.Kafka.Models;
 using Nethermind.PubSub.Kafka.TypeProducers;
-using Nethermind.PubSub.Models;
 
 namespace Nethermind.PubSub.Kafka
 {
-    public class KafkaProducer : IProducer
+    public class KafkaPublisher : IPublisher
     {
-        private static readonly ISet<IKafkaTypeProducer> Producers = new HashSet<IKafkaTypeProducer>();
+        private static readonly ISet<IKafkaTypedPublisher> Producers = new HashSet<IKafkaTypedPublisher>();
         private readonly IDictionary<Type, string> _topics;
         private readonly IKafkaConfig _kafkaConfig;
         private readonly IPubSubModelMapper _modelMapper;
@@ -38,7 +37,7 @@ namespace Nethermind.PubSub.Kafka
         private readonly ILogger _logger;
         private bool _initialized;
 
-        public KafkaProducer(IKafkaConfig kafkaConfig, IPubSubModelMapper modelMapper,
+        public KafkaPublisher(IKafkaConfig kafkaConfig, IPubSubModelMapper modelMapper,
             IAvroMapper avroMapper, ILogManager logManager)
         {
             _kafkaConfig = kafkaConfig;
@@ -70,17 +69,17 @@ namespace Nethermind.PubSub.Kafka
 
             if (_kafkaConfig.ProduceAvro)
             {
-                Producers.Add(new AvroTypeProducer(config, _kafkaConfig.SchemaRegistryUrl, _avroMapper, _logger));
+                Producers.Add(new AvroTypedPublisher(config, _kafkaConfig.SchemaRegistryUrl, _avroMapper, _logger));
             }
 
             if (_kafkaConfig.ProduceJson)
             {
-                Producers.Add(new JsonTypeProducer(config, _modelMapper, _logger));
+                Producers.Add(new JsonTypedPublisher(config, _modelMapper, _logger));
             }
 
             if (_kafkaConfig.ProduceUtf8Json)
             {
-                Producers.Add(new Utf8JsonTypeProducer(config, _modelMapper, _logger));
+                Producers.Add(new Utf8JsonTypedPublisher(config, _modelMapper, _logger));
             }
 
             _logger.Info(Producers.Any() ? "Kafka producer(s) initialized." : "No Kafka producers specified.");
@@ -169,13 +168,19 @@ namespace Nethermind.PubSub.Kafka
             return false;
         }
 
-        public Task CloseAsync()
+        private IDictionary<Type, string> GetTopics()
+            => new Dictionary<Type, string>
+            {
+                [typeof(Core.Block)] = _kafkaConfig.TopicBlocks,
+                [typeof(FullTransaction)] = _kafkaConfig.TopicTransactions,
+                [typeof(Core.TxReceipt)] = _kafkaConfig.TopicReceipts,
+            };
+
+        public void Dispose()
         {
             if (!_initialized)
             {
                 _logger.Info("Kafka producer was not initialized.");
-
-                return Task.CompletedTask;
             }
 
             _logger.Info("Closing Kafka producer...");
@@ -186,16 +191,6 @@ namespace Nethermind.PubSub.Kafka
 
             _initialized = false;
             _logger.Info("Kafka producer closed.");
-
-            return Task.CompletedTask;
         }
-
-        private IDictionary<Type, string> GetTopics()
-            => new Dictionary<Type, string>
-            {
-                [typeof(Core.Block)] = _kafkaConfig.TopicBlocks,
-                [typeof(FullTransaction)] = _kafkaConfig.TopicTransactions,
-                [typeof(Core.TxReceipt)] = _kafkaConfig.TopicReceipts,
-            };
     }
 }

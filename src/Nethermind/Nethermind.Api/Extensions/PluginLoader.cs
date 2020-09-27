@@ -16,9 +16,11 @@
 // 
 
 using System;
+using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.Loader;
 using Nethermind.Logging;
 
 namespace Nethermind.Api.Extensions
@@ -26,41 +28,41 @@ namespace Nethermind.Api.Extensions
     public class PluginLoader : IPluginLoader
     {
         private readonly IFileSystem _fileSystem;
-        private readonly IPluginManager _pluginManager;
         private readonly string _pluginsDirectory;
-        private readonly ILogger _logger;
+        
+        public List<Type> PluginTypes = new List<Type>();
 
-        public PluginLoader(IPluginManager pluginManager, string pluginPath, IFileSystem fileSystem, ILogManager logManager)
+        public PluginLoader(string pluginPath, IFileSystem fileSystem)
         {
-            _logger = logManager.GetClassLogger();
-            _pluginManager = pluginManager ?? throw new ArgumentNullException(nameof(pluginManager));
             _pluginsDirectory = pluginPath ?? throw new ArgumentNullException(nameof(pluginPath));
             _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
         }
-
-        public void Load()
+        
+        public void Load(ILogManager logManager)
         {
+            ILogger logger = logManager.GetClassLogger();
             string fullPluginsDir = _fileSystem.Path.Combine(AppDomain.CurrentDomain.BaseDirectory!, _pluginsDirectory);
             if (!_fileSystem.Directory.Exists(fullPluginsDir))
             {
-                if (_logger.IsWarn) _logger.Warn($"Plugins folder {fullPluginsDir} was not found. Skipping.");
+                if (logger.IsWarn) logger.Warn($"Plugins folder {fullPluginsDir} was not found. Skipping.");
             }
             
             string[] pluginFiles = _fileSystem.Directory.GetFiles(fullPluginsDir).Where(p => p.EndsWith("dll")).ToArray();
             if (pluginFiles.Length > 0)
             {
-                if (_logger.IsInfo) _logger.Info($"Loading {pluginFiles.Length} plugins from {fullPluginsDir}");
+                if (logger.IsInfo) logger.Info($"Loading {pluginFiles.Length} plugins from {fullPluginsDir}");
             }
 
             foreach (string path in pluginFiles)
             {
-                if (_logger.IsInfo) _logger.Warn($"Loading assembly {path}");
-                Assembly assembly = Assembly.LoadFile(_fileSystem.Path.Combine(fullPluginsDir, path));
+                if (logger.IsInfo) logger.Warn($"  Loading assembly {_fileSystem.Path.GetFileNameWithoutExtension(path)}");
+                string assemblyPath = _fileSystem.Path.Combine(fullPluginsDir, path);
+                Assembly assembly = AssemblyLoadContext.Default.LoadFromAssemblyPath(assemblyPath);
                 foreach (Type type in assembly.GetExportedTypes())
                 {
                     if (typeof(INethermindPlugin).IsAssignableFrom(type))
                     {
-                        _pluginManager.Register(type);
+                        PluginTypes.Add(type);
                     }
                 }
             }

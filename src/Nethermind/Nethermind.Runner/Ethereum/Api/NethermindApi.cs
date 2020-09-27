@@ -62,10 +62,16 @@ namespace Nethermind.Runner.Ethereum.Api
     public class NethermindApi : INethermindApi
     {
         public NethermindApi(IConfigProvider configProvider, ILogManager logManager)
+            : this(configProvider, new EthereumJsonSerializer(), logManager)
+        {
+        }
+
+        public NethermindApi(IConfigProvider configProvider, IJsonSerializer jsonSerializer, ILogManager logManager)
         {
             ConfigProvider = configProvider;
+            EthereumJsonSerializer = jsonSerializer;
             LogManager = logManager;
-            
+
             CryptoRandom = new CryptoRandom();
             DisposeStack.Push(CryptoRandom);
         }
@@ -120,7 +126,7 @@ namespace Nethermind.Runner.Ethereum.Api
         public IGrpcServer? GrpcServer { get; set; }
         public IHeaderValidator? HeaderValidator { get; set; }
         public IIPResolver? IpResolver { get; set; }
-        public IJsonSerializer EthereumJsonSerializer { get; set; } = new EthereumJsonSerializer();
+        public IJsonSerializer EthereumJsonSerializer { get; set; }
         public IKeyStore? KeyStore { get; set; }
         public ILogFinder? LogFinder { get; set; }
         public ILogManager LogManager { get; }
@@ -134,7 +140,7 @@ namespace Nethermind.Runner.Ethereum.Api
         public IReceiptFinder? ReceiptFinder { get; set; }
         public IRewardCalculatorSource? RewardCalculatorSource { get; set; }
         public IRlpxPeer? RlpxPeer { get; set; }
-        public IRpcModuleProvider? RpcModuleProvider { get; set; }
+        public IRpcModuleProvider RpcModuleProvider { get; set; } = NullModuleProvider.Instance;
         public ISealer? Sealer { get; set; }
         public ISealValidator? SealValidator { get; set; }
         public ISigner? EngineSigner { get; set; }
@@ -156,13 +162,13 @@ namespace Nethermind.Runner.Ethereum.Api
         public ITxPoolInfoProvider? TxPoolInfoProvider { get; set; }
         public IWallet? Wallet { get; set; }
         public IWebSocketsManager? WebSocketsManager { get; set; }
-        
+
         public ProtectedPrivateKey? NodeKey { get; set; }
         public ProtectedPrivateKey? OriginalSignerKey { get; set; } // TODO: please explain what it does
 
         public ChainSpec? ChainSpec { get; set; }
         public DisposableStack DisposeStack { get; } = new DisposableStack();
         public List<INethermindPlugin> Plugins { get; } = new List<INethermindPlugin>();
-        public List<IProducer> Producers { get; }= new List<IProducer>(); // this should be called publishers?
+        public List<IPublisher> Publishers { get; } = new List<IPublisher>(); // this should be called publishers?
     }
 }

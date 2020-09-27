@@ -38,8 +38,8 @@ namespace Nethermind.Runner.Ethereum.Steps
             IGrpcConfig grpcConfig = _api.Config<IGrpcConfig>();
             if (grpcConfig.Enabled)
             {
-                GrpcProducer grpcProducer = new GrpcProducer(_api.GrpcServer);
-                _api.Producers.Add(grpcProducer);
+                GrpcPublisher grpcPublisher = new GrpcPublisher(_api.GrpcServer);
+                _api.Publishers.Add(grpcPublisher);
             }
 
             return Task.CompletedTask;

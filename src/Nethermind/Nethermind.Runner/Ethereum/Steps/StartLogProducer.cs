@@ -17,11 +17,9 @@
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
-using Nethermind.Logging;
-using Nethermind.PubSub;
 using Nethermind.Runner.Analytics;
 using Nethermind.Runner.Ethereum.Api;
-using Nethermind.Serialization.Json;
+using Nethermind.Runner.Ethereum.Publishers;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
@@ -40,29 +38,11 @@ namespace Nethermind.Runner.Ethereum.Steps
             IAnalyticsConfig analyticsConfig = _api.Config<IAnalyticsConfig>();
             if (analyticsConfig.LogPublishedData)
             {
-                LogProducer logProducer = new LogProducer(_api.EthereumJsonSerializer!, _api.LogManager);
-                _api.Producers.Add(logProducer);
+                LogPublisher logPublisher = new LogPublisher(_api.EthereumJsonSerializer!, _api.LogManager);
+                _api.Publishers.Add(logPublisher);
             }
 
             return Task.CompletedTask;
-        }
-
-        private class LogProducer : IProducer
-        {
-            private ILogger _logger;
-            private IJsonSerializer _jsonSerializer;
-
-            public LogProducer(IJsonSerializer jsonSerializer, ILogManager logManager)
-            {
-                _logger = logManager.GetClassLogger<LogProducer>();
-                _jsonSerializer = jsonSerializer;
-            }
-
-            public Task PublishAsync<T>(T data) where T : class
-            {
-                if (_logger.IsInfo) _logger.Info(_jsonSerializer.Serialize(data));
-                return Task.CompletedTask;
-            }
         }
     }
 }

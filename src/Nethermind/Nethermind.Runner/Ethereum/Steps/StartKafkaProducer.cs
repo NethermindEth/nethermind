@@ -23,6 +23,7 @@ using Nethermind.Logging;
 using Nethermind.PubSub;
 using Nethermind.PubSub.Kafka;
 using Nethermind.PubSub.Kafka.Avro;
+using Nethermind.PubSub.Kafka.Models;
 using Nethermind.Runner.Ethereum.Api;
 
 namespace Nethermind.Runner.Ethereum.Steps
@@ -49,22 +50,22 @@ namespace Nethermind.Runner.Ethereum.Steps
             IKafkaConfig kafkaConfig = _api.Config<IKafkaConfig>();
             if (kafkaConfig.Enabled)
             {
-                IProducer kafkaProducer = await PrepareKafkaProducer(_api.BlockTree, kafkaConfig);
-                _api.Producers.Add(kafkaProducer);
+                IPublisher kafkaPublisher = await PrepareKafkaProducer(_api.BlockTree, kafkaConfig);
+                _api.Publishers.Add(kafkaPublisher);
             }
         }
 
-        private async Task<IProducer> PrepareKafkaProducer(IBlockTree blockTree, IKafkaConfig kafkaConfig)
+        private async Task<IPublisher> PrepareKafkaProducer(IBlockTree blockTree, IKafkaConfig kafkaConfig)
         {
             PubSubModelMapper pubSubModelMapper = new PubSubModelMapper();
             AvroMapper avroMapper = new AvroMapper(blockTree);
-            KafkaProducer kafkaProducer = new KafkaProducer(kafkaConfig, pubSubModelMapper, avroMapper, _api.LogManager);
-            await kafkaProducer.InitAsync().ContinueWith(x =>
+            KafkaPublisher kafkaPublisher = new KafkaPublisher(kafkaConfig, pubSubModelMapper, avroMapper, _api.LogManager);
+            await kafkaPublisher.InitAsync().ContinueWith(x =>
             {
                 if (x.IsFaulted && _logger.IsError) _logger.Error("Error during Kafka initialization", x.Exception);
             });
 
-            return kafkaProducer;
+            return kafkaPublisher;
         }
     }
 }

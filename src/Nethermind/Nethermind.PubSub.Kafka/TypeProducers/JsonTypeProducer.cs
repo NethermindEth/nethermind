@@ -19,13 +19,13 @@ using System.Threading.Tasks;
 using Confluent.Kafka;
 using Nethermind.Core;
 using Nethermind.Logging;
-using Nethermind.PubSub.Models;
+using Nethermind.PubSub.Kafka.Models;
 using Block = Nethermind.Core.Block;
 using JsonSerializer = Utf8Json.JsonSerializer;
 
 namespace Nethermind.PubSub.Kafka.TypeProducers
 {
-    public class JsonTypeProducer : IKafkaTypeProducer
+    public class JsonTypedPublisher : IKafkaTypedPublisher
     {
         private static readonly string Name = "Json";
         private bool _initialized;
@@ -33,7 +33,7 @@ namespace Nethermind.PubSub.Kafka.TypeProducers
         private readonly ILogger _logger;
         private IProducer<Null, string> _producer;
 
-        public JsonTypeProducer(ProducerConfig config, IPubSubModelMapper mapper, ILogger logger)
+        public JsonTypedPublisher(ProducerConfig config, IPubSubModelMapper mapper, ILogger logger)
         {
             _mapper = mapper;
             _logger = logger;

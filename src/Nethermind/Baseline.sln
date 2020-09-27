@@ -30,11 +30,9 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.JsonRpc", "Nethe
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Wallet", "Nethermind.Wallet\Nethermind.Wallet.csproj", "{A2C71F4A-FC08-428C-8113-5D13490DF4DC}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Baseline.Cli", "Nethermind.Baseline.Cli\Nethermind.Baseline.Cli.csproj", "{7A57B6D8-741B-4346-B91B-9D554D4A0BB1}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Cli", "Nethermind.Cli\Nethermind.Cli.csproj", "{5E62C0BD-2B38-4195-AB9B-FF2927B54A2C}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Plugin.Baseline", "Nethermind.Plugin.Baseline\Nethermind.Plugin.Baseline.csproj", "{C978A054-BB44-4F47-B8D7-29F6CF076CEE}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Baseline.Plugin", "Nethermind.Baseline.Plugin\Nethermind.Baseline.Plugin.csproj", "{C978A054-BB44-4F47-B8D7-29F6CF076CEE}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Api", "Nethermind.Api\Nethermind.Api.csproj", "{9DFE98E5-BC3D-44F0-9198-ABF1837ED989}"
 EndProject
@@ -100,10 +98,6 @@ Global
 		{A2C71F4A-FC08-428C-8113-5D13490DF4DC}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{A2C71F4A-FC08-428C-8113-5D13490DF4DC}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{A2C71F4A-FC08-428C-8113-5D13490DF4DC}.Release|Any CPU.Build.0 = Release|Any CPU
-		{7A57B6D8-741B-4346-B91B-9D554D4A0BB1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{7A57B6D8-741B-4346-B91B-9D554D4A0BB1}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{7A57B6D8-741B-4346-B91B-9D554D4A0BB1}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{7A57B6D8-741B-4346-B91B-9D554D4A0BB1}.Release|Any CPU.Build.0 = Release|Any CPU
 		{5E62C0BD-2B38-4195-AB9B-FF2927B54A2C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{5E62C0BD-2B38-4195-AB9B-FF2927B54A2C}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{5E62C0BD-2B38-4195-AB9B-FF2927B54A2C}.Release|Any CPU.ActiveCfg = Release|Any CPU

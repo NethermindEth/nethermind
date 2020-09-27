@@ -15,10 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using Nethermind.Logging;
+
 namespace Nethermind.Api.Extensions
 {
     public interface IPluginLoader
     {
-        void Load();
+        void Load(ILogManager logManager);
     }
 }
