@@ -17,7 +17,7 @@
 
 using Nethermind.Config;
 
-namespace Nethermind.Runner.Analytics
+namespace Nethermind.Analytics
 {
     public interface IAnalyticsConfig : IConfig
     {

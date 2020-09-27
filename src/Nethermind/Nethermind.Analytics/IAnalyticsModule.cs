@@ -14,29 +14,19 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Threading;
-using System.Threading.Tasks;
-using Nethermind.Api;
-using Nethermind.Runner.Ethereum.Publishers;
+using Nethermind.Int256;
+using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Modules;
 
-namespace Nethermind.Runner.Ethereum.Steps
+namespace Nethermind.Analytics
 {
-    [RunnerStepDependencies(typeof(StartBlockProcessor))]
-    public class StartLogProducer : IStep
+    [RpcModule(ModuleType.Clique)]
+    public interface IAnalyticsModule : IModule
     {
-        private readonly INethermindApi _api;
-
-        public StartLogProducer(INethermindApi api)
-        {
-            _api = api;
-        }
-
-        public Task Execute(CancellationToken cancellationToken)
-        {
-            // TODO: this should be configure in init maybe?
-            LogPublisher logPublisher = new LogPublisher(_api.EthereumJsonSerializer!, _api.LogManager);
-            _api.Publishers.Add(logPublisher);
-            return Task.CompletedTask;
-        }
+        [JsonRpcMethod(Description = "Retrieves ETH supply counted from state.", IsImplemented = true)]
+        ResultWrapper<UInt256> analytics_verifySupply();
+        
+        [JsonRpcMethod(Description = "Retrieves ETH supply counted from rewards.", IsImplemented = true)]
+        ResultWrapper<UInt256> analytics_verifyRewards();
     }
 }

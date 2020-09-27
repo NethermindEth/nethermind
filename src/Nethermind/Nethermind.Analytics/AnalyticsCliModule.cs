@@ -14,29 +14,27 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Threading;
-using System.Threading.Tasks;
-using Nethermind.Api;
-using Nethermind.Runner.Ethereum.Publishers;
+using Nethermind.Cli;
+using Nethermind.Cli.Modules;
 
-namespace Nethermind.Runner.Ethereum.Steps
+namespace Nethermind.Analytics
 {
-    [RunnerStepDependencies(typeof(StartBlockProcessor))]
-    public class StartLogProducer : IStep
+    [CliModule("analytics")]
+    public class AnalyticsCliModule : CliModuleBase
     {
-        private readonly INethermindApi _api;
-
-        public StartLogProducer(INethermindApi api)
+        [CliFunction("analytics", "verifySupply")]
+        public string VerifySupply()
         {
-            _api = api;
+            return NodeManager.Post<string>("analytics_verifySupply").Result;
         }
 
-        public Task Execute(CancellationToken cancellationToken)
+        [CliFunction("analytics", "verifyRewards")]
+        public string VerifyRewards()
         {
-            // TODO: this should be configure in init maybe?
-            LogPublisher logPublisher = new LogPublisher(_api.EthereumJsonSerializer!, _api.LogManager);
-            _api.Publishers.Add(logPublisher);
-            return Task.CompletedTask;
+            return NodeManager.Post<string>("analytics_verifyRewards").Result;
         }
+
+        public AnalyticsCliModule(ICliEngine cliEngine, INodeManager nodeManager)
+            : base(cliEngine, nodeManager) { }
     }
 }

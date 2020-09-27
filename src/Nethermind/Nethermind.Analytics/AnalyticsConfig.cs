@@ -15,7 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-namespace Nethermind.Runner.Analytics
+namespace Nethermind.Analytics
 {
     public class AnalyticsConfig : IAnalyticsConfig
     {

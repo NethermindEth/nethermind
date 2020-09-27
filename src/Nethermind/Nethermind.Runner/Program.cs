@@ -161,15 +161,6 @@ namespace Nethermind.Runner
                 
                 nethermindApi.WebSocketsManager = new WebSocketsManager();
 
-                // TODO: move this publisher
-                // IAnalyticsConfig analyticsConfig = configProvider.GetConfig<IAnalyticsConfig>();
-                // if (analyticsConfig.PluginsEnabled ||
-                //     analyticsConfig.StreamBlocks ||
-                //     analyticsConfig.StreamTransactions)
-                // {
-                //     webSocketsManager.AddModule(new AnalyticsWebSocketsModule(jsonSerializer), true);
-                // }
-
                 _processExit = new TaskCompletionSource<object?>();
                 _cancelKeySource = new TaskCompletionSource<object?>();
                 EthereumRunner ethereumRunner = new EthereumRunner(nethermindApi);

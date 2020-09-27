@@ -18,28 +18,32 @@
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Rewards;
+using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 
-namespace Nethermind.Blockchain.Visitors
+namespace Nethermind.Analytics
 {
     public class RewardsVerifier : IBlockTreeVisitor
     {
         private ILogger _logger;
         public bool PreventsAcceptingNewBlocks => true;
         public long StartLevelInclusive => 0;
-        public long EndLevelExclusive => 10618000;
+        public long EndLevelExclusive { get; }
 
         private UInt256 _genesisAllocations = UInt256.Parse("72009990499480000000000000");
         private UInt256 _uncles;
-        private UInt256 _blockRewards;
+        
+        public UInt256 BlockRewards { get; private set; }
 
-        public RewardsVerifier(ILogManager logManager)
+        public RewardsVerifier(ILogManager logManager, long endLevelExclusive)
         {
             _logger = logManager.GetClassLogger();
+            EndLevelExclusive = endLevelExclusive;
+            BlockRewards = _genesisAllocations;
         }
 
         private RewardCalculator _rewardCalculator = new RewardCalculator(MainnetSpecProvider.Instance);
@@ -55,11 +59,11 @@ namespace Nethermind.Blockchain.Visitors
                 }
                 else
                 {
-                    _blockRewards += rewards[i].Value;
+                    BlockRewards += rewards[i].Value;
                 }
             }
 
-            _logger.Info($"Visiting block {block.Number}, total supply is (genesis + miner rewards + uncle rewards) | {_genesisAllocations} + {_blockRewards} + {_uncles}");
+            _logger.Info($"Visiting block {block.Number}, total supply is (genesis + miner rewards + uncle rewards) | {_genesisAllocations} + {BlockRewards} + {_uncles}");
             return Task.FromResult(BlockVisitOutcome.None);
         }
 

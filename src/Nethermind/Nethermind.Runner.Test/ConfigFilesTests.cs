@@ -20,6 +20,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using FluentAssertions;
+using Nethermind.Analytics;
 using Nethermind.Api;
 using Nethermind.Baseline.Config;
 using Nethermind.Blockchain.Synchronization;
@@ -33,7 +34,6 @@ using Nethermind.Network.Config;
 using Nethermind.PubSub.Kafka;
 using Nethermind.Db.Blooms;
 using Nethermind.Db.Rocks.Config;
-using Nethermind.Runner.Analytics;
 using Nethermind.TxPool;
 using NUnit.Framework;
 

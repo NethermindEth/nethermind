@@ -23,21 +23,21 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 
-namespace Nethermind.State
+namespace Nethermind.Analytics
 {
     public class SupplyVerifier : ITreeVisitor
     {
         private readonly ILogger _logger;
-        private UInt256 _balance = UInt256.Zero;
         private HashSet<Keccak> _ignoreThisOne = new HashSet<Keccak>();
         private int _accountsVisited;
         private int _nodesVisited;
-        private int _missing;
 
         public SupplyVerifier(ILogger logger)
         {
             _logger = logger;
         }
+
+        public UInt256 Balance { get; set; } = UInt256.Zero;
 
         public bool ShouldVisit(Keccak nextNode)
         {
@@ -66,7 +66,7 @@ namespace Nethermind.State
 
         public void VisitBranch(TrieNode node, TrieVisitContext trieVisitContext)
         {
-            _logger.Info($"Balance after visiting {_accountsVisited} accounts and {_nodesVisited} nodes: {_balance}");
+            _logger.Info($"Balance after visiting {_accountsVisited} accounts and {_nodesVisited} nodes: {Balance}");
             _nodesVisited++;
 
             if (trieVisitContext.IsStorage)
@@ -102,10 +102,10 @@ namespace Nethermind.State
 
             AccountDecoder accountDecoder = new AccountDecoder();
             Account account = accountDecoder.Decode(node.Value.AsRlpStream());
-            _balance += account.Balance;
+            Balance += account.Balance;
             _accountsVisited++;
 
-            _logger.Info($"Balance after visiting {_accountsVisited} accounts and {_nodesVisited} nodes: {_balance}");
+            _logger.Info($"Balance after visiting {_accountsVisited} accounts and {_nodesVisited} nodes: {Balance}");
         }
 
         public void VisitCode(Keccak codeHash, TrieVisitContext trieVisitContext)

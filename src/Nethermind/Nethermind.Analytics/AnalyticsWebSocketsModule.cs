@@ -24,7 +24,7 @@ using Nethermind.PubSub;
 using Nethermind.Serialization.Json;
 using Nethermind.WebSockets;
 
-namespace Nethermind.Runner.Analytics
+namespace Nethermind.Analytics
 {
     public class AnalyticsWebSocketsModule : IWebSocketsModule, IPublisher
     {
