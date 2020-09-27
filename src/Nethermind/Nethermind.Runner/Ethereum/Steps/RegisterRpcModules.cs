@@ -58,7 +58,16 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_api.SpecProvider == null) throw new StepDependencyException(nameof(_api.SpecProvider));
             if (_api.TxSender == null) throw new StepDependencyException(nameof(_api.TxSender));
 
-            ILogger logger = _api.LogManager.GetClassLogger();
+            LogFinder logFinder = new LogFinder(
+                _api.BlockTree,
+                _api.ReceiptFinder,
+                _api.BloomStorage,
+                _api.LogManager,
+                new ReceiptsRecovery(), 
+                1024);
+
+            _api.LogFinder = logFinder;
+            
             IJsonRpcConfig jsonRpcConfig = _api.Config<IJsonRpcConfig>();
             if (!jsonRpcConfig.Enabled)
             {
@@ -91,11 +100,11 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _api.LogManager,
                     _api.StateReader,
                     _api);
-                _api.RpcModuleProvider.Register(new BoundedModulePool<IEthModule>(8, ethModuleFactory));
+                _api.RpcModuleProvider.Register(new BoundedModulePool<IEthModule>(ethModuleFactory, 8));
             }
 
             ProofModuleFactory proofModuleFactory = new ProofModuleFactory(_api.DbProvider, _api.BlockTree, _api.RecoveryStep, _api.ReceiptFinder, _api.SpecProvider, _api.LogManager);
-            _api.RpcModuleProvider.Register(new BoundedModulePool<IProofModule>(2, proofModuleFactory));
+            _api.RpcModuleProvider.Register(new BoundedModulePool<IProofModule>(proofModuleFactory, 2));
 
             DebugModuleFactory debugModuleFactory = new DebugModuleFactory(
                 _api.DbProvider, 
@@ -109,10 +118,10 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.ConfigProvider, 
                 _api.SpecProvider, 
                 _api.LogManager);
-            _api.RpcModuleProvider.Register(new BoundedModulePool<IDebugModule>(8, debugModuleFactory));
+            _api.RpcModuleProvider.Register(new BoundedModulePool<IDebugModule>(debugModuleFactory, 8));
 
             TraceModuleFactory traceModuleFactory = new TraceModuleFactory(_api.DbProvider, _api.BlockTree, rpcConfig, _api.RecoveryStep, _api.RewardCalculatorSource, _api.ReceiptStorage, _api.SpecProvider, _api.LogManager);
-            _api.RpcModuleProvider.Register(new BoundedModulePool<ITraceModule>(8, traceModuleFactory));
+            _api.RpcModuleProvider.Register(new BoundedModulePool<ITraceModule>(traceModuleFactory, 8));
             
             PersonalModule personalModule = new PersonalModule(
                 _api.EthereumEcdsa,
@@ -124,45 +133,8 @@ namespace Nethermind.Runner.Ethereum.Steps
             AdminModule adminModule = new AdminModule(_api.BlockTree, networkConfig, _api.PeerManager, _api.StaticNodesManager, _api.Enode, initConfig.BaseDbPath);
             _api.RpcModuleProvider.Register(new SingletonModulePool<IAdminModule>(adminModule, true));
 
-            LogFinder logFinder = new LogFinder(
-                _api.BlockTree,
-                _api.ReceiptFinder,
-                _api.BloomStorage,
-                _api.LogManager,
-                new ReceiptsRecovery(), 
-                1024);
-
-            // TODO: plugin ecosystem move to Baseline plugin
-            // if (baselineConfig.Enabled)
-            // {
-            //     IDbProvider dbProvider = _api.DbProvider!;
-            //     IStateReader stateReader = new StateReader(dbProvider.StateDb, dbProvider.CodeDb, _api.LogManager);
-            //
-            //     BaselineModuleFactory baselineModuleFactory = new BaselineModuleFactory(
-            //         _api.TxSender,
-            //         stateReader,
-            //         logFinder,
-            //         _api.BlockTree,
-            //         _api.AbiEncoder,
-            //         _api.FileSystem,
-            //         _api.LogManager);
-            //
-            //     _api.RpcModuleProvider.Register(new SingletonModulePool<IBaselineModule>(baselineModuleFactory, true));
-            //     if (logger?.IsInfo ?? false) logger!.Info($"Baseline RPC Module has been enabled");
-            // }
-
             TxPoolModule txPoolModule = new TxPoolModule(_api.BlockTree, _api.TxPoolInfoProvider, _api.LogManager);
             _api.RpcModuleProvider.Register(new SingletonModulePool<ITxPoolModule>(txPoolModule, true));
-            
-            // TODO: plugin ecosystem move to Baseline plugin
-            // IVaultConfig vaultConfig = _api.Config<IVaultConfig>();
-            // if (vaultConfig.Enabled)
-            // {
-            //     VaultService vaultService = new VaultService(vaultConfig, _api.LogManager);
-            //     VaultModule vaultModule = new VaultModule(vaultService, _api.LogManager);
-            //     _api.RpcModuleProvider.Register(new SingletonModulePool<IVaultModule>(vaultModule, true));
-            //     if (logger?.IsInfo ?? false) logger!.Info($"Vault RPC Module has been enabled");
-            // }
 
             NetModule netModule = new NetModule(_api.LogManager, new NetBridge(_api.Enode, _api.SyncServer));
             _api.RpcModuleProvider.Register(new SingletonModulePool<INetModule>(netModule, true));
@@ -181,7 +153,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             foreach (IPlugin plugin in _api.Plugins)
             {
-                await plugin.InitRpcModules(_api);
+                await plugin.InitRpcModules();
             }
         }
     }

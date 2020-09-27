@@ -64,17 +64,15 @@ namespace Nethermind.JsonRpc.Test.Modules
                 new SyncConfig(),
                 LimboLogs.Instance);
             
-            _modulePool = new BoundedModulePool<IEthModule>(
-                1, 
-                new EthModuleFactory(
-                    txPool,
-                    Substitute.For<ITxSender>(),
-                    NullWallet.Instance,
-                    blockTree,
-                    new JsonRpcConfig(),
-                    LimboLogs.Instance,
-                    Substitute.For<IStateReader>(),
-                    Substitute.For<IBlockchainBridgeFactory>()));
+            _modulePool = new BoundedModulePool<IEthModule>(new EthModuleFactory(
+                txPool,
+                Substitute.For<ITxSender>(),
+                NullWallet.Instance,
+                blockTree,
+                new JsonRpcConfig(),
+                LimboLogs.Instance,
+                Substitute.For<IStateReader>(),
+                Substitute.For<IBlockchainBridgeFactory>()), 1);
         }
 
         [Test]

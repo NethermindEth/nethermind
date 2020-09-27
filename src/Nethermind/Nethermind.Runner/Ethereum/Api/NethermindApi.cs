@@ -21,6 +21,7 @@ using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
@@ -28,7 +29,6 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Config;
 using Nethermind.Consensus;
-using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -36,9 +36,7 @@ using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Evm;
 using Nethermind.Facade;
-using Nethermind.Facade.Proxy;
 using Nethermind.Grpc;
-using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.KeyStore;
 using Nethermind.Logging;
@@ -84,8 +82,7 @@ namespace Nethermind.Runner.Ethereum.Api
 
             IMiningConfig miningConfig = ConfigProvider.GetConfig<IMiningConfig>();
             ISyncConfig syncConfig = ConfigProvider.GetConfig<ISyncConfig>();
-            IJsonRpcConfig rpcConfig = ConfigProvider.GetConfig<IJsonRpcConfig>();
-            
+
             return new BlockchainBridge(
                 readOnlyTxProcessingEnv,
                 TxPool,
@@ -93,12 +90,11 @@ namespace Nethermind.Runner.Ethereum.Api
                 FilterStore,
                 FilterManager,
                 EthereumEcdsa,
-                BloomStorage,
                 Timestamper,
+                LogFinder,
                 LogManager,
                 miningConfig.Enabled,
-                syncConfig.BeamSync && syncConfig.FastSync,
-                rpcConfig.FindLogBlockDepthLimit
+                syncConfig.BeamSync && syncConfig.FastSync
             );
         }
 
@@ -126,6 +122,7 @@ namespace Nethermind.Runner.Ethereum.Api
         public IIPResolver? IpResolver { get; set; }
         public IJsonSerializer EthereumJsonSerializer { get; set; } = new EthereumJsonSerializer();
         public IKeyStore? KeyStore { get; set; }
+        public ILogFinder? LogFinder { get; set; }
         public ILogManager LogManager { get; }
         public IMessageSerializationService MessageSerializationService { get; } = new MessageSerializationService();
         public IMonitoringService MonitoringService { get; set; } = NullMonitoringService.Instance;

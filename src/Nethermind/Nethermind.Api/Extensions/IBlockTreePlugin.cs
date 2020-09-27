@@ -40,21 +40,22 @@ namespace Nethermind.Api.Extensions
         public string Name => "Total Fees";
         public string Description => "Outputs Total Gas Fees By Block";
         public string Author => "Nethermind";
-
-        public Task InitNetworkProtocol(INethermindApi api)
-        {
-            return Task.CompletedTask;
-        }
-
-        public Task InitRpcModules(INethermindApi api)
-        {
-            return Task.CompletedTask;
-        }
+        
 
         public Task Init(INethermindApi api)
         {
             _api = api ?? throw new ArgumentNullException(nameof(api));
             return Task.CompletedTask;
+        }
+
+        public Task InitNetworkProtocol()
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task InitRpcModules()
+        {
+            throw new NotImplementedException();
         }
 
         public IBlockTreeVisitor Visitor { get; }

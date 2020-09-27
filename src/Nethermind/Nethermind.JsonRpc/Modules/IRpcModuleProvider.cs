@@ -23,7 +23,7 @@ namespace Nethermind.JsonRpc.Modules
     public interface IRpcModuleProvider
     {
         void Register<T>(IRpcModulePool<T> pool) where T : IModule;
-        
+
         IReadOnlyCollection<JsonConverter> Converters { get; }
 
         IReadOnlyCollection<ModuleType> Enabled { get; }

@@ -22,16 +22,16 @@ namespace Nethermind.Api.Extensions
 {
     public interface IPlugin : IDisposable
     {
-        public string Name { get; }
+        string Name { get; }
         
-        public string Description { get; }
+        string Description { get; }
         
-        public string Author { get; }
+        string Author { get; }
         
         Task Init(INethermindApi api);
         
-        Task InitNetworkProtocol(INethermindApi api);
+        Task InitNetworkProtocol();
         
-        Task InitRpcModules(INethermindApi api);
+        Task InitRpcModules();
     }
 }

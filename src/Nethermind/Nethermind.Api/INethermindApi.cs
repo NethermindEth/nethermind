@@ -22,6 +22,7 @@ using Nethermind.Abi;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
@@ -94,6 +95,7 @@ namespace Nethermind.Api
         IIPResolver? IpResolver { get; set; }
         IJsonSerializer EthereumJsonSerializer { get; set; }
         IKeyStore? KeyStore { get; set; }
+        ILogFinder LogFinder { get; set; }
         ILogManager LogManager { get; }
         IMessageSerializationService MessageSerializationService { get; }
         IMonitoringService MonitoringService { get; set; }
