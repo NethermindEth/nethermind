@@ -151,7 +151,7 @@ jobs:
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Synchronization.Test
   neth-tests5:
-    name: Runner Tests
+    name: Nethermind Tests 5
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -196,7 +196,7 @@ jobs:
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.DataMarketplace.WebSockets.Test
   neth-runner:
-    name: Nethermind Tests 5
+    name: Nethermind Runner Tests
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
