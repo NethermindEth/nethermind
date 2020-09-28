@@ -59,6 +59,11 @@ namespace Nethermind.Core
         public long Number { get; set; }
         public long GasUsed { get; set; }
         public long GasLimit { get; set; }
+        public long GasTarget // just rename the field but the meaning changes
+        {
+            get => GasLimit;
+            set => GasLimit = value;
+        }
         public UInt256 Timestamp { get; set; }
         public DateTime TimestampDate => DateTimeOffset.FromUnixTimeSeconds((long) Timestamp).LocalDateTime;
         public byte[] ExtraData { get; set; }
@@ -68,6 +73,7 @@ namespace Nethermind.Core
         public UInt256? TotalDifficulty { get; set; }
         public byte[] AuRaSignature { get; set; }
         public long? AuRaStep { get; set; }
+        public UInt256 BaseFee { get; set; }
         
         public bool HasBody => OmmersHash != Keccak.OfAnEmptySequenceRlp || TxRoot != Keccak.EmptyTreeHash;
         public SealEngineType SealEngineType { get; set; } = SealEngineType.Ethash;
@@ -90,6 +96,7 @@ namespace Nethermind.Core
             builder.AppendLine($"{indent}Tx Root: {TxRoot}");
             builder.AppendLine($"{indent}Receipts Root: {ReceiptsRoot}");
             builder.AppendLine($"{indent}State Root: {StateRoot}");
+            builder.AppendLine($"{indent}Base Fee: {BaseFee}");
 
             return builder.ToString();
         }

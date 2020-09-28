@@ -98,6 +98,12 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.Bloom = bloom;
             return this;
         }
+        
+        public BlockHeaderBuilder WithBaseFee(UInt256 baseFee)
+        {
+            TestObjectInternal.BaseFee = baseFee;
+            return this;
+        }
 
         public BlockHeaderBuilder WithStateRoot(Keccak stateRoot)
         {

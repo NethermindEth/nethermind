@@ -15,10 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -99,6 +101,15 @@ namespace Nethermind.Core.Test.Encoding
             Rlp rlp = Rlp.Encode((BlockHeader) null);
             BlockHeader decoded = Rlp.Decode<BlockHeader>(rlp);
             Assert.Null(decoded);
+        }
+        
+        [Test]
+        public void Can_encode_decode_with_base_fee()
+        {
+            BlockHeader header = Build.A.BlockHeader.WithBaseFee(123).TestObject;
+            Rlp rlp = Rlp.Encode(header);
+            BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp);
+            blockHeader.BaseFee.Should().Be(123);
         }
     }
 }

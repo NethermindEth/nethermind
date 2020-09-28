@@ -127,7 +127,7 @@ namespace Nethermind.Serialization.Rlp
                 GasUsed = (long) gasUsed,
                 Hash = Keccak.Compute(headerRlp)
             };
-            
+
             if (rlpStream.PeekPrefixAndContentLength().ContentLength == Keccak.Size)
             {
                 blockHeader.MixHash = rlpStream.DecodeKeccak();
@@ -137,6 +137,11 @@ namespace Nethermind.Serialization.Rlp
             {
                 blockHeader.AuRaStep = (long) rlpStream.DecodeUInt256();
                 blockHeader.AuRaSignature = rlpStream.DecodeByteArray();
+            }
+            
+            if (rlpStream.ReadNumberOfItemsRemaining() == 1)
+            {
+                blockHeader.BaseFee = rlpStream.DecodeUInt256();
             }
 
             if ((rlpBehaviors & RlpBehaviors.AllowExtraData) != RlpBehaviors.AllowExtraData)
@@ -186,6 +191,11 @@ namespace Nethermind.Serialization.Rlp
     	            rlpStream.Encode(item.Nonce);
                 }
             }
+
+            if (item.BaseFee != 0)
+            {
+                rlpStream.Encode(item.BaseFee);
+            }
         }
 
         public Rlp Encode(BlockHeader item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -222,7 +232,8 @@ namespace Nethermind.Serialization.Rlp
                                 + Rlp.LengthOf(item.GasLimit)
                                 + Rlp.LengthOf(item.GasUsed)
                                 + Rlp.LengthOf(item.Timestamp)
-                                + Rlp.LengthOf(item.ExtraData);
+                                + Rlp.LengthOf(item.ExtraData)
+                                + (item.BaseFee == 0 ? 0 : Rlp.LengthOf(item.BaseFee));
 
             if (notForSealing)
             {
