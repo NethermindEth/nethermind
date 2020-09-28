@@ -343,7 +343,7 @@ namespace Nethermind.Runner.Test
         [TestCase("*")]
         public void Tracer_tmeout_default_is_correct(string configWildcard)
         {
-            Test<IJsonRpcConfig, int>(configWildcard, c => c.TracerTimeout, 20000);
+            Test<IJsonRpcConfig, int>(configWildcard, c => c.Timeout, 20000);
         }
 
         [TestCase("*")]

@@ -29,13 +29,13 @@ namespace Nethermind.Baseline.JsonRpc
     {
         [JsonRpcMethod(
             Description = "Inserts a single leaf to a tree at the given 'address'",
-            IsReadOnly = false,
+            IsSharable = false,
             IsImplemented = true)]
         Task<ResultWrapper<Keccak>> baseline_insertLeaf(Address address, Address contractAddress, Keccak hash);
 
         [JsonRpcMethod(
             Description = "Inserts multiple leaves to a tree at the given 'address'",
-            IsReadOnly = false,
+            IsSharable = false,
             IsImplemented = true)]
         Task<ResultWrapper<Keccak>> baseline_insertLeaves(
             Address address,
@@ -44,7 +44,7 @@ namespace Nethermind.Baseline.JsonRpc
 
         [JsonRpcMethod(
             Description = "Gets a single leaf from a tree at the given 'address'",
-            IsReadOnly = true,
+            IsSharable = true,
             IsImplemented = true)]
         Task<ResultWrapper<BaselineTreeNode>> baseline_getLeaf(
             Address contractAddress,
@@ -53,7 +53,7 @@ namespace Nethermind.Baseline.JsonRpc
         
         [JsonRpcMethod(
             Description = "Gets root of a tree at the given 'address'",
-            IsReadOnly = true,
+            IsSharable = true,
             IsImplemented = true)]
         Task<ResultWrapper<Keccak>> baseline_getRoot(
             Address contractAddress,
@@ -61,7 +61,7 @@ namespace Nethermind.Baseline.JsonRpc
 
         [JsonRpcMethod(
             Description = "Gets multiple leaves from a tree at the given 'address'",
-            IsReadOnly = true,
+            IsSharable = true,
             IsImplemented = true)]
         Task<ResultWrapper<BaselineTreeNode[]>> baseline_getLeaves(
             Address contractAddress,
@@ -70,19 +70,19 @@ namespace Nethermind.Baseline.JsonRpc
 
         [JsonRpcMethod(
             Description = "Deploys a contract with the given 'contract type'. Requires the account to be unlocked.",
-            IsReadOnly = false,
+            IsSharable = false,
             IsImplemented = true)]
         Task<ResultWrapper<Keccak>> baseline_deploy(Address address, string contractType);
         
         [JsonRpcMethod(
             Description = "Deploys a contract with the given bytecode. Requires the account to be unlocked.",
-            IsReadOnly = false,
+            IsSharable = false,
             IsImplemented = true)]
         Task<ResultWrapper<Keccak>> baseline_deployBytecode(Address address, string byteCode);
 
         [JsonRpcMethod(
             Description = "Gets siblings path / proof of the given leaf.",
-            IsReadOnly = true,
+            IsSharable = true,
             IsImplemented = true)]
         Task<ResultWrapper<BaselineTreeNode[]>> baseline_getSiblings(
             Address contractAddress,
@@ -91,7 +91,7 @@ namespace Nethermind.Baseline.JsonRpc
         
         [JsonRpcMethod(
             Description = "Verifies a sibling path for a given root and leaf value.",
-            IsReadOnly = true,
+            IsSharable = true,
             IsImplemented = true)]
         Task<ResultWrapper<bool>> baseline_verify(
             Address contractAddress,
@@ -102,13 +102,13 @@ namespace Nethermind.Baseline.JsonRpc
 
         [JsonRpcMethod(
             Description = "Starts tracking a tree at the given address.",
-            IsReadOnly = false,
+            IsSharable = false,
             IsImplemented = true)]
         Task<ResultWrapper<bool>> baseline_track(Address contractAddress);
 
         [JsonRpcMethod(
             Description = "Lists all the tracked tree addresses.",
-            IsReadOnly = false,
+            IsSharable = false,
             IsImplemented = false)]
         Task<ResultWrapper<Address[]>> baseline_getTracked();
     }

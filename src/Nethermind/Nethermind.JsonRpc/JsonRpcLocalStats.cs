@@ -26,7 +26,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.JsonRpc
 {
-    public class JsonRpcLocalStats
+    public class JsonRpcLocalStats : IJsonRpcLocalStats
     {
         private readonly ITimestamper _timestamper;
         private readonly IJsonRpcConfig _jsonRpcConfig;
@@ -35,7 +35,7 @@ namespace Nethermind.JsonRpc
         private ConcurrentDictionary<string, MethodStats> _currentStats = new ConcurrentDictionary<string, MethodStats>();
         private ConcurrentDictionary<string, MethodStats> _previousStats = new ConcurrentDictionary<string, MethodStats>();
         private DateTime _lastReport = DateTime.MinValue;
-        private ILogger _logger;
+        private readonly ILogger _logger;
 
         public JsonRpcLocalStats(ITimestamper timestamper, IJsonRpcConfig jsonRpcConfig, ILogManager logManager)
         {
@@ -55,9 +55,12 @@ namespace Nethermind.JsonRpc
             public long MaxTimeOfSuccess { get; set; }
         }
 
-        public void ReportCall(string method, long handlingTimeMicroseconds, bool success)
+        public void ReportCall(string method, long handlingTimeMicroseconds, bool success) =>
+            ReportCall(new RpcReport(method, handlingTimeMicroseconds, success));
+        
+        public void ReportCall(in RpcReport report, long elapsedMicroseconds = 0)
         {
-            if(string.IsNullOrWhiteSpace(method))
+            if(string.IsNullOrWhiteSpace(report.Method))
             {
                 return;
             }
@@ -69,23 +72,22 @@ namespace Nethermind.JsonRpc
                 BuildReport();
             }
 
-            _currentStats.TryGetValue(method, out MethodStats methodStats);
-            if (methodStats == null)
-            {
-                methodStats = _currentStats.GetOrAdd(method, m => new MethodStats());
-            }
+            _currentStats.TryGetValue(report.Method, out MethodStats methodStats);
+            methodStats ??= _currentStats.GetOrAdd(report.Method, m => new MethodStats());
 
+            long reportHandlingTimeMicroseconds = elapsedMicroseconds == 0 ? report.HandlingTimeMicroseconds : elapsedMicroseconds;
+            
             lock (methodStats)
             {
-                if (success)
+                if (report.Success)
                 {
-                    methodStats.AvgTimeOfSuccesses = (methodStats.Successes * methodStats.AvgTimeOfSuccesses + handlingTimeMicroseconds) / ++methodStats.Successes;
-                    methodStats.MaxTimeOfSuccess = Math.Max(methodStats.MaxTimeOfSuccess, handlingTimeMicroseconds);
+                    methodStats.AvgTimeOfSuccesses = (methodStats.Successes * methodStats.AvgTimeOfSuccesses + reportHandlingTimeMicroseconds) / ++methodStats.Successes;
+                    methodStats.MaxTimeOfSuccess = Math.Max(methodStats.MaxTimeOfSuccess, reportHandlingTimeMicroseconds);
                 }
                 else
                 {
-                    methodStats.AvgTimeOfErrors = (methodStats.Errors * methodStats.AvgTimeOfErrors + handlingTimeMicroseconds) / ++methodStats.Errors;
-                    methodStats.MaxTimeOfError = Math.Max(methodStats.MaxTimeOfError, handlingTimeMicroseconds);
+                    methodStats.AvgTimeOfErrors = (methodStats.Errors * methodStats.AvgTimeOfErrors + reportHandlingTimeMicroseconds) / ++methodStats.Errors;
+                    methodStats.MaxTimeOfError = Math.Max(methodStats.MaxTimeOfError, reportHandlingTimeMicroseconds);
                 }
             }
         }

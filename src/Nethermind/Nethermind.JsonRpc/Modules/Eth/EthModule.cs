@@ -57,6 +57,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly IWallet _wallet;
 
         private readonly ILogger _logger;
+        private TimeSpan _cancellationTokenTimeout;
 
         private bool HasStateForBlock(BlockHeader header)
         {
@@ -83,6 +84,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _txPoolBridge = _txPool ?? throw new ArgumentNullException(nameof(_txPool));
             _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
+            _cancellationTokenTimeout = TimeSpan.FromMilliseconds(rpcConfig.Timeout);
         }
 
         public ResultWrapper<string> eth_protocolVersion()
@@ -402,8 +404,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             FixCallTx(transactionCall, head);
 
-            var tokenTimeout = TimeSpan.FromMilliseconds(_rpcConfig.TracerTimeout);
-            CancellationToken cancellationToken = new CancellationTokenSource(tokenTimeout).Token;
+            using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource(_cancellationTokenTimeout);
+            CancellationToken cancellationToken = cancellationTokenSource.Token;
             BlockchainBridge.CallOutput result = _blockchainBridge.EstimateGas(head, transactionCall.ToTransaction(), cancellationToken);
 
             if (result.Error == null)
@@ -634,12 +636,24 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public ResultWrapper<IEnumerable<FilterLog>> eth_getLogs(Filter filter)
         {
+            IEnumerable<FilterLog> GetLogs(BlockParameter blockParameter, BlockParameter toBlockParameter, CancellationTokenSource cancellationTokenSource, CancellationToken token)
+            {
+                using (cancellationTokenSource)
+                {
+                    foreach (FilterLog log in _blockchainBridge.GetLogs(blockParameter, toBlockParameter, filter.Address, filter.Topics, token))
+                    {
+                        yield return log;
+                    }
+                }
+            }
+            
             BlockParameter fromBlock = filter.FromBlock;
             BlockParameter toBlock = filter.ToBlock;
 
             try
             {
-                return ResultWrapper<IEnumerable<FilterLog>>.Success(_blockchainBridge.GetLogs(fromBlock, toBlock, filter.Address, filter.Topics));
+                CancellationTokenSource cancellationTokenSource = new CancellationTokenSource(_cancellationTokenTimeout);
+                return ResultWrapper<IEnumerable<FilterLog>>.Success(GetLogs(fromBlock, toBlock, cancellationTokenSource, cancellationTokenSource.Token));
             }
             catch (ArgumentException e)
             {

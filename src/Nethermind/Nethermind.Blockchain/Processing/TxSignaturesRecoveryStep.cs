@@ -27,6 +27,7 @@ namespace Nethermind.Blockchain.Processing
     {
         private readonly IEthereumEcdsa _ecdsa;
         private readonly ITxPool _txPool;
+        private readonly ISpecProvider _specProvider;
         private readonly ILogger _logger;
 
         /// <summary>
@@ -34,11 +35,13 @@ namespace Nethermind.Blockchain.Processing
         /// </summary>
         /// <param name="ecdsa">Needed to recover an address from a signature.</param>
         /// <param name="txPool">Finding transactions in mempool can speed up address recovery.</param>
+        /// <param name="specProvider">Spec Provider</param>
         /// <param name="logManager">Logging</param>
-        public TxSignaturesRecoveryStep(IEthereumEcdsa ecdsa, ITxPool txPool, ILogManager logManager)
+        public TxSignaturesRecoveryStep(IEthereumEcdsa ecdsa, ITxPool txPool, ISpecProvider specProvider, ILogManager logManager)
         {
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _txPool = txPool ?? throw new ArgumentNullException(nameof(ecdsa));
+            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
         
@@ -48,6 +51,8 @@ namespace Nethermind.Blockchain.Processing
             {
                 return;
             }
+
+            var releaseSpec = _specProvider.GetSpec(block.Number);
             
             for (int i = 0; i < block.Transactions.Length; i++)
             {
@@ -57,7 +62,8 @@ namespace Nethermind.Blockchain.Processing
                 Address sender = transaction?.SenderAddress;
 
                 Address blockTransactionAddress = blockTransaction.SenderAddress;
-                blockTransaction.SenderAddress = sender ?? _ecdsa.RecoverAddress(blockTransaction);
+                
+                blockTransaction.SenderAddress = sender ?? _ecdsa.RecoverAddress(blockTransaction, !releaseSpec.ValidateChainId);
                 if(_logger.IsTrace) _logger.Trace($"Recovered {blockTransaction.SenderAddress} sender for {blockTransaction.Hash} (tx pool cached value: {sender}, block transaction address: {blockTransactionAddress})");
             }
         }

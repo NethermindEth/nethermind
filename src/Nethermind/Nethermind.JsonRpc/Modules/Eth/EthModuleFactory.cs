@@ -20,6 +20,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -49,6 +50,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly IFilterStore _filterStore;
         private readonly IFilterManager _filterManager;
         private readonly IJsonRpcConfig _rpcConfig;
+        private readonly ISyncConfig _syncConfig;
         private readonly IBloomStorage _bloomStorage;
 
         public EthModuleFactory(
@@ -62,6 +64,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             IReceiptFinder receiptFinder,
             ISpecProvider specProvider,
             IJsonRpcConfig config,
+            ISyncConfig syncConfig,
             IBloomStorage bloomStorage,
             ILogManager logManager,
             bool isMining)
@@ -75,6 +78,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _rpcConfig = config ?? throw new ArgumentNullException(nameof(config));
+            _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _bloomStorage = bloomStorage ?? throw new ArgumentNullException(nameof(bloomStorage));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _isMining = isMining;
@@ -100,6 +104,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 Timestamper.Default,
                 _logManager,
                 _isMining,
+                _syncConfig.BeamSync && _syncConfig.FastSync,
                 _rpcConfig.FindLogBlockDepthLimit
                 );
             

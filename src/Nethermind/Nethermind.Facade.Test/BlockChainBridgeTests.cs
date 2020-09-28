@@ -73,7 +73,7 @@ namespace Nethermind.Facade.Test
             _ethereumEcdsa = Substitute.For<IEthereumEcdsa>();
             _bloomStorage = Substitute.For<IBloomStorage>();
             _specProvider = MainnetSpecProvider.Instance;
-            
+
             ReadOnlyTxProcessingEnv processingEnv = new ReadOnlyTxProcessingEnv(
                 new ReadOnlyDbProvider(_dbProvider, false),
                 new ReadOnlyBlockTree(_blockTree),
@@ -81,7 +81,7 @@ namespace Nethermind.Facade.Test
                 LimboLogs.Instance);
 
             processingEnv.TransactionProcessor = _transactionProcessor;
-            
+
             _blockchainBridge = new BlockchainBridge(
                 processingEnv,
                 _txPool,
@@ -92,6 +92,7 @@ namespace Nethermind.Facade.Test
                 _bloomStorage,
                 _timestamper,
                 LimboLogs.Instance,
+                false,
                 false);
         }
 
@@ -163,6 +164,75 @@ namespace Nethermind.Facade.Test
                 tx,
                 Arg.Is<BlockHeader>(bh => bh.Number == 10),
                 Arg.Any<ITxTracer>());
+        }
+
+        [TestCase(true, 0, 8)]
+        [TestCase(true, 7, 7)]
+        [TestCase(false, 0, 0)]
+        [TestCase(false, 7, 7)]
+        public void Bridge_beam_head_is_correct(bool isBeam, long headNumber, long? expectedNumber)
+        {
+            ReadOnlyTxProcessingEnv processingEnv = new ReadOnlyTxProcessingEnv(
+                new ReadOnlyDbProvider(_dbProvider, false),
+                new ReadOnlyBlockTree(_blockTree),
+                _specProvider,
+                LimboLogs.Instance);
+
+            Block head = Build.A.Block.WithNumber(headNumber).TestObject;
+            Block bestSuggested = Build.A.Block.WithNumber(8).TestObject;
+
+            _blockTree.Head.Returns(head);
+            _blockTree.BestSuggestedBody.Returns(bestSuggested);
+
+            _blockchainBridge = new BlockchainBridge(
+                processingEnv,
+                _txPool,
+                _receiptStorage,
+                _filterStore,
+                _filterManager,
+                _ethereumEcdsa,
+                _bloomStorage,
+                _timestamper,
+                LimboLogs.Instance,
+                false,
+                isBeam);
+
+            if (expectedNumber.HasValue)
+            {
+                _blockchainBridge.BeamHead.Number.Should().Be(expectedNumber);
+            }
+            else
+            {
+                _blockchainBridge.BeamHead.Should().BeNull();
+            }
+        }
+
+        [Test]
+        public void Bridge_beam_head_is_correct_in_beam()
+        {
+            ReadOnlyTxProcessingEnv processingEnv = new ReadOnlyTxProcessingEnv(
+                new ReadOnlyDbProvider(_dbProvider, false),
+                new ReadOnlyBlockTree(_blockTree),
+                _specProvider,
+                LimboLogs.Instance);
+
+            Block block = Build.A.Block.WithNumber(7).TestObject;
+            _blockTree.Head.Returns(block);
+
+            _blockchainBridge = new BlockchainBridge(
+                processingEnv,
+                _txPool,
+                _receiptStorage,
+                _filterStore,
+                _filterManager,
+                _ethereumEcdsa,
+                _bloomStorage,
+                _timestamper,
+                LimboLogs.Instance,
+                false,
+                false);
+
+            _blockchainBridge.BeamHead.Number.Should().Be(7);
         }
     }
 }
