@@ -108,8 +108,7 @@ namespace Nethermind.DataMarketplace.Initializers
                         new EthRequestDecoder());
                     break;
             }
-
-            // TODO: WTF, why not a wrapper...???? ayayayayaya
+            
             ndmApi.ConfigManager = new ConfigManager(defaultConfig, configRepository);
             ndmApi.NdmConfig = await ndmApi.ConfigManager.GetAsync(defaultConfig.Id);
             if (ndmApi.NdmConfig is null)

@@ -53,7 +53,6 @@ namespace Nethermind.Plugin.Baseline
                 var modulePool = new BoundedModulePool<IBaselineModule>(baselineModuleFactory, 2);
                 _api.RpcModuleProvider!.Register(modulePool);
                 
-                // TODO: we can probably do a default config for all plugins as INameConfig and Enabled property there
                 if (_logger.IsInfo) _logger.Info("Baseline RPC Module has been enabled");
             }
 
