@@ -288,8 +288,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 
             genesisHeader.Author = beneficiary;
             genesisHeader.Hash = Keccak.Zero; // need to run the block to know the actual hash
-            genesisHeader.Bloom = new Bloom();
-            genesisHeader.GasUsed = 0;
+            genesisHeader.Bloom = Bloom.Empty;
             genesisHeader.MixHash = mixHash;
             genesisHeader.Nonce = (ulong) nonce;
             genesisHeader.ReceiptsRoot = Keccak.EmptyTreeHash;

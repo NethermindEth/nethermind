@@ -61,7 +61,7 @@ namespace Nethermind.Serialization.Rlp
                 TxRoot = transactionsRoot,
                 ReceiptsRoot = receiptsRoot,
                 Bloom = bloom,
-                GasUsed = (long) gasUsed,
+                GasUsedLegacy = (long) gasUsed,
                 Hash = Keccak.Compute(headerRlp)
             };
             
@@ -124,7 +124,7 @@ namespace Nethermind.Serialization.Rlp
                 TxRoot = transactionsRoot,
                 ReceiptsRoot = receiptsRoot,
                 Bloom = bloom,
-                GasUsed = (long) gasUsed,
+                GasUsedLegacy = (long) gasUsed,
                 Hash = Keccak.Compute(headerRlp)
             };
 

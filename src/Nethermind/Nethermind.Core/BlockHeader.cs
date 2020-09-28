@@ -58,7 +58,9 @@ namespace Nethermind.Core
         public Bloom Bloom { get; set; }
         public UInt256 Difficulty { get; set; }
         public long Number { get; set; }
-        public long GasUsed { get; set; }
+        public long GasUsedLegacy { get; set; }
+        public long GasUsedEip1559 { get; set; }
+        public long GasUsed => GasUsedEip1559 + GasUsedLegacy;
         public long GasLimit { get; set; }
 
         public long GasTarget // just rename the field but the meaning changes
@@ -90,7 +92,7 @@ namespace Nethermind.Core
             return (GasTarget + GasTarget * (Number - transitionBlock) / migrationDuration) / 2;
         }
 
-        public long GasGasTargetLegacy(IReleaseSpec releaseSpec) => GasLimit - GetGasTarget1559(releaseSpec);
+        public long GetGasTargetLegacy(IReleaseSpec releaseSpec) => GasLimit - GetGasTarget1559(releaseSpec);
         public UInt256 Timestamp { get; set; }
         public DateTime TimestampDate => DateTimeOffset.FromUnixTimeSeconds((long) Timestamp).LocalDateTime;
         public byte[] ExtraData { get; set; }

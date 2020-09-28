@@ -48,7 +48,7 @@ namespace Nethermind.Facade.Proxy.Models
                 (long) GasLimit, Timestamp, ExtraData));
 
             block.Header.StateRoot = StateRoot;
-            block.Header.GasUsed = (long) GasUsed;
+            block.Header.GasUsedLegacy = (long) GasUsed;
             block.Header.Hash = Hash;
             block.Header.MixHash = MixHash;
             block.Header.Nonce = (ulong) Nonce;

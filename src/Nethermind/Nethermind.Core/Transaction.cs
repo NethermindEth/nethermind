@@ -30,6 +30,9 @@ namespace Nethermind.Core
 
         public UInt256 Nonce { get; set; }
         public UInt256 GasPrice { get; set; }
+        public UInt256 FeeCap { get; set; }
+        public bool IsEip1559 => FeeCap > UInt256.Zero;
+        public bool IsLegacy => !IsEip1559;
         public long GasLimit { get; set; }
         public Address To { get; set; }
         public UInt256 Value { get; set; }

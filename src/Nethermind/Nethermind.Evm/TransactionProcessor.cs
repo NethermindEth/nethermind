@@ -60,7 +60,15 @@ namespace Nethermind.Evm
 
         private void QuickFail(Transaction tx, BlockHeader block, ITxTracer txTracer, string reason)
         {
-            block.GasUsed += tx.GasLimit;
+            if (tx.IsEip1559)
+            {
+                block.GasUsedEip1559 += tx.GasLimit;
+            }
+            else
+            {
+                block.GasUsedLegacy += tx.GasLimit;
+            }
+            
             Address recipient = tx.To ?? ContractAddress.From(tx.SenderAddress, _stateProvider.GetNonce(tx.SenderAddress));
 
             _stateProvider.RecalculateStateRoot();
@@ -83,7 +91,17 @@ namespace Nethermind.Evm
 
             Address recipient = transaction.To;
             UInt256 value = transaction.Value;
-            UInt256 gasPrice = transaction.GasPrice;
+
+            if (block.BaseFee < transaction.FeeCap)
+            {
+                TraceLogInvalidTx(transaction, "MINER_PREMIUM_IS_NEGATIVE");
+                QuickFail(transaction, block, txTracer, "miner premium is negative");
+                return;
+            }
+            
+            UInt256 premiumPerGas = UInt256.Min(transaction.GasPrice, transaction.FeeCap - block.BaseFee);
+            UInt256 gasPrice = premiumPerGas + block.BaseFee;
+
             long gasLimit = transaction.GasLimit;
             byte[] machineCode = transaction.Init;
             byte[] data = transaction.Data ?? Array.Empty<byte>();
@@ -110,7 +128,9 @@ namespace Nethermind.Evm
                     return;
                 }
 
-                if (!isCall && gasLimit > block.GasLimit - block.GasUsed)
+                if (!isCall &&
+                    (transaction.IsEip1559 && gasLimit > block.GetGasTarget1559(spec) - block.GasUsedEip1559 ||
+                     transaction.IsLegacy && gasLimit > block.GetGasTargetLegacy(spec) - block.GasUsedLegacy))
                 {
                     TraceLogInvalidTx(transaction,
                         $"BLOCK_GAS_LIMIT_EXCEEDED {gasLimit} > {block.GasLimit} - {block.GasUsed}");
@@ -276,11 +296,11 @@ namespace Nethermind.Evm
                 {
                     if (!_stateProvider.AccountExists(gasBeneficiary))
                     {
-                        _stateProvider.CreateAccount(gasBeneficiary, (ulong) spentGas * gasPrice);
+                        _stateProvider.CreateAccount(gasBeneficiary, (ulong) spentGas * premiumPerGas);
                     }
                     else
                     {
-                        _stateProvider.AddToBalance(gasBeneficiary, (ulong) spentGas * gasPrice, spec);
+                        _stateProvider.AddToBalance(gasBeneficiary, (ulong) spentGas * premiumPerGas, spec);
                     }
                 }
             }
@@ -313,7 +333,14 @@ namespace Nethermind.Evm
 
             if (!isCall && notSystemTransaction)
             {
-                block.GasUsed += spentGas;
+                if (transaction.IsEip1559)
+                {
+                    block.GasUsedEip1559 += spentGas;
+                }
+                else
+                {
+                    block.GasUsedLegacy += spentGas;
+                }
             }
 
             if (txTracer.IsTracingReceipt)
