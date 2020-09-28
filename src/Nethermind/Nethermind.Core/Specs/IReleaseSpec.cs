@@ -209,6 +209,11 @@ namespace Nethermind.Core.Specs
         bool IsEip158IgnoredAccount(Address address);
 
         /// <summary>
+        /// Gas target and base fee, and fee burning.
+        /// </summary>
+        bool IsEip1559Enabled { get; }
+        
+        /// <summary>
         /// Should transactions be validated against chainId.
         /// </summary>
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>
@@ -219,5 +224,9 @@ namespace Nethermind.Core.Specs
         /// </summary>
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>
         bool ValidateReceipts => true;
+        
+        public long Eip1559TransitionBlock { get; }
+        
+        public long Eip1559MigrationDuration { get; }
     }
 }

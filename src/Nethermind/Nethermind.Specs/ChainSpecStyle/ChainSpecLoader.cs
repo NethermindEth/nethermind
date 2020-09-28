@@ -106,6 +106,8 @@ namespace Nethermind.Specs.ChainSpecStyle
                 Eip1884Transition = chainSpecJson.Params.Eip1884Transition,
                 Eip2028Transition = chainSpecJson.Params.Eip2028Transition,
                 Eip2200Transition = chainSpecJson.Params.Eip2200Transition,
+                Eip1559Transition = chainSpecJson.Params.Eip1559Transition,
+                Eip1559MigrationDuration = chainSpecJson.Params.Eip1559MigrationDuration,
                 TransactionPermissionContract = chainSpecJson.Params.TransactionPermissionContract,
                 TransactionPermissionContractTransition = chainSpecJson.Params.TransactionPermissionContractTransition,
                 ValidateChainIdTransition = chainSpecJson.Params.ValidateChainIdTransition,

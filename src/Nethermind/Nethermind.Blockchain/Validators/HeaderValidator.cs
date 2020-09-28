@@ -21,6 +21,7 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Int256;
 using Nethermind.Logging;
 
 namespace Nethermind.Blockchain.Validators
@@ -28,6 +29,7 @@ namespace Nethermind.Blockchain.Validators
     public class HeaderValidator : IHeaderValidator
     {
         private static readonly byte[] DaoExtraData = Bytes.FromHexString("0x64616f2d686172642d666f726b");
+        private static readonly UInt256 BaseFeeMaxChangeDenominator = 8;
 
         private readonly ISealValidator _sealValidator;
         private readonly ISpecProvider _specProvider;
@@ -82,8 +84,7 @@ namespace Nethermind.Blockchain.Validators
             {
                 if (header.Number == 0)
                 {
-                    var isGenesisValid = ValidateGenesis(header);
-                    ;
+                    bool isGenesisValid = ValidateGenesis(header);
                     if (!isGenesisValid)
                     {
                         if (_logger.IsWarn) _logger.Warn($"Invalid genesis block header ({header.Hash})");
@@ -135,7 +136,33 @@ namespace Nethermind.Blockchain.Validators
             }
 
             if (_logger.IsTrace) _logger.Trace($"Validating block {header.ToString(BlockHeader.Format.Short)}, extraData {header.ExtraData.ToHexString(true)}");
+            
+            bool baseFeeIsCorrect = true;
+            if (spec.IsEip1559Enabled)
+            {
+                long gasDelta = 0;
+                UInt256 feeDelta = 0;
+                UInt256 expectedBaseFee = 0;
+                if (parent.GasUsed >= parent.GasTarget)
+                {
+                    gasDelta = parent.GasUsed - parent.GasTarget;
+                    feeDelta = UInt256.Max(
+                        parent.BaseFee * (UInt256)gasDelta / (UInt256)parent.GasTarget / BaseFeeMaxChangeDenominator,
+                        UInt256.One);
+                    expectedBaseFee = parent.BaseFee + feeDelta;
+                }
+                else
+                {
+                    gasDelta = parent.GasTarget - parent.GasUsed;
+                    feeDelta = UInt256.Max(
+                        (parent.BaseFee * (UInt256)gasDelta - 1) / (UInt256)parent.GasTarget / BaseFeeMaxChangeDenominator + 1,
+                        UInt256.One);
+                    expectedBaseFee = parent.BaseFee - feeDelta;
+                }
 
+                baseFeeIsCorrect = expectedBaseFee == header.BaseFee;
+            }
+            
             return
                 totalDifficultyCorrect &&
                 gasUsedBelowLimit &&
@@ -145,7 +172,8 @@ namespace Nethermind.Blockchain.Validators
                 timestampMoreThanAtParent &&
                 numberIsParentPlusOne &&
                 hashAsExpected &&
-                extraDataValid;
+                extraDataValid &&
+                baseFeeIsCorrect;
         }
 
         protected virtual bool ValidateGasLimitRange(BlockHeader header, BlockHeader parent, IReleaseSpec spec)

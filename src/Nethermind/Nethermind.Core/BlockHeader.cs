@@ -20,6 +20,7 @@ using System.Text;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
 namespace Nethermind.Core
@@ -59,11 +60,37 @@ namespace Nethermind.Core
         public long Number { get; set; }
         public long GasUsed { get; set; }
         public long GasLimit { get; set; }
+
         public long GasTarget // just rename the field but the meaning changes
         {
             get => GasLimit;
             set => GasLimit = value;
         }
+
+        public long GetGasTarget1559(IReleaseSpec releaseSpec)
+        {
+            long transitionBlock = releaseSpec.Eip1559TransitionBlock;
+            long migrationDuration = releaseSpec.Eip1559MigrationDuration;
+            long finalBlock = transitionBlock + migrationDuration;
+            if (Number < transitionBlock)
+            {
+                return 0L;
+            }
+
+            if (Number == transitionBlock)
+            {
+                return GasLimit / 2;
+            }
+
+            if (Number >= finalBlock)
+            {
+                return GasTarget;
+            }
+
+            return (GasTarget + GasTarget * (Number - transitionBlock) / migrationDuration) / 2;
+        }
+
+        public long GasGasTargetLegacy(IReleaseSpec releaseSpec) => GasLimit - GetGasTarget1559(releaseSpec);
         public UInt256 Timestamp { get; set; }
         public DateTime TimestampDate => DateTimeOffset.FromUnixTimeSeconds((long) Timestamp).LocalDateTime;
         public byte[] ExtraData { get; set; }
@@ -74,7 +101,7 @@ namespace Nethermind.Core
         public byte[] AuRaSignature { get; set; }
         public long? AuRaStep { get; set; }
         public UInt256 BaseFee { get; set; }
-        
+
         public bool HasBody => OmmersHash != Keccak.OfAnEmptySequenceRlp || TxRoot != Keccak.EmptyTreeHash;
         public SealEngineType SealEngineType { get; set; } = SealEngineType.Ethash;
 
