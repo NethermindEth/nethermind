@@ -181,7 +181,8 @@ namespace Nethermind.Evm.Test.Tracing
         public void Throw_operation_canceled_after_given_timeout()
         {
             TimeSpan timeout = TimeSpan.FromMilliseconds(10);
-            CancellationToken cancellationToken = new CancellationTokenSource(timeout).Token;
+            using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource(timeout);
+            CancellationToken cancellationToken = cancellationTokenSource.Token;
             Transaction transactionMock = Substitute.For<Transaction>();
             EstimateGasTracer tracer = new EstimateGasTracer(cancellationToken);
 

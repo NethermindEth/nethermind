@@ -85,7 +85,7 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
             public StepDurationJson StepDuration { get; set; }
             public UInt256 BlockReward { get; set; }
             public long MaximumUncleCountTransition { get; set; }
-            public int MaximumUncleCount { get; set; }
+            public long? MaximumUncleCount { get; set; }
             public Address BlockRewardContractAddress { get; set; }
             public long? BlockRewardContractTransition { get; set; }
             public IDictionary<long, Address> BlockRewardContractTransitions { get; set; } = new Dictionary<long, Address>();
@@ -140,7 +140,7 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
 
             public long MaximumUncleCountTransition => Params.MaximumUncleCountTransition;
 
-            public int MaximumUncleCount => Params.MaximumUncleCount;
+            public long? MaximumUncleCount => Params.MaximumUncleCount;
             
             public Address BlockRewardContractAddress => Params.BlockRewardContractAddress;
             

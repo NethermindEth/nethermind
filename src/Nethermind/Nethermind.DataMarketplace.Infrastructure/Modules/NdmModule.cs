@@ -18,6 +18,7 @@ using System.IO;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Channels;
@@ -54,6 +55,9 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
             var readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, readOnlyTree,
                 services.SpecProvider, logManager);
             var jsonRpcConfig = services.ConfigProvider.GetConfig<IJsonRpcConfig>();
+            var syncConfig = services.ConfigProvider.GetConfig<ISyncConfig>();
+            bool isBeamSync = syncConfig.BeamSync && syncConfig.FastSync;
+            
             var blockchainBridge = new BlockchainBridge(
                 readOnlyTxProcessingEnv,
                 services.TxPool,
@@ -65,6 +69,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
                 Timestamper.Default,
                 logManager,
                 false,
+                isBeamSync,
                 jsonRpcConfig.FindLogBlockDepthLimit);
             
             var dataAssetRlpDecoder = new DataAssetDecoder();

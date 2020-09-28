@@ -39,8 +39,6 @@ namespace Nethermind.JsonRpc
         private IJsonRpcConfig _jsonRpcConfig;
         private ILogger _logger;
 
-        private JsonRpcLocalStats _localStats;
-
         private Recorder _recorder;
 
         public JsonRpcProcessor(IJsonRpcService jsonRpcService, IJsonSerializer jsonSerializer, IJsonRpcConfig jsonRpcConfig, IFileSystem fileSystem, ILogManager logManager)
@@ -60,7 +58,6 @@ namespace Nethermind.JsonRpc
             }
 
             BuildTraceJsonSerializer();
-            _localStats = new JsonRpcLocalStats(Timestamper.Default, jsonRpcConfig, logManager);
         }
 
         /// <summary>
@@ -148,8 +145,7 @@ namespace Nethermind.JsonRpc
                 JsonRpcResponse response = _jsonRpcService.GetErrorResponse(ErrorCodes.ParseError, "Incorrect message");
                 TraceResult(response);
                 stopwatch.Stop();
-                _localStats.ReportCall("# parsing error #", stopwatch.ElapsedMicroseconds(), false);
-                return JsonRpcResult.Single(response);
+                return JsonRpcResult.Single(response, new RpcReport("# parsing error #", stopwatch.ElapsedMicroseconds(), false));
             }
 
             if (rpcRequest.Model != null)
@@ -173,20 +169,21 @@ namespace Nethermind.JsonRpc
 
                 TraceResult(response);
                 stopwatch.Stop();
-                _localStats.ReportCall(rpcRequest.Model.Method, stopwatch.ElapsedMicroseconds(), isSuccess);
                 if (_logger.IsDebug) _logger.Debug($"  {rpcRequest.Model} handled in {stopwatch.Elapsed.TotalMilliseconds}ms");
-                return JsonRpcResult.Single(response);
+                return JsonRpcResult.Single(response, new RpcReport(rpcRequest.Model.Method, stopwatch.ElapsedMicroseconds(), isSuccess));
             }
 
             if (rpcRequest.Collection != null)
             {
                 if (_logger.IsDebug) _logger.Debug($"{rpcRequest.Collection.Count} JSON RPC requests");
 
-                var responses = new List<JsonRpcResponse>();
+                var responses = new List<JsonRpcResponse>(rpcRequest.Collection.Count);
+                var reports = new List<RpcReport>(rpcRequest.Collection.Count);
                 int requestIndex = 0;
                 Stopwatch singleRequestWatch = new Stopwatch();
-                foreach (JsonRpcRequest jsonRpcRequest in rpcRequest.Collection)
+                for (var index = 0; index < rpcRequest.Collection.Count; index++)
                 {
+                    JsonRpcRequest jsonRpcRequest = rpcRequest.Collection[index];
                     singleRequestWatch.Restart();
 
                     Metrics.JsonRpcRequests++;
@@ -205,24 +202,23 @@ namespace Nethermind.JsonRpc
                     }
 
                     singleRequestWatch.Stop();
-                    _localStats.ReportCall(jsonRpcRequest.Method, singleRequestWatch.ElapsedMicroseconds(), isSuccess);
                     if (_logger.IsDebug) _logger.Debug($"  {requestIndex++}/{rpcRequest.Collection.Count} JSON RPC request - {jsonRpcRequest} handled after {singleRequestWatch.Elapsed.TotalMilliseconds}");
                     responses.Add(response);
+                    reports.Add(new RpcReport(jsonRpcRequest.Method, singleRequestWatch.ElapsedMicroseconds(), isSuccess));
                 }
 
                 TraceResult(responses);
                 stopwatch.Stop();
                 if (_logger.IsDebug) _logger.Debug($"  {rpcRequest.Collection.Count} requests handled in {stopwatch.Elapsed.TotalMilliseconds}ms");
-                return JsonRpcResult.Collection(responses);
+                return JsonRpcResult.Collection(responses, reports);
             }
 
             Metrics.JsonRpcInvalidRequests++;
             JsonRpcErrorResponse errorResponse = _jsonRpcService.GetErrorResponse(ErrorCodes.InvalidRequest, "Invalid request");
             TraceResult(errorResponse);
             stopwatch.Stop();
-            _localStats.ReportCall("# parsing error #", stopwatch.ElapsedMicroseconds(), false);
             if (_logger.IsDebug) _logger.Debug($"  Failed request handled in {stopwatch.Elapsed.TotalMilliseconds}ms");
-            return JsonRpcResult.Single(errorResponse);
+            return JsonRpcResult.Single(errorResponse, new RpcReport("# parsing error #", stopwatch.ElapsedMicroseconds(), false));
         }
 
         private void TraceResult(JsonRpcResponse response)
