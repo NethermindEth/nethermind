@@ -17,8 +17,9 @@
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Abi;
+using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
@@ -27,8 +28,6 @@ using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
-using Nethermind.Core.Caching;
-using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
@@ -36,12 +35,9 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
-using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Synchronization.BeamSync;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
-using Nethermind.Vault;
-using Nethermind.Vault.Config;
 using Nethermind.Wallet;
 
 namespace Nethermind.Runner.Ethereum.Steps
@@ -49,9 +45,10 @@ namespace Nethermind.Runner.Ethereum.Steps
     [RunnerStepDependencies(typeof(InitRlp), typeof(InitDatabase), typeof(SetupKeyStore))]
     public class InitializeBlockchain : IStep
     {
-        private readonly NethermindApi _api;
+        private readonly INethermindApi _api;
 
-        public InitializeBlockchain(NethermindApi api)
+        // ReSharper disable once MemberCanBeProtected.Global
+        public InitializeBlockchain(INethermindApi api)
         {
             _api = api;
         }
@@ -67,6 +64,19 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
             if (_api.DbProvider == null) throw new StepDependencyException(nameof(_api.DbProvider));
             if (_api.SpecProvider == null) throw new StepDependencyException(nameof(_api.SpecProvider));
+            
+            // TODO: can engine signer be just initialized in some block producer related step?
+            ISigner signer = NullSigner.Instance;
+            ISignerStore signerStore = NullSigner.Instance;
+            if (_api.Config<IMiningConfig>().Enabled)
+            {
+                Signer signerAndStore = new Signer(_api.SpecProvider.ChainId, _api.OriginalSignerKey, _api.LogManager);
+                signer = signerAndStore;
+                signerStore = signerAndStore;
+            }
+
+            _api.EngineSigner = signer;
+            _api.EngineSignerStore = signerStore;
 
             ILogger logger = _api.LogManager.GetClassLogger();
             IInitConfig initConfig = _api.Config<IInitConfig>();
@@ -76,12 +86,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                 logger.Warn($"{nameof(syncConfig.DownloadReceiptsInFastSync)} is selected but {nameof(syncConfig.DownloadBodiesInFastSync)} - enabling bodies to support receipts download.");
                 syncConfig.DownloadBodiesInFastSync = true;
             }
-            
+
             Account.AccountStartNonce = _api.ChainSpec.Parameters.AccountStartNonce;
-            
-            Signer signer = new Signer(_api.SpecProvider.ChainId, _api.OriginalSignerKey, _api.LogManager);
-            _api.EngineSigner = signer;
-            _api.EngineSignerStore = signer;
 
             _api.StateProvider = new StateProvider(
                 _api.DbProvider.StateDb,
@@ -97,27 +103,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.Config<ITxPoolConfig>(),
                 _api.StateProvider,
                 _api.LogManager);
-            
-            IVaultConfig vaultConfig = _api.Config<IVaultConfig>(); 
-            if (!vaultConfig.Enabled)
-            {
-                ITxSigner txSigner = new WalletTxSigner(_api.Wallet, _api.SpecProvider.ChainId);
-                TxSealer standardSealer = new TxSealer(txSigner, _api.Timestamper);
-                NonceReservingTxSealer nonceReservingTxSealer =
-                    new NonceReservingTxSealer(txSigner, _api.Timestamper, _api.TxPool);
-                _api.TxSender = new TxPoolSender(_api.TxPool, standardSealer, nonceReservingTxSealer);
-            }
-            else
-            {
-                IVaultService vaultService = new VaultService(vaultConfig, _api.LogManager);
-                IVaultWallet wallet = new VaultWallet(vaultService, vaultConfig.VaultId, _api.LogManager);
-                ITxSigner vaultSigner = new VaultTxSigner(wallet, _api.ChainSpec.ChainId);
-                
-                // change vault to provide, use sealer to set the gas price as well
-                _api.TxSender = new VaultTxSender(vaultSigner, vaultConfig, _api.ChainSpec.ChainId);
-            }
 
-            IBloomConfig? bloomConfig = _api.Config<IBloomConfig>();
+            IBloomConfig bloomConfig = _api.Config<IBloomConfig>();
 
             IFileStoreFactory fileStoreFactory = initConfig.DiagnosticMode == DiagnosticMode.MemDb
                 ? (IFileStoreFactory) new InMemoryDictionaryFileStoreFactory()
@@ -132,9 +119,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             _api.ChainLevelInfoRepository = new ChainLevelInfoRepository(_api.DbProvider.BlockInfosDb);
 
             _api.BlockTree = new BlockTree(
-                _api.DbProvider.BlocksDb,
-                _api.DbProvider.HeadersDb,
-                _api.DbProvider.BlockInfosDb,
+                _api.DbProvider,
                 _api.ChainLevelInfoRepository,
                 _api.SpecProvider,
                 _api.TxPool,
@@ -150,7 +135,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             _api.ReceiptStorage = initConfig.StoreReceipts ? (IReceiptStorage?) new PersistentReceiptStorage(_api.DbProvider.ReceiptsDb, _api.SpecProvider, new ReceiptsRecovery()) : NullReceiptStorage.Instance;
             _api.ReceiptFinder = new FullInfoReceiptFinder(_api.ReceiptStorage, new ReceiptsRecovery(), _api.BlockTree);
-            
+
             _api.RecoveryStep = new TxSignaturesRecoveryStep(_api.EthereumEcdsa, _api.TxPool, _api.SpecProvider, _api.LogManager);
 
             _api.StorageProvider = new StorageProvider(
@@ -197,8 +182,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.LogManager);
 
             ReadOnlyDbProvider readOnly = new ReadOnlyDbProvider(_api.DbProvider, false);
-            StateReader stateReader = new StateReader(readOnly.StateDb, readOnly.CodeDb, _api.LogManager);
-            _api.TxPoolInfoProvider = new TxPoolInfoProvider(stateReader, _api.TxPool);
+            _api.StateReader = new StateReader(readOnly.StateDb, readOnly.CodeDb, _api.LogManager);
+            _api.TxPoolInfoProvider = new TxPoolInfoProvider(_api.StateReader, _api.TxPool);
 
             _api.MainBlockProcessor = CreateBlockProcessor();
 
@@ -228,14 +213,25 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _api.RewardCalculatorSource!,
                     _api.BlockProcessingQueue,
                     _api.SyncModeSelector!);
-                
+
                 _api.DisposeStack.Push(beamBlockchainProcessor);
             }
 
+            // TODO: can take the tx sender from plugin here maybe
+            ITxSigner txSigner = new WalletTxSigner(_api.Wallet, _api.SpecProvider.ChainId);
+            TxSealer standardSealer = new TxSealer(txSigner, _api.Timestamper);
+            NonceReservingTxSealer nonceReservingTxSealer =
+                new NonceReservingTxSealer(txSigner, _api.Timestamper, _api.TxPool);
+            _api.TxSender = new TxPoolSender(_api.TxPool, standardSealer, nonceReservingTxSealer);
+
+            // TODO: possibly hide it (but need to confirm that NDM does not really need it)
+            _api.FilterStore = new FilterStore();
+            _api.FilterManager = new FilterManager(_api.FilterStore, _api.MainBlockProcessor, _api.TxPool, _api.LogManager);
+            
             return Task.CompletedTask;
         }
 
-        protected virtual  HeaderValidator CreateHeaderValidator() =>
+        protected virtual HeaderValidator CreateHeaderValidator() =>
             new HeaderValidator(
                 _api.BlockTree,
                 _api.SealValidator,

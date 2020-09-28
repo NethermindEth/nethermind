@@ -18,7 +18,6 @@
 
 using System;
 using System.Runtime.InteropServices;
-using System.Runtime.InteropServices.WindowsRuntime;
 using System.Security;
 using Nethermind.Native;
 

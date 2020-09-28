@@ -19,7 +19,7 @@ using System.Threading.Tasks;
 
 namespace Nethermind.PubSub.Kafka
 {
-    public interface IKafkaTypeProducer : IDisposable
+    public interface IKafkaTypedPublisher : IDisposable
     {
         Task PublishAsync<T>(string topic, T data) where T : class;
     }

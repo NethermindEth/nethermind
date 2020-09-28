@@ -19,6 +19,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using Nethermind.Api;
 using Nethermind.Runner.Ethereum.Api;
 
 namespace Nethermind.Runner.Ethereum.Steps
@@ -26,32 +27,31 @@ namespace Nethermind.Runner.Ethereum.Steps
     public class EthereumStepsLoader : IEthereumStepsLoader
     {
         private readonly Assembly[] _stepsAssemblies;
-        private readonly Type _baseContextType = typeof(NethermindApi);
+        private readonly Type _baseApiType = typeof(INethermindApi);
 
         public EthereumStepsLoader(params Assembly[] stepsAssemblies)
         {
             _stepsAssemblies = stepsAssemblies;
         }
         
-        public IEnumerable<StepInfo> LoadSteps(Type contextType)
+        public IEnumerable<StepInfo> LoadSteps(Type apiType)
         {
-            if (contextType != _baseContextType
-                && contextType.BaseType != _baseContextType)
+            if (!apiType.GetInterfaces().Contains(_baseApiType))
             {
-                throw new NotSupportedException("Multilevel inheritance context are not supported");
+                throw new NotSupportedException($"api type must implement {_baseApiType.Name}");
             }
             
             List<Type> allStepTypes = new List<Type>();
             foreach (Assembly stepsAssembly in _stepsAssemblies)
             {
-                allStepTypes.AddRange(stepsAssembly.GetTypes()
+                allStepTypes.AddRange(stepsAssembly.GetExportedTypes()
                     .Where(t => !t.IsInterface && !t.IsAbstract && IsStepType(t)));
             }
             
             return allStepTypes
                 .Select(s => new StepInfo(s, GetStepBaseType(s)))
                 .GroupBy(s => s.StepBaseType)
-                .Select(g => SelectImplementation(g.ToArray(), contextType))
+                .Select(g => SelectImplementation(g.ToArray(), apiType))
                 .Where(s => s != null)
                 .Select(s => s!);
         }
@@ -63,26 +63,26 @@ namespace Nethermind.Runner.Ethereum.Steps
                 c => c.GetParameters().Select(p => p.ParameterType).SequenceEqual(expectedParams));
         }
 
-        private StepInfo? SelectImplementation(StepInfo[] stepsWithTheSameBase, Type contextType)
+        private StepInfo? SelectImplementation(StepInfo[] stepsWithTheSameBase, Type apiType)
         {
-            var stepsWithMatchingContextType = stepsWithTheSameBase
-                .Where(t => HasConstructorWithParameter(t.StepType, contextType)).ToArray();
+            var stepsWithMatchingApiType = stepsWithTheSameBase
+                .Where(t => HasConstructorWithParameter(t.StepType, apiType)).ToArray();
 
-            if (stepsWithMatchingContextType.Length != 1)
+            if (stepsWithMatchingApiType.Length != 1)
             {
-                // base context type this time
-                stepsWithMatchingContextType = stepsWithTheSameBase
-                    .Where(t => HasConstructorWithParameter(t.StepType, _baseContextType)).ToArray();    
+                // base API type this time
+                stepsWithMatchingApiType = stepsWithTheSameBase
+                    .Where(t => HasConstructorWithParameter(t.StepType, _baseApiType)).ToArray();    
             }
             
-            if (stepsWithMatchingContextType.Length > 1)
+            if (stepsWithMatchingApiType.Length > 1)
             {
                 string stepsDescribed = string.Join(", ", stepsWithTheSameBase.Select(s => s.StepType.Name));
                 throw new StepDependencyException(
-                    $"Found {stepsWithMatchingContextType.Length} steps with matching context type among {stepsDescribed}");
+                    $"Found {stepsWithMatchingApiType.Length} steps with matching API type among {stepsDescribed}");
             }
 
-            return stepsWithMatchingContextType.Length == 1 ? stepsWithMatchingContextType[0] : null;
+            return stepsWithMatchingApiType.Length == 1 ? stepsWithMatchingApiType[0] : null;
         }
         
         private static bool IsStepType(Type t) => typeof(IStep).IsAssignableFrom(t);

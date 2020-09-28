@@ -102,7 +102,7 @@ namespace Nethermind.DataMarketplace.Core.Services
                 Nonce = nonce
             };
             // check  
-            _wallet.Sign(transaction, await _blockchainBridge.GetNetworkIdAsync());
+            _wallet.Sign(transaction, (int)await _blockchainBridge.GetNetworkIdAsync());
 
             return await _blockchainBridge.SendOwnTransactionAsync(transaction);
         }

@@ -23,9 +23,9 @@ using Confluent.SchemaRegistry;
 using Confluent.SchemaRegistry.Serdes;
 using Nethermind.PubSub.Kafka.Consumer.Avro.Models;
 using JsonSerializer = Utf8Json.JsonSerializer;
-using Block = Nethermind.PubSub.Models.Block;
-using Transaction = Nethermind.PubSub.Models.Transaction;
-using TransactionReceipt = Nethermind.PubSub.Models.TransactionReceipt;
+using Block = Nethermind.PubSub.Kafka.Models.Block;
+using Transaction = Nethermind.PubSub.Kafka.Models.Transaction;
+using TransactionReceipt = Nethermind.PubSub.Kafka.Models.TransactionReceipt;
 
 namespace Nethermind.PubSub.Kafka.Consumer
 {

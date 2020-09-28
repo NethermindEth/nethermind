@@ -1,8 +1,5 @@
 ﻿using Nethermind.Core.Crypto;
 using Nethermind.Int256;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace Nethermind.Network.P2P.Subprotocols.Les
 {

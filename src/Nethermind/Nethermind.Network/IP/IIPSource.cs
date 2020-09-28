@@ -14,12 +14,13 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core;
+using System.Net;
+using System.Threading.Tasks;
 
 namespace Nethermind.Network.IP
 {
     public interface IIPSource
     {
-        bool TryGetIP(out System.Net.IPAddress ipAddress);
+        Task<(bool Success, IPAddress Ip)> TryGetIP();
     }
 }

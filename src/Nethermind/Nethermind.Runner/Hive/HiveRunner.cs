@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -24,27 +23,20 @@ using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Logging;
-using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Wallet;
 
 namespace Nethermind.Runner.Hive
 {
-    public class HiveRunner : IRunner
+    public class HiveRunner
     {
-        private readonly IJsonSerializer _jsonSerializer;
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
         private readonly IConfigProvider _configurationProvider;
 
-        public HiveRunner(IBlockTree blockTree,
-            IJsonSerializer jsonSerializer,
-            IConfigProvider configurationProvider,
-            ILogger logger)
+        public HiveRunner(IBlockTree blockTree, IConfigProvider configurationProvider, ILogger logger)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _jsonSerializer = jsonSerializer ?? throw new ArgumentNullException(nameof(jsonSerializer));
             _configurationProvider = configurationProvider ?? throw new ArgumentNullException(nameof(configurationProvider));
         }
 

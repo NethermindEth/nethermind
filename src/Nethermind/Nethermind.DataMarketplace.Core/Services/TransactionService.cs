@@ -114,7 +114,7 @@ namespace Nethermind.DataMarketplace.Core.Services
             
             var transaction = transactionDetails.Transaction;
             update(transaction);
-            _wallet.Sign(transaction, await _blockchainBridge.GetNetworkIdAsync());
+            _wallet.Sign(transaction, (int)await _blockchainBridge.GetNetworkIdAsync());
             var hash = await _blockchainBridge.SendOwnTransactionAsync(transaction);
             if (hash is null)
             {

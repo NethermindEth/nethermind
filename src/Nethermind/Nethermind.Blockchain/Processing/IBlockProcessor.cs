@@ -24,8 +24,30 @@ namespace Nethermind.Blockchain.Processing
 {
     public interface IBlockProcessor
     {
-        Block[] Process(Keccak newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer);
+        /// <summary>
+        /// Processes a group of blocks starting with a state defined by the <paramref name="newBranchStateRoot"/>.
+        /// </summary>
+        /// <param name="newBranchStateRoot">Initial state for the processed branch.</param>
+        /// <param name="suggestedBlocks">List of blocks to be processed.</param>
+        /// <param name="processingOptions">Options to use for processor and transaction processor.</param>
+        /// <param name="blockTracer">
+        /// Block tracer to use. By default either <see cref="NullBlockTracer"/> or <see cref="BlockReceiptsTracer"/>
+        /// </param>
+        /// <returns>List of processed blocks.</returns>
+        Block[] Process(
+            Keccak newBranchStateRoot,
+            List<Block> suggestedBlocks,
+            ProcessingOptions processingOptions,
+            IBlockTracer blockTracer);
+        
+        /// <summary>
+        /// Fired after a block has been processed.
+        /// </summary>
         event EventHandler<BlockProcessedEventArgs> BlockProcessed;
+        
+        /// <summary>
+        /// Fired after a transaction has been processed (even if inside the block).
+        /// </summary>
         event EventHandler<TxProcessedEventArgs> TransactionProcessed;
     }
 }

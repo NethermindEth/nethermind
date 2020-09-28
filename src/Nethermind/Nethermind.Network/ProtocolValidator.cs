@@ -22,8 +22,6 @@ using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
-using Nethermind.Network.P2P.Subprotocols.Eth;
-using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 

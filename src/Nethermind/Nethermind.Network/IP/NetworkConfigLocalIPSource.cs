@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Net;
+using System.Threading.Tasks;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 
@@ -31,11 +32,11 @@ namespace Nethermind.Network.IP
             _logger = logManager.GetClassLogger<NetworkConfigLocalIPSource>();
         }
         
-        public bool TryGetIP(out IPAddress ipAddress)
+        public Task<(bool, IPAddress)> TryGetIP()
         {
             if (_config.LocalIp != null)
             {
-                bool result = IPAddress.TryParse(_config.LocalIp, out ipAddress);
+                bool result = IPAddress.TryParse(_config.LocalIp, out IPAddress ipAddress);
                 
                 if (result)
                 {
@@ -46,11 +47,10 @@ namespace Nethermind.Network.IP
                     if (_logger.IsWarn) _logger.Warn($"Local IP override: {nameof(NetworkConfig)}.{nameof(NetworkConfig.LocalIp)} = {_config.LocalIp} has incorrect format.");
                 }
 
-                return result;
+                return Task.FromResult((result, ipAddress));
             }
-
-            ipAddress = null;
-            return false;
+            
+            return Task.FromResult((false, (IPAddress)null));
         }
     }
 }

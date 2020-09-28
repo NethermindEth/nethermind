@@ -25,9 +25,8 @@ using Block = Nethermind.Core.Block;
 
 namespace Nethermind.Facade
 {
-    public interface IBlockchainBridge
+    public interface IBlockchainBridge : ILogFinder
     {
-        int GetNetworkId();
         Block BeamHead { get; }
         bool IsMining { get; }
         void RecoverTxSenders(Block block);

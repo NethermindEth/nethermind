@@ -32,6 +32,7 @@ using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Stats.Model;
+using LogLevel = DotNetty.Handlers.Logging.LogLevel;
 
 namespace Nethermind.Network.Rlpx
 {
@@ -90,7 +91,7 @@ namespace Nethermind.Network.Rlpx
                     .Group(_bossGroup, _workerGroup)
                     .Channel<TcpServerSocketChannel>()
                     .ChildOption(ChannelOption.SoBacklog, 100)
-                    .Handler(new LoggingHandler("BOSS", DotNetty.Handlers.Logging.LogLevel.TRACE))
+                    .Handler(new LoggingHandler("BOSS", LogLevel.TRACE))
                     .ChildHandler(new ActionChannelInitializer<ISocketChannel>(ch =>
                     {
                         Session session = new Session(LocalPort, _logManager, ch);
@@ -195,7 +196,7 @@ namespace Nethermind.Network.Rlpx
             NettyHandshakeHandler handshakeHandler = new NettyHandshakeHandler(_serializationService, _handshakeService, session, role, _logManager, _group);
 
             IChannelPipeline pipeline = channel.Pipeline;
-            pipeline.AddLast(new LoggingHandler(session.Direction.ToString().ToUpper(), DotNetty.Handlers.Logging.LogLevel.TRACE));
+            pipeline.AddLast(new LoggingHandler(session.Direction.ToString().ToUpper(), LogLevel.TRACE));
             if (session.Direction == ConnectionDirection.Out)
             {
                 pipeline.AddLast("enc-handshake-dec", new LengthFieldBasedFrameDecoder(ByteOrder.BigEndian, ushort.MaxValue, 0, 2, 0, 0, true));

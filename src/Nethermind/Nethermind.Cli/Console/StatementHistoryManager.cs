@@ -73,7 +73,8 @@ namespace Nethermind.Cli.Console
         {
             try
             {
-                _cliConsole.WriteInteresting($"Loading history file from {Path.Combine(AppDomain.CurrentDomain.BaseDirectory, HistoryFilePath)}" + Environment.NewLine);
+                _cliConsole.WriteInteresting(
+                    $"Loading history file from {Path.Combine(AppDomain.CurrentDomain.BaseDirectory!, HistoryFilePath)}" + Environment.NewLine);
 
                 if (File.Exists(HistoryFilePath))
                 {

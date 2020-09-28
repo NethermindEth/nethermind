@@ -23,14 +23,14 @@ namespace Nethermind.JsonRpc.Modules
         private readonly T _onlyInstance;
         private readonly bool _allowExclusive;
 
-        public SingletonModulePool(T module, bool allowExclusive)
+        public SingletonModulePool(T module, bool allowExclusive = true)
         {
             Factory = new SingletonFactory<T>(module);
             _onlyInstance = module;
             _allowExclusive = allowExclusive;
         }
 
-        public SingletonModulePool(IRpcModuleFactory<T> factory, bool allowExclusive)
+        public SingletonModulePool(IRpcModuleFactory<T> factory, bool allowExclusive = true)
         {
             Factory = factory;
             _onlyInstance = factory.Create();

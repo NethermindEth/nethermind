@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Net;
+using System.Threading.Tasks;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 
@@ -31,11 +32,11 @@ namespace Nethermind.Network.IP
             _logger = logManager.GetClassLogger<NetworkConfigExternalIPSource>();
         }
         
-        public bool TryGetIP(out IPAddress ipAddress)
+        public Task<(bool, IPAddress)> TryGetIP()
         {
             if (_config.ExternalIp != null)
             {
-                bool result = IPAddress.TryParse(_config.ExternalIp, out ipAddress);
+                bool result = IPAddress.TryParse(_config.ExternalIp, out IPAddress ipAddress);
                 
                 if (result)
                 {
@@ -46,11 +47,10 @@ namespace Nethermind.Network.IP
                     if (_logger.IsWarn) _logger.Warn($"External IP override: {nameof(NetworkConfig)}.{nameof(NetworkConfig.ExternalIp)} = {_config.ExternalIp} has incorrect format.");
                 }
 
-                return result;
+                return Task.FromResult((result, ipAddress));
             }
-
-            ipAddress = null;
-            return false;
+            
+            return Task.FromResult((false, (IPAddress)null));
         }
     }
 }

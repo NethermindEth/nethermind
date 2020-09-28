@@ -22,6 +22,6 @@ namespace Nethermind.Runner.Ethereum.Steps
 {
     public interface IEthereumStepsLoader
     {
-        public IEnumerable<StepInfo> LoadSteps(Type contextType);
+        public IEnumerable<StepInfo> LoadSteps(Type apiType);
     }
 }

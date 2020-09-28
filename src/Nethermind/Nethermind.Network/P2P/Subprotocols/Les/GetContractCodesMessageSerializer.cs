@@ -16,9 +16,7 @@
 
 using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
-using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
-using System;
 
 namespace Nethermind.Network.P2P.Subprotocols.Les
 {

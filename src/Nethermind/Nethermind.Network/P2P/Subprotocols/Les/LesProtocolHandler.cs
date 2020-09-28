@@ -15,24 +15,24 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Synchronization.FastSync;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
+using Nethermind.Synchronization.FastSync;
 using Nethermind.TxPool;
-using Nethermind.Blockchain.Synchronization;
-using Nethermind.Serialization.Rlp;
-using System.Collections.Generic;
-using Nethermind.Core.Extensions;
-using System.Linq;
 
 namespace Nethermind.Network.P2P.Subprotocols.Les
 {
