@@ -176,15 +176,10 @@ namespace Nethermind.Synchronization.FastBlocks
                 }
                 else
                 {
-                    Keccak receiptsRoot = new ReceiptTrie(blockInfo.BlockNumber, _specProvider, receipts).RootHash;
-                    if (receiptsRoot != header.ReceiptsRoot)
-                    {
-                        preparedReceipts = null;
-                    }
-                    else
-                    {
-                        preparedReceipts = receipts;
-                    }
+                    IReleaseSpec releaseSpec = _specProvider.GetSpec(blockInfo.BlockNumber);
+                    preparedReceipts = receipts.GetReceiptsRoot(releaseSpec, header.ReceiptsRoot) != header.ReceiptsRoot 
+                        ? null 
+                        : receipts;
                 }
             }
 

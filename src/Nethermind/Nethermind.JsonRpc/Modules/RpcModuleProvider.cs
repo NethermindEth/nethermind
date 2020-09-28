@@ -128,7 +128,7 @@ namespace Nethermind.JsonRpc.Modules
             var methods = type.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly);
             return methods.ToDictionary(
                 x => x.Name.Trim(),
-                x => (x, x.GetCustomAttribute<JsonRpcMethodAttribute>()?.IsReadOnly ?? true));
+                x => (x, x.GetCustomAttribute<JsonRpcMethodAttribute>()?.IsSharable ?? true));
         }
         
         private class ResolvedMethodInfo

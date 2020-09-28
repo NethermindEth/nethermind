@@ -61,6 +61,19 @@ namespace Nethermind.Specs.ChainSpecStyle
         /// <summary>
         /// Block at which the transaction permission contract should start being used.
         /// </summary>
-        public long ? TransactionPermissionContractTransition { get; set; }
+        public long? TransactionPermissionContractTransition { get; set; }
+
+        /// <summary>
+        /// Optional, will be included for block 0 by default - Block before which any chain_id in the signature of a replay-protected transaction is accepted.
+        /// After this transition block, the transactions’ chain_id must match with the spec chain_id to be considered valid.
+        /// </summary>
+        /// <remarks>Backward compatibility for early Kovan blocks.</remarks>
+        public long? ValidateChainIdTransition { get; set; }
+        
+        /// <summary>
+        /// Optional, will be included for block 0 by default - Transition block before which the state root in transaction’s receipt can be stripped.
+        /// </summary>
+        /// <returns></returns>
+        public long? ValidateReceiptsTransition { get; set; }
     }
 }

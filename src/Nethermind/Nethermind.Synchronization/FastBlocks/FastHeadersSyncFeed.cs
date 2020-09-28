@@ -35,6 +35,13 @@ namespace Nethermind.Synchronization.FastBlocks
 {
     public class HeadersSyncFeed : SyncFeed<HeadersSyncBatch?>
     {
+        private readonly IDictionary<int, IDictionary<long, ulong>> _historicalOverrides = new Dictionary<int, IDictionary<long, ulong>>()
+        {
+            // Kovan has some wrong difficulty in early blocks before using proper AuRa difficulty calculation
+            // In order to support that we need to support another pivot
+            { ChainId.Kovan, new Dictionary<long, ulong>() { {148240, 19430113280} } }
+        };
+        
         private readonly ILogger _logger;
         private readonly ISyncPeerPool _syncPeerPool;
         private readonly ISyncReport _syncReport;
@@ -111,6 +118,8 @@ namespace Nethermind.Synchronization.FastBlocks
             _nextHeaderDiff = startTotalDifficulty;
 
             _lowestRequestedHeaderNumber = startNumber + 1;
+
+            _historicalOverrides.TryGetValue(_blockTree.ChainId, out _expectedDifficultyOverride); 
 
             Activate();
         }
@@ -511,6 +520,8 @@ namespace Nethermind.Synchronization.FastBlocks
             return added;
         }
 
+        private readonly IDictionary<long, ulong>? _expectedDifficultyOverride;
+
         private AddBlockResult InsertHeader(BlockHeader header)
         {
             if (header.IsGenesis)
@@ -521,8 +532,16 @@ namespace Nethermind.Synchronization.FastBlocks
             AddBlockResult insertOutcome = _blockTree.Insert(header);
             if (insertOutcome == AddBlockResult.Added || insertOutcome == AddBlockResult.AlreadyKnown)
             {
+                ulong nextHeaderDiff = 0;
                 _nextHeaderHash = header.ParentHash;
-                _nextHeaderDiff = (header.TotalDifficulty ?? 0) - header.Difficulty;
+                if (_expectedDifficultyOverride?.TryGetValue(header.Number, out nextHeaderDiff) == true)
+                {
+                    _nextHeaderDiff = nextHeaderDiff;
+                }
+                else
+                {
+                    _nextHeaderDiff = (header.TotalDifficulty ?? 0) - header.Difficulty;
+                }
             }
 
             return insertOutcome;

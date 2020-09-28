@@ -23,7 +23,7 @@ namespace Nethermind.Crypto
     public interface IEthereumEcdsa : IEcdsa
     {
         void Sign(PrivateKey privateKey, Transaction tx, bool isEip155Enabled = true);
-        Address RecoverAddress(Transaction tx);
+        Address RecoverAddress(Transaction tx, bool useTxChainId = false);
         Address RecoverAddress(Signature signature, Keccak message);
         Address RecoverAddress(Span<byte> signatureBytes, Keccak message);
         bool Verify(Address sender, Transaction tx);

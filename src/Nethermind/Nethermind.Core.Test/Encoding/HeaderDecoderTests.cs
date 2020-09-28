@@ -16,6 +16,7 @@
 
 using System;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
@@ -33,16 +34,40 @@ namespace Nethermind.Core.Test.Encoding
                 .WithMixHash(Keccak.Compute("mix_hash"))
                 .WithNonce(1000)
                 .TestObject;
-            
+
             HeaderDecoder decoder = new HeaderDecoder();
             Rlp rlp = decoder.Encode(header);
             var decoderContext = new Rlp.ValueDecoderContext(rlp.Bytes);
             BlockHeader decoded = decoder.Decode(ref decoderContext);
             decoded.Hash = decoded.CalculateHash();
-            
+
             Assert.AreEqual(header.Hash, decoded.Hash, "hash");
         }
-        
+
+        [Test]
+        public void Can_decode_tricky()
+        {
+            BlockHeader header = Build.A.BlockHeader
+                .WithMixHash(Keccak.Compute("mix_hash"))
+                .WithTimestamp(2730)
+                .WithNonce(1000)
+                .TestObject;
+
+            HeaderDecoder decoder = new HeaderDecoder();
+            Rlp rlp = decoder.Encode(header);
+            rlp.Bytes[2]++;
+            string bytesWithAAA = rlp.Bytes.ToHexString();
+            bytesWithAAA = bytesWithAAA.Replace("820aaa", "83000aaa");
+            
+            rlp = new Rlp(Bytes.FromHexString(bytesWithAAA));
+
+            var decoderContext = new Rlp.ValueDecoderContext(rlp.Bytes);
+            BlockHeader decoded = decoder.Decode(ref decoderContext);
+            decoded.Hash = decoded.CalculateHash();
+
+            Assert.AreEqual(header.Hash, decoded.Hash, "hash");
+        }
+
         [Test]
         public void Can_decode_aura()
         {
@@ -51,27 +76,27 @@ namespace Nethermind.Core.Test.Encoding
             BlockHeader header = Build.A.BlockHeader
                 .WithAura(100000000, auRaSignature)
                 .TestObject;
-            
+
             HeaderDecoder decoder = new HeaderDecoder();
             Rlp rlp = decoder.Encode(header);
             var decoderContext = new Rlp.ValueDecoderContext(rlp.Bytes);
             BlockHeader decoded = decoder.Decode(ref decoderContext);
             decoded.Hash = decoded.CalculateHash();
-            
+
             Assert.AreEqual(header.Hash, decoded.Hash, "hash");
         }
-        
+
         [Test]
         public void Get_length_null()
         {
             HeaderDecoder decoder = new HeaderDecoder();
             Assert.AreEqual(1, decoder.GetLength(null, RlpBehaviors.None));
         }
-        
+
         [Test]
         public void Can_handle_nulls()
         {
-            Rlp rlp = Rlp.Encode((BlockHeader)null);
+            Rlp rlp = Rlp.Encode((BlockHeader) null);
             BlockHeader decoded = Rlp.Decode<BlockHeader>(rlp);
             Assert.Null(decoded);
         }

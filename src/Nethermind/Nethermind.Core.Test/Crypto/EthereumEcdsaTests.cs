@@ -73,5 +73,18 @@ namespace Nethermind.Core.Test.Crypto
             Address address = ecdsa.RecoverAddress(tx);
             Assert.AreEqual(key.Address, address);
         }
+        
+        [Test]
+        public void Recover_kovan([Values(false, true)] bool eip155)
+        {
+            EthereumEcdsa singEcdsa = new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance);
+            PrivateKey key = Build.A.PrivateKey.TestObject;
+            Transaction tx = Build.A.Transaction.TestObject;
+            singEcdsa.Sign(key, tx, eip155);
+            
+            EthereumEcdsa recoverEcdsa = new EthereumEcdsa(ChainId.Kovan, LimboLogs.Instance);
+            Address address = recoverEcdsa.RecoverAddress(tx, true);
+            Assert.AreEqual(key.Address, address);
+        }
     }
 }
