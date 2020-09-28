@@ -75,7 +75,7 @@ namespace Nethermind.Api.Extensions
                 }
                 catch (Exception e)
                 {
-                    logger.Error($"Faile to load plugin {pluginAssembly}", e);
+                    logger.Error($"Failed to load plugin {pluginAssembly}", e);
                 }
             }
         }

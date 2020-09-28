@@ -71,11 +71,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 1024);
 
             _api.LogFinder = logFinder;
-            
-            // TODO: possibly hide it (but need to confirm that NDM does not really need it)
-            _api.FilterStore = new FilterStore();
-            _api.FilterManager = new FilterManager(_api.FilterStore, _api.MainBlockProcessor, _api.TxPool, _api.LogManager);
-            
+
             IJsonRpcConfig jsonRpcConfig = _api.Config<IJsonRpcConfig>();
             if (!jsonRpcConfig.Enabled)
             {

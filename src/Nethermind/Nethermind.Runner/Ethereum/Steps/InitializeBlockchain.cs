@@ -19,6 +19,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
@@ -223,6 +224,10 @@ namespace Nethermind.Runner.Ethereum.Steps
                 new NonceReservingTxSealer(txSigner, _api.Timestamper, _api.TxPool);
             _api.TxSender = new TxPoolSender(_api.TxPool, standardSealer, nonceReservingTxSealer);
 
+            // TODO: possibly hide it (but need to confirm that NDM does not really need it)
+            _api.FilterStore = new FilterStore();
+            _api.FilterManager = new FilterManager(_api.FilterStore, _api.MainBlockProcessor, _api.TxPool, _api.LogManager);
+            
             return Task.CompletedTask;
         }
 
