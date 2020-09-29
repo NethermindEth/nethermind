@@ -143,19 +143,20 @@ namespace Nethermind.Blockchain.Validators
                 long gasDelta = 0;
                 UInt256 feeDelta = 0;
                 UInt256 expectedBaseFee = 0;
-                if (parent.GasUsed >= parent.GasTarget)
+                long gasTarget = parent.GetGasTarget1559(spec);
+                if (parent.GasUsed >= gasTarget)
                 {
-                    gasDelta = parent.GasUsed - parent.GasTarget;
+                    gasDelta = parent.GasUsed - gasTarget;
                     feeDelta = UInt256.Max(
-                        parent.BaseFee * (UInt256)gasDelta / (UInt256)parent.GasTarget / BaseFeeMaxChangeDenominator,
+                        parent.BaseFee * (UInt256)gasDelta / (UInt256)gasTarget / BaseFeeMaxChangeDenominator,
                         UInt256.One);
                     expectedBaseFee = parent.BaseFee + feeDelta;
                 }
                 else
                 {
-                    gasDelta = parent.GasTarget - parent.GasUsed;
+                    gasDelta = gasTarget - parent.GasUsed;
                     feeDelta = parent.BaseFee == 0 ? 0 : UInt256.Max(
-                        (parent.BaseFee * (UInt256)gasDelta - 1) / (UInt256)parent.GasTarget / BaseFeeMaxChangeDenominator + 1,
+                        (parent.BaseFee * (UInt256)gasDelta - 1) / (UInt256)gasTarget / BaseFeeMaxChangeDenominator + 1,
                         UInt256.One);
                     expectedBaseFee = parent.BaseFee - feeDelta;
                 }

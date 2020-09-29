@@ -92,15 +92,17 @@ namespace Nethermind.Evm
             Address recipient = transaction.To;
             UInt256 value = transaction.Value;
 
-            if (block.BaseFee < transaction.FeeCap)
+            UInt256 feeCap = transaction.IsEip1559 ? transaction.FeeCap : transaction.GasPrice;
+            UInt256 baseFee = transaction.IsEip1559 ? block.BaseFee : UInt256.Zero;
+            if (baseFee > feeCap)
             {
                 TraceLogInvalidTx(transaction, "MINER_PREMIUM_IS_NEGATIVE");
                 QuickFail(transaction, block, txTracer, "miner premium is negative");
                 return;
             }
             
-            UInt256 premiumPerGas = UInt256.Min(transaction.GasPrice, transaction.FeeCap - block.BaseFee);
-            UInt256 gasPrice = premiumPerGas + block.BaseFee;
+            UInt256 premiumPerGas = UInt256.Min(transaction.GasPremium, feeCap - baseFee);
+            UInt256 gasPrice = premiumPerGas + baseFee;
 
             long gasLimit = transaction.GasLimit;
             byte[] machineCode = transaction.Init;

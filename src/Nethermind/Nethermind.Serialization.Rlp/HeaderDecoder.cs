@@ -76,7 +76,7 @@ namespace Nethermind.Serialization.Rlp
                 blockHeader.AuRaSignature = decoderContext.DecodeByteArray();
             }
             
-            if (decoderContext.ReadNumberOfItemsRemaining() == 1)
+            if (decoderContext.ReadNumberOfItemsRemaining() != 0 && !decoderContext.IsSequenceNext())
             {
                 blockHeader.BaseFee = decoderContext.DecodeUInt256();
             }
