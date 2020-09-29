@@ -50,7 +50,6 @@ namespace Nethermind.Network
         private readonly IPeerLoader _peerLoader;
         private readonly ManualResetEventSlim _peerUpdateRequested = new ManualResetEventSlim(false);
         private readonly PeerComparer _peerComparer;
-        private readonly PeerEqualityComparer _peerEqualityComparer;
         private readonly LocalPeerPool _peerPool;
         
         private int _pending;
@@ -93,7 +92,6 @@ namespace Nethermind.Network
             _peerStorage.StartBatch();
             _peerPool = new LocalPeerPool(_logger);
             _peerComparer = new PeerComparer(_stats);
-            _peerEqualityComparer = new PeerEqualityComparer();
         }
 
         public IReadOnlyCollection<Peer> ActivePeers => _activePeers.Values.ToList().AsReadOnly();

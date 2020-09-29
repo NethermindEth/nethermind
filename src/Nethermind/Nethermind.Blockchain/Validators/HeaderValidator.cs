@@ -154,12 +154,17 @@ namespace Nethermind.Blockchain.Validators
                 else
                 {
                     gasDelta = parent.GasTarget - parent.GasUsed;
-                    feeDelta = UInt256.Max(
+                    feeDelta = parent.BaseFee == 0 ? 0 : UInt256.Max(
                         (parent.BaseFee * (UInt256)gasDelta - 1) / (UInt256)parent.GasTarget / BaseFeeMaxChangeDenominator + 1,
                         UInt256.One);
                     expectedBaseFee = parent.BaseFee - feeDelta;
                 }
 
+                if (spec.Eip1559TransitionBlock == header.Number)
+                {
+                    expectedBaseFee = 1.GWei();
+                }
+                
                 baseFeeIsCorrect = expectedBaseFee == header.BaseFee;
             }
             

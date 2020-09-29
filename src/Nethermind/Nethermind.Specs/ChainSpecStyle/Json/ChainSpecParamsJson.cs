@@ -43,6 +43,8 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
         
         public Keccak ForkCanonHash { get; set; }
         
+        public long? Eip7Transition { get; set; }
+        
         public long? Eip150Transition { get; set; }
         
         public long? Eip152Transition { get; set; }

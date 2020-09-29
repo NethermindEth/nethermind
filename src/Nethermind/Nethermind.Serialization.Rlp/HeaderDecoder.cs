@@ -76,6 +76,11 @@ namespace Nethermind.Serialization.Rlp
                 blockHeader.AuRaSignature = decoderContext.DecodeByteArray();
             }
             
+            if (decoderContext.ReadNumberOfItemsRemaining() == 1)
+            {
+                blockHeader.BaseFee = decoderContext.DecodeUInt256();
+            }
+            
             if ((rlpBehaviors & RlpBehaviors.AllowExtraData) != RlpBehaviors.AllowExtraData)
             {
                 decoderContext.Check(headerCheck);
@@ -138,8 +143,8 @@ namespace Nethermind.Serialization.Rlp
                 blockHeader.AuRaStep = (long) rlpStream.DecodeUInt256();
                 blockHeader.AuRaSignature = rlpStream.DecodeByteArray();
             }
-            
-            if (rlpStream.ReadNumberOfItemsRemaining() == 1)
+
+            if (rlpStream.ReadNumberOfItemsRemaining() != 0 && !rlpStream.IsSequenceNext())
             {
                 blockHeader.BaseFee = rlpStream.DecodeUInt256();
             }
