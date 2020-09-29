@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Abstractions;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -26,7 +27,6 @@ using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Wallet;
 
 namespace Nethermind.Runner.Hive
 {
@@ -36,16 +36,19 @@ namespace Nethermind.Runner.Hive
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
         private readonly IConfigProvider _configurationProvider;
+        private readonly IFileSystem _fileSystem;
 
         public HiveRunner(IBlockTree blockTree,
             IJsonSerializer jsonSerializer,
             IConfigProvider configurationProvider,
-            ILogger logger)
+            ILogger logger,
+            IFileSystem fileSystem)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _jsonSerializer = jsonSerializer ?? throw new ArgumentNullException(nameof(jsonSerializer));
             _configurationProvider = configurationProvider ?? throw new ArgumentNullException(nameof(configurationProvider));
+            _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
         }
 
         public Task Start(CancellationToken cancellationToken)
@@ -128,13 +131,13 @@ namespace Nethermind.Runner.Hive
 
         private void InitializeChain(string chainFile)
         {
-            if (!File.Exists(chainFile))
+            if (!_fileSystem.File.Exists(chainFile))
             {
                 if (_logger.IsInfo) _logger.Info($"HIVE Chain file does not exist: {chainFile}, skipping");
                 return;
             }
 
-            byte[] chainFileContent = File.ReadAllBytes(chainFile);
+            byte[] chainFileContent = _fileSystem.File.ReadAllBytes(chainFile);
             var rlpStream = new RlpStream(chainFileContent);
             var blocks = new List<Block>();
             
