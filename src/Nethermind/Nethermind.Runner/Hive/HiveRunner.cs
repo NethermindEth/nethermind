@@ -56,6 +56,7 @@ namespace Nethermind.Runner.Hive
 
             ListEnvironmentVariables();
             InitializeBlocks(hiveConfig.BlocksDir, cancellationToken);
+            InitializeChain(hiveConfig.ChainFile);
 
             _blockTree.NewHeadBlock -= BlockTreeOnNewHeadBlock;
 
@@ -122,6 +123,35 @@ namespace Nethermind.Runner.Hive
                 
                 if (_logger.IsInfo) _logger.Info($"HIVE Processing block file: {block.File} - {block.Block.ToString(Block.Format.Short)}");
                 ProcessBlock(block.Block);
+            }
+        }
+
+        private void InitializeChain(string chainFile)
+        {
+            if (!File.Exists(chainFile))
+            {
+                if (_logger.IsInfo) _logger.Info($"HIVE Chain file does not exist: {chainFile}, skipping");
+                return;
+            }
+
+            byte[] chainFileContent = File.ReadAllBytes(chainFile);
+            var rlpStream = new RlpStream(chainFileContent);
+            var blocks = new List<Block>();
+            
+            if (_logger.IsInfo) _logger.Info($"HIVE Loading blocks from {chainFile}");
+            while (rlpStream.ReadNumberOfItemsRemaining() > 0)
+            {
+                rlpStream.PeekNextItem();
+                Block block = Rlp.Decode<Block>(rlpStream);
+                if (_logger.IsInfo) _logger.Info($"HIVE Reading a chain.rlp block {block.ToString(Block.Format.Short)}");
+                blocks.Add(block);
+            }
+
+            for (int i = 0; i < blocks.Count; i++)
+            {
+                Block block = blocks[i];
+                if (_logger.IsInfo) _logger.Info($"HIVE Processing a chain.rlp block {block.ToString(Block.Format.Short)}");
+                ProcessBlock(block);
             }
         }
 
