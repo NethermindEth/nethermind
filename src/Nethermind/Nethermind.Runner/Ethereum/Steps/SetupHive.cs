@@ -39,7 +39,14 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (hiveEnabled)
             {
                 if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
-                HiveRunner hiveRunner = new HiveRunner(_api.BlockTree, _api.ConfigProvider, _api.LogManager.GetClassLogger());
+
+                HiveRunner hiveRunner = new HiveRunner(
+                    _api.BlockTree,
+                    _api.EthereumJsonSerializer,
+                    _api.ConfigProvider,
+                    _api.LogManager.GetClassLogger(),
+                    _api.FileSystem
+                );
                 await hiveRunner.Start(cancellationToken);
             }
         }
