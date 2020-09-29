@@ -17,7 +17,6 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
 using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Runner.Hive;
 
@@ -40,7 +39,15 @@ namespace Nethermind.Runner.Ethereum.Steps
             {
                 if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
                 if (_api.EthereumJsonSerializer == null) throw new StepDependencyException(nameof(_api.EthereumJsonSerializer));
-                HiveRunner hiveRunner = new HiveRunner(_api.BlockTree, _api.EthereumJsonSerializer, _api.ConfigProvider, _api.LogManager.GetClassLogger());
+
+                HiveRunner hiveRunner = new HiveRunner(
+                    _api.BlockTree,
+                    _api.EthereumJsonSerializer,
+                    _api.ConfigProvider,
+                    _api.LogManager.GetClassLogger(),
+                    _api.FileSystem
+                );
+
                 await hiveRunner.Start(cancellationToken);
             }
         }
