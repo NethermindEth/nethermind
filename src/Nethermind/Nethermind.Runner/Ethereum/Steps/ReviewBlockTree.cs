@@ -16,6 +16,7 @@
 
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Logging;
@@ -26,10 +27,10 @@ namespace Nethermind.Runner.Ethereum.Steps
     [RunnerStepDependencies(typeof(StartBlockProcessor))]
     public class ReviewBlockTree : IStep
     {
-        private readonly NethermindApi _api;
+        private readonly INethermindApi _api;
         private ILogger _logger;
 
-        public ReviewBlockTree(NethermindApi api)
+        public ReviewBlockTree(INethermindApi api)
         {
             _api = api;
             _logger = _api.LogManager.GetClassLogger();

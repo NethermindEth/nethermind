@@ -20,7 +20,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Serialization.Rlp;
-using Node = Nethermind.Stats.Model.Node;
+using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.Serializers
 {

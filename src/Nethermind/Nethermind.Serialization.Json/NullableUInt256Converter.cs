@@ -34,7 +34,7 @@ namespace Nethermind.Serialization.Json
             _uInt256Converter = new UInt256Converter(conversion);
         }
 
-        public override void WriteJson(JsonWriter writer, UInt256? value, Newtonsoft.Json.JsonSerializer serializer)
+        public override void WriteJson(JsonWriter writer, UInt256? value, JsonSerializer serializer)
         {
             if (!value.HasValue)
             {
@@ -45,7 +45,7 @@ namespace Nethermind.Serialization.Json
             _uInt256Converter.WriteJson(writer, value.Value, serializer);
         }
 
-        public override UInt256? ReadJson(JsonReader reader, Type objectType, UInt256? existingValue, bool hasExistingValue, Newtonsoft.Json.JsonSerializer serializer)
+        public override UInt256? ReadJson(JsonReader reader, Type objectType, UInt256? existingValue, bool hasExistingValue, JsonSerializer serializer)
         {
             if (reader.TokenType == JsonToken.Null)
             {

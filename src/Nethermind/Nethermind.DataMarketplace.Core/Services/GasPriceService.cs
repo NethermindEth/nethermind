@@ -46,8 +46,12 @@ namespace Nethermind.DataMarketplace.Core.Services
 
         public GasPriceTypes? Types { get; private set; }
 
-        public GasPriceService(IHttpClient client, IConfigManager configManager, string configId,
-            ITimestamper timestamper, ILogManager logManager)
+        public GasPriceService(
+            IHttpClient client,
+            IConfigManager configManager,
+            string configId,
+            ITimestamper timestamper,
+            ILogManager logManager)
         {
             _client = client ?? throw new ArgumentNullException(nameof(client));
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));

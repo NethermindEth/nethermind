@@ -17,17 +17,18 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Runner.Ethereum.Api;
+using Nethermind.Api;
 using Nethermind.Runner.Hive;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
+    // TODO: hive should be a plugin and should be configured the standard way
     [RunnerStepDependencies(typeof(SetupKeyStore), typeof(LoadGenesisBlock))]
     public class SetupHive : IStep
     {
-        private readonly NethermindApi _api;
+        private readonly INethermindApi _api;
 
-        public SetupHive(NethermindApi api)
+        public SetupHive(INethermindApi api)
         {
             _api = api;
         }
@@ -38,7 +39,6 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (hiveEnabled)
             {
                 if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
-                if (_api.EthereumJsonSerializer == null) throw new StepDependencyException(nameof(_api.EthereumJsonSerializer));
 
                 HiveRunner hiveRunner = new HiveRunner(
                     _api.BlockTree,
@@ -47,7 +47,6 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _api.LogManager.GetClassLogger(),
                     _api.FileSystem
                 );
-
                 await hiveRunner.Start(cancellationToken);
             }
         }

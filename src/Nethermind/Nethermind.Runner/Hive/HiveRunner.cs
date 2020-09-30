@@ -30,9 +30,8 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Runner.Hive
 {
-    public class HiveRunner : IRunner
+    public class HiveRunner
     {
-        private readonly IJsonSerializer _jsonSerializer;
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
         private readonly IConfigProvider _configurationProvider;
@@ -46,7 +45,6 @@ namespace Nethermind.Runner.Hive
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _jsonSerializer = jsonSerializer ?? throw new ArgumentNullException(nameof(jsonSerializer));
             _configurationProvider = configurationProvider ?? throw new ArgumentNullException(nameof(configurationProvider));
             _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
         }

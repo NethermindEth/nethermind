@@ -17,6 +17,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
@@ -31,10 +32,10 @@ namespace Nethermind.Runner.Ethereum.Steps
     [RunnerStepDependencies(typeof(StartBlockProcessor), typeof(SetupKeyStore), typeof(ReviewBlockTree))]
     public abstract class StartBlockProducer : IStep
     {
-        private readonly NethermindApi _api;
+        private readonly INethermindApi _api;
         private BlockProducerContext? _blockProducerContext;
         
-        protected StartBlockProducer(NethermindApi api)
+        protected StartBlockProducer(INethermindApi api)
         {
             _api = api;
         }

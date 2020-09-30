@@ -4,8 +4,15 @@
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
   </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
+    <OutputPath>bin\Debug</OutputPath>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
+    <OutputPath>bin\Release</OutputPath>
+  </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Blockchain\Nethermind.Blockchain.csproj" />
+    <ProjectReference Include="..\Nethermind.Cli\Nethermind.Cli.csproj" />
     <ProjectReference Include="..\Nethermind.Config\Nethermind.Config.csproj" />
     <ProjectReference Include="..\Nethermind.Abi\Nethermind.Abi.csproj" />
     <ProjectReference Include="..\Nethermind.Facade\Nethermind.Facade.csproj" />

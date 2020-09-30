@@ -16,6 +16,7 @@
 // 
 
 using FluentAssertions;
+using Nethermind.Baseline.Tree;
 using Nethermind.Core.Crypto;
 using NUnit.Framework;
 

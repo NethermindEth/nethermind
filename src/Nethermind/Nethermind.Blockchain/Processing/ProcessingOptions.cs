@@ -22,16 +22,57 @@ namespace Nethermind.Blockchain.Processing
     public enum ProcessingOptions
     {
         None = 0,
+        
+        /// <summary>
+        /// It will not update the storage data (will discard any changes).
+        /// </summary>
         ReadOnlyChain = 1,
+        
+        /// <summary>
+        /// Will process the block even if it was processed in the past.
+        /// </summary>
         ForceProcessing = 2,
+        
+        /// <summary>
+        /// After processing will store all tx receipts in the storage.
+        /// </summary>
         StoreReceipts = 4,
+        
+        /// <summary>
+        /// Will process the block even if it is invalid.
+        /// </summary>
         NoValidation = 8,
+        
+        /// <summary>
+        /// Allows to process the block even if its parent is not on canonical chain.
+        /// </summary>
         IgnoreParentNotOnMainChain = 16,
+        
+        /// <summary>
+        /// Does not verify transaction nonces during processing.
+        /// </summary>
         DoNotVerifyNonce = 32,
+        
+        /// <summary>
+        /// After processing it will not update the block tree head even if the processed block has the highest
+        /// total difficulty.
+        /// </summary>
         DoNotUpdateHead = 64,
         All = 127,
+        
+        /// <summary>
+        /// Combination of switches for block producers when they preprocess block for state root calculation.
+        /// </summary>
         ProducingBlock = NoValidation | ReadOnlyChain,
+        
+        /// <summary>
+        /// EVM tracing needs to process blocks without storing the data on chain.
+        /// </summary>
         Trace = ForceProcessing | ReadOnlyChain | DoNotVerifyNonce | NoValidation,
+        
+        /// <summary>
+        /// Switches used by the beam sync processor.
+        /// </summary>
         Beam = IgnoreParentNotOnMainChain | DoNotUpdateHead
     }
 

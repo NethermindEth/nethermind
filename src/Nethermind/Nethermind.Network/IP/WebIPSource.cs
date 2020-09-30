@@ -17,6 +17,7 @@
 using System;
 using System.Net;
 using System.Net.Http;
+using System.Threading.Tasks;
 using Nethermind.Logging;
 
 namespace Nethermind.Network.IP
@@ -32,7 +33,7 @@ namespace Nethermind.Network.IP
             _logger = logManager.GetClassLogger<WebIPSource>();
         }
         
-        public bool TryGetIP(out IPAddress ipAddress)
+        public Task<(bool, IPAddress)> TryGetIP()
         {
             try
             {
@@ -41,13 +42,13 @@ namespace Nethermind.Network.IP
                 if(_logger.IsInfo) _logger.Info($"Using {_url} to get external ip");
                 string ip = httpClient.GetStringAsync(_url).Result.Trim();
                 if(_logger.IsDebug) _logger.Debug($"External ip: {ip}");
-                return IPAddress.TryParse(ip, out ipAddress);
+                bool result = IPAddress.TryParse(ip, out IPAddress ipAddress);
+                return Task.FromResult((result, ipAddress));
             }
             catch (Exception e)
             {
                 if(_logger.IsDebug) _logger.Error($"Error while getting external ip from {_url}", e);
-                ipAddress = null;
-                return false;
+                return Task.FromResult((false, (IPAddress)null));
             }
         }
     }

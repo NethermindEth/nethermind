@@ -29,6 +29,8 @@ using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
+using Nethermind.Facade;
+using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using NSubstitute;
@@ -50,23 +52,17 @@ namespace Nethermind.JsonRpc.Test.Modules
             ISpecProvider specProvider = MainnetSpecProvider.Instance;
             ITxPool txPool = NullTxPool.Instance;
             MemDbProvider dbProvider = new MemDbProvider();
-            IJsonRpcConfig jsonRpcConfig = new JsonRpcConfig();
 
             BlockTree blockTree = new BlockTree(dbProvider.BlocksDb, dbProvider.HeadersDb, dbProvider.BlockInfosDb, new ChainLevelInfoRepository(dbProvider.BlockInfosDb), specProvider, txPool, NullBloomStorage.Instance, new SyncConfig(), LimboLogs.Instance);
             _factory = new EthModuleFactory(
-                dbProvider,
                 txPool,
                 Substitute.For<ITxSender>(),
                 NullWallet.Instance,
                 blockTree,
-                new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance), 
-                NullBlockProcessor.Instance, 
-                new InMemoryReceiptStorage(), 
-                specProvider, 
                 new JsonRpcConfig(),
-                new SyncConfig(),
-                NullBloomStorage.Instance,
-                LimboLogs.Instance, false);
+                LimboLogs.Instance,
+                Substitute.For<IStateReader>(),
+                Substitute.For<IBlockchainBridgeFactory>());
         }
 
         [Test]

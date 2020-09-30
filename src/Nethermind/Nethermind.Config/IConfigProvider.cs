@@ -14,18 +14,23 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
-
 namespace Nethermind.Config
 {
     public interface IConfigProvider
     {    
+        /// <summary>
+        /// Gets a parsed configuration type. It contains the data from all the config sources combined.
+        /// </summary>
+        /// <typeparam name="T">Type of the configuration interface.</typeparam>
+        /// <returns>The configuration object.</returns>
         T GetConfig<T>() where T : IConfig;
         
+        /// <summary>
+        /// Gets the value exactly in the format of the configuration data source.
+        /// </summary>
+        /// <param name="category">Configuration category (e.g. Init).</param>
+        /// <param name="name">Name of the configuration property.</param>
+        /// <returns></returns>
         object GetRawValue(string category, string name);
-        
-        void AddSource(IConfigSource configSource);
-        
-        void RegisterCategory(string category, Type configType);
     }
 }

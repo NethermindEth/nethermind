@@ -23,7 +23,7 @@ namespace Nethermind.Cli
 {
     public interface INodeManager : IJsonRpcClient
     {
-        string CurrentUri { get; }
+        string? CurrentUri { get; }
 
         void SwitchUri(Uri uri);
         

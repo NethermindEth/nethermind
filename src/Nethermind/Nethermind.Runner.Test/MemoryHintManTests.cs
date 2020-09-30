@@ -17,6 +17,7 @@
 
 using System;
 using FluentAssertions;
+using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Extensions;
 using Nethermind.Db.Rocks.Config;

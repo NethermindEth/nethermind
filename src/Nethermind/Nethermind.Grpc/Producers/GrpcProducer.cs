@@ -19,15 +19,20 @@ using Nethermind.PubSub;
 
 namespace Nethermind.Grpc.Producers
 {
-    public class GrpcProducer : IProducer
+    public class GrpcPublisher : IPublisher
     {
         private readonly IGrpcServer _server;
 
-        public GrpcProducer(IGrpcServer server)
+        public GrpcPublisher(IGrpcServer server)
         {
             _server = server;
         }
 
-        public Task PublishAsync<T>(T data) where T : class => _server.PublishAsync(data, string.Empty);
+        public Task PublishAsync<T>(T data) where T : class =>
+            _server.PublishAsync(data, string.Empty);
+
+        public void Dispose()
+        {
+        }
     }
 }

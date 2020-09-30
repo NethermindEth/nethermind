@@ -40,6 +40,7 @@ using Nethermind.Wallet;
 using NSubstitute;
 using NUnit.Framework;
 using System.Threading;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Processing;
 
 namespace Nethermind.Facade.Test
@@ -89,8 +90,8 @@ namespace Nethermind.Facade.Test
                 _filterStore,
                 _filterManager,
                 _ethereumEcdsa,
-                _bloomStorage,
                 _timestamper,
+                Substitute.For<ILogFinder>(),
                 LimboLogs.Instance,
                 false,
                 false);
@@ -191,8 +192,8 @@ namespace Nethermind.Facade.Test
                 _filterStore,
                 _filterManager,
                 _ethereumEcdsa,
-                _bloomStorage,
                 _timestamper,
+                Substitute.For<ILogFinder>(),
                 LimboLogs.Instance,
                 false,
                 isBeam);
@@ -226,8 +227,8 @@ namespace Nethermind.Facade.Test
                 _filterStore,
                 _filterManager,
                 _ethereumEcdsa,
-                _bloomStorage,
                 _timestamper,
+                Substitute.For<ILogFinder>(),
                 LimboLogs.Instance,
                 false,
                 false);

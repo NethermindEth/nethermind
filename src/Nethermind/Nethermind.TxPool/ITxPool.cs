@@ -31,6 +31,7 @@ namespace Nethermind.TxPool
         void RemoveTransaction(Keccak hash, long blockNumber);
         bool TryGetPendingTransaction(Keccak hash, out Transaction transaction);
         UInt256 ReserveOwnTransactionNonce(Address address);
+        event EventHandler<TxEventArgs> NewDiscovered;
         event EventHandler<TxEventArgs> NewPending;
         event EventHandler<TxEventArgs> RemovedPending;
     }

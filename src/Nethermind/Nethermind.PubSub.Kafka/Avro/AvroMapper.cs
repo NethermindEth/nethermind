@@ -79,7 +79,7 @@ namespace Nethermind.PubSub.Kafka.Avro
                 weiValue = transaction.Value.ToString()
             };
 
-        public FullTransaction MapFullTransaction(PubSub.Models.FullTransaction fullTransaction)
+        public FullTransaction MapFullTransaction(Kafka.Models.FullTransaction fullTransaction)
         {
             var index = fullTransaction.Index;
             var transaction = fullTransaction.Transaction;

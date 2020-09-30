@@ -17,17 +17,18 @@
 using Nethermind.Config;
 using Nethermind.Consensus.Clique;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Runner.Ethereum.Api
 {
     public class CliqueNethermindApi : NethermindApi
     {
-        public CliqueNethermindApi(IConfigProvider configProvider, ILogManager logManager)
-            : base(configProvider, logManager)
+        public CliqueNethermindApi(IConfigProvider configProvider, IJsonSerializer jsonSerializer, ILogManager logManager)
+            : base(configProvider, jsonSerializer, logManager)
         {
         }
-        
-        public ISnapshotManager? SnapshotManager{ get; set; }
+
+        public ISnapshotManager? SnapshotManager { get; set; }
 
         public new CliqueSealer? Sealer
         {

@@ -16,6 +16,7 @@
 
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Api;
 using Nethermind.Runner.Ethereum.Api;
 
 namespace Nethermind.Runner.Ethereum.Steps
@@ -23,9 +24,9 @@ namespace Nethermind.Runner.Ethereum.Steps
     [RunnerStepDependencies(typeof(InitializeBlockchain), typeof(ResetDatabaseMigrations))]
     public class StartBlockProcessor : IStep
     {
-        private readonly NethermindApi _api;
+        private readonly INethermindApi _api;
 
-        public StartBlockProcessor(NethermindApi api)
+        public StartBlockProcessor(INethermindApi api)
         {
             _api = api;
         }

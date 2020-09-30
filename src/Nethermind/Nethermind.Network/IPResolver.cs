@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.Net;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
@@ -35,10 +36,13 @@ namespace Nethermind.Network
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
             _logManager = logManager;
+        }
 
+        public async Task Initialize()
+        {
             try
             {
-                LocalIp = InitializeLocalIp();
+                LocalIp = await InitializeLocalIp();
             }
             catch (Exception)
             {
@@ -47,19 +51,19 @@ namespace Nethermind.Network
             
             try
             {
-                ExternalIp = InitializeExternalIp();
+                ExternalIp = await InitializeExternalIp();
             }
             catch (Exception)
             {
-               ExternalIp = IPAddress.None; 
+                ExternalIp = IPAddress.None; 
             }
         }
         
-        public IPAddress LocalIp { get; }
+        public IPAddress LocalIp { get; private set; }
 
-        public IPAddress ExternalIp { get; }
+        public IPAddress ExternalIp { get; private set; }
 
-        private IPAddress InitializeExternalIp()
+        private async Task<IPAddress> InitializeExternalIp()
         {
             IEnumerable<IIPSource> GetIPSources()
             {
@@ -74,9 +78,10 @@ namespace Nethermind.Network
             
             try
             {
-                foreach (var s in GetIPSources())
+                foreach (IIPSource s in GetIPSources())
                 {
-                    if (s.TryGetIP(out var ip) && !ip.IsInternal())
+                    (bool success, IPAddress ip) = await s.TryGetIP();
+                    if (success && !ip.IsInternal())
                     {
                         ThisNodeInfo.AddInfo("External IP  :", $"{ip}");
                         return ip;
@@ -91,7 +96,7 @@ namespace Nethermind.Network
             return IPAddress.Loopback;
         }
 
-        private IPAddress InitializeLocalIp()
+        private async Task<IPAddress> InitializeLocalIp()
         {
             IEnumerable<IIPSource> GetIPSources()
             {
@@ -103,7 +108,8 @@ namespace Nethermind.Network
             {
                 foreach (var s in GetIPSources())
                 {
-                    if (s.TryGetIP(out var ip))
+                    (bool success, IPAddress ip) = await s.TryGetIP();
+                    if (success)
                     {
                         return ip;
                     }

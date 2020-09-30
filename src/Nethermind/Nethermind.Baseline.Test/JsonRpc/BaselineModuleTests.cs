@@ -9,7 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Abi;
-using Nethermind.Baseline.JsonRpc;
+using Nethermind.Baseline.Tree;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
