@@ -44,6 +44,8 @@ namespace Nethermind.Blockchain.Producers
             _logger = logManager?.GetClassLogger<TxPoolTxSource>() ?? throw new ArgumentNullException(nameof(logManager));
             _minGasPriceForMining = minGasPriceForMining;
         }
+        
+        public ITxPoolOrderStrategy OrderStrategy { get; set; } = new DefaultTxPoolOrderStrategy();
 
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
         {
@@ -102,7 +104,7 @@ namespace Nethermind.Blockchain.Producers
             }
 
             var pendingTransactions = _transactionPool.GetPendingTransactions();
-            var transactions = pendingTransactions.OrderBy(t => t.Nonce).ThenByDescending(t => t.GasPrice).ThenBy(t => t.GasLimit);
+            IEnumerable<Transaction> transactions = OrderStrategy.Order(parent, pendingTransactions);
             IDictionary<Address, UInt256> remainingBalance = new Dictionary<Address, UInt256>();
             Dictionary<Address, UInt256> nonces = new Dictionary<Address, UInt256>();
             List<Transaction> selected = new List<Transaction>();
@@ -170,6 +172,20 @@ namespace Nethermind.Blockchain.Producers
         }
         
         public override string ToString() => $"{nameof(TxPoolTxSource)}";
+        
+        public interface ITxPoolOrderStrategy
+        {
+            IEnumerable<Transaction> Order(BlockHeader blockHeader, IEnumerable<Transaction> transactions);
+        }
+        
+        private class DefaultTxPoolOrderStrategy : ITxPoolOrderStrategy
+        {
+            public IEnumerable<Transaction> Order(BlockHeader blockHeader, IEnumerable<Transaction> transactions) => 
+                transactions
+                    .OrderBy(t => t.Nonce)
+                    .ThenByDescending(t => t.GasPrice)
+                    .ThenBy(t => t.GasLimit);
+        }
 
     }
 }

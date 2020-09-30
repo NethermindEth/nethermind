@@ -13,20 +13,15 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using Nethermind.Config;
+using System.Collections.Generic;
 using Nethermind.Core;
 
-namespace Nethermind.Consensus.AuRa.Config
+namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public class AuRaConfig : IAuraConfig
+    public interface IContractDataStore<out T>
     {
-        public bool ForceSealing { get; set; }
-        
-        public bool AllowAuRaPrivateChains { get; set; }
-        
-        public bool Minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract { get; set; }
-        
-        public Address TransactionPriorityContractAddress { get; set; }
+        IEnumerable<T> GetItems(BlockHeader parent);
     }
 }

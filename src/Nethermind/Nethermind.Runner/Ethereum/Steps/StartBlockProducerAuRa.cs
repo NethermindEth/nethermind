@@ -20,6 +20,7 @@ using System.Linq;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
+using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Config;
@@ -131,6 +132,25 @@ namespace Nethermind.Runner.Ethereum.Steps
             {
                 AuRaValidator = _validator
             };
+        }
+
+        protected override TxPoolTxSource CreateTxPoolTxSource(ReadOnlyTxProcessingEnv processingEnv, ReadOnlyTxProcessorSource readOnlyTxProcessorSource)
+        {
+            ContractDataStore<T> GetContractDataStore<T>(IDataContract<T> dataContract) => 
+                new ContractDataStore<T>(dataContract, _api.MainBlockProcessor);
+
+            var txPoolTxSource = base.CreateTxPoolTxSource(processingEnv, readOnlyTxProcessorSource);
+            Address? contractAddress = _auraConfig?.TransactionPriorityContractAddress;
+            if (contractAddress != null)
+            {
+                var txPriorityContract = new TxPriorityContract(_api.AbiEncoder, contractAddress, readOnlyTxProcessorSource);
+                txPoolTxSource.OrderStrategy = new PermissionTxPoolOrderStrategy(
+                    GetContractDataStore(txPriorityContract.SendersWhitelist),
+                    GetContractDataStore(txPriorityContract.Priorities),
+                    GetContractDataStore(txPriorityContract.MinGasPrice));
+            }
+            
+            return txPoolTxSource;
         }
 
         protected override ITxSource CreateTxSourceForProducer(ReadOnlyTxProcessingEnv processingEnv, ReadOnlyTxProcessorSource readOnlyTxProcessorSource)

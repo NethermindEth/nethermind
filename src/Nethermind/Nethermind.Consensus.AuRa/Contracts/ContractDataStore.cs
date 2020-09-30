@@ -17,20 +17,24 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Blockchain.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public class ContractDataStore<T>
+    public class ContractDataStore<T> : IDisposable, IContractDataStore<T>
     {
         private readonly IDataContract<T> _dataContract;
+        private readonly IBlockProcessor _blockProcessor;
         private List<T> _items;
         private Keccak _lastHash;
         
-        public ContractDataStore(IDataContract<T> dataContract)
+        public ContractDataStore(IDataContract<T> dataContract, IBlockProcessor blockProcessor)
         {
             _dataContract = dataContract ?? throw new ArgumentNullException(nameof(dataContract));
+            _blockProcessor = blockProcessor;
+            _blockProcessor.BlockProcessed += OnBlockProcessed;
         }
 
         public IEnumerable<T> GetItems(BlockHeader parent)
@@ -38,10 +42,11 @@ namespace Nethermind.Consensus.AuRa.Contracts
             GetItems(parent, parent.Hash == _lastHash);
             return _items;
         }
-
-        public void Update(BlockHeader header, TxReceipt[] receipts)
+        
+        private void OnBlockProcessed(object sender, BlockProcessedEventArgs e)
         {
-            GetItems(header, header.ParentHash == _lastHash, receipts);
+            BlockHeader header = e.Block.Header;
+            GetItems(header, header.ParentHash == _lastHash, e.TxReceipts);
         }
         
         private void GetItems(BlockHeader blockHeader, bool isConsecutiveBlock, TxReceipt[] receipts = null)
@@ -66,6 +71,10 @@ namespace Nethermind.Consensus.AuRa.Contracts
                 _lastHash = blockHeader.Hash;
             }
         }
-        
+
+        public void Dispose()
+        {
+            _blockProcessor.BlockProcessed -= OnBlockProcessed;
+        }
     }
 }

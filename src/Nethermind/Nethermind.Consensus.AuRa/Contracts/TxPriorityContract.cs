@@ -28,13 +28,13 @@ namespace Nethermind.Consensus.AuRa.Contracts
 {
     /// <summary>
     /// Permission contract for <see cref="ITxPool"/> transaction ordering
-    /// <seealso cref="https://github.com/poanetwork/posdao-contracts/blob/tx-priority/contracts/TxPriority.sol"/> 
+    /// <seealso cref="https://github.com/poanetwork/posdao-contracts/blob/master/contracts/TxPriority.sol"/> 
     /// </summary>
-    public class TxPermission : Contract
+    public class TxPriorityContract : Contract
     {
         private ConstantContract Constant { get; }
         
-        public TxPermission(
+        public TxPriorityContract(
             IAbiEncoder abiEncoder,
             Address contractAddress,
             IReadOnlyTransactionProcessorSource readOnlyTransactionProcessorSource) 
@@ -43,7 +43,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             Constant = GetConstant(readOnlyTransactionProcessorSource);
             SendersWhitelist = new DataContract<Address>(GetSendersWhitelist, SendersWhitelistSet, false);
             MinGasPrice = new DataContract<Destination>(GetMinGasPrices, MinGasPriceSet, true);
-            Priority = new DataContract<Destination>(GetPriorities, PrioritySet, true);
+            Priorities = new DataContract<Destination>(GetPriorities, PrioritySet, true);
         }
 
         private Address[] GetSendersWhitelist(BlockHeader parentHeader) => Constant.Call<Address[]>(parentHeader, nameof(GetSendersWhitelist), Address.Zero);
@@ -84,7 +84,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         private Address[] DecodeAddresses(byte[] data)
         {
             var objects = DecodeReturnData(nameof(GetSendersWhitelist), data);
-            return (Address[]) objects[0];;
+            return (Address[]) objects[0];
         }
 
         private Destination DecodeDestination(byte[] data)
@@ -101,6 +101,6 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
         public IDataContract<Address> SendersWhitelist { get; }
         public IDataContract<Destination> MinGasPrice { get; }
-        public IDataContract<Destination> Priority { get; }
+        public IDataContract<Destination> Priorities { get; }
     }
 }
