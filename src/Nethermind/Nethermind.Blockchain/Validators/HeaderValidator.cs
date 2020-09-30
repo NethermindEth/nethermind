@@ -136,39 +136,58 @@ namespace Nethermind.Blockchain.Validators
             }
 
             if (_logger.IsTrace) _logger.Trace($"Validating block {header.ToString(BlockHeader.Format.Short)}, extraData {header.ExtraData.ToHexString(true)}");
-            
+
             bool baseFeeIsCorrect = true;
             if (spec.IsEip1559Enabled)
             {
-                long gasDelta = 0;
-                UInt256 feeDelta = 0;
-                UInt256 expectedBaseFee = 0;
+                long gasDelta;
+                UInt256 feeDelta;
+                UInt256 expectedBaseFee;
                 long gasTarget = parent.GetGasTarget1559(spec);
+
+                // suggested better calculation
+                // gasDelta = parent.GasUsed - gasTarget;
+                // feeDelta = parent.BaseFee * gasDelta / gasTarget / BaseFeeMaxChangeDenominator;
+                // baseFee = min(UInt256.MaxValue, max(0, parent.BaseFee + direction * feeDelta))
+
                 if (parent.GasUsed >= gasTarget)
                 {
                     gasDelta = parent.GasUsed - gasTarget;
                     feeDelta = UInt256.Max(
-                        parent.BaseFee * (UInt256)gasDelta / (UInt256)gasTarget / BaseFeeMaxChangeDenominator,
+                        parent.BaseFee * (UInt256) gasDelta / (UInt256) gasTarget / BaseFeeMaxChangeDenominator,
                         UInt256.One);
                     expectedBaseFee = parent.BaseFee + feeDelta;
                 }
                 else
                 {
                     gasDelta = gasTarget - parent.GasUsed;
-                    feeDelta = parent.BaseFee == 0 ? 0 : UInt256.Max(
-                        (parent.BaseFee * (UInt256)gasDelta - 1) / (UInt256)gasTarget / BaseFeeMaxChangeDenominator + 1,
-                        UInt256.One);
-                    expectedBaseFee = parent.BaseFee - feeDelta;
+                    if (parent.BaseFee == 0)
+                    {
+                        // TODO: strange
+                        expectedBaseFee = parent.BaseFee + 1;
+                    }
+                    else
+                    {
+                        feeDelta = parent.BaseFee == 0
+                            ? 0
+                            : UInt256.Max(
+                                (parent.BaseFee * (UInt256) gasDelta - 1) / (UInt256) gasTarget / BaseFeeMaxChangeDenominator + 1,
+                                UInt256.One);
+                        expectedBaseFee = parent.BaseFee - feeDelta;
+                    }
                 }
 
                 if (spec.Eip1559TransitionBlock == header.Number)
                 {
                     expectedBaseFee = 1.GWei();
                 }
-                
+
                 baseFeeIsCorrect = expectedBaseFee == header.BaseFee;
+                if (!baseFeeIsCorrect)
+                {
+                }
             }
-            
+
             return
                 totalDifficultyCorrect &&
                 gasUsedBelowLimit &&
@@ -185,7 +204,7 @@ namespace Nethermind.Blockchain.Validators
         protected virtual bool ValidateGasLimitRange(BlockHeader header, BlockHeader parent, IReleaseSpec spec)
         {
             long maxGasLimitDifference = parent.GasLimit / spec.GasLimitBoundDivisor;
-            
+
             bool gasLimitNotTooHigh = header.GasLimit <= parent.GasLimit + maxGasLimitDifference;
             if (!gasLimitNotTooHigh)
             {

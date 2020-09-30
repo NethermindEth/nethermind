@@ -22,6 +22,11 @@ namespace Nethermind.Serialization.Rlp
 {
     public class HeaderDecoder : IRlpValueDecoder<BlockHeader>, IRlpDecoder<BlockHeader>
     {
+        // TODO: need to take a decision on whether to make the whole RLP spec specific?
+        // This would help with EIP155 as well and could generally setup proper coders automatically, hmm
+        // but then RLP would have to be passed into so many places
+        public static long Eip1559TransitionBlock = long.MaxValue;
+        
         public BlockHeader Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (decoderContext.IsNextItemNull())
@@ -76,7 +81,7 @@ namespace Nethermind.Serialization.Rlp
                 blockHeader.AuRaSignature = decoderContext.DecodeByteArray();
             }
             
-            if (decoderContext.ReadNumberOfItemsRemaining() != 0 && !decoderContext.IsSequenceNext())
+            if (blockHeader.Number >= Eip1559TransitionBlock)
             {
                 blockHeader.BaseFee = decoderContext.DecodeUInt256();
             }
@@ -144,7 +149,7 @@ namespace Nethermind.Serialization.Rlp
                 blockHeader.AuRaSignature = rlpStream.DecodeByteArray();
             }
 
-            if (rlpStream.ReadNumberOfItemsRemaining() != 0 && !rlpStream.IsSequenceNext())
+            if (blockHeader.Number >= Eip1559TransitionBlock)
             {
                 blockHeader.BaseFee = rlpStream.DecodeUInt256();
             }
@@ -157,49 +162,49 @@ namespace Nethermind.Serialization.Rlp
             return blockHeader;
         }
 
-        public void Encode(RlpStream rlpStream, BlockHeader item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public void Encode(RlpStream rlpStream, BlockHeader header, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (item == null)
+            if (header == null)
             {
                 rlpStream.EncodeNullObject();
                 return;
             }
             
             bool notForSealing = (rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing;
-            rlpStream.StartSequence(GetContentLength(item, rlpBehaviors));
-            rlpStream.Encode(item.ParentHash);
-            rlpStream.Encode(item.OmmersHash);
-            rlpStream.Encode(item.Beneficiary);
-            rlpStream.Encode(item.StateRoot);
-            rlpStream.Encode(item.TxRoot);
-            rlpStream.Encode(item.ReceiptsRoot);
-            rlpStream.Encode(item.Bloom);
-            rlpStream.Encode(item.Difficulty);
-            rlpStream.Encode(item.Number);
-            rlpStream.Encode(item.GasLimit);
-            rlpStream.Encode(item.GasUsed);
-            rlpStream.Encode(item.Timestamp);
-            rlpStream.Encode(item.ExtraData);
+            rlpStream.StartSequence(GetContentLength(header, rlpBehaviors));
+            rlpStream.Encode(header.ParentHash);
+            rlpStream.Encode(header.OmmersHash);
+            rlpStream.Encode(header.Beneficiary);
+            rlpStream.Encode(header.StateRoot);
+            rlpStream.Encode(header.TxRoot);
+            rlpStream.Encode(header.ReceiptsRoot);
+            rlpStream.Encode(header.Bloom);
+            rlpStream.Encode(header.Difficulty);
+            rlpStream.Encode(header.Number);
+            rlpStream.Encode(header.GasLimit);
+            rlpStream.Encode(header.GasUsed);
+            rlpStream.Encode(header.Timestamp);
+            rlpStream.Encode(header.ExtraData);
 
             if (notForSealing)
             {
-                bool isAuRa = item.AuRaSignature != null;
+                bool isAuRa = header.AuRaSignature != null;
                 
                 if (isAuRa)
                 {
-                    rlpStream.Encode(item.AuRaStep.Value);
-                    rlpStream.Encode(item.AuRaSignature);
+                    rlpStream.Encode(header.AuRaStep.Value);
+                    rlpStream.Encode(header.AuRaSignature);
                 }
                 else
                 {
-	                rlpStream.Encode(item.MixHash);
-    	            rlpStream.Encode(item.Nonce);
+	                rlpStream.Encode(header.MixHash);
+    	            rlpStream.Encode(header.Nonce);
                 }
             }
 
-            if (item.BaseFee != 0)
+            if (header.Number >= Eip1559TransitionBlock)
             {
-                rlpStream.Encode(item.BaseFee);
+                rlpStream.Encode(header.BaseFee);
             }
         }
 
@@ -238,7 +243,7 @@ namespace Nethermind.Serialization.Rlp
                                 + Rlp.LengthOf(item.GasUsed)
                                 + Rlp.LengthOf(item.Timestamp)
                                 + Rlp.LengthOf(item.ExtraData)
-                                + (item.BaseFee == 0 ? 0 : Rlp.LengthOf(item.BaseFee));
+                                + (item.Number < Eip1559TransitionBlock ? 0 : Rlp.LengthOf(item.BaseFee));
 
             if (notForSealing)
             {

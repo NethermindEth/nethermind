@@ -91,10 +91,10 @@ namespace Nethermind.Synchronization.Blocks
         {
             if (blocksRequest == null)
             {
-                if(Logger.IsWarn) Logger.Warn($"NULL received for dispatch in {nameof(BlockDownloader)}");
+                if (Logger.IsWarn) Logger.Warn($"NULL received for dispatch in {nameof(BlockDownloader)}");
                 return;
             }
-            
+
             if (!_blockTree.CanAcceptNewBlocks) return;
             CancellationTokenSource linkedCancellation =
                 CancellationTokenSource.CreateLinkedTokenSource(
@@ -419,11 +419,11 @@ namespace Nethermind.Synchronization.Blocks
                 await request.ContinueWith(t => DownloadFailHandler(request, "receipts"));
 
                 TxReceipt[][] result = request.Result;
-                
+
                 int validResponsesCount = 0;
                 for (int i = 0; i < result.Length; i++)
                 {
-                    if(context.TrySetReceipts(i + offset, result[i]))
+                    if (context.TrySetReceipts(i + offset, result[i]))
                     {
                         validResponsesCount++;
                     }
@@ -578,7 +578,9 @@ namespace Nethermind.Synchronization.Blocks
                     else
                     {
                         if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR Block download from {peerInfo} failed. {t.Exception}");
-                        reason = "sync fault";
+#if DEBUG
+                        reason = $"sync fault| {t.Exception}";
+#endif
                     }
 
                     if (peerInfo != null) // fix this for node data sync
@@ -625,7 +627,7 @@ namespace Nethermind.Synchronization.Blocks
             SyncPeerAllocation allocation = await base.Allocate(request);
             CancellationTokenSource cancellation = new CancellationTokenSource();
             _allocationWithCancellation = new AllocationWithCancellation(allocation, cancellation);
-            
+
             allocation.Cancelled += AllocationOnCancelled;
             allocation.Replaced += AllocationOnReplaced;
             return allocation;
@@ -645,10 +647,10 @@ namespace Nethermind.Synchronization.Blocks
             {
                 return;
             }
-            
+
             allocationWithCancellation.Cancel();
         }
-        
+
         private void AllocationOnReplaced(object? sender, AllocationChangeEventArgs e)
         {
             if (e.Previous == null)
@@ -682,7 +684,7 @@ namespace Nethermind.Synchronization.Blocks
                 Cancellation = cancellation;
                 _isDisposed = false;
             }
-            
+
             public CancellationTokenSource Cancellation { get; }
             public SyncPeerAllocation Allocation { get; }
 
@@ -695,7 +697,7 @@ namespace Nethermind.Synchronization.Blocks
             }
 
             private bool _isDisposed;
-            
+
             public void Dispose()
             {
                 if (!_isDisposed)

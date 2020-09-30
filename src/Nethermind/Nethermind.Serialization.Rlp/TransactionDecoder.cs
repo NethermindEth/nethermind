@@ -173,8 +173,6 @@ namespace Nethermind.Serialization.Rlp
                 transaction.GasLimit = decoderContext.DecodeLong();
                 transaction.To = decoderContext.DecodeAddress();
                 transaction.Value = decoderContext.DecodeUInt256();
-                transaction.GasPrice = decoderContext.DecodeUInt256();
-                transaction.FeeCap = decoderContext.DecodeUInt256();
                 if (transaction.To == null)
                 {
                     transaction.Init = decoderContext.DecodeByteArray();
@@ -183,6 +181,9 @@ namespace Nethermind.Serialization.Rlp
                 {
                     transaction.Data = decoderContext.DecodeByteArray();
                 }
+                
+                transaction.GasPrice = decoderContext.DecodeUInt256();
+                transaction.FeeCap = decoderContext.DecodeUInt256();
             }
 
             if (decoderContext.Position < lastCheck)

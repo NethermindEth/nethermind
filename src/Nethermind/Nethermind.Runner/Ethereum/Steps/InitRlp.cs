@@ -14,13 +14,13 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Core.Attributes;
 using Nethermind.Network;
-using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Runner.Ethereum.Steps
@@ -28,14 +28,28 @@ namespace Nethermind.Runner.Ethereum.Steps
     [RunnerStepDependencies(typeof(ApplyMemoryHint))]
     public class InitRlp : IStep
     {
-        public InitRlp(INethermindApi _)
+        private readonly INethermindApi _api;
+
+        public InitRlp(INethermindApi api)
         {
+            _api = api ?? throw new ArgumentNullException(nameof(api));
         }
 
         [Todo(Improve.Refactor, "Automatically scan all the references solutions?")]
         public virtual Task Execute(CancellationToken _)
         {
            Rlp.RegisterDecoders(Assembly.GetAssembly(typeof(NetworkNodeDecoder)));
+
+           // TODO: create an RLP that handles all of this?
+           foreach (long transitionBlock in _api.SpecProvider.TransitionBlocks)
+           {
+               if (_api.SpecProvider.GetSpec(transitionBlock).IsEip1559Enabled)
+               {
+                   HeaderDecoder.Eip1559TransitionBlock = transitionBlock;
+                   break;
+               }
+           }
+
            return Task.CompletedTask;
         }
     }
