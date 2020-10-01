@@ -65,7 +65,7 @@ namespace Nethermind.Api.Extensions
                     AssemblyLoadContext.Default.Resolving += (context, name) =>
                         AssemblyLoadContext.Default.LoadFromAssemblyPath(_fileSystem.Path.Combine(baseDir, name.Name + ".dll"));
 
-                    foreach (Type type in assembly.GetExportedTypes())
+                    foreach (Type type in assembly.GetExportedTypes().Where(t => !t.IsInterface))
                     {
                         if (typeof(INethermindPlugin).IsAssignableFrom(type))
                         {
