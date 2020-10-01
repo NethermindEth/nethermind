@@ -24,4 +24,11 @@
     <ItemGroup>
       <ProjectReference Include="..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj" />
     </ItemGroup>
+
+    <ItemGroup>
+      <None Remove="plugins\readme.txt" />
+      <Content Include="plugins\readme.txt">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </Content>
+    </ItemGroup>
 </Project>

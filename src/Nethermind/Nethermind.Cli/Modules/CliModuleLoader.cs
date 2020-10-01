@@ -145,7 +145,7 @@ namespace Nethermind.Cli.Modules
         {
             List<Type> moduleTypes = new List<Type>();
 
-            string baseDir = PathUtils.ExecutingDirectory;
+            string baseDir = string.Empty.GetApplicationResourcePath();
             string pluginsDir = "plugins".GetApplicationResourcePath();
             
             string searchPattern = "Nethermind*.dll";
