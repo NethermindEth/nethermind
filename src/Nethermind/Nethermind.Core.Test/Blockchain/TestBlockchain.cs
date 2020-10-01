@@ -127,7 +127,7 @@ namespace Nethermind.Core.Test.Blockchain
             chainProcessor.Start();
 
             StateReader = new StateReader(StateDb, CodeDb, LimboLogs.Instance);
-            TxPoolTxSource txPoolTxSource = new TxPoolTxSource(TxPool, StateReader, LimboLogs.Instance);
+            TxPoolTxSource txPoolTxSource = CreateTxPoolTxSource();
             ISealer sealer = new NethDevSealEngine(TestItem.AddressD);
             BlockProducer = new TestBlockProducer(txPoolTxSource, chainProcessor, State, sealer, BlockTree, chainProcessor, Timestamper, LimboLogs.Instance);
             BlockProducer.Start();
@@ -144,6 +144,11 @@ namespace Nethermind.Core.Test.Blockchain
 
             await AddBlocksOnStart();
             return this;
+        }
+
+        protected virtual TxPoolTxSource CreateTxPoolTxSource()
+        {
+            return new TxPoolTxSource(TxPool, StateReader, LimboLogs.Instance);
         }
 
         protected virtual Block GetGenesisBlock()
