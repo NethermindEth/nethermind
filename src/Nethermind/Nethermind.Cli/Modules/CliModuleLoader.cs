@@ -160,6 +160,7 @@ namespace Nethermind.Cli.Modules
             AssemblyLoadContext.Default.Resolving += (context, name)
                 => AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.Combine(baseDir, name.Name + ".dll"));
 
+            moduleTypes.AddRange(GetType().Assembly.GetExportedTypes().Where(IsCliModule));
             foreach (string dll in allDlls)
             {
                 Assembly assembly;
@@ -172,7 +173,10 @@ namespace Nethermind.Cli.Modules
                     continue;
                 }
 
-                moduleTypes.AddRange(assembly.GetExportedTypes().Where(IsCliModule));
+                if (assembly != GetType().Assembly)
+                {
+                    moduleTypes.AddRange(assembly.GetExportedTypes().Where(IsCliModule));
+                }
             }
 
             foreach (Type moduleType in moduleTypes.OrderBy(mt => mt.Name))
