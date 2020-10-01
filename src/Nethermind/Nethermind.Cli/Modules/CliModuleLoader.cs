@@ -28,6 +28,7 @@ using Jint.Runtime.Descriptors;
 using Jint.Runtime.Interop;
 using Nethermind.Cli.Console;
 using Nethermind.JsonRpc.Client;
+using Nethermind.Logging;
 
 namespace Nethermind.Cli.Modules
 {
@@ -144,8 +145,9 @@ namespace Nethermind.Cli.Modules
         {
             List<Type> moduleTypes = new List<Type>();
 
-            string baseDir = AppDomain.CurrentDomain.BaseDirectory!;
-            string pluginsDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory!, "plugins");
+            string baseDir = PathUtils.ExecutingDirectory;
+            string pluginsDir = "plugins".GetApplicationResourcePath();
+            
             string searchPattern = "Nethermind*.dll";
             string[] allDlls =
                 Directory.GetFiles(baseDir, searchPattern)
