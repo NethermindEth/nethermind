@@ -41,8 +41,8 @@ namespace Nethermind.Api.Extensions
         public void Load(ILogManager logManager)
         {
             ILogger logger = logManager.GetClassLogger();
-            string baseDir = AppDomain.CurrentDomain.BaseDirectory!;
-            string fullPluginsDir = _fileSystem.Path.Combine(baseDir, _pluginsDirectory);
+            string baseDir = string.Empty.GetApplicationResourcePath();
+            string fullPluginsDir = _pluginsDirectory.GetApplicationResourcePath();;
             if (!_fileSystem.Directory.Exists(fullPluginsDir))
             {
                 if (logger.IsWarn) logger.Warn($"Plugins folder {fullPluginsDir} was not found. Skipping.");
