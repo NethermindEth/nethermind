@@ -46,7 +46,7 @@ namespace Nethermind.Evm.Test
         private ISnapshotableDb _stateDb;
         protected bool UseBeamSync { get; set; }
 
-        protected IVirtualMachine Machine { get; private set; }
+        protected VirtualMachine Machine { get; private set; }
         protected IStateProvider TestState { get; private set; }
         protected IStorageProvider Storage { get; private set; }
 

@@ -18,6 +18,7 @@ using System;
 using FluentAssertions;
 using Nethermind.DataMarketplace.Consumers.Infrastructure;
 using Nethermind.DataMarketplace.Infrastructure;
+using Nethermind.DataMarketplace.Infrastructure.Modules;
 using Nethermind.DataMarketplace.Initializers;
 using Nethermind.Logging;
 using NSubstitute;

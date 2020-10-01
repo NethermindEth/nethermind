@@ -16,6 +16,7 @@
 
 using System;
 using System.Numerics;
+using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -391,7 +392,7 @@ namespace Nethermind.Serialization.Rlp
             else
             {
                 // todo: can avoid allocation here but benefit is rare
-                Encode(System.Text.Encoding.ASCII.GetBytes(value));
+                Encode(Encoding.ASCII.GetBytes(value));
             }
         }
 
@@ -808,7 +809,7 @@ namespace Nethermind.Serialization.Rlp
         public string DecodeString()
         {
             ReadOnlySpan<byte> bytes = DecodeByteArraySpan();
-            return System.Text.Encoding.UTF8.GetString(bytes);
+            return Encoding.UTF8.GetString(bytes);
         }
 
         public byte DecodeByte()

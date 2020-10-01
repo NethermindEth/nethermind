@@ -22,7 +22,7 @@ namespace Nethermind.Cli.Modules
     public class SystemCliModule : CliModuleBase
     {
         [CliFunction("system", "getVariable")]
-        public string GetVariable(string name, string defaultValue)
+        public string? GetVariable(string name, string defaultValue)
         {
             var value = Environment.GetEnvironmentVariable(name.ToUpperInvariant());
             return string.IsNullOrWhiteSpace(value) ? value : defaultValue;

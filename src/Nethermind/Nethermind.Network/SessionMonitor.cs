@@ -19,6 +19,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Timers;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
@@ -27,7 +28,7 @@ namespace Nethermind.Network
 {
     public class SessionMonitor : ISessionMonitor
     {
-        private System.Timers.Timer _pingTimer;
+        private Timer _pingTimer;
 
         private readonly INetworkConfig _networkConfig;
         private readonly ILogger _logger;
@@ -154,7 +155,7 @@ namespace Nethermind.Network
         {
             if (_logger.IsDebug) _logger.Debug("Starting session monitor");
 
-            _pingTimer = new System.Timers.Timer(_networkConfig.P2PPingInterval) {AutoReset = false};
+            _pingTimer = new Timer(_networkConfig.P2PPingInterval) {AutoReset = false};
             _pingTimer.Elapsed += (sender, e) =>
             {
                 try

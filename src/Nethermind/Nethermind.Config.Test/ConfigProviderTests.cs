@@ -49,14 +49,14 @@ namespace Nethermind.Config.Test
 
         public int DefaultTestProperty { get; set; } = 5;
         
-        [Test]
-        public void Can_read_defaults_from_registered_categories()
-        {
-            ConfigProvider configProvider = new ConfigProvider();
-            configProvider.RegisterCategory("Nananana", typeof(DefaultConfigProviderTests));
-            var result = configProvider.GetRawValue("Nananana", nameof(DefaultTestProperty));
-            Assert.AreEqual(5, result);
-        }
+        // [Test]
+        // public void Can_read_defaults_from_registered_categories()
+        // {
+        //     ConfigProvider configProvider = new ConfigProvider();
+        //     configProvider.RegisterCategory("Nananana", typeof(DefaultConfigProviderTests));
+        //     var result = configProvider.GetRawValue("Nananana", nameof(DefaultTestProperty));
+        //     Assert.AreEqual(5, result);
+        // }
 
         [Test]
         public void Can_read_overwrites()

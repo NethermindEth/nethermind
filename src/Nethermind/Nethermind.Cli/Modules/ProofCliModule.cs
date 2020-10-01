@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Jint.Native;
-using Nethermind.Core.Crypto;
 
 namespace Nethermind.Cli.Modules
 {
@@ -23,7 +22,7 @@ namespace Nethermind.Cli.Modules
     public class ProofCliModule : CliModuleBase
     {
         [CliFunction("proof", "call")]
-        public JsValue Call(object tx, string blockParameter = null)
+        public JsValue Call(object tx, string? blockParameter = null)
         {
             return NodeManager.PostJint("proof_call", tx, blockParameter ?? "latest").Result;
         }

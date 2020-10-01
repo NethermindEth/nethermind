@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Core;
 
 namespace Nethermind.Serialization.Rlp
@@ -82,7 +83,7 @@ namespace Nethermind.Serialization.Rlp
 
         public int GetLength(BlockInfo item, RlpBehaviors rlpBehaviors)
         {
-            throw new System.NotImplementedException();
+            throw new NotImplementedException();
         }
 
         public BlockInfo Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -117,12 +118,12 @@ namespace Nethermind.Serialization.Rlp
 
         public Rlp Encode(ChainLevelInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            throw new System.NotImplementedException();
+            throw new NotImplementedException();
         }
 
         public int GetLength(ChainLevelInfo item, RlpBehaviors rlpBehaviors)
         {
-            throw new System.NotImplementedException();
+            throw new NotImplementedException();
         }
     }
 }

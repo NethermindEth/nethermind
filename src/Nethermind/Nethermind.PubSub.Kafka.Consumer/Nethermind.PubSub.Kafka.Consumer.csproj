@@ -14,6 +14,7 @@
     </ItemGroup>
 
     <ItemGroup>
+      <ProjectReference Include="..\Nethermind.PubSub.Kafka\Nethermind.PubSub.Kafka.csproj" />
       <ProjectReference Include="..\Nethermind.PubSub\Nethermind.PubSub.csproj" />
     </ItemGroup>
 

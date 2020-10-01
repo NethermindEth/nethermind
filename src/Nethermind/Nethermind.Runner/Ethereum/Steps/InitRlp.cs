@@ -17,6 +17,7 @@
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Api;
 using Nethermind.Core.Attributes;
 using Nethermind.Network;
 using Nethermind.Runner.Ethereum.Api;
@@ -27,7 +28,7 @@ namespace Nethermind.Runner.Ethereum.Steps
     [RunnerStepDependencies(typeof(ApplyMemoryHint))]
     public class InitRlp : IStep
     {
-        public InitRlp(NethermindApi _)
+        public InitRlp(INethermindApi _)
         {
         }
 

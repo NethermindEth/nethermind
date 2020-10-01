@@ -26,7 +26,7 @@ namespace Nethermind.JsonRpc.Modules
         private ConcurrentBag<T> _bag = new ConcurrentBag<T>();
         private SemaphoreSlim _semaphore;
 
-        public BoundedModulePool(int exclusiveCapacity, IRpcModuleFactory<T> factory)
+        public BoundedModulePool(IRpcModuleFactory<T> factory, int exclusiveCapacity)
         {
             Factory = factory;
             

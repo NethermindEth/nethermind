@@ -16,15 +16,17 @@
 
 using System;
 using System.Net;
+using System.Threading.Tasks;
 
 namespace Nethermind.Network.IP
 {
     class EnvironmentVariableIPSource : IIPSource
     {
-        public bool TryGetIP(out IPAddress ipAddress)
+        public Task<(bool, IPAddress)> TryGetIP()
         {
             string externalIpSetInEnv = Environment.GetEnvironmentVariable("NETHERMIND_ENODE_IPADDRESS");
-            return IPAddress.TryParse(externalIpSetInEnv, out ipAddress);
+            bool success = IPAddress.TryParse(externalIpSetInEnv, out IPAddress ipAddress);
+            return Task.FromResult((success, ipAddress));
         }
     }
 }

@@ -7,7 +7,16 @@
         <LangVersion>8.0</LangVersion>
     </PropertyGroup>
 
+    <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
+      <OutputPath>bin\Debug\plugins</OutputPath>
+    </PropertyGroup>
+
+    <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
+      <OutputPath>bin\Release</OutputPath>
+    </PropertyGroup>
+
     <ItemGroup>
+      <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
       <ProjectReference Include="..\Nethermind.Blockchain\Nethermind.Blockchain.csproj" />
       <ProjectReference Include="..\Nethermind.PubSub\Nethermind.PubSub.csproj" />
     </ItemGroup>

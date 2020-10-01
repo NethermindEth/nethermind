@@ -17,29 +17,22 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
-using Nethermind.Crypto;
-using Nethermind.Db;
-using Nethermind.Evm;
-using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
-using Nethermind.Runner.Ethereum.Api;
-using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.State;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
-    [RunnerStepDependencies(typeof(StartBlockProcessor), typeof(InitializeBlockchain))]
+    [RunnerStepDependencies(typeof(StartBlockProcessor), typeof(InitializeBlockchain), typeof(InitializePlugins))]
     public class LoadGenesisBlock : IStep
     {
-        private readonly NethermindApi _api;
+        private readonly INethermindApi _api;
         private readonly ILogger _logger;
         private IInitConfig? _initConfig;
 
-        public LoadGenesisBlock(NethermindApi api)
+        public LoadGenesisBlock(INethermindApi api)
         {
             _api = api;
             _logger = _api.LogManager.GetClassLogger();

@@ -26,7 +26,7 @@ using Nethermind.PubSub.Kafka.Avro.Models;
 
 namespace Nethermind.PubSub.Kafka.Avro
 {
-    public class AvroTypeProducer : IKafkaTypeProducer
+    public class AvroTypedPublisher : IKafkaTypedPublisher
     {
         private static readonly string Name = "Avro";
         private bool _initialized;
@@ -36,7 +36,7 @@ namespace Nethermind.PubSub.Kafka.Avro
         private IProducer<Null, Block> _producerBlocks;
         private IProducer<Null, FullTransaction> _producerTransactions;
 
-        public AvroTypeProducer(ProducerConfig config, string schemaRegistryUrl, IAvroMapper mapper, ILogger logger)
+        public AvroTypedPublisher(ProducerConfig config, string schemaRegistryUrl, IAvroMapper mapper, ILogger logger)
         {
             _schemaRegistryUrl = schemaRegistryUrl;
             _mapper = mapper;
@@ -96,7 +96,7 @@ namespace Nethermind.PubSub.Kafka.Avro
                 return;
             }
 
-            var transaction = data as PubSub.Models.FullTransaction;
+            var transaction = data as Kafka.Models.FullTransaction;
             if (transaction != null)
             {
                 await ProduceAvroTransactionAsync(topic, transaction);
@@ -113,7 +113,7 @@ namespace Nethermind.PubSub.Kafka.Avro
             }
         }
 
-        private async Task ProduceAvroTransactionAsync(string topic, PubSub.Models.FullTransaction fullTransaction)
+        private async Task ProduceAvroTransactionAsync(string topic, Kafka.Models.FullTransaction fullTransaction)
         {
 
             var message = new Message<Null, FullTransaction> {Value = _mapper.MapFullTransaction(fullTransaction)};

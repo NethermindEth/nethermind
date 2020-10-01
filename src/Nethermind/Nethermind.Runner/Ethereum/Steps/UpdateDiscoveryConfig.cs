@@ -17,6 +17,7 @@
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Api;
 using Nethermind.Network.Config;
 using Nethermind.Runner.Ethereum.Api;
 
@@ -25,9 +26,9 @@ namespace Nethermind.Runner.Ethereum.Steps
     [RunnerStepDependencies(typeof(FilterBootnodes))]
     public class UpdateDiscoveryConfig : IStep
     {
-        private readonly NethermindApi _api;
+        private readonly INethermindApi _api;
 
-        public UpdateDiscoveryConfig(NethermindApi api)
+        public UpdateDiscoveryConfig(INethermindApi api)
         {
             _api = api;
         }

@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Net;
+using System.Threading.Tasks;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using NUnit.Framework;
@@ -25,39 +26,43 @@ namespace Nethermind.Network.Test.Discovery
     public class IPResolverTests
     {
         [Test]
-        public void Can_resolve_external_ip()
+        public async Task Can_resolve_external_ip()
         {
             var ipResolver = new IPResolver(new NetworkConfig(), LimboLogs.Instance);
+            await ipResolver.Initialize();
             var address = ipResolver.ExternalIp;
             Assert.IsNotNull(address);
         }
         
         [Test]
-        public void Can_resolve_external_ip_with_override()
+        public async Task Can_resolve_external_ip_with_override()
         {
             string ipOverride = "99.99.99.99";
             INetworkConfig networkConfig = new NetworkConfig();
             networkConfig.ExternalIp = ipOverride;
             var ipResolver = new IPResolver(networkConfig, LimboLogs.Instance);
+            await ipResolver.Initialize();
             var address = ipResolver.ExternalIp;
             Assert.AreEqual(IPAddress.Parse(ipOverride), address);
         }
 
         [Test]
-        public void Can_resolve_internal_ip()
+        public async Task Can_resolve_internal_ip()
         {
             var ipResolver = new IPResolver(new NetworkConfig(), LimboLogs.Instance);
+            await ipResolver.Initialize();
             var address = ipResolver.LocalIp;
             Assert.IsNotNull(address);
         }
         
         [Test]
-        public void Can_resolve_local_ip_with_override()
+        public async Task Can_resolve_local_ip_with_override()
         {
             string ipOverride = "99.99.99.99";
             INetworkConfig networkConfig = new NetworkConfig();
             networkConfig.LocalIp = ipOverride;
             var ipResolver = new IPResolver(networkConfig, LimboLogs.Instance);
+            await ipResolver.Initialize();
             var address = ipResolver.LocalIp;
             Assert.AreEqual(IPAddress.Parse(ipOverride), address);
         }

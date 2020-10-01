@@ -18,7 +18,6 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Config;
 using Nethermind.Core.Specs;
@@ -28,6 +27,7 @@ using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Db.Blooms;
 using Nethermind.Runner.Ethereum.Api;
+using Nethermind.Serialization.Json;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
@@ -38,9 +38,8 @@ namespace Nethermind.Runner.Test.Ethereum
     public static class Build
     {
         public static NethermindApi ContextWithMocks() =>
-            new NethermindApi(Substitute.For<IConfigProvider>(), LimboLogs.Instance)
+            new NethermindApi(Substitute.For<IConfigProvider>(), new EthereumJsonSerializer(), LimboLogs.Instance)
             {
-                LogManager = LimboLogs.Instance,
                 Enode = Substitute.For<IEnode>(),
                 TxPool = Substitute.For<ITxPool>(),
                 Wallet = Substitute.For<IWallet>(),

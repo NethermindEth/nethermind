@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Net;
+using System.Threading.Tasks;
 
 namespace Nethermind.Network
 {
@@ -22,5 +23,6 @@ namespace Nethermind.Network
     {
         IPAddress LocalIp { get; }
         IPAddress ExternalIp { get; }
+        Task Initialize();
     }
 }
