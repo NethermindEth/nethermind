@@ -147,15 +147,19 @@ namespace Nethermind.Cli.Modules
 
             string baseDir = string.Empty.GetApplicationResourcePath();
             string pluginsDir = "plugins".GetApplicationResourcePath();
-            
+
             string searchPattern = "Nethermind*.dll";
             string[] allDlls =
-                Directory.GetFiles(baseDir, searchPattern)
+                Directory.GetFiles(baseDir, searchPattern);
+            if (Directory.Exists(pluginsDir))
+            {
+                allDlls = allDlls
                     .Union(Directory.GetFiles(pluginsDir, searchPattern)).ToArray();
+            }
 
             AssemblyLoadContext.Default.Resolving += (context, name)
                 => AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.Combine(baseDir, name.Name + ".dll"));
-            
+
             foreach (string dll in allDlls)
             {
                 Assembly assembly;

@@ -27,8 +27,9 @@
 
     <ItemGroup>
       <None Remove="plugins\readme.txt" />
-      <Content Include="plugins\readme.txt">
-        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </Content>
+    </ItemGroup>
+
+    <ItemGroup>
+      <Folder Include="plugins" />
     </ItemGroup>
 </Project>
