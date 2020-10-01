@@ -69,6 +69,9 @@ namespace Nethermind.DataMarketplace.Initializers
                 _ndmApi.RpcModuleProvider.Register(new SingletonModulePool<IEthModule>(proxyFactory, true));
                 if (logger.IsInfo) logger.Info("Enabled JSON RPC Proxy for NDM.");
             }
+            var ndmConsumerModule = new NdmConsumersModule();
+            ndmConsumerModule.Init(_ndmApi);
+            _ndmApi.RpcModuleProvider.Register(new SingletonModulePool<INdmConsumersModule>(ndmConsumerModule));
 
             return Task.CompletedTask;
         }

@@ -56,6 +56,7 @@ namespace Nethermind.Api.Extensions
 
             foreach (string path in pluginFiles)
             {
+                //najpierw plugins potem base
                 string pluginAssembly = _fileSystem.Path.GetFileNameWithoutExtension(path);
                 try
                 {
