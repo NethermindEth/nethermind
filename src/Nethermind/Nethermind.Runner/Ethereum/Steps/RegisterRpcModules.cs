@@ -33,10 +33,8 @@ using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.JsonRpc.Modules.TxPool;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
-using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Cli.Modules;
 using Nethermind.Core;
 using Nethermind.JsonRpc.Modules.Web3;
 using Nethermind.Runner.Ethereum.Steps.Migrations;
@@ -84,7 +82,6 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             // the following line needs to be called in order to make sure that the CLI library is referenced from runner and built alongside
             ILogger logger = _api.LogManager.GetClassLogger();
-            if (logger.IsDebug) logger.Debug($"Resolving CLI ({nameof(CliModuleLoader)})");
 
             IInitConfig initConfig = _api.Config<IInitConfig>();
             IJsonRpcConfig rpcConfig = _api.Config<IJsonRpcConfig>();
