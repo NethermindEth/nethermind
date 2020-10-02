@@ -15,16 +15,9 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Jint.Native;
-<<<<<<< HEAD:src/Nethermind/Nethermind.Consensus.Clique/CliqueCliModule.cs
-using Nethermind.Cli;
-using Nethermind.Cli.Modules;
-
-namespace Nethermind.Consensus.Clique
-=======
 using Nethermind.Cli.Modules;
 
 namespace Nethermind.Cli
->>>>>>> master:src/Nethermind/Nethermind.Cli/CliqueCliModule.cs
 {
     [CliModule("clique")]
     public class CliqueCliModule : CliModuleBase
