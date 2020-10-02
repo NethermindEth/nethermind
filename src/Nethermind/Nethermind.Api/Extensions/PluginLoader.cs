@@ -41,8 +41,8 @@ namespace Nethermind.Api.Extensions
         public void Load(ILogManager logManager)
         {
             ILogger logger = logManager.GetClassLogger();
-            string baseDir = AppDomain.CurrentDomain.BaseDirectory!;
-            string fullPluginsDir = _fileSystem.Path.Combine(baseDir, _pluginsDirectory);
+            string baseDir = string.Empty.GetApplicationResourcePath();
+            string fullPluginsDir = _pluginsDirectory.GetApplicationResourcePath();;
             if (!_fileSystem.Directory.Exists(fullPluginsDir))
             {
                 if (logger.IsWarn) logger.Warn($"Plugins folder {fullPluginsDir} was not found. Skipping.");
@@ -65,7 +65,7 @@ namespace Nethermind.Api.Extensions
                     AssemblyLoadContext.Default.Resolving += (context, name) =>
                         AssemblyLoadContext.Default.LoadFromAssemblyPath(_fileSystem.Path.Combine(baseDir, name.Name + ".dll"));
 
-                    foreach (Type type in assembly.GetExportedTypes())
+                    foreach (Type type in assembly.GetExportedTypes().Where(t => !t.IsInterface))
                     {
                         if (typeof(INethermindPlugin).IsAssignableFrom(type))
                         {
