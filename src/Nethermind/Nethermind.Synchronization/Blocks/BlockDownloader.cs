@@ -578,6 +578,7 @@ namespace Nethermind.Synchronization.Blocks
                     else
                     {
                         if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR Block download from {peerInfo} failed. {t.Exception}");
+                        reason = $"sync fault";
 #if DEBUG
                         reason = $"sync fault| {t.Exception}";
 #endif
