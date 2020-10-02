@@ -59,7 +59,7 @@ namespace Nethermind.Consensus.Clique
             if (header.Number == UInt256.Zero) return Address.Zero;
             if (_signatures.Get(header.Hash) != null) return _signatures.Get(header.Hash);
 
-            const int extraSeal = 65;
+            int extraSeal = 65;
 
             // Retrieve the signature from the header extra-data
             if (header.ExtraData.Length < extraSeal)
