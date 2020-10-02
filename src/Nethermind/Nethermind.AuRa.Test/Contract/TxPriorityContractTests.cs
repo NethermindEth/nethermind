@@ -31,6 +31,8 @@ using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.TxPool;
@@ -41,7 +43,7 @@ namespace Nethermind.AuRa.Test.Contract
 {
     public class TxPriorityContractTests
     {
-        private const string ContractAddress = "0xAB5b100cf7C8deFB3c8f3C48474223997A50fB13";
+        private static readonly byte[] FnSignature = {0, 1, 2, 3};
         
         [Test]
         public async Task whitelist_empty_after_init()
@@ -63,8 +65,46 @@ namespace Nethermind.AuRa.Test.Contract
         public async Task mingas_empty_after_init()
         {
             var chain = await TestContractBlockchain.ForTest<TxPermissionContractBlockchain, TxPriorityContractTests>();
-            var minGas = chain.TxPriorityContract.MinGasPrice.GetAll(chain.BlockTree.Head.Header);
+            var minGas = chain.TxPriorityContract.MinGasPrices.GetAll(chain.BlockTree.Head.Header);
             minGas.Should().BeEmpty();
+        }
+        
+        [Test]
+        public async Task whitelist_should_return_correctly()
+        {
+            var chain = await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocks, TxPriorityContractTests>();
+            var whiteList = chain.TxPriorityContract.SendersWhitelist.GetAll(chain.BlockTree.Head.Header);
+            var whiteListInContract = chain.TxPriorityContract.GetSendersWhitelist(chain.BlockTree.Head.Header);
+            object[] expected = {TestItem.AddressA, TestItem.AddressC};
+            whiteList.Should().BeEquivalentTo(expected);
+            whiteListInContract.Should().BeEquivalentTo(expected);
+        }
+        
+        [Test]
+        public async Task priority_should_return_correctly()
+        {
+            var chain = await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocks, TxPriorityContractTests>();
+            var priorities = chain.TxPriorityContract.Priorities.GetAll(chain.BlockTree.Head.Header);
+            var prioritiesInContract = chain.TxPriorityContract.GetPriorities(chain.BlockTree.Head.Header);
+            object[] expected =
+            {
+                new TxPriorityContract.Destination(TestItem.AddressB, FnSignature, 3),
+                new TxPriorityContract.Destination(TestItem.AddressA, FnSignature, UInt256.One),
+            };
+            
+            priorities.Should().BeEquivalentTo(expected, o => o.ComparingByMembers<TxPriorityContract.Destination>());
+            prioritiesInContract.Should().BeEquivalentTo(expected, o => o.ComparingByMembers<TxPriorityContract.Destination>());
+        }
+        
+        [Test]
+        public async Task mingas_should_return_correctly()
+        {
+            var chain = await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocks, TxPriorityContractTests>();
+            var minGasPrices = chain.TxPriorityContract.MinGasPrices.GetAll(chain.BlockTree.Head.Header);
+            var minGasPricesInContract = chain.TxPriorityContract.GetMinGasPrices(chain.BlockTree.Head.Header);
+            object[] expected = {new TxPriorityContract.Destination(TestItem.AddressB, FnSignature, 4)};
+            minGasPrices.Should().BeEquivalentTo(expected, o => o.ComparingByMembers<TxPriorityContract.Destination>());
+            minGasPricesInContract.Should().BeEquivalentTo(expected, o => o.ComparingByMembers<TxPriorityContract.Destination>());
         }
 
         public class TxPermissionContractBlockchain : TestContractBlockchain
@@ -75,18 +115,52 @@ namespace Nethermind.AuRa.Test.Contract
             {
                 TxPoolTxSource txPoolTxSource = base.CreateTxPoolTxSource();
                 
-                TxPriorityContract = new TxPriorityContract(new AbiEncoder(), new Address(ContractAddress), 
+                TxPriorityContract = new TxPriorityContract(new AbiEncoder(), TestItem.AddressA, 
                     new ReadOnlyTxProcessorSource(DbProvider, BlockTree, SpecProvider, LimboLogs.Instance));
                 
                 txPoolTxSource.OrderStrategy = new PermissionTxPoolOrderStrategy(
                     new ContractDataStore<Address>(TxPriorityContract.SendersWhitelist, BlockProcessor),
-                    new ContractDataStore<TxPriorityContract.Destination>(TxPriorityContract.Priorities, BlockProcessor),
-                    new ContractDataStore<TxPriorityContract.Destination>(TxPriorityContract.MinGasPrice, BlockProcessor));
+                    new ContractDataStore<TxPriorityContract.Destination>(TxPriorityContract.Priorities, BlockProcessor, TxPriorityContract.DestinationMethodComparer.Instance),
+                    new ContractDataStore<TxPriorityContract.Destination>(TxPriorityContract.MinGasPrices, BlockProcessor, TxPriorityContract.DestinationMethodComparer.Instance));
                 
                 return txPoolTxSource;
             }
 
             protected override Task AddBlocksOnStart() => Task.CompletedTask;
+        }
+
+        public class TxPermissionContractBlockchainWithBlocks : TxPermissionContractBlockchain
+        {
+            protected override Task AddBlocksOnStart()
+            {
+                EthereumEcdsa ecdsa = new EthereumEcdsa(ChainSpec.ChainId, LimboLogs.Instance);
+                
+                return AddBlock(
+                    SignTransactions(ecdsa, TestItem.PrivateKeyA,
+                        TxPriorityContract.SetPriority(TestItem.AddressA, FnSignature, UInt256.One),
+                        TxPriorityContract.SetPriority(TestItem.AddressB, FnSignature, 3),
+
+                        TxPriorityContract.SetMinGasPrice(TestItem.AddressB, FnSignature, 2),
+                        TxPriorityContract.SetMinGasPrice(TestItem.AddressB, FnSignature, 4),
+
+                        TxPriorityContract.SetSendersWhitelist(TestItem.AddressA, TestItem.AddressB),
+                        TxPriorityContract.SetSendersWhitelist(TestItem.AddressA, TestItem.AddressC))
+                );
+            }
+
+            private Transaction[] SignTransactions(IEthereumEcdsa ecdsa, PrivateKey key, params Transaction[] transactions)
+            {
+                for (var index = 0; index < transactions.Length; index++)
+                {
+                    Transaction transaction = transactions[index];
+                    ecdsa.Sign(key, transaction, true);
+                    transaction.SenderAddress = key.Address;
+                    transaction.Nonce = (UInt256) (index + 1);
+                    transaction.Hash = transaction.CalculateHash();
+                }
+
+                return transactions;
+            }
         }
     }
 }

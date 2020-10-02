@@ -18,6 +18,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Abi
 {
@@ -38,12 +40,32 @@ namespace Nethermind.Abi
         
         public override (object, int) Decode(byte[] data, int position, bool packed)
         {
-            throw new NotImplementedException();
+            object[] values = new object[Elements.Count];
+            int i = 0;
+            foreach (AbiType type in Elements.Values)
+            {
+                (values[i], position) = type.Decode(data, position, packed);
+                i++;
+            }
+
+            return (Activator.CreateInstance(CSharpType, values), position)!;
         }
 
         public override byte[] Encode(object? arg, bool packed)
         {
-            throw new NotImplementedException();
+            if (arg is ITuple input && input.Length == Elements.Count)
+            {
+                byte[][] encodedItems = new byte[Elements.Count][];
+                int i = 0;
+                foreach (AbiType type in Elements.Values)
+                {
+                    encodedItems[i++] = type.Encode(input[i], packed);
+                }
+                
+                return Bytes.Concat(encodedItems);
+            }
+
+            throw new AbiException(AbiEncodingExceptionMessage);
         }
 
         public override Type CSharpType => _type.Value;

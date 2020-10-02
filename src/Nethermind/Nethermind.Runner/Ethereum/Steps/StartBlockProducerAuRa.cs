@@ -139,8 +139,8 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         protected override TxPoolTxSource CreateTxPoolTxSource(ReadOnlyTxProcessingEnv processingEnv, ReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
-            ContractDataStore<T> GetContractDataStore<T>(IDataContract<T> dataContract) => 
-                new ContractDataStore<T>(dataContract, _api.MainBlockProcessor);
+            ContractDataStore<T> GetContractDataStore<T>(IDataContract<T> dataContract, IComparer<T>? comparer = null) => 
+                new ContractDataStore<T>(dataContract, _api.MainBlockProcessor, comparer);
 
             var txPoolTxSource = base.CreateTxPoolTxSource(processingEnv, readOnlyTxProcessorSource);
             Address? contractAddress = _auraConfig?.TransactionPriorityContractAddress;
@@ -149,8 +149,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                 var txPriorityContract = new TxPriorityContract(_api.AbiEncoder, contractAddress, readOnlyTxProcessorSource);
                 txPoolTxSource.OrderStrategy = new PermissionTxPoolOrderStrategy(
                     GetContractDataStore(txPriorityContract.SendersWhitelist),
-                    GetContractDataStore(txPriorityContract.Priorities),
-                    GetContractDataStore(txPriorityContract.MinGasPrice));
+                    GetContractDataStore(txPriorityContract.Priorities, TxPriorityContract.DestinationMethodComparer.Instance),
+                    GetContractDataStore(txPriorityContract.MinGasPrices, TxPriorityContract.DestinationMethodComparer.Instance));
             }
             
             return txPoolTxSource;

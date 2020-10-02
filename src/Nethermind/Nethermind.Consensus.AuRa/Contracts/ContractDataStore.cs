@@ -17,6 +17,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Collections.Specialized;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -27,20 +28,22 @@ namespace Nethermind.Consensus.AuRa.Contracts
     {
         private readonly IDataContract<T> _dataContract;
         private readonly IBlockProcessor _blockProcessor;
-        private List<T> _items;
+        private readonly IComparer<T> _comparer;
+        private IDictionary<T, T> _items;
         private Keccak _lastHash;
         
-        public ContractDataStore(IDataContract<T> dataContract, IBlockProcessor blockProcessor)
+        public ContractDataStore(IDataContract<T> dataContract, IBlockProcessor blockProcessor, IComparer<T> comparer = null)
         {
             _dataContract = dataContract ?? throw new ArgumentNullException(nameof(dataContract));
             _blockProcessor = blockProcessor;
+            _comparer = comparer;
             _blockProcessor.BlockProcessed += OnBlockProcessed;
         }
 
         public IEnumerable<T> GetItems(BlockHeader parent)
         {
             GetItems(parent, parent.Hash == _lastHash);
-            return _items;
+            return _items.Values;
         }
         
         private void OnBlockProcessed(object sender, BlockProcessedEventArgs e)
@@ -51,9 +54,9 @@ namespace Nethermind.Consensus.AuRa.Contracts
         
         private void GetItems(BlockHeader blockHeader, bool isConsecutiveBlock, TxReceipt[] receipts = null)
         {
-            _items ??= new List<T>();
+            _items ??= new SortedList<T, T>(_comparer);
             bool fromReceipts = receipts != null;
-            
+
             if (fromReceipts || !isConsecutiveBlock)
             {
                 if (!fromReceipts || !isConsecutiveBlock || !_dataContract.IncrementalChanges)
@@ -61,13 +64,17 @@ namespace Nethermind.Consensus.AuRa.Contracts
                     _items.Clear();
                 }
 
-                bool canGetFullStateFromReceipts = fromReceipts && (isConsecutiveBlock || !_dataContract.IncrementalChanges);
-                
+                bool canGetFullStateFromReceipts = fromReceipts && (isConsecutiveBlock || !_dataContract.IncrementalChanges) && !blockHeader.IsGenesis;
+
                 IEnumerable<T> items = canGetFullStateFromReceipts
                     ? _dataContract.GetChangesFromBlock(blockHeader, receipts)
                     : _dataContract.GetAll(blockHeader);
-                
-                _items.AddRange(items);
+
+                foreach (T item in items)
+                {
+                    _items[item] = item;
+                }
+
                 _lastHash = blockHeader.Hash;
             }
         }

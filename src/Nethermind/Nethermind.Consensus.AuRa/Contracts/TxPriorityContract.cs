@@ -17,12 +17,15 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.TxPool;
+using DestinationTuple = System.ValueTuple<Nethermind.Core.Address, byte[], Nethermind.Int256.UInt256>;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
@@ -42,17 +45,19 @@ namespace Nethermind.Consensus.AuRa.Contracts
         {
             Constant = GetConstant(readOnlyTransactionProcessorSource);
             SendersWhitelist = new DataContract<Address>(GetSendersWhitelist, SendersWhitelistSet, false);
-            MinGasPrice = new DataContract<Destination>(GetMinGasPrices, MinGasPriceSet, true);
+            MinGasPrices = new DataContract<Destination>(GetMinGasPrices, MinGasPriceSet, true);
             Priorities = new DataContract<Destination>(GetPriorities, PrioritySet, true);
         }
 
-        private Address[] GetSendersWhitelist(BlockHeader parentHeader) => Constant.Call<Address[]>(parentHeader, nameof(GetSendersWhitelist), Address.Zero);
+        public Address[] GetSendersWhitelist(BlockHeader parentHeader) => Constant.Call<Address[]>(parentHeader, nameof(GetSendersWhitelist), ContractAddress);
+
+        public Destination[] GetMinGasPrices(BlockHeader parentHeader) => Constant.Call<DestinationTuple[]>(parentHeader, nameof(GetMinGasPrices), ContractAddress)
+            .Select(x => (Destination)x).ToArray();
         
-        private Destination[] GetMinGasPrices(BlockHeader parentHeader) => Constant.Call<Destination[]>(parentHeader, nameof(GetMinGasPrices), Address.Zero);
+        public Destination[] GetPriorities(BlockHeader parentHeader) => Constant.Call<DestinationTuple[]>(parentHeader, nameof(GetPriorities), ContractAddress)
+            .Select(x => (Destination)x).ToArray();
         
-        private Destination[] GetPriorities(BlockHeader parentHeader) => Constant.Call<Destination[]>(parentHeader, nameof(GetPriorities), Address.Zero);
-        
-        private IEnumerable<Destination> PrioritySet(BlockHeader blockHeader, TxReceipt[] receipts)
+        public IEnumerable<Destination> PrioritySet(BlockHeader blockHeader, TxReceipt[] receipts)
         {
             var logEntry = GetSearchLogEntry(blockHeader, nameof(PrioritySet));
 
@@ -62,7 +67,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             }
         }
         
-        private IEnumerable<Destination> MinGasPriceSet(BlockHeader blockHeader, TxReceipt[] receipts)
+        public IEnumerable<Destination> MinGasPriceSet(BlockHeader blockHeader, TxReceipt[] receipts)
         {
             var logEntry = GetSearchLogEntry(blockHeader, nameof(MinGasPriceSet));
 
@@ -72,7 +77,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             }
         }
         
-        private IEnumerable<Address> SendersWhitelistSet(BlockHeader blockHeader, TxReceipt[] receipts)
+        public IEnumerable<Address> SendersWhitelistSet(BlockHeader blockHeader, TxReceipt[] receipts)
         {
             var logEntry = GetSearchLogEntry(blockHeader, nameof(MinGasPriceSet));
 
@@ -81,7 +86,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
                 : Array.Empty<Address>();
         }
         
-        private Address[] DecodeAddresses(byte[] data)
+        public Address[] DecodeAddresses(byte[] data)
         {
             var objects = DecodeReturnData(nameof(GetSendersWhitelist), data);
             return (Address[]) objects[0];
@@ -89,18 +94,53 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
         private Destination DecodeDestination(byte[] data)
         {
-            throw new NotImplementedException();
+            return default;
+            // DecodeReturnData()
         }
 
-        public struct Destination
+        public readonly struct Destination
         {
-            private Address Target { get; set; }
-            private byte[] FnSignature { get; set; }
-            private UInt256 Value { get; set; }
+            public Destination(Address target, byte[] fnSignature, UInt256 value)
+            {
+                Target = target;
+                FnSignature = fnSignature;
+                Value = value;
+            }
+
+            public Address Target { get; }
+            public byte[] FnSignature { get; }
+            public UInt256 Value { get; }
+
+            public static implicit operator Destination(DestinationTuple tuple) => 
+                new Destination(tuple.Item1, tuple.Item2, tuple.Item3);
+
+            public static implicit operator DestinationTuple(Destination destination) => 
+                (destination.Target, destination.FnSignature, destination.Value);
         }
 
+        public class DestinationMethodComparer : IComparer<Destination>
+        {
+            public static readonly DestinationMethodComparer Instance = new DestinationMethodComparer();
+
+            public int Compare(Destination x, Destination y)
+            {
+                int targetComparison = Comparer<Address>.Default.Compare(x.Target, y.Target);
+                if (targetComparison != 0) return targetComparison;
+                return Bytes.Comparer.Compare(x.FnSignature, y.FnSignature);
+            }
+        }
+        
         public IDataContract<Address> SendersWhitelist { get; }
-        public IDataContract<Destination> MinGasPrice { get; }
+        public IDataContract<Destination> MinGasPrices { get; }
         public IDataContract<Destination> Priorities { get; }
+
+        public Transaction SetPriority(Address target, byte[] fnSignature, UInt256 weight) => 
+            GenerateTransaction<GeneratedTransaction>(nameof(SetPriority), ContractAddress, target, fnSignature, weight);
+
+        public Transaction SetSendersWhitelist(params Address[] addresses) => 
+            GenerateTransaction<GeneratedTransaction>(nameof(SetSendersWhitelist), ContractAddress, (object) addresses);
+        
+        public Transaction SetMinGasPrice(Address target, byte[] fnSignature, UInt256 weight) => 
+            GenerateTransaction<GeneratedTransaction>(nameof(SetMinGasPrice), ContractAddress, target, fnSignature, weight);
     }
 }
