@@ -1268,9 +1268,9 @@ namespace Nethermind.Serialization.Rlp
 
                 throw new RlpException($"Unexpected prefix of {prefix} when decoding a byte array at position {Position} in the message of length {Length} starting with {Description}");
             }
-
+            
             private string Description => Data.Slice(0, Math.Min(DebugMessageContentLength, Length)).ToHexString();
-
+            
             public byte PeekByte()
             {
                 return Data[Position];

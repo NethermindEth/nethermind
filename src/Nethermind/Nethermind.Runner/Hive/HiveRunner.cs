@@ -16,6 +16,7 @@
 
 using System;
 using System.IO;
+using System.IO.Abstractions;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -32,12 +33,22 @@ namespace Nethermind.Runner.Hive
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
         private readonly IConfigProvider _configurationProvider;
+        private readonly IFileSystem _fileSystem;
 
+<<<<<<< HEAD
         public HiveRunner(IBlockTree blockTree, IConfigProvider configurationProvider, ILogger logger)
+=======
+        public HiveRunner(IBlockTree blockTree,
+            IJsonSerializer jsonSerializer,
+            IConfigProvider configurationProvider,
+            ILogger logger,
+            IFileSystem fileSystem)
+>>>>>>> master
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _configurationProvider = configurationProvider ?? throw new ArgumentNullException(nameof(configurationProvider));
+            _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
         }
 
         public Task Start(CancellationToken cancellationToken)
@@ -48,6 +59,7 @@ namespace Nethermind.Runner.Hive
 
             ListEnvironmentVariables();
             InitializeBlocks(hiveConfig.BlocksDir, cancellationToken);
+            InitializeChain(hiveConfig.ChainFile);
 
             _blockTree.NewHeadBlock -= BlockTreeOnNewHeadBlock;
 
@@ -114,6 +126,35 @@ namespace Nethermind.Runner.Hive
                 
                 if (_logger.IsInfo) _logger.Info($"HIVE Processing block file: {block.File} - {block.Block.ToString(Block.Format.Short)}");
                 ProcessBlock(block.Block);
+            }
+        }
+
+        private void InitializeChain(string chainFile)
+        {
+            if (!_fileSystem.File.Exists(chainFile))
+            {
+                if (_logger.IsInfo) _logger.Info($"HIVE Chain file does not exist: {chainFile}, skipping");
+                return;
+            }
+
+            byte[] chainFileContent = _fileSystem.File.ReadAllBytes(chainFile);
+            var rlpStream = new RlpStream(chainFileContent);
+            var blocks = new List<Block>();
+            
+            if (_logger.IsInfo) _logger.Info($"HIVE Loading blocks from {chainFile}");
+            while (rlpStream.ReadNumberOfItemsRemaining() > 0)
+            {
+                rlpStream.PeekNextItem();
+                Block block = Rlp.Decode<Block>(rlpStream);
+                if (_logger.IsInfo) _logger.Info($"HIVE Reading a chain.rlp block {block.ToString(Block.Format.Short)}");
+                blocks.Add(block);
+            }
+
+            for (int i = 0; i < blocks.Count; i++)
+            {
+                Block block = blocks[i];
+                if (_logger.IsInfo) _logger.Info($"HIVE Processing a chain.rlp block {block.ToString(Block.Format.Short)}");
+                ProcessBlock(block);
             }
         }
 

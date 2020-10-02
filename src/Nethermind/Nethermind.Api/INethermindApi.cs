@@ -29,7 +29,6 @@ using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Config;
 using Nethermind.Consensus;
-using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -37,7 +36,6 @@ using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Evm;
 using Nethermind.Facade;
-using Nethermind.Facade.Proxy;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.KeyStore;
@@ -133,7 +131,7 @@ namespace Nethermind.Api
         ProtectedPrivateKey? NodeKey { get; set; }
         ProtectedPrivateKey? OriginalSignerKey { get; set; }
         
-        List<INethermindPlugin> Plugins { get; }
-        List<IPublisher> Publishers { get; }
+        IList<INethermindPlugin> Plugins { get; }
+        IList<IPublisher> Publishers { get; }
     }
 }

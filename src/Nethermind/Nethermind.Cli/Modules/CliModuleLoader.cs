@@ -28,6 +28,7 @@ using Jint.Runtime.Descriptors;
 using Jint.Runtime.Interop;
 using Nethermind.Cli.Console;
 using Nethermind.JsonRpc.Client;
+using Nethermind.Logging;
 
 namespace Nethermind.Cli.Modules
 {
@@ -144,16 +145,22 @@ namespace Nethermind.Cli.Modules
         {
             List<Type> moduleTypes = new List<Type>();
 
-            string baseDir = AppDomain.CurrentDomain.BaseDirectory!;
-            string pluginsDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory!, "plugins");
+            string baseDir = string.Empty.GetApplicationResourcePath();
+            string pluginsDir = "plugins".GetApplicationResourcePath();
+
             string searchPattern = "Nethermind*.dll";
             string[] allDlls =
-                Directory.GetFiles(baseDir, searchPattern)
+                Directory.GetFiles(baseDir, searchPattern);
+            if (Directory.Exists(pluginsDir))
+            {
+                allDlls = allDlls
                     .Union(Directory.GetFiles(pluginsDir, searchPattern)).ToArray();
+            }
 
             AssemblyLoadContext.Default.Resolving += (context, name)
                 => AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.Combine(baseDir, name.Name + ".dll"));
-            
+
+            moduleTypes.AddRange(GetType().Assembly.GetExportedTypes().Where(IsCliModule));
             foreach (string dll in allDlls)
             {
                 Assembly assembly;
@@ -166,7 +173,10 @@ namespace Nethermind.Cli.Modules
                     continue;
                 }
 
-                moduleTypes.AddRange(assembly.GetExportedTypes().Where(IsCliModule));
+                if (assembly != GetType().Assembly)
+                {
+                    moduleTypes.AddRange(assembly.GetExportedTypes().Where(IsCliModule));
+                }
             }
 
             foreach (Type moduleType in moduleTypes.OrderBy(mt => mt.Name))
