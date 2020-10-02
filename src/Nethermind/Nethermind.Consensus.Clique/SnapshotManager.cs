@@ -73,16 +73,6 @@ namespace Nethermind.Consensus.Clique
             Keccak message = CalculateCliqueHeaderHash(header);
             Address address = _ecdsa.RecoverAddress(signatureBytes, message);
             _signatures.Set(header.Hash, address);
-
-            if (header.Number >= 303 && header.Number < 400)
-            {
-                
-            }
-            
-            // if (!GetOrCreateSnapshot(header.Number - 1, header.ParentHash).Signers.ContainsKey(address))
-            // {
-            //     
-            // }
             
             return address;
         }
