@@ -168,12 +168,7 @@ namespace Nethermind.Runner.Ethereum.Api
 
         public ChainSpec? ChainSpec { get; set; }
         public DisposableStack DisposeStack { get; } = new DisposableStack();
-<<<<<<< HEAD
-        public List<INethermindPlugin> Plugins { get; } = new List<INethermindPlugin>();
-        public List<IPublisher> Publishers { get; } = new List<IPublisher>(); // this should be called publishers?
-=======
         public IList<INethermindPlugin> Plugins { get; } = new List<INethermindPlugin>();
         public IList<IPublisher> Publishers { get; } = new List<IPublisher>(); // this should be called publishers?
->>>>>>> master
     }
 }

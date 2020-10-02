@@ -47,7 +47,7 @@ namespace Nethermind.Runner.Ethereum.Steps
     {
         // Environment.SetEnvironmentVariable("io.netty.allocator.pageSize", "8192");
         private const uint PageSize = 8192;
-        
+
         public static ulong Estimate(uint cpuCount, int arenaOrder)
         {
             // do not remember why there is 2 in front
@@ -60,12 +60,8 @@ namespace Nethermind.Runner.Ethereum.Steps
         typeof(UpdateDiscoveryConfig),
         typeof(SetupKeyStore),
         typeof(InitializeNodeStats),
-<<<<<<< HEAD
-        typeof(ResolveIps))]
-=======
         typeof(ResolveIps),
         typeof(InitializePlugins))]
->>>>>>> master
     public class InitializeNetwork : IStep
     {
         private const string DiscoveryNodesDbPath = "discoveryNodes";
@@ -101,7 +97,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             {
                 NetworkDiagTracer.Start();
             }
-            
+
             Environment.SetEnvironmentVariable("io.netty.allocator.maxOrder", _networkConfig.NettyArenaOrder.ToString());
 
             var cht = new CanonicalHashTrie(_api.DbProvider!.ChtDb);
@@ -211,7 +207,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             {
                 throw new InvalidOperationException("Cannot initialize network without knowing own enode");
             }
-            
+
             ThisNodeInfo.AddInfo("Ethereum     :", $"tcp://{_api.Enode.HostIp}:{_api.Enode.Port}");
             ThisNodeInfo.AddInfo("Version      :", $"{ClientVersion.Description.Replace("Nethermind/v", string.Empty)}");
             ThisNodeInfo.AddInfo("This node    :", $"{_api.Enode.Info}");
