@@ -124,9 +124,22 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
             public int Compare(Destination x, Destination y)
             {
+                bool sameTargetMethod = SameTargetMethod(x, y);
+                return sameTargetMethod 
+                    ? 0 // if same method, we want to treat destinations as same - to be unique 
+                    : y.Value.CompareTo(x.Value); // if not we want to sort destinations by priority descending order
+            }
+
+            private static bool SameTargetMethod(in Destination x, in Destination y)
+            {
                 int targetComparison = Comparer<Address>.Default.Compare(x.Target, y.Target);
-                if (targetComparison != 0) return targetComparison;
-                return Bytes.Comparer.Compare(x.FnSignature, y.FnSignature);
+
+                if (targetComparison == 0)
+                {
+                    targetComparison = Bytes.Comparer.Compare(x.FnSignature, y.FnSignature);
+                }
+
+                return targetComparison == 0;
             }
         }
         

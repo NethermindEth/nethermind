@@ -32,8 +32,8 @@ namespace Nethermind.Consensus.AuRa.Contracts
             bool incrementalChanges)
         {
             IncrementalChanges = incrementalChanges;
-            _getAll = getAll;
-            _getChangesFromBlock = getChangesFromBlock;
+            _getAll = getAll ?? throw new ArgumentNullException(nameof(getAll));
+            _getChangesFromBlock = getChangesFromBlock ?? throw new ArgumentNullException(nameof(getChangesFromBlock));;
         }
         
         public IEnumerable<T> GetAll(BlockHeader blockHeader) => _getAll(blockHeader);
