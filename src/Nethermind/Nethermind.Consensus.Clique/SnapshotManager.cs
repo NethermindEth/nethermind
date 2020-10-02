@@ -73,7 +73,6 @@ namespace Nethermind.Consensus.Clique
             Keccak message = CalculateCliqueHeaderHash(header);
             Address address = _ecdsa.RecoverAddress(signatureBytes, message);
             _signatures.Set(header.Hash, address);
-            
             return address;
         }
 
