@@ -147,7 +147,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (contractAddress != null)
             {
                 var txPriorityContract = new TxPriorityContract(_api.AbiEncoder, contractAddress, readOnlyTxProcessorSource);
-                txPoolTxSource.OrderStrategy = new PermissionTxPoolOrderStrategy(
+                txPoolTxSource.SelectionStrategy = new PermissionTxPoolSelectionStrategy(
                     GetContractDataStore(txPriorityContract.SendersWhitelist),
                     GetContractDataStore(txPriorityContract.Priorities, TxPriorityContract.DestinationMethodComparer.Instance),
                     GetContractDataStore(txPriorityContract.MinGasPrices, TxPriorityContract.DestinationMethodComparer.Instance));

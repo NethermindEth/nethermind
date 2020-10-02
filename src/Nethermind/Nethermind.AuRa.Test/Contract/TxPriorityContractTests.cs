@@ -118,7 +118,7 @@ namespace Nethermind.AuRa.Test.Contract
                 TxPriorityContract = new TxPriorityContract(new AbiEncoder(), TestItem.AddressA, 
                     new ReadOnlyTxProcessorSource(DbProvider, BlockTree, SpecProvider, LimboLogs.Instance));
                 
-                txPoolTxSource.OrderStrategy = new PermissionTxPoolOrderStrategy(
+                txPoolTxSource.SelectionStrategy = new PermissionTxPoolSelectionStrategy(
                     new ContractDataStore<Address>(TxPriorityContract.SendersWhitelist, BlockProcessor),
                     new ContractDataStore<TxPriorityContract.Destination>(TxPriorityContract.Priorities, BlockProcessor, TxPriorityContract.DestinationMethodComparer.Instance),
                     new ContractDataStore<TxPriorityContract.Destination>(TxPriorityContract.MinGasPrices, BlockProcessor, TxPriorityContract.DestinationMethodComparer.Instance));

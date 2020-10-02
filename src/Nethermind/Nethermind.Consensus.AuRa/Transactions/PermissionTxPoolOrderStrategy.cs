@@ -22,13 +22,13 @@ using Nethermind.Core;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
-    public class PermissionTxPoolOrderStrategy : TxPoolTxSource.ITxPoolOrderStrategy
+    public class PermissionTxPoolSelectionStrategy : TxPoolTxSource.ITxPoolSelectionStrategy
     {
         private readonly IContractDataStore<Address> _sendersWhitelist;
         private readonly IContractDataStore<TxPriorityContract.Destination> _priorities;
         private readonly IContractDataStore<TxPriorityContract.Destination> _minGasPrice;
 
-        public PermissionTxPoolOrderStrategy(
+        public PermissionTxPoolSelectionStrategy(
             IContractDataStore<Address> sendersWhitelist, 
             IContractDataStore<TxPriorityContract.Destination> priorities, 
             IContractDataStore<TxPriorityContract.Destination> minGasPrice)
@@ -38,7 +38,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
             _minGasPrice = minGasPrice;
         }
         
-        public IEnumerable<Transaction> Order(BlockHeader blockHeader, IEnumerable<Transaction> transactions)
+        public IEnumerable<Transaction> Select(BlockHeader blockHeader, IEnumerable<Transaction> transactions)
         {
             var sendersWhitelist = _sendersWhitelist.GetItems(blockHeader);
             var priorities = _priorities.GetItems(blockHeader);

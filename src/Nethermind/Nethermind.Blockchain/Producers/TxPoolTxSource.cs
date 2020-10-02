@@ -43,9 +43,10 @@ namespace Nethermind.Blockchain.Producers
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
             _logger = logManager?.GetClassLogger<TxPoolTxSource>() ?? throw new ArgumentNullException(nameof(logManager));
             _minGasPriceForMining = minGasPriceForMining;
+            SelectionStrategy = new DefaultTxPoolSelectionStrategy(_minGasPriceForMining, _logger);
         }
         
-        public ITxPoolOrderStrategy OrderStrategy { get; set; } = new DefaultTxPoolOrderStrategy();
+        public ITxPoolSelectionStrategy SelectionStrategy { get; set; }
 
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
         {
@@ -104,7 +105,7 @@ namespace Nethermind.Blockchain.Producers
             }
 
             var pendingTransactions = _transactionPool.GetPendingTransactions();
-            IEnumerable<Transaction> transactions = OrderStrategy.Order(parent, pendingTransactions);
+            IEnumerable<Transaction> transactions = SelectionStrategy.Select(parent, pendingTransactions);
             IDictionary<Address, UInt256> remainingBalance = new Dictionary<Address, UInt256>();
             Dictionary<Address, UInt256> nonces = new Dictionary<Address, UInt256>();
             List<Transaction> selected = new List<Transaction>();
@@ -129,12 +130,6 @@ namespace Nethermind.Blockchain.Producers
                 {
                     _transactionPool.RemoveTransaction(tx.Hash, 0);
                     if (_logger.IsDebug) _logger.Debug($"Rejecting (null sender) {tx.ToShortString()}");
-                    continue;
-                }
-
-                if (tx.GasPrice < _minGasPriceForMining)
-                {
-                    if (_logger.IsDebug) _logger.Debug($"Rejecting (gas price too low - min gas price: {_minGasPriceForMining}) {tx.ToShortString()}");
                     continue;
                 }
 
@@ -173,18 +168,40 @@ namespace Nethermind.Blockchain.Producers
         
         public override string ToString() => $"{nameof(TxPoolTxSource)}";
         
-        public interface ITxPoolOrderStrategy
+        public interface ITxPoolSelectionStrategy
         {
-            IEnumerable<Transaction> Order(BlockHeader blockHeader, IEnumerable<Transaction> transactions);
+            IEnumerable<Transaction> Select(BlockHeader blockHeader, IEnumerable<Transaction> transactions);
         }
         
-        private class DefaultTxPoolOrderStrategy : ITxPoolOrderStrategy
+        private class DefaultTxPoolSelectionStrategy : ITxPoolSelectionStrategy
         {
-            public IEnumerable<Transaction> Order(BlockHeader blockHeader, IEnumerable<Transaction> transactions) => 
-                transactions
+            private readonly long _minGasPriceForMining;
+            private readonly ILogger _logger;
+
+            public DefaultTxPoolSelectionStrategy(in long minGasPriceForMining, ILogger logger)
+            {
+                _minGasPriceForMining = minGasPriceForMining;
+                _logger = logger;
+            }
+
+            public IEnumerable<Transaction> Select(BlockHeader blockHeader, IEnumerable<Transaction> transactions)
+            {
+                foreach (Transaction tx in transactions
                     .OrderBy(t => t.Nonce)
                     .ThenByDescending(t => t.GasPrice)
-                    .ThenBy(t => t.GasLimit);
+                    .ThenBy(t => t.GasLimit))
+                {
+                    if (tx.GasPrice < _minGasPriceForMining)
+                    {
+                        if (_logger.IsDebug) _logger.Debug($"Rejecting (gas price too low - min gas price: {_minGasPriceForMining}) {tx.ToShortString()}");
+                    }
+                    else
+                    {
+                        yield return tx;
+                    }
+                }
+
+            }
         }
 
     }
