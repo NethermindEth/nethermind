@@ -63,7 +63,8 @@ namespace Nethermind.Blockchain.Processing
             IStorageProvider storageProvider,
             ITxPool txPool,
             IReceiptStorage receiptStorage,
-            ILogManager logManager)
+            ILogManager logManager,
+            Keccak genesisHash = null)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
@@ -176,6 +177,8 @@ namespace Nethermind.Blockchain.Processing
 
             for (int i = 0; i < block.Transactions.Length; i++)
             {
+                _logger.Warn($"Processing transaction {block.Number}.{i}");
+                
                 Transaction currentTx = block.Transactions[i];
                 if ((processingOptions & ProcessingOptions.DoNotVerifyNonce) != 0)
                 {
@@ -197,6 +200,8 @@ namespace Nethermind.Blockchain.Processing
             ApplyDaoTransition(suggestedBlock);
             Block block = PrepareBlockForProcessing(suggestedBlock);
             TxReceipt[] receipts = ProcessBlock(block, blockTracer, options);
+            block.Header.StateRoot = suggestedBlock.StateRoot;
+            block.Header.Hash = block.Header.CalculateHash();
             ValidateProcessedBlock(suggestedBlock, options, block, receipts);
             if ((options & ProcessingOptions.StoreReceipts) != 0)
             {
@@ -227,7 +232,7 @@ namespace Nethermind.Blockchain.Processing
             _stateProvider.RecalculateStateRoot();
             
             block.Header.StateRoot = _stateProvider.StateRoot;
-            block.Header.Hash = block.Header.CalculateHash();
+            // block.Header.Hash = block.Header.CalculateHash(); // TODO: temp disabled
 
             return receipts;
         }

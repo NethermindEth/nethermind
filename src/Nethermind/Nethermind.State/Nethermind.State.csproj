@@ -9,6 +9,7 @@
       <Name>Nethermind.Core</Name>
     </ProjectReference>
     <ProjectReference Include="..\Nethermind.Db\Nethermind.Db.csproj" />
+    <ProjectReference Include="..\Nethermind.Serialization.Opt\Nethermind.Serialization.Opt.csproj" />
     <ProjectReference Include="..\Nethermind.Serialization.Rlp\Nethermind.Serialization.Rlp.csproj" />
     <ProjectReference Include="..\Nethermind.Specs\Nethermind.Specs.csproj" />
     <ProjectReference Include="..\Nethermind.Trie\Nethermind.Trie.csproj" />

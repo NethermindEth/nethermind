@@ -79,5 +79,9 @@ namespace Nethermind.State
         /* visitors */
 
         void Accept(ITreeVisitor visitor, Keccak stateRoot);
+        
+        void SaveStorage(Address address, UInt256 key, byte[] value);
+
+        byte[] GetStorage(Address address, UInt256 key);
     }
 }

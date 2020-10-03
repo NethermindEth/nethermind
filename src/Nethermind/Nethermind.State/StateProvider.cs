@@ -19,11 +19,14 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Opt;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using Metrics = Nethermind.Db.Metrics;
@@ -63,6 +66,32 @@ namespace Nethermind.State
 
             _tree.Accept(visitor, stateRoot, true);
         }
+
+        public void SaveStorage(Address address, UInt256 key, byte[] value)
+        {
+            int keyLength = 20 + Rlp.LengthOf(key);
+            RlpStream rlpStream = new RlpStream(keyLength);
+            rlpStream.Write(address.Bytes);
+            rlpStream.Encode(key);
+            byte[] saveKey = rlpStream.Data;
+            _logger.Warn($"Saving storage {saveKey.ToHexString()}->{value.ToHexString()}");
+            _codeDb[saveKey] = value;
+        }
+        
+        public byte[] GetStorage(Address address, UInt256 key)
+        {
+            int keyLength = 20 + Rlp.LengthOf(key);
+            RlpStream rlpStream = new RlpStream(keyLength);
+            rlpStream.Write(address.Bytes);
+            rlpStream.Encode(key);
+            byte[] saveKey = rlpStream.Data;
+            
+            byte[] value = _codeDb[saveKey] ?? _missingValue;
+            _logger.Warn($"Loading storage {saveKey.ToHexString()}->{value.ToHexString()}");
+            return value;
+        }
+
+        private static byte[] _missingValue = new byte[] {0};
 
         private bool _needsStateRootUpdate;
 
@@ -302,7 +331,7 @@ namespace Nethermind.State
                 throw new InvalidOperationException($"{nameof(StateProvider)} tried to restore snapshot {snapshot} beyond current position {_currentPosition}");
             }
 
-            if (_logger.IsTrace) _logger.Trace($"Restoring state snapshot {snapshot}");
+            if (_logger.IsWarn) _logger.Warn($"Restoring state snapshot {snapshot}");
             if (snapshot == _currentPosition)
             {
                 return;
@@ -596,7 +625,10 @@ namespace Nethermind.State
         private Account GetState(Address address)
         {
             Metrics.StateTreeReads++;
-            Account account = _tree.Get(address);
+            // Account account = _tree.Get(address);
+            Account account = Opt.DecodeAccount(_codeDb[address.Bytes]);
+            _logger.Warn($"Reading {address} => {account}");
+            
             return account;
         }
 
@@ -605,6 +637,9 @@ namespace Nethermind.State
             _needsStateRootUpdate = true;
             Metrics.StateTreeWrites++;
             _tree.Set(address, account);
+            
+            _logger.Warn($"Saving {address} => {account}");
+            _codeDb[address.Bytes] = Opt.Encode(account);
         }
 
         private HashSet<Address> _readsForTracing = new HashSet<Address>();

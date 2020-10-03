@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -93,7 +93,7 @@ namespace Nethermind.State
 
         public void Restore(int snapshot)
         {
-            if (_logger.IsTrace) _logger.Trace($"Restoring storage snapshot {snapshot}");
+            if (_logger.IsWarn) _logger.Warn($"Restoring storage snapshot {snapshot}");
 
             if (snapshot > _currentPosition)
             {
@@ -251,10 +251,12 @@ namespace Nethermind.State
                             _logger.Trace($"  Update {change.StorageCell.Address}_{change.StorageCell.Index} V = {change.Value.ToHexString(true)}");
                         }
 
-                        StorageTree tree = GetOrCreateStorage(change.StorageCell.Address);
-                        Db.Metrics.StorageTreeWrites++;
-                        toUpdateRoots.Add(change.StorageCell.Address);
-                        tree.Set(change.StorageCell.Index, change.Value);
+                        // StorageTree tree = GetOrCreateStorage(change.StorageCell.Address);
+                        // Db.Metrics.StorageTreeWrites++;
+                        // toUpdateRoots.Add(change.StorageCell.Address);
+                        // tree.Set(change.StorageCell.Index, change.Value);
+                        _stateProvider.SaveStorage(change.StorageCell.Address, change.StorageCell.Index, change.Value);
+                        
                         if (isTracing)
                         {
                             trace[change.StorageCell] = new ChangeTrace(change.Value);
@@ -354,12 +356,15 @@ namespace Nethermind.State
 
         private byte[] LoadFromTree(StorageCell storageCell)
         {
-            StorageTree tree = GetOrCreateStorage(storageCell.Address);
-
-            Db.Metrics.StorageTreeReads++;
-            byte[] value = tree.Get(storageCell.Index);
+            byte[] value = _stateProvider.GetStorage(storageCell.Address, storageCell.Index);
+            
+            // StorageTree tree = GetOrCreateStorage(storageCell.Address);
+            //
+            // Db.Metrics.StorageTreeReads++;
+            // byte[] value = tree.Get(storageCell.Index);
             PushToRegistryOnly(storageCell, value);
             return value;
+            
         }
 
         private void PushToRegistryOnly(StorageCell cell, byte[] value)

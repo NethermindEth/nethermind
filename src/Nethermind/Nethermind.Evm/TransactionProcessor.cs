@@ -60,6 +60,7 @@ namespace Nethermind.Evm
 
         private void QuickFail(Transaction tx, BlockHeader block, ITxTracer txTracer, string reason)
         {
+            _logger.Warn(reason);
             block.GasUsed += tx.GasLimit;
             Address recipient = tx.To ?? ContractAddress.From(tx.SenderAddress, _stateProvider.GetNonce(tx.SenderAddress));
             
@@ -154,10 +155,11 @@ namespace Nethermind.Evm
                     return;
                 }
 
-                if (transaction.Nonce != _stateProvider.GetNonce(sender))
+                UInt256 actual = _stateProvider.GetNonce(sender);
+                if (transaction.Nonce != actual)
                 {
                     TraceLogInvalidTx(transaction, $"WRONG_TRANSACTION_NONCE: {transaction.Nonce} (expected {_stateProvider.GetNonce(sender)})");
-                    QuickFail(transaction, block, txTracer, "wrong transaction nonce");
+                    QuickFail(transaction, block, txTracer, $"wrong transaction nonce for {sender} - {transaction.Nonce} instead of {actual}");
                     return;
                 }
 

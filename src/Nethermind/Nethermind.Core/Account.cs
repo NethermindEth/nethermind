@@ -101,5 +101,10 @@ namespace Nethermind.Core
         {
             return new Account(Nonce, Balance, StorageRoot, newCodeHash, IsTotallyEmpty && newCodeHash == Keccak.OfAnEmptyString);
         }
+
+        public override string ToString()
+        {
+            return $"N:{Nonce} B:{Balance} C:{(HasCode ? "Y" : "N")}";
+        }
     }
 }
