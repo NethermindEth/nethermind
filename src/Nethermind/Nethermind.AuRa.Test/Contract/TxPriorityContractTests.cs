@@ -76,7 +76,7 @@ namespace Nethermind.AuRa.Test.Contract
         {
             var chain = await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocks, TxPriorityContractTests>();
             var whiteList = chain.TxPriorityContract.SendersWhitelist.GetAll(chain.BlockTree.Head.Header);
-            var whiteListInContract = chain.TxPriorityContract.GetSendersWhitelist(chain.BlockTree.Head.Header);
+            var whiteListInContract = chain.SendersWhitelist.GetItems(chain.BlockTree.Head.Header);
             object[] expected = {TestItem.AddressA, TestItem.AddressC};
             whiteList.Should().BeEquivalentTo(expected);
             whiteListInContract.Should().BeEquivalentTo(expected);
@@ -87,7 +87,7 @@ namespace Nethermind.AuRa.Test.Contract
         {
             var chain = await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocks, TxPriorityContractTests>();
             var priorities = chain.TxPriorityContract.Priorities.GetAll(chain.BlockTree.Head.Header);
-            var prioritiesInContract = chain.TxPriorityContract.GetPriorities(chain.BlockTree.Head.Header);
+            var prioritiesInContract = chain.Priorities.GetItems(chain.BlockTree.Head.Header);
             object[] expected =
             {
                 new TxPriorityContract.Destination(TestItem.AddressB, FnSignature, 3),
@@ -103,7 +103,7 @@ namespace Nethermind.AuRa.Test.Contract
         {
             var chain = await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocks, TxPriorityContractTests>();
             var minGasPrices = chain.TxPriorityContract.MinGasPrices.GetAll(chain.BlockTree.Head.Header);
-            var minGasPricesInContract = chain.TxPriorityContract.GetMinGasPrices(chain.BlockTree.Head.Header);
+            var minGasPricesInContract = chain.MinGasPrices.GetItems(chain.BlockTree.Head.Header);
             object[] expected = {new TxPriorityContract.Destination(TestItem.AddressB, FnSignature, 4)};
             minGasPrices.Should().BeEquivalentTo(expected, o => o.ComparingByMembers<TxPriorityContract.Destination>());
             minGasPricesInContract.Should().BeEquivalentTo(expected, o => o.ComparingByMembers<TxPriorityContract.Destination>());
@@ -112,6 +112,11 @@ namespace Nethermind.AuRa.Test.Contract
         public class TxPermissionContractBlockchain : TestContractBlockchain
         {
             public TxPriorityContract TxPriorityContract { get; private set; }
+            public SortedListContractDataStore<TxPriorityContract.Destination> Priorities { get; private set; }
+            
+            public DictionaryContractDataStore<TxPriorityContract.Destination> MinGasPrices { get; private set; }
+            
+            public HashSetContractDataStore<Address> SendersWhitelist { get; private set; }
             
             protected override TxPoolTxSource CreateTxPoolTxSource()
             {
@@ -121,12 +126,9 @@ namespace Nethermind.AuRa.Test.Contract
                     new ReadOnlyTxProcessorSource(DbProvider, BlockTree, SpecProvider, LimboLogs.Instance));
 
                 var comparer = TxPriorityContract.DestinationMethodComparer.Instance;
-
-                var minGasPrices = new DictionaryContractDataStore<TxPriorityContract.Destination>(TxPriorityContract.MinGasPrices, BlockProcessor, comparer);
-                txPoolTxSource.SelectionStrategy = new PermissionTxPoolSelectionStrategy(
-                    new HashSetContractDataStore<Address>(TxPriorityContract.SendersWhitelist, BlockProcessor),
-                    new SortedListContractDataStore<TxPriorityContract.Destination>(TxPriorityContract.Priorities, BlockProcessor, comparer));
-                
+                Priorities = new SortedListContractDataStore<TxPriorityContract.Destination>(TxPriorityContract.Priorities, BlockProcessor, comparer);
+                MinGasPrices = new DictionaryContractDataStore<TxPriorityContract.Destination>(TxPriorityContract.MinGasPrices, BlockProcessor, comparer);
+                SendersWhitelist = new HashSetContractDataStore<Address>(TxPriorityContract.SendersWhitelist, BlockProcessor);
                 return txPoolTxSource;
             }
 
@@ -138,7 +140,7 @@ namespace Nethermind.AuRa.Test.Contract
             protected override Task AddBlocksOnStart()
             {
                 EthereumEcdsa ecdsa = new EthereumEcdsa(ChainSpec.ChainId, LimboLogs.Instance);
-                
+
                 return AddBlock(
                     SignTransactions(ecdsa, TestItem.PrivateKeyA,
                         TxPriorityContract.SetPriority(TestItem.AddressA, TxPriorityContract.Destination.FnSignatureEmpty, UInt256.One),
