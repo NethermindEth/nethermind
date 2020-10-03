@@ -120,15 +120,15 @@ namespace Nethermind.Blockchain.Producers
                     continue;
                 }
 
-                if (!_minGasPriceFilter.IsAllowed(tx, parent))
-                {
-                    if (_logger.IsDebug) _logger.Debug($"Rejecting (gas price too low) {tx.ToShortString()}");
-                    continue;
-                }
-
                 if (tx.GasLimit > gasRemaining)
                 {
                     if (_logger.IsDebug) _logger.Debug($"Rejecting (tx gas limit {tx.GasLimit} above remaining block gas {gasRemaining}) {tx.ToShortString()}");
+                    continue;
+                }
+                
+                if (!_minGasPriceFilter.IsAllowed(tx, parent))
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Rejecting (gas price too low) {tx.ToShortString()}");
                     continue;
                 }
                 
