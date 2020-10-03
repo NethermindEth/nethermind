@@ -38,15 +38,9 @@ namespace Nethermind.Consensus.AuRa.Transactions
 
         public bool IsAllowed(Transaction tx, BlockHeader parentHeader)
         {
-            TxPriorityContract.Destination GetKey() => 
-                new TxPriorityContract.Destination(
-                    tx.To, 
-                    tx.Data.Length >= 4 ? AbiSignature.GetAddress(tx.Data) : Array.Empty<byte>(), 
-                    UInt256.Zero);
-
             return _minGasPriceFilter.IsAllowed(tx, parentHeader)
                    && (
-                       !_minGasPrices.TryGetValue(parentHeader, GetKey(), out var @override)
+                       !_minGasPrices.TryGetValue(parentHeader, tx, out var @override)
                        || tx.GasPrice >= @override.Value
                    );
         }

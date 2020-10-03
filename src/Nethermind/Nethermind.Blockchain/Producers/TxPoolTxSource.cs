@@ -43,7 +43,7 @@ namespace Nethermind.Blockchain.Producers
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
             _minGasPriceFilter = minGasPriceFilter ?? new MinGasPriceTxFilter(UInt256.Zero);
             _logger = logManager?.GetClassLogger<TxPoolTxSource>() ?? throw new ArgumentNullException(nameof(logManager));
-            SelectionStrategy = new DefaultTxPoolSelectionStrategy(minGasPriceFilter, _logger);
+            SelectionStrategy = new DefaultTxPoolSelectionStrategy();
         }
         
         public ITxPoolSelectionStrategy SelectionStrategy { get; set; }
@@ -120,6 +120,12 @@ namespace Nethermind.Blockchain.Producers
                     continue;
                 }
 
+                if (!_minGasPriceFilter.IsAllowed(tx, parent))
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Rejecting (gas price too low) {tx.ToShortString()}");
+                    continue;
+                }
+
                 if (tx.GasLimit > gasRemaining)
                 {
                     if (_logger.IsDebug) _logger.Debug($"Rejecting (tx gas limit {tx.GasLimit} above remaining block gas {gasRemaining}) {tx.ToShortString()}");
@@ -175,33 +181,11 @@ namespace Nethermind.Blockchain.Producers
         
         private class DefaultTxPoolSelectionStrategy : ITxPoolSelectionStrategy
         {
-            private readonly ITxFilter _minGasPriceFilter;
-            private readonly ILogger _logger;
-
-            public DefaultTxPoolSelectionStrategy(in ITxFilter minGasPriceFilter, ILogger logger)
-            {
-                _minGasPriceFilter = minGasPriceFilter;
-                _logger = logger;
-            }
-
-            public IEnumerable<Transaction> Select(BlockHeader blockHeader, IEnumerable<Transaction> transactions)
-            {
-                foreach (Transaction tx in transactions
+            public IEnumerable<Transaction> Select(BlockHeader blockHeader, IEnumerable<Transaction> transactions) =>
+                transactions
                     .OrderBy(t => t.Nonce)
                     .ThenByDescending(t => t.GasPrice)
-                    .ThenBy(t => t.GasLimit))
-                {
-                    if (_minGasPriceFilter.IsAllowed(tx, blockHeader))
-                    {
-                        yield return tx;
-                    }
-                    else
-                    {
-                        if (_logger.IsDebug) _logger.Debug($"Rejecting (gas price too low) {tx.ToShortString()}");
-                    }
-                }
-
-            }
+                    .ThenBy(t => t.GasLimit);
         }
 
     }
