@@ -68,24 +68,18 @@ namespace Nethermind.Core
             return loaded;
         }
 
-        public IEnumerable<Type> FindNethermindTypes(Type baseType, bool aggressive = false)
+        public IEnumerable<Type> FindNethermindTypes(Type baseType)
         {
-            if (aggressive)
-            {
-                LoadAll();
-            }
+            LoadAll();
 
             return _nethermindAssemblies
                 .SelectMany(a => (a?.IsDynamic ?? false ? Array.Empty<Type>() : a?.GetExportedTypes())?
                     .Where(t => baseType.IsAssignableFrom(t) && baseType != t) ?? Array.Empty<Type>());
         }
 
-        public IEnumerable<Type> FindNethermindTypes(string typeName, bool aggressive = false)
+        public IEnumerable<Type> FindNethermindTypes(string typeName)
         {
-            if (aggressive)
-            {
-                LoadAll();
-            }
+            LoadAll();
 
             return _nethermindAssemblies
                 .SelectMany(a => (a?.IsDynamic ?? false ? Array.Empty<Type>() : a?.GetExportedTypes())?

@@ -99,7 +99,7 @@ namespace Nethermind.Config
         public void Initialize()
         {
             Type type = typeof(IConfig);
-            IEnumerable<Type> interfaces = _typeDiscovery.FindNethermindTypes(type, true).Where(x => x.IsInterface);
+            IEnumerable<Type> interfaces = _typeDiscovery.FindNethermindTypes(type).Where(x => x.IsInterface);
             foreach (Type @interface in interfaces)
             {
                 Type implementation = _typeDiscovery.FindNethermindTypes(@interface).SingleOrDefault();
