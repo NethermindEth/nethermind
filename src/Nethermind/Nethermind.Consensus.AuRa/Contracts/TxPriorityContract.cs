@@ -118,7 +118,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
                 (destination.Target, destination.FnSignature, destination.Value);
         }
 
-        public class DestinationMethodComparer : IComparer<Destination>
+        public class DestinationMethodComparer : IComparer<Destination>, IEqualityComparer<Destination>
         {
             public static readonly DestinationMethodComparer Instance = new DestinationMethodComparer();
 
@@ -141,6 +141,11 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
                 return targetComparison == 0;
             }
+
+            public bool Equals(Destination x, Destination y) => 
+                Equals(x.Target, y.Target) && Equals(x.FnSignature, y.FnSignature);
+
+            public int GetHashCode(Destination obj) => HashCode.Combine(obj.Target, obj.FnSignature);
         }
         
         public IDataContract<Address> SendersWhitelist { get; }

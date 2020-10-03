@@ -29,6 +29,7 @@ using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -117,11 +118,15 @@ namespace Nethermind.AuRa.Test.Contract
                 
                 TxPriorityContract = new TxPriorityContract(new AbiEncoder(), TestItem.AddressA, 
                     new ReadOnlyTxProcessorSource(DbProvider, BlockTree, SpecProvider, LimboLogs.Instance));
-                
+
+                var comparer = TxPriorityContract.DestinationMethodComparer.Instance;
+
+                var minGasPrices = new DictionaryContractDataStore<TxPriorityContract.Destination>(TxPriorityContract.MinGasPrices, BlockProcessor, comparer);
                 txPoolTxSource.SelectionStrategy = new PermissionTxPoolSelectionStrategy(
-                    new ContractDataStore<Address>(TxPriorityContract.SendersWhitelist, BlockProcessor),
-                    new ContractDataStore<TxPriorityContract.Destination>(TxPriorityContract.Priorities, BlockProcessor, TxPriorityContract.DestinationMethodComparer.Instance),
-                    new ContractDataStore<TxPriorityContract.Destination>(TxPriorityContract.MinGasPrices, BlockProcessor, TxPriorityContract.DestinationMethodComparer.Instance));
+                    new ListContractDataStore<Address>(TxPriorityContract.SendersWhitelist, BlockProcessor),
+                    new SortedListContractDataStore<TxPriorityContract.Destination>(TxPriorityContract.Priorities, BlockProcessor, comparer),
+                    new MinGasPriceContractTxFilter(new MinGasPriceTxFilter(UInt256.Zero), minGasPrices),
+                    LimboLogs.Instance);
                 
                 return txPoolTxSource;
             }
