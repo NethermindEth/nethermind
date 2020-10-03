@@ -16,6 +16,7 @@
 // 
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Collections.Specialized;
 using Nethermind.Blockchain.Processing;
@@ -24,28 +25,27 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public class ContractDataStore<T> : IDisposable, IContractDataStore<T>
+    public abstract class ContractDataStore<T, TCollection> : IDisposable, IContractDataStore<T>
     {
         private readonly IDataContract<T> _dataContract;
         private readonly IBlockProcessor _blockProcessor;
-        private readonly IComparer<T> _comparer;
-        private IDictionary<T, T> _items;
         private Keccak _lastHash;
         
-        public ContractDataStore(IDataContract<T> dataContract, IBlockProcessor blockProcessor, IComparer<T> comparer = null)
+        protected TCollection Items { get; private set; }
+        
+        protected ContractDataStore(IDataContract<T> dataContract, IBlockProcessor blockProcessor)
         {
             _dataContract = dataContract ?? throw new ArgumentNullException(nameof(dataContract));
-            _blockProcessor = blockProcessor;
-            _comparer = comparer;
+            _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));;
             _blockProcessor.BlockProcessed += OnBlockProcessed;
         }
 
         public IEnumerable<T> GetItems(BlockHeader parent)
         {
             GetItems(parent, parent.Hash == _lastHash);
-            return _items.Values;
+            return GetItems(Items);
         }
-        
+
         private void OnBlockProcessed(object sender, BlockProcessedEventArgs e)
         {
             BlockHeader header = e.Block.Header;
@@ -54,14 +54,14 @@ namespace Nethermind.Consensus.AuRa.Contracts
         
         private void GetItems(BlockHeader blockHeader, bool isConsecutiveBlock, TxReceipt[] receipts = null)
         {
-            _items ??= new SortedList<T, T>(_comparer);
+            Items ??= CreateItems();
             bool fromReceipts = receipts != null;
 
             if (fromReceipts || !isConsecutiveBlock)
             {
                 if (!fromReceipts || !isConsecutiveBlock || !_dataContract.IncrementalChanges)
                 {
-                    _items.Clear();
+                    ClearItems(Items);
                 }
 
                 bool canGetFullStateFromReceipts = fromReceipts && (isConsecutiveBlock || !_dataContract.IncrementalChanges) && !blockHeader.IsGenesis;
@@ -70,10 +70,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
                     ? _dataContract.GetChangesFromBlock(blockHeader, receipts)
                     : _dataContract.GetAll(blockHeader);
 
-                foreach (T item in items)
-                {
-                    _items[item] = item;
-                }
+                InsertItems(Items, items);
 
                 _lastHash = blockHeader.Hash;
             }
@@ -83,5 +80,13 @@ namespace Nethermind.Consensus.AuRa.Contracts
         {
             _blockProcessor.BlockProcessed -= OnBlockProcessed;
         }
+        
+        protected abstract IEnumerable<T> GetItems(TCollection collection);
+        
+        protected abstract TCollection CreateItems();
+        
+        protected abstract void ClearItems(TCollection collection);
+        
+        protected abstract void InsertItems(TCollection collection, IEnumerable<T> items);
     }
 }

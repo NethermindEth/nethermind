@@ -182,16 +182,18 @@ namespace Nethermind.AuRa.Test.Contract
                 dataContract.IncrementalChanges.Returns(true);
                 
                 var blockProcessor = Substitute.For<IBlockProcessor>();
-                
+
                 return new TestCase<T>()
                 {
                     DataContract = dataContract,
                     BlockProcessor = blockProcessor,
-                    ContractDataStore = new ContractDataStore<T>(dataContract, blockProcessor, comparer)
+                    ContractDataStore = comparer == null
+                        ? (IContractDataStore<T>)new ListContractDataStore<T>(dataContract, blockProcessor)
+                        : new SortedListContractDataStore<T>(dataContract, blockProcessor, comparer)
                 };
             }
 
-            public ContractDataStore<T> ContractDataStore { get; private set; }
+            public IContractDataStore<T> ContractDataStore { get; private set; }
 
             public IBlockProcessor BlockProcessor { get; private set; }
 
