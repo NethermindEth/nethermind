@@ -40,7 +40,7 @@ namespace Nethermind.Core
                     loadedAssemblies = AppDomain.CurrentDomain.GetAssemblies();
                 } while (LoadOnce(loadedAssemblies.ToList()) != 0);
 
-                foreach (Assembly assembly in loadedAssemblies)
+                foreach (Assembly assembly in loadedAssemblies.Where(a => a.FullName.Contains("Nethermind")))
                 {
                     _nethermindAssemblies.Add(assembly);
                 }
