@@ -18,12 +18,14 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
+using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
@@ -40,6 +42,7 @@ namespace Nethermind.Blockchain.Processing
         private readonly IBlockProcessor _blockProcessor;
         private readonly IBlockDataRecoveryStep _recoveryStep;
         private readonly Options _options;
+        private readonly IDbProvider _dbProvider;
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
 
@@ -66,13 +69,15 @@ namespace Nethermind.Blockchain.Processing
             IBlockProcessor blockProcessor,
             IBlockDataRecoveryStep recoveryStep,
             ILogManager logManager,
-            Options options)
+            Options options,
+            IDbProvider dbProvider = null)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
             _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
             _options = options;
+            _dbProvider = dbProvider;
 
             if (_options.AutoProcess)
             {
@@ -293,6 +298,8 @@ namespace Nethermind.Blockchain.Processing
 
             if ((options & (ProcessingOptions.ReadOnlyChain | ProcessingOptions.DoNotUpdateHead)) == 0)
             {
+                // _logger.Warn($"Committing on db for {processedBlocks.Single().Number}");
+                _dbProvider?.CodeDb.Commit();
                 _blockTree.UpdateMainChain(processingBranch.Blocks.ToArray(), true);
                 Metrics.LastBlockProcessingTimeInMs = stopwatch.ElapsedMilliseconds;
             }
@@ -348,6 +355,7 @@ namespace Nethermind.Blockchain.Processing
             }
             catch (InvalidBlockException ex)
             {
+                throw;
                 TraceFailingBranch(
                     processingBranch,
                     options,
@@ -358,15 +366,15 @@ namespace Nethermind.Blockchain.Processing
                     new ParityLikeBlockTracer(ParityTraceTypes.StateDiff | ParityTraceTypes.Trace));
 
                 Keccak invalidBlockHash = ex.InvalidBlockHash;
-                for (int i = 0; i < processingBranch.BlocksToProcess.Count; i++)
-                {
-                    if (processingBranch.BlocksToProcess[i].Hash == invalidBlockHash)
-                    {
-                        _blockTree.DeleteInvalidBlock(processingBranch.BlocksToProcess[i]);
-                        if (_logger.IsDebug)
-                            _logger.Debug($"Skipped processing of {processingBranch.BlocksToProcess[^1].ToString(Block.Format.FullHashAndNumber)} because of {processingBranch.BlocksToProcess[i].ToString(Block.Format.FullHashAndNumber)} is invalid");
-                    }
-                }
+                // for (int i = 0; i < processingBranch.BlocksToProcess.Count; i++)
+                // {
+                //     if (processingBranch.BlocksToProcess[i].Hash == invalidBlockHash)
+                //     {
+                //         _blockTree.DeleteInvalidBlock(processingBranch.BlocksToProcess[i]);
+                //         if (_logger.IsDebug)
+                //             _logger.Debug($"Skipped processing of {processingBranch.BlocksToProcess[^1].ToString(Block.Format.FullHashAndNumber)} because of {processingBranch.BlocksToProcess[i].ToString(Block.Format.FullHashAndNumber)} is invalid");
+                //     }
+                // }
 
                 processedBlocks = null;
             }

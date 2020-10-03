@@ -115,7 +115,7 @@ namespace Nethermind.Blockchain.Test
         public void Proper_transactions_selected(ProperTransactionsSelectedTestCase testCase)
         {
             StateDb stateDb = new StateDb();
-            MemDb codeDb = new MemDb();
+            StateDb codeDb = new StateDb();
             var trieStore = new TrieStore(stateDb, LimboLogs.Instance);
             StateProvider stateProvider = new StateProvider(trieStore, codeDb, LimboLogs.Instance);
             StateReader stateReader = new StateReader(new TrieStore(stateDb, LimboLogs.Instance), codeDb, LimboLogs.Instance);

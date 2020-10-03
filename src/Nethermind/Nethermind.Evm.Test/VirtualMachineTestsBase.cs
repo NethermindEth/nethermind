@@ -77,9 +77,9 @@ namespace Nethermind.Evm.Test
             MemDb beamStateDb = new MemDb();
             ISnapshotableDb beamSyncDb = new StateDb(
                 new BeamSyncDb(new MemDb(), beamStateDb, StaticSelector.Full, logManager));
-            IDb beamSyncCodeDb = new BeamSyncDb(
-                new MemDb(), beamStateDb, StaticSelector.Full, logManager);
-            IDb codeDb = UseBeamSync ? beamSyncCodeDb : new StateDb();
+            ISnapshotableDb beamSyncCodeDb = new StateDb(new BeamSyncDb(
+                new MemDb(), beamStateDb, StaticSelector.Full, logManager));
+            ISnapshotableDb codeDb = UseBeamSync ? beamSyncCodeDb : new StateDb();
             _stateDb = UseBeamSync ? beamSyncDb : new StateDb();
             var trieStore = new TrieStore(_stateDb, logManager);
             TestState = new StateProvider(trieStore, codeDb, logManager);

@@ -249,7 +249,7 @@ namespace Nethermind.Synchronization.Test
             IDb blockDb = dbProvider.BlocksDb;
             IDb headerDb = dbProvider.HeadersDb;
             IDb blockInfoDb = dbProvider.BlockInfosDb;
-            IDb codeDb = dbProvider.CodeDb;
+            ISnapshotableDb codeDb = dbProvider.CodeDb;
             ISnapshotableDb stateDb = dbProvider.StateDb;
 
             TrieStore trieStore = new TrieStore(stateDb, LimboLogs.Instance);

@@ -40,7 +40,7 @@ namespace Nethermind.Db.Rpc
         }
         
         public ISnapshotableDb StateDb { get; }
-        public IDb CodeDb { get; }        
+        public ISnapshotableDb CodeDb { get; }        
         public IColumnsDb<ReceiptsColumns> ReceiptsDb { get; }
         public IDb BlocksDb { get; }
         public IDb HeadersDb { get; }

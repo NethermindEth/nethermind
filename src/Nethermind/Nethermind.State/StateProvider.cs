@@ -40,19 +40,21 @@ namespace Nethermind.State
 {
     public class StateProvider : IStateProvider
     {
+        public static bool _logWarns = true;
+        
         private const int StartCapacity = Resettable.StartCapacity;
         private ResettableDictionary<Address, Stack<int>> _intraBlockCache = new ResettableDictionary<Address, Stack<int>>();
         private ResettableHashSet<Address> _committedThisRound = new ResettableHashSet<Address>();
 
         private readonly List<Change> _keptInCache = new List<Change>();
         private readonly ILogger _logger;
-        private readonly IDb _codeDb;
+        private readonly ISnapshotableDb _codeDb;
 
         private int _capacity = StartCapacity;
         private Change[] _changes = new Change[StartCapacity];
         private int _currentPosition = -1;
 
-        public StateProvider(ITrieStore trieStore, IDb codeDb, ILogManager logManager)
+        public StateProvider(ITrieStore trieStore, ISnapshotableDb codeDb, ILogManager logManager)
         {
             _logger = logManager.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
@@ -74,7 +76,7 @@ namespace Nethermind.State
             rlpStream.Write(address.Bytes);
             rlpStream.Encode(key);
             byte[] saveKey = rlpStream.Data;
-            // _logger.Warn($"Saving storage {saveKey.ToHexString()}->{value.ToHexString()}");
+            if(_logWarns) _logger.Warn($"Saving storage {saveKey.ToHexString()}->{value.ToHexString()}");
             _codeDb[saveKey] = value;
         }
 
@@ -87,13 +89,13 @@ namespace Nethermind.State
             byte[] saveKey = rlpStream.Data;
 
             byte[] value = _codeDb[saveKey] ?? _missingValue;
-            // _logger.Warn($"Loading storage {saveKey.ToHexString()}->{value.ToHexString()}");
+            if(_logWarns) _logger.Warn($"Loading storage {saveKey.ToHexString()}->{value.ToHexString()}");
             return value;
         }
 
         public void DisconnectTrie()
         {
-            _tree = null;
+            // _tree = null;
         }
 
         private static byte[] _missingValue = new byte[] {0};
@@ -340,7 +342,7 @@ namespace Nethermind.State
                 throw new InvalidOperationException($"{nameof(StateProvider)} tried to restore snapshot {snapshot} beyond current position {_currentPosition}");
             }
 
-            // if (_logger.IsWarn) _logger.Warn($"Restoring state snapshot {snapshot}");
+            if(_logWarns) if (_logger.IsWarn) _logger.Warn($"Restoring state snapshot {snapshot}");
             if (snapshot == _currentPosition)
             {
                 return;
@@ -634,11 +636,16 @@ namespace Nethermind.State
         private Account GetState(Address address)
         {
             Metrics.StateTreeReads++;
-            // Account account = _tree.Get(address);
-            Account account = Opt.DecodeAccount(_codeDb[address.Bytes]);
-            // _logger.Warn($"Reading {address} => {account}");
-
-            return account;
+            Account accountOld = _tree.Get(address);
+            Account accountNew = Opt.DecodeAccount(_codeDb[address.Bytes]);
+            if(_logWarns) _logger.Warn($"Reading OLD {address} => {accountOld}");
+            if(_logWarns) _logger.Warn($"Reading NEW {address} => {accountOld}");
+            if ((accountNew != null || accountOld != null) && (accountNew?.Nonce != accountOld?.Nonce || accountNew?.Balance != accountOld?.Balance || accountNew?.CodeHash != accountOld?.CodeHash))
+            {
+                if(_logWarns) _logger.Error($"Difference on {address} {accountNew} vs {accountOld}");    
+            }
+            
+            return accountNew;
         }
 
         private void SetState(Address address, Account account)
@@ -647,7 +654,7 @@ namespace Nethermind.State
             Metrics.StateTreeWrites++;
             _tree?.Set(address, account);
 
-            // _logger.Warn($"Saving {address} => {account}");
+            if(_logWarns) _logger.Warn($"Saving {address} => {account}");
             _codeDb[address.Bytes] = Opt.Encode(account);
         }
 

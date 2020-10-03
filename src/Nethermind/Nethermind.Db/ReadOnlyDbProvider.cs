@@ -33,6 +33,7 @@ namespace Nethermind.Db
             NestedStateDb = new ReadOnlyDb(wrappedProvider.StateDb, createInMemoryWriteStore);
             StateDb = new StateDb(NestedStateDb);
             NestedCodeDb = new ReadOnlyDb(wrappedProvider.CodeDb, createInMemoryWriteStore);
+            CodeDb = new StateDb(NestedCodeDb);
             // StateDb = new ReadOnlyDb(wrappedProvider.StateDb, createInMemoryWriteStore);
             // CodeDb = new ReadOnlyDb(wrappedProvider.CodeDb, createInMemoryWriteStore);
             NestedReceiptsDb = new ReadOnlyColumnsDb<ReceiptsColumns>(wrappedProvider.ReceiptsDb, createInMemoryWriteStore);
@@ -51,7 +52,7 @@ namespace Nethermind.Db
         }
 
         public ISnapshotableDb StateDb { get; }
-        public IDb CodeDb => NestedCodeDb;
+        public ISnapshotableDb CodeDb { get; }
         public IColumnsDb<ReceiptsColumns> ReceiptsDb => NestedReceiptsDb;
         public IDb BlocksDb => NestedBlocksDb;
         public IDb HeadersDb => NestedHeadersDb;

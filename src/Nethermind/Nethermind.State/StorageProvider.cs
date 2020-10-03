@@ -93,7 +93,7 @@ namespace Nethermind.State
 
         public void Restore(int snapshot)
         {
-            // if (_logger.IsWarn) _logger.Warn($"Restoring storage snapshot {snapshot}");
+            if(StateProvider._logWarns) if (_logger.IsWarn) _logger.Warn($"Restoring storage snapshot {snapshot}"); ;
 
             if (snapshot > _currentPosition)
             {
@@ -251,10 +251,10 @@ namespace Nethermind.State
                             _logger.Trace($"  Update {change.StorageCell.Address}_{change.StorageCell.Index} V = {change.Value.ToHexString(true)}");
                         }
 
-                        // StorageTree tree = GetOrCreateStorage(change.StorageCell.Address);
-                        // Db.Metrics.StorageTreeWrites++;
-                        // toUpdateRoots.Add(change.StorageCell.Address);
-                        // tree.Set(change.StorageCell.Index, change.Value);
+                        StorageTree tree = GetOrCreateStorage(change.StorageCell.Address);
+                        Db.Metrics.StorageTreeWrites++;
+                        toUpdateRoots.Add(change.StorageCell.Address);
+                        tree.Set(change.StorageCell.Index, change.Value);
                         _stateProvider.SaveStorage(change.StorageCell.Address, change.StorageCell.Index, change.Value);
                         
                         if (isTracing)
@@ -320,9 +320,6 @@ namespace Nethermind.State
 
         public void CommitTrees(long blockNumber)
         {
-            return;
-            
-            // _logger.Warn($"Storage block commit {blockNumber}");
             foreach (KeyValuePair<Address, StorageTree> storage in _storages)
             {
                 storage.Value.Commit(blockNumber);
@@ -358,12 +355,17 @@ namespace Nethermind.State
 
         private byte[] LoadFromTree(StorageCell storageCell)
         {
-            byte[] value = _stateProvider.GetStorage(storageCell.Address, storageCell.Index);
+            byte[] valueNew = _stateProvider.GetStorage(storageCell.Address, storageCell.Index);
             
-            // StorageTree tree = GetOrCreateStorage(storageCell.Address);
-            //
-            // Db.Metrics.StorageTreeReads++;
-            // byte[] value = tree.Get(storageCell.Index);
+            StorageTree tree = GetOrCreateStorage(storageCell.Address);
+            
+            Db.Metrics.StorageTreeReads++;
+            byte[] value = tree.Get(storageCell.Index);
+            if (!Bytes.AreEqual(valueNew, value))
+            {
+                _logger.Error($"Difference for {storageCell} NEW:{valueNew.ToHexString()} vs OLD:{value.ToHexString()}");
+            }
+            
             PushToRegistryOnly(storageCell, value);
             return value;
             
@@ -415,6 +417,8 @@ namespace Nethermind.State
 
         public void ClearStorage(Address address)
         {
+            _logger.Error($"CLEARIGN STORAGE FOR {address}");
+            
             /* we are setting cached values to zero so we do not use previously set values
                when the contract is revived with CREATE2 inside the same block */
             foreach (var cellByAddress in _intraBlockCache)

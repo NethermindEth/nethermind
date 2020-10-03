@@ -1052,7 +1052,8 @@ namespace Nethermind.Blockchain
 
         private void LoadHeadBlockAtStart()
         {
-            byte[] data = _blockInfoDb.Get(StateHeadHashDbEntryAddress) ?? _blockInfoDb.Get(HeadAddressInDb);
+            // byte[] data = _blockInfoDb.Get(StateHeadHashDbEntryAddress) ?? _blockInfoDb.Get(HeadAddressInDb);
+            byte[] data = _blockInfoDb.Get(HeadAddressInDb);
             if (data != null)
             {
                 Block headBlock = FindBlock(new Keccak(data), BlockTreeLookupOptions.None);
@@ -1397,7 +1398,7 @@ namespace Nethermind.Blockchain
 
         public void SaveStateHead(Keccak stateHeadHash)
         {
-            _blockInfoDb.Set(StateHeadHashDbEntryAddress, stateHeadHash.Bytes);
+            // _blockInfoDb.Set(StateHeadHashDbEntryAddress, stateHeadHash.Bytes);
         }
     }
 }

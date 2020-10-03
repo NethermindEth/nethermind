@@ -151,7 +151,7 @@ namespace Nethermind.Blockchain.Processing
 
         private void PreCommitBlock(Keccak newBranchStateRoot, long blockNumber)
         {
-            if (_logger.IsTrace) _logger.Trace($"Committing the branch - {newBranchStateRoot} | {_stateProvider.StateRoot}");
+            if (_logger.IsWarn) _logger.Warn($"Committing the branch - {newBranchStateRoot} | {_stateProvider.StateRoot}");
             _storageProvider.CommitTrees(blockNumber);
             _stateProvider.CommitTree(blockNumber);
         }
@@ -177,7 +177,7 @@ namespace Nethermind.Blockchain.Processing
 
             for (int i = 0; i < block.Transactions.Length; i++)
             {
-                // _logger.Warn($"Processing transaction {block.Number}.{i}");
+                _logger.Warn($"Processing transaction {block.Number}.{i}");
                 
                 Transaction currentTx = block.Transactions[i];
                 if ((processingOptions & ProcessingOptions.DoNotVerifyNonce) != 0)

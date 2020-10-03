@@ -229,7 +229,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                 {
                     AutoProcess = !syncConfig.BeamSync,
                     StoreReceiptsByDefault = initConfig.StoreReceipts,
-                });
+                },
+                _api.DbProvider);
 
             _api.BlockProcessingQueue = blockchainProcessor;
             _api.BlockchainProcessor = blockchainProcessor;

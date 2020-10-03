@@ -45,7 +45,7 @@ namespace Nethermind.Store.Test
         {
             IReleaseSpec spec = MainnetSpecProvider.Instance.GetSpec(MainnetSpecProvider.ConstantinopleFixBlockNumber);
             StateDb stateDb = new StateDb(new MemDb());
-            StateProvider provider = new StateProvider(new TrieStore(stateDb, Logger), Substitute.For<IDb>(), Logger);
+            StateProvider provider = new StateProvider(new TrieStore(stateDb, Logger), Substitute.For<ISnapshotableDb>(), Logger);
             provider.CreateAccount(_address1, 0);
             provider.AddToBalance(_address1, 1, spec);
             provider.Commit(spec);
@@ -87,7 +87,7 @@ namespace Nethermind.Store.Test
             IReleaseSpec spec = MuirGlacier.Instance;
             StateDb stateDb = new StateDb(new MemDb());
             TrieStore trieStore = new TrieStore(stateDb, Logger);
-            StateProvider provider = new StateProvider(trieStore, new MemDb(), Logger);
+            StateProvider provider = new StateProvider(trieStore, new StateDb(), Logger);
             StorageProvider storageProvider = new StorageProvider(trieStore, provider, Logger);
 
             void UpdateStorageValue(byte[] newValue)
@@ -149,7 +149,7 @@ namespace Nethermind.Store.Test
             StorageCell storageCell = new StorageCell(_address1, UInt256.One);
             IReleaseSpec spec = MuirGlacier.Instance;
             TrieStore trieStore = new TrieStore(new StateDb(), Logger);
-            StateProvider provider = new StateProvider(trieStore, new MemDb(), Logger);
+            StateProvider provider = new StateProvider(trieStore, new StateDb(), Logger);
             StorageProvider storageProvider = new StorageProvider(trieStore, provider, Logger);
 
             void CommitEverything()
@@ -240,7 +240,7 @@ namespace Nethermind.Store.Test
             byte[] newValue = new byte[] {1, 2, 3, 4, 5};
 
             StateProvider processorStateProvider =
-                new StateProvider(trieStore, new MemDb(), LimboLogs.Instance);
+                new StateProvider(trieStore, new StateDb(), LimboLogs.Instance);
             processorStateProvider.StateRoot = state.StateRoot;
             
             StorageProvider processorStorageProvider =

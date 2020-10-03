@@ -109,6 +109,8 @@ namespace Nethermind.Db
 
         public void Restore(int snapshot)
         {
+            throw new Exception();
+            
             if (snapshot > _currentPosition) throw new InvalidOperationException($"Trying to restore snapshot beyond current positions at {nameof(StateDb)}");
 
             for (int i = _currentPosition; i > snapshot; i--)
@@ -127,8 +129,15 @@ namespace Nethermind.Db
             _db.StartBatch();
             for (int i = 0; i <= _currentPosition; i++)
             {
-                Change change = _changes[_currentPosition - i];
-                _db[change.Key] = change.Value;
+                Change change = _changes[i];
+                if (change.Value != null)
+                {
+                    _db[change.Key] = change.Value;
+                }
+                else
+                {
+                    _db.Remove(change.Key);
+                }
             }
             
             _db.CommitBatch();
@@ -150,7 +159,10 @@ namespace Nethermind.Db
         private byte[] Get(byte[] key)
         {
             if (_pendingChanges.TryGetValue(key, out int pendingChangeIndex))
+            {
                 return _changes[pendingChangeIndex].Value;
+            }
+
             return _db[key];
         }
 
@@ -161,9 +173,7 @@ namespace Nethermind.Db
         /// </summary>
         private void Set(byte[] key, byte[] value)
         {
-            if (_pendingChanges.ContainsKey(key)) return;
-
-            if (value == null) throw new ArgumentNullException(nameof(value), "Cannot store null values");
+            // if (value == null) throw new ArgumentNullException(nameof(value), "Cannot store null values");
             
             Resettable<Change>.IncrementPosition(ref _changes, ref _capacity, ref _currentPosition);
             Change change = new Change(key, value);

@@ -40,7 +40,7 @@ namespace Nethermind.Store.Test
         [SetUp]
         public void Setup()
         {
-            _stateProvider = new StateProvider(new TrieStore(new StateDb(), LogManager), new MemDb(),  LogManager);
+            _stateProvider = new StateProvider(new TrieStore(new StateDb(), LogManager), new StateDb(),  LogManager);
             _stateProvider.CreateAccount(_address1, 0);
             _stateProvider.CreateAccount(_address2, 0);
             _stateProvider.Commit(Frontier.Instance);
