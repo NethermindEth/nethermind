@@ -100,6 +100,8 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
         public readonly struct Destination
         {
+            public static byte[] FnSignatureEmpty = new byte[4];
+
             public Destination(Address target, byte[] fnSignature, UInt256 value)
             {
                 Target = target;
@@ -116,6 +118,14 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
             public static implicit operator DestinationTuple(Destination destination) => 
                 (destination.Target, destination.FnSignature, destination.Value);
+            
+            public static implicit operator Destination(Transaction tx) => GetTransactionKey(tx);
+
+            public static Destination GetTransactionKey(Transaction tx)
+            {
+                byte[] fnSignature = tx.Data.Length >= 4 ? AbiSignature.GetAddress(tx.Data) : FnSignatureEmpty;
+                return new Destination(tx.To, fnSignature,UInt256.Zero);
+            }
         }
 
         public class DestinationMethodComparer : IComparer<Destination>, IEqualityComparer<Destination>

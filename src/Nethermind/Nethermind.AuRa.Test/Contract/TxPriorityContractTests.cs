@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -90,7 +91,7 @@ namespace Nethermind.AuRa.Test.Contract
             object[] expected =
             {
                 new TxPriorityContract.Destination(TestItem.AddressB, FnSignature, 3),
-                new TxPriorityContract.Destination(TestItem.AddressA, FnSignature, UInt256.One),
+                new TxPriorityContract.Destination(TestItem.AddressA, TxPriorityContract.Destination.FnSignatureEmpty, UInt256.One),
             };
             
             priorities.Should().BeEquivalentTo(expected, o => o.ComparingByMembers<TxPriorityContract.Destination>());
@@ -123,10 +124,8 @@ namespace Nethermind.AuRa.Test.Contract
 
                 var minGasPrices = new DictionaryContractDataStore<TxPriorityContract.Destination>(TxPriorityContract.MinGasPrices, BlockProcessor, comparer);
                 txPoolTxSource.SelectionStrategy = new PermissionTxPoolSelectionStrategy(
-                    new ListContractDataStore<Address>(TxPriorityContract.SendersWhitelist, BlockProcessor),
-                    new SortedListContractDataStore<TxPriorityContract.Destination>(TxPriorityContract.Priorities, BlockProcessor, comparer),
-                    new MinGasPriceContractTxFilter(new MinGasPriceTxFilter(UInt256.Zero), minGasPrices),
-                    LimboLogs.Instance);
+                    new HashSetContractDataStore<Address>(TxPriorityContract.SendersWhitelist, BlockProcessor),
+                    new SortedListContractDataStore<TxPriorityContract.Destination>(TxPriorityContract.Priorities, BlockProcessor, comparer));
                 
                 return txPoolTxSource;
             }
@@ -142,7 +141,7 @@ namespace Nethermind.AuRa.Test.Contract
                 
                 return AddBlock(
                     SignTransactions(ecdsa, TestItem.PrivateKeyA,
-                        TxPriorityContract.SetPriority(TestItem.AddressA, FnSignature, UInt256.One),
+                        TxPriorityContract.SetPriority(TestItem.AddressA, TxPriorityContract.Destination.FnSignatureEmpty, UInt256.One),
                         TxPriorityContract.SetPriority(TestItem.AddressB, FnSignature, 3),
 
                         TxPriorityContract.SetMinGasPrice(TestItem.AddressB, FnSignature, 2),
