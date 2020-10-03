@@ -18,6 +18,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Runner.Ethereum.Api;
@@ -28,7 +29,7 @@ namespace Nethermind.Runner.Ethereum.Steps
     [RunnerStepDependencies(typeof(InitRlp), typeof(InitDatabase), typeof(InitializeBlockchain))]
     public class ResetDatabaseMigrations : IStep
     {
-        private readonly NethermindApi _api;
+        private readonly INethermindApi _api;
         [NotNull]
         private IReceiptStorage? _receiptStorage;
         [NotNull]
@@ -36,7 +37,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         [NotNull]
         private IChainLevelInfoRepository? _chainLevelInfoRepository;
 
-        public ResetDatabaseMigrations(NethermindApi api)
+        public ResetDatabaseMigrations(INethermindApi api)
         {
             _api = api;
         }

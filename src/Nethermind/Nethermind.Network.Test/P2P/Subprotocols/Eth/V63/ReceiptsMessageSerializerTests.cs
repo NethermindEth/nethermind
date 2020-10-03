@@ -94,7 +94,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
             TxReceipt[][] data = {new[] {Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.WithBlockNumber(0).TestObject}, new[] {Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject}};
             foreach (TxReceipt[] receipts in data)
             {
-                receipts.SetIgnoreOutput(true);
+                receipts.SetSkipStateAndStatusInRlp(true);
             }
             Test(data);
         }

@@ -19,6 +19,7 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Numerics;
 using System.Reflection;
+using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -79,7 +80,7 @@ namespace Nethermind.Serialization.Rlp
 
         public static void RegisterDecoders(Assembly assembly)
         {
-            foreach (var type in assembly.GetTypes())
+            foreach (var type in assembly.GetExportedTypes())
             {
                 if (!type.IsClass)
                 {
@@ -414,7 +415,7 @@ namespace Nethermind.Serialization.Rlp
                 return OfEmptyByteArray;
             }
 
-            return Encode(System.Text.Encoding.ASCII.GetBytes(s));
+            return Encode(Encoding.ASCII.GetBytes(s));
         }
 
         public static int Encode(Span<byte> buffer, int position, byte[] input)
@@ -1255,7 +1256,7 @@ namespace Nethermind.Serialization.Rlp
                 throw new RlpException($"Unexpected prefix of {prefix} when decoding a byte array at position {Position} in the message of length {Length} starting with {Description}");
             }
             
-            private string Description => Data.Slice(0, Math.Min(Rlp.DebugMessageContentLength, Length)).ToHexString();
+            private string Description => Data.Slice(0, Math.Min(DebugMessageContentLength, Length)).ToHexString();
             
             public byte PeekByte()
             {
@@ -1275,7 +1276,7 @@ namespace Nethermind.Serialization.Rlp
             public string DecodeString()
             {
                 Span<byte> bytes = DecodeByteArraySpan();
-                return System.Text.Encoding.UTF8.GetString(bytes);
+                return Encoding.UTF8.GetString(bytes);
             }
 
             public long DecodeLong()

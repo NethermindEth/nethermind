@@ -101,7 +101,7 @@ namespace Nethermind.Serialization.Rlp
 
         public int GetLength(ChainLevelInfo item, RlpBehaviors rlpBehaviors)
         {
-            throw new System.NotImplementedException();
+            throw new NotImplementedException();
         }
     }
 }

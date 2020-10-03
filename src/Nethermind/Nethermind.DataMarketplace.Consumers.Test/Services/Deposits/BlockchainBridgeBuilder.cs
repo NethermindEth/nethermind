@@ -16,6 +16,7 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -54,6 +55,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             IWallet wallet = new DevWallet(new WalletConfig(), LimboLogs.Instance);
             VirtualMachine virtualMachine = new VirtualMachine(stateProvider, storageProvider, new BlockhashProvider(blockTree, LimboLogs.Instance), MainnetSpecProvider.Instance, LimboLogs.Instance);
             TransactionProcessor processor = new TransactionProcessor(MainnetSpecProvider.Instance, stateProvider, storageProvider, virtualMachine, LimboLogs.Instance);
+            LogFinder logFinder = new LogFinder(blockTree, new InMemoryReceiptStorage(), NullBloomStorage.Instance, LimboLogs.Instance, new ReceiptsRecovery(), 1024);
 
             ReadOnlyTxProcessingEnv processingEnv = new ReadOnlyTxProcessingEnv(
                 new ReadOnlyDbProvider(memDbProvider, false),
@@ -67,11 +69,12 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
                 NullFilterStore.Instance,
                 NullFilterManager.Instance,
                 ecdsa,
-                NullBloomStorage.Instance,
                 Timestamper.Default,
+                logFinder,
                 LimboLogs.Instance,
+                false,
                 false);
-            
+
             WalletTxSigner txSigner = new WalletTxSigner(wallet, ChainId.Mainnet);
             ITxSealer txSealer0 = new TxSealer(txSigner, Timestamper.Default);
             ITxSealer txSealer1 = new NonceReservingTxSealer(txSigner, Timestamper.Default, txPool);

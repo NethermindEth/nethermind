@@ -51,7 +51,7 @@ namespace Nethermind.Network
 
         public void Register(Assembly assembly)
         {
-            foreach (Type type in assembly.GetTypes())
+            foreach (Type type in assembly.GetExportedTypes())
             {
                 if (!type.IsClass)
                 {
@@ -144,7 +144,7 @@ namespace Nethermind.Network
 
             if (!(serializerObject is IZeroMessageSerializer<T> messageSerializer))
             {
-                throw new InvalidOperationException($"Zero serializer for {nameof(T)} (registered: {serializerObject?.GetType()?.Name}) does not implement required interfaces");
+                throw new InvalidOperationException($"Zero serializer for {nameof(T)} (registered: {serializerObject?.GetType().Name}) does not implement required interfaces");
             }
 
             serializer = messageSerializer;
@@ -162,7 +162,7 @@ namespace Nethermind.Network
 
             if (!(serializerObject is IMessageSerializer<T> messageSerializer))
             {
-                throw new InvalidOperationException($"Serializer for {nameof(T)} (registered: {serializerObject?.GetType()?.Name}) does not implement required interfaces");
+                throw new InvalidOperationException($"Serializer for {nameof(T)} (registered: {serializerObject?.GetType().Name}) does not implement required interfaces");
             }
 
             serializer = messageSerializer;

@@ -17,22 +17,23 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Logging;
 using Nethermind.PubSub;
 using Nethermind.PubSub.Kafka;
 using Nethermind.PubSub.Kafka.Avro;
-using Nethermind.Runner.Ethereum.Api;
+using Nethermind.PubSub.Kafka.Models;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
     [RunnerStepDependencies(typeof(StartBlockProcessor))]
     public class StartKafkaProducer : IStep
     {
-        private readonly NethermindApi _api;
+        private readonly INethermindApi _api;
         private ILogger _logger;
 
-        public StartKafkaProducer(NethermindApi api)
+        public StartKafkaProducer(INethermindApi api)
         {
             _api = api;
             _logger = api.LogManager.GetClassLogger();
@@ -48,22 +49,23 @@ namespace Nethermind.Runner.Ethereum.Steps
             IKafkaConfig kafkaConfig = _api.Config<IKafkaConfig>();
             if (kafkaConfig.Enabled)
             {
-                IProducer kafkaProducer = await PrepareKafkaProducer(_api.BlockTree, kafkaConfig);
-                _api.Producers.Add(kafkaProducer);
+                IPublisher kafkaPublisher = await PrepareKafkaProducer(_api.BlockTree, kafkaConfig);
+                _api.Publishers.Add(kafkaPublisher);
+                _api.DisposeStack.Push(kafkaPublisher);
             }
         }
 
-        private async Task<IProducer> PrepareKafkaProducer(IBlockTree blockTree, IKafkaConfig kafkaConfig)
+        private async Task<IPublisher> PrepareKafkaProducer(IBlockTree blockTree, IKafkaConfig kafkaConfig)
         {
             PubSubModelMapper pubSubModelMapper = new PubSubModelMapper();
             AvroMapper avroMapper = new AvroMapper(blockTree);
-            KafkaProducer kafkaProducer = new KafkaProducer(kafkaConfig, pubSubModelMapper, avroMapper, _api.LogManager);
-            await kafkaProducer.InitAsync().ContinueWith(x =>
+            KafkaPublisher kafkaPublisher = new KafkaPublisher(kafkaConfig, pubSubModelMapper, avroMapper, _api.LogManager);
+            await kafkaPublisher.InitAsync().ContinueWith(x =>
             {
                 if (x.IsFaulted && _logger.IsError) _logger.Error("Error during Kafka initialization", x.Exception);
             });
 
-            return kafkaProducer;
+            return kafkaPublisher;
         }
     }
 }

@@ -258,7 +258,7 @@ namespace Nethermind.DataMarketplace.Test
 
             public long GetChainId()
             {
-                throw new NotImplementedException();
+                return 1;
             }
 
             public byte[] GetCode(Address address)
@@ -369,12 +369,17 @@ namespace Nethermind.DataMarketplace.Test
                 throw new NotImplementedException();
             }
 
-            public IEnumerable<FilterLog> GetLogs(BlockParameter fromBlock, BlockParameter toBlock, object address, IEnumerable<object> topics)
+            public IEnumerable<FilterLog> GetLogs(BlockParameter fromBlock, BlockParameter toBlock, object address, IEnumerable<object> topics = null, CancellationToken cancellationToken = default)
             {
                 throw new NotImplementedException();
             }
 
             public void RunTreeVisitor(ITreeVisitor treeVisitor, Keccak stateRoot)
+            {
+                throw new NotImplementedException();
+            }
+
+            public IEnumerable<FilterLog> FindLogs(LogFilter filter, CancellationToken cancellationToken = default)
             {
                 throw new NotImplementedException();
             }

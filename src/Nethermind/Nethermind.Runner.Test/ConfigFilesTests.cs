@@ -20,6 +20,8 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using FluentAssertions;
+using Nethermind.Analytics;
+using Nethermind.Api;
 using Nethermind.Baseline.Config;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -32,7 +34,6 @@ using Nethermind.Network.Config;
 using Nethermind.PubSub.Kafka;
 using Nethermind.Db.Blooms;
 using Nethermind.Db.Rocks.Config;
-using Nethermind.Runner.Analytics;
 using Nethermind.TxPool;
 using NUnit.Framework;
 
@@ -66,7 +67,7 @@ namespace Nethermind.Runner.Test
                 TestContext.WriteLine($"Verify defaults on {dll}");
                 Assembly assembly = Assembly.LoadFile(dll);
                 var configs =
-                    assembly.GetTypes().Where(t => typeof(IConfig).IsAssignableFrom(t) && t.IsInterface).ToArray();
+                    assembly.GetExportedTypes().Where(t => typeof(IConfig).IsAssignableFrom(t) && t.IsInterface).ToArray();
 
                 foreach (Type configType in configs)
                 {
@@ -80,7 +81,7 @@ namespace Nethermind.Runner.Test
         {
             PropertyInfo[] properties = configType.GetProperties();
 
-            Type implementationType = configType.Assembly.GetTypes().SingleOrDefault(t => t.IsClass && configType.IsAssignableFrom(t));
+            Type implementationType = configType.Assembly.GetExportedTypes().SingleOrDefault(t => t.IsClass && configType.IsAssignableFrom(t));
             object instance = Activator.CreateInstance(implementationType);
 
             foreach (PropertyInfo property in properties)
@@ -343,7 +344,7 @@ namespace Nethermind.Runner.Test
         [TestCase("*")]
         public void Tracer_tmeout_default_is_correct(string configWildcard)
         {
-            Test<IJsonRpcConfig, int>(configWildcard, c => c.TracerTimeout, 20000);
+            Test<IJsonRpcConfig, int>(configWildcard, c => c.Timeout, 20000);
         }
 
         [TestCase("*")]

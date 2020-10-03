@@ -48,7 +48,8 @@ namespace Nethermind.Mining.Test
 
             Block block = new Block(header);
             EthashSealer ethashSealer = new EthashSealer(new Ethash(LimboLogs.Instance), NullSigner.Instance, LimboLogs.Instance);
-            await ethashSealer.MineAsync(new CancellationTokenSource(TimeSpan.FromSeconds(600)).Token, block, validNonce - 3);
+            using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource(TimeSpan.FromSeconds(600));
+            await ethashSealer.MineAsync(cancellationTokenSource.Token, block, validNonce - 3);
 
             Assert.AreEqual(validNonce, block.Header.Nonce);
             Assert.AreEqual(new Keccak("0x52b96cf62447129c6bd81f835721ee145b948ae3b05ef6eae454cbf69a5bc05d"), block.Header.MixHash);
@@ -68,7 +69,8 @@ namespace Nethermind.Mining.Test
 
             Block block = new Block(header);
             EthashSealer ethashSealer = new EthashSealer(new Ethash(LimboLogs.Instance), NullSigner.Instance, LimboLogs.Instance);
-            await ethashSealer.MineAsync(new CancellationTokenSource(TimeSpan.FromMilliseconds(2000)).Token, block, badNonce).ContinueWith(t =>
+            using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource(TimeSpan.FromMilliseconds(2000));
+            await ethashSealer.MineAsync(cancellationTokenSource.Token, block, badNonce).ContinueWith(t =>
             {
                 Assert.True(t.IsCanceled);
             });

@@ -25,7 +25,5 @@ namespace Nethermind.Evm
         TransactionSubstate Run(EvmState state, ITxTracer tracer);
         
         CodeInfo GetCachedCodeInfo(Address codeSource, IReleaseSpec releaseSpec);
-
-        void DisableSimdInstructions();
     }
 }

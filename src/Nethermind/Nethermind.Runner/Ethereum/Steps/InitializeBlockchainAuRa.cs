@@ -16,6 +16,7 @@
 
 using System;
 using System.Linq;
+using Nethermind.Api;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
@@ -36,6 +37,8 @@ namespace Nethermind.Runner.Ethereum.Steps
     public class InitializeBlockchainAuRa : InitializeBlockchain
     {
         private readonly AuRaNethermindApi _api;
+        private INethermindApi _nethermindApi => _api;
+        
         private ReadOnlyTxProcessorSource? _readOnlyTransactionProcessorSource;
         private AuRaSealValidator? _sealValidator;
 
@@ -110,7 +113,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _api.FinalizationManager,
                     new TxPoolSender(_api.TxPool, new NonceReservingTxSealer(_api.EngineSigner, _api.Timestamper, _api.TxPool)), 
                     _api.TxPool,
-                    _api.Config<IMiningConfig>(),
+                    _nethermindApi.Config<IMiningConfig>(),
                     _api.LogManager,
                     _api.EngineSigner,
                     _api.ReportingContractValidatorCache,
@@ -168,8 +171,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                             GetReadOnlyTransactionProcessorSource()))
                         .ToArray<IBlockGasLimitContract>(),
                     _api.GasLimitCalculatorCache,
-                    _api.Config<IAuraConfig>().Minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract,
-                    new TargetAdjustedGasLimitCalculator(_api.SpecProvider, _api.Config<IMiningConfig>()), 
+                    ((INethermindApi)_api).Config<IAuraConfig>().Minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract,
+                    new TargetAdjustedGasLimitCalculator(_api.SpecProvider, _nethermindApi.Config<IMiningConfig>()), 
                     _api.LogManager);
                 
                 return gasLimitCalculator;

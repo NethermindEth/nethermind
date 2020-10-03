@@ -17,24 +17,25 @@
 using System.Collections.Generic;
 using System.IO.Abstractions;
 using Nethermind.Abi;
+using Nethermind.Api;
+using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Filters;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Config;
 using Nethermind.Consensus;
-using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.DataMarketplace.Channels;
-using Nethermind.DataMarketplace.Core;
-using Nethermind.DataMarketplace.Initializers;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Evm;
-using Nethermind.Facade.Proxy;
+using Nethermind.Facade;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.KeyStore;
@@ -61,24 +62,51 @@ namespace Nethermind.Runner.Ethereum.Api
 {
     public class NethermindApi : INethermindApi
     {
-        public T Config<T>() where T : IConfig
+        public NethermindApi(IConfigProvider configProvider, ILogManager logManager)
+            : this(configProvider, new EthereumJsonSerializer(), logManager)
         {
-            return ConfigProvider.GetConfig<T>();
         }
 
-        public NethermindApi(IConfigProvider configProvider, ILogManager logManager)
+        public NethermindApi(IConfigProvider configProvider, IJsonSerializer jsonSerializer, ILogManager logManager)
         {
             ConfigProvider = configProvider;
+            EthereumJsonSerializer = jsonSerializer;
             LogManager = logManager;
-            
+
             CryptoRandom = new CryptoRandom();
             DisposeStack.Push(CryptoRandom);
         }
-        
-        public AbiEncoder AbiEncoder { get; } = new AbiEncoder();
-        public ChainSpec? ChainSpec { get; set; }
-        public DisposableStack DisposeStack { get; } = new DisposableStack();
 
+        public IBlockchainBridge CreateBlockchainBridge()
+        {
+            ReadOnlyBlockTree readOnlyTree = new ReadOnlyBlockTree(BlockTree);
+            IReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(DbProvider, false);
+            ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(
+                readOnlyDbProvider,
+                TrieStore,
+                readOnlyTree,
+                SpecProvider,
+                LogManager);
+
+            IMiningConfig miningConfig = ConfigProvider.GetConfig<IMiningConfig>();
+            ISyncConfig syncConfig = ConfigProvider.GetConfig<ISyncConfig>();
+
+            return new BlockchainBridge(
+                readOnlyTxProcessingEnv,
+                TxPool,
+                ReceiptFinder,
+                FilterStore,
+                FilterManager,
+                EthereumEcdsa,
+                Timestamper,
+                LogFinder,
+                LogManager,
+                miningConfig.Enabled,
+                syncConfig.BeamSync && syncConfig.FastSync
+            );
+        }
+
+        public IAbiEncoder AbiEncoder { get; } = new AbiEncoder();
         public IBlockchainProcessor? BlockchainProcessor { get; set; }
         public IBlockDataRecoveryStep? RecoveryStep { get; set; }
         public IBlockProcessingQueue? BlockProcessingQueue { get; set; }
@@ -94,29 +122,27 @@ namespace Nethermind.Runner.Ethereum.Api
         public IDiscoveryApp? DiscoveryApp { get; set; }
         public IEnode? Enode { get; set; }
         public IEthereumEcdsa? EthereumEcdsa { get; set; }
-        public IEthJsonRpcClientProxy? EthJsonRpcClientProxy;
         public IFileSystem FileSystem { get; set; } = new FileSystem();
+        public IFilterStore? FilterStore { get; set; }
+        public IFilterManager? FilterManager { get; set; }
         public IGrpcServer? GrpcServer { get; set; }
         public IHeaderValidator? HeaderValidator { get; set; }
-        public IHttpClient? HttpClient;
         public IIPResolver? IpResolver { get; set; }
-        public IJsonRpcClientProxy? JsonRpcClientProxy;
-        public IJsonSerializer? EthereumJsonSerializer { get; set; }
+        public IJsonSerializer EthereumJsonSerializer { get; set; }
         public IKeyStore? KeyStore { get; set; }
-        public ILogManager LogManager{ get; set; }
-        public IMessageSerializationService _messageSerializationService { get; } = new MessageSerializationService();
-        public IMonitoringService MonitoringService = NullMonitoringService.Instance;
-        public INdmConsumerChannelManager? NdmConsumerChannelManager { get; set; }
-        public INdmDataPublisher? NdmDataPublisher { get; set; }
-        public INdmInitializer? NdmInitializer { get; set; }
+        public ILogFinder? LogFinder { get; set; }
+        public ILogManager LogManager { get; }
+        public IMessageSerializationService MessageSerializationService { get; } = new MessageSerializationService();
+        public IMonitoringService MonitoringService { get; set; } = NullMonitoringService.Instance;
         public INodeStatsManager? NodeStatsManager { get; set; }
         public IPeerManager? PeerManager { get; set; }
         public IProtocolsManager? ProtocolsManager { get; set; }
+        public IProtocolValidator? ProtocolValidator { get; set; }
         public IReceiptStorage? ReceiptStorage { get; set; }
         public IReceiptFinder? ReceiptFinder { get; set; }
         public IRewardCalculatorSource? RewardCalculatorSource { get; set; }
-        public IRlpxPeer? RlpxPeer;
-        public IRpcModuleProvider? RpcModuleProvider { get; set; }
+        public IRlpxPeer? RlpxPeer { get; set; }
+        public IRpcModuleProvider RpcModuleProvider { get; set; } = NullModuleProvider.Instance;
         public ISealer? Sealer { get; set; }
         public ISealValidator? SealValidator { get; set; }
         public ISigner? EngineSigner { get; set; }
@@ -127,6 +153,7 @@ namespace Nethermind.Runner.Ethereum.Api
         public ISynchronizer? Synchronizer { get; set; }
         public ISyncServer? SyncServer { get; set; }
         public IStateProvider? StateProvider { get; set; }
+        public IStateReader? StateReader { get; set; }
         public IStorageProvider? StorageProvider { get; set; }
         public ISessionMonitor? SessionMonitor { get; set; }
         public IStaticNodesManager? StaticNodesManager { get; set; }
@@ -137,12 +164,15 @@ namespace Nethermind.Runner.Ethereum.Api
         public ITxSender? TxSender { get; set; }
         public ITxPool? TxPool { get; set; }
         public ITxPoolInfoProvider? TxPoolInfoProvider { get; set; }
-        public IValidatorStore? ValidatorStore { get; set; }
         public IWallet? Wallet { get; set; }
-        public IWebSocketsManager? WebSocketsManager;
-        
-        public List<IProducer> Producers { get; }= new List<IProducer>();
+        public IWebSocketsManager? WebSocketsManager { get; set; }
+
         public ProtectedPrivateKey? NodeKey { get; set; }
-        public ProtectedPrivateKey? OriginalSignerKey { get; set; }
+        public ProtectedPrivateKey? OriginalSignerKey { get; set; } // TODO: please explain what it does
+
+        public ChainSpec? ChainSpec { get; set; }
+        public DisposableStack DisposeStack { get; } = new DisposableStack();
+        public IList<INethermindPlugin> Plugins { get; } = new List<INethermindPlugin>();
+        public IList<IPublisher> Publishers { get; } = new List<IPublisher>(); // this should be called publishers?
     }
 }

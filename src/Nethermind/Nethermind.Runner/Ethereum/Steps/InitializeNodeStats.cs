@@ -16,6 +16,7 @@
 
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Api;
 using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Stats;
 
@@ -24,9 +25,9 @@ namespace Nethermind.Runner.Ethereum.Steps
     [RunnerStepDependencies]
     public class InitializeNodeStats : IStep
     {
-        private readonly NethermindApi _api;
+        private readonly INethermindApi _api;
 
-        public InitializeNodeStats(NethermindApi api)
+        public InitializeNodeStats(INethermindApi api)
         {
             _api = api;
         }

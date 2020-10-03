@@ -74,8 +74,8 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             ProofModuleFactory moduleFactory = new ProofModuleFactory(
                 _dbProvider,
                 _blockTree,
-                new ReadOnlyTrieStore(new TrieStore(_dbProvider.StateDb, LimboLogs.Instance)), 
-                new CompositeDataRecoveryStep(new TxSignaturesRecoveryStep(new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance), NullTxPool.Instance, LimboLogs.Instance)),
+                new ReadOnlyTrieStore(new TrieStore(_dbProvider.StateDb, LimboLogs.Instance)),
+                new CompositeDataRecoveryStep(new TxSignaturesRecoveryStep(new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance), NullTxPool.Instance, _specProvider, LimboLogs.Instance)),
                 receiptStorage,
                 _specProvider,
                 LimboLogs.Instance);

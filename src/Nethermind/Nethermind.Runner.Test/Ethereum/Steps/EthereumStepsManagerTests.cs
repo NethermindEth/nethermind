@@ -22,6 +22,7 @@ using Nethermind.Config;
 using Nethermind.Logging;
 using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Runner.Ethereum.Steps;
+using Nethermind.Serialization.Json;
 using NUnit.Framework;
 
 namespace Nethermind.Runner.Test.Ethereum.Steps
@@ -34,6 +35,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         {
             NethermindApi runnerContext = new NethermindApi(
                 new ConfigProvider(),
+                new EthereumJsonSerializer(),
                 LimboLogs.Instance);
 
             IEthereumStepsLoader stepsLoader = new EthereumStepsLoader();
@@ -42,7 +44,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
                 runnerContext,
                 LimboLogs.Instance);
 
-            CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+            using CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(1));
             await stepsManager.InitializeAll(source.Token);
         }
 
@@ -59,7 +61,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
                 runnerContext,
                 LimboLogs.Instance);
 
-            CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+            using CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(1));
 
             try
             {
@@ -79,6 +81,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         {
             NethermindApi runnerContext = new CliqueNethermindApi(
                 new ConfigProvider(),
+                new EthereumJsonSerializer(),
                 LimboLogs.Instance);
 
             IEthereumStepsLoader stepsLoader = new EthereumStepsLoader(GetType().Assembly);
@@ -87,7 +90,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
                 runnerContext,
                 LimboLogs.Instance);
 
-            CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+            using CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(1));
 
             try
             {
@@ -107,6 +110,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         {
             NethermindApi runnerContext = new AuRaNethermindApi(
                 new ConfigProvider(),
+                new EthereumJsonSerializer(),
                 LimboLogs.Instance);
 
             IEthereumStepsLoader stepsLoader = new EthereumStepsLoader(GetType().Assembly);
@@ -115,7 +119,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
                 runnerContext,
                 LimboLogs.Instance);
 
-            CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+            using CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(1));
 
             try
             {

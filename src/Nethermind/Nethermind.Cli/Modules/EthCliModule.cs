@@ -45,13 +45,13 @@ namespace Nethermind.Cli.Modules
         }
 
         [CliFunction("eth", "getProof")]
-        public JsValue Call(string address, string[] storageKeys, string blockParameter = null)
+        public JsValue Call(string address, string[] storageKeys, string? blockParameter = null)
         {
             return NodeManager.PostJint("eth_getProof", CliParseAddress(address), storageKeys.Select(CliParseHash), blockParameter ?? "latest").Result;
         }
         
         [CliFunction("eth", "call")]
-        public string Call(object tx, string blockParameter = null)
+        public string Call(object tx, string? blockParameter = null)
         {
             return NodeManager.Post<string>("eth_call", tx, blockParameter ?? "latest").Result;
         }
@@ -63,13 +63,13 @@ namespace Nethermind.Cli.Modules
         }
 
         [CliFunction("eth", "getTransactionCount")]
-        public string GetTransactionCount(string address, string blockParameter = null)
+        public string GetTransactionCount(string address, string? blockParameter = null)
         {
             return NodeManager.Post<string>("eth_getTransactionCount", CliParseAddress(address), blockParameter ?? "latest").Result;
         }
 
         [CliFunction("eth", "getStorageAt")]
-        public string GetStorageAt(string address, string positionIndex, string blockParameter = null)
+        public string GetStorageAt(string address, string positionIndex, string? blockParameter = null)
         {
             return NodeManager.Post<string>("eth_getStorageAt", CliParseAddress(address), positionIndex, blockParameter ?? "latest").Result;
         }
@@ -87,7 +87,7 @@ namespace Nethermind.Cli.Modules
         }
 
         [CliFunction("eth", "estimateGas")]
-        public string EstimateGas(object json, string blockParameter = null)
+        public string EstimateGas(object json, string? blockParameter = null)
         {
             return NodeManager.Post<string>("eth_estimateGas", json, blockParameter ?? "latest").Result;
         }
@@ -117,13 +117,13 @@ namespace Nethermind.Cli.Modules
         }
 
         [CliFunction("eth", "getCode")]
-        public string GetCode(string address, string blockParameter = null)
+        public string GetCode(string address, string? blockParameter = null)
         {
             return NodeManager.Post<string>("eth_getCode", CliParseAddress(address), blockParameter ?? "latest").Result;
         }
 
         [CliFunction("eth", "getBlockTransactionCountByNumber")]
-        public long GetBlockTransactionCountByNumber(string blockParameter)
+        public long GetBlockTransactionCountByNumber(string? blockParameter)
         {
             return NodeManager.Post<long>("eth_getBlockTransactionCountByNumber", blockParameter).Result;
         }
@@ -177,7 +177,7 @@ namespace Nethermind.Cli.Modules
         }
 
         [CliFunction("eth", "getBalance")]
-        public BigInteger GetBalance(string address, string blockParameter = null)
+        public BigInteger GetBalance(string address, string? blockParameter = null)
         {
             return NodeManager.Post<BigInteger>("eth_getBalance", CliParseAddress(address), blockParameter ?? "latest").Result;
         }

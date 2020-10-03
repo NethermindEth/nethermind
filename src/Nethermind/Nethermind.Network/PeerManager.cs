@@ -14,10 +14,6 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Network.Config;
-using Nethermind.Network.Discovery;
-using Nethermind.Network.P2P;
-using Nethermind.Network.Rlpx;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -30,8 +26,13 @@ using Nethermind.Config;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.Network.Config;
+using Nethermind.Network.Discovery;
+using Nethermind.Network.P2P;
+using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
+using Timer = System.Timers.Timer;
 
 namespace Nethermind.Network
 {
@@ -58,8 +59,8 @@ namespace Nethermind.Network
         private int _failedInitialConnect;
         private int _connectionRounds;
 
-        private System.Timers.Timer _peerPersistenceTimer;
-        private System.Timers.Timer _peerUpdateTimer;
+        private Timer _peerPersistenceTimer;
+        private Timer _peerUpdateTimer;
         
         private bool _isStarted;
         private int _logCounter = 1;
@@ -845,7 +846,7 @@ namespace Nethermind.Network
         {
             if (_logger.IsDebug) _logger.Debug("Starting peer update timer");
 
-            _peerUpdateTimer = new System.Timers.Timer(_networkConfig.PeersUpdateInterval);
+            _peerUpdateTimer = new Timer(_networkConfig.PeersUpdateInterval);
             _peerUpdateTimer.Elapsed += (sender, e) => { _peerUpdateRequested.Set(); };
 
             _peerUpdateTimer.Start();
@@ -855,7 +856,7 @@ namespace Nethermind.Network
         {
             if (_logger.IsDebug) _logger.Debug("Starting peer persistence timer");
 
-            _peerPersistenceTimer = new System.Timers.Timer(_networkConfig.PeersPersistenceInterval)
+            _peerPersistenceTimer = new Timer(_networkConfig.PeersPersistenceInterval)
             {
                 AutoReset = false
             };

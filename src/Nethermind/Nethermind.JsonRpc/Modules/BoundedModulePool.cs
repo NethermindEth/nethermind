@@ -26,7 +26,7 @@ namespace Nethermind.JsonRpc.Modules
         private ConcurrentBag<T> _bag = new ConcurrentBag<T>();
         private SemaphoreSlim _semaphore;
 
-        public BoundedModulePool(int exclusiveCapacity, IRpcModuleFactory<T> factory)
+        public BoundedModulePool(IRpcModuleFactory<T> factory, int exclusiveCapacity)
         {
             Factory = factory;
             
@@ -48,7 +48,7 @@ namespace Nethermind.JsonRpc.Modules
             
             if (!_semaphore.Wait(1000))
             {
-                throw new TimeoutException($"Unable to rent an instance of {typeof(T).Name}");
+                throw new TimeoutException($"Unable to rent an instance of {typeof(T).Name}. Too many concurrent requests.");
             }
 
             _bag.TryTake(out T result);

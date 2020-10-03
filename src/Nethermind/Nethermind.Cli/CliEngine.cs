@@ -16,8 +16,6 @@
 
 using System;
 using System.IO;
-using System.Linq.Expressions;
-using System.Reflection;
 using Jint;
 using Jint.Native;
 using Jint.Native.Object;
@@ -52,11 +50,11 @@ namespace Nethermind.Cli
             
             ObjectInstance console = JintEngine.Object.Construct(Arguments.Empty);
             JintEngine.SetValue("console", console);
-            console.Put("log", (JsValue) ((ObjectInstance) new DelegateWrapper(JintEngine, new Action<JsValue>(v =>
+            console.Put("log", new DelegateWrapper(JintEngine, new Action<JsValue>(v =>
             {
 //                File.AppendAllText("C:\\temp\\cli.txt", v.ToString());
                 Colorful.Console.WriteLine(v.ToString());
-            }))), false);
+            })), false);
             
             JintEngine.ClrTypeConverter = new FallbackTypeConverter(JintEngine.ClrTypeConverter, new BigIntegerTypeConverter());
         }

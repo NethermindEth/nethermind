@@ -18,19 +18,28 @@
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 
 namespace Nethermind.Consensus
 {
-    public class NullSigner : ISigner
+    public class NullSigner : ISigner, ISignerStore
     {
         public static readonly NullSigner Instance = new NullSigner();
         
-        public Address Address { get; } = Address.Zero;
+        public Address Address { get; } = Address.Zero; // TODO: why zero address 
 
         public ValueTask Sign(Transaction tx) => default;
 
         public Signature Sign(Keccak message) { return new Signature(new byte[65]); }
 
-        public bool CanSign { get; } = true;
+        public bool CanSign { get; } = true; // TODO: why true?
+
+        public void SetSigner(PrivateKey key)
+        {
+        }
+
+        public void SetSigner(ProtectedPrivateKey key)
+        {
+        }
     }
 }

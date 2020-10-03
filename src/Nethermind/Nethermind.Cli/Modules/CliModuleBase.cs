@@ -20,14 +20,6 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Cli.Modules
 {
-    public class CliArgumentParserException : Exception
-    {
-        public CliArgumentParserException(string message)
-            : base(message)
-        {
-        }
-    }
-
     public abstract class CliModuleBase
     {
         protected ICliEngine Engine { get; }
@@ -39,7 +31,7 @@ namespace Nethermind.Cli.Modules
             NodeManager = nodeManager;
         }
 
-        protected Address CliParseAddress(string addressHex)
+        protected static Address CliParseAddress(string addressHex)
         {
             try
             {
@@ -57,7 +49,7 @@ namespace Nethermind.Cli.Modules
             }
         }
 
-        protected Keccak CliParseHash(string hashHex)
+        protected static Keccak CliParseHash(string hashHex)
         {
             try
             {

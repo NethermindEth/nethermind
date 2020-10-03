@@ -18,7 +18,6 @@
 using System.IO.Abstractions;
 using FluentAssertions;
 using Nethermind.Abi;
-using Nethermind.Baseline.JsonRpc;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus;
 using Nethermind.Facade;

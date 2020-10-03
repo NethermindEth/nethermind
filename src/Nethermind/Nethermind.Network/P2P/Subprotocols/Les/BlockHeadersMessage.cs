@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-
-namespace Nethermind.Network.P2P.Subprotocols.Les
+﻿namespace Nethermind.Network.P2P.Subprotocols.Les
 {
     public class BlockHeadersMessage: P2PMessage
     {

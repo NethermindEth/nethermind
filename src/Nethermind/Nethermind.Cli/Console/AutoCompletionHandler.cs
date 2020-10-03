@@ -30,15 +30,16 @@ namespace Nethermind.Cli.Console
         }
         
         // characters to start completion from
-        public char[] Separators { get; set; } = new char[] {' ', '.', '/'};
+        public char[] Separators { get; set; } = {' ', '.', '/'};
 
         // text - The current text entered in the console
         // index - The index of the terminal cursor within {text}
         public string[] GetSuggestions(string text, int index)
         {
+            string[] suggestions = Array.Empty<string>();
             if (text.IndexOf('.') == -1)
             {
-                return _cliModuleLoader.ModuleNames.OrderBy(x => x).Where(x => x.StartsWith(text)).ToArray();
+                suggestions = _cliModuleLoader.ModuleNames.OrderBy(x => x).Where(x => x.StartsWith(text)).ToArray();
             }
 
             foreach (string moduleName in _cliModuleLoader.ModuleNames)
@@ -46,11 +47,12 @@ namespace Nethermind.Cli.Console
                 if (text.StartsWith($"{moduleName}."))
                 {
                     string methodPart = text.Substring(text.IndexOf('.') + 1);
-                    return _cliModuleLoader.MethodsByModules[moduleName].Where(x => x.StartsWith(methodPart)).OrderBy(x => x).ToArray();
+                    suggestions = _cliModuleLoader.MethodsByModules[moduleName].Where(x => x.StartsWith(methodPart)).OrderBy(x => x).ToArray();
+                    break;
                 }
             }
 
-            return null;
+            return suggestions;
         }
     }
 }

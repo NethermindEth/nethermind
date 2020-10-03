@@ -14,9 +14,9 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Api;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.EthStats;
@@ -25,17 +25,16 @@ using Nethermind.EthStats.Integrations;
 using Nethermind.EthStats.Senders;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
-using Nethermind.Runner.Ethereum.Api;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
     [RunnerStepDependencies(typeof(StartBlockProcessor), typeof(InitializeNetwork), typeof(InitializeBlockchain))]
     public class StartEthStatsClient : IStep
     {
-        private readonly NethermindApi _api;
+        private readonly INethermindApi _api;
         private ILogger _logger;
 
-        public StartEthStatsClient(NethermindApi api)
+        public StartEthStatsClient(INethermindApi api)
         {
             _api = api;
             _logger = _api.LogManager.GetClassLogger();

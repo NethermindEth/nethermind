@@ -49,7 +49,7 @@ namespace Nethermind.Cli
             throw new NotImplementedException();
         }
 
-        public void Error(string text, Exception ex = null)
+        public void Error(string text, Exception? ex = null)
         {
             _cliConsole.WriteErrorLine(text);
             if (ex != null)

@@ -17,6 +17,7 @@
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Runner.Ethereum.Api;
 
@@ -25,9 +26,9 @@ namespace Nethermind.Runner.Ethereum.Steps
     [RunnerStepDependencies(typeof(SetupKeyStore))]
     public class FilterBootnodes : IStep
     {
-        private readonly NethermindApi _api;
+        private readonly INethermindApi _api;
 
-        public FilterBootnodes(NethermindApi api)
+        public FilterBootnodes(INethermindApi api)
         {
             _api = api;
         }

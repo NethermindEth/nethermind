@@ -16,13 +16,14 @@
 
 using Nethermind.Config;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Runner.Ethereum.Api
 {
     public class EthashNethermindApi : NethermindApi
     {
-        public EthashNethermindApi(IConfigProvider configProvider, ILogManager logManager)
-            : base(configProvider, logManager)
+        public EthashNethermindApi(IConfigProvider configProvider, IJsonSerializer jsonSerializer, ILogManager logManager)
+            : base(configProvider, jsonSerializer, logManager)
         {
         }
     }

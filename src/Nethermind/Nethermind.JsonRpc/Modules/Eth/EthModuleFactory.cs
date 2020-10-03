@@ -17,18 +17,11 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Filters;
-using Nethermind.Blockchain.Processing;
-using Nethermind.Blockchain.Receipts;
-using Nethermind.Core;
-using Nethermind.Core.Specs;
-using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Facade;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
-using Nethermind.Db.Blooms;
-using Nethermind.Trie.Pruning;
+using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Newtonsoft.Json;
@@ -38,83 +31,43 @@ namespace Nethermind.JsonRpc.Modules.Eth
     public class EthModuleFactory : ModuleFactoryBase<IEthModule>
     {
         private readonly IBlockTree _blockTree;
-        private readonly ITrieNodeResolver _trieStore;
         private readonly IDbProvider _dbProvider;
-        private readonly IEthereumEcdsa _ethereumEcdsa;
-        private readonly IReceiptFinder _receiptFinder;
-        private readonly ISpecProvider _specProvider;
         private readonly ILogManager _logManager;
-        private readonly bool _isMining;
+        private readonly IStateReader _stateReader;
+        private readonly IBlockchainBridgeFactory _blockchainBridgeFactory;
         private readonly ITxPool _txPool;
         private readonly ITxSender _txSender;
         private readonly IWallet _wallet;
-        private readonly IFilterStore _filterStore;
-        private readonly IFilterManager _filterManager;
         private readonly IJsonRpcConfig _rpcConfig;
-        private readonly IBloomStorage _bloomStorage;
 
         public EthModuleFactory(
-            IDbProvider dbProvider,
             ITxPool txPool,
             ITxSender txSender,
             IWallet wallet,
             IBlockTree blockTree,
-            ITrieNodeResolver trieStore,
-            IEthereumEcdsa ethereumEcdsa,
-            IBlockProcessor blockProcessor,
-            IReceiptFinder receiptFinder,
-            ISpecProvider specProvider,
             IJsonRpcConfig config,
-            IBloomStorage bloomStorage,
             ILogManager logManager,
-            bool isMining)
+            IStateReader stateReader,
+            IBlockchainBridgeFactory blockchainBridgeFactory)
         {
-            _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
-            _ethereumEcdsa = ethereumEcdsa ?? throw new ArgumentNullException(nameof(ethereumEcdsa));
-            _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _rpcConfig = config ?? throw new ArgumentNullException(nameof(config));
-            _bloomStorage = bloomStorage ?? throw new ArgumentNullException(nameof(bloomStorage));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _isMining = isMining;
-
-            _filterStore = new FilterStore();
-            _filterManager = new FilterManager(_filterStore, blockProcessor, _txPool, _logManager);
+            _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
+            _blockchainBridgeFactory = blockchainBridgeFactory ?? throw new ArgumentNullException(nameof(blockchainBridgeFactory));
+            _readOnlyBlockTree = new ReadOnlyBlockTree(_blockTree);
         }
         
         public override IEthModule Create()
         {
-            ReadOnlyTrieStore readOnlyTrieStore = new ReadOnlyTrieStore(_trieStore);
-            ReadOnlyBlockTree readOnlyTree = new ReadOnlyBlockTree(_blockTree);
-            IReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
-            ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(
-                readOnlyDbProvider, readOnlyTrieStore, readOnlyTree, _specProvider, _logManager);
-            
-            var blockchainBridge = new BlockchainBridge(
-                readOnlyTxProcessingEnv,
-                _txPool,
-                _receiptFinder,
-                _filterStore,
-                _filterManager,
-                _ethereumEcdsa,
-                _bloomStorage,
-                Timestamper.Default,
-                _logManager,
-                _isMining,
-                _rpcConfig.FindLogBlockDepthLimit
-                );
-            
-            
             return new EthModule(
                 _rpcConfig,
-                blockchainBridge,
-                readOnlyTxProcessingEnv.BlockTree,
-                readOnlyTxProcessingEnv.StateReader,
+                _blockchainBridgeFactory.CreateBlockchainBridge(),
+                _readOnlyBlockTree,
+                _stateReader,
                 _txPool,
                 _txSender,
                 _wallet,
@@ -126,6 +79,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
             new SyncingResultConverter(),
             new ProofConverter()
         };
+
+        private ReadOnlyBlockTree _readOnlyBlockTree;
 
         public override IReadOnlyCollection<JsonConverter> GetConverters() => Converters;
     }

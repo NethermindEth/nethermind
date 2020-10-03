@@ -106,6 +106,12 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
         
+        public TransactionBuilder<T> WithSignature(Signature signature)
+        {
+            TestObjectInternal.Signature = signature;
+            return this;
+        }
+        
         public TransactionBuilder<T> Signed(IEthereumEcdsa ecdsa, PrivateKey privateKey, bool isEip155Enabled = true)
         {
             ecdsa.Sign(privateKey, TestObjectInternal, isEip155Enabled);

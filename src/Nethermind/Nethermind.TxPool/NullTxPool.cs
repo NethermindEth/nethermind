@@ -21,12 +21,6 @@ using Nethermind.Int256;
 
 namespace Nethermind.TxPool
 {
-    public interface ITxPoolPeer
-    {
-        public PublicKey Id { get; }
-        void SendNewTransaction(Transaction tx, bool isPriority);
-    }
-    
     public class NullTxPool : ITxPool
     {
         private NullTxPool()
@@ -60,6 +54,7 @@ namespace Nethermind.TxPool
         }
         
         public UInt256 ReserveOwnTransactionNonce(Address address) => UInt256.Zero;
+        public event EventHandler<TxEventArgs> NewDiscovered;
 
         public event EventHandler<TxEventArgs> NewPending
         {

@@ -30,15 +30,19 @@ namespace Nethermind.Cli
 {
     public class NodeManager : INodeManager
     {
-        private ICliEngine _cliEngine;
-        private ILogManager _logManager;
-        private IJsonSerializer _serializer;
+        private readonly ICliEngine _cliEngine;
+
+        private readonly ILogManager _logManager;
+
+        private readonly IJsonSerializer _serializer;
+
         private readonly ICliConsole _cliConsole;
+
         private JsonParser _jsonParser;
 
         private Dictionary<Uri, IJsonRpcClient> _clients = new Dictionary<Uri, IJsonRpcClient>();
 
-        private IJsonRpcClient _currentClient;
+        private IJsonRpcClient? _currentClient;
 
         public NodeManager(ICliEngine cliEngine, IJsonSerializer serializer, ICliConsole cliConsole, ILogManager logManager)
         {
@@ -50,13 +54,13 @@ namespace Nethermind.Cli
             _jsonParser = new JsonParser(_cliEngine.JintEngine);
         }
 
-        public string CurrentUri { get; private set; }
+        public string? CurrentUri { get; private set; }
 
         public void SwitchClient(IJsonRpcClient client)
         {
             _currentClient = client;
         }
-        
+
         public void SwitchUri(Uri uri)
         {
             CurrentUri = uri.ToString();
@@ -70,21 +74,32 @@ namespace Nethermind.Cli
 
         public async Task<JsValue> PostJint(string method, params object[] parameters)
         {
+            JsValue returnValue = JsValue.Null;
+            
             try
             {
-                Stopwatch stopwatch = new Stopwatch();
-                stopwatch.Start();
-                object result = await _currentClient.Post<object>(method, parameters);
-                stopwatch.Stop();
-                decimal totalMicroseconds = stopwatch.ElapsedTicks * (1_000_000m / Stopwatch.Frequency);
-                Colorful.Console.WriteLine($"Request complete in {totalMicroseconds}μs");
-                string resultString = result?.ToString();
-                if (resultString == "0x")
+                if (_currentClient == null)
                 {
-                    return JsValue.Null;
+                    _cliConsole.WriteErrorLine("[INTERNAL ERROR] JSON RPC client not set.");
                 }
-
-                return resultString == null ? JsValue.Null : _jsonParser.Parse(resultString);
+                else
+                {
+                    Stopwatch stopwatch = new Stopwatch();
+                    stopwatch.Start();
+                    object? result = await _currentClient.Post<object>(method, parameters);
+                    stopwatch.Stop();
+                    decimal totalMicroseconds = stopwatch.ElapsedTicks * (1_000_000m / Stopwatch.Frequency);
+                    Colorful.Console.WriteLine($"Request complete in {totalMicroseconds}μs");
+                    string? resultString = result?.ToString();
+                    if (resultString == "0x" || resultString == null)
+                    {
+                        returnValue = JsValue.Null;
+                    }
+                    else
+                    {
+                        returnValue = _jsonParser.Parse(resultString);    
+                    }
+                }
             }
             catch (HttpRequestException e)
             {
@@ -92,7 +107,7 @@ namespace Nethermind.Cli
                 _cliConsole.Write("  Use ");
                 _cliConsole.WriteKeyword("node");
                 _cliConsole.WriteLine(".switch(\"ip:port\") to change the target machine");
-                
+
                 _cliConsole.WriteLine("  Make sure that JSON RPC is enabled on the target machine (--JsonRpc.Enabled true)");
                 _cliConsole.WriteLine("  Make sure that firewall is open for the JSON RPC port on the target machine");
             }
@@ -101,7 +116,7 @@ namespace Nethermind.Cli
                 _cliConsole.WriteException(e);
             }
 
-            return JsValue.Null;
+            return returnValue;
         }
 
         public async Task<string> Post(string method, params object[] parameters)
@@ -111,15 +126,22 @@ namespace Nethermind.Cli
 
         public async Task<T> Post<T>(string method, params object[] parameters)
         {
+            T result = default;
             try
             {
-                Stopwatch stopwatch = new Stopwatch();
-                stopwatch.Start();
-                T result = await _currentClient.Post<T>(method, parameters);
-                stopwatch.Stop();
-                decimal totalMicroseconds = stopwatch.ElapsedTicks * (1_000_000m / Stopwatch.Frequency);
-                Colorful.Console.WriteLine($"Request complete in {totalMicroseconds}μs");
-                return result;
+                if (_currentClient == null)
+                {
+                    _cliConsole.WriteErrorLine("[INTERNAL ERROR] JSON RPC client not set.");
+                }
+                else
+                {
+                    Stopwatch stopwatch = new Stopwatch();
+                    stopwatch.Start();
+                    result = await _currentClient.Post<T>(method, parameters);
+                    stopwatch.Stop();
+                    decimal totalMicroseconds = stopwatch.ElapsedTicks * (1_000_000m / Stopwatch.Frequency);
+                    Colorful.Console.WriteLine($"Request complete in {totalMicroseconds}μs");   
+                }
             }
             catch (HttpRequestException e)
             {
@@ -127,7 +149,7 @@ namespace Nethermind.Cli
                 _cliConsole.Write("  Use ");
                 _cliConsole.WriteKeyword("node");
                 _cliConsole.WriteLine(".switch(\"ip:port\") to change the target machine");
-                
+
                 _cliConsole.WriteLine("  Make sure that JSON RPC is enabled on the target machine (--JsonRpc.Enabled true)");
                 _cliConsole.WriteLine("  Make sure that firewall is open for the JSON RPC port on the target machine");
             }
@@ -136,7 +158,7 @@ namespace Nethermind.Cli
                 _cliConsole.WriteException(e);
             }
 
-            return default;
+            return result;
         }
     }
 }

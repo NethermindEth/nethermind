@@ -16,52 +16,27 @@
 
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Logging;
-using Nethermind.PubSub;
-using Nethermind.Runner.Analytics;
-using Nethermind.Runner.Ethereum.Api;
-using Nethermind.Serialization.Json;
+using Nethermind.Api;
+using Nethermind.Runner.Ethereum.Publishers;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
     [RunnerStepDependencies(typeof(StartBlockProcessor))]
     public class StartLogProducer : IStep
     {
-        private readonly NethermindApi _api;
+        private readonly INethermindApi _api;
 
-        public StartLogProducer(NethermindApi api)
+        public StartLogProducer(INethermindApi api)
         {
             _api = api;
         }
 
         public Task Execute(CancellationToken cancellationToken)
         {
-            IAnalyticsConfig analyticsConfig = _api.Config<IAnalyticsConfig>();
-            if (analyticsConfig.LogPublishedData)
-            {
-                LogProducer logProducer = new LogProducer(_api.EthereumJsonSerializer!, _api.LogManager);
-                _api.Producers.Add(logProducer);
-            }
-
+            // TODO: this should be configure in init maybe?
+            LogPublisher logPublisher = new LogPublisher(_api.EthereumJsonSerializer!, _api.LogManager);
+            _api.Publishers.Add(logPublisher);
             return Task.CompletedTask;
-        }
-
-        private class LogProducer : IProducer
-        {
-            private ILogger _logger;
-            private IJsonSerializer _jsonSerializer;
-
-            public LogProducer(IJsonSerializer jsonSerializer, ILogManager logManager)
-            {
-                _logger = logManager.GetClassLogger<LogProducer>();
-                _jsonSerializer = jsonSerializer;
-            }
-
-            public Task PublishAsync<T>(T data) where T : class
-            {
-                if (_logger.IsInfo) _logger.Info(_jsonSerializer.Serialize(data));
-                return Task.CompletedTask;
-            }
         }
     }
 }
