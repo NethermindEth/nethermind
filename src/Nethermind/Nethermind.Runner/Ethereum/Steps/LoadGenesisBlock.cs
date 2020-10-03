@@ -125,6 +125,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
             
             ThisNodeInfo.AddInfo("Genesis hash :", $"{_api.BlockTree.Genesis.Hash}");
+            _api.StateProvider.DisconnectTrie();
         }
     }
 }

@@ -93,7 +93,7 @@ namespace Nethermind.State
 
         public void Restore(int snapshot)
         {
-            if (_logger.IsWarn) _logger.Warn($"Restoring storage snapshot {snapshot}");
+            // if (_logger.IsWarn) _logger.Warn($"Restoring storage snapshot {snapshot}");
 
             if (snapshot > _currentPosition)
             {
@@ -320,6 +320,8 @@ namespace Nethermind.State
 
         public void CommitTrees(long blockNumber)
         {
+            return;
+            
             // _logger.Warn($"Storage block commit {blockNumber}");
             foreach (KeyValuePair<Address, StorageTree> storage in _storages)
             {

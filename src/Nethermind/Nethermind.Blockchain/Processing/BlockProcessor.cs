@@ -177,7 +177,7 @@ namespace Nethermind.Blockchain.Processing
 
             for (int i = 0; i < block.Transactions.Length; i++)
             {
-                _logger.Warn($"Processing transaction {block.Number}.{i}");
+                // _logger.Warn($"Processing transaction {block.Number}.{i}");
                 
                 Transaction currentTx = block.Transactions[i];
                 if ((processingOptions & ProcessingOptions.DoNotVerifyNonce) != 0)

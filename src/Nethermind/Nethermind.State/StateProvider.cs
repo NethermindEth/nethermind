@@ -64,7 +64,7 @@ namespace Nethermind.State
             if (visitor == null) throw new ArgumentNullException(nameof(visitor));
             if (stateRoot == null) throw new ArgumentNullException(nameof(stateRoot));
 
-            _tree.Accept(visitor, stateRoot, true);
+            _tree?.Accept(visitor, stateRoot, true);
         }
 
         public void SaveStorage(Address address, UInt256 key, byte[] value)
@@ -74,10 +74,10 @@ namespace Nethermind.State
             rlpStream.Write(address.Bytes);
             rlpStream.Encode(key);
             byte[] saveKey = rlpStream.Data;
-            _logger.Warn($"Saving storage {saveKey.ToHexString()}->{value.ToHexString()}");
+            // _logger.Warn($"Saving storage {saveKey.ToHexString()}->{value.ToHexString()}");
             _codeDb[saveKey] = value;
         }
-        
+
         public byte[] GetStorage(Address address, UInt256 key)
         {
             int keyLength = 20 + Rlp.LengthOf(key);
@@ -85,10 +85,15 @@ namespace Nethermind.State
             rlpStream.Write(address.Bytes);
             rlpStream.Encode(key);
             byte[] saveKey = rlpStream.Data;
-            
+
             byte[] value = _codeDb[saveKey] ?? _missingValue;
-            _logger.Warn($"Loading storage {saveKey.ToHexString()}->{value.ToHexString()}");
+            // _logger.Warn($"Loading storage {saveKey.ToHexString()}->{value.ToHexString()}");
             return value;
+        }
+
+        public void DisconnectTrie()
+        {
+            _tree = null;
         }
 
         private static byte[] _missingValue = new byte[] {0};
@@ -97,7 +102,7 @@ namespace Nethermind.State
 
         public void RecalculateStateRoot()
         {
-            _tree.UpdateRootHash();
+            _tree?.UpdateRootHash();
             _needsStateRootUpdate = false;
         }
 
@@ -110,12 +115,16 @@ namespace Nethermind.State
                     throw new InvalidOperationException();
                 }
 
-                return _tree.RootHash;
+                return _tree?.RootHash ?? Keccak.Zero;
             }
-            set => _tree.RootHash = value;
+            set
+            {
+                if (_tree != null)
+                    _tree.RootHash = value;
+            }
         }
 
-        private readonly StateTree _tree;
+        private StateTree? _tree;
 
         public bool AccountExists(Address address)
         {
@@ -331,7 +340,7 @@ namespace Nethermind.State
                 throw new InvalidOperationException($"{nameof(StateProvider)} tried to restore snapshot {snapshot} beyond current position {_currentPosition}");
             }
 
-            if (_logger.IsWarn) _logger.Warn($"Restoring state snapshot {snapshot}");
+            // if (_logger.IsWarn) _logger.Warn($"Restoring state snapshot {snapshot}");
             if (snapshot == _currentPosition)
             {
                 return;
@@ -627,8 +636,8 @@ namespace Nethermind.State
             Metrics.StateTreeReads++;
             // Account account = _tree.Get(address);
             Account account = Opt.DecodeAccount(_codeDb[address.Bytes]);
-            _logger.Warn($"Reading {address} => {account}");
-            
+            // _logger.Warn($"Reading {address} => {account}");
+
             return account;
         }
 
@@ -636,9 +645,9 @@ namespace Nethermind.State
         {
             _needsStateRootUpdate = true;
             Metrics.StateTreeWrites++;
-            _tree.Set(address, account);
-            
-            _logger.Warn($"Saving {address} => {account}");
+            _tree?.Set(address, account);
+
+            // _logger.Warn($"Saving {address} => {account}");
             _codeDb[address.Bytes] = Opt.Encode(account);
         }
 
@@ -763,14 +772,17 @@ namespace Nethermind.State
 
         public void CommitTree(long blockNumber)
         {
-            if (_needsStateRootUpdate)
+            if (_tree != null)
             {
-                RecalculateStateRoot();
-            }
+                if (_needsStateRootUpdate)
+                {
+                    RecalculateStateRoot();
+                }
 
-            _tree.Commit(blockNumber);
+                _tree.Commit(blockNumber);
+            }
         }
-        
+
         public void CommitBranch()
         {
             // placeholder for the three level Commit->CommitBlock->CommitBranch
