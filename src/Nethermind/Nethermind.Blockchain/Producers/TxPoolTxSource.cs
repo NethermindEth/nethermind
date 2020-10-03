@@ -34,16 +34,16 @@ namespace Nethermind.Blockchain.Producers
     {
         private readonly ITxPool _transactionPool;
         private readonly IStateReader _stateReader;
+        private readonly ITxFilter _minGasPriceFilter;
         private readonly ILogger _logger;
-        private readonly long _minGasPriceForMining;
 
-        public TxPoolTxSource(ITxPool transactionPool, IStateReader stateReader, ILogManager logManager, long minGasPriceForMining = 0)
+        public TxPoolTxSource(ITxPool transactionPool, IStateReader stateReader, ILogManager logManager, ITxFilter minGasPriceFilter = null)
         {
             _transactionPool = transactionPool ?? throw new ArgumentNullException(nameof(transactionPool));
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
+            _minGasPriceFilter = minGasPriceFilter ?? new MinGasPriceTxFilter(UInt256.Zero);
             _logger = logManager?.GetClassLogger<TxPoolTxSource>() ?? throw new ArgumentNullException(nameof(logManager));
-            _minGasPriceForMining = minGasPriceForMining;
-            SelectionStrategy = new DefaultTxPoolSelectionStrategy(_minGasPriceForMining, _logger);
+            SelectionStrategy = new DefaultTxPoolSelectionStrategy(minGasPriceFilter, _logger);
         }
         
         public ITxPoolSelectionStrategy SelectionStrategy { get; set; }
@@ -111,7 +111,7 @@ namespace Nethermind.Blockchain.Producers
             List<Transaction> selected = new List<Transaction>();
             long gasRemaining = gasLimit;
 
-            if (_logger.IsDebug) _logger.Debug($"Collecting pending transactions at min gas price {_minGasPriceForMining} and block gas limit {gasRemaining}.");
+            if (_logger.IsDebug) _logger.Debug($"Collecting pending transactions at block gas limit {gasRemaining}.");
 
             foreach (Transaction tx in transactions)
             {
@@ -175,12 +175,12 @@ namespace Nethermind.Blockchain.Producers
         
         private class DefaultTxPoolSelectionStrategy : ITxPoolSelectionStrategy
         {
-            private readonly long _minGasPriceForMining;
+            private readonly ITxFilter _minGasPriceFilter;
             private readonly ILogger _logger;
 
-            public DefaultTxPoolSelectionStrategy(in long minGasPriceForMining, ILogger logger)
+            public DefaultTxPoolSelectionStrategy(in ITxFilter minGasPriceFilter, ILogger logger)
             {
-                _minGasPriceForMining = minGasPriceForMining;
+                _minGasPriceFilter = minGasPriceFilter;
                 _logger = logger;
             }
 
@@ -191,13 +191,13 @@ namespace Nethermind.Blockchain.Producers
                     .ThenByDescending(t => t.GasPrice)
                     .ThenBy(t => t.GasLimit))
                 {
-                    if (tx.GasPrice < _minGasPriceForMining)
+                    if (_minGasPriceFilter.IsAllowed(tx, blockHeader))
                     {
-                        if (_logger.IsDebug) _logger.Debug($"Rejecting (gas price too low - min gas price: {_minGasPriceForMining}) {tx.ToShortString()}");
+                        yield return tx;
                     }
                     else
                     {
-                        yield return tx;
+                        if (_logger.IsDebug) _logger.Debug($"Rejecting (gas price too low) {tx.ToShortString()}");
                     }
                 }
 
