@@ -188,7 +188,7 @@ namespace Nethermind.AuRa.Test.Contract
                     DataContract = dataContract,
                     BlockProcessor = blockProcessor,
                     ContractDataStore = comparer == null
-                        ? (IContractDataStore<T>)new ListContractDataStore<T>(dataContract, blockProcessor)
+                        ? (IContractDataStore<T>)new HashSetContractDataStore<T>(dataContract, blockProcessor)
                         : new SortedListContractDataStore<T>(dataContract, blockProcessor, comparer)
                 };
             }
