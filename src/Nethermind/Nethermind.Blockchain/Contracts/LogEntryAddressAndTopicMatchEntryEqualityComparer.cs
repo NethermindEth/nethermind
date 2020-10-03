@@ -22,13 +22,19 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.Contracts
 {
-    public class LogEntryAddressAndTopicEqualityComparer : IEqualityComparer<LogEntry>
+    public class LogEntryAddressAndTopicMatchEntryEqualityComparer : IEqualityComparer<LogEntry>
     {
-        public static readonly LogEntryAddressAndTopicEqualityComparer Instance = new LogEntryAddressAndTopicEqualityComparer();
+        public static readonly LogEntryAddressAndTopicMatchEntryEqualityComparer Instance = new LogEntryAddressAndTopicMatchEntryEqualityComparer();
         
-        public bool Equals(LogEntry x, LogEntry y)
+        public bool Equals(LogEntry reference, LogEntry matchEntry)
         {
-            return ReferenceEquals(x, y) || (x != null && x.LoggersAddress == y?.LoggersAddress && x.Topics.SequenceEqual(y?.Topics ?? Array.Empty<Keccak>()));
+            Keccak[] matchEntryTopics = matchEntry?.Topics ?? Array.Empty<Keccak>();
+            return ReferenceEquals(reference, matchEntry) || (
+                reference != null 
+                && reference.LoggersAddress == matchEntry?.LoggersAddress 
+                && reference.Topics.Length >= matchEntryTopics.Length 
+                && reference.Topics.Take(matchEntryTopics.Length).SequenceEqual(matchEntryTopics)
+                );
         }
 
         public int GetHashCode(LogEntry obj)

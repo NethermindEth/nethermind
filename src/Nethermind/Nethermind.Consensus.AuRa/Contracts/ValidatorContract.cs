@@ -120,8 +120,9 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// </summary>
         public bool CheckInitiateChangeEvent(BlockHeader blockHeader, TxReceipt[] receipts, out Address[] addresses)
         {
-            var logEntry = GetSearchLogEntry(blockHeader, InitiateChange);
-            if (blockHeader.TryFindLog(receipts, logEntry, LogEntryAddressAndTopicEqualityComparer.Instance, out var foundEntry))
+            var logEntry = GetSearchLogEntry(InitiateChange, blockHeader.ParentHash);
+            if (blockHeader.TryFindLog(receipts, logEntry, out var foundEntry, 
+                logsFindOrder:FindOrder.Ascending /* tracing forwards, parity inconsistency issue */))
             {
                 addresses = DecodeAddresses(foundEntry.Data);
                 return true;                

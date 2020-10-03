@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
@@ -22,24 +23,38 @@ namespace Nethermind.Consensus.AuRa
 {
     public static class BlockExtensions
     {
-        public static bool TryFindLog(this Block block, TxReceipt[] receipts, LogEntry matchEntry, IEqualityComparer<LogEntry> comparer, out LogEntry foundEntry)
-            => block.Header.TryFindLog(receipts, matchEntry, comparer, out foundEntry);
+        public static bool TryFindLog(
+            this Block block,
+            TxReceipt[] receipts,
+            LogEntry matchEntry,
+            out LogEntry foundEntry,
+            FindOrder receiptFindOrder = FindOrder.Descending,
+            FindOrder logsFindOrder = FindOrder.Descending,
+            IEqualityComparer<LogEntry> comparer = null) =>
+            block.Header.TryFindLog(receipts, matchEntry, out foundEntry, receiptFindOrder, logsFindOrder, comparer);
 
-        public static bool TryFindLog(this BlockHeader blockHeader, TxReceipt[] receipts, LogEntry matchEntry, IEqualityComparer<LogEntry> comparer, out LogEntry foundEntry)
+        public static bool TryFindLog(
+            this BlockHeader blockHeader, 
+            TxReceipt[] receipts, 
+            LogEntry matchEntry,
+            out LogEntry foundEntry,
+            FindOrder receiptFindOrder = FindOrder.Descending, // iterating backwards, by default we are interested only in the last one
+            FindOrder logsFindOrder = FindOrder.Descending, // iterating backwards, by default we are interested only in the last one
+            IEqualityComparer<LogEntry> comparer = null)
         {
+            comparer ??= LogEntryAddressAndTopicMatchEntryEqualityComparer.Instance;
+            
             if (blockHeader.Bloom.Matches(matchEntry))
             {
-                // iterating backwards, we are interested only in the last one
-                for (int i = receipts.Length - 1; i >= 0; i--)
+                for (int i = 0; i < receipts.Length; i++)
                 {
-                    var receipt = receipts[i];
+                    TxReceipt receipt = GetItemAt(receipts, i, receiptFindOrder);
                     if (receipt.Bloom.Matches(matchEntry))
                     {
-                        // tracing forwards, parity inconsistency 
                         for (int j = 0; j < receipt.Logs.Length; j++)
                         {
-                            var receiptLog = receipt.Logs[j];
-                            if (comparer.Equals(matchEntry, receiptLog))
+                            var receiptLog = GetItemAt(receipt.Logs, j, logsFindOrder);
+                            if (comparer.Equals(receiptLog, matchEntry))
                             {
                                 foundEntry = receiptLog;
                                 return true;                                
@@ -53,23 +68,27 @@ namespace Nethermind.Consensus.AuRa
             return false;
         }
         
-        public static IEnumerable<LogEntry> FindLogs(this BlockHeader blockHeader, TxReceipt[] receipts, LogEntry matchEntry, IEqualityComparer<LogEntry> comparer = null)
+        public static IEnumerable<LogEntry> FindLogs(
+            this BlockHeader blockHeader, 
+            TxReceipt[] receipts, 
+            LogEntry matchEntry, 
+            FindOrder receiptFindOrder = FindOrder.Ascending, // iterating forwards, by default we are interested in all items in order of appearance 
+            FindOrder logsFindOrder = FindOrder.Ascending, // iterating forwards, by default we are interested in all items in order of appearance
+            IEqualityComparer<LogEntry> comparer = null)
         {
-            comparer ??= LogEntryAddressAndTopicEqualityComparer.Instance;
+            comparer ??= LogEntryAddressAndTopicMatchEntryEqualityComparer.Instance;
             
             if (blockHeader.Bloom.Matches(matchEntry))
             {
-                // iterating backwards, we are interested only in the last one
-                for (int i = 0; i < receipts.Length; i--)
+                for (int i = 0; i < receipts.Length; i++)
                 {
-                    var receipt = receipts[i];
+                    TxReceipt receipt = GetItemAt(receipts, i, receiptFindOrder);
                     if (receipt.Bloom.Matches(matchEntry))
                     {
-                        // tracing forwards, parity inconsistency 
                         for (int j = 0; j < receipt.Logs.Length; j++)
                         {
-                            var receiptLog = receipt.Logs[j];
-                            if (comparer.Equals(matchEntry, receiptLog))
+                            var receiptLog = GetItemAt(receipt.Logs, j, logsFindOrder);
+                            if (comparer.Equals(receiptLog, matchEntry))
                             {
                                 yield return receiptLog;
                             }
@@ -78,5 +97,14 @@ namespace Nethermind.Consensus.AuRa
                 }
             }
         }
+
+        private static T GetItemAt<T>(T[] items, int index, FindOrder findOrder) => 
+            items[findOrder == FindOrder.Ascending ? index : items.Length - index - 1];
+    }
+    
+    public enum FindOrder
+    {
+        Ascending,
+        Descending
     }
 }
