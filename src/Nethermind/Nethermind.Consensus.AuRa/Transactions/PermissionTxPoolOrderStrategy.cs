@@ -35,13 +35,14 @@ namespace Nethermind.Consensus.AuRa.Transactions
             IContractDataStore<Address> sendersWhitelist, 
             IDictionaryContractDataStore<TxPriorityContract.Destination> priorities)
         {
-            _sendersWhitelist = sendersWhitelist ?? throw new ArgumentNullException(nameof(sendersWhitelist));
+            // _sendersWhitelist = sendersWhitelist ?? throw new ArgumentNullException(nameof(sendersWhitelist));
             _priorities = priorities ?? throw new ArgumentNullException(nameof(priorities));;
         }
         
         public IEnumerable<Transaction> Select(BlockHeader blockHeader, IEnumerable<Transaction> transactions)
         {
             IEnumerable<Address> sendersWhitelist = _sendersWhitelist.GetItems(blockHeader);
+            IComparer<Transaction> transactionComparer = new TransactionComparer(t => GetPriority(t, blockHeader));
             
             // transactions grouped by sender with nonce order:
             // A -> 0, 1, 3...
@@ -49,6 +50,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
             IEnumerable<IGrouping<Address, Transaction>> bySenderOrderedNonce = transactions
                 .Where(tx => tx != null) // for safety
                 .OrderBy(tx => tx.Nonce)
+                .ThenBy(t => t, transactionComparer)
                 .GroupBy(tx => tx.SenderAddress);
 
             // partitioned into 2 groups: whitelisted and not whitelisted
@@ -59,8 +61,6 @@ namespace Nethermind.Consensus.AuRa.Transactions
 
             IEnumerable<IGrouping<Address, Transaction>> whitelisted = byWhitelist.First();
             IEnumerable<IGrouping<Address, Transaction>> notWhitelisted = byWhitelist.Last();
-            
-            IComparer<Transaction> transactionComparer = new TransactionComparer(t => GetPriority(t, blockHeader));
 
             return Order(whitelisted, transactionComparer).Concat(Order(notWhitelisted, transactionComparer));
         }
