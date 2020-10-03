@@ -21,9 +21,11 @@ using System.Linq;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
 using DestinationTuple = System.ValueTuple<Nethermind.Core.Address, byte[], Nethermind.Int256.UInt256>;
 
@@ -59,29 +61,29 @@ namespace Nethermind.Consensus.AuRa.Contracts
         
         public IEnumerable<Destination> PrioritySet(BlockHeader blockHeader, TxReceipt[] receipts)
         {
-            var logEntry = GetSearchLogEntry(blockHeader, nameof(PrioritySet));
+            var logEntry = GetSearchLogEntry(nameof(PrioritySet));
 
             foreach (LogEntry log in blockHeader.FindLogs(receipts, logEntry))
             {
-                yield return DecodeDestination(log.Data);
+                yield return DecodeDestination(log);
             }
         }
         
         public IEnumerable<Destination> MinGasPriceSet(BlockHeader blockHeader, TxReceipt[] receipts)
         {
-            var logEntry = GetSearchLogEntry(blockHeader, nameof(MinGasPriceSet));
+            var logEntry = GetSearchLogEntry(nameof(MinGasPriceSet));
 
             foreach (LogEntry log in blockHeader.FindLogs(receipts, logEntry))
             {
-                yield return DecodeDestination(log.Data);
+                yield return DecodeDestination(log);
             }
         }
         
         public IEnumerable<Address> SendersWhitelistSet(BlockHeader blockHeader, TxReceipt[] receipts)
         {
-            var logEntry = GetSearchLogEntry(blockHeader, nameof(MinGasPriceSet));
+            var logEntry = GetSearchLogEntry(nameof(SendersWhitelistSet));
 
-            return blockHeader.TryFindLog(receipts, logEntry, LogEntryAddressAndTopicEqualityComparer.Instance, out LogEntry foundEntry) 
+            return blockHeader.TryFindLog(receipts, logEntry, out LogEntry foundEntry) 
                 ? DecodeAddresses(foundEntry.Data) 
                 : Array.Empty<Address>();
         }
@@ -92,11 +94,11 @@ namespace Nethermind.Consensus.AuRa.Contracts
             return (Address[]) objects[0];
         }
 
-        private Destination DecodeDestination(byte[] data)
-        {
-            return default;
-            // DecodeReturnData()
-        }
+        private Destination DecodeDestination(LogEntry log) =>
+            new Destination(
+                new Address(log.Topics[1]), 
+                log.Topics[2].Bytes.Slice(0, 4), 
+                AbiType.UInt256.DecodeUInt(log.Data, 0, false).Item1);
 
         public readonly struct Destination
         {
@@ -153,9 +155,9 @@ namespace Nethermind.Consensus.AuRa.Contracts
             }
 
             public bool Equals(Destination x, Destination y) => 
-                Equals(x.Target, y.Target) && Equals(x.FnSignature, y.FnSignature);
+                Equals(x.Target, y.Target) && Bytes.EqualityComparer.Equals(x.FnSignature, y.FnSignature);
 
-            public int GetHashCode(Destination obj) => HashCode.Combine(obj.Target, obj.FnSignature);
+            public int GetHashCode(Destination obj) => HashCode.Combine(obj.Target, Bytes.EqualityComparer.GetHashCode(obj.FnSignature));
         }
         
         public IDataContract<Address> SendersWhitelist { get; }
