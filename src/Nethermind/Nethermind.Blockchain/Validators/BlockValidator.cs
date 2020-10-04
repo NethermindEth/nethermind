@@ -135,10 +135,10 @@ namespace Nethermind.Blockchain.Validators
                     if(_logger.IsError) _logger.Error($"  bloom {processedBlock.Header.Bloom} != stated bloom {suggestedBlock.Header.Bloom}");
                 }
 
-                if (processedBlock.Header.ReceiptsRoot != suggestedBlock.Header.ReceiptsRoot)
-                {
-                    if(_logger.IsError) _logger.Error($"  receipts root {processedBlock.Header.ReceiptsRoot} != stated receipts root {suggestedBlock.Header.ReceiptsRoot}");
-                }
+                // if (processedBlock.Header.ReceiptsRoot != suggestedBlock.Header.ReceiptsRoot)
+                // {
+                //     if(_logger.IsError) _logger.Error($"  receipts root {processedBlock.Header.ReceiptsRoot} != stated receipts root {suggestedBlock.Header.ReceiptsRoot}");
+                // }
 
                 // if (processedBlock.Header.StateRoot != suggestedBlock.Header.StateRoot)
                 // {

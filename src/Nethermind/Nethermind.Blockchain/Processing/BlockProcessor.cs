@@ -201,6 +201,7 @@ namespace Nethermind.Blockchain.Processing
             Block block = PrepareBlockForProcessing(suggestedBlock);
             TxReceipt[] receipts = ProcessBlock(block, blockTracer, options);
             block.Header.StateRoot = suggestedBlock.StateRoot;
+            block.Header.ReceiptsRoot = suggestedBlock.ReceiptsRoot;
             block.Header.Hash = block.Header.CalculateHash();
             ValidateProcessedBlock(suggestedBlock, options, block, receipts);
             if ((options & ProcessingOptions.StoreReceipts) != 0)
