@@ -161,7 +161,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.DisposeStack.Push(prioritiesContractDataStore);
                 _api.DisposeStack.Push(_minGasPricesContractDataStore);
                 
-                txPoolTxSource.SelectionStrategy = new PermissionTxPoolSelectionStrategy(
+                txPoolTxSource.OrderStrategy = new PermissionTxPoolOrderStrategy(
                     whitelistContractDataStore,
                     prioritiesContractDataStore);
             }

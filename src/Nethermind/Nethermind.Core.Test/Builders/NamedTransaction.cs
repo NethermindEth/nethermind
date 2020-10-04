@@ -13,18 +13,14 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
 namespace Nethermind.Core.Test.Builders
 {
-    public partial class Build
+    public class NamedTransaction : Transaction
     {
-        public TransactionBuilder<Transaction> Transaction => new TransactionBuilder<Transaction>();
-        public TransactionBuilder<SystemTransaction> SystemTransaction => new TransactionBuilder<SystemTransaction>();
-        public TransactionBuilder<GeneratedTransaction> GeneratedTransaction => new TransactionBuilder<GeneratedTransaction>();
+        public string Name { get; set; }
 
-        public TransactionBuilder<NamedTransaction> NamedTransaction(string name)
-        {
-            return new TransactionBuilder<NamedTransaction> {TestObjectInternal = {Name = name}};
-        }
+        public override string ToString() => Name;
     }
 }

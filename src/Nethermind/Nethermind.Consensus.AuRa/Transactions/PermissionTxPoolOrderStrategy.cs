@@ -26,20 +26,20 @@ using Nethermind.Int256;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
-    public class PermissionTxPoolSelectionStrategy : TxPoolTxSource.ITxPoolSelectionStrategy
+    public class PermissionTxPoolOrderStrategy : TxPoolTxSource.ITxPoolOrderStrategy
     {
         private readonly IContractDataStore<Address> _sendersWhitelist;
         private readonly IDictionaryContractDataStore<TxPriorityContract.Destination> _priorities;
 
-        public PermissionTxPoolSelectionStrategy(
+        public PermissionTxPoolOrderStrategy(
             IContractDataStore<Address> sendersWhitelist, 
             IDictionaryContractDataStore<TxPriorityContract.Destination> priorities)
         {
-            // _sendersWhitelist = sendersWhitelist ?? throw new ArgumentNullException(nameof(sendersWhitelist));
+            _sendersWhitelist = sendersWhitelist ?? throw new ArgumentNullException(nameof(sendersWhitelist));
             _priorities = priorities ?? throw new ArgumentNullException(nameof(priorities));;
         }
         
-        public IEnumerable<Transaction> Select(BlockHeader blockHeader, IEnumerable<Transaction> transactions)
+        public IEnumerable<Transaction> Order(BlockHeader blockHeader, IEnumerable<Transaction> transactions)
         {
             IEnumerable<Address> sendersWhitelist = _sendersWhitelist.GetItems(blockHeader);
             IComparer<Transaction> transactionComparer = new TransactionComparer(t => GetPriority(t, blockHeader));
@@ -56,11 +56,13 @@ namespace Nethermind.Consensus.AuRa.Transactions
             // partitioned into 2 groups: whitelisted and not whitelisted
             IGrouping<bool, IGrouping<Address, Transaction>>[] byWhitelist = bySenderOrderedNonce
                 .GroupBy(g => sendersWhitelist.Contains(g.Key))
-                .OrderByDescending(g => g.Key)
                 .ToArray();
 
-            IEnumerable<IGrouping<Address, Transaction>> whitelisted = byWhitelist.First();
-            IEnumerable<IGrouping<Address, Transaction>> notWhitelisted = byWhitelist.Last();
+            IEnumerable<IGrouping<Address, Transaction>> whitelisted = byWhitelist
+                .FirstOrDefault(g => g.Key) ?? Enumerable.Empty<IGrouping<Address, Transaction>>();
+            
+            IEnumerable<IGrouping<Address, Transaction>> notWhitelisted = byWhitelist
+                .FirstOrDefault(g => !g.Key) ?? Enumerable.Empty<IGrouping<Address, Transaction>>();
 
             return Order(whitelisted, transactionComparer).Concat(Order(notWhitelisted, transactionComparer));
         }
@@ -70,7 +72,9 @@ namespace Nethermind.Consensus.AuRa.Transactions
                 ? destination.Value 
                 : UInt256.Zero;
 
-        private IEnumerable<Transaction> Order(IEnumerable<IGrouping<Address, Transaction>> transactionsBySenderOrderedByNonce, IComparer<Transaction> comparer)
+        private IEnumerable<Transaction> Order(
+            IEnumerable<IGrouping<Address, Transaction>> transactionsBySenderOrderedByNonce, 
+            IComparer<Transaction> comparer)
         {
             IEnumerator<Transaction>[] bySenderEnumerators = transactionsBySenderOrderedByNonce
                 .Select(g => g.GetEnumerator())
@@ -78,7 +82,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
             
             try
             {
-                SortedDictionary<Transaction, IEnumerator<Transaction>> transactions = new SortedDictionary<Transaction, IEnumerator<Transaction>>(comparer);
+                var transactions = new SortedDictionary<Transaction, IEnumerator<Transaction>>(comparer);
             
                 for (int i = 0; i < bySenderEnumerators.Length; i++)
                 {
@@ -118,7 +122,6 @@ namespace Nethermind.Consensus.AuRa.Transactions
             {
                 _getPriority = getPriority ?? throw new ArgumentNullException(nameof(getPriority));
             }
-
 
             public int Compare(Transaction x, Transaction y)
             {

@@ -43,10 +43,10 @@ namespace Nethermind.Blockchain.Producers
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
             _minGasPriceFilter = minGasPriceFilter ?? new MinGasPriceTxFilter(UInt256.Zero);
             _logger = logManager?.GetClassLogger<TxPoolTxSource>() ?? throw new ArgumentNullException(nameof(logManager));
-            SelectionStrategy = new DefaultTxPoolSelectionStrategy();
+            OrderStrategy = new DefaultTxPoolOrderStrategy();
         }
         
-        public ITxPoolSelectionStrategy SelectionStrategy { get; set; }
+        public ITxPoolOrderStrategy OrderStrategy { get; set; }
 
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
         {
@@ -105,7 +105,7 @@ namespace Nethermind.Blockchain.Producers
             }
 
             var pendingTransactions = _transactionPool.GetPendingTransactions();
-            IEnumerable<Transaction> transactions = SelectionStrategy.Select(parent, pendingTransactions);
+            IEnumerable<Transaction> transactions = OrderStrategy.Order(parent, pendingTransactions);
             IDictionary<Address, UInt256> remainingBalance = new Dictionary<Address, UInt256>();
             Dictionary<Address, UInt256> nonces = new Dictionary<Address, UInt256>();
             List<Transaction> selected = new List<Transaction>();
@@ -174,14 +174,14 @@ namespace Nethermind.Blockchain.Producers
         
         public override string ToString() => $"{nameof(TxPoolTxSource)}";
         
-        public interface ITxPoolSelectionStrategy
+        public interface ITxPoolOrderStrategy
         {
-            IEnumerable<Transaction> Select(BlockHeader blockHeader, IEnumerable<Transaction> transactions);
+            IEnumerable<Transaction> Order(BlockHeader blockHeader, IEnumerable<Transaction> transactions);
         }
         
-        private class DefaultTxPoolSelectionStrategy : ITxPoolSelectionStrategy
+        private class DefaultTxPoolOrderStrategy : ITxPoolOrderStrategy
         {
-            public IEnumerable<Transaction> Select(BlockHeader blockHeader, IEnumerable<Transaction> transactions) =>
+            public IEnumerable<Transaction> Order(BlockHeader blockHeader, IEnumerable<Transaction> transactions) =>
                 transactions
                     .OrderBy(t => t.Nonce)
                     .ThenByDescending(t => t.GasPrice)
