@@ -40,7 +40,7 @@ namespace Nethermind.Core
                     loadedAssemblies = AppDomain.CurrentDomain.GetAssemblies();
                 } while (LoadOnce(loadedAssemblies.ToList()) != 0);
 
-                foreach (Assembly assembly in loadedAssemblies)
+                foreach (Assembly assembly in loadedAssemblies.Where(a => a.FullName?.Contains("Nethermind") ?? false))
                 {
                     _nethermindAssemblies.Add(assembly);
                 }
@@ -68,24 +68,18 @@ namespace Nethermind.Core
             return loaded;
         }
 
-        public IEnumerable<Type> FindNethermindTypes(Type baseType, bool aggressive = false)
+        public IEnumerable<Type> FindNethermindTypes(Type baseType)
         {
-            if (aggressive)
-            {
-                LoadAll();
-            }
+            LoadAll();
 
             return _nethermindAssemblies
                 .SelectMany(a => (a?.IsDynamic ?? false ? Array.Empty<Type>() : a?.GetExportedTypes())?
                     .Where(t => baseType.IsAssignableFrom(t) && baseType != t) ?? Array.Empty<Type>());
         }
 
-        public IEnumerable<Type> FindNethermindTypes(string typeName, bool aggressive = false)
+        public IEnumerable<Type> FindNethermindTypes(string typeName)
         {
-            if (aggressive)
-            {
-                LoadAll();
-            }
+            LoadAll();
 
             return _nethermindAssemblies
                 .SelectMany(a => (a?.IsDynamic ?? false ? Array.Empty<Type>() : a?.GetExportedTypes())?
