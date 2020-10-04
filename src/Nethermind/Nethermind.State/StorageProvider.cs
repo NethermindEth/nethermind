@@ -251,10 +251,14 @@ namespace Nethermind.State
                             _logger.Trace($"  Update {change.StorageCell.Address}_{change.StorageCell.Index} V = {change.Value.ToHexString(true)}");
                         }
 
-                        StorageTree tree = GetOrCreateStorage(change.StorageCell.Address);
-                        Db.Metrics.StorageTreeWrites++;
-                        toUpdateRoots.Add(change.StorageCell.Address);
-                        tree.Set(change.StorageCell.Index, change.Value);
+                        if (!_trieDisconnected)
+                        {
+                            StorageTree tree = GetOrCreateStorage(change.StorageCell.Address);
+                            Db.Metrics.StorageTreeWrites++;
+                            toUpdateRoots.Add(change.StorageCell.Address);
+                            tree.Set(change.StorageCell.Index, change.Value);
+                        }
+
                         _stateProvider.SaveStorage(change.StorageCell.Address, change.StorageCell.Index, change.Value);
                         
                         if (isTracing)
@@ -320,6 +324,11 @@ namespace Nethermind.State
 
         public void CommitTrees(long blockNumber)
         {
+            if (_trieDisconnected)
+            {
+                return;
+            }
+
             foreach (KeyValuePair<Address, StorageTree> storage in _storages)
             {
                 storage.Value.Commit(blockNumber);
@@ -356,18 +365,21 @@ namespace Nethermind.State
         private byte[] LoadFromTree(StorageCell storageCell)
         {
             byte[] valueNew = _stateProvider.GetStorage(storageCell.Address, storageCell.Index);
-            
-            StorageTree tree = GetOrCreateStorage(storageCell.Address);
-            
-            Db.Metrics.StorageTreeReads++;
-            byte[] value = tree.Get(storageCell.Index);
-            if (!Bytes.AreEqual(valueNew, value))
+
+            if (!_trieDisconnected)
             {
-                _logger.Error($"Difference for {storageCell} NEW:{valueNew.ToHexString()} vs OLD:{value.ToHexString()}");
+                StorageTree tree = GetOrCreateStorage(storageCell.Address);
+
+                Db.Metrics.StorageTreeReads++;
+                byte[] value = tree.Get(storageCell.Index);
+                if (!Bytes.AreEqual(valueNew, value))
+                {
+                    _logger.Error($"Difference for {storageCell} NEW:{valueNew.ToHexString()} vs OLD:{value.ToHexString()}");
+                }
             }
-            
-            PushToRegistryOnly(storageCell, value);
-            return value;
+
+            PushToRegistryOnly(storageCell, valueNew);
+            return valueNew;
             
         }
 
@@ -433,7 +445,17 @@ namespace Nethermind.State
                by means of CREATE 2 - notice that the cached trie may carry information about items that were not
                touched in this block, hence were not zeroed above */
             // TODO: how does it work with pruning?
-            _storages[address] = new StorageTree(_trieStore, Keccak.EmptyTreeHash, _logManager);
+            if (!_trieDisconnected)
+            {
+                _storages[address] = new StorageTree(_trieStore, Keccak.EmptyTreeHash, _logManager);
+            }
+        }
+
+        private bool _trieDisconnected = false;
+        
+        public void DisconnectTrie()
+        {
+            _trieDisconnected = true;
         }
 
         private enum ChangeType

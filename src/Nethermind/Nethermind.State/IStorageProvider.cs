@@ -39,5 +39,7 @@ namespace Nethermind.State
         int TakeSnapshot();
 
         void ClearStorage(Address address);
+        
+        void DisconnectTrie();
     }
 }

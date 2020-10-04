@@ -161,7 +161,7 @@ namespace Nethermind.State
 
         public void RecalculateStateRoot()
         {
-            // _tree?.UpdateRootHash();
+            _tree?.UpdateRootHash();
             _needsStateRootUpdate = false;
         }
 
@@ -728,7 +728,7 @@ namespace Nethermind.State
         {
             _needsStateRootUpdate = true;
             Metrics.StateTreeWrites++;
-            // _tree?.Set(address, account);
+            _tree?.Set(address, account);
 
             if (_logWarns) _logger.Warn($"Saving {address} => {account}");
             _codeDb[address.Bytes] = Opt.Encode(account);
@@ -855,15 +855,15 @@ namespace Nethermind.State
 
         public void CommitTree(long blockNumber)
         {
-            // if (_tree != null)
-            // {
-            //     if (_needsStateRootUpdate)
-            //     {
-            //         RecalculateStateRoot();
-            //     }
-            //
-            //     _tree.Commit(blockNumber);
-            // }
+            if (_tree != null)
+            {
+                if (_needsStateRootUpdate)
+                {
+                    RecalculateStateRoot();
+                }
+            
+                _tree.Commit(blockNumber);
+            }
         }
 
         public void CommitBranch()
