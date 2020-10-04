@@ -126,16 +126,16 @@ namespace Nethermind.Blockchain.Producers
                     continue;
                 }
                 
-                if (!_minGasPriceFilter.IsAllowed(tx, parent))
-                {
-                    if (_logger.IsDebug) _logger.Debug($"Rejecting (gas price too low) {tx.ToShortString()}");
-                    continue;
-                }
-                
                 if (tx.SenderAddress == null)
                 {
                     _transactionPool.RemoveTransaction(tx.Hash, 0);
                     if (_logger.IsDebug) _logger.Debug($"Rejecting (null sender) {tx.ToShortString()}");
+                    continue;
+                }
+                
+                if (!_minGasPriceFilter.IsAllowed(tx, parent))
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Rejecting (gas price too low) {tx.ToShortString()}");
                     continue;
                 }
 
