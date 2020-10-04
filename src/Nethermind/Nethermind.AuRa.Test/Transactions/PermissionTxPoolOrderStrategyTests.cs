@@ -33,7 +33,7 @@ using NUnit.Framework;
 
 namespace Nethermind.AuRa.Test.Transactions
 {
-    public class PermissionTxPoolSelectionStrategyTests
+    public class PermissionTxPoolOrderStrategyTests
     {
         private static Address[] WhiteListedSenders = new[] {TestItem.AddressC, TestItem.AddressD};
 

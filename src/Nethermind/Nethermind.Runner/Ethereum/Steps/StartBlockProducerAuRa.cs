@@ -142,16 +142,17 @@ namespace Nethermind.Runner.Ethereum.Steps
         protected override TxPoolTxSource CreateTxPoolTxSource(ReadOnlyTxProcessingEnv processingEnv, ReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
             var comparer = TxPriorityContract.DestinationMethodComparer.Instance;
-            Address? contractAddress = _auraConfig?.TransactionPriorityContractAddress;
-            if (contractAddress != null)
+            Address? transactionPriorityContractAddress = _auraConfig?.TransactionPriorityContractAddress;
+            if (transactionPriorityContractAddress != null)
             {
-                _txPriorityContract = new TxPriorityContract(_api.AbiEncoder, contractAddress, readOnlyTxProcessorSource);
+                _txPriorityContract = new TxPriorityContract(_api.AbiEncoder, transactionPriorityContractAddress, readOnlyTxProcessorSource);
                 _minGasPricesContractDataStore = new DictionaryContractDataStore<TxPriorityContract.Destination>(_txPriorityContract.MinGasPrices, _api.MainBlockProcessor, comparer);
+                _api.DisposeStack.Push(_minGasPricesContractDataStore);
             }
 
             var txPoolTxSource = base.CreateTxPoolTxSource(processingEnv, readOnlyTxProcessorSource);
             
-            if (contractAddress != null)
+            if (transactionPriorityContractAddress != null)
             {
                 IBlockProcessor? blockProcessor = _api.MainBlockProcessor;
                 var whitelistContractDataStore = new HashSetContractDataStore<Address>(_txPriorityContract!.SendersWhitelist, blockProcessor);
@@ -159,8 +160,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 
                 _api.DisposeStack.Push(whitelistContractDataStore);
                 _api.DisposeStack.Push(prioritiesContractDataStore);
-                _api.DisposeStack.Push(_minGasPricesContractDataStore);
-                
+
                 txPoolTxSource.OrderStrategy = new PermissionTxPoolOrderStrategy(
                     whitelistContractDataStore,
                     prioritiesContractDataStore);
