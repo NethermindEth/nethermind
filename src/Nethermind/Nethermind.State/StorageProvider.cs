@@ -417,7 +417,7 @@ namespace Nethermind.State
 
         public void ClearStorage(Address address)
         {
-            _logger.Error($"CLEARIGN STORAGE FOR {address}");
+            _stateProvider.ClearAccountStorage(address);
             
             /* we are setting cached values to zero so we do not use previously set values
                when the contract is revived with CREATE2 inside the same block */

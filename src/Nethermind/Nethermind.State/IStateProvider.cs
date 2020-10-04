@@ -85,5 +85,7 @@ namespace Nethermind.State
         byte[] GetStorage(Address address, UInt256 key);
         
         void DisconnectTrie();
+
+        void ClearAccountStorage(Address address);
     }
 }

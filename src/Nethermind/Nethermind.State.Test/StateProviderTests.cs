@@ -52,10 +52,10 @@ namespace Nethermind.Store.Test
             frontierProvider.CreateAccount(_address1, 0);
             frontierProvider.Commit(Frontier.Instance);
             frontierProvider.CommitTree(0);
-            
+
             StateProvider provider = new StateProvider(trieStore, Substitute.For<ISnapshotableDb>(), Logger);
             provider.StateRoot = frontierProvider.StateRoot;
-            
+
             provider.AddToBalance(_address1, 0, SpuriousDragon.Instance);
             provider.Commit(SpuriousDragon.Instance);
             Assert.False(provider.AccountExists(_address1));
@@ -67,7 +67,7 @@ namespace Nethermind.Store.Test
             TrieStore trieStore = new TrieStore(new StateDb(), Logger);
             StateProvider provider = new StateProvider(trieStore, Substitute.For<ISnapshotableDb>(), Logger);
             var systemUser = Address.SystemUser;
-            
+
             provider.CreateAccount(systemUser, 0);
             provider.Commit(Homestead.Instance);
 
@@ -77,7 +77,7 @@ namespace Nethermind.Store.Test
 
             provider.GetAccount(systemUser).Should().NotBeNull();
         }
-        
+
         [Test]
         public void Can_dump_state()
         {
@@ -89,7 +89,7 @@ namespace Nethermind.Store.Test
             string state = provider.DumpState();
             state.Should().NotBeEmpty();
         }
-        
+
         [Test]
         public void Can_collect_stats()
         {
@@ -101,7 +101,7 @@ namespace Nethermind.Store.Test
             var stats = provider.CollectStats(Substitute.For<ISnapshotableDb>(), Logger);
             stats.AccountCount.Should().Be(1);
         }
-        
+
         private class TreeVisitor : ITreeVisitor
         {
             public bool ShouldVisit(Keccak nextNode)
@@ -133,7 +133,7 @@ namespace Nethermind.Store.Test
             {
             }
         }
-        
+
         [Test]
         public void Can_accepts_visitors()
         {
@@ -153,14 +153,14 @@ namespace Nethermind.Store.Test
             provider.Commit(Frontier.Instance);
             provider.Restore(-1);
         }
-        
+
         [Test]
         public void Update_balance_on_non_existing_account_throws()
         {
             StateProvider provider = new StateProvider(new TrieStore(new StateDb(), Logger), Substitute.For<ISnapshotableDb>(), Logger);
             Assert.Throws<InvalidOperationException>(() => provider.AddToBalance(TestItem.AddressA, 1.Ether(), Olympic.Instance));
         }
-        
+
         [Test]
         public void Is_empty_account()
         {
@@ -169,7 +169,7 @@ namespace Nethermind.Store.Test
             provider.Commit(Frontier.Instance);
             Assert.True(provider.IsEmptyAccount(_address1));
         }
-        
+
         [Test]
         public void Returns_empty_byte_code_for_non_existing_accounts()
         {
@@ -201,7 +201,7 @@ namespace Nethermind.Store.Test
             provider.AddToBalance(_address1, 1, Frontier.Instance);
             provider.AddToBalance(_address1, 1, Frontier.Instance);
             provider.Restore(4);
-            Assert.AreEqual((UInt256)4, provider.GetBalance(_address1));
+            Assert.AreEqual((UInt256) 4, provider.GetBalance(_address1));
         }
 
         [Test]
@@ -229,7 +229,7 @@ namespace Nethermind.Store.Test
             provider.CreateAccount(_address1, 1);
             provider.AddToBalance(_address1, 1, Frontier.Instance);
             provider.IncrementNonce(_address1);
-            Keccak codeHash = provider.UpdateCode(new byte[] { 1 });
+            Keccak codeHash = provider.UpdateCode(new byte[] {1});
             provider.UpdateCodeHash(_address1, codeHash, Frontier.Instance);
             provider.UpdateStorageRoot(_address1, Hash2);
 
@@ -259,19 +259,19 @@ namespace Nethermind.Store.Test
             provider.Restore(-1);
             Assert.AreEqual(false, provider.AccountExists(_address1));
         }
-        
+
         [Test(Description = "It was failing before as touch was marking the accounts as committed but not adding to trace list")]
         public void Touch_empty_trace_does_not_throw()
         {
             ParityLikeTxTracer tracer = new ParityLikeTxTracer(Build.A.Block.TestObject, null, ParityTraceTypes.StateDiff);
-            
+
             StateProvider provider = new StateProvider(new TrieStore(new StateDb(), Logger), Substitute.For<ISnapshotableDb>(), Logger);
             provider.CreateAccount(_address1, 0);
             Account account = provider.GetAccount(_address1);
             Assert.True(account.IsEmpty);
             provider.Commit(Frontier.Instance); // commit empty account (before the empty account fix in Spurious Dragon)
             Assert.True(provider.AccountExists(_address1));
-            
+
             provider.Reset(); // clear all caches
 
             provider.GetBalance(_address1); // justcache
@@ -284,12 +284,25 @@ namespace Nethermind.Store.Test
         {
             StateProvider provider = new StateProvider(new TrieStore(new StateDb(), Logger), Substitute.For<ISnapshotableDb>(), Logger);
             provider.CreateAccount(TestItem.AddressA, 5);
-            
-            Action action = () => { var x = provider.StateRoot; };
+
+            Action action = () =>
+            {
+                var x = provider.StateRoot;
+            };
             action.Should().Throw<InvalidOperationException>();
-            
+
             provider.Reset();
             action.Should().NotThrow<InvalidOperationException>();
+        }
+
+        [Test]
+        public void Clear_counter_works()
+        {
+            StateProvider provider = new StateProvider(new TrieStore(new StateDb(), Logger), new StateDb(), Logger);
+            provider.CreateAccount(TestItem.AddressA, 5);
+            provider.SaveStorage(TestItem.AddressA, 1, new byte[] {1, 2, 3});
+            provider.ClearAccountStorage(TestItem.AddressA);
+            provider.GetStorage(TestItem.AddressA, 1).Should().BeEquivalentTo(new byte[] {0});
         }
     }
 }

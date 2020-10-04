@@ -40,8 +40,8 @@ namespace Nethermind.State
 {
     public class StateProvider : IStateProvider
     {
-        public static bool _logWarns = true;
-        
+        public static bool _logWarns = false;
+
         private const int StartCapacity = Resettable.StartCapacity;
         private ResettableDictionary<Address, Stack<int>> _intraBlockCache = new ResettableDictionary<Address, Stack<int>>();
         private ResettableHashSet<Address> _committedThisRound = new ResettableHashSet<Address>();
@@ -71,17 +71,26 @@ namespace Nethermind.State
 
         public void SaveStorage(Address address, UInt256 key, byte[] value)
         {
+            int clearCounter = LoadClearCounter(address);
+
             int keyLength = 20 + Rlp.LengthOf(key);
             RlpStream rlpStream = new RlpStream(keyLength);
             rlpStream.Write(address.Bytes);
             rlpStream.Encode(key);
             byte[] saveKey = rlpStream.Data;
-            if(_logWarns) _logger.Warn($"Saving storage {saveKey.ToHexString()}->{value.ToHexString()}");
-            _codeDb[saveKey] = value;
+            if (_logWarns) _logger.Warn($"Saving storage {saveKey.ToHexString()}->{value.ToHexString()}");
+            byte[] valueWithCounter = new byte[value.Length + 1];
+            value.AsSpan().CopyTo(valueWithCounter.AsSpan(0, value.Length));
+            valueWithCounter[^1] = (byte) clearCounter;
+            _codeDb[saveKey] = valueWithCounter;
         }
+
+        private Dictionary<Address, byte> _clearCounters = new Dictionary<Address, byte>();
 
         public byte[] GetStorage(Address address, UInt256 key)
         {
+            int clearCounter = LoadClearCounter(address);
+
             int keyLength = 20 + Rlp.LengthOf(key);
             RlpStream rlpStream = new RlpStream(keyLength);
             rlpStream.Write(address.Bytes);
@@ -89,13 +98,60 @@ namespace Nethermind.State
             byte[] saveKey = rlpStream.Data;
 
             byte[] value = _codeDb[saveKey] ?? _missingValue;
-            if(_logWarns) _logger.Warn($"Loading storage {saveKey.ToHexString()}->{value.ToHexString()}");
-            return value;
+            if (value == _missingValue)
+            {
+                return _missingValue;
+            }
+
+            if (_logWarns) _logger.Warn($"Loading storage {saveKey.ToHexString()}->{value.ToHexString()}");
+            if (value != _missingValue && value[^1] < clearCounter)
+            {
+                _codeDb[saveKey] = null;
+                return _missingValue; // clear it
+            }
+
+            return value.AsSpan(0, value.Length - 1).ToArray(); // silly alloc, just testing
         }
 
         public void DisconnectTrie()
         {
             // _tree = null;
+        }
+
+        private int LoadClearCounter(Address address)
+        {
+            if (!_clearCounters.ContainsKey(address))
+            {
+                byte[] clearCounterAddress = new byte[21];
+                address.Bytes.AsSpan().CopyTo(clearCounterAddress.AsSpan(0, 20));
+                int current = _codeDb[clearCounterAddress]?[0] ?? 0;
+                if(_logWarns) _logger.Warn($"Loading clear counter {clearCounterAddress.ToHexString()}=>{current}");
+                return _clearCounters[address] = (byte)current;
+            }
+            else
+            {
+                return _clearCounters[address];
+            }
+        }
+
+        public void ClearAccountStorage(Address address)
+        {
+            byte[] clearCounterAddress = new byte[21];
+            address.Bytes.AsSpan().CopyTo(clearCounterAddress.AsSpan(0, 20));
+            byte[] current = _codeDb[clearCounterAddress];
+            if (current == null)
+            {
+                current = new byte[] {1};
+                if(_logWarns) _logger.Warn($"Saving clear counter {clearCounterAddress.ToHexString()}=>{current.ToHexString()}");
+                _codeDb[clearCounterAddress] = current;
+                _clearCounters[address] = 1;
+            }
+            else
+            {
+                current[0]++;
+                if(_logWarns) _logger.Warn($"Saving incremented clear counter {clearCounterAddress.ToHexString()}=>{current.ToHexString()}");
+                _codeDb[clearCounterAddress] = current;
+            }
         }
 
         private static byte[] _missingValue = new byte[] {0};
@@ -342,7 +398,9 @@ namespace Nethermind.State
                 throw new InvalidOperationException($"{nameof(StateProvider)} tried to restore snapshot {snapshot} beyond current position {_currentPosition}");
             }
 
-            if(_logWarns) if (_logger.IsWarn) _logger.Warn($"Restoring state snapshot {snapshot}");
+            if (_logWarns)
+                if (_logger.IsWarn)
+                    _logger.Warn($"Restoring state snapshot {snapshot}");
             if (snapshot == _currentPosition)
             {
                 return;
@@ -638,14 +696,14 @@ namespace Nethermind.State
             Metrics.StateTreeReads++;
             Account accountOld = _tree.Get(address);
             Account accountNew = Opt.DecodeAccount(_codeDb[address.Bytes]);
-            if(_logWarns) _logger.Warn($"Reading OLD {address} => {accountOld}");
-            if(_logWarns) _logger.Warn($"Reading NEW {address} => {accountOld}");
+            if (_logWarns) _logger.Warn($"Reading OLD {address} => {accountOld}");
+            if (_logWarns) _logger.Warn($"Reading NEW {address} => {accountOld}");
             if ((accountNew != null || accountOld != null) && (accountNew?.Nonce != accountOld?.Nonce || accountNew?.Balance != accountOld?.Balance || accountNew?.CodeHash != accountOld?.CodeHash))
             {
-                if(_logWarns) _logger.Error($"Difference on {address} {accountNew} vs {accountOld}");    
+                _logger.Error($"Difference on {address} {accountNew} vs {accountOld}");
             }
-            
-            return accountNew;
+
+            return accountOld;
         }
 
         private void SetState(Address address, Account account)
@@ -654,7 +712,7 @@ namespace Nethermind.State
             Metrics.StateTreeWrites++;
             _tree?.Set(address, account);
 
-            if(_logWarns) _logger.Warn($"Saving {address} => {account}");
+            if (_logWarns) _logger.Warn($"Saving {address} => {account}");
             _codeDb[address.Bytes] = Opt.Encode(account);
         }
 
