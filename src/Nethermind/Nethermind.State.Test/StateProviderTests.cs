@@ -304,5 +304,15 @@ namespace Nethermind.Store.Test
             provider.ClearAccountStorage(TestItem.AddressA);
             provider.GetStorage(TestItem.AddressA, 1).Should().BeEquivalentTo(new byte[] {0});
         }
+        
+        [Test]
+        public void Delete_account_works()
+        {
+            StateProvider provider = new StateProvider(new TrieStore(new StateDb(), Logger), new StateDb(), Logger);
+            provider.CreateAccount(TestItem.AddressA, 5);
+            provider.DeleteAccount(TestItem.AddressA);
+            provider.Commit(MuirGlacier.Instance);
+            provider.GetAccount(TestItem.AddressA).Should().BeNull();
+        }
     }
 }

@@ -252,8 +252,15 @@ namespace Nethermind.Db.Rocks
             {
                 throw new ObjectDisposedException($"Attempted to delete form a disposed database {Name}");
             }
-            
-            Db.Remove(key, null, WriteOptions);
+
+            if (CurrentBatch != null)
+            {
+                CurrentBatch.Delete(key);
+            }
+            else
+            {
+                Db.Remove(key, null, WriteOptions);    
+            }
         }
 
         public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false)

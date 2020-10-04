@@ -381,6 +381,7 @@ namespace Nethermind.State
 
         public void DeleteAccount(Address address)
         {
+            if (_logWarns) _logger.Warn($"Deleting account {address}");
             _needsStateRootUpdate = true;
             PushDelete(address);
         }
@@ -551,6 +552,7 @@ namespace Nethermind.State
                         if (releaseSpec.IsEip158Enabled && change.Account.IsEmpty)
                         {
                             if (_logger.IsTrace) _logger.Trace($"  Commit remove empty {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
+                            if (_logWarns) _logger.Warn($"Deleting empty account {change.Address}");
                             SetState(change.Address, null);
                             if (isTracing)
                             {
@@ -560,6 +562,10 @@ namespace Nethermind.State
                         else
                         {
                             if (_logger.IsTrace) _logger.Trace($"  Commit update {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce} C = {change.Account.CodeHash}");
+                            if (change.Account == null)
+                            {
+                                if (_logWarns) _logger.Error($"Update but with null on {change.Address}");
+                            }
                             SetState(change.Address, change.Account);
                             if (isTracing)
                             {
@@ -574,6 +580,10 @@ namespace Nethermind.State
                         if (!releaseSpec.IsEip158Enabled || !change.Account.IsEmpty)
                         {
                             if (_logger.IsTrace) _logger.Trace($"  Commit create {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
+                            if (change.Account == null)
+                            {
+                                if (_logWarns) _logger.Error($"New but with null on {change.Address}");
+                            }
                             SetState(change.Address, change.Account);
                             if (isTracing)
                             {
@@ -599,11 +609,17 @@ namespace Nethermind.State
 
                         if (!wasItCreatedNow)
                         {
+                            if (_logWarns) _logger.Warn($"Deleting account created earlier {change.Address}");
+
                             SetState(change.Address, null);
                             if (isTracing)
                             {
                                 trace[change.Address] = new ChangeTrace(null);
                             }
+                        }
+                        else
+                        {
+                            if (_logWarns) _logger.Warn($"Deleteing just created account {change.Address}");
                         }
 
                         break;
@@ -697,10 +713,10 @@ namespace Nethermind.State
             Account accountOld = _tree.Get(address);
             Account accountNew = Opt.DecodeAccount(_codeDb[address.Bytes]);
             if (_logWarns) _logger.Warn($"Reading OLD {address} => {accountOld}");
-            if (_logWarns) _logger.Warn($"Reading NEW {address} => {accountOld}");
+            if (_logWarns) _logger.Warn($"Reading NEW {address} => {accountNew}");
             if ((accountNew != null || accountOld != null) && (accountNew?.Nonce != accountOld?.Nonce || accountNew?.Balance != accountOld?.Balance || accountNew?.CodeHash != accountOld?.CodeHash))
             {
-                _logger.Error($"Difference on {address} {accountNew} vs {accountOld}");
+                _logger.Error($"Difference on {address} NEW:{accountNew} vs OLD:{accountOld}");
             }
 
             return accountOld;
