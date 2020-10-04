@@ -115,7 +115,7 @@ namespace Nethermind.State
 
         public void DisconnectTrie()
         {
-            // _tree = null;
+            _tree = null;
         }
 
         private int LoadClearCounter(Address address)
@@ -151,6 +151,7 @@ namespace Nethermind.State
                 current[0]++;
                 if(_logWarns) _logger.Warn($"Saving incremented clear counter {clearCounterAddress.ToHexString()}=>{current.ToHexString()}");
                 _codeDb[clearCounterAddress] = current;
+                _clearCounters[address] = current[0];
             }
         }
 
@@ -160,7 +161,7 @@ namespace Nethermind.State
 
         public void RecalculateStateRoot()
         {
-            _tree?.UpdateRootHash();
+            // _tree?.UpdateRootHash();
             _needsStateRootUpdate = false;
         }
 
@@ -510,6 +511,7 @@ namespace Nethermind.State
             for (int i = 0; i <= _currentPosition; i++)
             {
                 Change change = _changes[_currentPosition - i];
+
                 if (!isTracing && change.ChangeType == ChangeType.JustCache)
                 {
                     continue;
@@ -710,23 +712,23 @@ namespace Nethermind.State
         private Account GetState(Address address)
         {
             Metrics.StateTreeReads++;
-            Account accountOld = _tree.Get(address);
+            // Account accountOld = _tree.Get(address);
             Account accountNew = Opt.DecodeAccount(_codeDb[address.Bytes]);
-            if (_logWarns) _logger.Warn($"Reading OLD {address} => {accountOld}");
+            // if (_logWarns) _logger.Warn($"Reading OLD {address} => {accountOld}");
             if (_logWarns) _logger.Warn($"Reading NEW {address} => {accountNew}");
-            if ((accountNew != null || accountOld != null) && (accountNew?.Nonce != accountOld?.Nonce || accountNew?.Balance != accountOld?.Balance || accountNew?.CodeHash != accountOld?.CodeHash))
-            {
-                _logger.Error($"Difference on {address} NEW:{accountNew} vs OLD:{accountOld}");
-            }
+            // if ((accountNew != null || accountOld != null) && (accountNew?.Nonce != accountOld?.Nonce || accountNew?.Balance != accountOld?.Balance || accountNew?.CodeHash != accountOld?.CodeHash))
+            // {
+            //     _logger.Error($"Difference on {address} NEW:{accountNew} vs OLD:{accountOld}");
+            // }
 
-            return accountOld;
+            return accountNew;
         }
 
         private void SetState(Address address, Account account)
         {
             _needsStateRootUpdate = true;
             Metrics.StateTreeWrites++;
-            _tree?.Set(address, account);
+            // _tree?.Set(address, account);
 
             if (_logWarns) _logger.Warn($"Saving {address} => {account}");
             _codeDb[address.Bytes] = Opt.Encode(account);
@@ -853,15 +855,15 @@ namespace Nethermind.State
 
         public void CommitTree(long blockNumber)
         {
-            if (_tree != null)
-            {
-                if (_needsStateRootUpdate)
-                {
-                    RecalculateStateRoot();
-                }
-
-                _tree.Commit(blockNumber);
-            }
+            // if (_tree != null)
+            // {
+            //     if (_needsStateRootUpdate)
+            //     {
+            //         RecalculateStateRoot();
+            //     }
+            //
+            //     _tree.Commit(blockNumber);
+            // }
         }
 
         public void CommitBranch()

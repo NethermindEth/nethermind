@@ -130,7 +130,6 @@ namespace Nethermind.Db
             for (int i = 0; i <= _currentPosition; i++)
             {
                 Change change = _changes[i];
-
                 if (change.Value != null)
                 {
                     _db[change.Key] = change.Value;
