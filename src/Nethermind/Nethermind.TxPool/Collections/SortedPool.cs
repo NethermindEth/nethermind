@@ -21,19 +21,21 @@ using System.Runtime.CompilerServices;
 
 namespace Nethermind.TxPool.Collections
 {
-    public class SortedPool<TKey, TValue>
+    public class SortedPool<TKey, TValue, TGroup>
     {
         private readonly int _capacity;
         protected readonly Comparison<TValue> Comparison;
-        protected readonly Dictionary<TKey, LinkedListNode<KeyValuePair<TKey, TValue>>> CacheMap;
-        protected readonly LinkedList<KeyValuePair<TKey, TValue>> LruList;
+        protected readonly Func<TValue, TGroup> GroupMapping;
+        protected readonly IDictionary<TKey, TValue> CacheMap;
+        protected readonly IDictionary<TGroup, ICollection<TValue>> Buckets;
 
-        public SortedPool(int capacity, Comparison<TValue> comparison)
+        public SortedPool(int capacity, Comparison<TValue> comparison, Func<TValue, TGroup> groupMapping)
         {
             _capacity = capacity;
             Comparison = comparison;
-            CacheMap = new Dictionary<TKey, LinkedListNode<KeyValuePair<TKey, TValue>>>(); // do not initialize it at the full capacity
-            LruList = new LinkedList<KeyValuePair<TKey, TValue>>();
+            GroupMapping = groupMapping;
+            CacheMap = new Dictionary<TKey, TValue>(); // do not initialize it at the full capacity
+            Buckets = new Dictionary<TGroup, ICollection<TValue>>();
         }
 
         public int Count => CacheMap.Count;
@@ -41,28 +43,22 @@ namespace Nethermind.TxPool.Collections
         [MethodImpl(MethodImplOptions.Synchronized)]
         public TValue[] GetSnapshot()
         {
-            return LruList.Select(i => i.Value).ToArray();
+            return Buckets.SelectMany(b => b.Value).ToArray();
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public TValue TakeFirst()
-        {
-            var value = LruList.First.Value;
-            LruList.RemoveFirst();
-            Remove(value.Key);
-            return value.Value;
-        }
-        
-        [MethodImpl(MethodImplOptions.Synchronized)]
         public bool TryRemove(TKey key, out TValue tx)
         {
-            if (CacheMap.TryGetValue(key, out var txNode))
+            if (CacheMap.TryGetValue(key, out tx))
             {
                 if (Remove(key))
                 {
-                    LruList.Remove(txNode);
-                    tx = txNode.Value.Value;
-                    return true;
+                    TGroup groupMapping = GroupMapping(tx);
+                    if (Buckets.TryGetValue(groupMapping, out var collection))
+                    {
+                        collection.Remove(tx);
+                        return true;
+                    }
                 }
             }
 
@@ -73,14 +69,8 @@ namespace Nethermind.TxPool.Collections
         [MethodImpl(MethodImplOptions.Synchronized)]
         public bool TryGetValue(TKey key, out TValue tx)
         {
-            if (CacheMap.TryGetValue(key, out var txNode))
-            {
-                tx = txNode.Value.Value;
-                return true;
-            }
-
             tx = default;
-            return false;
+            return CacheMap.TryGetValue(key, out tx);
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]

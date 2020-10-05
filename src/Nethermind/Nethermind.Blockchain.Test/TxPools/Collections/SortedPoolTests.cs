@@ -44,47 +44,47 @@ namespace Nethermind.Blockchain.Test.TxPools.Collections
             }
         }
 
-        [Test]
-        public void Beyond_capacity()
-        {
-            for (int i = 0; i < _transactions.Length; i++)
-            {
-                var tx = _transactions[^(i + 1)];
-                tx.Hash = tx.CalculateHash();
-                _sortedPool.TryInsert(tx.Hash, tx);
-                Assert.AreEqual(i > 15 ? null : tx, _sortedPool.TryGetValue(tx.Hash, out Transaction txOther) ? txOther : null);
-                Assert.AreEqual(Math.Min(16, i + 1), _sortedPool.Count);
-            }
-
-            Assert.AreEqual(Capacity, _sortedPool.GetSnapshot().Length);
-            
-            for (int i = 0; i < Capacity; i++)
-            {
-                Transaction tx = _sortedPool.TakeFirst();
-                UInt256 gasPrice = (UInt256)(_transactions.Length - i - 1);
-                Assert.AreEqual(Capacity - i - 1, _sortedPool.Count);
-                Assert.AreEqual(gasPrice, tx.GasPrice);
-            }
-        }
-        
-        [Test]
-        public void Beyond_capacity_ordered()
-        {
-            for (int i = 0; i < _transactions.Length; i++)
-            {
-                var tx = _transactions[i];
-                tx.Hash = tx.CalculateHash();
-                _sortedPool.TryInsert(tx.Hash, tx);
-                Assert.AreEqual(Math.Min(16, i + 1), _sortedPool.Count);
-            }
-
-            for (int i = 0; i < Capacity; i++)
-            {
-                Transaction tx = _sortedPool.TakeFirst();
-                UInt256 gasPrice = (UInt256)(_transactions.Length - i - 1);
-                Assert.AreEqual(Capacity - i - 1, _sortedPool.Count);
-                Assert.AreEqual(gasPrice, tx.GasPrice);
-            }
-        }
+        // [Test]
+        // public void Beyond_capacity()
+        // {
+        //     for (int i = 0; i < _transactions.Length; i++)
+        //     {
+        //         var tx = _transactions[^(i + 1)];
+        //         tx.Hash = tx.CalculateHash();
+        //         _sortedPool.TryInsert(tx.Hash, tx);
+        //         Assert.AreEqual(i > 15 ? null : tx, _sortedPool.TryGetValue(tx.Hash, out Transaction txOther) ? txOther : null);
+        //         Assert.AreEqual(Math.Min(16, i + 1), _sortedPool.Count);
+        //     }
+        //
+        //     Assert.AreEqual(Capacity, _sortedPool.GetSnapshot().Length);
+        //     
+        //     for (int i = 0; i < Capacity; i++)
+        //     {
+        //         Transaction tx = _sortedPool.TakeFirst();
+        //         UInt256 gasPrice = (UInt256)(_transactions.Length - i - 1);
+        //         Assert.AreEqual(Capacity - i - 1, _sortedPool.Count);
+        //         Assert.AreEqual(gasPrice, tx.GasPrice);
+        //     }
+        // }
+        //
+        // [Test]
+        // public void Beyond_capacity_ordered()
+        // {
+        //     for (int i = 0; i < _transactions.Length; i++)
+        //     {
+        //         var tx = _transactions[i];
+        //         tx.Hash = tx.CalculateHash();
+        //         _sortedPool.TryInsert(tx.Hash, tx);
+        //         Assert.AreEqual(Math.Min(16, i + 1), _sortedPool.Count);
+        //     }
+        //
+        //     for (int i = 0; i < Capacity; i++)
+        //     {
+        //         Transaction tx = _sortedPool.TakeFirst();
+        //         UInt256 gasPrice = (UInt256)(_transactions.Length - i - 1);
+        //         Assert.AreEqual(Capacity - i - 1, _sortedPool.Count);
+        //         Assert.AreEqual(gasPrice, tx.GasPrice);
+        //     }
+        // }
     }
 }
