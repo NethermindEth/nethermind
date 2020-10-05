@@ -514,6 +514,7 @@ namespace Nethermind.Runner.Test
         {
             foreach (string configFile in Resolve(configWildcard))
             {
+                Console.WriteLine("Testing " + configFile);
                 ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
                 T config = configProvider.GetConfig<T>();
                 expectedValue(configFile, getter(config));
