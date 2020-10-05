@@ -291,9 +291,9 @@ namespace Nethermind.Blockchain.Test.Find
         }
         
         [Test]
-        public async Task Throw_operation_canceled_after_given_timeout([Values(2, 0.01)] double waitTime)
+        public async Task Throw_log_finder_operation_canceled_after_given_timeout([Values(2, 0.01)] double waitTime)
         {
-            var timeout = TimeSpan.FromMilliseconds(10);
+            var timeout = TimeSpan.FromMilliseconds(20);
             using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource(timeout);
             CancellationToken cancellationToken = cancellationTokenSource.Token;
 
