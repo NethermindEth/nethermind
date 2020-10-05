@@ -43,7 +43,7 @@ namespace Nethermind.Abi
                 throw new AbiException(
                     $"Insufficient parameters for {signature.Name}. Expected {signature.Types.Length} arguments but got {arguments.Length}");
             }
-            
+
             List<byte[]> dynamicParts = new List<byte[]>();
             List<byte[]> headerParts = new List<byte[]>();
             BigInteger currentOffset = arguments.Length * AbiType.UInt256.LengthInBytes;
@@ -66,10 +66,10 @@ namespace Nethermind.Abi
             bool includeSig = encodingStyle == AbiEncodingStyle.IncludeSignature;
             int sigOffset = includeSig ? 1 : 0;
             byte[][] encodedParts = new byte[sigOffset + headerParts.Count + dynamicParts.Count][];
-            
+
             if (includeSig)
             {
-                encodedParts[0] = ComputeAddress(signature);
+                encodedParts[0] = signature.Address;
             }
 
             for (int i = 0; i < headerParts.Count; i++)
@@ -83,32 +83,6 @@ namespace Nethermind.Abi
             }
 
             return Bytes.Concat(encodedParts);
-        }
-
-        private static byte[] ComputeAddress(AbiSignature signature)
-        {
-            string[] argTypeNames = new string[signature.Types.Length];
-            for (int i = 0; i < signature.Types.Length; i++)
-            {
-                argTypeNames[i] = signature.Types[i].ToString();
-            }
-
-            string typeList = string.Join(",", argTypeNames);
-            string signatureString = $"{signature.Name}({typeList})";
-            Keccak signatureKeccak = Keccak.Compute(signatureString);
-            return signatureKeccak.Bytes.Slice(0, 4);
-        }
-
-        private static string ComputeSignature(string functionName, AbiType[] abiTypes)
-        {
-            string[] argTypeNames = new string[abiTypes.Length];
-            for (int i = 0; i < abiTypes.Length; i++)
-            {
-                argTypeNames[i] = abiTypes[i].ToString();
-            }
-
-            string typeList = string.Join(",", argTypeNames);
-            return $"{functionName}({typeList})";
         }
 
         public object[] Decode(AbiEncodingStyle encodingStyle, AbiSignature signature, byte[] data)
@@ -126,10 +100,10 @@ namespace Nethermind.Abi
             int position = 0;
             if (encodingStyle == AbiEncodingStyle.IncludeSignature)
             {
-                if (!Bytes.AreEqual(data.Slice(0, 4), ComputeAddress(signature)))
+                if (!Bytes.AreEqual(AbiSignature.GetAddress(data), signature.Address))
                 {
                     throw new AbiException(
-                        $"Signature in encoded ABI data is not consistent with {ComputeSignature(signature.Name, signature.Types)}");
+                        $"Signature in encoded ABI data is not consistent with {signature}");
                 }
 
                 position = 4;

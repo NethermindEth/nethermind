@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Core;
@@ -83,7 +84,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Shared
         public void Reacts_to_block_processed()
         {
             _processor.Init();
-            _blockProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(Build.A.Block.TestObject));
+            _blockProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(Build.A.Block.TestObject, Array.Empty<TxReceipt>()));
         }
     }
 }

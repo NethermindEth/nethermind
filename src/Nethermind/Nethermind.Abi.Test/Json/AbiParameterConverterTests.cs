@@ -31,45 +31,54 @@ namespace Nethermind.Abi.Test.Json
         {
             get
             {
-                yield return new TestCaseData("int", AbiType.Int256, null);
-                yield return new TestCaseData("UINT", AbiType.UInt256, null);
-                yield return new TestCaseData("int8", new AbiInt(8), null);
-                yield return new TestCaseData("uint16", new AbiUInt(16), null);
-                yield return new TestCaseData("uint32", new AbiUInt(32), null);
-                yield return new TestCaseData("iNt64", new AbiInt(64), null);
-                yield return new TestCaseData("int128", new AbiInt(128), null);
-                yield return new TestCaseData("uint256", new AbiUInt(256), null);
-                yield return new TestCaseData("address", AbiType.Address, null);
-                yield return new TestCaseData("bool", AbiType.Bool, null);
-                yield return new TestCaseData("fixed", AbiType.Fixed, null);
-                yield return new TestCaseData("Ufixed", AbiType.UFixed, null);
-                yield return new TestCaseData("fixed16x10", new AbiFixed(16, 10), null);
-                yield return new TestCaseData("ufixed256x80", new AbiUFixed(256, 80), null);
-                yield return new TestCaseData("fixed96x1", new AbiFixed(96, 1), null);
-                yield return new TestCaseData("bytes", AbiType.DynamicBytes, null);
-                yield return new TestCaseData("bytes32", new AbiBytes(32), null);
-                yield return new TestCaseData("function", AbiType.Function, null);
-                yield return new TestCaseData("string", AbiType.String, null);
-                yield return new TestCaseData("int[]", new AbiArray(AbiType.Int256), null);
-                yield return new TestCaseData("string[5]", new AbiFixedLengthArray(AbiType.String, 5), null);
+                object[] GetTestData(string type, AbiType abiType, params object[] components) => 
+                    new object[] {type, abiType, null, components};
                 
-                yield return new TestCaseData("tuple", null, new NotSupportedException());
+                object[] GetTestDataWithException(string type, Exception exception, object[] components = null) => 
+                    new object[] {type, null, exception, components};
+
+                yield return new TestCaseData(GetTestData("int", AbiType.Int256));
+                yield return new TestCaseData(GetTestData("UINT", AbiType.UInt256));
+                yield return new TestCaseData(GetTestData("int8", new AbiInt(8)));
+                yield return new TestCaseData(GetTestData("uint16", new AbiUInt(16)));
+                yield return new TestCaseData(GetTestData("uint32", new AbiUInt(32)));
+                yield return new TestCaseData(GetTestData("iNt64", new AbiInt(64)));
+                yield return new TestCaseData(GetTestData("int128", new AbiInt(128)));
+                yield return new TestCaseData(GetTestData("uint256", new AbiUInt(256)));
+                yield return new TestCaseData(GetTestData("address", AbiType.Address));
+                yield return new TestCaseData(GetTestData("bool", AbiType.Bool));
+                yield return new TestCaseData(GetTestData("fixed", AbiType.Fixed));
+                yield return new TestCaseData(GetTestData("Ufixed", AbiType.UFixed));
+                yield return new TestCaseData(GetTestData("fixed16x10", new AbiFixed(16, 10)));
+                yield return new TestCaseData(GetTestData("ufixed256x80", new AbiUFixed(256, 80)));
+                yield return new TestCaseData(GetTestData("fixed96x1", new AbiFixed(96, 1)));
+                yield return new TestCaseData(GetTestData("bytes", AbiType.DynamicBytes));
+                yield return new TestCaseData(GetTestData("bytes32", new AbiBytes(32)));
+                yield return new TestCaseData(GetTestData("function", AbiType.Function));
+                yield return new TestCaseData(GetTestData("string", AbiType.String));
+                yield return new TestCaseData(GetTestData("int[]", new AbiArray(AbiType.Int256)));
+                yield return new TestCaseData(GetTestData("string[5]", new AbiFixedLengthArray(AbiType.String, 5)));
                 
-                yield return new TestCaseData("int1", null, new ArgumentException());
-                yield return new TestCaseData("int9", null, new ArgumentException());
-                yield return new TestCaseData("int300", null, new ArgumentException());
-                yield return new TestCaseData("int3000", null, new ArgumentException());
-                yield return new TestCaseData("fixed80", null, new ArgumentException());
-                yield return new TestCaseData("fixed80x81", null, new ArgumentException());
-                yield return new TestCaseData("bytes33", null, new ArgumentException());
+                yield return new TestCaseData(GetTestData("tuple", new AbiTuple(new Dictionary<string, AbiType>())));
+                yield return new TestCaseData(GetTestData("tuple", 
+                    new AbiTuple(new Dictionary<string, AbiType> {{"property", AbiType.Int256}}),
+                    new {name = "property", type = "int"}));
+                
+                yield return new TestCaseData(GetTestDataWithException("int1", new ArgumentException()));
+                yield return new TestCaseData(GetTestDataWithException("int9", new ArgumentException()));
+                yield return new TestCaseData(GetTestDataWithException("int300", new ArgumentException()));
+                yield return new TestCaseData(GetTestDataWithException("int3000", new ArgumentException()));
+                yield return new TestCaseData(GetTestDataWithException("fixed80", new ArgumentException()));
+                yield return new TestCaseData(GetTestDataWithException("fixed80x81", new ArgumentException()));
+                yield return new TestCaseData(GetTestDataWithException("bytes33", new ArgumentException()));
             }
         }
 
         [TestCaseSource(nameof(TypeTestCases))]
-        public void Can_read_json(string type, AbiType expectedType, Exception expectedException = null)
+        public void Can_read_json(string type, AbiType expectedType, Exception expectedException, object[] components)
         {
             var converter = new AbiParameterConverter();
-            var model = new {name = "theName", type};
+            var model = new {name = "theName", type, components};
             string json = JsonConvert.SerializeObject(model);
             using (var jsonReader = new JsonTextReader(new StringReader(json)))
             {

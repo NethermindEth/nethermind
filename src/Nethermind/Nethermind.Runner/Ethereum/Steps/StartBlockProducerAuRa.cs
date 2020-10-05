@@ -21,6 +21,7 @@ using Nethermind.Abi;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
+using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Config;
@@ -47,6 +48,8 @@ namespace Nethermind.Runner.Ethereum.Steps
         
         private IAuraConfig? _auraConfig;
         private IAuRaValidator? _validator;
+        private DictionaryBasedContractDataStore<TxPriorityContract.Destination>? _minGasPricesContractDataStore;
+        private TxPriorityContract? _txPriorityContract;
 
         public StartBlockProducerAuRa(AuRaNethermindApi api) : base(api)
         {
@@ -136,6 +139,36 @@ namespace Nethermind.Runner.Ethereum.Steps
             };
         }
 
+        protected override TxPoolTxSource CreateTxPoolTxSource(ReadOnlyTxProcessingEnv processingEnv, ReadOnlyTxProcessorSource readOnlyTxProcessorSource)
+        {
+            var comparer = TxPriorityContract.DestinationMethodComparer.Instance;
+            Address? transactionPriorityContractAddress = _auraConfig?.TransactionPriorityContractAddress;
+            if (transactionPriorityContractAddress != null)
+            {
+                _txPriorityContract = new TxPriorityContract(_api.AbiEncoder, transactionPriorityContractAddress, readOnlyTxProcessorSource);
+                _minGasPricesContractDataStore = new DictionaryContractDataStore<TxPriorityContract.Destination>(_txPriorityContract.MinGasPrices, _api.MainBlockProcessor, comparer);
+                _api.DisposeStack.Push(_minGasPricesContractDataStore);
+            }
+
+            var txPoolTxSource = base.CreateTxPoolTxSource(processingEnv, readOnlyTxProcessorSource);
+            
+            if (transactionPriorityContractAddress != null)
+            {
+                IBlockProcessor? blockProcessor = _api.MainBlockProcessor;
+                var whitelistContractDataStore = new HashSetContractDataStore<Address>(_txPriorityContract!.SendersWhitelist, blockProcessor);
+                var prioritiesContractDataStore = new SortedListContractDataStore<TxPriorityContract.Destination>(_txPriorityContract.Priorities, blockProcessor, comparer);
+                
+                _api.DisposeStack.Push(whitelistContractDataStore);
+                _api.DisposeStack.Push(prioritiesContractDataStore);
+
+                txPoolTxSource.OrderStrategy = new PermissionTxPoolOrderingStrategy(
+                    whitelistContractDataStore,
+                    prioritiesContractDataStore);
+            }
+            
+            return txPoolTxSource;
+        }
+
         protected override ITxSource CreateTxSourceForProducer(ReadOnlyTxProcessingEnv processingEnv, ReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
             bool CheckAddPosdaoTransactions(IList<ITxSource> list, long auRaPosdaoTransition)
@@ -212,6 +245,12 @@ namespace Nethermind.Runner.Ethereum.Steps
         protected override ITxFilter CreateGasPriceTxFilter(ReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
             ITxFilter gasPriceTxFilter = base.CreateGasPriceTxFilter(readOnlyTxProcessorSource);
+
+            if (_minGasPricesContractDataStore != null)
+            {
+                gasPriceTxFilter = new MinGasPriceContractTxFilter(gasPriceTxFilter, _minGasPricesContractDataStore);
+            }
+            
             Address? registrar = _api.ChainSpec?.Parameters.Registrar;
             if (registrar != null)
             {

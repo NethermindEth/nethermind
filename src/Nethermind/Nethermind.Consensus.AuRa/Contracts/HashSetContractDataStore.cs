@@ -13,38 +13,35 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System.Linq;
+using System.Collections.Generic;
+using Nethermind.Blockchain.Processing;
 
-namespace Nethermind.Core.Test.Builders
+namespace Nethermind.Consensus.AuRa.Contracts
 {
-    /// <summary>
-    /// This class is here just to hint the API for implementations
-    /// </summary>
-    /// <typeparam name="T"></typeparam>
-    public abstract class BuilderBase<T>
+    public class HashSetContractDataStore<T> : ContractDataStore<T, HashSet<T>>
     {
-        protected internal T TestObjectInternal { get; set; }
-
-        public T TestObject
+        public HashSetContractDataStore(IDataContract<T> dataContract, IBlockProcessor blockProcessor)
+            : base(dataContract, blockProcessor)
         {
-            get
+        }
+
+        protected override HashSet<T> CreateItems() => new HashSet<T>();
+
+        protected override void ClearItems(HashSet<T> collection)
+        {
+            collection.Clear();
+        }
+
+        protected override IEnumerable<T> GetItemsFromContractAtBlock(HashSet<T> collection) => collection;
+
+        protected override void InsertItems(HashSet<T> collection, IEnumerable<T> items)
+        {
+            foreach (T item in items)
             {
-                BeforeReturn();
-                return TestObjectInternal;
+                collection.Add(item);
             }
-
-            protected set => TestObjectInternal = value;
-        }
-
-        public T[] TestObjectNTimes(int n)
-        {
-            T testObject = TestObject;
-            return Enumerable.Repeat(testObject, n).ToArray();
-        }
-
-        protected virtual void BeforeReturn()
-        {
         }
     }
 }

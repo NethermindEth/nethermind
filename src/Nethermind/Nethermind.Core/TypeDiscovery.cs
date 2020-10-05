@@ -37,7 +37,7 @@ namespace Nethermind.Core
                 IEnumerable<Assembly> loadedAssemblies;
                 do
                 {
-                    loadedAssemblies = AppDomain.CurrentDomain.GetAssemblies();
+                    loadedAssemblies = AssemblyLoadContext.Default.Assemblies;
                 } while (LoadOnce(loadedAssemblies.ToList()) != 0);
 
                 foreach (Assembly assembly in loadedAssemblies.Where(a => a.FullName?.Contains("Nethermind") ?? false))
@@ -53,17 +53,19 @@ namespace Nethermind.Core
 
             int loaded = 0;
 
-            loadedAssemblies
+            var missingRefs = loadedAssemblies
                 .SelectMany(x => x.GetReferencedAssemblies())
                 .Distinct()
-                .Where(a => a.Name.Contains("Nethermind"))
-                .Where(y => loadedAssemblies.Any((a) => a.FullName == y.FullName) == false)
-                .ToList()
-                .ForEach(x =>
+                .Where(a => a.Name.Contains("Nethermind"));
+
+            foreach (AssemblyName missingRef in missingRefs)
+            {
+                if (loadedAssemblies.All(a => a.FullName != missingRef.FullName))
                 {
-                    AssemblyLoadContext.Default.LoadFromAssemblyName(x);
+                    AssemblyLoadContext.Default.LoadFromAssemblyName(missingRef);
                     loaded++;
-                });
+                }
+            }
 
             return loaded;
         }

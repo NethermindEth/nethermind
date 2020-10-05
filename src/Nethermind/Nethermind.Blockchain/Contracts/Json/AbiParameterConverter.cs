@@ -54,8 +54,7 @@ namespace Nethermind.Blockchain.Contracts.Json
             {"ufixed", (m, n) => new AbiUFixed(m ?? 128, n ?? 18)},
             {"bytes", (m, n) => m.HasValue ? (AbiType) new AbiBytes(m.Value) : AbiType.DynamicBytes},
             {"function", (m, n) => AbiType.Function},
-            {"string", (m, n) => AbiType.String},
-            {"tuple", (m, n) => throw new NotSupportedException("Tuples are not yet supported.")}
+            {"string", (m, n) => AbiType.String}
         };
     }
     
@@ -78,9 +77,15 @@ namespace Nethermind.Blockchain.Contracts.Json
 
         protected virtual void Populate(T item, JToken token)
         {
-            item.Name = token[nameof(AbiParameter.Name).ToLowerInvariant()].Value<string>();
-            item.Type = GetParameterType(token[nameof(AbiParameter.Type).ToLowerInvariant()].Value<string>(), token["components"]);
+            item.Name = GetName(token);
+            item.Type = GetAbiType(token);
         }
+        
+        private AbiType GetAbiType(JToken token) => 
+            GetParameterType(token[nameof(AbiParameter.Type).ToLowerInvariant()]!.Value<string>(), token["components"]);
+
+        private static string GetName(JToken token) => 
+            token[nameof(AbiParameter.Name).ToLowerInvariant()]!.Value<string>();
 
         private AbiType GetParameterType(string type, JToken components)
         {
@@ -101,11 +106,22 @@ namespace Nethermind.Blockchain.Contracts.Json
             }
         }
 
-        private static AbiType GetBaseType(string baseType, Match match, JToken components)
+        private AbiType GetBaseType(string baseType, Match match, JToken components)
         {
-            int? m = match.Groups[AbiParameterConverterStatics.TypeLengthGroup].Success ? int.Parse(match.Groups[AbiParameterConverterStatics.TypeLengthGroup].Value) : (int?) null;
-            int? n = match.Groups[AbiParameterConverterStatics.PrecisionGroup].Success ? int.Parse(match.Groups[AbiParameterConverterStatics.PrecisionGroup].Value) : (int?) null;
-            return AbiParameterConverterStatics.SimpleTypeFactories[baseType](m, n);
+            if (AbiParameterConverterStatics.SimpleTypeFactories.TryGetValue(baseType, out var simpleTypeFactory))
+            {
+                int? m = match.Groups[AbiParameterConverterStatics.TypeLengthGroup].Success ? int.Parse(match.Groups[AbiParameterConverterStatics.TypeLengthGroup].Value) : (int?) null;
+                int? n = match.Groups[AbiParameterConverterStatics.PrecisionGroup].Success ? int.Parse(match.Groups[AbiParameterConverterStatics.PrecisionGroup].Value) : (int?) null;
+                return simpleTypeFactory(m, n);
+            }
+            else if (baseType == "tuple")
+            {
+                return new AbiTuple(components.Children().ToDictionary(GetName, GetAbiType));
+            }
+            else
+            {
+                throw new NotSupportedException($"Abi doesn't support type '{baseType}'");
+            }
         }
     }
 
