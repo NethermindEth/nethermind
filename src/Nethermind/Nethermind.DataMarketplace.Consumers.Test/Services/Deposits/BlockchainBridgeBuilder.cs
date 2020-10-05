@@ -67,7 +67,6 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
                 ecdsa,
                 Timestamper.Default,
                 logFinder,
-                LimboLogs.Instance,
                 false,
                 false);
 
