@@ -354,7 +354,6 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_api.MainBlockProcessor == null) throw new StepDependencyException(nameof(_api.MainBlockProcessor));
             if (_api.NodeStatsManager == null) throw new StepDependencyException(nameof(_api.NodeStatsManager));
             if (_api.KeyStore == null) throw new StepDependencyException(nameof(_api.KeyStore));
-            if (_api.RpcModuleProvider == null) throw new StepDependencyException(nameof(_api.RpcModuleProvider));
             if (_api.Wallet == null) throw new StepDependencyException(nameof(_api.Wallet));
             if (_api.EthereumEcdsa == null) throw new StepDependencyException(nameof(_api.EthereumEcdsa));
             if (_api.SpecProvider == null) throw new StepDependencyException(nameof(_api.SpecProvider));
