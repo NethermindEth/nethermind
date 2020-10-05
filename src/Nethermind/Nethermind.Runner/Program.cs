@@ -97,7 +97,7 @@ namespace Nethermind.Runner
             pluginLoader.Load(SimpleConsoleLogManager.Instance);
 
             Type configurationType = typeof(IConfig);
-            IEnumerable<Type> configTypes = new TypeDiscovery().FindNethermindTypes(configurationType, true);
+            IEnumerable<Type> configTypes = new TypeDiscovery().FindNethermindTypes(configurationType);
 
             CommandLineApplication app = new CommandLineApplication {Name = "Nethermind.Runner"};
             app.HelpOption("-?|-h|--help");

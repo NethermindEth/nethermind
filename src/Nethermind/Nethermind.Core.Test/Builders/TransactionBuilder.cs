@@ -22,7 +22,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Core.Test.Builders
 {
-    public class TransactionBuilder<T> : BuilderBase<Transaction> where T : Transaction, new()
+    public class TransactionBuilder<T> : BuilderBase<T> where T : Transaction, new()
     {   
         public TransactionBuilder()
         {

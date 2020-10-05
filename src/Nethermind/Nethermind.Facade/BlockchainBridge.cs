@@ -27,7 +27,6 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
-using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie;
 using Nethermind.TxPool;
@@ -68,7 +67,6 @@ namespace Nethermind.Facade
             IEthereumEcdsa ecdsa,
             ITimestamper timestamper,
             ILogFinder logFinder,
-            ILogManager logManager,
             bool isMining,
             bool isBeamSyncing)
         {
@@ -83,6 +81,7 @@ namespace Nethermind.Facade
             _filterManager = filterManager ?? throw new ArgumentException(nameof(filterManager));
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
+            _logFinder = logFinder ?? throw new ArgumentNullException(nameof(logFinder));
             _isBeamSyncing = isBeamSyncing;
             IsMining = isMining;
         }

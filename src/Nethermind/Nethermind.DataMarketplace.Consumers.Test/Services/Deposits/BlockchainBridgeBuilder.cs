@@ -47,14 +47,10 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
                 new TrieStore(memDbProvider.StateDb, LimboLogs.Instance), memDbProvider.CodeDb, LimboLogs.Instance);
             var trieStore = new TrieStore(memDbProvider.StateDb, LimboLogs.Instance);
             StateProvider stateProvider = new StateProvider(trieStore, memDbProvider.CodeDb, LimboLogs.Instance);
-            StorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, LimboLogs.Instance);
             IEthereumEcdsa ecdsa = new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance);
             ITxPool txPool = new TxPool.TxPool(new InMemoryTxStorage(), Timestamper.Default, ecdsa, MainnetSpecProvider.Instance, new TxPoolConfig(), stateProvider, LimboLogs.Instance);
-            // BlockTree blockTree = new BlockTree(memDbProvider.BlocksDb, memDbProvider.HeadersDb, memDbProvider.BlockInfosDb, new ChainLevelInfoRepository(memDbProvider.BlockInfosDb), MainnetSpecProvider.Instance, txPool, NullBloomStorage.Instance, new SyncConfig(), LimboLogs.Instance);
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(1).TestObject;
             IWallet wallet = new DevWallet(new WalletConfig(), LimboLogs.Instance);
-            VirtualMachine virtualMachine = new VirtualMachine(stateProvider, storageProvider, new BlockhashProvider(blockTree, LimboLogs.Instance), MainnetSpecProvider.Instance, LimboLogs.Instance);
-            TransactionProcessor processor = new TransactionProcessor(MainnetSpecProvider.Instance, stateProvider, storageProvider, virtualMachine, LimboLogs.Instance);
             LogFinder logFinder = new LogFinder(blockTree, new InMemoryReceiptStorage(), NullBloomStorage.Instance, LimboLogs.Instance, new ReceiptsRecovery(), 1024);
 
             ReadOnlyTxProcessingEnv processingEnv = new ReadOnlyTxProcessingEnv(
@@ -71,7 +67,6 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
                 ecdsa,
                 Timestamper.Default,
                 logFinder,
-                LimboLogs.Instance,
                 false,
                 false);
 
