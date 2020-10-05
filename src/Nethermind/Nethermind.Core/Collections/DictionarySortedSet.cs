@@ -20,18 +20,18 @@ using System.Runtime.Serialization;
 
 namespace Nethermind.Core.Collections
 {
-    public class DictionarySet<TKey, TValue> : SortedSet<KeyValuePair<TKey, TValue>>
+    public class DictionarySortedSet<TKey, TValue> : SortedSet<KeyValuePair<TKey, TValue>>
     {
-        public DictionarySet() : base(GetComparer()) { }
+        public DictionarySortedSet() : base(GetComparer()) { }
 
-        public DictionarySet(IComparer<TKey> comparer) : base(GetComparer(comparer)) { }
+        public DictionarySortedSet(IComparer<TKey> comparer) : base(GetComparer(comparer)) { }
 
 
-        public DictionarySet(IEnumerable<KeyValuePair<TKey, TValue>> collection) : base(collection, GetComparer()) { }
+        public DictionarySortedSet(IEnumerable<KeyValuePair<TKey, TValue>> collection) : base(collection, GetComparer()) { }
 
-        public DictionarySet(IEnumerable<KeyValuePair<TKey, TValue>> collection, IComparer<TKey> comparer) : base(collection, GetComparer(comparer)) { }
+        public DictionarySortedSet(IEnumerable<KeyValuePair<TKey, TValue>> collection, IComparer<TKey> comparer) : base(collection, GetComparer(comparer)) { }
 
-        protected DictionarySet(SerializationInfo info, StreamingContext context) : base(info, context) { }
+        protected DictionarySortedSet(SerializationInfo info, StreamingContext context) : base(info, context) { }
         
         private static IComparer<KeyValuePair<TKey, TValue>> GetComparer(IComparer<TKey> comparer = null) => 
             new KeyValuePairKeyOnlyComparer(comparer ?? Comparer<TKey>.Default);
