@@ -300,9 +300,9 @@ namespace Nethermind.Store.Test
         {
             StateProvider provider = new StateProvider(new TrieStore(new StateDb(), Logger), new StateDb(), Logger);
             provider.CreateAccount(TestItem.AddressA, 5);
-            provider.SaveStorage(TestItem.AddressA, 1, new byte[] {1, 2, 3});
+            provider.SaveStorage(new StorageCell(TestItem.AddressA, 1), new byte[] {1, 2, 3});
             provider.ClearAccountStorage(TestItem.AddressA);
-            provider.GetStorage(TestItem.AddressA, 1).Should().BeEquivalentTo(new byte[] {0});
+            provider.GetStorage(new StorageCell(TestItem.AddressA, 1)).Should().BeEquivalentTo(new byte[] {0});
         }
         
         [Test]

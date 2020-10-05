@@ -80,9 +80,9 @@ namespace Nethermind.State
 
         void Accept(ITreeVisitor visitor, Keccak stateRoot);
         
-        void SaveStorage(Address address, UInt256 key, byte[] value);
+        void SaveStorage(StorageCell storageCell, byte[] value);
 
-        byte[] GetStorage(Address address, UInt256 key);
+        byte[] GetStorage(StorageCell storageCell);
         
         void DisconnectTrie();
 

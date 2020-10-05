@@ -259,7 +259,7 @@ namespace Nethermind.State
                             tree.Set(change.StorageCell.Index, change.Value);
                         }
 
-                        _stateProvider.SaveStorage(change.StorageCell.Address, change.StorageCell.Index, change.Value);
+                        _stateProvider.SaveStorage(change.StorageCell, change.Value);
                         
                         if (isTracing)
                         {
@@ -364,7 +364,7 @@ namespace Nethermind.State
 
         private byte[] LoadFromTree(StorageCell storageCell)
         {
-            byte[] valueNew = _stateProvider.GetStorage(storageCell.Address, storageCell.Index);
+            byte[] valueNew = _stateProvider.GetStorage(storageCell);
 
             if (!_trieDisconnected)
             {

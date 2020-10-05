@@ -70,58 +70,6 @@ namespace Nethermind.State
             _tree?.Accept(visitor, stateRoot, true);
         }
 
-        public void SaveStorage(Address address, UInt256 key, byte[] value)
-        {
-            int clearCounter = LoadClearCounter(address);
-
-            int keyLength = 20 + Rlp.LengthOf(key);
-            RlpStream rlpStream = new RlpStream(keyLength);
-            rlpStream.Write(address.Bytes);
-            rlpStream.Encode(key);
-            byte[] saveKey = rlpStream.Data;
-            if (_logWarns) _logger.Warn($"Saving storage {saveKey.ToHexString()}->{value.ToHexString()}");
-            byte[] valueWithCounter = new byte[value.Length + 1];
-            value.AsSpan().CopyTo(valueWithCounter.AsSpan(0, value.Length));
-            valueWithCounter[^1] = (byte) clearCounter;
-            _cacheStorage.Set(new StorageCell(address, key), valueWithCounter);
-            _codeDb[saveKey] = valueWithCounter;
-        }
-
-        private Dictionary<Address, byte> _clearCounters = new Dictionary<Address, byte>();
-
-        public byte[] GetStorage(Address address, UInt256 key)
-        {
-            int clearCounter = LoadClearCounter(address);
-            StorageCell storageCell = new StorageCell(address, key);
-            byte[] valueWithCounter = _cacheStorage.Get(storageCell);
-            if (valueWithCounter == null)
-            {
-
-                int keyLength = 20 + Rlp.LengthOf(key);
-                RlpStream rlpStream = new RlpStream(keyLength);
-                rlpStream.Write(address.Bytes);
-                rlpStream.Encode(key);
-                byte[] saveKey = rlpStream.Data;
-
-                valueWithCounter = _codeDb[saveKey] ?? _missingValue;
-            }
-
-            if (valueWithCounter == _missingValue)
-            {
-                return _missingValue;
-            }
-
-            if (_logWarns) _logger.Warn($"Loading storage {address}.{key}->{valueWithCounter.ToHexString()}");
-            if (valueWithCounter != _missingValue && valueWithCounter[^1] < clearCounter)
-            {
-                _cacheStorage.Delete(storageCell); 
-                _codeDb[valueWithCounter] = null;
-                return _missingValue; // clear it
-            }
-
-            return valueWithCounter.AsSpan(0, valueWithCounter.Length - 1).ToArray(); // silly alloc, just testing
-        }
-
         public void DisconnectTrie()
         {
             _tree = null;
@@ -736,11 +684,71 @@ namespace Nethermind.State
             //     _logger.Error($"Difference on {address} NEW:{accountNew} vs OLD:{accountOld}");
             // }
 
+            _cache.Set(address, accountNew);
             return accountNew;
         }
 
-        private LruCache<Address, Account> _cache = new LruCache<Address, Account>(4096, 4096, "accounts");
-        private LruCache<StorageCell, byte[]> _cacheStorage = new LruCache<StorageCell, byte[]>(4096, 4096, "storages");
+        private LruCache<Address, Account> _cache = new LruCache<Address, Account>(256000, 256000, "accounts");
+        
+        private LruCache<StorageCell, (byte[], byte[])> _cacheStorage = new LruCache<StorageCell, (byte[], byte[])>(256000, 256000, "storages");
+
+        private Dictionary<Address, byte> _clearCounters = new Dictionary<Address, byte>();
+        
+        public void SaveStorage(StorageCell storageCell, byte[] value)
+        {
+            int clearCounter = LoadClearCounter(storageCell.Address);
+
+            int keyLength = 20 + Rlp.LengthOf(storageCell.Index);
+            RlpStream rlpStream = new RlpStream(keyLength);
+            rlpStream.Write(storageCell.Address.Bytes);
+            rlpStream.Encode(storageCell.Index);
+            byte[] saveKey = rlpStream.Data;
+            if (_logWarns) _logger.Warn($"Saving storage {saveKey.ToHexString()}->{value.ToHexString()}");
+            byte[] valueWithCounter = new byte[value.Length + 1];
+            value.AsSpan().CopyTo(valueWithCounter.AsSpan(0, value.Length));
+            valueWithCounter[^1] = (byte) clearCounter;
+            _cacheStorage.Set(storageCell, (value, valueWithCounter));
+            _codeDb[saveKey] = valueWithCounter;
+        }
+
+        public byte[] GetStorage(StorageCell storageCell)
+        {
+            int clearCounter = LoadClearCounter(storageCell.Address);
+            (byte[] value, byte[] valueWithCounter) = _cacheStorage.Get(storageCell);
+            bool wasCached = true;
+            if (valueWithCounter == null)
+            {
+                wasCached = false;
+                int keyLength = 20 + Rlp.LengthOf(storageCell.Index);
+                RlpStream rlpStream = new RlpStream(keyLength);
+                rlpStream.Write(storageCell.Address.Bytes);
+                rlpStream.Encode(storageCell.Index);
+                byte[] saveKey = rlpStream.Data;
+
+                valueWithCounter = _codeDb[saveKey] ?? _missingValue;
+            }
+
+            if (valueWithCounter == _missingValue)
+            {
+                return _missingValue;
+            }
+
+            if (_logWarns) _logger.Warn($"Loading storage {storageCell}->{valueWithCounter.ToHexString()}");
+            if (valueWithCounter != _missingValue && valueWithCounter[^1] < clearCounter)
+            {
+                _cacheStorage.Delete(storageCell); 
+                _codeDb[valueWithCounter] = null;
+                return _missingValue; // clear it
+            }
+            
+            if (!wasCached)
+            {
+                value = valueWithCounter.AsSpan(0, valueWithCounter.Length - 1).ToArray(); // silly alloc, just testing
+                _cacheStorage.Set(storageCell, (value, valueWithCounter));
+            }
+            
+            return value;
+        }
         
         private void SetState(Address address, Account account)
         {
@@ -753,9 +761,7 @@ namespace Nethermind.State
             _cache.Set(address, account);
             _codeDb[address.Bytes] = Opt.Encode(account);
         }
-
-        private HashSet<Address> _readsForTracing = new HashSet<Address>();
-
+        
         private Account GetAndAddToCache(Address address)
         {
             Account account = GetState(address);
@@ -771,6 +777,8 @@ namespace Nethermind.State
 
             return account;
         }
+        
+        private HashSet<Address> _readsForTracing = new HashSet<Address>();
 
         private Account GetThroughCache(Address address)
         {
