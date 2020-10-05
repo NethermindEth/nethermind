@@ -52,9 +52,10 @@ namespace Nethermind.Consensus.AuRa.Transactions
                 t => sendersWhitelist.Contains(t.SenderAddress), 
                 GetPriority);
             
+            // We group transactions by sender. Each group is sorted by nonce and then by priority desc, then gasprice desc, then gaslimit asc 
             // transactions grouped by sender with nonce order then priority:
-            // A -> 0, 1p2, 1p1, 3...
-            // B -> 4, 5, 6...
+            // A -> N0_P3, N1_P1, N1_P0, N3_P5...
+            // B -> N4_P4, N5_P3, N6_P3...
             IEnumerable<IEnumerable<Transaction>> bySenderOrdered = transactions
                 .Where(tx => tx != null) // for safety
                 .GroupBy(tx => tx.SenderAddress)
@@ -73,6 +74,10 @@ namespace Nethermind.Consensus.AuRa.Transactions
             
             try
             {
+                // we create a sorted list of head of each group of transactions. From:
+                // A -> N0_P3, N1_P1, N1_P0, N3_P5...
+                // B -> N4_P4, N5_P3, N6_P3...
+                // We construct [N4_P4 (B), N0_P3 (A)] in sorted order by priority
                 var transactions = new SortedDictionary<Transaction, IEnumerator<Transaction>>(comparer);
             
                 for (int i = 0; i < bySenderEnumerators.Length; i++)
@@ -84,20 +89,26 @@ namespace Nethermind.Consensus.AuRa.Transactions
                     }
                 }
 
+                // while there are still unreturned transactions
                 while (transactions.Count > 0)
                 {
+                    // we take first transaction from sorting order, on first call: N4_P4 from B
                     var (tx, enumerator) = transactions.First();
+                    
+                    // we replace it by next transaction from same sender, on first call N5_P3 from B
                     transactions.Remove(tx);
                     if (enumerator.MoveNext())
                     {
                         transactions.Add(enumerator.Current!, enumerator);
                     }
 
+                    // we return transactions in lazy manner, no need to sort more than will be taken into block
                     yield return tx;
                 }
             }
             finally
             {
+                // disposing enumerators
                 for (int i = 0; i < bySenderEnumerators.Length; i++)
                 {
                     bySenderEnumerators[i].Dispose();
