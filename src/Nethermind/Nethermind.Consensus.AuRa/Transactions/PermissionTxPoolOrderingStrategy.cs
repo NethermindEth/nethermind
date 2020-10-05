@@ -79,7 +79,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
                 // A -> N0_P3, N1_P1, N1_P0, N3_P5...
                 // B -> N4_P4, N5_P3, N6_P3...
                 // We construct [N4_P4 (B), N0_P3 (A)] in sorted order by priority
-                var transactions = new DictionarySet<Transaction, IEnumerator<Transaction>>(comparer);
+                var transactions = new DictionarySortedSet<Transaction, IEnumerator<Transaction>>(comparer);
             
                 for (int i = 0; i < bySenderEnumerators.Length; i++)
                 {
