@@ -23,7 +23,7 @@ namespace Nethermind.TxPool.Collections
     {
         private readonly IDictionary<TValue, LinkedListNode<KeyValuePair<TKey, TValue>>> _distinctDictionary;
 
-        public DistinctValueSortedPool(int capacity, Comparison<TValue> comparison, IEqualityComparer<TValue> distinctComparer) : base(capacity, comparison)
+        public DistinctValueSortedPool(int capacity, Comparison<TValue> comparer, IEqualityComparer<TValue> distinctComparer) : base(capacity, comparer)
         {
             _distinctDictionary = new Dictionary<TValue, LinkedListNode<KeyValuePair<TKey, TValue>>>(distinctComparer);
         }
@@ -56,7 +56,7 @@ namespace Nethermind.TxPool.Collections
         protected override bool CanInsert(TKey key, TValue value) =>
             // either there is no distinct value or it would go before (or at same place) as old value
             // if it would go after old value in order, we ignore it and wont add it
-            base.CanInsert(key, value) && (!_distinctDictionary.TryGetValue(value, out var oldNode) || Comparison(value, oldNode.Value.Value) >= 0);
+            base.CanInsert(key, value) && (!_distinctDictionary.TryGetValue(value, out var oldNode) || Comparer(value, oldNode.Value.Value) >= 0);
         
     }
 }

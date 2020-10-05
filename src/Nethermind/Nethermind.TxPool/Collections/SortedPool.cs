@@ -18,23 +18,24 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.TxPool.Collections
 {
     public class SortedPool<TKey, TValue, TGroup>
     {
         private readonly int _capacity;
-        protected readonly Comparison<TValue> Comparison;
+        protected readonly IComparer<TValue> Comparer;
         protected readonly Func<TValue, TGroup> GroupMapping;
-        protected readonly IDictionary<TKey, TValue> CacheMap;
+        protected readonly DictionarySet<TKey, TValue> CacheMap;
         protected readonly IDictionary<TGroup, ICollection<TValue>> Buckets;
 
-        public SortedPool(int capacity, Comparison<TValue> comparison, Func<TValue, TGroup> groupMapping)
+        public SortedPool(int capacity, IComparer<TValue> comparer, Func<TValue, TGroup> groupMapping)
         {
             _capacity = capacity;
-            Comparison = comparison;
+            Comparer = comparer;
             GroupMapping = groupMapping;
-            CacheMap = new Dictionary<TKey, TValue>(); // do not initialize it at the full capacity
+            CacheMap = new DictionarySet<TKey, TValue>(); // do not initialize it at the full capacity
             Buckets = new Dictionary<TGroup, ICollection<TValue>>();
         }
 
@@ -78,30 +79,15 @@ namespace Nethermind.TxPool.Collections
         {
             if (CanInsert(key, val))
             {
-                KeyValuePair<TKey, TValue> cacheItem = new KeyValuePair<TKey, TValue>(key, val);
-                LinkedListNode<KeyValuePair<TKey, TValue>> newNode = new LinkedListNode<KeyValuePair<TKey, TValue>>(cacheItem);
-
-
-                LinkedListNode<KeyValuePair<TKey, TValue>> node = LruList.First;
-                bool added = false;
-                while (node != null)
+                TGroup group = GroupMapping(val);
+                if (!Buckets.TryGetValue(group, out ICollection<TValue> bucket))
                 {
-                    if (Comparison(node.Value.Value, val) < 0)
-                    {
-                        LruList.AddBefore(node, newNode);
-                        added = true;
-                        break;
-                    }
-
-                    node = node.Next;
+                    Buckets[group] = bucket = new SortedSet<TValue>(Comparer);
                 }
-
-                if (!added)
-                {
-                    LruList.AddLast(newNode);
-                }
-
-                InsertCore(key, newNode);
+                
+                bucket.Add(val);
+                
+                InsertCore(key, val);
 
                 if (CacheMap.Count > _capacity)
                 {
@@ -116,6 +102,8 @@ namespace Nethermind.TxPool.Collections
 
         private void RemoveLast()
         {
+            
+            
             LinkedListNode<KeyValuePair<TKey, TValue>> node = LruList.Last;
             LruList.RemoveLast();
 
@@ -129,15 +117,10 @@ namespace Nethermind.TxPool.Collections
                 throw new ArgumentNullException();
             }
 
-            if (CacheMap.TryGetValue(key, out _))
-            {
-                return false;
-            }
-
-            return true;
+            return !CacheMap.TryGetValue(key, out _);
         }
         
-        protected virtual void InsertCore(TKey key, LinkedListNode<KeyValuePair<TKey, TValue>> newNode)
+        protected virtual void InsertCore(TKey key, TValue newNode)
         {
             CacheMap.Add(key, newNode);
         }
