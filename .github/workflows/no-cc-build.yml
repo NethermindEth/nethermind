@@ -18,6 +18,8 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install libsnappy-dev libc6-dev libc6
+    - name: TEST
+      run: git describe --tags --long
     - name: Installing macOS packages
       if: matrix.os == 'macOS-latest'
       run: brew install gmp && brew install snappy && brew install lz4 && brew install zstd
