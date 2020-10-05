@@ -139,7 +139,8 @@ namespace Nethermind.Runner.Test
             {
                 configProvider.GetConfig<IInitConfig>().BaseDbPath = tempPath;
 
-                NethermindApi nethermindApi = new NethermindApi(configProvider, new EthereumJsonSerializer(), TestLogManager.Instance);
+                ApiBuilder apiBuilder = new ApiBuilder(configProvider, TestLogManager.Instance);
+                INethermindApi nethermindApi = apiBuilder.Create();
                 nethermindApi.RpcModuleProvider =
                     new RpcModuleProvider(new FileSystem(), new JsonRpcConfig(), TestLogManager.Instance);
                 runner = new EthereumRunner(nethermindApi);
