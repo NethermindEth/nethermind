@@ -40,19 +40,19 @@ namespace Nethermind.Consensus.AuRa.Contracts
             _blockProcessor.BlockProcessed += OnBlockProcessed;
         }
 
-        public IEnumerable<T> GetItems(BlockHeader parent)
+        public IEnumerable<T> GetItemsFromContractAtBlock(BlockHeader parent)
         {
-            GetItems(parent, parent.Hash == _lastHash);
-            return GetItems(Items);
+            GetItemsFromContractAtBlock(parent, parent.Hash == _lastHash);
+            return GetItemsFromContractAtBlock(Items);
         }
 
         private void OnBlockProcessed(object sender, BlockProcessedEventArgs e)
         {
             BlockHeader header = e.Block.Header;
-            GetItems(header, header.ParentHash == _lastHash, e.TxReceipts);
+            GetItemsFromContractAtBlock(header, header.ParentHash == _lastHash, e.TxReceipts);
         }
         
-        private void GetItems(BlockHeader blockHeader, bool isConsecutiveBlock, TxReceipt[] receipts = null)
+        private void GetItemsFromContractAtBlock(BlockHeader blockHeader, bool isConsecutiveBlock, TxReceipt[] receipts = null)
         {
             Items ??= CreateItems();
             bool fromReceipts = receipts != null;
@@ -67,8 +67,8 @@ namespace Nethermind.Consensus.AuRa.Contracts
                 bool canGetFullStateFromReceipts = fromReceipts && (isConsecutiveBlock || !_dataContract.IncrementalChanges) && !blockHeader.IsGenesis;
 
                 IEnumerable<T> items = canGetFullStateFromReceipts
-                    ? _dataContract.GetChangesFromBlock(blockHeader, receipts)
-                    : _dataContract.GetAll(blockHeader);
+                    ? _dataContract.GetItemsChangedFromBlock(blockHeader, receipts)
+                    : _dataContract.GetAllItemsFromBlock(blockHeader);
 
                 InsertItems(Items, items);
 
@@ -81,7 +81,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             _blockProcessor.BlockProcessed -= OnBlockProcessed;
         }
         
-        protected abstract IEnumerable<T> GetItems(TCollection collection);
+        protected abstract IEnumerable<T> GetItemsFromContractAtBlock(TCollection collection);
         
         protected abstract TCollection CreateItems();
         

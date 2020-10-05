@@ -34,7 +34,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             collection.Clear();
         }
 
-        protected override IEnumerable<T> GetItems(List<T> collection) => collection;
+        protected override IEnumerable<T> GetItemsFromContractAtBlock(List<T> collection) => collection;
 
         protected override void InsertItems(List<T> collection, IEnumerable<T> items)
         {

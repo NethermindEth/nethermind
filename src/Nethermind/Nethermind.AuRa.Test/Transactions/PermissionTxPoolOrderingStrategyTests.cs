@@ -33,7 +33,7 @@ using NUnit.Framework;
 
 namespace Nethermind.AuRa.Test.Transactions
 {
-    public class PermissionTxPoolOrderStrategyTests
+    public class PermissionTxPoolOrderingStrategyTests
     {
         private static Address[] WhiteListedSenders = new[] {TestItem.AddressC, TestItem.AddressD};
 
@@ -63,7 +63,7 @@ namespace Nethermind.AuRa.Test.Transactions
             byte[] p5Signature = {0, 1, 2, 3};
             byte[] p6Signature = {0, 0, 0, 2};
             byte[] p0signature = {0, 0, 0, 1};
-            sendersWhitelist.GetItems(blockHeader).Returns(WhiteListedSenders);
+            sendersWhitelist.GetItemsFromContractAtBlock(blockHeader).Returns(WhiteListedSenders);
             
             SetPriority(priorities, blockHeader, TestItem.AddressB, p5Signature, 5);
             SetPriority(priorities, blockHeader, TestItem.AddressB, p6Signature, 6);
@@ -264,7 +264,7 @@ namespace Nethermind.AuRa.Test.Transactions
             transactions = transactionSelect?.Invoke(transactions) ?? transactions;
             expectation = transactionSelect?.Invoke(expectation) ?? expectation;
             
-            var selectionStrategy = new PermissionTxPoolOrderStrategy(sendersWhitelist, priorities);
+            var selectionStrategy = new PermissionTxPoolOrderingStrategy(sendersWhitelist, priorities);
             var orderedTransactions = selectionStrategy.Order(blockHeader, transactions).ToArray();
             orderedTransactions.Should().BeEquivalentTo(expectation, o => o.WithStrictOrdering());
         }

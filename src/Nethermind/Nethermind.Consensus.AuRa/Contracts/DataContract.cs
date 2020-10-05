@@ -36,9 +36,9 @@ namespace Nethermind.Consensus.AuRa.Contracts
             _getChangesFromBlock = getChangesFromBlock ?? throw new ArgumentNullException(nameof(getChangesFromBlock));;
         }
         
-        public IEnumerable<T> GetAll(BlockHeader blockHeader) => _getAll(blockHeader);
+        public IEnumerable<T> GetAllItemsFromBlock(BlockHeader blockHeader) => _getAll(blockHeader);
 
-        public IEnumerable<T> GetChangesFromBlock(BlockHeader header, TxReceipt[] receipts) => _getChangesFromBlock(header, receipts);
+        public IEnumerable<T> GetItemsChangedFromBlock(BlockHeader header, TxReceipt[] receipts) => _getChangesFromBlock(header, receipts);
 
         public bool IncrementalChanges { get; }
     }

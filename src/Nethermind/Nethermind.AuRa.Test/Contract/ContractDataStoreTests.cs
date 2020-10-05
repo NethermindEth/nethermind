@@ -37,8 +37,8 @@ namespace Nethermind.AuRa.Test.Contract
             TestCase<Address> testCase = TestCase<Address>.Build();
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(1).TestObject;
             Address[] expected = {TestItem.AddressA};
-            testCase.DataContract.GetAll(blockHeader).Returns(expected);
-            testCase.ContractDataStore.GetItems(blockHeader).Should().BeEquivalentTo(expected.Cast<object>());
+            testCase.DataContract.GetAllItemsFromBlock(blockHeader).Returns(expected);
+            testCase.ContractDataStore.GetItemsFromContractAtBlock(blockHeader).Should().BeEquivalentTo(expected.Cast<object>());
         }
         
         [Test]
@@ -47,10 +47,10 @@ namespace Nethermind.AuRa.Test.Contract
             TestCase<Address> testCase = TestCase<Address>.Build();
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(1).TestObject;
             Address[] expected = {TestItem.AddressA};
-            testCase.DataContract.GetAll(blockHeader).Returns(expected);
+            testCase.DataContract.GetAllItemsFromBlock(blockHeader).Returns(expected);
             
-            testCase.ContractDataStore.GetItems(blockHeader).Should().BeEquivalentTo(testCase.ContractDataStore.GetItems(blockHeader));
-            testCase.DataContract.Received(1).GetAll(blockHeader);
+            testCase.ContractDataStore.GetItemsFromContractAtBlock(blockHeader).Should().BeEquivalentTo(testCase.ContractDataStore.GetItemsFromContractAtBlock(blockHeader));
+            testCase.DataContract.Received(1).GetAllItemsFromBlock(blockHeader);
         }
         
         [Test]
@@ -58,13 +58,13 @@ namespace Nethermind.AuRa.Test.Contract
         {
             TestCase<Address> testCase = TestCase<Address>.Build();
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(1).WithHash(TestItem.KeccakA).TestObject;
-            testCase.DataContract.GetAll(blockHeader).Returns(new[] {TestItem.AddressA});
+            testCase.DataContract.GetAllItemsFromBlock(blockHeader).Returns(new[] {TestItem.AddressA});
             BlockHeader secondBlockHeader = Build.A.BlockHeader.WithNumber(3).WithHash(TestItem.KeccakB).WithParentHash(TestItem.KeccakC).TestObject;
             Address[] expected = {TestItem.AddressB};
-            testCase.DataContract.GetAll(secondBlockHeader).Returns(expected);
+            testCase.DataContract.GetAllItemsFromBlock(secondBlockHeader).Returns(expected);
 
-            testCase.ContractDataStore.GetItems(blockHeader);
-            testCase.ContractDataStore.GetItems(secondBlockHeader).Should().BeEquivalentTo(expected.Cast<object>());
+            testCase.ContractDataStore.GetItemsFromContractAtBlock(blockHeader);
+            testCase.ContractDataStore.GetItemsFromContractAtBlock(secondBlockHeader).Should().BeEquivalentTo(expected.Cast<object>());
         }
         
         [Test]
@@ -72,15 +72,15 @@ namespace Nethermind.AuRa.Test.Contract
         {
             TestCase<Address> testCase = TestCase<Address>.Build();
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(1).WithHash(TestItem.KeccakA).TestObject;
-            testCase.DataContract.GetAll(blockHeader).Returns(new[] {TestItem.AddressA});
+            testCase.DataContract.GetAllItemsFromBlock(blockHeader).Returns(new[] {TestItem.AddressA});
             Block secondBlock = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(3).WithHash(TestItem.KeccakB).WithParentHash(TestItem.KeccakC).TestObject).TestObject;
             Address[] expected = {TestItem.AddressB};
-            testCase.DataContract.GetAll(secondBlock.Header).Returns(expected);
+            testCase.DataContract.GetAllItemsFromBlock(secondBlock.Header).Returns(expected);
             
-            testCase.ContractDataStore.GetItems(blockHeader);
+            testCase.ContractDataStore.GetItemsFromContractAtBlock(blockHeader);
             testCase.BlockProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(secondBlock, Array.Empty<TxReceipt>()));
             
-            testCase.ContractDataStore.GetItems(secondBlock.Header).Should().BeEquivalentTo(expected.Cast<object>());
+            testCase.ContractDataStore.GetItemsFromContractAtBlock(secondBlock.Header).Should().BeEquivalentTo(expected.Cast<object>());
         }
         
         [Test]
@@ -89,14 +89,14 @@ namespace Nethermind.AuRa.Test.Contract
             TestCase<Address> testCase = TestCase<Address>.Build();
             testCase.DataContract.IncrementalChanges.Returns(false);
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(1).WithHash(TestItem.KeccakA).TestObject;
-            testCase.DataContract.GetAll(blockHeader).Returns(new[] {TestItem.AddressA});
+            testCase.DataContract.GetAllItemsFromBlock(blockHeader).Returns(new[] {TestItem.AddressA});
             Block secondBlock = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(3).WithHash(TestItem.KeccakB).WithParentHash(TestItem.KeccakC).TestObject).TestObject;
             Address[] expected = {TestItem.AddressB};
-            testCase.DataContract.GetChangesFromBlock(secondBlock.Header, Array.Empty<TxReceipt>()).Returns(expected);
+            testCase.DataContract.GetItemsChangedFromBlock(secondBlock.Header, Array.Empty<TxReceipt>()).Returns(expected);
 
-            testCase.ContractDataStore.GetItems(blockHeader);
+            testCase.ContractDataStore.GetItemsFromContractAtBlock(blockHeader);
             testCase.BlockProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(secondBlock, Array.Empty<TxReceipt>()));
-            testCase.ContractDataStore.GetItems(secondBlock.Header).Should().BeEquivalentTo(expected.Cast<object>());
+            testCase.ContractDataStore.GetItemsFromContractAtBlock(secondBlock.Header).Should().BeEquivalentTo(expected.Cast<object>());
         }
         
         [Test]
@@ -106,9 +106,9 @@ namespace Nethermind.AuRa.Test.Contract
             testCase.DataContract.IncrementalChanges.Returns(false);
             Block block = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(0).TestObject).TestObject;
             Address[] expected = {TestItem.AddressB};
-            testCase.DataContract.GetAll(block.Header).Returns(expected);
+            testCase.DataContract.GetAllItemsFromBlock(block.Header).Returns(expected);
             testCase.BlockProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(block, Array.Empty<TxReceipt>()));
-            testCase.ContractDataStore.GetItems(block.Header).Should().BeEquivalentTo(expected.Cast<object>());
+            testCase.ContractDataStore.GetItemsFromContractAtBlock(block.Header).Should().BeEquivalentTo(expected.Cast<object>());
         }
         
         [Test]
@@ -117,15 +117,15 @@ namespace Nethermind.AuRa.Test.Contract
             TestCase<Address> testCase = TestCase<Address>.Build();
             testCase.DataContract.IncrementalChanges.Returns(false);
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(1).WithHash(TestItem.KeccakA).TestObject;
-            testCase.DataContract.GetAll(blockHeader).Returns(new[] {TestItem.AddressA});
+            testCase.DataContract.GetAllItemsFromBlock(blockHeader).Returns(new[] {TestItem.AddressA});
             Block secondBlock = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(2).WithHash(TestItem.KeccakB).WithParentHash(TestItem.KeccakA).TestObject).TestObject;
             Address[] expected = {TestItem.AddressB};
-            testCase.DataContract.GetChangesFromBlock(secondBlock.Header, Array.Empty<TxReceipt>()).Returns(expected);
+            testCase.DataContract.GetItemsChangedFromBlock(secondBlock.Header, Array.Empty<TxReceipt>()).Returns(expected);
             
-            testCase.ContractDataStore.GetItems(blockHeader);
+            testCase.ContractDataStore.GetItemsFromContractAtBlock(blockHeader);
             testCase.BlockProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(secondBlock, Array.Empty<TxReceipt>()));
             
-            testCase.ContractDataStore.GetItems(secondBlock.Header).Should().BeEquivalentTo(expected.Cast<object>());
+            testCase.ContractDataStore.GetItemsFromContractAtBlock(secondBlock.Header).Should().BeEquivalentTo(expected.Cast<object>());
         }
         
         [Test]
@@ -133,14 +133,14 @@ namespace Nethermind.AuRa.Test.Contract
         {
             TestCase<Address> testCase = TestCase<Address>.Build();
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(1).WithHash(TestItem.KeccakA).TestObject;
-            testCase.DataContract.GetAll(blockHeader).Returns(new[] {TestItem.AddressA});
+            testCase.DataContract.GetAllItemsFromBlock(blockHeader).Returns(new[] {TestItem.AddressA});
             Block secondBlock = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(2).WithHash(TestItem.KeccakB).WithParentHash(TestItem.KeccakA).TestObject).TestObject;
-            testCase.DataContract.GetChangesFromBlock(secondBlock.Header, Array.Empty<TxReceipt>()).Returns(new[] {TestItem.AddressB});
+            testCase.DataContract.GetItemsChangedFromBlock(secondBlock.Header, Array.Empty<TxReceipt>()).Returns(new[] {TestItem.AddressB});
 
-            testCase.ContractDataStore.GetItems(blockHeader);
+            testCase.ContractDataStore.GetItemsFromContractAtBlock(blockHeader);
             testCase.BlockProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(secondBlock, Array.Empty<TxReceipt>()));
             
-            testCase.ContractDataStore.GetItems(secondBlock.Header).Should().BeEquivalentTo(TestItem.AddressA, TestItem.AddressB);
+            testCase.ContractDataStore.GetItemsFromContractAtBlock(secondBlock.Header).Should().BeEquivalentTo(TestItem.AddressA, TestItem.AddressB);
         }
         
         [Test]
@@ -148,7 +148,7 @@ namespace Nethermind.AuRa.Test.Contract
         {
             TestCase<TxPriorityContract.Destination> testCase = TestCase<TxPriorityContract.Destination>.Build(TxPriorityContract.DestinationMethodComparer.Instance);
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(1).WithHash(TestItem.KeccakA).TestObject;
-            testCase.DataContract.GetAll(blockHeader).Returns(
+            testCase.DataContract.GetAllItemsFromBlock(blockHeader).Returns(
                 new[]
                 {
                     new TxPriorityContract.Destination(TestItem.AddressB, new byte[] {0, 1, 2, 3}, 2),
@@ -156,17 +156,17 @@ namespace Nethermind.AuRa.Test.Contract
                 });
             
             Block secondBlock = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(2).WithHash(TestItem.KeccakB).WithParentHash(TestItem.KeccakA).TestObject).TestObject;
-            testCase.DataContract.GetChangesFromBlock(secondBlock.Header, Array.Empty<TxReceipt>())
+            testCase.DataContract.GetItemsChangedFromBlock(secondBlock.Header, Array.Empty<TxReceipt>())
                 .Returns(new[]
                 {
                     new TxPriorityContract.Destination(TestItem.AddressB, new byte[] {0, 1, 2, 5}, 4),
                     new TxPriorityContract.Destination(TestItem.AddressB, new byte[] {0, 1, 2, 3}, 6)
                 });
 
-            testCase.ContractDataStore.GetItems(blockHeader);
+            testCase.ContractDataStore.GetItemsFromContractAtBlock(blockHeader);
             testCase.BlockProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(secondBlock, Array.Empty<TxReceipt>()));
             
-            testCase.ContractDataStore.GetItems(secondBlock.Header).Should().BeEquivalentTo(new[]
+            testCase.ContractDataStore.GetItemsFromContractAtBlock(secondBlock.Header).Should().BeEquivalentTo(new[]
             {
                 new TxPriorityContract.Destination(TestItem.AddressB, new byte[] {0, 1, 2, 3}, 6),
                 new TxPriorityContract.Destination(TestItem.AddressB, new byte[] {0, 1, 2, 5}, 4),

@@ -22,8 +22,26 @@ namespace Nethermind.Consensus.AuRa.Contracts
 {
     public interface IDataContract<out T>
     {
-        IEnumerable<T> GetAll(BlockHeader blockHeader);
-        IEnumerable<T> GetChangesFromBlock(BlockHeader header, TxReceipt[] receipts);
+        /// <summary>
+        /// Gets all items in contract from block.
+        /// </summary>
+        /// <param name="blockHeader"></param>
+        /// <returns></returns>
+        IEnumerable<T> GetAllItemsFromBlock(BlockHeader blockHeader);
+        
+        /// <summary>
+        /// Gets item changed in contract in that block.
+        /// </summary>
+        /// <param name="header"></param>
+        /// <param name="receipts"></param>
+        /// <returns></returns>
+        IEnumerable<T> GetItemsChangedFromBlock(BlockHeader header, TxReceipt[] receipts);
+        
+        /// <summary>
+        /// If changes in blocks are incremental.
+        /// If 'true' values we extract from receipts are changes to be merged with previous state.
+        /// If 'false' values we extract from receipts overwrite previous state.
+        /// </summary>
         bool IncrementalChanges { get; } 
     }
 }

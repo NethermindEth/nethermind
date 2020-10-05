@@ -42,7 +42,7 @@ namespace Nethermind.Consensus.AuRa
             FindOrder logsFindOrder = FindOrder.Descending, // iterating backwards, by default we are interested only in the last one
             IEqualityComparer<LogEntry> comparer = null)
         {
-            comparer ??= LogEntryAddressAndTopicMatchEntryEqualityComparer.Instance;
+            comparer ??= LogEntryAddressAndTopicsMatchTemplateEqualityComparer.Instance;
             
             if (blockHeader.Bloom.Matches(matchEntry))
             {
@@ -76,7 +76,7 @@ namespace Nethermind.Consensus.AuRa
             FindOrder logsFindOrder = FindOrder.Ascending, // iterating forwards, by default we are interested in all items in order of appearance
             IEqualityComparer<LogEntry> comparer = null)
         {
-            comparer ??= LogEntryAddressAndTopicMatchEntryEqualityComparer.Instance;
+            comparer ??= LogEntryAddressAndTopicsMatchTemplateEqualityComparer.Instance;
             
             if (blockHeader.Bloom.Matches(matchEntry))
             {

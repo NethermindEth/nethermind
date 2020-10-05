@@ -22,18 +22,19 @@ using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
-    public class PermissionTxPoolOrderStrategy : TxPoolTxSource.ITxPoolOrderStrategy
+    public class PermissionTxPoolOrderingStrategy : TxPoolTxSource.ITxPoolOrderStrategy
     {
         private readonly IContractDataStore<Address> _sendersWhitelist;
         private readonly IDictionaryContractDataStore<TxPriorityContract.Destination> _priorities;
 
-        public PermissionTxPoolOrderStrategy(
-            IContractDataStore<Address> sendersWhitelist, 
-            IDictionaryContractDataStore<TxPriorityContract.Destination> priorities)
+        public PermissionTxPoolOrderingStrategy(
+            IContractDataStore<Address> sendersWhitelist, // expected HashSet based
+            IDictionaryContractDataStore<TxPriorityContract.Destination> priorities) // expected SortedList based
         {
             _sendersWhitelist = sendersWhitelist ?? throw new ArgumentNullException(nameof(sendersWhitelist));
             _priorities = priorities ?? throw new ArgumentNullException(nameof(priorities));;
@@ -41,7 +42,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
         
         public IEnumerable<Transaction> Order(BlockHeader blockHeader, IEnumerable<Transaction> transactions)
         {
-            IEnumerable<Address> sendersWhitelist = _sendersWhitelist.GetItems(blockHeader);
+            ISet<Address> sendersWhitelist = _sendersWhitelist.GetItemsFromContractAtBlock(blockHeader).AsSet();
             IComparer<Transaction> transactionComparer = new TransactionComparer(t => GetPriority(t, blockHeader));
             
             // transactions grouped by sender with nonce order:

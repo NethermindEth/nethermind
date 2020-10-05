@@ -33,7 +33,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             collection.Clear();
         }
 
-        protected override IEnumerable<T> GetItems(IDictionary<T, T> collection) => collection.Values;
+        protected override IEnumerable<T> GetItemsFromContractAtBlock(IDictionary<T, T> collection) => collection.Values;
 
         protected override void InsertItems(IDictionary<T, T> collection, IEnumerable<T> items)
         {
@@ -45,7 +45,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
         public bool TryGetValue(BlockHeader header, T key, out T value)
         {
-            GetItems(header);
+            GetItemsFromContractAtBlock(header);
             return Items.TryGetValue(key, out value);
         }
     }

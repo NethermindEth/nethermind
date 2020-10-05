@@ -22,6 +22,6 @@ namespace Nethermind.Consensus.AuRa.Contracts
 {
     public interface IContractDataStore<out T>
     {
-        IEnumerable<T> GetItems(BlockHeader parent);
+        IEnumerable<T> GetItemsFromContractAtBlock(BlockHeader parent);
     }
 }

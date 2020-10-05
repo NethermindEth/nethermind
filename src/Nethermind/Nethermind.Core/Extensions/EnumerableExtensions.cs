@@ -16,32 +16,13 @@
 // 
 
 using System.Collections.Generic;
-using Nethermind.Blockchain.Processing;
+using System.Linq;
 
-namespace Nethermind.Consensus.AuRa.Contracts
+namespace Nethermind.Core.Extensions
 {
-    public class HashSetContractDataStore<T> : ContractDataStore<T, HashSet<T>>
+    public static class EnumerableExtensions
     {
-        public HashSetContractDataStore(IDataContract<T> dataContract, IBlockProcessor blockProcessor)
-            : base(dataContract, blockProcessor)
-        {
-        }
-
-        protected override HashSet<T> CreateItems() => new HashSet<T>();
-
-        protected override void ClearItems(HashSet<T> collection)
-        {
-            collection.Clear();
-        }
-
-        protected override IEnumerable<T> GetItemsFromContractAtBlock(HashSet<T> collection) => collection;
-
-        protected override void InsertItems(HashSet<T> collection, IEnumerable<T> items)
-        {
-            foreach (T item in items)
-            {
-                collection.Add(item);
-            }
-        }
+        public static ISet<T> AsSet<T>(this IEnumerable<T> enumerable) => 
+            enumerable is ISet<T> set ? set : enumerable.ToHashSet();
     }
 }

@@ -34,7 +34,7 @@ namespace Nethermind.Abi.Test.Json
                 object[] GetTestData(string type, AbiType abiType, params object[] components) => 
                     new object[] {type, abiType, null, components};
                 
-                object[] GetTestDataException(string type, Exception exception, object[] components = null) => 
+                object[] GetTestDataWithException(string type, Exception exception, object[] components = null) => 
                     new object[] {type, null, exception, components};
 
                 yield return new TestCaseData(GetTestData("int", AbiType.Int256));
@@ -64,13 +64,13 @@ namespace Nethermind.Abi.Test.Json
                     new AbiTuple(new Dictionary<string, AbiType> {{"property", AbiType.Int256}}),
                     new {name = "property", type = "int"}));
                 
-                yield return new TestCaseData(GetTestDataException("int1", new ArgumentException()));
-                yield return new TestCaseData(GetTestDataException("int9", new ArgumentException()));
-                yield return new TestCaseData(GetTestDataException("int300", new ArgumentException()));
-                yield return new TestCaseData(GetTestDataException("int3000", new ArgumentException()));
-                yield return new TestCaseData(GetTestDataException("fixed80", new ArgumentException()));
-                yield return new TestCaseData(GetTestDataException("fixed80x81", new ArgumentException()));
-                yield return new TestCaseData(GetTestDataException("bytes33", new ArgumentException()));
+                yield return new TestCaseData(GetTestDataWithException("int1", new ArgumentException()));
+                yield return new TestCaseData(GetTestDataWithException("int9", new ArgumentException()));
+                yield return new TestCaseData(GetTestDataWithException("int300", new ArgumentException()));
+                yield return new TestCaseData(GetTestDataWithException("int3000", new ArgumentException()));
+                yield return new TestCaseData(GetTestDataWithException("fixed80", new ArgumentException()));
+                yield return new TestCaseData(GetTestDataWithException("fixed80x81", new ArgumentException()));
+                yield return new TestCaseData(GetTestDataWithException("bytes33", new ArgumentException()));
             }
         }
 
