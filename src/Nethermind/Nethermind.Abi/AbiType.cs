@@ -58,7 +58,7 @@ namespace Nethermind.Abi
 
         public override bool Equals(object? obj) => obj is AbiType type && Name == type.Name;
 
-        protected string AbiEncodingExceptionMessage => $"Argument cannot be encoded by { GetType().Name}";
+        protected string AbiEncodingExceptionMessage => $"Argument cannot be encoded by {GetType().Name}";
 
         public abstract Type CSharpType { get; }
     }

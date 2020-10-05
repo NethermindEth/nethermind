@@ -157,8 +157,18 @@ namespace Nethermind.Cli.Modules
                     .Union(Directory.GetFiles(pluginsDir, searchPattern)).ToArray();
             }
 
-            AssemblyLoadContext.Default.Resolving += (context, name)
-                => AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.Combine(baseDir, name.Name + ".dll"));
+            AssemblyLoadContext.Default.Resolving += (context, name) =>
+            {
+                string fileName = name.Name + ".dll";
+                try
+                {
+                    return AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.Combine(baseDir, fileName));
+                }
+                catch (FileNotFoundException)
+                {
+                    return AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.Combine(pluginsDir, fileName));
+                }
+            };
 
             moduleTypes.AddRange(GetType().Assembly.GetExportedTypes().Where(IsCliModule));
             foreach (string dll in allDlls)

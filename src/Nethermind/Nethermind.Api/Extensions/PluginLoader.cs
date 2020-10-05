@@ -17,6 +17,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.IO.Abstractions;
 using System.Linq;
 using System.Reflection;
@@ -63,7 +64,18 @@ namespace Nethermind.Api.Extensions
                     string assemblyPath = _fileSystem.Path.Combine(fullPluginsDir, path);
                     Assembly assembly = AssemblyLoadContext.Default.LoadFromAssemblyPath(assemblyPath);
                     AssemblyLoadContext.Default.Resolving += (context, name) =>
-                        AssemblyLoadContext.Default.LoadFromAssemblyPath(_fileSystem.Path.Combine(baseDir, name.Name + ".dll"));
+                    {
+                        string fileName = name.Name + ".dll";
+                        try
+                        {
+                            return AssemblyLoadContext.Default.LoadFromAssemblyPath(_fileSystem.Path.Combine(baseDir, fileName));
+                        }
+                        catch (FileNotFoundException)
+                        {
+                            return AssemblyLoadContext.Default.LoadFromAssemblyPath(_fileSystem.Path.Combine(_pluginsDirectory, fileName));
+                        }
+                    };
+                        
 
                     foreach (Type type in assembly.GetExportedTypes().Where(t => !t.IsInterface))
                     {
