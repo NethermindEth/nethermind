@@ -14,23 +14,40 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.IO.Abstractions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Filters;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Config;
+using Nethermind.Consensus;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Db.Blooms;
+using Nethermind.Evm;
+using Nethermind.Grpc;
+using Nethermind.JsonRpc.Modules;
+using Nethermind.KeyStore;
+using Nethermind.Monitoring;
+using Nethermind.Network.Discovery;
+using Nethermind.Network.Rlpx;
 using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Serialization.Json;
+using Nethermind.State;
+using Nethermind.State.Repositories;
+using Nethermind.Stats;
 using Nethermind.Synchronization;
+using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.Peers;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
+using Nethermind.WebSockets;
 using NSubstitute;
 
 namespace Nethermind.Runner.Test.Ethereum
@@ -57,7 +74,42 @@ namespace Nethermind.Runner.Test.Ethereum
                 RecoveryStep = Substitute.For<IBlockDataRecoveryStep>(),
                 TxPoolInfoProvider = Substitute.For<ITxPoolInfoProvider>(),
                 StaticNodesManager = Substitute.For<IStaticNodesManager>(),
-                BloomStorage = Substitute.For<IBloomStorage>()
+                BloomStorage = Substitute.For<IBloomStorage>(),
+                Sealer = Substitute.For<ISealer>(),
+                Synchronizer = Substitute.For<ISynchronizer>(),
+                BlockchainProcessor = Substitute.For<IBlockchainProcessor>(),
+                BlockProducer = Substitute.For<IBlockProducer>(),
+                ConfigProvider = Substitute.For<IConfigProvider>(),
+                DiscoveryApp = Substitute.For<IDiscoveryApp>(),
+                EngineSigner = Substitute.For<ISigner>(),
+                FileSystem = Substitute.For<IFileSystem>(),
+                FilterManager = Substitute.For<IFilterManager>(),
+                FilterStore = Substitute.For<IFilterStore>(),
+                GrpcServer = Substitute.For<IGrpcServer>(),
+                HeaderValidator = Substitute.For<IHeaderValidator>(),
+                IpResolver = Substitute.For<IIPResolver>(),
+                KeyStore = Substitute.For<IKeyStore>(),
+                LogFinder = Substitute.For<ILogFinder>(),
+                MonitoringService = Substitute.For<IMonitoringService>(),
+                ProtocolsManager = Substitute.For<IProtocolsManager>(),
+                ProtocolValidator = Substitute.For<IProtocolValidator>(),
+                RlpxPeer = Substitute.For<IRlpxPeer>(),
+                SealValidator = Substitute.For<ISealValidator>(),
+                SessionMonitor = Substitute.For<ISessionMonitor>(),
+                StateProvider = Substitute.For<IStateProvider>(),
+                StateReader = Substitute.For<IStateReader>(),
+                StorageProvider = Substitute.For<IStorageProvider>(),
+                TransactionProcessor = Substitute.For<ITransactionProcessor>(),
+                TxSender = Substitute.For<ITxSender>(),
+                BlockProcessingQueue = Substitute.For<IBlockProcessingQueue>(),
+                EngineSignerStore = Substitute.For<ISignerStore>(),
+                EthereumJsonSerializer = Substitute.For<IJsonSerializer>(),
+                NodeStatsManager = Substitute.For<INodeStatsManager>(),
+                RpcModuleProvider = Substitute.For<IRpcModuleProvider>(),
+                SyncModeSelector = Substitute.For<ISyncModeSelector>(),
+                SyncPeerPool = Substitute.For<ISyncPeerPool>(),
+                WebSocketsManager = Substitute.For<IWebSocketsManager>(),
+                ChainLevelInfoRepository = Substitute.For<IChainLevelInfoRepository>(),
             };
     }
 }

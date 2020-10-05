@@ -14,9 +14,11 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Linq;
+using System;
+using System.Collections.Generic;
+using System.Reflection;
 using System.Threading;
-using FluentAssertions;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Config;
@@ -39,7 +41,9 @@ using Nethermind.State.Repositories;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
+using Newtonsoft.Json;
 using NSubstitute;
+using NSubstitute.ReceivedExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.Runner.Test.Ethereum.Steps
@@ -49,59 +53,33 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
     public class RegisterRpcModulesTests
     {
         [Test]
-        public void Proof_module_is_registered_if_configured()
+        public async Task Proof_module_is_registered_if_configured()
         {
-            JsonRpcConfig jsonRpcConfig = new JsonRpcConfig();
-            jsonRpcConfig.Enabled = true;
-            
-            IConfigProvider configProvider = Substitute.For<IConfigProvider>();
-            configProvider.GetConfig<IJsonRpcConfig>().Returns(jsonRpcConfig);
+            JsonRpcConfig jsonRpcConfig = new JsonRpcConfig {Enabled = true};
 
             NethermindApi context = Build.ContextWithMocks();
-            context.ConfigProvider = configProvider;
-            var signer = new Signer(ChainId.Mainnet, TestItem.PrivateKeyA, LimboLogs.Instance);
-            context.TxSender = new NullTxSender();
-            context.EngineSignerStore = signer;
-            
-            context.KeyStore = Substitute.For<IKeyStore>();
-            context.SyncModeSelector = Substitute.For<ISyncModeSelector>();
-            context.ChainLevelInfoRepository = Substitute.For<IChainLevelInfoRepository>();
-            context.StateReader = Substitute.For<IStateReader>();
-            context.FilterManager = Substitute.For<IFilterManager>();
-            context.FilterStore = Substitute.For<IFilterStore>();
-            
-            RegisterRpcModules registerRpcModules = new RegisterRpcModules(context);
-            registerRpcModules.Execute(CancellationToken.None);
+            context.ConfigProvider.GetConfig<IJsonRpcConfig>().Returns(jsonRpcConfig);
+            context.RpcModuleProvider.Enabled.Returns(Array.Empty<ModuleType>());
 
-            context.RpcModuleProvider.Rent(nameof(IProofModule.proof_call), true).Should().NotBeNull();
+            RegisterRpcModules registerRpcModules = new RegisterRpcModules(context);
+            await registerRpcModules.Execute(CancellationToken.None);
+            
+            context.RpcModuleProvider.ReceivedWithAnyArgs().Register<IProofModule>(null);
         }
         
         [Test]
-        public void Proof_module_is_not_registered_when_json_rpc_not_enabled()
+        public async Task Proof_module_is_not_registered_when_json_rpc_not_enabled()
         {
-            JsonRpcConfig jsonRpcConfig = new JsonRpcConfig();
-            jsonRpcConfig.Enabled = false;
-            
-            IConfigProvider configProvider = Substitute.For<IConfigProvider>();
-            configProvider.GetConfig<IJsonRpcConfig>().Returns(jsonRpcConfig);
+            JsonRpcConfig jsonRpcConfig = new JsonRpcConfig {Enabled = false};
 
-            IRpcModuleProvider rpcModuleProvider = Substitute.For<IRpcModuleProvider>();
-
-            NethermindApi context = new NethermindApi(configProvider, LimboLogs.Instance)
-                {
-                    ConfigProvider = configProvider,
-                    RpcModuleProvider = rpcModuleProvider,
-                    TxPool = Substitute.For<ITxPool>(),
-                    BlockTree = Substitute.For<IBlockTree>(),
-                    Wallet = Substitute.For<IWallet>(),
-                    SpecProvider = Substitute.For<ISpecProvider>(),
-                    TxSender = Substitute.For<ITxSender>()
-                };
+            NethermindApi context = Build.ContextWithMocks();
+            context.ConfigProvider.GetConfig<IJsonRpcConfig>().Returns(jsonRpcConfig);
+            context.RpcModuleProvider.Enabled.Returns(Array.Empty<ModuleType>());
 
             RegisterRpcModules registerRpcModules = new RegisterRpcModules(context);
-            registerRpcModules.Execute(CancellationToken.None);
+            await registerRpcModules.Execute(CancellationToken.None);
             
-            rpcModuleProvider.DidNotReceiveWithAnyArgs().Register<IProofModule>(null);
+            context.RpcModuleProvider.DidNotReceiveWithAnyArgs().Register<IProofModule>(null);
         }
     }
 }

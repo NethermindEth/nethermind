@@ -53,12 +53,11 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         public virtual async Task Execute(CancellationToken cancellationToken)
         {
-            if (_api.RpcModuleProvider == null) throw new StepDependencyException(nameof(_api.RpcModuleProvider));
-            if (_api.TxPool == null) throw new StepDependencyException(nameof(_api.TxPool));
             if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
-            if (_api.Wallet == null) throw new StepDependencyException(nameof(_api.Wallet));
-            if (_api.SpecProvider == null) throw new StepDependencyException(nameof(_api.SpecProvider));
-            if (_api.TxSender == null) throw new StepDependencyException(nameof(_api.TxSender));
+            if (_api.ReceiptFinder == null) throw new StepDependencyException(nameof(_api.ReceiptFinder));
+            if (_api.BloomStorage == null) throw new StepDependencyException(nameof(_api.BloomStorage));
+            if (_api.LogManager == null) throw new StepDependencyException(nameof(_api.LogManager));
+            
 
             LogFinder logFinder = new LogFinder(
                 _api.BlockTree,
@@ -76,7 +75,15 @@ namespace Nethermind.Runner.Ethereum.Steps
                 return;
             }
             
-            _api.RpcModuleProvider = jsonRpcConfig.Enabled
+            if (_api.RpcModuleProvider == null) throw new StepDependencyException(nameof(_api.RpcModuleProvider));
+            if (_api.FileSystem == null) throw new StepDependencyException(nameof(_api.FileSystem));
+            if (_api.TxPool == null) throw new StepDependencyException(nameof(_api.TxPool));
+            if (_api.Wallet == null) throw new StepDependencyException(nameof(_api.Wallet));
+            if (_api.SpecProvider == null) throw new StepDependencyException(nameof(_api.SpecProvider));
+            if (_api.TxSender == null) throw new StepDependencyException(nameof(_api.TxSender));
+            if (_api.StateReader == null) throw new StepDependencyException(nameof(_api.StateReader));
+            
+            _api.RpcModuleProvider ??= jsonRpcConfig.Enabled
                 ? new RpcModuleProvider(_api.FileSystem, jsonRpcConfig, _api.LogManager)
                 : (IRpcModuleProvider)NullModuleProvider.Instance;
 
@@ -86,22 +93,22 @@ namespace Nethermind.Runner.Ethereum.Steps
             IInitConfig initConfig = _api.Config<IInitConfig>();
             IJsonRpcConfig rpcConfig = _api.Config<IJsonRpcConfig>();
             INetworkConfig networkConfig = _api.Config<INetworkConfig>();
-            {
-                // lets add threads to support parallel eth_getLogs
-                ThreadPool.GetMinThreads(out var workerThreads, out var completionPortThreads);
-                ThreadPool.SetMinThreads(workerThreads + Environment.ProcessorCount, completionPortThreads + Environment.ProcessorCount);
-                
-                EthModuleFactory ethModuleFactory = new EthModuleFactory(
-                    _api.TxPool,
-                    _api.TxSender,
-                    _api.Wallet,
-                    _api.BlockTree,
-                    _api.Config<IJsonRpcConfig>(),
-                    _api.LogManager,
-                    _api.StateReader,
-                    _api);
-                _api.RpcModuleProvider.Register(new BoundedModulePool<IEthModule>(ethModuleFactory, 8));
-            }
+            
+            // lets add threads to support parallel eth_getLogs
+            ThreadPool.GetMinThreads(out var workerThreads, out var completionPortThreads);
+            ThreadPool.SetMinThreads(workerThreads + Environment.ProcessorCount, completionPortThreads + Environment.ProcessorCount);
+            
+            EthModuleFactory ethModuleFactory = new EthModuleFactory(
+                _api.TxPool,
+                _api.TxSender,
+                _api.Wallet,
+                _api.BlockTree,
+                _api.Config<IJsonRpcConfig>(),
+                _api.LogManager,
+                _api.StateReader,
+                _api);
+            _api.RpcModuleProvider.Register(new BoundedModulePool<IEthModule>(ethModuleFactory, 8));
+            
 
             ProofModuleFactory proofModuleFactory = new ProofModuleFactory(_api.DbProvider, _api.BlockTree, _api.RecoveryStep, _api.ReceiptFinder, _api.SpecProvider, _api.LogManager);
             _api.RpcModuleProvider.Register(new BoundedModulePool<IProofModule>(proofModuleFactory, 2));
