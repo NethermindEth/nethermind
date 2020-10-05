@@ -99,13 +99,14 @@ namespace Nethermind.Blockchain.Processing
             {
                 for (int i = 0; i < suggestedBlocks.Count; i++)
                 {
-                    processedBlocks[i] = ProcessOne(suggestedBlocks[i], options, blockTracer);
+                    var (processedBlock, receipts) = ProcessOne(suggestedBlocks[i], options, blockTracer);
+                    processedBlocks[i] = processedBlock;
 
                     // be cautious here as AuRa depends on processing
                     PreCommitBlock(newBranchStateRoot, suggestedBlocks[i].Number);
                     if (!readOnly)
                     {
-                        BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(processedBlocks[i]));
+                        BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(processedBlock, receipts));
                     }
                 }
 
@@ -195,7 +196,7 @@ namespace Nethermind.Blockchain.Processing
             return _receiptsTracer.TxReceipts;
         }
 
-        private Block ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer)
+        private (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer)
         {
             ApplyDaoTransition(suggestedBlock);
             Block block = PrepareBlockForProcessing(suggestedBlock);
@@ -209,7 +210,7 @@ namespace Nethermind.Blockchain.Processing
                 StoreTxReceipts(block, receipts);
             }
 
-            return block;
+            return (block, receipts);
         }
 
         private void ValidateProcessedBlock(Block suggestedBlock, ProcessingOptions options, Block block, TxReceipt[] receipts)

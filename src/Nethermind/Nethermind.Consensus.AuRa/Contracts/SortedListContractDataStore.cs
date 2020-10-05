@@ -13,18 +13,23 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-namespace Nethermind.Core.Test.Builders
+using System.Collections.Generic;
+using Nethermind.Blockchain.Processing;
+
+namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public partial class Build
+    public class SortedListContractDataStore<T> : DictionaryBasedContractDataStore<T>
     {
-        public TransactionBuilder<Transaction> Transaction => new TransactionBuilder<Transaction>();
-        public TransactionBuilder<SystemTransaction> SystemTransaction => new TransactionBuilder<SystemTransaction>();
-        public TransactionBuilder<GeneratedTransaction> GeneratedTransaction => new TransactionBuilder<GeneratedTransaction>();
+        private readonly IComparer<T> _comparer;
 
-        public TransactionBuilder<NamedTransaction> NamedTransaction(string name)
+        public SortedListContractDataStore(IDataContract<T> dataContract, IBlockProcessor blockProcessor, IComparer<T> comparer = null)
+            : base(dataContract, blockProcessor)
         {
-            return new TransactionBuilder<NamedTransaction> {TestObjectInternal = {Name = name}};
+            _comparer = comparer;
         }
+
+        protected override IDictionary<T, T> CreateItems() => new SortedList<T, T>(_comparer);
     }
 }

@@ -19,15 +19,6 @@ using Nethermind.Core;
 using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Infrastructure.Rlp;
-<<<<<<< HEAD
-using Nethermind.Db;
-using Nethermind.Facade;
-using Nethermind.JsonRpc;
-using Nethermind.Trie.Pruning;
-using Nethermind.TxPool;
-using Nethermind.Wallet;
-=======
->>>>>>> master
 
 namespace Nethermind.DataMarketplace.Infrastructure.Modules
 {
@@ -44,40 +35,6 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
                 ? Address.Zero
                 : new Address(config.ContractAddress);
 
-<<<<<<< HEAD
-            var configId = config.Id;
-            var configManager = services.ConfigManager;
-            var logManager = services.LogManager;
-            var timestamper = services.Timestamper;
-            var wallet = services.Wallet;
-            var readOnlyTree = new ReadOnlyBlockTree(services.BlockTree);
-            var readOnlyDbProvider = new ReadOnlyDbProvider(services.RocksProvider, false);
-            var readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(
-                readOnlyDbProvider,
-                new TrieStore(readOnlyDbProvider.StateDb, logManager),
-                readOnlyTree,
-                services.SpecProvider,
-                logManager);
-            var jsonRpcConfig = services.ConfigProvider.GetConfig<IJsonRpcConfig>();
-            var blockchainBridge = new BlockchainBridge(
-                readOnlyTxProcessingEnv,
-                services.TxPool,
-                services.ReceiptFinder,
-                services.FilterStore,
-                services.FilterManager,
-                services.Ecdsa,
-                services.BloomStorage,
-                Timestamper.Default,
-                logManager,
-                false,
-                jsonRpcConfig.FindLogBlockDepthLimit);
-            
-            var dataAssetRlpDecoder = new DataAssetDecoder();
-            var encoder = new AbiEncoder();
-
-            INdmBlockchainBridge ndmBlockchainBridge;
-=======
->>>>>>> master
             if (config.ProxyEnabled)
             {
                 if (config.JsonRpcUrlProxies == null || api.EthJsonRpcClientProxy == null)

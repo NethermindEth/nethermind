@@ -102,11 +102,11 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         protected virtual ITxSource CreateTxSourceForProducer(
             ReadOnlyTxProcessingEnv processingEnv,
-            ReadOnlyTxProcessorSource readOnlyTxProcessorSource)
-        {
-            ITxSource innerSource = new TxPoolTxSource(_api.TxPool, processingEnv.StateReader, _api.LogManager);
-            return new FilteredTxSource(innerSource, CreateGasPriceTxFilter(readOnlyTxProcessorSource));
-        }
+            ReadOnlyTxProcessorSource readOnlyTxProcessorSource) =>
+            CreateTxPoolTxSource(processingEnv, readOnlyTxProcessorSource);
+
+        protected virtual TxPoolTxSource CreateTxPoolTxSource(ReadOnlyTxProcessingEnv processingEnv, ReadOnlyTxProcessorSource readOnlyTxProcessorSource) => 
+            new TxPoolTxSource(_api.TxPool, processingEnv.StateReader, _api.LogManager, CreateGasPriceTxFilter(readOnlyTxProcessorSource));
 
         protected virtual ITxFilter CreateGasPriceTxFilter(ReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
