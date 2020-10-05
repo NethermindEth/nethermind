@@ -14,8 +14,11 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Linq;
 using System.Threading;
+using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Filters;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -31,6 +34,7 @@ using Nethermind.Logging;
 using Nethermind.Runner.Ethereum;
 using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Runner.Ethereum.Steps;
+using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
@@ -53,11 +57,8 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             IConfigProvider configProvider = Substitute.For<IConfigProvider>();
             configProvider.GetConfig<IJsonRpcConfig>().Returns(jsonRpcConfig);
 
-            IRpcModuleProvider rpcModuleProvider = Substitute.For<IRpcModuleProvider>();
-
             NethermindApi context = Build.ContextWithMocks();
             context.ConfigProvider = configProvider;
-            context.RpcModuleProvider = rpcModuleProvider;
             var signer = new Signer(ChainId.Mainnet, TestItem.PrivateKeyA, LimboLogs.Instance);
             context.TxSender = new NullTxSender();
             context.EngineSignerStore = signer;
@@ -65,11 +66,14 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             context.KeyStore = Substitute.For<IKeyStore>();
             context.SyncModeSelector = Substitute.For<ISyncModeSelector>();
             context.ChainLevelInfoRepository = Substitute.For<IChainLevelInfoRepository>();
+            context.StateReader = Substitute.For<IStateReader>();
+            context.FilterManager = Substitute.For<IFilterManager>();
+            context.FilterStore = Substitute.For<IFilterStore>();
             
             RegisterRpcModules registerRpcModules = new RegisterRpcModules(context);
             registerRpcModules.Execute(CancellationToken.None);
-            
-            rpcModuleProvider.ReceivedWithAnyArgs().Register<IProofModule>(null);
+
+            context.RpcModuleProvider.Rent(nameof(IProofModule.proof_call), true).Should().NotBeNull();
         }
         
         [Test]
