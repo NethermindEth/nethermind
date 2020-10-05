@@ -49,7 +49,7 @@ namespace Nethermind.Api.Extensions
                 if (logger.IsWarn) logger.Warn($"Plugins folder {fullPluginsDir} was not found. Skipping.");
             }
 
-            string[] pluginFiles = _fileSystem.Directory.GetFiles(fullPluginsDir).Where(p => p.EndsWith("dll")).ToArray();
+            string[] pluginFiles = _fileSystem.Directory.GetFiles(baseDir).Where(p => p.EndsWith("dll")).ToArray();
             if (pluginFiles.Length > 0)
             {
                 if (logger.IsInfo) logger.Info($"Loading {pluginFiles.Length} plugins from {fullPluginsDir}");
@@ -57,7 +57,6 @@ namespace Nethermind.Api.Extensions
 
             foreach (string path in pluginFiles)
             {
-                //najpierw plugins potem base
                 string pluginAssembly = _fileSystem.Path.GetFileNameWithoutExtension(path);
                 try
                 {
