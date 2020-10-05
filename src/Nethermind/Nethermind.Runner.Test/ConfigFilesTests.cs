@@ -25,7 +25,6 @@ using Nethermind.Api;
 using Nethermind.Baseline.Config;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
-using Nethermind.DataMarketplace.Core.Configs;
 using Nethermind.EthStats;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc;
@@ -232,13 +231,6 @@ namespace Nethermind.Runner.Test
         public void Baseline_is_disabled_by_default(string configWildcard, bool enabled)
         {
             Test<IBaselineConfig, bool>(configWildcard, c => c.Enabled, enabled);
-        }
-
-        [TestCase("ndm", true)]
-        [TestCase("^ndm", false)]
-        public void Ndm_enabled_only_for_ndm_configs(string configWildcard, bool ndmEnabled)
-        {
-            Test<INdmConfig, bool>(configWildcard, c => c.Enabled, ndmEnabled);
         }
 
         [TestCase("*")]
