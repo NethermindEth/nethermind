@@ -25,7 +25,6 @@ using Nethermind.Api;
 using Nethermind.Baseline.Config;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
-using Nethermind.DataMarketplace.Core.Configs;
 using Nethermind.EthStats;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc;
