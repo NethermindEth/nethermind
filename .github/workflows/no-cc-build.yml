@@ -18,8 +18,6 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install libsnappy-dev libc6-dev libc6
-    - name: TEST
-      run: git describe --tags --long
     - name: Installing macOS packages
       if: matrix.os == 'macOS-latest'
       run: brew install gmp && brew install snappy && brew install lz4 && brew install zstd
@@ -160,6 +158,8 @@ jobs:
         os: [ubuntu-latest, windows-latest, macOS-latest]
     steps:
     - uses: actions/checkout@v2.3.3
+    - name: TEST
+      run: git describe --tags --long
     - name: Updating submodules
       run: git submodule update --init src/rocksdb-sharp src/int256 src/Dirichlet
     - name: Installing Linux packages
