@@ -439,9 +439,9 @@ namespace Nethermind.DataMarketplace.Infrastructure
             set => _nethermindApi.OriginalSignerKey = value;
         }
         
-        public List<IPublisher> Publishers => _nethermindApi.Publishers;
+        public IList<IPublisher> Publishers => _nethermindApi.Publishers;
         
-        public List<INethermindPlugin> Plugins => _nethermindApi.Plugins;
+        public IList<INethermindPlugin> Plugins => _nethermindApi.Plugins;
 
         public IBlockchainBridge CreateBlockchainBridge()
         {
