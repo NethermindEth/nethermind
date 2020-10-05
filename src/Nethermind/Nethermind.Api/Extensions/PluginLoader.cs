@@ -17,6 +17,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.IO.Abstractions;
 using System.Linq;
 using System.Reflection;
@@ -41,8 +42,8 @@ namespace Nethermind.Api.Extensions
         public void Load(ILogManager logManager)
         {
             ILogger logger = logManager.GetClassLogger();
-            string baseDir = AppDomain.CurrentDomain.BaseDirectory!;
-            string fullPluginsDir = _fileSystem.Path.Combine(baseDir, _pluginsDirectory);
+            string baseDir = string.Empty.GetApplicationResourcePath();
+            string fullPluginsDir = _pluginsDirectory.GetApplicationResourcePath();;
             if (!_fileSystem.Directory.Exists(fullPluginsDir))
             {
                 if (logger.IsWarn) logger.Warn($"Plugins folder {fullPluginsDir} was not found. Skipping.");
@@ -63,9 +64,20 @@ namespace Nethermind.Api.Extensions
                     string assemblyPath = _fileSystem.Path.Combine(fullPluginsDir, path);
                     Assembly assembly = AssemblyLoadContext.Default.LoadFromAssemblyPath(assemblyPath);
                     AssemblyLoadContext.Default.Resolving += (context, name) =>
-                        AssemblyLoadContext.Default.LoadFromAssemblyPath(_fileSystem.Path.Combine(baseDir, name.Name + ".dll"));
+                    {
+                        string fileName = name.Name + ".dll";
+                        try
+                        {
+                            return AssemblyLoadContext.Default.LoadFromAssemblyPath(_fileSystem.Path.Combine(baseDir, fileName));
+                        }
+                        catch (FileNotFoundException)
+                        {
+                            return AssemblyLoadContext.Default.LoadFromAssemblyPath(_fileSystem.Path.Combine(_pluginsDirectory, fileName));
+                        }
+                    };
+                        
 
-                    foreach (Type type in assembly.GetExportedTypes())
+                    foreach (Type type in assembly.GetExportedTypes().Where(t => !t.IsInterface))
                     {
                         if (typeof(INethermindPlugin).IsAssignableFrom(type))
                         {

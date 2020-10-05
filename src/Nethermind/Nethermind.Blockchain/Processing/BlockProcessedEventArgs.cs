@@ -22,10 +22,12 @@ namespace Nethermind.Blockchain.Processing
     public class BlockProcessedEventArgs : EventArgs
     {
         public Block Block { get; }
+        public TxReceipt[] TxReceipts { get; }
 
-        public BlockProcessedEventArgs(Block block)
+        public BlockProcessedEventArgs(Block block, TxReceipt[] txReceipts)
         {
             Block = block;
+            TxReceipts = txReceipts;
         }
     }
 }

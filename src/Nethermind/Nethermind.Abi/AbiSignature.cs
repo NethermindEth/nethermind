@@ -32,7 +32,7 @@ namespace Nethermind.Abi
 
         public string Name { get; }
         public AbiType[] Types { get; }
-        public byte[] Address => Hash.Bytes.Slice(0, 4);
+        public byte[] Address => GetAddress(Hash.Bytes);
         public Keccak Hash => _hash ??= Keccak.Compute(ToString());
 
         public override string ToString()
@@ -52,5 +52,7 @@ namespace Nethermind.Abi
 
             return _toString ??= ComputeString();
         }
+
+        public static byte[] GetAddress(byte[] bytes) => bytes.Slice(0, 4);
     }
 }
