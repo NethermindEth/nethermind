@@ -72,7 +72,7 @@ namespace Nethermind.Runner.Ethereum.Api
             return nethermindApi;
         }
 
-        private static int _apiCreated;
+        private int _apiCreated;
 
         private ChainSpec LoadChainSpec(IJsonSerializer ethereumJsonSerializer)
         {

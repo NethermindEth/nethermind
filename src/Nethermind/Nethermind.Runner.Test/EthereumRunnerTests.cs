@@ -18,6 +18,7 @@ using System;
 using System.Collections;
 using System.IO;
 using System.IO.Abstractions;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions.Execution;
@@ -88,20 +89,34 @@ namespace Nethermind.Runner.Test
 
             try
             {
-                configProvider.GetConfig<IInitConfig>().BaseDbPath = tempPath;
+                IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
+                initConfig.BaseDbPath = tempPath;
+                initConfig.ChainSpecPath = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location)!, initConfig.ChainSpecPath);
 
-                INethermindApi nethermindApi = new NethermindApi(configProvider, new EthereumJsonSerializer(), TestLogManager.Instance);
+                INethermindApi nethermindApi = new ApiBuilder(configProvider, TestLogManager.Instance).Create();
                 nethermindApi.RpcModuleProvider =
                     new RpcModuleProvider(new FileSystem(), new JsonRpcConfig(), TestLogManager.Instance);
                 EthereumRunner runner = new EthereumRunner(nethermindApi);
 
-                await runner.Start(CancellationToken.None);
-                await runner.StopAsync();
+                try
+                {
+                    await runner.Start(CancellationToken.None);
+                }
+                finally
+                {
+                    await runner.StopAsync();
+                }
             }
             finally
             {
-                // rocks db still has a lock on a file called "LOCK".
-                Directory.Delete(tempPath, true);
+                try
+                {
+                    Directory.Delete(tempPath, true);
+                }
+                catch (Exception e)
+                {
+                    await TestContext.Error.WriteLineAsync(e.ToString());
+                }
             }
         }
         [TestCaseSource(nameof(ChainSpecRunnerTests))]
@@ -137,9 +152,12 @@ namespace Nethermind.Runner.Test
             EthereumRunner runner = null;
             try
             {
-                configProvider.GetConfig<IInitConfig>().BaseDbPath = tempPath;
+                IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
+                initConfig.BaseDbPath = tempPath;
+                initConfig.ChainSpecPath = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location)!, initConfig.ChainSpecPath);
 
-                NethermindApi nethermindApi = new NethermindApi(configProvider, new EthereumJsonSerializer(), TestLogManager.Instance);
+                ApiBuilder apiBuilder = new ApiBuilder(configProvider, TestLogManager.Instance);
+                INethermindApi nethermindApi = apiBuilder.Create();
                 nethermindApi.RpcModuleProvider =
                     new RpcModuleProvider(new FileSystem(), new JsonRpcConfig(), TestLogManager.Instance);
                 runner = new EthereumRunner(nethermindApi);
@@ -160,12 +178,21 @@ namespace Nethermind.Runner.Test
                         throw new AssertionFailedException($"Exception should be {nameof(OperationCanceledException)}");
                     }
                 }
+                finally
+                {
+                    await runner.StopAsync();
+                }
             }
             finally
             {
-                await (runner?.StopAsync() ?? Task.CompletedTask);
-                // rocks db still has a lock on a file called "LOCK".
-                Directory.Delete(tempPath, true);
+                try
+                {
+                    Directory.Delete(tempPath, true);
+                }
+                catch (Exception e)
+                {
+                    await TestContext.Error.WriteLineAsync(e.ToString());
+                }
             }
         }
     }
