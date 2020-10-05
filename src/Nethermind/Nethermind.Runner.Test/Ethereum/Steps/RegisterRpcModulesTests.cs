@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
+using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Config;
@@ -59,12 +60,11 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
 
             NethermindApi context = Build.ContextWithMocks();
             context.ConfigProvider.GetConfig<IJsonRpcConfig>().Returns(jsonRpcConfig);
-            context.RpcModuleProvider.Enabled.Returns(Array.Empty<ModuleType>());
-
+            
             RegisterRpcModules registerRpcModules = new RegisterRpcModules(context);
             await registerRpcModules.Execute(CancellationToken.None);
-            
-            context.RpcModuleProvider.ReceivedWithAnyArgs().Register<IProofModule>(null);
+
+            context.RpcModuleProvider.Check("proof_call").Should().Be(ModuleResolution.Enabled);
         }
         
         [Test]
