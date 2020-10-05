@@ -27,7 +27,7 @@ namespace Nethermind.TxPool.Collections
         private readonly int _capacity;
         protected readonly IComparer<TValue> Comparer;
         protected readonly Func<TValue, TGroup> GroupMapping;
-        protected readonly DictionarySet<TKey, TValue> CacheMap;
+        protected readonly DictionarySortedSet<TKey, TValue> CacheMap;
         protected readonly IDictionary<TGroup, ICollection<TValue>> Buckets;
 
         public SortedPool(int capacity, IComparer<TValue> comparer, Func<TValue, TGroup> groupMapping)
@@ -35,7 +35,7 @@ namespace Nethermind.TxPool.Collections
             _capacity = capacity;
             Comparer = comparer;
             GroupMapping = groupMapping;
-            CacheMap = new DictionarySet<TKey, TValue>(); // do not initialize it at the full capacity
+            CacheMap = new DictionarySortedSet<TKey, TValue>(); // do not initialize it at the full capacity
             Buckets = new Dictionary<TGroup, ICollection<TValue>>();
         }
 
@@ -102,12 +102,7 @@ namespace Nethermind.TxPool.Collections
 
         private void RemoveLast()
         {
-            
-            
-            LinkedListNode<KeyValuePair<TKey, TValue>> node = LruList.Last;
-            LruList.RemoveLast();
-
-            Remove(node.Value.Key);
+            TryRemove(CacheMap.Max.Key, out _);
         }
         
         protected virtual bool CanInsert(TKey key, TValue value)

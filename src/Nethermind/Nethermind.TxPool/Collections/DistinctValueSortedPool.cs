@@ -19,11 +19,11 @@ using System.Collections.Generic;
 
 namespace Nethermind.TxPool.Collections
 {
-    public class DistinctValueSortedPool<TKey, TValue> : SortedPool<TKey, TValue>
+    public class DistinctValueSortedPool<TKey, TValue, TGroup> : SortedPool<TKey, TValue, TGroup>
     {
         private readonly IDictionary<TValue, LinkedListNode<KeyValuePair<TKey, TValue>>> _distinctDictionary;
 
-        public DistinctValueSortedPool(int capacity, Comparison<TValue> comparer, IEqualityComparer<TValue> distinctComparer) : base(capacity, comparer)
+        public DistinctValueSortedPool(int capacity, IComparer<TValue> comparer, Func<TValue, TGroup> groupMapping, IEqualityComparer<TValue> distinctComparer) : base(capacity, comparer)
         {
             _distinctDictionary = new Dictionary<TValue, LinkedListNode<KeyValuePair<TKey, TValue>>>(distinctComparer);
         }
