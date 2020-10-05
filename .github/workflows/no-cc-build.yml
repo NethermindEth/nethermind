@@ -159,7 +159,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2.3.3
     - name: TEST
-      run: git describe --tags --long
+      run: git describe --tags --long --always
     - name: Updating submodules
       run: git submodule update --init src/rocksdb-sharp src/int256 src/Dirichlet
     - name: Installing Linux packages
