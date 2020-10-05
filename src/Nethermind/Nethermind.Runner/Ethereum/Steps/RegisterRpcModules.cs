@@ -75,6 +75,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 return;
             }
             
+            if (_api.RpcModuleProvider == null) throw new StepDependencyException(nameof(_api.RpcModuleProvider));
             if (_api.FileSystem == null) throw new StepDependencyException(nameof(_api.FileSystem));
             if (_api.TxPool == null) throw new StepDependencyException(nameof(_api.TxPool));
             if (_api.Wallet == null) throw new StepDependencyException(nameof(_api.Wallet));
