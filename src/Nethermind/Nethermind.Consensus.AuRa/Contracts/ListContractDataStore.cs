@@ -13,18 +13,32 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-namespace Nethermind.Core.Test.Builders
+using System.Collections.Generic;
+using Nethermind.Blockchain.Processing;
+
+namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public partial class Build
+    public class ListContractDataStore<T> : ContractDataStore<T, List<T>>
     {
-        public TransactionBuilder<Transaction> Transaction => new TransactionBuilder<Transaction>();
-        public TransactionBuilder<SystemTransaction> SystemTransaction => new TransactionBuilder<SystemTransaction>();
-        public TransactionBuilder<GeneratedTransaction> GeneratedTransaction => new TransactionBuilder<GeneratedTransaction>();
-
-        public TransactionBuilder<NamedTransaction> NamedTransaction(string name)
+        public ListContractDataStore(IDataContract<T> dataContract, IBlockProcessor blockProcessor)
+            : base(dataContract, blockProcessor)
         {
-            return new TransactionBuilder<NamedTransaction> {TestObjectInternal = {Name = name}};
+        }
+
+        protected override List<T> CreateItems() => new List<T>();
+
+        protected override void ClearItems(List<T> collection)
+        {
+            collection.Clear();
+        }
+
+        protected override IEnumerable<T> GetItemsFromContractAtBlock(List<T> collection) => collection;
+
+        protected override void InsertItems(List<T> collection, IEnumerable<T> items)
+        {
+            collection.AddRange(items);
         }
     }
 }

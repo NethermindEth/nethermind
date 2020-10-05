@@ -13,18 +13,16 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-namespace Nethermind.Core.Test.Builders
+using System.Collections.Generic;
+using System.Linq;
+
+namespace Nethermind.Core.Extensions
 {
-    public partial class Build
+    public static class EnumerableExtensions
     {
-        public TransactionBuilder<Transaction> Transaction => new TransactionBuilder<Transaction>();
-        public TransactionBuilder<SystemTransaction> SystemTransaction => new TransactionBuilder<SystemTransaction>();
-        public TransactionBuilder<GeneratedTransaction> GeneratedTransaction => new TransactionBuilder<GeneratedTransaction>();
-
-        public TransactionBuilder<NamedTransaction> NamedTransaction(string name)
-        {
-            return new TransactionBuilder<NamedTransaction> {TestObjectInternal = {Name = name}};
-        }
+        public static ISet<T> AsSet<T>(this IEnumerable<T> enumerable) => 
+            enumerable is ISet<T> set ? set : enumerable.ToHashSet();
     }
 }

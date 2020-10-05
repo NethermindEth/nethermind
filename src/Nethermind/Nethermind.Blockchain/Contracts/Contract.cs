@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Linq;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts.Json;
 using Nethermind.Core;
@@ -167,15 +168,22 @@ namespace Nethermind.Blockchain.Contracts
                 return tracer.ReturnValue;
             }
         }
-        
-        protected Keccak GetEventHash(string eventName)
-        {
-            return AbiDefinition.Events[eventName].GetHash();
-        }
-        
+
         protected object[] DecodeReturnData(string functionName, byte[] data)
         {
-            return AbiEncoder.Decode(AbiDefinition.GetFunction(functionName).GetReturnInfo(), data);
+            AbiEncodingInfo abiEncodingInfo = AbiDefinition.GetFunction(functionName).GetReturnInfo();
+            return DecodeData(abiEncodingInfo, data);
         }
+
+        protected object[] DecodeData(AbiEncodingInfo abiEncodingInfo, byte[] data) => AbiEncoder.Decode(abiEncodingInfo, data);
+        
+        protected LogEntry GetSearchLogEntry(string eventName, byte[] data = null, params Keccak[] topics)
+        {
+            Keccak[] eventNameTopic = {AbiDefinition.GetEvent(eventName).GetHash()};
+            topics = topics.Length == 0 ? eventNameTopic : eventNameTopic.Concat(topics).ToArray();
+            return new LogEntry(ContractAddress, data ?? Array.Empty<byte>(), topics);
+        }
+
+        protected LogEntry GetSearchLogEntry(string eventName, params Keccak[] topics) => GetSearchLogEntry(eventName, null, topics);
     }
 }

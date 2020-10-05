@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Config;
+using Nethermind.Core;
 
 namespace Nethermind.Consensus.AuRa.Config
 {
@@ -25,5 +26,7 @@ namespace Nethermind.Consensus.AuRa.Config
         public bool AllowAuRaPrivateChains { get; set; }
         
         public bool Minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract { get; set; }
+        
+        public Address TransactionPriorityContractAddress { get; set; }
     }
 }
