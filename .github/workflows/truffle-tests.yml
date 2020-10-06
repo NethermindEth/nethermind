@@ -21,16 +21,15 @@ jobs:
     - name: Cloning truffle tests
       run: |
         git clone https://github.com/NethermindEth/truffleTest.git
-    - name: Run Nethermind on Spaceneth
-      run: |
-        cd src/Nethermind/Nethermind.Runner
-        nohup dotnet run -c Release --config spaceneth_persistent > /dev/null 2>&1 &
     - name: Run truffle deploy & test
       uses: actions/setup-node@v1.4.4
       with:
         node-version: '13'
     - run: npm install -g truffle
     - run: |
+        cd src/Nethermind/Nethermind.Runner
+        nohup dotnet run -c Release --config spaceneth_persistent > /dev/null 2>&1 &
+        cd ../../../
         cd truffleTest/
         npm i sha3 --save
         npm i
