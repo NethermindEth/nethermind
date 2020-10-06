@@ -25,13 +25,14 @@ jobs:
       run: |
         cd src/Nethermind/Nethermind.Runner
         nohup dotnet run -c Release --config spaceneth_persistent > /dev/null 2>&1 &
-    - name: Run truffle deploy
-      run: |
+    - name: Run truffle deploy & test
+      uses: actions/setup-node@v2
+      with:
+        node-version: '13'
+    - run: npm install -g truffle
+    - run: |
         cd truffleTest/
         npm i truffle --save
         npm i
         truffle deploy --network development
-    - name: Run truffle tests
-      run: |
-        cd truffleTest/
         truffle test
