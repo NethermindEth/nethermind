@@ -92,7 +92,6 @@ namespace Nethermind.Facade.Test
                 _ethereumEcdsa,
                 _timestamper,
                 Substitute.For<ILogFinder>(),
-                LimboLogs.Instance,
                 false,
                 false);
         }
@@ -194,7 +193,6 @@ namespace Nethermind.Facade.Test
                 _ethereumEcdsa,
                 _timestamper,
                 Substitute.For<ILogFinder>(),
-                LimboLogs.Instance,
                 false,
                 isBeam);
 
@@ -229,7 +227,6 @@ namespace Nethermind.Facade.Test
                 _ethereumEcdsa,
                 _timestamper,
                 Substitute.For<ILogFinder>(),
-                LimboLogs.Instance,
                 false,
                 false);
 

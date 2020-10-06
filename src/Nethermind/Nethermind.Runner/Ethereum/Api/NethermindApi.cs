@@ -98,7 +98,6 @@ namespace Nethermind.Runner.Ethereum.Api
                 EthereumEcdsa,
                 Timestamper,
                 LogFinder,
-                LogManager,
                 miningConfig.Enabled,
                 syncConfig.BeamSync && syncConfig.FastSync
             );

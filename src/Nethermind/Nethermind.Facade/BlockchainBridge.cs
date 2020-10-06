@@ -27,7 +27,6 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
-using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie;
 using Nethermind.TxPool;
@@ -68,7 +67,6 @@ namespace Nethermind.Facade
             IEthereumEcdsa ecdsa,
             ITimestamper timestamper,
             ILogFinder logFinder,
-            ILogManager logManager,
             bool isMining,
             bool isBeamSyncing)
         {
@@ -76,13 +74,14 @@ namespace Nethermind.Facade
             _stateReader = processingEnv.StateReader ?? throw new ArgumentNullException(nameof(processingEnv.StateReader));
             _stateProvider = processingEnv.StateProvider ?? throw new ArgumentNullException(nameof(processingEnv.StateProvider));
             _blockTree = processingEnv.BlockTree ?? throw new ArgumentNullException(nameof(processingEnv.BlockTree));
-            _transactionProcessor = processingEnv.TransactionProcessor ?? throw new ArgumentException(nameof(processingEnv.TransactionProcessor));
+            _transactionProcessor = processingEnv.TransactionProcessor ?? throw new ArgumentNullException(nameof(processingEnv.TransactionProcessor));
             _txPool = txPool ?? throw new ArgumentNullException(nameof(_txPool));
             _receiptFinder = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
-            _filterStore = filterStore ?? throw new ArgumentException(nameof(filterStore));
-            _filterManager = filterManager ?? throw new ArgumentException(nameof(filterManager));
+            _filterStore = filterStore ?? throw new ArgumentNullException(nameof(filterStore));
+            _filterManager = filterManager ?? throw new ArgumentNullException(nameof(filterManager));
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
+            _logFinder = logFinder ?? throw new ArgumentNullException(nameof(logFinder));
             _isBeamSyncing = isBeamSyncing;
             IsMining = isMining;
         }
