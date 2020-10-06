@@ -50,7 +50,7 @@ namespace Nethermind.Blockchain.Producers
             _logger = logManager?.GetClassLogger<TxPoolTxSource>() ?? throw new ArgumentNullException(nameof(logManager));
         }
         
-        public ITransactionComparerFactory TransactionComparerFactory { get; set; } = new SingletonTransactionComparerFactory(new DefaultTxComparer());
+        public ITransactionComparerFactory TransactionComparerFactory { get; set; } = new SingletonTransactionComparerFactory(DefaultTxComparer.Instance);
 
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
         {

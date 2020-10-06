@@ -132,7 +132,7 @@ namespace Nethermind.TxPool
                 MemoryAllowance.MemPoolSize, 
                 new TxIdentityCompositeComparer(comparer),
                 TxSenderMapping, 
-                CompetingTransactionEqualityComparer.Default,
+                CompetingTransactionEqualityComparer.Instance,
                 comparer);
             
             _peerNotificationThreshold = txPoolConfig.PeerNotificationThreshold;

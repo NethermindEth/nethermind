@@ -77,7 +77,7 @@ namespace Nethermind.Blockchain.Test.TxPools.Collections
                 Capacity, 
                 new TxIdentityCompositeComparer(DefaultTxComparer.Instance), 
                 TxPool.TxPool.TxSenderMapping, 
-                CompetingTransactionEqualityComparer.Default, 
+                CompetingTransactionEqualityComparer.Instance, 
                 DefaultTxComparer.Instance);
 
             foreach (var transaction in transactions)
@@ -96,7 +96,7 @@ namespace Nethermind.Blockchain.Test.TxPools.Collections
                 Capacity, 
                 new TxIdentityCompositeComparer(DefaultTxComparer.Instance), 
                 TxPool.TxPool.TxSenderMapping, 
-                CompetingTransactionEqualityComparer.Default, 
+                CompetingTransactionEqualityComparer.Instance, 
                 DefaultTxComparer.Instance);
 
             var transactions = gasPriceAscending

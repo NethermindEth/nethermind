@@ -25,7 +25,9 @@ namespace Nethermind.TxPool
     /// </summary>
     public class CompetingTransactionEqualityComparer : IEqualityComparer<Transaction>
     {
-        public static readonly CompetingTransactionEqualityComparer Default = new CompetingTransactionEqualityComparer();
+        public static readonly CompetingTransactionEqualityComparer Instance = new CompetingTransactionEqualityComparer();
+        
+        private CompetingTransactionEqualityComparer() { }
         
         public bool Equals(Transaction x, Transaction y) =>
             ReferenceEquals(x, y) || !ReferenceEquals(x, null) && !ReferenceEquals(y, null) && x.SenderAddress == y.SenderAddress && x.Nonce == y.Nonce;

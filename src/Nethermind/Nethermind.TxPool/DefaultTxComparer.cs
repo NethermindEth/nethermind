@@ -27,7 +27,9 @@ namespace Nethermind.TxPool
     public class DefaultTxComparer : IComparer<Transaction>
     {
         public static readonly DefaultTxComparer Instance = new DefaultTxComparer();
-            
+
+        private DefaultTxComparer() { }
+
         public int Compare(Transaction x, Transaction y)
         {
             if (ReferenceEquals(x, y)) return 0;
