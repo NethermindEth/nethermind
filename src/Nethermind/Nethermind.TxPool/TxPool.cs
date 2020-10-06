@@ -37,7 +37,7 @@ namespace Nethermind.TxPool
     /// Stores all pending transactions. These will be used by block producer if this node is a miner / validator
     /// or simply for broadcasting and tracing in other cases.
     /// </summary>
-    public partial class TxPool : ITxPool, IDisposable
+    public class TxPool : ITxPool, IDisposable
     {
         private readonly object _locker = new object();
 
@@ -127,7 +127,7 @@ namespace Nethermind.TxPool
 
             MemoryAllowance.MemPoolSize = txPoolConfig.Size;
             ThisNodeInfo.AddInfo("Mem est tx   :", $"{(LruCache<Keccak, object>.CalculateMemorySize(32, MemoryAllowance.TxHashCacheSize) + LruCache<Keccak, Transaction>.CalculateMemorySize(4096, MemoryAllowance.MemPoolSize)) / 1000 / 1000}MB".PadLeft(8));
-            IComparer<Transaction> comparer = new NonceCompositeComparer(transactionComparer ?? DefaultTxComparer.Instance);
+            IComparer<Transaction> comparer = new NonceCompositeTransactionComparer(transactionComparer ?? DefaultTxComparer.Instance);
             _transactions = new DistinctValueSortedPool<Keccak, Transaction, Address>(
                 MemoryAllowance.MemPoolSize, 
                 new TxIdentityCompositeComparer(comparer),
