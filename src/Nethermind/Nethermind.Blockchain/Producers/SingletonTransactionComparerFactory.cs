@@ -15,15 +15,21 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Diagnostics;
+using System;
+using System.Collections.Generic;
+using Nethermind.Core;
 
-namespace Nethermind.Core.Test.Builders
+namespace Nethermind.Blockchain.Producers
 {
-    [DebuggerDisplay(nameof(Name))]
-    public class NamedTransaction : Transaction
+    public class SingletonTransactionComparerFactory : ITransactionComparerFactory
     {
-        public string Name { get; set; }
+        private readonly IComparer<Transaction> _comparer;
 
-        public override string ToString() => Name;
+        public SingletonTransactionComparerFactory(IComparer<Transaction> comparer)
+        {
+            _comparer = comparer ?? throw new ArgumentNullException(nameof(comparer));
+        }
+        
+        public IComparer<Transaction> CreateComparer(BlockHeader blockHeader) => _comparer;
     }
 }

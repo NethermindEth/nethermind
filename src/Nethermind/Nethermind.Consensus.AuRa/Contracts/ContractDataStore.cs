@@ -42,14 +42,20 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
         public IEnumerable<T> GetItemsFromContractAtBlock(BlockHeader parent)
         {
-            GetItemsFromContractAtBlock(parent, parent.Hash == _lastHash);
-            return GetItemsFromContractAtBlock(Items);
+            lock (Items)
+            {
+                GetItemsFromContractAtBlock(parent, parent.Hash == _lastHash);
+                return GetItemsFromContractAtBlock(Items);
+            }
         }
 
         private void OnBlockProcessed(object sender, BlockProcessedEventArgs e)
         {
-            BlockHeader header = e.Block.Header;
-            GetItemsFromContractAtBlock(header, header.ParentHash == _lastHash, e.TxReceipts);
+            lock (Items)
+            {
+                BlockHeader header = e.Block.Header;
+                GetItemsFromContractAtBlock(header, header.ParentHash == _lastHash, e.TxReceipts);
+            }
         }
         
         private void GetItemsFromContractAtBlock(BlockHeader blockHeader, bool isConsecutiveBlock, TxReceipt[] receipts = null)
@@ -59,16 +65,17 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
             if (fromReceipts || !isConsecutiveBlock)
             {
-                if (!fromReceipts || !isConsecutiveBlock || !_dataContract.IncrementalChanges)
-                {
-                    ClearItems(Items);
-                }
-
-                bool canGetFullStateFromReceipts = fromReceipts && (isConsecutiveBlock || !_dataContract.IncrementalChanges) && !blockHeader.IsGenesis;
+                bool incrementalChanges = _dataContract.IncrementalChanges;
+                bool canGetFullStateFromReceipts = fromReceipts && (isConsecutiveBlock || !incrementalChanges) && !blockHeader.IsGenesis;
 
                 IEnumerable<T> items = canGetFullStateFromReceipts
                     ? _dataContract.GetItemsChangedFromBlock(blockHeader, receipts)
                     : _dataContract.GetAllItemsFromBlock(blockHeader);
+
+                if (!fromReceipts || !isConsecutiveBlock || !incrementalChanges)
+                {
+                    ClearItems(Items);
+                }
 
                 InsertItems(Items, items);
 

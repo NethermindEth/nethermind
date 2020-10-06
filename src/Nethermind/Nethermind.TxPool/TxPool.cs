@@ -129,7 +129,7 @@ namespace Nethermind.TxPool
             ThisNodeInfo.AddInfo("Mem est tx   :", $"{(LruCache<Keccak, object>.CalculateMemorySize(32, MemoryAllowance.TxHashCacheSize) + LruCache<Keccak, Transaction>.CalculateMemorySize(4096, MemoryAllowance.MemPoolSize)) / 1000 / 1000}MB".PadLeft(8));
             _transactions = new DistinctValueSortedPool<Keccak, Transaction, Address>(
                 MemoryAllowance.MemPoolSize, 
-                transactionComparer ?? DefaultTxPoolComparer.Instance, 
+                new NonceCompositeComparer(transactionComparer ?? DefaultTxPoolComparer.Instance),
                 TxSenderMapping, 
                 PendingTransactionComparer.Default);
             
@@ -142,6 +142,8 @@ namespace Nethermind.TxPool
         }
 
         public Transaction[] GetPendingTransactions() => _transactions.GetSnapshot();
+        
+        public IDictionary<Address, Transaction[]> GetPendingTransactionsBySender() => _transactions.GetBucketSnapshot();
 
         public Transaction[] GetOwnPendingTransactions() => _ownTransactions.Values.ToArray();
 

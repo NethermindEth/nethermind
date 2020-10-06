@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -101,7 +102,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.SpecProvider,
                 _api.Config<ITxPoolConfig>(),
                 _api.StateProvider,
-                _api.LogManager);
+                _api.LogManager,
+                CreateTxPoolTxComparer());
 
             IBloomConfig bloomConfig = _api.Config<IBloomConfig>();
 
@@ -229,6 +231,8 @@ namespace Nethermind.Runner.Ethereum.Steps
             
             return Task.CompletedTask;
         }
+
+        protected virtual IComparer<Transaction> CreateTxPoolTxComparer() => TxPool.TxPool.DefaultTxPoolComparer.Instance;
 
         protected virtual HeaderValidator CreateHeaderValidator() =>
             new HeaderValidator(
