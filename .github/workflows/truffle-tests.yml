@@ -39,5 +39,6 @@ jobs:
       with:
         time: '20s'
     - run: |
+        cd truffleTest/
         truffle deploy --network development
         truffle test
