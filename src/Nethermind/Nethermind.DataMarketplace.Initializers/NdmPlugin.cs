@@ -5,6 +5,8 @@ using System.Reflection;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Channels.Grpc;
 using Nethermind.DataMarketplace.Consumers.Infrastructure;
@@ -49,6 +51,14 @@ namespace Nethermind.DataMarketplace.Initializers
                     _ndmApi.LogManager);
                 _ndmApi.EthJsonRpcClientProxy = new EthJsonRpcClientProxy(_ndmApi.JsonRpcClientProxy);
             }
+
+            _ndmApi.LogFinder = new LogFinder(
+                                _ndmApi.BlockTree,
+                                _ndmApi.ReceiptFinder,
+                                _ndmApi.BloomStorage,
+                                _ndmApi.LogManager,
+                                new ReceiptsRecovery(),
+                                1024);
             
             INdmCapabilityConnector capabilityConnector = await _ndmInitializer.InitAsync(_ndmApi);
 
