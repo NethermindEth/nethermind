@@ -27,19 +27,14 @@ jobs:
         node-version: '13'
     - run: npm install -g truffle
     - run: |
-        cd src/Nethermind/Nethermind.Runner
-        nohup dotnet run -c Release --config spaceneth_persistent > /dev/null 2>&1 &
-        cd ../../../
+        docker build -t neth .
+        docker run --name nethermind --network host -itd neth --config spaceneth_persistent
+        cd ..
         cd truffleTest/
         npm i sha3 --save
         npm i
         echo "silly funny task remove diamond maximum rack awesome sting chalk recycle also social banner verify" > .secret
-    - name: Sleep for 30 seconds
-      uses: jakejarvis/wait-action@v0.1.0
-      with:
-        time: '30s'
-    - run : ps ax
-    - run: |
-        cd truffleTest/
+        sleep 20
+        docker logs nethermind
         truffle deploy --network development
         truffle test
