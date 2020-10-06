@@ -16,6 +16,7 @@
 // 
 
 using System;
+using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
@@ -24,17 +25,14 @@ namespace Nethermind.Consensus.AuRa.Transactions
 {
     public class PermissionTxComparer : PermissionTxComparerBase
     {
-        private readonly Func<Transaction, bool> _isWhiteListed;
-        private readonly Func<Transaction, UInt256> _getPriority;
-
-        public PermissionTxComparer(Func<Transaction, bool> isWhiteListed, Func<Transaction, UInt256> getPriority)
+        public PermissionTxComparer(
+            IContractDataStore<Address> sendersWhitelist, 
+            IDictionaryContractDataStore<TxPriorityContract.Destination> priorities, 
+            BlockHeader blockHeader) : base(sendersWhitelist, priorities)
         {
-            _isWhiteListed = isWhiteListed ?? throw new ArgumentNullException(nameof(isWhiteListed));
-            _getPriority = getPriority ?? throw new ArgumentNullException(nameof(getPriority));
+            BlockHeader = blockHeader;
         }
 
-        protected override bool IsWhiteListed(Transaction tx) => _isWhiteListed(tx);
-
-        protected override UInt256 GetPriority(Transaction tx) => _getPriority(tx);
+        protected override BlockHeader BlockHeader { get; }
     }
 }

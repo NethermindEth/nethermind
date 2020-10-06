@@ -221,11 +221,11 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         protected override IComparer<Transaction> CreateTxPoolTxComparer()
         {
-            Address? transactionPriorityContractAddress = _api.ConfigProvider.GetConfig<IAuraConfig>()?.TransactionPriorityContractAddress;
-            if (transactionPriorityContractAddress != null)
+            Address? txPriorityContractAddress = _api.ConfigProvider.GetConfig<IAuraConfig>()?.TxPriorityContractAddress;
+            if (txPriorityContractAddress != null)
             {
                 ReadOnlyTxProcessorSource readOnlyTransactionProcessorSource = new ReadOnlyTxProcessorSource(_api.DbProvider, _api.BlockTree, _api.SpecProvider, _api.LogManager);
-                var txPriorityContract = new TxPriorityContract(_api.AbiEncoder, transactionPriorityContractAddress, readOnlyTransactionProcessorSource);
+                var txPriorityContract = new TxPriorityContract(_api.AbiEncoder, txPriorityContractAddress, readOnlyTransactionProcessorSource);
                 IBlockProcessor? blockProcessor = _api.MainBlockProcessor;
                 var whitelistContractDataStore = new HashSetContractDataStore<Address>(txPriorityContract.SendersWhitelist, blockProcessor);
                 var prioritiesContractDataStore = new SortedListContractDataStore<TxPriorityContract.Destination>(txPriorityContract.Priorities, blockProcessor, TxPriorityContract.DestinationMethodComparer.Instance);
@@ -233,7 +233,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.DisposeStack.Push(whitelistContractDataStore);
                 _api.DisposeStack.Push(prioritiesContractDataStore);
                 
-                return new PermissionContractHeadTxComparer(_api.BlockTree, whitelistContractDataStore, prioritiesContractDataStore);
+                return new PermissionContractHeadTxComparer(whitelistContractDataStore, prioritiesContractDataStore, _api.BlockTree);
             }
             
             return base.CreateTxPoolTxComparer();

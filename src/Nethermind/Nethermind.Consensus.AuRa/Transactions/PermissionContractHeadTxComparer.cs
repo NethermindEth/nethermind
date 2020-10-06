@@ -27,25 +27,16 @@ namespace Nethermind.Consensus.AuRa.Transactions
     public class PermissionContractHeadTxComparer : PermissionTxComparerBase
     {
         private readonly IBlockTree _blockTree;
-        private readonly IContractDataStore<Address> _sendersWhitelist;
-        private readonly IDictionaryContractDataStore<TxPriorityContract.Destination> _priorities;
 
-        public PermissionContractHeadTxComparer(IBlockTree blockTree,
+        public PermissionContractHeadTxComparer(
             IContractDataStore<Address> sendersWhitelist, // expected HashSet based
-            IDictionaryContractDataStore<TxPriorityContract.Destination> priorities) // expected SortedList based)
+            IDictionaryContractDataStore<TxPriorityContract.Destination> priorities, // expected SortedList based
+            IBlockTree blockTree) 
+            : base(sendersWhitelist, priorities)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _sendersWhitelist = sendersWhitelist ?? throw new ArgumentNullException(nameof(sendersWhitelist));
-            _priorities = priorities ?? throw new ArgumentNullException(nameof(priorities));
         }
 
-        protected override UInt256 GetPriority(Transaction tx) =>
-            _priorities.TryGetValue(_blockTree.Head.Header, tx, out var destination)
-                ? destination.Value
-                : UInt256.Zero;
-
-        protected override bool IsWhiteListed(Transaction tx) =>
-            // if _sendersWhitelist is HashSetContractDataStore<Address> it returns a set that then uses HashSet.Contains avoiding multiple enumeration
-            _sendersWhitelist.GetItemsFromContractAtBlock(_blockTree.Head.Header).Contains(tx.SenderAddress);
+        protected override BlockHeader BlockHeader => _blockTree.Head.Header;
     }
 }

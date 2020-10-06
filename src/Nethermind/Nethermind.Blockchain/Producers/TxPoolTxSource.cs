@@ -50,8 +50,6 @@ namespace Nethermind.Blockchain.Producers
             _logger = logManager?.GetClassLogger<TxPoolTxSource>() ?? throw new ArgumentNullException(nameof(logManager));
         }
         
-        public ITransactionComparerFactory TransactionComparerFactory { get; set; } = new SingletonTransactionComparerFactory(DefaultTxComparer.Instance);
-
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
         {
             T GetFromState<T>(Func<Keccak, Address, T> stateGetter, Address address, T defaultValue)
@@ -109,7 +107,7 @@ namespace Nethermind.Blockchain.Producers
             }
 
             IDictionary<Address, Transaction[]> pendingTransactions = _transactionPool.GetPendingTransactionsBySender();
-            IComparer<Transaction> comparer = new TxIdentityCompositeComparer(TransactionComparerFactory.CreateComparer(parent));
+            IComparer<Transaction> comparer = new TxIdentityCompositeComparer(GetComparer(parent));
             IEnumerable<Transaction> transactions = Order(pendingTransactions, comparer);
             IDictionary<Address, UInt256> remainingBalance = new Dictionary<Address, UInt256>();
             Dictionary<Address, UInt256> nonces = new Dictionary<Address, UInt256>();
@@ -176,6 +174,8 @@ namespace Nethermind.Blockchain.Producers
 
             return selected;
         }
+
+        protected virtual IComparer<Transaction> GetComparer(BlockHeader parent) => DefaultTxComparer.Instance;
 
         internal static IEnumerable<Transaction> Order(IDictionary<Address,Transaction[]> pendingTransactions, IComparer<Transaction> comparerWithIdentity)
         {

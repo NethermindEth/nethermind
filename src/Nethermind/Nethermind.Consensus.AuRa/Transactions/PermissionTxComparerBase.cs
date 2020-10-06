@@ -15,7 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Collections.Generic;
+using System.Linq;
+using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.TxPool;
@@ -24,9 +27,26 @@ namespace Nethermind.Consensus.AuRa.Transactions
 {
     public abstract class PermissionTxComparerBase : IComparer<Transaction>
     {
-        protected abstract bool IsWhiteListed(Transaction tx);
+        private readonly IContractDataStore<Address> _sendersWhitelist;
+        private readonly IDictionaryContractDataStore<TxPriorityContract.Destination> _priorities;
+
+        public PermissionTxComparerBase(IContractDataStore<Address> sendersWhitelist, // expected HashSet based
+            IDictionaryContractDataStore<TxPriorityContract.Destination> priorities) // expected SortedList based)
+        {
+            _sendersWhitelist = sendersWhitelist ?? throw new ArgumentNullException(nameof(sendersWhitelist));
+            _priorities = priorities ?? throw new ArgumentNullException(nameof(priorities));
+        }
         
-        protected abstract UInt256 GetPriority(Transaction tx);
+        protected abstract BlockHeader BlockHeader { get; }
+
+        protected UInt256 GetPriority(Transaction tx) =>
+            _priorities.TryGetValue(BlockHeader, tx, out var destination)
+                ? destination.Value
+                : UInt256.Zero;
+
+        protected bool IsWhiteListed(Transaction tx) =>
+            // if _sendersWhitelist is HashSetContractDataStore<Address> it returns a set that then uses HashSet.Contains avoiding multiple enumeration
+            _sendersWhitelist.GetItemsFromContractAtBlock(BlockHeader).Contains(tx.SenderAddress);
 
         public int Compare(Transaction x, Transaction y)
         {

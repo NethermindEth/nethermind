@@ -142,18 +142,13 @@ namespace Nethermind.Runner.Ethereum.Steps
         protected override TxPoolTxSource CreateTxPoolTxSource(ReadOnlyTxProcessingEnv processingEnv, ReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
             var comparer = TxPriorityContract.DestinationMethodComparer.Instance;
-            Address? transactionPriorityContractAddress = _auraConfig?.TransactionPriorityContractAddress;
-            if (transactionPriorityContractAddress != null)
+            Address? txPriorityContractAddress = _auraConfig?.TxPriorityContractAddress;
+            if (txPriorityContractAddress != null)
             {
-                _txPriorityContract = new TxPriorityContract(_api.AbiEncoder, transactionPriorityContractAddress, readOnlyTxProcessorSource);
+                _txPriorityContract = new TxPriorityContract(_api.AbiEncoder, txPriorityContractAddress, readOnlyTxProcessorSource);
                 _minGasPricesContractDataStore = new DictionaryContractDataStore<TxPriorityContract.Destination>(_txPriorityContract.MinGasPrices, _api.MainBlockProcessor, comparer);
                 _api.DisposeStack.Push(_minGasPricesContractDataStore);
-            }
 
-            var txPoolTxSource = base.CreateTxPoolTxSource(processingEnv, readOnlyTxProcessorSource);
-            
-            if (transactionPriorityContractAddress != null)
-            {
                 IBlockProcessor? blockProcessor = _api.MainBlockProcessor;
                 var whitelistContractDataStore = new HashSetContractDataStore<Address>(_txPriorityContract!.SendersWhitelist, blockProcessor);
                 var prioritiesContractDataStore = new SortedListContractDataStore<TxPriorityContract.Destination>(_txPriorityContract.Priorities, blockProcessor, comparer);
@@ -161,12 +156,18 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.DisposeStack.Push(whitelistContractDataStore);
                 _api.DisposeStack.Push(prioritiesContractDataStore);
 
-                txPoolTxSource.TransactionComparerFactory = new PermissionTxComparerFactory(
+                return new TxPriorityTxPoolTxSource(
+                    _api.TxPool,
+                    processingEnv.StateReader, 
+                    _api.LogManager, 
+                    CreateGasPriceTxFilter(readOnlyTxProcessorSource),
                     whitelistContractDataStore,
                     prioritiesContractDataStore);
             }
-            
-            return txPoolTxSource;
+            else
+            {
+                return base.CreateTxPoolTxSource(processingEnv, readOnlyTxProcessorSource);
+            }
         }
 
         protected override ITxSource CreateTxSourceForProducer(ReadOnlyTxProcessingEnv processingEnv, ReadOnlyTxProcessorSource readOnlyTxProcessorSource)

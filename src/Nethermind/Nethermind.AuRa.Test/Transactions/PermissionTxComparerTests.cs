@@ -35,7 +35,7 @@ using NUnit.Framework;
 
 namespace Nethermind.AuRa.Test.Transactions
 {
-    public class PermissionTxComparerFactoryTests
+    public class PermissionTxComparerTests
     {
         private static Address[] WhitelistedSenders = new[] {TestItem.AddressC, TestItem.AddressD};
 
@@ -265,9 +265,8 @@ namespace Nethermind.AuRa.Test.Transactions
 
             transactions = transactionSelect?.Invoke(transactions) ?? transactions;
             expectation = transactionSelect?.Invoke(expectation) ?? expectation;
-            
-            var comparerFactory = new PermissionTxComparerFactory(sendersWhitelist, priorities);
-            var comparer = new TxIdentityCompositeComparer(comparerFactory.CreateComparer(blockHeader));
+
+            var comparer = new PermissionTxComparer(sendersWhitelist, priorities, blockHeader);
             var txBySender = transactions.GroupBy(t => t.SenderAddress)
                 .ToDictionary(
                     g => g.Key, 

@@ -17,38 +17,37 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
+using Nethermind.Logging;
+using Nethermind.State;
+using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
-    public class PermissionTxComparerFactory : ITransactionComparerFactory
+    public class TxPriorityTxPoolTxSource : TxPoolTxSource
     {
         private readonly IContractDataStore<Address> _sendersWhitelist;
         private readonly IDictionaryContractDataStore<TxPriorityContract.Destination> _priorities;
+
         
-        public PermissionTxComparerFactory(IContractDataStore<Address> sendersWhitelist, // expected HashSet based
-            IDictionaryContractDataStore<TxPriorityContract.Destination> priorities) // expected SortedList based
+        public TxPriorityTxPoolTxSource(
+            ITxPool transactionPool, 
+            IStateReader stateReader, 
+            ILogManager logManager, 
+            ITxFilter minGasPriceFilter,
+            HashSetContractDataStore<Address> sendersWhitelist, // expected HashSet based
+            SortedListContractDataStore<TxPriorityContract.Destination> priorities) // expected SortedList based
+            : base(transactionPool, stateReader, logManager, minGasPriceFilter)
         {
             _sendersWhitelist = sendersWhitelist ?? throw new ArgumentNullException(nameof(sendersWhitelist));
             _priorities = priorities ?? throw new ArgumentNullException(nameof(priorities));
         }
-        
-        public IComparer<Transaction> CreateComparer(BlockHeader blockHeader)
-        {
-            UInt256 GetPriority(Transaction tx) =>
-                _priorities.TryGetValue(blockHeader, tx, out var destination)
-                    ? destination.Value
-                    : UInt256.Zero;
-            
-            ISet<Address> sendersWhitelist = _sendersWhitelist.GetItemsFromContractAtBlock(blockHeader).AsSet();
-            return new PermissionTxComparer(t => sendersWhitelist.Contains(t.SenderAddress), GetPriority);
-        }
+
+        protected override IComparer<Transaction> GetComparer(BlockHeader parent) => new PermissionTxComparer(_sendersWhitelist, _priorities, parent);
     }
 }
