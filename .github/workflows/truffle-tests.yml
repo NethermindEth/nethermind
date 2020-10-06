@@ -32,7 +32,6 @@ jobs:
     - run: npm install -g truffle
     - run: |
         cd truffleTest/
-        npm i truffle --save
-        npm i
+        npm install
         truffle deploy --network development
         truffle test
