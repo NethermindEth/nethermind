@@ -65,10 +65,10 @@ namespace Nethermind.Blockchain.Test.TxPools
         }
         
         [TestCaseSource(nameof(TestCases))]
-        public bool Equals_test(Transaction t1, Transaction t2) => PendingTransactionComparer.Default.Equals(t1, t2);
+        public bool Equals_test(Transaction t1, Transaction t2) => CompetingTransactionEqualityComparer.Default.Equals(t1, t2);
 
         [TestCaseSource(nameof(TestCases))]
         public bool HashCode_test(Transaction t1, Transaction t2) =>
-            PendingTransactionComparer.Default.GetHashCode(t1) == PendingTransactionComparer.Default.GetHashCode(t2);
+            CompetingTransactionEqualityComparer.Default.GetHashCode(t1) == CompetingTransactionEqualityComparer.Default.GetHashCode(t2);
     }
 }

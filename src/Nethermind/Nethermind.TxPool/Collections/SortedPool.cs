@@ -25,29 +25,34 @@ namespace Nethermind.TxPool.Collections
     public class SortedPool<TKey, TValue, TGroup>
     {
         private readonly int _capacity;
+        private readonly IComparer<TValue> _comparerWithIdentity;
         private readonly Func<TValue, TGroup> _groupMapping;
         private readonly IDictionary<TGroup, ICollection<TValue>> _buckets;
         private readonly DictionarySortedSet<TValue, TKey> _sortedValues;
+        private readonly IDictionary<TKey, TValue> _cacheMap;
         
-        protected readonly IDictionary<TKey, TValue> CacheMap;
-        protected readonly IComparer<TValue> Comparer;
-
-        public SortedPool(int capacity, IComparer<TValue> comparer, Func<TValue, TGroup> groupMapping)
+        /// <summary>
+        /// Constructor
+        /// </summary>
+        /// <param name="capacity">Max capacity</param>
+        /// <param name="comparerWithIdentity">Comparer to sort items. It must differentiate items by their identity or some items will be lost.</param>
+        /// <param name="groupMapping">Mapping from <see cref="TValue"/> to <see cref="TGroup"/></param>
+        public SortedPool(int capacity, IComparer<TValue> comparerWithIdentity, Func<TValue, TGroup> groupMapping)
         {
             _capacity = capacity;
-            Comparer = comparer;
-            _groupMapping = groupMapping;
-            CacheMap = new Dictionary<TKey, TValue>(); // do not initialize it at the full capacity
+            _comparerWithIdentity = comparerWithIdentity ?? throw new ArgumentNullException(nameof(comparerWithIdentity));
+            _groupMapping = groupMapping ?? throw new ArgumentNullException(nameof(groupMapping));
+            _cacheMap = new Dictionary<TKey, TValue>(); // do not initialize it at the full capacity
             _buckets = new Dictionary<TGroup, ICollection<TValue>>();
-            _sortedValues = new DictionarySortedSet<TValue, TKey>(comparer);
+            _sortedValues = new DictionarySortedSet<TValue, TKey>(_comparerWithIdentity);
         }
 
-        public int Count => CacheMap.Count;
+        public int Count => _cacheMap.Count;
 
         [MethodImpl(MethodImplOptions.Synchronized)]
         public TValue[] GetSnapshot()
         {
-            lock (CacheMap)
+            lock (_cacheMap)
             {
                 return _buckets.SelectMany(b => b.Value).ToArray();
             }
@@ -56,7 +61,7 @@ namespace Nethermind.TxPool.Collections
         [MethodImpl(MethodImplOptions.Synchronized)]
         public IDictionary<TGroup, TValue[]> GetBucketSnapshot()
         {
-            lock (CacheMap)
+            lock (_cacheMap)
             {
                 return _buckets.ToDictionary(g => g.Key, g => g.Value.ToArray());
             }
@@ -72,9 +77,9 @@ namespace Nethermind.TxPool.Collections
         [MethodImpl(MethodImplOptions.Synchronized)]
         public bool TryRemove(TKey key, out TValue value)
         {
-            if (CacheMap.TryGetValue(key, out value))
+            if (_cacheMap.TryGetValue(key, out value))
             {
-                lock (CacheMap)
+                lock (_cacheMap)
                 {
                     if (Remove(key, value))
                     {
@@ -96,7 +101,7 @@ namespace Nethermind.TxPool.Collections
         public bool TryGetValue(TKey key, out TValue value)
         {
             value = default;
-            return CacheMap.TryGetValue(key, out value);
+            return _cacheMap.TryGetValue(key, out value);
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
@@ -106,17 +111,17 @@ namespace Nethermind.TxPool.Collections
             {
                 TGroup group = _groupMapping(value);
 
-                lock (CacheMap)
+                lock (_cacheMap)
                 {
                     if (!_buckets.TryGetValue(group, out ICollection<TValue> bucket))
                     {
-                        _buckets[group] = bucket = new SortedSet<TValue>(Comparer);
+                        _buckets[group] = bucket = new SortedSet<TValue>(_comparerWithIdentity);
                     }
 
                     InsertCore(key, value, bucket);
                 }
 
-                if (CacheMap.Count > _capacity)
+                if (_cacheMap.Count > _capacity)
                 {
                     RemoveLast();
                 }
@@ -139,20 +144,20 @@ namespace Nethermind.TxPool.Collections
                 throw new ArgumentNullException();
             }
 
-            return !CacheMap.TryGetValue(key, out _);
+            return !_cacheMap.ContainsKey(key);
         }
         
         protected virtual void InsertCore(TKey key, TValue value, ICollection<TValue> bucket)
         {
             bucket.Add(value);
-            CacheMap.Add(key, value);
+            _cacheMap.Add(key, value);
             _sortedValues.Add(value, key);
         }
         
         protected virtual bool Remove(TKey key, TValue value)
         {
             _sortedValues.Remove(value);
-            return CacheMap.Remove(key);
+            return _cacheMap.Remove(key);
         }
     }
 }

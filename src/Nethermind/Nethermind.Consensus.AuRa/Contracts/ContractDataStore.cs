@@ -30,6 +30,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         private readonly IDataContract<T> _dataContract;
         private readonly IBlockProcessor _blockProcessor;
         private Keccak _lastHash;
+        private object lockObject = new object();
         
         protected TCollection Items { get; private set; }
         
@@ -42,7 +43,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
         public IEnumerable<T> GetItemsFromContractAtBlock(BlockHeader parent)
         {
-            lock (Items)
+            lock (lockObject)
             {
                 GetItemsFromContractAtBlock(parent, parent.Hash == _lastHash);
                 return GetItemsFromContractAtBlock(Items);
@@ -51,7 +52,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
         private void OnBlockProcessed(object sender, BlockProcessedEventArgs e)
         {
-            lock (Items)
+            lock (lockObject)
             {
                 BlockHeader header = e.Block.Header;
                 GetItemsFromContractAtBlock(header, header.ParentHash == _lastHash, e.TxReceipts);

@@ -29,6 +29,7 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
+using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -266,7 +267,7 @@ namespace Nethermind.AuRa.Test.Transactions
             expectation = transactionSelect?.Invoke(expectation) ?? expectation;
             
             var comparerFactory = new PermissionTxComparerFactory(sendersWhitelist, priorities);
-            var comparer = comparerFactory.CreateComparer(blockHeader);
+            var comparer = new TxIdentityCompositeComparer(comparerFactory.CreateComparer(blockHeader));
             var txBySender = transactions.GroupBy(t => t.SenderAddress)
                 .ToDictionary(
                     g => g.Key, 

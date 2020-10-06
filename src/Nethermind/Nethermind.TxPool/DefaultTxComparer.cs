@@ -21,28 +21,25 @@ using Nethermind.Core;
 
 namespace Nethermind.TxPool
 {
-    public partial class TxPool
+    /// <summary>
+    /// Default ordering by <see cref="Transaction.GasPrice"/> desc and then <see cref="Transaction.GasLimit"/> asc
+    /// </summary>
+    public class DefaultTxComparer : IComparer<Transaction>
     {
-        /// <summary>
-        /// Default ordering by <see cref="Transaction.GasPrice"/> desc and then <see cref="Transaction.GasLimit"/> asc
-        /// </summary>
-        public class DefaultTxPoolComparer : IComparer<Transaction>
-        {
-            public static readonly DefaultTxPoolComparer Instance = new DefaultTxPoolComparer();
+        public static readonly DefaultTxComparer Instance = new DefaultTxComparer();
             
-            public int Compare(Transaction x, Transaction y)
-            {
-                if (ReferenceEquals(x, y)) return 0;
-                if (ReferenceEquals(null, y)) return 1;
-                if (ReferenceEquals(null, x)) return -1;
+        public int Compare(Transaction x, Transaction y)
+        {
+            if (ReferenceEquals(x, y)) return 0;
+            if (ReferenceEquals(null, y)) return 1;
+            if (ReferenceEquals(null, x)) return -1;
                 
-                // then by gas price descending
-                int gasPriceComparison = y.GasPrice.CompareTo(x.GasPrice);
-                if (gasPriceComparison != 0) return gasPriceComparison;
+            // then by gas price descending
+            int gasPriceComparison = y.GasPrice.CompareTo(x.GasPrice);
+            if (gasPriceComparison != 0) return gasPriceComparison;
                 
-                // then by gas limit ascending
-                return x.GasLimit.CompareTo(y.GasLimit);
-            }
+            // then by gas limit ascending
+            return x.GasLimit.CompareTo(y.GasLimit);
         }
     }
 }

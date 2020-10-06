@@ -30,7 +30,7 @@ namespace Nethermind.Blockchain.Test.TxPools.Collections
     {
         private const int Capacity = 16;
 
-        private readonly SortedPool<Keccak, Transaction, Address> _sortedPool = new SortedPool<Keccak, Transaction, Address>(Capacity, TxPool.TxPool.DefaultTxPoolComparer.Instance, TxPool.TxPool.TxSenderMapping);
+        private readonly SortedPool<Keccak, Transaction, Address> _sortedPool = new SortedPool<Keccak, Transaction, Address>(Capacity, TxPool.DefaultTxComparer.Instance, TxPool.TxPool.TxSenderMapping);
 
         private Transaction[] _transactions = new Transaction[Capacity * 8];
         

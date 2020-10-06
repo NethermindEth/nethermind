@@ -127,11 +127,13 @@ namespace Nethermind.TxPool
 
             MemoryAllowance.MemPoolSize = txPoolConfig.Size;
             ThisNodeInfo.AddInfo("Mem est tx   :", $"{(LruCache<Keccak, object>.CalculateMemorySize(32, MemoryAllowance.TxHashCacheSize) + LruCache<Keccak, Transaction>.CalculateMemorySize(4096, MemoryAllowance.MemPoolSize)) / 1000 / 1000}MB".PadLeft(8));
+            IComparer<Transaction> comparer = new NonceCompositeComparer(transactionComparer ?? DefaultTxComparer.Instance);
             _transactions = new DistinctValueSortedPool<Keccak, Transaction, Address>(
                 MemoryAllowance.MemPoolSize, 
-                new NonceCompositeComparer(transactionComparer ?? DefaultTxPoolComparer.Instance),
+                new TxIdentityCompositeComparer(comparer),
                 TxSenderMapping, 
-                PendingTransactionComparer.Default);
+                CompetingTransactionEqualityComparer.Default,
+                comparer);
             
             _peerNotificationThreshold = txPoolConfig.PeerNotificationThreshold;
 

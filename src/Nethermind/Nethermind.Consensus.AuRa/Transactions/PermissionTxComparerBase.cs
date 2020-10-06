@@ -18,6 +18,7 @@
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Int256;
+using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
@@ -42,13 +43,9 @@ namespace Nethermind.Consensus.AuRa.Transactions
             // then order by priority descending
             int priorityComparision = GetPriority(y).CompareTo(GetPriority(x));
             if (priorityComparision != 0) return priorityComparision;
-                
-            // then by gas price descending
-            int gasPriceComparison = y.GasPrice.CompareTo(x.GasPrice);
-            if (gasPriceComparison != 0) return gasPriceComparison;
-                
-            // then by gas limit ascending
-            return x.GasLimit.CompareTo(y.GasLimit);
+
+            // then by default
+            return DefaultTxComparer.Instance.Compare(x, y);
         }
     }
 }

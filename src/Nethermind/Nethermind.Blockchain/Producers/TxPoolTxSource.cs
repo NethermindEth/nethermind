@@ -109,7 +109,7 @@ namespace Nethermind.Blockchain.Producers
             }
 
             IDictionary<Address, Transaction[]> pendingTransactions = _transactionPool.GetPendingTransactionsBySender();
-            IComparer<Transaction> comparer = TransactionComparerFactory.CreateComparer(parent);
+            IComparer<Transaction> comparer = new TxIdentityCompositeComparer(TransactionComparerFactory.CreateComparer(parent));
             IEnumerable<Transaction> transactions = Order(pendingTransactions, comparer);
             IDictionary<Address, UInt256> remainingBalance = new Dictionary<Address, UInt256>();
             Dictionary<Address, UInt256> nonces = new Dictionary<Address, UInt256>();
@@ -177,7 +177,7 @@ namespace Nethermind.Blockchain.Producers
             return selected;
         }
 
-        internal static IEnumerable<Transaction> Order(IDictionary<Address,Transaction[]> pendingTransactions, IComparer<Transaction> comparer)
+        internal static IEnumerable<Transaction> Order(IDictionary<Address,Transaction[]> pendingTransactions, IComparer<Transaction> comparerWithIdentity)
         {
             IEnumerator<Transaction>[] bySenderEnumerators = pendingTransactions
                 .Select<KeyValuePair<Address, Transaction[]>, IEnumerable<Transaction>>(g => g.Value)
@@ -190,7 +190,7 @@ namespace Nethermind.Blockchain.Producers
                 // A -> N0_P3, N1_P1, N1_P0, N3_P5...
                 // B -> N4_P4, N5_P3, N6_P3...
                 // We construct [N4_P4 (B), N0_P3 (A)] in sorted order by priority
-                var transactions = new DictionarySortedSet<Transaction, IEnumerator<Transaction>>(comparer);
+                var transactions = new DictionarySortedSet<Transaction, IEnumerator<Transaction>>(comparerWithIdentity);
             
                 for (int i = 0; i < bySenderEnumerators.Length; i++)
                 {
@@ -229,20 +229,5 @@ namespace Nethermind.Blockchain.Producers
         }
 
         public override string ToString() => $"{nameof(TxPoolTxSource)}";
-        
-        public class DefaultTxComparer : IComparer<Transaction>
-        {
-            public int Compare(Transaction x, Transaction y)
-            {
-                if (ReferenceEquals(x, y)) return 0;
-                if (ReferenceEquals(null, y)) return 1;
-                if (ReferenceEquals(null, x)) return -1;
-                
-                int gasPriceComparison = y.GasPrice.CompareTo(x.GasPrice);
-                if (gasPriceComparison != 0) return gasPriceComparison;
-                return x.GasLimit.CompareTo(y.GasLimit);
-            }
-        }
-
     }
 }

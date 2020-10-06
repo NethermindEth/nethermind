@@ -16,20 +16,24 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.TxPool.Collections
 {
     public class DistinctValueSortedPool<TKey, TValue, TGroup> : SortedPool<TKey, TValue, TGroup>
     {
+        private readonly IComparer<TValue> _comparer;
         private readonly IDictionary<TValue, KeyValuePair<TKey, TValue>> _distinctDictionary;
 
         public DistinctValueSortedPool(
             int capacity,
-            IComparer<TValue> comparer,
+            IComparer<TValue> comparerWithIdentity,
             Func<TValue, TGroup> groupMapping,
-            IEqualityComparer<TValue> distinctComparer) 
-            : base(capacity, comparer, groupMapping)
+            IEqualityComparer<TValue> distinctComparer,
+            IComparer<TValue> comparer) 
+            : base(capacity, comparerWithIdentity, groupMapping)
         {
+            _comparer = comparer;
             _distinctDictionary = new Dictionary<TValue, KeyValuePair<TKey, TValue>>(distinctComparer);
         }
 
@@ -37,12 +41,14 @@ namespace Nethermind.TxPool.Collections
         {
             lock (_distinctDictionary)
             {
+                base.InsertCore(key, value, collection);
+                
                 if (_distinctDictionary.TryGetValue(value, out var oldKvp))
                 {
                     TryRemove(oldKvp.Key, out _);
                 }
 
-                base.InsertCore(key, value, collection);
+                
                 _distinctDictionary[value] = new KeyValuePair<TKey, TValue>(key, value);
             }
         }
@@ -63,7 +69,7 @@ namespace Nethermind.TxPool.Collections
                 // either there is no distinct value or it would go before (or at same place) as old value
                 // if it would go after old value in order, we ignore it and wont add it
                 return base.CanInsert(key, value)
-                       && (!_distinctDictionary.TryGetValue(value, out var oldKvp) || Comparer.Compare(oldKvp.Value, value) >= 0);
+                       && (!_distinctDictionary.TryGetValue(value, out var oldKvp) || _comparer.Compare(value, oldKvp.Value) <= 0);
             }
         }
 
