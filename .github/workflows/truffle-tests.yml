@@ -34,10 +34,11 @@ jobs:
         npm i sha3 --save
         npm i
         echo "silly funny task remove diamond maximum rack awesome sting chalk recycle also social banner verify" > .secret
-    - name: Sleep for 20 seconds
+    - name: Sleep for 30 seconds
       uses: jakejarvis/wait-action@v0.1.0
       with:
-        time: '20s'
+        time: '30s'
+    - run : ps ax
     - run: |
         cd truffleTest/
         truffle deploy --network development
