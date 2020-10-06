@@ -132,7 +132,7 @@ namespace Nethermind.TxPool
             comparer = new NonceTransactionComparerDecorator(comparer ?? GasBasedTxComparer.Instance);
             _transactions = new DistinctValueSortedPool<Keccak, Transaction, Address>(
                 MemoryAllowance.MemPoolSize, 
-                //in order to sort properly and not loose transactions we need to differentiate on their identity which provided comparer might not be doing
+                // in order to sort properly and not loose transactions we need to differentiate on their identity which provided comparer might not be doing
                 new TxIdentityCompositeDecorator(comparer),
                 TxSenderMapping, 
                 CompetingTransactionEqualityComparer.Instance,
