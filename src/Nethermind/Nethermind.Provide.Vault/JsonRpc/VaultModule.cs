@@ -151,6 +151,10 @@ namespace Nethermind.Vault.JsonRpc
         {
             try
             {
+                if (message.StartsWith("0x"))
+                {
+                    throw new Exception($"Vault message should not be in hex; message: {message}");
+                }
                 string result = await _vaultService.Sign(Guid.Parse(vaultId), Guid.Parse(keyId), message);
                 return ResultWrapper<string>.Success(result);
             }
@@ -165,6 +169,10 @@ namespace Nethermind.Vault.JsonRpc
         {
             try
             {
+                if (message.StartsWith("0x"))
+                {
+                    throw new Exception($"Vault message should not be in hex; message: {message}");
+                }
                 bool result = await _vaultService.Verify(Guid.Parse(vaultId), Guid.Parse(keyId), message, signature);
                 return ResultWrapper<bool>.Success(result);
             }

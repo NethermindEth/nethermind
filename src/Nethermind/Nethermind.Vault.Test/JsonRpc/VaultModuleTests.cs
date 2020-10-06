@@ -46,6 +46,8 @@ namespace Nethermind.Vault.Test.JsonRpc
             _config.Scheme = "http";
             _config.Path = "api/v1";
             _config.Token = $"bearer  {TestContext.Parameters["token"]}";
+            var unsealTask = VaultUnsealHelper.UnsealVault(_config);
+            unsealTask.Wait();
             _vaultService = new VaultService(_config, new TestLogManager(LogLevel.Trace));
             _vaultModule = new VaultModule(_vaultService, new TestLogManager(LogLevel.Trace));
 

@@ -20,6 +20,8 @@ namespace Nethermind.Vault.Test
             {
                 key = key
             };
+
+            // with a new version of the Provide Nuget package we should remove httpClient call and use the provide.Unseal method
             using (var httpClient = new HttpClient())
             {
                 httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("bearer", config.Token);
