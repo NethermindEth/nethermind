@@ -23,7 +23,7 @@ jobs:
         git clone https://github.com/NethermindEth/truffleTest.git
     - name: Run Netherind on Spaceneth
       run: |
-        cd nethermind/src/Nethermind
+        cd src/Nethermind
         dotnet build Nethermind.sln -c Release
         cd Nethermind.Runner
         nohup dotnet run -c Release --no-build -- --config spaceneth_persistent > /dev/null 2>&1 &
