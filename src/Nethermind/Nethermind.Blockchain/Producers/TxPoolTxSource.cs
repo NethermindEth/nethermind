@@ -107,7 +107,8 @@ namespace Nethermind.Blockchain.Producers
             }
 
             IDictionary<Address, Transaction[]> pendingTransactions = _transactionPool.GetPendingTransactionsBySender();
-            IComparer<Transaction> comparer = new TxIdentityCompositeComparer(GetComparer(parent));
+            //in order to sort properly and not loose transactions we need to differentiate on their identity which provided comparer might not be doing 
+            IComparer<Transaction> comparer = new TxIdentityCompositeDecorator(GetComparer(parent));   
             IEnumerable<Transaction> transactions = Order(pendingTransactions, comparer);
             IDictionary<Address, UInt256> remainingBalance = new Dictionary<Address, UInt256>();
             Dictionary<Address, UInt256> nonces = new Dictionary<Address, UInt256>();
@@ -175,7 +176,7 @@ namespace Nethermind.Blockchain.Producers
             return selected;
         }
 
-        protected virtual IComparer<Transaction> GetComparer(BlockHeader parent) => DefaultTxComparer.Instance;
+        protected virtual IComparer<Transaction> GetComparer(BlockHeader parent) => GasBasedTxComparer.Instance;
 
         internal static IEnumerable<Transaction> Order(IDictionary<Address,Transaction[]> pendingTransactions, IComparer<Transaction> comparerWithIdentity)
         {

@@ -24,11 +24,11 @@ namespace Nethermind.TxPool
     /// <summary>
     /// Default ordering by <see cref="Transaction.GasPrice"/> desc and then <see cref="Transaction.GasLimit"/> asc
     /// </summary>
-    public class DefaultTxComparer : IComparer<Transaction>
+    public class GasBasedTxComparer : IComparer<Transaction>
     {
-        public static readonly DefaultTxComparer Instance = new DefaultTxComparer();
-
-        private DefaultTxComparer() { }
+        public static readonly GasBasedTxComparer Instance = new GasBasedTxComparer();
+        
+        private GasBasedTxComparer() { }
 
         public int Compare(Transaction x, Transaction y)
         {

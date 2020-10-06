@@ -110,14 +110,14 @@ namespace Nethermind.TxPool
         /// <param name="txPoolConfig"></param>
         /// <param name="stateProvider"></param>
         /// <param name="logManager"></param>
-        /// <param name="transactionComparer"></param>
+        /// <param name="comparer"></param>
         public TxPool(ITxStorage txStorage,
             IEthereumEcdsa ecdsa,
             ISpecProvider specProvider,
             ITxPoolConfig txPoolConfig,
             IStateProvider stateProvider,
             ILogManager logManager,
-            IComparer<Transaction> transactionComparer = null)
+            IComparer<Transaction> comparer = null)
         {
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -127,12 +127,16 @@ namespace Nethermind.TxPool
 
             MemoryAllowance.MemPoolSize = txPoolConfig.Size;
             ThisNodeInfo.AddInfo("Mem est tx   :", $"{(LruCache<Keccak, object>.CalculateMemorySize(32, MemoryAllowance.TxHashCacheSize) + LruCache<Keccak, Transaction>.CalculateMemorySize(4096, MemoryAllowance.MemPoolSize)) / 1000 / 1000}MB".PadLeft(8));
-            IComparer<Transaction> comparer = new NonceCompositeTransactionComparer(transactionComparer ?? DefaultTxComparer.Instance);
+            
+            // we need to ensure transactions are ordered by nonce, which might not be done in supplied comparer
+            comparer = new NonceTransactionComparerDecorator(comparer ?? GasBasedTxComparer.Instance);
             _transactions = new DistinctValueSortedPool<Keccak, Transaction, Address>(
                 MemoryAllowance.MemPoolSize, 
-                new TxIdentityCompositeComparer(comparer),
+                //in order to sort properly and not loose transactions we need to differentiate on their identity which provided comparer might not be doing
+                new TxIdentityCompositeDecorator(comparer),
                 TxSenderMapping, 
                 CompetingTransactionEqualityComparer.Instance,
+                // we also need to properly sort without differentiate of identity to decide which transaction to keep in distinct and if equal keep newer
                 comparer);
             
             _peerNotificationThreshold = txPoolConfig.PeerNotificationThreshold;

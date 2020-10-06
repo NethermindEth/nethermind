@@ -65,7 +65,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
             if (priorityComparision != 0) return priorityComparision;
 
             // then by default
-            return DefaultTxComparer.Instance.Compare(x, y);
+            return GasBasedTxComparer.Instance.Compare(x, y);
         }
     }
 }

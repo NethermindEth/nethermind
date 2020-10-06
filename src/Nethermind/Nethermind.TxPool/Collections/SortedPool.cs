@@ -52,19 +52,13 @@ namespace Nethermind.TxPool.Collections
         [MethodImpl(MethodImplOptions.Synchronized)]
         public TValue[] GetSnapshot()
         {
-            lock (_cacheMap)
-            {
-                return _buckets.SelectMany(b => b.Value).ToArray();
-            }
+            return _buckets.SelectMany(b => b.Value).ToArray();
         }
         
         [MethodImpl(MethodImplOptions.Synchronized)]
         public IDictionary<TGroup, TValue[]> GetBucketSnapshot()
         {
-            lock (_cacheMap)
-            {
-                return _buckets.ToDictionary(g => g.Key, g => g.Value.ToArray());
-            }
+            return _buckets.ToDictionary(g => g.Key, g => g.Value.ToArray());
         }
         
         [MethodImpl(MethodImplOptions.Synchronized)]
@@ -79,18 +73,16 @@ namespace Nethermind.TxPool.Collections
         {
             if (_cacheMap.TryGetValue(key, out value))
             {
-                lock (_cacheMap)
+                if (Remove(key, value))
                 {
-                    if (Remove(key, value))
+                    TGroup groupMapping = _groupMapping(value);
+                    if (_buckets.TryGetValue(groupMapping, out var collection))
                     {
-                        TGroup groupMapping = _groupMapping(value);
-                        if (_buckets.TryGetValue(groupMapping, out var collection))
-                        {
-                            collection.Remove(value);
-                            return true;
-                        }
+                        collection.Remove(value);
+                        return true;
                     }
                 }
+
             }
 
             value = default;
@@ -111,15 +103,12 @@ namespace Nethermind.TxPool.Collections
             {
                 TGroup group = _groupMapping(value);
 
-                lock (_cacheMap)
+                if (!_buckets.TryGetValue(group, out ICollection<TValue> bucket))
                 {
-                    if (!_buckets.TryGetValue(group, out ICollection<TValue> bucket))
-                    {
-                        _buckets[group] = bucket = new SortedSet<TValue>(_comparerWithIdentity);
-                    }
-
-                    InsertCore(key, value, bucket);
+                    _buckets[group] = bucket = new SortedSet<TValue>(_comparerWithIdentity);
                 }
+
+                InsertCore(key, value, bucket);
 
                 if (_cacheMap.Count > _capacity)
                 {

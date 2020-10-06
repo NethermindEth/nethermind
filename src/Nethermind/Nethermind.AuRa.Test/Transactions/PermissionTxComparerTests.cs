@@ -270,7 +270,7 @@ namespace Nethermind.AuRa.Test.Transactions
             var txBySender = transactions.GroupBy(t => t.SenderAddress)
                 .ToDictionary(
                     g => g.Key, 
-                    g => g.OrderBy(t => t, new NonceCompositeTransactionComparer(comparer)).ToArray());
+                    g => g.OrderBy(t => t, new NonceTransactionComparerDecorator(comparer)).ToArray());
             
             var orderedTransactions = TxPoolTxSource.Order(txBySender, comparer).ToArray();
             orderedTransactions.Should().BeEquivalentTo(expectation, o => o.WithStrictOrdering());

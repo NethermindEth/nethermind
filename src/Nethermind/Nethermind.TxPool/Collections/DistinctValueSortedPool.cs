@@ -36,41 +36,32 @@ namespace Nethermind.TxPool.Collections
             _comparer = comparer;
             _distinctDictionary = new Dictionary<TValue, KeyValuePair<TKey, TValue>>(distinctComparer);
         }
-
+        
         protected override void InsertCore(TKey key, TValue value, ICollection<TValue> collection)
         {
-            lock (_distinctDictionary)
-            {
-                base.InsertCore(key, value, collection);
-                
-                if (_distinctDictionary.TryGetValue(value, out var oldKvp))
-                {
-                    TryRemove(oldKvp.Key, out _);
-                }
+            base.InsertCore(key, value, collection);
 
-                
-                _distinctDictionary[value] = new KeyValuePair<TKey, TValue>(key, value);
+            if (_distinctDictionary.TryGetValue(value, out var oldKvp))
+            {
+                TryRemove(oldKvp.Key, out _);
             }
+
+
+            _distinctDictionary[value] = new KeyValuePair<TKey, TValue>(key, value);
         }
-        
+
         protected override bool Remove(TKey key, TValue value)
         {
-            lock (_distinctDictionary)
-            {
-                _distinctDictionary.Remove(value);
-                return base.Remove(key, value);
-            }
+            _distinctDictionary.Remove(value);
+            return base.Remove(key, value);
         }
 
         protected override bool CanInsert(TKey key, TValue value)
         {
-            lock (_distinctDictionary)
-            {
-                // either there is no distinct value or it would go before (or at same place) as old value
-                // if it would go after old value in order, we ignore it and wont add it
-                return base.CanInsert(key, value)
-                       && (!_distinctDictionary.TryGetValue(value, out var oldKvp) || _comparer.Compare(value, oldKvp.Value) <= 0);
-            }
+            // either there is no distinct value or it would go before (or at same place) as old value
+            // if it would go after old value in order, we ignore it and wont add it
+            return base.CanInsert(key, value)
+                   && (!_distinctDictionary.TryGetValue(value, out var oldKvp) || _comparer.Compare(value, oldKvp.Value) <= 0);
         }
 
     }

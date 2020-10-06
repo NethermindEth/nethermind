@@ -23,11 +23,11 @@ namespace Nethermind.TxPool
     /// <summary>
     /// This comparer uses inner comparer to do comparision, but when Transactions are same it defaults to <see cref="Transaction.Hash"/> comparision to differentiate between transactions  
     /// </summary>
-    public class TxIdentityCompositeComparer : IComparer<Transaction>
+    public class TxIdentityCompositeDecorator : IComparer<Transaction>
     {
         private readonly IComparer<Transaction> _innerComparer;
 
-        public TxIdentityCompositeComparer(IComparer<Transaction> innerComparer)
+        public TxIdentityCompositeDecorator(IComparer<Transaction> innerComparer)
         {
             _innerComparer = innerComparer;
         }

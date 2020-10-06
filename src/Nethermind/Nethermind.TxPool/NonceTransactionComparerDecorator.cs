@@ -24,11 +24,11 @@ namespace Nethermind.TxPool
     /// <summary>
     /// Orders first by <see cref="Transaction.Nonce"/> asc and then by inner comparer
     /// </summary>
-    public class NonceCompositeTransactionComparer : IComparer<Transaction>
+    public class NonceTransactionComparerDecorator : IComparer<Transaction>
     {
         private readonly IComparer<Transaction> _innerComparer;
 
-        public NonceCompositeTransactionComparer(IComparer<Transaction> innerComparer)
+        public NonceTransactionComparerDecorator(IComparer<Transaction> innerComparer)
         {
             _innerComparer = innerComparer ?? throw new ArgumentNullException(nameof(innerComparer));
         }

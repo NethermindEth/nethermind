@@ -75,10 +75,10 @@ namespace Nethermind.Blockchain.Test.TxPools.Collections
         {
             var pool = new DistinctValueSortedPool<Keccak, Transaction, Address>(
                 Capacity, 
-                new TxIdentityCompositeComparer(DefaultTxComparer.Instance), 
+                new TxIdentityCompositeDecorator(GasBasedTxComparer.Instance), 
                 TxPool.TxPool.TxSenderMapping, 
                 CompetingTransactionEqualityComparer.Instance, 
-                DefaultTxComparer.Instance);
+                GasBasedTxComparer.Instance);
 
             foreach (var transaction in transactions)
             {
@@ -94,10 +94,10 @@ namespace Nethermind.Blockchain.Test.TxPools.Collections
         {
             var pool = new DistinctValueSortedPool<Keccak, Transaction, Address>(
                 Capacity, 
-                new TxIdentityCompositeComparer(DefaultTxComparer.Instance), 
+                new TxIdentityCompositeDecorator(GasBasedTxComparer.Instance), 
                 TxPool.TxPool.TxSenderMapping, 
                 CompetingTransactionEqualityComparer.Instance, 
-                DefaultTxComparer.Instance);
+                GasBasedTxComparer.Instance);
 
             var transactions = gasPriceAscending
                 ? GenerateTransactions(address: TestItem.AddressB, nonce: 3).OrderBy(t => t.GasPrice)
