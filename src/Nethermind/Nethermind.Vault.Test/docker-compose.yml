@@ -169,6 +169,7 @@ services:
       - DATABASE_PASSWORD=vault
       - LOG_LEVEL=DEBUG
       - PORT=8080
+      - SEAL_UNSEAL_VALIDATION_HASH=0x7972716be008b7635a1d882fb7e3fcb93cbeeaeb4031c65b15de6754b3ad47db
     healthcheck:
       test: ["CMD", "curl", "-f", "http://vault:8080/status"]
       interval: 1m

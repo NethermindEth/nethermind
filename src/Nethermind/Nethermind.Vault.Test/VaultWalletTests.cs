@@ -22,7 +22,6 @@ using Nethermind.Vault.Config;
 using NUnit.Framework;
 using System.Threading.Tasks;
 using Nethermind.Core;
-using Nethermind.Core.Test;
 
 namespace Nethermind.Vault.Test
 {
@@ -41,7 +40,8 @@ namespace Nethermind.Vault.Test
             config.Scheme = "http";
             config.Path = "api/v1";
             config.Token = $"bearer  {TestContext.Parameters["token"]}";
-
+            var unsealTask = VaultUnsealHelper.UnsealVault(config);
+            unsealTask.Wait();
             _vaultService = new VaultService(
                 config,
                 new TestLogManager(LogLevel.Trace)

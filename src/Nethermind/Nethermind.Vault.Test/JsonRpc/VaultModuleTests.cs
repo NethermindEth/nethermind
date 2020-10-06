@@ -25,7 +25,6 @@ using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Vault.Config;
 using Nethermind.Vault.JsonRpc;
-using NSubstitute;
 using NUnit.Framework;
 using provide.Model.Vault;
 
