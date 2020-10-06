@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Timers;
@@ -36,7 +37,7 @@ namespace Nethermind.TxPool
     /// Stores all pending transactions. These will be used by block producer if this node is a miner / validator
     /// or simply for broadcasting and tracing in other cases.
     /// </summary>
-    public class TxPool : ITxPool, IDisposable
+    public partial class TxPool : ITxPool, IDisposable
     {
         private readonly object _locker = new object();
 
@@ -60,7 +61,7 @@ namespace Nethermind.TxPool
         private static readonly ThreadLocal<Random> Random =
             new ThreadLocal<Random>(() => new Random(Interlocked.Increment(ref _seed)));
 
-        private readonly SortedPool<Keccak, Transaction> _transactions;
+        private readonly SortedPool<Keccak, Transaction, Address> _transactions;
 
         private readonly ISpecProvider _specProvider;
         private readonly IStateProvider _stateProvider;
@@ -78,9 +79,7 @@ namespace Nethermind.TxPool
         /// </summary>
         private readonly ConcurrentDictionary<Keccak, (Transaction tx, long blockNumber)> _fadingOwnTransactions
             = new ConcurrentDictionary<Keccak, (Transaction tx, long blockNumber)>();
-
-        private readonly ITimestamper _timestamper;
-
+        
         /// <summary>
         /// Long term storage for pending transactions.
         /// </summary>
@@ -106,31 +105,34 @@ namespace Nethermind.TxPool
         /// (by miners or validators) or simply informing other nodes about known pending transactions (broadcasting).
         /// </summary>
         /// <param name="txStorage">Tx storage used to reject known transactions.</param>
-        /// <param name="timestamper">Used for calculating the difference between the current time and the time when the transaction was added.</param>
         /// <param name="ecdsa">Used to recover sender addresses from transaction signatures.</param>
         /// <param name="specProvider">Used for retrieving information on EIPs that may affect tx signature scheme.</param>
         /// <param name="txPoolConfig"></param>
         /// <param name="stateProvider"></param>
         /// <param name="logManager"></param>
-        public TxPool(
-            ITxStorage txStorage,
-            ITimestamper timestamper,
+        /// <param name="transactionComparer"></param>
+        public TxPool(ITxStorage txStorage,
             IEthereumEcdsa ecdsa,
             ISpecProvider specProvider,
             ITxPoolConfig txPoolConfig,
             IStateProvider stateProvider,
-            ILogManager logManager)
+            ILogManager logManager,
+            IComparer<Transaction> transactionComparer = null)
         {
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _txStorage = txStorage ?? throw new ArgumentNullException(nameof(txStorage));
-            _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
 
             MemoryAllowance.MemPoolSize = txPoolConfig.Size;
             ThisNodeInfo.AddInfo("Mem est tx   :", $"{(LruCache<Keccak, object>.CalculateMemorySize(32, MemoryAllowance.TxHashCacheSize) + LruCache<Keccak, Transaction>.CalculateMemorySize(4096, MemoryAllowance.MemPoolSize)) / 1000 / 1000}MB".PadLeft(8));
-            _transactions = new DistinctValueSortedPool<Keccak, Transaction>(MemoryAllowance.MemPoolSize, (t1, t2) => t1.GasPrice.CompareTo(t2.GasPrice), PendingTransactionComparer.Default);
+            _transactions = new DistinctValueSortedPool<Keccak, Transaction, Address>(
+                MemoryAllowance.MemPoolSize, 
+                transactionComparer ?? DefaultTxPoolComparer.Instance, 
+                TxSenderMapping, 
+                PendingTransactionComparer.Default);
+            
             _peerNotificationThreshold = txPoolConfig.PeerNotificationThreshold;
 
             _ownTimer = new Timer(500);
@@ -502,5 +504,7 @@ namespace Nethermind.TxPool
 
             public Nonce Increment() => new Nonce(Value + 1);
         }
+
+        public static Address TxSenderMapping(Transaction tx) => tx.SenderAddress;
     }
 }

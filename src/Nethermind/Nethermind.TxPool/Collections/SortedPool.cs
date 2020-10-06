@@ -25,18 +25,21 @@ namespace Nethermind.TxPool.Collections
     public class SortedPool<TKey, TValue, TGroup>
     {
         private readonly int _capacity;
+        private readonly Func<TValue, TGroup> _groupMapping;
+        private readonly IDictionary<TGroup, ICollection<TValue>> _buckets;
+        private readonly DictionarySortedSet<TValue, TKey> _sortedValues;
+        
+        protected readonly IDictionary<TKey, TValue> CacheMap;
         protected readonly IComparer<TValue> Comparer;
-        protected readonly Func<TValue, TGroup> GroupMapping;
-        protected readonly DictionarySortedSet<TKey, TValue> CacheMap;
-        protected readonly IDictionary<TGroup, ICollection<TValue>> Buckets;
 
         public SortedPool(int capacity, IComparer<TValue> comparer, Func<TValue, TGroup> groupMapping)
         {
             _capacity = capacity;
             Comparer = comparer;
-            GroupMapping = groupMapping;
-            CacheMap = new DictionarySortedSet<TKey, TValue>(); // do not initialize it at the full capacity
-            Buckets = new Dictionary<TGroup, ICollection<TValue>>();
+            _groupMapping = groupMapping;
+            CacheMap = new Dictionary<TKey, TValue>(); // do not initialize it at the full capacity
+            _buckets = new Dictionary<TGroup, ICollection<TValue>>();
+            _sortedValues = new DictionarySortedSet<TValue, TKey>(comparer);
         }
 
         public int Count => CacheMap.Count;
@@ -44,50 +47,74 @@ namespace Nethermind.TxPool.Collections
         [MethodImpl(MethodImplOptions.Synchronized)]
         public TValue[] GetSnapshot()
         {
-            return Buckets.SelectMany(b => b.Value).ToArray();
+            lock (CacheMap)
+            {
+                return _buckets.SelectMany(b => b.Value).ToArray();
+            }
+        }
+        
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public IDictionary<TGroup, TValue[]> GetBucketSnapshot()
+        {
+            lock (CacheMap)
+            {
+                return _buckets.ToDictionary(g => g.Key, g => g.Value.ToArray());
+            }
+        }
+        
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public TValue TakeFirst()
+        {
+            TryRemove(_sortedValues.Min.Value, out TValue value);
+            return value;
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool TryRemove(TKey key, out TValue tx)
+        public bool TryRemove(TKey key, out TValue value)
         {
-            if (CacheMap.TryGetValue(key, out tx))
+            if (CacheMap.TryGetValue(key, out value))
             {
-                if (Remove(key))
+                lock (CacheMap)
                 {
-                    TGroup groupMapping = GroupMapping(tx);
-                    if (Buckets.TryGetValue(groupMapping, out var collection))
+                    if (Remove(key, value))
                     {
-                        collection.Remove(tx);
-                        return true;
+                        TGroup groupMapping = _groupMapping(value);
+                        if (_buckets.TryGetValue(groupMapping, out var collection))
+                        {
+                            collection.Remove(value);
+                            return true;
+                        }
                     }
                 }
             }
 
-            tx = default;
+            value = default;
             return false;
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool TryGetValue(TKey key, out TValue tx)
+        public bool TryGetValue(TKey key, out TValue value)
         {
-            tx = default;
-            return CacheMap.TryGetValue(key, out tx);
+            value = default;
+            return CacheMap.TryGetValue(key, out value);
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool TryInsert(TKey key, TValue val)
+        public bool TryInsert(TKey key, TValue value)
         {
-            if (CanInsert(key, val))
+            if (CanInsert(key, value))
             {
-                TGroup group = GroupMapping(val);
-                if (!Buckets.TryGetValue(group, out ICollection<TValue> bucket))
+                TGroup group = _groupMapping(value);
+
+                lock (CacheMap)
                 {
-                    Buckets[group] = bucket = new SortedSet<TValue>(Comparer);
+                    if (!_buckets.TryGetValue(group, out ICollection<TValue> bucket))
+                    {
+                        _buckets[group] = bucket = new SortedSet<TValue>(Comparer);
+                    }
+
+                    InsertCore(key, value, bucket);
                 }
-                
-                bucket.Add(val);
-                
-                InsertCore(key, val);
 
                 if (CacheMap.Count > _capacity)
                 {
@@ -102,7 +129,7 @@ namespace Nethermind.TxPool.Collections
 
         private void RemoveLast()
         {
-            TryRemove(CacheMap.Max.Key, out _);
+            TryRemove(_sortedValues.Max.Value, out _);
         }
         
         protected virtual bool CanInsert(TKey key, TValue value)
@@ -115,11 +142,17 @@ namespace Nethermind.TxPool.Collections
             return !CacheMap.TryGetValue(key, out _);
         }
         
-        protected virtual void InsertCore(TKey key, TValue newNode)
+        protected virtual void InsertCore(TKey key, TValue value, ICollection<TValue> bucket)
         {
-            CacheMap.Add(key, newNode);
+            bucket.Add(value);
+            CacheMap.Add(key, value);
+            _sortedValues.Add(value, key);
         }
         
-        protected virtual bool Remove(TKey key) => CacheMap.Remove(key);
+        protected virtual bool Remove(TKey key, TValue value)
+        {
+            _sortedValues.Remove(value);
+            return CacheMap.Remove(key);
+        }
     }
 }

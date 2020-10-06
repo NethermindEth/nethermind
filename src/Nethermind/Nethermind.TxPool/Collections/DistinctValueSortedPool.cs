@@ -21,42 +21,51 @@ namespace Nethermind.TxPool.Collections
 {
     public class DistinctValueSortedPool<TKey, TValue, TGroup> : SortedPool<TKey, TValue, TGroup>
     {
-        private readonly IDictionary<TValue, LinkedListNode<KeyValuePair<TKey, TValue>>> _distinctDictionary;
+        private readonly IDictionary<TValue, KeyValuePair<TKey, TValue>> _distinctDictionary;
 
-        public DistinctValueSortedPool(int capacity, IComparer<TValue> comparer, Func<TValue, TGroup> groupMapping, IEqualityComparer<TValue> distinctComparer) : base(capacity, comparer)
+        public DistinctValueSortedPool(
+            int capacity,
+            IComparer<TValue> comparer,
+            Func<TValue, TGroup> groupMapping,
+            IEqualityComparer<TValue> distinctComparer) 
+            : base(capacity, comparer, groupMapping)
         {
-            _distinctDictionary = new Dictionary<TValue, LinkedListNode<KeyValuePair<TKey, TValue>>>(distinctComparer);
+            _distinctDictionary = new Dictionary<TValue, KeyValuePair<TKey, TValue>>(distinctComparer);
         }
 
-        protected override void InsertCore(TKey key, LinkedListNode<KeyValuePair<TKey, TValue>> newNode)
+        protected override void InsertCore(TKey key, TValue value, ICollection<TValue> collection)
         {
-            base.InsertCore(key, newNode);
-            var value = newNode.Value.Value;
-            
-            // if there was a node already with same distinct value we need to remove it
-            if (_distinctDictionary.TryGetValue(value, out var oldNode))
+            lock (_distinctDictionary)
             {
-                LruList.Remove(oldNode);
-                Remove(oldNode.Value.Key);
+                if (_distinctDictionary.TryGetValue(value, out var oldKvp))
+                {
+                    TryRemove(oldKvp.Key, out _);
+                }
+
+                base.InsertCore(key, value, collection);
+                _distinctDictionary[value] = new KeyValuePair<TKey, TValue>(key, value);
             }
-
-            _distinctDictionary[value] = newNode;
         }
-
-        protected override bool Remove(TKey key)
-        {
-            if (CacheMap.TryGetValue(key, out var node))
-            {
-                _distinctDictionary.Remove(node.Value.Value);
-            }
-            
-            return base.Remove(key);
-        }
-
-        protected override bool CanInsert(TKey key, TValue value) =>
-            // either there is no distinct value or it would go before (or at same place) as old value
-            // if it would go after old value in order, we ignore it and wont add it
-            base.CanInsert(key, value) && (!_distinctDictionary.TryGetValue(value, out var oldNode) || Comparer(value, oldNode.Value.Value) >= 0);
         
+        protected override bool Remove(TKey key, TValue value)
+        {
+            lock (_distinctDictionary)
+            {
+                _distinctDictionary.Remove(value);
+                return base.Remove(key, value);
+            }
+        }
+
+        protected override bool CanInsert(TKey key, TValue value)
+        {
+            lock (_distinctDictionary)
+            {
+                // either there is no distinct value or it would go before (or at same place) as old value
+                // if it would go after old value in order, we ignore it and wont add it
+                return base.CanInsert(key, value)
+                       && (!_distinctDictionary.TryGetValue(value, out var oldKvp) || Comparer.Compare(oldKvp.Value, value) >= 0);
+            }
+        }
+
     }
 }

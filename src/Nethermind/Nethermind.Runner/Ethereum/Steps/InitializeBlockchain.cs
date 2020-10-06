@@ -97,7 +97,6 @@ namespace Nethermind.Runner.Ethereum.Steps
             _api.EthereumEcdsa = new EthereumEcdsa(_api.SpecProvider.ChainId, _api.LogManager);
             _api.TxPool = new TxPool.TxPool(
                 new PersistentTxStorage(_api.DbProvider.PendingTxsDb),
-                Timestamper.Default,
                 _api.EthereumEcdsa,
                 _api.SpecProvider,
                 _api.Config<ITxPoolConfig>(),
