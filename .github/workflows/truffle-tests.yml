@@ -16,7 +16,6 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install libsnappy-dev libc6-dev libc6
-        npm i -g truffle
     - name: Updating submodules
       run: git submodule update --init src/rocksdb-sharp src/int256 src/Dirichlet
     - name: Cloning truffle tests
@@ -31,6 +30,7 @@ jobs:
     - name: Run truffle deploy
       run: |
         cd truffleTest/
+        npm i truffle --save
         npm i
         truffle deploy --network development
     - name: Run truffle tests
