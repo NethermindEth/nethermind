@@ -21,15 +21,15 @@ jobs:
     - name: Cloning truffle tests
       run: |
         git clone https://github.com/NethermindEth/truffleTest.git
+    - name: Build nethermind docker
+      run: docker build -t neth .
     - name: Run truffle deploy & test
       uses: actions/setup-node@v1.4.4
       with:
         node-version: '13'
     - run: npm install -g truffle
     - run: |
-        docker build -t neth .
         docker run --name nethermind --network host -itd neth --config spaceneth_persistent
-        cd ..
         cd truffleTest/
         npm i sha3 --save
         npm i
