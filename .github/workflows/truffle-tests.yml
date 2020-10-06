@@ -34,5 +34,6 @@ jobs:
         cd truffleTest/
         npm i sha3 --save
         npm i
+        echo "silly funny task remove diamond maximum rack awesome sting chalk recycle also social banner verify" > .secret
         truffle deploy --network development
         truffle test
