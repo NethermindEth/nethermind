@@ -27,7 +27,7 @@ jobs:
       with:
         node-version: '13'
     - run: npm install -g truffle
-    - name: Running truffle deploy & test
+    - name: Running truffle deploy
       run: |
         docker run --name nethermind --network host -itd neth --config spaceneth_persistent
         cd truffleTest/
@@ -36,4 +36,3 @@ jobs:
         echo "silly funny task remove diamond maximum rack awesome sting chalk recycle also social banner verify" > .secret
         sleep 20
         truffle deploy --network development
-        truffle test
