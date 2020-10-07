@@ -130,8 +130,8 @@ namespace Nethermind.TxPool
 
             MemoryAllowance.MemPoolSize = txPoolConfig.Size;
             ThisNodeInfo.AddInfo("Mem est tx   :", $"{(LruCache<Keccak, object>.CalculateMemorySize(32, MemoryAllowance.TxHashCacheSize) + LruCache<Keccak, Transaction>.CalculateMemorySize(4096, MemoryAllowance.MemPoolSize)) / 1000 / 1000}MB".PadLeft(8));
-            
-            _transactions = CreateSortedPool(MemoryAllowance.MemPoolSize, comparer);
+
+            _transactions = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, comparer);
             
             _peerNotificationThreshold = txPoolConfig.PeerNotificationThreshold;
 
@@ -505,23 +505,6 @@ namespace Nethermind.TxPool
             }
 
             public Nonce Increment() => new Nonce(Value + 1);
-        }
-
-        internal static Address TxSenderMapping(Transaction tx) => tx.SenderAddress;
-
-        internal static DistinctValueSortedPool<Keccak, Transaction, Address> CreateSortedPool(int capacity, IComparer<Transaction> comparer = null)
-        {
-            // we need to ensure transactions are ordered by nonce, which might not be done in supplied comparer
-            comparer = new NonceTransactionComparerDecorator(comparer ?? GasBasedTxComparer.Instance);
-            
-            return new DistinctValueSortedPool<Keccak, Transaction, Address>(
-                capacity,
-                // in order to sort properly and not loose transactions we need to differentiate on their identity which provided comparer might not be doing
-                new TxIdentityCompositeDecorator(comparer),
-                TxSenderMapping,
-                CompetingTransactionEqualityComparer.Instance,
-                // we also need to properly sort without differentiate of identity to decide which transaction to keep in distinct and if equal keep newer
-                comparer);
         }
     }
 }

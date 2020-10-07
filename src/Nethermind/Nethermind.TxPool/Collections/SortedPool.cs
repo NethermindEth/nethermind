@@ -22,11 +22,16 @@ using Nethermind.Core.Collections;
 
 namespace Nethermind.TxPool.Collections
 {
-    public class SortedPool<TKey, TValue, TGroup>
+    /// <summary>
+    /// Keeps a pool of <see cref="TValue"/> with <see cref="TKey"/> in groups based on <see cref="TGroup"/>. 
+    /// </summary>
+    /// <typeparam name="TKey">Type of keys of items, unique in pool.</typeparam>
+    /// <typeparam name="TValue">Type of items that are kept.</typeparam>
+    /// <typeparam name="TGroup">TYpe of groups in which the items are organized</typeparam>
+    public abstract class SortedPool<TKey, TValue, TGroup>
     {
         private readonly int _capacity;
-        private readonly IComparer<TValue> _comparerWithIdentity;
-        private readonly Func<TValue, TGroup> _groupMapping;
+        private readonly IComparer<TValue> _comparer;
         private readonly IDictionary<TGroup, ICollection<TValue>> _buckets;
         private readonly DictionarySortedSet<TValue, TKey> _sortedValues;
         private readonly IDictionary<TKey, TValue> _cacheMap;
@@ -34,33 +39,55 @@ namespace Nethermind.TxPool.Collections
         /// <summary>
         /// Constructor
         /// </summary>
-        /// <param name="capacity">Max capacity</param>
-        /// <param name="comparerWithIdentity">Comparer to sort items. It must differentiate items by their identity or some items will be lost.</param>
-        /// <param name="groupMapping">Mapping from <see cref="TValue"/> to <see cref="TGroup"/></param>
-        public SortedPool(int capacity, IComparer<TValue> comparerWithIdentity, Func<TValue, TGroup> groupMapping)
+        /// <param name="capacity">Max capacity, after surpassing it elements will be removed based on last by <see cref="comparerWithIdentity"/>.</param>
+        /// <param name="comparer">Comparer to sort items.</param>
+        protected SortedPool(int capacity, IComparer<TValue> comparer)
         {
             _capacity = capacity;
-            _comparerWithIdentity = comparerWithIdentity ?? throw new ArgumentNullException(nameof(comparerWithIdentity));
-            _groupMapping = groupMapping ?? throw new ArgumentNullException(nameof(groupMapping));
+            // ReSharper disable once VirtualMemberCallInConstructor
+            _comparer = GetComparerWithIdentity(comparer ?? throw new ArgumentNullException(nameof(comparer)));
             _cacheMap = new Dictionary<TKey, TValue>(); // do not initialize it at the full capacity
             _buckets = new Dictionary<TGroup, ICollection<TValue>>();
-            _sortedValues = new DictionarySortedSet<TValue, TKey>(_comparerWithIdentity);
+            _sortedValues = new DictionarySortedSet<TValue, TKey>(_comparer);
         }
+
+        /// <summary>
+        /// Gets comparer that preserves original comparer order, but also differentiates on <see cref="TValue"/> items based on their identity.
+        /// </summary>
+        /// <param name="comparer">Original comparer.</param>
+        /// <returns>Identity comparer.</returns>
+        protected abstract IComparer<TValue> GetComparerWithIdentity(IComparer<TValue> comparer);
+        
+        /// <summary>
+        /// Maps item to group
+        /// </summary>
+        /// <param name="value">Item to map.</param>
+        /// <returns>Mapped group.</returns>
+        protected abstract TGroup MapToGroup(TValue value);
 
         public int Count => _cacheMap.Count;
 
+        /// <summary>
+        /// Gets all items in random order.
+        /// </summary>
         [MethodImpl(MethodImplOptions.Synchronized)]
         public TValue[] GetSnapshot()
         {
             return _buckets.SelectMany(b => b.Value).ToArray();
         }
         
+        /// <summary>
+        /// Gets all items in groups in supplied comparer order in groups.
+        /// </summary>
         [MethodImpl(MethodImplOptions.Synchronized)]
         public IDictionary<TGroup, TValue[]> GetBucketSnapshot()
         {
             return _buckets.ToDictionary(g => g.Key, g => g.Value.ToArray());
         }
         
+        /// <summary>
+        /// Gets first element in supplied comparer order.
+        /// </summary>
         [MethodImpl(MethodImplOptions.Synchronized)]
         public TValue TakeFirst()
         {
@@ -68,6 +95,12 @@ namespace Nethermind.TxPool.Collections
             return value;
         }
 
+        /// <summary>
+        /// Tries to remove element.
+        /// </summary>
+        /// <param name="key">Key to be removed.</param>
+        /// <param name="value">Removed element or null.</param>
+        /// <returns>If element was removed. False if element was not present in pool.</returns>
         [MethodImpl(MethodImplOptions.Synchronized)]
         public bool TryRemove(TKey key, out TValue value)
         {
@@ -75,7 +108,7 @@ namespace Nethermind.TxPool.Collections
             {
                 if (Remove(key, value))
                 {
-                    TGroup groupMapping = _groupMapping(value);
+                    TGroup groupMapping = MapToGroup(value);
                     if (_buckets.TryGetValue(groupMapping, out var collection))
                     {
                         collection.Remove(value);
@@ -89,6 +122,12 @@ namespace Nethermind.TxPool.Collections
             return false;
         }
 
+        /// <summary>
+        /// Tries to get element.
+        /// </summary>
+        /// <param name="key">Key to be returned.</param>
+        /// <param name="value">Returned element or null.</param>
+        /// <returns>If element retrieval succeeded. True if element was present in pool.</returns>
         [MethodImpl(MethodImplOptions.Synchronized)]
         public bool TryGetValue(TKey key, out TValue value)
         {
@@ -96,16 +135,22 @@ namespace Nethermind.TxPool.Collections
             return _cacheMap.TryGetValue(key, out value);
         }
 
+        /// <summary>
+        /// Tries to insert element.
+        /// </summary>
+        /// <param name="key">Key to be inserted.</param>
+        /// <param name="value">Element to insert.</param>
+        /// <returns>If element was inserted. False if element was already present in pool.</returns>
         [MethodImpl(MethodImplOptions.Synchronized)]
         public bool TryInsert(TKey key, TValue value)
         {
             if (CanInsert(key, value))
             {
-                TGroup group = _groupMapping(value);
+                TGroup group = MapToGroup(value);
 
                 if (!_buckets.TryGetValue(group, out ICollection<TValue> bucket))
                 {
-                    _buckets[group] = bucket = new SortedSet<TValue>(_comparerWithIdentity);
+                    _buckets[group] = bucket = new SortedSet<TValue>(_comparer);
                 }
 
                 InsertCore(key, value, bucket);
@@ -126,6 +171,9 @@ namespace Nethermind.TxPool.Collections
             TryRemove(_sortedValues.Max.Value, out _);
         }
         
+        /// <summary>
+        /// Checks if element can be inserted.
+        /// </summary>
         protected virtual bool CanInsert(TKey key, TValue value)
         {
             if (value == null)
@@ -136,13 +184,19 @@ namespace Nethermind.TxPool.Collections
             return !_cacheMap.ContainsKey(key);
         }
         
-        protected virtual void InsertCore(TKey key, TValue value, ICollection<TValue> bucket)
+        /// <summary>
+        /// Actual insert mechanism.
+        /// </summary>
+        protected virtual void InsertCore(TKey key, TValue value, ICollection<TValue> bucketCollection)
         {
-            bucket.Add(value);
+            bucketCollection.Add(value);
             _cacheMap.Add(key, value);
             _sortedValues.Add(value, key);
         }
         
+        /// <summary>
+        /// Actual removal mechanism. 
+        /// </summary>
         protected virtual bool Remove(TKey key, TValue value)
         {
             _sortedValues.Remove(value);

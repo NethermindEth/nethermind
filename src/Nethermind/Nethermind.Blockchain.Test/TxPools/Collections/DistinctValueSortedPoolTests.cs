@@ -73,7 +73,7 @@ namespace Nethermind.Blockchain.Test.TxPools.Collections
         [TestCaseSource(nameof(DistinctTestCases))]
         public void Distinct_transactions_are_all_added(Transaction[] transactions, int expectedCount)
         {
-            var pool = TxPool.TxPool.CreateSortedPool(Capacity);
+            var pool = new TxDistinctSortedPool(Capacity);
 
             foreach (var transaction in transactions)
             {
@@ -87,7 +87,7 @@ namespace Nethermind.Blockchain.Test.TxPools.Collections
         [TestCase(false)]
         public void Same_transactions_are_all_replaced_with_highest_gas_price(bool gasPriceAscending)
         {
-            var pool = TxPool.TxPool.CreateSortedPool(Capacity);
+            var pool = new TxDistinctSortedPool(Capacity);
 
             var transactions = gasPriceAscending
                 ? GenerateTransactions(address: TestItem.AddressB, nonce: 3).OrderBy(t => t.GasPrice)
@@ -139,6 +139,18 @@ namespace Nethermind.Blockchain.Test.TxPools.Collections
             }
         }
 
+        private class WithFinalizerDistinctPool : DistinctValueSortedPool<int, WithFinalizer, int>
+        {
+            public WithFinalizerDistinctPool(int capacity, IComparer<WithFinalizer> comparer, IEqualityComparer<WithFinalizer> distinctComparer) 
+                : base(capacity, comparer, distinctComparer)
+            {
+            }
+
+            protected override IComparer<WithFinalizer> GetComparerWithIdentity(IComparer<WithFinalizer> comparer) => comparer;
+
+            protected override int MapToGroup(WithFinalizer value) => value.Index;
+        }
+
         [Test]
         public void Capacity_is_never_exceeded()
         {
@@ -154,11 +166,8 @@ namespace Nethermind.Blockchain.Test.TxPools.Collections
 
                 return t1.Index.CompareTo(t2.Index);
             });
-            var pool = new DistinctValueSortedPool<int, WithFinalizer, int>(Capacity,
-                comparer,
-                t => t.Index,
-                new WithFinalizerComparer(),
-                comparer);
+            
+            var pool = new WithFinalizerDistinctPool(Capacity, comparer,new WithFinalizerComparer());
 
             int capacityMultiplier = 10;
             int expectedAllCount = Capacity * capacityMultiplier;
@@ -195,11 +204,7 @@ namespace Nethermind.Blockchain.Test.TxPools.Collections
                 return t1.Index.CompareTo(t2.Index);
             });
             
-            var pool = new DistinctValueSortedPool<int, WithFinalizer, int>(Capacity,
-                comparer,
-                t => t.Index,
-                new WithFinalizerComparer(),
-                comparer);
+            var pool = new WithFinalizerDistinctPool(Capacity, comparer,new WithFinalizerComparer());
 
             int capacityMultiplier = 10;
 
@@ -235,11 +240,8 @@ namespace Nethermind.Blockchain.Test.TxPools.Collections
 
                 return t1.Index.CompareTo(t2.Index);
             });
-            var pool = new DistinctValueSortedPool<int, WithFinalizer, int>(Capacity,
-                comparer,
-                t => t.Index,
-                new WithFinalizerComparer(),
-                comparer);
+            
+            var pool = new WithFinalizerDistinctPool(Capacity, comparer,new WithFinalizerComparer());;
 
             void KeepGoing(int iterations)
             {

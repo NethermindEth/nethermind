@@ -20,7 +20,14 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.TxPool.Collections
 {
-    public class DistinctValueSortedPool<TKey, TValue, TGroup> : SortedPool<TKey, TValue, TGroup>
+    /// <summary>
+    /// Keeps a distinct pool of <see cref="TValue"/> with <see cref="TKey"/> in groups based on <see cref="TGroup"/>.
+    /// Uses separate comparator to distinct between elements. If there is duplicate element added it uses ordering comparator and keeps the one that is larger. 
+    /// </summary>
+    /// <typeparam name="TKey">Type of keys of items, unique in pool.</typeparam>
+    /// <typeparam name="TValue">Type of items that are kept.</typeparam>
+    /// <typeparam name="TGroup">TYpe of groups in which the items are organized</typeparam>
+    public abstract class DistinctValueSortedPool<TKey, TValue, TGroup> : SortedPool<TKey, TValue, TGroup>
     {
         private readonly IComparer<TValue> _comparer;
         private readonly IDictionary<TValue, KeyValuePair<TKey, TValue>> _distinctDictionary;
@@ -29,25 +36,21 @@ namespace Nethermind.TxPool.Collections
         /// Constructor
         /// </summary>
         /// <param name="capacity">Max capacity</param>
-        /// <param name="comparerWithIdentity">Comparer to sort items. It must differentiate items by their identity or some items will be lost.</param>
-        /// <param name="groupMapping">Mapping from <see cref="TValue"/> to <see cref="TGroup"/></param>
+        /// <param name="comparer">Comparer to sort items.</param>
         /// <param name="distinctComparer">Comparer to distinct items. Based on this duplicates will be removed.</param>
-        /// <param name="comparer">Comparer to sort items. Must be same as comparer but without comparing by identity, only desired sorting.</param>
-        public DistinctValueSortedPool(
+        protected DistinctValueSortedPool(
             int capacity,
-            IComparer<TValue> comparerWithIdentity,
-            Func<TValue, TGroup> groupMapping,
-            IEqualityComparer<TValue> distinctComparer,
-            IComparer<TValue> comparer) 
-            : base(capacity, comparerWithIdentity, groupMapping)
+            IComparer<TValue> comparer,
+            IEqualityComparer<TValue> distinctComparer) 
+            : base(capacity, comparer)
         {
             _comparer = comparer;
             _distinctDictionary = new Dictionary<TValue, KeyValuePair<TKey, TValue>>(distinctComparer);
         }
         
-        protected override void InsertCore(TKey key, TValue value, ICollection<TValue> collection)
+        protected override void InsertCore(TKey key, TValue value, ICollection<TValue> bucketCollection)
         {
-            base.InsertCore(key, value, collection);
+            base.InsertCore(key, value, bucketCollection);
 
             if (_distinctDictionary.TryGetValue(value, out var oldKvp))
             {
@@ -71,6 +74,5 @@ namespace Nethermind.TxPool.Collections
             return base.CanInsert(key, value)
                    && (!_distinctDictionary.TryGetValue(value, out var oldKvp) || _comparer.Compare(value, oldKvp.Value) <= 0);
         }
-
     }
 }
