@@ -19,6 +19,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Collections.Specialized;
+using System.Runtime.CompilerServices;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -30,7 +31,6 @@ namespace Nethermind.Consensus.AuRa.Contracts
         private readonly IDataContract<T> _dataContract;
         private readonly IBlockProcessor _blockProcessor;
         private Keccak _lastHash;
-        private object lockObject = new object();
         
         protected TCollection Items { get; private set; }
         
@@ -41,22 +41,18 @@ namespace Nethermind.Consensus.AuRa.Contracts
             _blockProcessor.BlockProcessed += OnBlockProcessed;
         }
 
+        [MethodImpl(MethodImplOptions.Synchronized)]
         public IEnumerable<T> GetItemsFromContractAtBlock(BlockHeader parent)
         {
-            lock (lockObject)
-            {
-                GetItemsFromContractAtBlock(parent, parent.Hash == _lastHash);
-                return GetItemsFromContractAtBlock(Items);
-            }
+            GetItemsFromContractAtBlock(parent, parent.Hash == _lastHash);
+            return GetItemsFromContractAtBlock(Items);
         }
 
+        [MethodImpl(MethodImplOptions.Synchronized)]
         private void OnBlockProcessed(object sender, BlockProcessedEventArgs e)
         {
-            lock (lockObject)
-            {
-                BlockHeader header = e.Block.Header;
-                GetItemsFromContractAtBlock(header, header.ParentHash == _lastHash, e.TxReceipts);
-            }
+            BlockHeader header = e.Block.Header;
+            GetItemsFromContractAtBlock(header, header.ParentHash == _lastHash, e.TxReceipts);
         }
         
         private void GetItemsFromContractAtBlock(BlockHeader blockHeader, bool isConsecutiveBlock, TxReceipt[] receipts = null)
