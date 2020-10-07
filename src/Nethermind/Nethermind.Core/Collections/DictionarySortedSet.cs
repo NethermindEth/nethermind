@@ -51,6 +51,8 @@ namespace Nethermind.Core.Collections
             value = default;
             return false;
         }
+        
+        public bool ContainsKey(TKey key) => Contains(new KeyValuePair<TKey, TValue>(key, default));
 
         private sealed class KeyValuePairKeyOnlyComparer : Comparer<KeyValuePair<TKey, TValue>>
         {
