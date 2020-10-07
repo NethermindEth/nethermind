@@ -43,85 +43,37 @@ using NUnit.Framework;
 
 namespace Nethermind.Runner.Test
 {
-    [TestFixture, Parallelizable(ParallelScope.None)]
+    [TestFixture, Parallelizable(ParallelScope.All)]
     public class EthereumRunnerTests
     {
         public static IEnumerable ChainSpecRunnerTests
         {
             get
             {
-                foreach (var config in Directory.GetFiles("configs"))
+                string[] files = Directory.GetFiles("configs");
+                for (var index = 0; index < files.Length; index++)
                 {
-                    yield return new TestCaseData(config);
+                    var config = files[index];
+                    yield return new TestCaseData(config, index);
                 }
             }
         }
 
         [TestCaseSource(nameof(ChainSpecRunnerTests))]
-        // [Timeout(30000)] // just to make sure we are not on infinite loop on steps because of incorrect dependencies
-        public async Task Smoke(string chainSpecPath)
+        [Timeout(300000)] // just to make sure we are not on infinite loop on steps because of incorrect dependencies
+        public async Task Smoke(string chainSpecPath, int testIndex)
         {
-            Type type1 = typeof(ITxPoolConfig);
-            Type type2 = typeof(INetworkConfig);
-            Type type3 = typeof(IKeyStoreConfig);
-            Type type4 = typeof(IDbConfig);
-            Type type5 = typeof(IStatsConfig);
-            Type type6 = typeof(IKafkaConfig);
-            Type type7 = typeof(IEthStatsConfig);
-            Type type8 = typeof(ISyncConfig);
-            Type type9 = typeof(IBloomConfig);
-
-            var configProvider = new ConfigProvider();
-            configProvider.AddSource(new JsonConfigSource(chainSpecPath));
-
-            Console.WriteLine(type1.Name);
-            Console.WriteLine(type2.Name);
-            Console.WriteLine(type3.Name);
-            Console.WriteLine(type4.Name);
-            Console.WriteLine(type5.Name);
-            Console.WriteLine(type6.Name);
-            Console.WriteLine(type7.Name);
-            Console.WriteLine(type8.Name);
-            Console.WriteLine(type9.Name);
-
-            var tempPath = Path.Combine(Path.GetTempPath(), "test_" + Guid.NewGuid());
-            Directory.CreateDirectory(tempPath);
-
-            try
-            {
-                IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
-                initConfig.BaseDbPath = tempPath;
-                initConfig.ChainSpecPath = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location)!, initConfig.ChainSpecPath);
-
-                INethermindApi nethermindApi = new ApiBuilder(configProvider, TestLogManager.Instance).Create();
-                nethermindApi.RpcModuleProvider =
-                    new RpcModuleProvider(new FileSystem(), new JsonRpcConfig(), TestLogManager.Instance);
-                EthereumRunner runner = new EthereumRunner(nethermindApi);
-
-                try
-                {
-                    await runner.Start(CancellationToken.None);
-                }
-                finally
-                {
-                    await runner.StopAsync();
-                }
-            }
-            finally
-            {
-                try
-                {
-                    Directory.Delete(tempPath, true);
-                }
-                catch (Exception e)
-                {
-                    await TestContext.Error.WriteLineAsync(e.ToString());
-                }
-            }
+            await SmokeTest(chainSpecPath, testIndex, 30330);
         }
+        
         [TestCaseSource(nameof(ChainSpecRunnerTests))]
         [Timeout(30000)] // just to make sure we are not on infinite loop on steps because of incorrect dependencies
-        public async Task Smoke_cancel(string chainSpecPath)
+        public async Task Smoke_cancel(string chainSpecPath, int testIndex)
+        {
+            await SmokeTest(chainSpecPath, testIndex, 30430, true);
+        }
+
+        private static async Task SmokeTest(string chainSpecPath, int testIndex, int basePort, bool cancel = false)
         {
             Type type1 = typeof(ITxPoolConfig);
             Type type2 = typeof(INetworkConfig);
@@ -149,38 +101,55 @@ namespace Nethermind.Runner.Test
             var tempPath = Path.Combine(Path.GetTempPath(), "test_" + Guid.NewGuid());
             Directory.CreateDirectory(tempPath);
 
-            EthereumRunner runner = null;
+            Exception exception = null;
             try
             {
                 IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
                 initConfig.BaseDbPath = tempPath;
                 initConfig.ChainSpecPath = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location)!, initConfig.ChainSpecPath);
 
-                ApiBuilder apiBuilder = new ApiBuilder(configProvider, TestLogManager.Instance);
-                INethermindApi nethermindApi = apiBuilder.Create();
-                nethermindApi.RpcModuleProvider =
-                    new RpcModuleProvider(new FileSystem(), new JsonRpcConfig(), TestLogManager.Instance);
-                runner = new EthereumRunner(nethermindApi);
+                INetworkConfig networkConfig = configProvider.GetConfig<INetworkConfig>();
+                int port = basePort + testIndex;
+                networkConfig.P2PPort = port;
+                networkConfig.DiscoveryPort = port;
 
-                CancellationTokenSource cts = new CancellationTokenSource();
-                Task task = runner.Start(cts.Token);
-                cts.Cancel();
+                INethermindApi nethermindApi = new ApiBuilder(configProvider, TestLogManager.Instance).Create();
+                nethermindApi.RpcModuleProvider = new RpcModuleProvider(new FileSystem(), new JsonRpcConfig(), TestLogManager.Instance);
+                EthereumRunner runner = new EthereumRunner(nethermindApi);
 
-
+                using CancellationTokenSource cts = new CancellationTokenSource();
+                
                 try
                 {
+                    Task task = runner.Start(cts.Token);
+                    if (cancel)
+                    {
+                        cts.Cancel();
+                    }
+
                     await task;
                 }
                 catch (Exception e)
                 {
-                    if (!(e is OperationCanceledException))
-                    {
-                        throw new AssertionFailedException($"Exception should be {nameof(OperationCanceledException)}");
-                    }
+                    exception = e;
                 }
                 finally
                 {
-                    await runner.StopAsync();
+                    try
+                    {
+                        await runner.StopAsync();
+                    }
+                    catch (Exception e)
+                    {
+                        if (exception != null)
+                        {
+                            await TestContext.Error.WriteLineAsync(e.ToString());
+                        }
+                        else
+                        {
+                            throw;
+                        }
+                    }
                 }
             }
             finally
@@ -191,7 +160,14 @@ namespace Nethermind.Runner.Test
                 }
                 catch (Exception e)
                 {
-                    await TestContext.Error.WriteLineAsync(e.ToString());
+                    if (exception != null)
+                    {
+                        await TestContext.Error.WriteLineAsync(e.ToString());
+                    }
+                    else
+                    {
+                        throw;
+                    }
                 }
             }
         }
