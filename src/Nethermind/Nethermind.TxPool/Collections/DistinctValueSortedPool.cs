@@ -25,6 +25,14 @@ namespace Nethermind.TxPool.Collections
         private readonly IComparer<TValue> _comparer;
         private readonly IDictionary<TValue, KeyValuePair<TKey, TValue>> _distinctDictionary;
 
+        /// <summary>
+        /// Constructor
+        /// </summary>
+        /// <param name="capacity">Max capacity</param>
+        /// <param name="comparerWithIdentity">Comparer to sort items. It must differentiate items by their identity or some items will be lost.</param>
+        /// <param name="groupMapping">Mapping from <see cref="TValue"/> to <see cref="TGroup"/></param>
+        /// <param name="distinctComparer">Comparer to distinct items. Based on this duplicates will be removed.</param>
+        /// <param name="comparer">Comparer to sort items. Must be same as comparer but without comparing by identity, only desired sorting.</param>
         public DistinctValueSortedPool(
             int capacity,
             IComparer<TValue> comparerWithIdentity,
