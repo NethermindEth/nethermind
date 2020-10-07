@@ -19,6 +19,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Collections.Specialized;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Core;
@@ -45,7 +46,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         public IEnumerable<T> GetItemsFromContractAtBlock(BlockHeader parent)
         {
             GetItemsFromContractAtBlock(parent, parent.Hash == _lastHash);
-            return GetItemsFromContractAtBlock(Items);
+            return GetItemsFromContractAtBlock(Items).ToArray(); // returning a copy for multithreading
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
