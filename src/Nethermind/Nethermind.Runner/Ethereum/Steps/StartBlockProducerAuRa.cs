@@ -156,7 +156,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.DisposeStack.Push(whitelistContractDataStore);
                 _api.DisposeStack.Push(prioritiesContractDataStore);
 
-                return new TxPriorityTxPoolTxSource(
+                return new TxPriorityTxSource(
                     _api.TxPool,
                     processingEnv.StateReader, 
                     _api.LogManager, 

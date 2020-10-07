@@ -29,13 +29,13 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
-    public class TxPriorityTxPoolTxSource : TxPoolTxSource
+    public class TxPriorityTxSource : TxPoolTxSource
     {
         private readonly IContractDataStore<Address> _sendersWhitelist;
         private readonly IDictionaryContractDataStore<TxPriorityContract.Destination> _priorities;
 
         
-        public TxPriorityTxPoolTxSource(
+        public TxPriorityTxSource(
             ITxPool transactionPool, 
             IStateReader stateReader, 
             ILogManager logManager, 

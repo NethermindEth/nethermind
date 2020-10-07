@@ -276,7 +276,7 @@ namespace Nethermind.AuRa.Test.Transactions
                     g => g.Key,
                     g => g.OrderBy(t => t,
                         // to simulate order coming from TxPool
-                        TxSortedPool.GetTxComparerWithIdentity(comparer)).ToArray());
+                        TxSortedPool.GetPoolUniqueTxComparerByNonce(comparer)).ToArray());
             
             
             var orderedTransactions = TxPoolTxSource.Order(txBySender, comparer).ToArray();

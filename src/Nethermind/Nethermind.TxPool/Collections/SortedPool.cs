@@ -45,7 +45,7 @@ namespace Nethermind.TxPool.Collections
         {
             _capacity = capacity;
             // ReSharper disable once VirtualMemberCallInConstructor
-            _comparer = GetComparerWithIdentity(comparer ?? throw new ArgumentNullException(nameof(comparer)));
+            _comparer = GetUniqueComparer(comparer ?? throw new ArgumentNullException(nameof(comparer)));
             _cacheMap = new Dictionary<TKey, TValue>(); // do not initialize it at the full capacity
             _buckets = new Dictionary<TGroupKey, ICollection<TValue>>();
             _sortedValues = new DictionarySortedSet<TValue, TKey>(_comparer);
@@ -56,7 +56,7 @@ namespace Nethermind.TxPool.Collections
         /// </summary>
         /// <param name="comparer">Original comparer.</param>
         /// <returns>Identity comparer.</returns>
-        protected abstract IComparer<TValue> GetComparerWithIdentity(IComparer<TValue> comparer);
+        protected abstract IComparer<TValue> GetUniqueComparer(IComparer<TValue> comparer);
         
         /// <summary>
         /// Maps item to group

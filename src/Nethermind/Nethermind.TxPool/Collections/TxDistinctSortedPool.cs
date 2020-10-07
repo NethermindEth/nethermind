@@ -28,8 +28,8 @@ namespace Nethermind.TxPool.Collections
         {
         }
 
-        protected override IComparer<Transaction> GetComparerWithIdentity(IComparer<Transaction> comparer) =>
-            TxSortedPool.GetTxComparerWithIdentity(comparer);
+        protected override IComparer<Transaction> GetUniqueComparer(IComparer<Transaction> comparer) =>
+            TxSortedPool.GetPoolUniqueTxComparerByNonce(comparer);
 
         protected override Address MapToGroup(Transaction value) => TxSortedPool.MapTxToGroup(value);
     }

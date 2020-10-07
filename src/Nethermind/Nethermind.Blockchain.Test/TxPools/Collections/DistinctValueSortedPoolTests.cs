@@ -146,7 +146,7 @@ namespace Nethermind.Blockchain.Test.TxPools.Collections
             {
             }
 
-            protected override IComparer<WithFinalizer> GetComparerWithIdentity(IComparer<WithFinalizer> comparer) => comparer;
+            protected override IComparer<WithFinalizer> GetUniqueComparer(IComparer<WithFinalizer> comparer) => comparer;
 
             protected override int MapToGroup(WithFinalizer value) => value.Index;
         }
