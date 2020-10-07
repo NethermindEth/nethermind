@@ -15,28 +15,30 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Collections.Generic;
-using Nethermind.Core;
 
-namespace Nethermind.TxPool
+namespace Nethermind.Core
 {
-    /// <summary>
-    /// This comparer uses inner comparer to do comparision, but when Transactions are same it defaults to <see cref="Transaction.Hash"/> comparision to differentiate between transactions  
-    /// </summary>
-    public class TxIdentityCompositeDecorator : IComparer<Transaction>
+    public class CompositeComparer<T> : IComparer<T>
     {
-        private readonly IComparer<Transaction> _innerComparer;
+        private readonly IComparer<T>[] _comparers;
 
-        public TxIdentityCompositeDecorator(IComparer<Transaction> innerComparer)
+        public CompositeComparer(params IComparer<T>[] comparers)
         {
-            _innerComparer = innerComparer;
+            _comparers = comparers ?? throw new ArgumentNullException(nameof(comparers));
         }
-
-        public int Compare(Transaction x, Transaction y)
+        
+        public int Compare(T x, T y)
         {
-            var comparision = _innerComparer.Compare(x, y);
-            if (comparision != 0 || x == null || y == null) return comparision;
-            return x.Hash.CompareTo(y.Hash);
+            int result = 0;
+            for (int i = 0; i < _comparers.Length; i++)
+            {
+                result = _comparers[i].Compare(x, y);
+                if (result != 0) return result;
+            }
+
+            return result;
         }
     }
 }

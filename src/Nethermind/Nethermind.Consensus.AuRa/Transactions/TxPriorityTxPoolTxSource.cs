@@ -48,6 +48,9 @@ namespace Nethermind.Consensus.AuRa.Transactions
             _priorities = priorities ?? throw new ArgumentNullException(nameof(priorities));
         }
 
-        protected override IComparer<Transaction> GetComparer(BlockHeader parent) => new PermissionTxComparer(_sendersWhitelist, _priorities, parent);
+        protected override IComparer<Transaction> GetComparer(BlockHeader parent) => 
+            new CompositeComparer<Transaction>(
+                new PermissionTxComparer(_sendersWhitelist, _priorities, parent),
+                GasBasedTxComparer.Instance);
     }
 }

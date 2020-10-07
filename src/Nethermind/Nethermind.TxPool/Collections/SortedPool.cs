@@ -23,16 +23,16 @@ using Nethermind.Core.Collections;
 namespace Nethermind.TxPool.Collections
 {
     /// <summary>
-    /// Keeps a pool of <see cref="TValue"/> with <see cref="TKey"/> in groups based on <see cref="TGroup"/>. 
+    /// Keeps a pool of <see cref="TValue"/> with <see cref="TKey"/> in groups based on <see cref="TGroupKey"/>. 
     /// </summary>
     /// <typeparam name="TKey">Type of keys of items, unique in pool.</typeparam>
     /// <typeparam name="TValue">Type of items that are kept.</typeparam>
-    /// <typeparam name="TGroup">TYpe of groups in which the items are organized</typeparam>
-    public abstract class SortedPool<TKey, TValue, TGroup>
+    /// <typeparam name="TGroupKey">Type of groups in which the items are organized</typeparam>
+    public abstract class SortedPool<TKey, TValue, TGroupKey>
     {
         private readonly int _capacity;
         private readonly IComparer<TValue> _comparer;
-        private readonly IDictionary<TGroup, ICollection<TValue>> _buckets;
+        private readonly IDictionary<TGroupKey, ICollection<TValue>> _buckets;
         private readonly DictionarySortedSet<TValue, TKey> _sortedValues;
         private readonly IDictionary<TKey, TValue> _cacheMap;
         
@@ -47,7 +47,7 @@ namespace Nethermind.TxPool.Collections
             // ReSharper disable once VirtualMemberCallInConstructor
             _comparer = GetComparerWithIdentity(comparer ?? throw new ArgumentNullException(nameof(comparer)));
             _cacheMap = new Dictionary<TKey, TValue>(); // do not initialize it at the full capacity
-            _buckets = new Dictionary<TGroup, ICollection<TValue>>();
+            _buckets = new Dictionary<TGroupKey, ICollection<TValue>>();
             _sortedValues = new DictionarySortedSet<TValue, TKey>(_comparer);
         }
 
@@ -63,7 +63,7 @@ namespace Nethermind.TxPool.Collections
         /// </summary>
         /// <param name="value">Item to map.</param>
         /// <returns>Mapped group.</returns>
-        protected abstract TGroup MapToGroup(TValue value);
+        protected abstract TGroupKey MapToGroup(TValue value);
 
         public int Count => _cacheMap.Count;
 
@@ -80,7 +80,7 @@ namespace Nethermind.TxPool.Collections
         /// Gets all items in groups in supplied comparer order in groups.
         /// </summary>
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public IDictionary<TGroup, TValue[]> GetBucketSnapshot()
+        public IDictionary<TGroupKey, TValue[]> GetBucketSnapshot()
         {
             return _buckets.ToDictionary(g => g.Key, g => g.Value.ToArray());
         }
@@ -89,11 +89,7 @@ namespace Nethermind.TxPool.Collections
         /// Gets first element in supplied comparer order.
         /// </summary>
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public TValue TakeFirst()
-        {
-            TryRemove(_sortedValues.Min.Value, out TValue value);
-            return value;
-        }
+        public bool TryTakeFirst(out TValue first) => TryRemove(_sortedValues.Min.Value, out first);
 
         /// <summary>
         /// Tries to remove element.
@@ -108,7 +104,7 @@ namespace Nethermind.TxPool.Collections
             {
                 if (Remove(key, value))
                 {
-                    TGroup groupMapping = MapToGroup(value);
+                    TGroupKey groupMapping = MapToGroup(value);
                     if (_buckets.TryGetValue(groupMapping, out var collection))
                     {
                         collection.Remove(value);
@@ -146,7 +142,7 @@ namespace Nethermind.TxPool.Collections
         {
             if (CanInsert(key, value))
             {
-                TGroup group = MapToGroup(value);
+                TGroupKey group = MapToGroup(value);
 
                 if (!_buckets.TryGetValue(group, out ICollection<TValue> bucket))
                 {

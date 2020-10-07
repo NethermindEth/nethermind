@@ -61,11 +61,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
             if (whitelistedComparision != 0) return whitelistedComparision;
                 
             // then order by priority descending
-            int priorityComparision = GetPriority(y).CompareTo(GetPriority(x));
-            if (priorityComparision != 0) return priorityComparision;
-
-            // then by default
-            return GasBasedTxComparer.Instance.Compare(x, y);
+            return GetPriority(y).CompareTo(GetPriority(x));
         }
     }
 }

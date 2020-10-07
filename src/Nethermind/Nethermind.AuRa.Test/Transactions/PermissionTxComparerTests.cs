@@ -266,11 +266,19 @@ namespace Nethermind.AuRa.Test.Transactions
             transactions = transactionSelect?.Invoke(transactions) ?? transactions;
             expectation = transactionSelect?.Invoke(expectation) ?? expectation;
 
-            var comparer = new PermissionTxComparer(sendersWhitelist, priorities, blockHeader);
+            var comparer = new CompositeComparer<Transaction>(
+                new PermissionTxComparer(sendersWhitelist, priorities, blockHeader),
+                GasBasedTxComparer.Instance);
+
+
             var txBySender = transactions.GroupBy(t => t.SenderAddress)
                 .ToDictionary(
-                    g => g.Key, 
-                    g => g.OrderBy(t => t, new NonceTransactionComparerDecorator(comparer)).ToArray());
+                    g => g.Key,
+                    g => g.OrderBy(t => t,
+                        new CompositeComparer<Transaction>(
+                            NonceTransactionComparer.Instance,
+                            new PermissionTxComparer(sendersWhitelist, priorities, blockHeader),
+                            GasBasedTxComparer.Instance)).ToArray());
             
             var orderedTransactions = TxPoolTxSource.Order(txBySender, comparer).ToArray();
             orderedTransactions.Should().BeEquivalentTo(expectation, o => o.WithStrictOrdering());

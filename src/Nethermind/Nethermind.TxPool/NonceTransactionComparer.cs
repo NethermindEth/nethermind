@@ -24,15 +24,12 @@ namespace Nethermind.TxPool
     /// <summary>
     /// Orders first by <see cref="Transaction.Nonce"/> asc and then by inner comparer
     /// </summary>
-    public class NonceTransactionComparerDecorator : IComparer<Transaction>
+    public class NonceTransactionComparer : IComparer<Transaction>
     {
-        private readonly IComparer<Transaction> _innerComparer;
+        public static readonly NonceTransactionComparer Instance = new NonceTransactionComparer();
+        
+        private NonceTransactionComparer() { }
 
-        public NonceTransactionComparerDecorator(IComparer<Transaction> innerComparer)
-        {
-            _innerComparer = innerComparer ?? throw new ArgumentNullException(nameof(innerComparer));
-        }
-            
         public int Compare(Transaction x, Transaction y)
         {
             if (ReferenceEquals(x, y)) return 0;
@@ -40,10 +37,7 @@ namespace Nethermind.TxPool
             if (ReferenceEquals(null, x)) return -1;
                 
             // compare by nonce ascending
-            int nonceComparison = x.Nonce.CompareTo(y.Nonce);
-            if (nonceComparison != 0) return nonceComparison;
-
-            return _innerComparer.Compare(x, y);
+            return x.Nonce.CompareTo(y.Nonce);
         }
     }
 }

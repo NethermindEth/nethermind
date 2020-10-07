@@ -137,7 +137,9 @@ namespace Nethermind.Blockchain.Test
             }
 
             ITxPool transactionPool = Substitute.For<ITxPool>();
-            IComparer<Transaction> comparer = new NonceTransactionComparerDecorator(GasBasedTxComparer.Instance);
+            IComparer<Transaction> comparer = new CompositeComparer<Transaction>(
+                NonceTransactionComparer.Instance,
+                GasBasedTxComparer.Instance);
             transactionPool.GetPendingTransactionsBySender().Returns(
                 testCase.Transactions
                     .Where(t => t?.SenderAddress != null)
