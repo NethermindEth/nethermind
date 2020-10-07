@@ -233,9 +233,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.DisposeStack.Push(whitelistContractDataStore);
                 _api.DisposeStack.Push(prioritiesContractDataStore);
                 
-                return new CompositeComparer<Transaction>(
-                    new PermissionContractHeadTxComparer(whitelistContractDataStore, prioritiesContractDataStore, _api.BlockTree),
-                    GasBasedTxComparer.Instance);
+                return new CompareTxByPermissionOnHead(whitelistContractDataStore, prioritiesContractDataStore, _api.BlockTree)
+                    .ThenBy(CompareTxByGas.Instance);
             }
             
             return base.CreateTxPoolTxComparer();

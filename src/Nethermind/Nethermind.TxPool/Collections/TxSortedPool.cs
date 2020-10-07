@@ -27,7 +27,7 @@ namespace Nethermind.TxPool.Collections
     public class TxSortedPool : SortedPool<Keccak, Transaction, Address>
     {
         public TxSortedPool(int capacity, IComparer<Transaction> comparer = null)
-            : base(capacity, comparer ?? GasBasedTxComparer.Instance)
+            : base(capacity, comparer ?? CompareTxByGas.Instance)
         {
         }
 
@@ -36,10 +36,9 @@ namespace Nethermind.TxPool.Collections
         protected override Address MapToGroup(Transaction value) => MapTxToGroup(value);
 
         internal static IComparer<Transaction> GetTxComparerWithIdentity(IComparer<Transaction> comparer)
-            => new CompositeComparer<Transaction>(
-                NonceTransactionComparer.Instance, // we need to ensure transactions are ordered by nonce, which might not be done in supplied comparer
-                comparer,
-                StrictTxComparer.Instance); // in order to sort properly and not loose transactions we need to differentiate on their identity which provided comparer might not be doing
+            => CompareTxByNonce.Instance // we need to ensure transactions are ordered by nonce, which might not be done in supplied comparer
+                .ThenBy(comparer)
+                .ThenBy(CompareTxByHash.Instance); // in order to sort properly and not loose transactions we need to differentiate on their identity which provided comparer might not be doing
 
         internal static Address MapTxToGroup(Transaction value) => value.SenderAddress;
     }

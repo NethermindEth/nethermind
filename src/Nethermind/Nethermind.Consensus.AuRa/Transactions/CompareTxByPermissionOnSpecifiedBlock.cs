@@ -23,9 +23,9 @@ using Nethermind.Int256;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
-    public class PermissionTxComparer : PermissionTxComparerBase
+    public class CompareTxByPermissionOnSpecifiedBlock : CompareTxByPermissionBase
     {
-        public PermissionTxComparer(
+        public CompareTxByPermissionOnSpecifiedBlock(
             IContractDataStore<Address> sendersWhitelist, 
             IDictionaryContractDataStore<TxPriorityContract.Destination> priorities, 
             BlockHeader blockHeader) : base(sendersWhitelist, priorities)

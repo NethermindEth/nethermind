@@ -27,14 +27,14 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
-    public abstract class PermissionTxComparerBase : IComparer<Transaction>
+    public abstract class CompareTxByPermissionBase : IComparer<Transaction>
     {
         private readonly IContractDataStore<Address> _sendersWhitelist;
         private readonly IDictionaryContractDataStore<TxPriorityContract.Destination> _priorities;
         private Keccak _blockHash;
         private ISet<Address> _sendersWhiteListSet;
 
-        public PermissionTxComparerBase(IContractDataStore<Address> sendersWhitelist, // expected HashSet based
+        public CompareTxByPermissionBase(IContractDataStore<Address> sendersWhitelist, // expected HashSet based
             IDictionaryContractDataStore<TxPriorityContract.Destination> priorities) // expected SortedList based)
         {
             _sendersWhitelist = sendersWhitelist ?? throw new ArgumentNullException(nameof(sendersWhitelist));

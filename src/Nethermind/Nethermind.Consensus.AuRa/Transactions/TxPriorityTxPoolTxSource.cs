@@ -49,8 +49,6 @@ namespace Nethermind.Consensus.AuRa.Transactions
         }
 
         protected override IComparer<Transaction> GetComparer(BlockHeader parent) => 
-            new CompositeComparer<Transaction>(
-                new PermissionTxComparer(_sendersWhitelist, _priorities, parent),
-                GasBasedTxComparer.Instance);
+            new CompareTxByPermissionOnSpecifiedBlock(_sendersWhitelist, _priorities, parent).ThenBy(CompareTxByGas.Instance);
     }
 }

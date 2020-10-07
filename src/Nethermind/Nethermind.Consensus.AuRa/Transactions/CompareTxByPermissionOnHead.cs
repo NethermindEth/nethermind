@@ -15,27 +15,28 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Collections.Generic;
+using System;
+using System.Linq;
+using Nethermind.Blockchain;
+using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Core;
+using Nethermind.Int256;
 
-namespace Nethermind.TxPool
+namespace Nethermind.Consensus.AuRa.Transactions
 {
-    /// <summary>
-    /// Compares <see cref="Transaction"/>s based on <see cref="Transaction.Hash"/> identity. No two different signed transactions will be same.
-    /// </summary>
-    public class StrictTxComparer : IComparer<Transaction>
+    public class CompareTxByPermissionOnHead : CompareTxByPermissionBase
     {
-        public static readonly StrictTxComparer Instance = new StrictTxComparer();
-        
-        private StrictTxComparer() { }
+        private readonly IBlockTree _blockTree;
 
-        public int Compare(Transaction x, Transaction y)
+        public CompareTxByPermissionOnHead(
+            IContractDataStore<Address> sendersWhitelist, // expected HashSet based
+            IDictionaryContractDataStore<TxPriorityContract.Destination> priorities, // expected SortedList based
+            IBlockTree blockTree) 
+            : base(sendersWhitelist, priorities)
         {
-            if (ReferenceEquals(x, y)) return 0;
-            if (ReferenceEquals(null, y)) return 1;
-            if (ReferenceEquals(null, x)) return -1;
-            
-            return x.Hash.CompareTo(y.Hash);
+            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
         }
+
+        protected override BlockHeader BlockHeader => _blockTree.Head.Header;
     }
 }

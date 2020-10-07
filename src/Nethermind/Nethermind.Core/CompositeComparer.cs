@@ -22,17 +22,23 @@ namespace Nethermind.Core
 {
     public class CompositeComparer<T> : IComparer<T>
     {
-        private readonly IComparer<T>[] _comparers;
+        private readonly IList<IComparer<T>> _comparers;
 
-        public CompositeComparer(params IComparer<T>[] comparers)
+        internal CompositeComparer(params IComparer<T>[] comparers)
         {
-            _comparers = comparers ?? throw new ArgumentNullException(nameof(comparers));
+            _comparers = new List<IComparer<T>>(comparers);
+        }
+
+        public CompositeComparer<T> ThenBy(IComparer<T> comparer)
+        {
+            _comparers.Add(comparer);
+            return this;
         }
         
         public int Compare(T x, T y)
         {
             int result = 0;
-            for (int i = 0; i < _comparers.Length; i++)
+            for (int i = 0; i < _comparers.Count; i++)
             {
                 result = _comparers[i].Compare(x, y);
                 if (result != 0) return result;
@@ -40,5 +46,11 @@ namespace Nethermind.Core
 
             return result;
         }
+    }
+
+    public static class CompositeComparerExtensions
+    {
+        public static CompositeComparer<T> ThenBy<T>(this IComparer<T> comparer, IComparer<T> secondComparer) =>
+            new CompositeComparer<T>(comparer, secondComparer);
     }
 }

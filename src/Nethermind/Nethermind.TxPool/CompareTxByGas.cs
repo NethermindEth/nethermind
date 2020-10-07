@@ -22,13 +22,13 @@ using Nethermind.Core;
 namespace Nethermind.TxPool
 {
     /// <summary>
-    /// Orders first by <see cref="Transaction.Nonce"/> asc and then by inner comparer
+    /// Default ordering by <see cref="Transaction.GasPrice"/> desc and then <see cref="Transaction.GasLimit"/> asc
     /// </summary>
-    public class NonceTransactionComparer : IComparer<Transaction>
+    public class CompareTxByGas : IComparer<Transaction>
     {
-        public static readonly NonceTransactionComparer Instance = new NonceTransactionComparer();
+        public static readonly CompareTxByGas Instance = new CompareTxByGas();
         
-        private NonceTransactionComparer() { }
+        private CompareTxByGas() { }
 
         public int Compare(Transaction x, Transaction y)
         {
@@ -36,8 +36,12 @@ namespace Nethermind.TxPool
             if (ReferenceEquals(null, y)) return 1;
             if (ReferenceEquals(null, x)) return -1;
                 
-            // compare by nonce ascending
-            return x.Nonce.CompareTo(y.Nonce);
+            // then by gas price descending
+            int gasPriceComparison = y.GasPrice.CompareTo(x.GasPrice);
+            if (gasPriceComparison != 0) return gasPriceComparison;
+                
+            // then by gas limit ascending
+            return x.GasLimit.CompareTo(y.GasLimit);
         }
     }
 }
