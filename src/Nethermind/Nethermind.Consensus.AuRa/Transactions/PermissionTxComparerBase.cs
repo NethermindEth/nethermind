@@ -20,6 +20,8 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.TxPool;
 
@@ -29,6 +31,8 @@ namespace Nethermind.Consensus.AuRa.Transactions
     {
         private readonly IContractDataStore<Address> _sendersWhitelist;
         private readonly IDictionaryContractDataStore<TxPriorityContract.Destination> _priorities;
+        private Keccak _blockHash;
+        private ISet<Address> _sendersWhiteListSet;
 
         public PermissionTxComparerBase(IContractDataStore<Address> sendersWhitelist, // expected HashSet based
             IDictionaryContractDataStore<TxPriorityContract.Destination> priorities) // expected SortedList based)
@@ -44,9 +48,21 @@ namespace Nethermind.Consensus.AuRa.Transactions
                 ? destination.Value
                 : UInt256.Zero;
 
-        protected bool IsWhiteListed(Transaction tx) =>
-            // if _sendersWhitelist is HashSetContractDataStore<Address> it returns a set that then uses HashSet.Contains avoiding multiple enumeration
-            _sendersWhitelist.GetItemsFromContractAtBlock(BlockHeader).Contains(tx.SenderAddress);
+        protected bool IsWhiteListed(Transaction tx)
+        {
+            CheckReloadSendersWhitelist();
+            return _sendersWhiteListSet.Contains(tx.SenderAddress);
+        }
+
+        private void CheckReloadSendersWhitelist()
+        {
+            BlockHeader blockHeader = BlockHeader;
+            if (blockHeader.Hash != _blockHash)
+            {
+                _sendersWhiteListSet = _sendersWhitelist.GetItemsFromContractAtBlock(blockHeader).AsSet();
+                _blockHash = blockHeader.Hash;
+            }
+        }
 
         public int Compare(Transaction x, Transaction y)
         {

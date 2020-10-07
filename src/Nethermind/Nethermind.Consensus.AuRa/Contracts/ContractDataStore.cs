@@ -46,9 +46,10 @@ namespace Nethermind.Consensus.AuRa.Contracts
         public IEnumerable<T> GetItemsFromContractAtBlock(BlockHeader parent)
         {
             GetItemsFromContractAtBlock(parent, parent.Hash == _lastHash);
-            return GetItemsFromContractAtBlock(Items).ToArray(); // returning a copy for multithreading
+            return GetSnapshot(Items);
         }
-
+        
+        
         [MethodImpl(MethodImplOptions.Synchronized)]
         private void OnBlockProcessed(object sender, BlockProcessedEventArgs e)
         {
@@ -86,7 +87,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             _blockProcessor.BlockProcessed -= OnBlockProcessed;
         }
         
-        protected abstract IEnumerable<T> GetItemsFromContractAtBlock(TCollection collection);
+        protected abstract IEnumerable<T> GetSnapshot(TCollection collection);
         
         protected abstract TCollection CreateItems();
         
