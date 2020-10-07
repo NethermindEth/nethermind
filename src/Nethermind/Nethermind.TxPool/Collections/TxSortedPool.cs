@@ -16,8 +16,11 @@
 // 
 
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+
+[assembly: InternalsVisibleTo("Nethermind.AuRa.Test")]
 
 namespace Nethermind.TxPool.Collections
 {

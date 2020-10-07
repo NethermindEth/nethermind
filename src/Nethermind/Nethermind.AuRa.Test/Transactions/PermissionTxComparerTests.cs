@@ -30,6 +30,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.TxPool;
+using Nethermind.TxPool.Collections;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -275,10 +276,8 @@ namespace Nethermind.AuRa.Test.Transactions
                 .ToDictionary(
                     g => g.Key,
                     g => g.OrderBy(t => t,
-                        new CompositeComparer<Transaction>(
-                            NonceTransactionComparer.Instance,
-                            new PermissionTxComparer(sendersWhitelist, priorities, blockHeader),
-                            GasBasedTxComparer.Instance)).ToArray());
+                        TxSortedPool.GetTxComparerWithIdentity(comparer)).ToArray());
+            
             
             var orderedTransactions = TxPoolTxSource.Order(txBySender, comparer).ToArray();
             orderedTransactions.Should().BeEquivalentTo(expectation, o => o.WithStrictOrdering());
