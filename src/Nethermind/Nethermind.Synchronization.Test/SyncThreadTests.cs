@@ -48,7 +48,7 @@ using BlockTree = Nethermind.Blockchain.BlockTree;
 
 namespace Nethermind.Synchronization.Test
 {
-    [Parallelizable(ParallelScope.None)]
+    [Parallelizable(ParallelScope.All)]
     [TestFixture(SynchronizerType.Fast)]
     [TestFixture(SynchronizerType.Full)]
     public class SyncThreadsTests
