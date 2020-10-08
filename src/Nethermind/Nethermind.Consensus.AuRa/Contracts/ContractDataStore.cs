@@ -19,6 +19,8 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Collections.Specialized;
+using System.Linq;
+using System.Runtime.CompilerServices;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -40,12 +42,15 @@ namespace Nethermind.Consensus.AuRa.Contracts
             _blockProcessor.BlockProcessed += OnBlockProcessed;
         }
 
+        [MethodImpl(MethodImplOptions.Synchronized)]
         public IEnumerable<T> GetItemsFromContractAtBlock(BlockHeader parent)
         {
             GetItemsFromContractAtBlock(parent, parent.Hash == _lastHash);
-            return GetItemsFromContractAtBlock(Items);
+            return GetSnapshot(Items);
         }
-
+        
+        
+        [MethodImpl(MethodImplOptions.Synchronized)]
         private void OnBlockProcessed(object sender, BlockProcessedEventArgs e)
         {
             BlockHeader header = e.Block.Header;
@@ -59,16 +64,17 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
             if (fromReceipts || !isConsecutiveBlock)
             {
-                if (!fromReceipts || !isConsecutiveBlock || !_dataContract.IncrementalChanges)
-                {
-                    ClearItems(Items);
-                }
-
-                bool canGetFullStateFromReceipts = fromReceipts && (isConsecutiveBlock || !_dataContract.IncrementalChanges) && !blockHeader.IsGenesis;
+                bool incrementalChanges = _dataContract.IncrementalChanges;
+                bool canGetFullStateFromReceipts = fromReceipts && (isConsecutiveBlock || !incrementalChanges) && !blockHeader.IsGenesis;
 
                 IEnumerable<T> items = canGetFullStateFromReceipts
                     ? _dataContract.GetItemsChangedFromBlock(blockHeader, receipts)
                     : _dataContract.GetAllItemsFromBlock(blockHeader);
+
+                if (!fromReceipts || !isConsecutiveBlock || !incrementalChanges)
+                {
+                    ClearItems(Items);
+                }
 
                 InsertItems(Items, items);
 
@@ -81,7 +87,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             _blockProcessor.BlockProcessed -= OnBlockProcessed;
         }
         
-        protected abstract IEnumerable<T> GetItemsFromContractAtBlock(TCollection collection);
+        protected abstract IEnumerable<T> GetSnapshot(TCollection collection);
         
         protected abstract TCollection CreateItems();
         

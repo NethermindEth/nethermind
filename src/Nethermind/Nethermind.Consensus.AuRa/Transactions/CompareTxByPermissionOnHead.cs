@@ -15,34 +15,28 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Collections.Generic;
+using System;
 using System.Linq;
-using Nethermind.Blockchain.Processing;
+using Nethermind.Blockchain;
+using Nethermind.Consensus.AuRa.Contracts;
+using Nethermind.Core;
+using Nethermind.Int256;
 
-namespace Nethermind.Consensus.AuRa.Contracts
+namespace Nethermind.Consensus.AuRa.Transactions
 {
-    public class HashSetContractDataStore<T> : ContractDataStore<T, HashSet<T>>
+    public class CompareTxByPermissionOnHead : CompareTxByPermissionBase
     {
-        public HashSetContractDataStore(IDataContract<T> dataContract, IBlockProcessor blockProcessor)
-            : base(dataContract, blockProcessor)
+        private readonly IBlockTree _blockTree;
+
+        public CompareTxByPermissionOnHead(
+            IContractDataStore<Address> sendersWhitelist, // expected HashSet based
+            IDictionaryContractDataStore<TxPriorityContract.Destination> priorities, // expected SortedList based
+            IBlockTree blockTree) 
+            : base(sendersWhitelist, priorities)
         {
+            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
         }
 
-        protected override HashSet<T> CreateItems() => new HashSet<T>();
-
-        protected override void ClearItems(HashSet<T> collection)
-        {
-            collection.Clear();
-        }
-
-        protected override IEnumerable<T> GetSnapshot(HashSet<T> collection) => collection.ToHashSet();
-
-        protected override void InsertItems(HashSet<T> collection, IEnumerable<T> items)
-        {
-            foreach (T item in items)
-            {
-                collection.Add(item);
-            }
-        }
+        protected override BlockHeader BlockHeader => _blockTree.Head.Header;
     }
 }

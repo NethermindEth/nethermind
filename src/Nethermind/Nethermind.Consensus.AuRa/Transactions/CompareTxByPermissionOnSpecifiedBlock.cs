@@ -15,15 +15,24 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Diagnostics;
+using System;
+using Nethermind.Consensus.AuRa.Contracts;
+using Nethermind.Core;
+using Nethermind.Core.Extensions;
+using Nethermind.Int256;
 
-namespace Nethermind.Core.Test.Builders
+namespace Nethermind.Consensus.AuRa.Transactions
 {
-    [DebuggerDisplay(nameof(Name))]
-    public class NamedTransaction : Transaction
+    public class CompareTxByPermissionOnSpecifiedBlock : CompareTxByPermissionBase
     {
-        public string Name { get; set; }
+        public CompareTxByPermissionOnSpecifiedBlock(
+            IContractDataStore<Address> sendersWhitelist, 
+            IDictionaryContractDataStore<TxPriorityContract.Destination> priorities, 
+            BlockHeader blockHeader) : base(sendersWhitelist, priorities)
+        {
+            BlockHeader = blockHeader;
+        }
 
-        public override string ToString() => Name;
+        protected override BlockHeader BlockHeader { get; }
     }
 }

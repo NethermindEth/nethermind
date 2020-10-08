@@ -15,11 +15,14 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -27,6 +30,8 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.Trie;
 using Nethermind.TxPool;
+
+[assembly:InternalsVisibleTo("Nethermind.AuRa.Test")]
 
 namespace Nethermind.Blockchain.Producers
 {
@@ -43,11 +48,8 @@ namespace Nethermind.Blockchain.Producers
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
             _minGasPriceFilter = minGasPriceFilter ?? new MinGasPriceTxFilter(UInt256.Zero);
             _logger = logManager?.GetClassLogger<TxPoolTxSource>() ?? throw new ArgumentNullException(nameof(logManager));
-            OrderStrategy = new DefaultTxPoolOrderStrategy();
         }
         
-        public ITxPoolOrderStrategy OrderStrategy { get; set; }
-
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
         {
             T GetFromState<T>(Func<Keccak, Address, T> stateGetter, Address address, T defaultValue)
@@ -104,8 +106,11 @@ namespace Nethermind.Blockchain.Producers
                 return true;
             }
 
-            var pendingTransactions = _transactionPool.GetPendingTransactions();
-            IEnumerable<Transaction> transactions = OrderStrategy.Order(parent, pendingTransactions);
+            IDictionary<Address, Transaction[]> pendingTransactions = _transactionPool.GetPendingTransactionsBySender();
+            IComparer<Transaction> comparer = UniqueCompareTx.Instance // in order to sort properly and not loose transactions we need to differentiate on their identity which provided comparer might not be doing
+                .ThenBy(GetComparer(parent));
+            
+            IEnumerable<Transaction> transactions = Order(pendingTransactions, comparer);
             IDictionary<Address, UInt256> remainingBalance = new Dictionary<Address, UInt256>();
             Dictionary<Address, UInt256> nonces = new Dictionary<Address, UInt256>();
             List<Transaction> selected = new List<Transaction>();
@@ -167,26 +172,64 @@ namespace Nethermind.Blockchain.Producers
                 gasRemaining -= tx.GasLimit;
             }
 
-            if (_logger.IsDebug) _logger.Debug($"Collected {selected.Count} out of {pendingTransactions.Length} pending transactions.");
+            if (_logger.IsDebug) _logger.Debug($"Collected {selected.Count} out of {pendingTransactions.Sum(g => g.Value.Length)} pending transactions.");
 
             return selected;
         }
-        
-        public override string ToString() => $"{nameof(TxPoolTxSource)}";
-        
-        public interface ITxPoolOrderStrategy
+
+        protected virtual IComparer<Transaction> GetComparer(BlockHeader parent) => CompareTxByGas.Instance;
+
+        internal static IEnumerable<Transaction> Order(IDictionary<Address,Transaction[]> pendingTransactions, IComparer<Transaction> comparerWithIdentity)
         {
-            IEnumerable<Transaction> Order(BlockHeader blockHeader, IEnumerable<Transaction> transactions);
-        }
-        
-        private class DefaultTxPoolOrderStrategy : ITxPoolOrderStrategy
-        {
-            public IEnumerable<Transaction> Order(BlockHeader blockHeader, IEnumerable<Transaction> transactions) =>
-                transactions
-                    .OrderBy(t => t.Nonce)
-                    .ThenByDescending(t => t.GasPrice)
-                    .ThenBy(t => t.GasLimit);
+            IEnumerator<Transaction>[] bySenderEnumerators = pendingTransactions
+                .Select<KeyValuePair<Address, Transaction[]>, IEnumerable<Transaction>>(g => g.Value)
+                .Select(g => g.GetEnumerator())
+                .ToArray();
+            
+            try
+            {
+                // we create a sorted list of head of each group of transactions. From:
+                // A -> N0_P3, N1_P1, N1_P0, N3_P5...
+                // B -> N4_P4, N5_P3, N6_P3...
+                // We construct [N4_P4 (B), N0_P3 (A)] in sorted order by priority
+                var transactions = new DictionarySortedSet<Transaction, IEnumerator<Transaction>>(comparerWithIdentity);
+            
+                for (int i = 0; i < bySenderEnumerators.Length; i++)
+                {
+                    IEnumerator<Transaction> enumerator = bySenderEnumerators[i];
+                    if (enumerator.MoveNext())
+                    {
+                        transactions.Add(enumerator.Current!, enumerator);
+                    }
+                }
+
+                // while there are still unreturned transactions
+                while (transactions.Count > 0)
+                {
+                    // we take first transaction from sorting order, on first call: N4_P4 from B
+                    var (tx, enumerator) = transactions.Min;
+
+                    // we replace it by next transaction from same sender, on first call N5_P3 from B
+                    transactions.Remove(tx);
+                    if (enumerator.MoveNext())
+                    {
+                        transactions.Add(enumerator.Current!, enumerator);
+                    }
+
+                    // we return transactions in lazy manner, no need to sort more than will be taken into block
+                    yield return tx;
+                }
+            }
+            finally
+            {
+                // disposing enumerators
+                for (int i = 0; i < bySenderEnumerators.Length; i++)
+                {
+                    bySenderEnumerators[i].Dispose();
+                }
+            }
         }
 
+        public override string ToString() => $"{nameof(TxPoolTxSource)}";
     }
 }
