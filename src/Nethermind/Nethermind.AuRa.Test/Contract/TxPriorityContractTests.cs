@@ -28,6 +28,7 @@ using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Contracts;
+using Nethermind.Consensus.AuRa.Contracts.DataStore;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Transactions;
@@ -112,11 +113,11 @@ namespace Nethermind.AuRa.Test.Contract
         public class TxPermissionContractBlockchain : TestContractBlockchain
         {
             public TxPriorityContract TxPriorityContract { get; private set; }
-            public SortedListContractDataStore<TxPriorityContract.Destination> Priorities { get; private set; }
+            public DictionaryContractDataStore<TxPriorityContract.Destination> Priorities { get; private set; }
             
             public DictionaryContractDataStore<TxPriorityContract.Destination> MinGasPrices { get; private set; }
             
-            public HashSetContractDataStore<Address> SendersWhitelist { get; private set; }
+            public ContractDataStore<Address> SendersWhitelist { get; private set; }
             
             protected override TxPoolTxSource CreateTxPoolTxSource()
             {
@@ -126,9 +127,19 @@ namespace Nethermind.AuRa.Test.Contract
                     new ReadOnlyTxProcessorSource(DbProvider, BlockTree, SpecProvider, LimboLogs.Instance));
 
                 var comparer = TxPriorityContract.DestinationMethodComparer.Instance;
-                Priorities = new SortedListContractDataStore<TxPriorityContract.Destination>(TxPriorityContract.Priorities, BlockProcessor, comparer);
-                MinGasPrices = new DictionaryContractDataStore<TxPriorityContract.Destination>(TxPriorityContract.MinGasPrices, BlockProcessor, comparer);
-                SendersWhitelist = new HashSetContractDataStore<Address>(TxPriorityContract.SendersWhitelist, BlockProcessor);
+                Priorities = new DictionaryContractDataStore<TxPriorityContract.Destination>(
+                    new SortedListContractDataStoreCollection<TxPriorityContract.Destination>(comparer),  
+                    TxPriorityContract.Priorities, 
+                    BlockProcessor);
+                
+                MinGasPrices = new DictionaryContractDataStore<TxPriorityContract.Destination>(
+                    new DictionaryContractDataStoreCollection<TxPriorityContract.Destination>(comparer),
+                    TxPriorityContract.MinGasPrices,
+                    BlockProcessor);
+                
+                SendersWhitelist = new ContractDataStore<Address>(new HashSetContractDataStoreCollection<Address>(),
+                    TxPriorityContract.SendersWhitelist, 
+                    BlockProcessor);
                 return txPoolTxSource;
             }
 

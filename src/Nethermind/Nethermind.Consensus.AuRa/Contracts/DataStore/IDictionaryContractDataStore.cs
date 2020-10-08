@@ -15,21 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Collections.Generic;
-using Nethermind.Blockchain.Processing;
+using Nethermind.Core;
 
-namespace Nethermind.Consensus.AuRa.Contracts
+namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 {
-    public class SortedListContractDataStore<T> : DictionaryBasedContractDataStore<T>
+    public interface IDictionaryContractDataStore<T> : IContractDataStore<T>
     {
-        private readonly IComparer<T> _comparer;
-
-        public SortedListContractDataStore(IDataContract<T> dataContract, IBlockProcessor blockProcessor, IComparer<T> comparer = null)
-            : base(dataContract, blockProcessor)
-        {
-            _comparer = comparer;
-        }
-
-        protected override IDictionary<T, T> CreateItems() => new SortedList<T, T>(_comparer);
+        bool TryGetValue(BlockHeader header, T key, out T value);
     }
 }

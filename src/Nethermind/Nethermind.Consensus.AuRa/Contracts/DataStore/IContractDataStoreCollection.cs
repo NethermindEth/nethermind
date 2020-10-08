@@ -16,20 +16,15 @@
 // 
 
 using System.Collections.Generic;
-using Nethermind.Blockchain.Processing;
 
-namespace Nethermind.Consensus.AuRa.Contracts
+namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 {
-    public class DictionaryContractDataStore<T> : DictionaryBasedContractDataStore<T>
+    public interface IContractDataStoreCollection<T>
     {
-        private readonly IEqualityComparer<T> _comparer;
-
-        public DictionaryContractDataStore(IDataContract<T> dataContract, IBlockProcessor blockProcessor, IEqualityComparer<T> comparer = null)
-            : base(dataContract, blockProcessor)
-        {
-            _comparer = comparer;
-        }
-
-        protected override IDictionary<T, T> CreateItems() => new Dictionary<T, T>(_comparer);
+        void ClearItems();
+            
+        IEnumerable<T> GetSnapshot();
+            
+        void InsertItems(IEnumerable<T> items);
     }
 }

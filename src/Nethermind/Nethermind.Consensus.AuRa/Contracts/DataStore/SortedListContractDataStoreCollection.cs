@@ -15,25 +15,19 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
-using Nethermind.Consensus.AuRa.Contracts;
-using Nethermind.Consensus.AuRa.Contracts.DataStore;
-using Nethermind.Core;
-using Nethermind.Core.Extensions;
-using Nethermind.Int256;
+using System.Collections.Generic;
 
-namespace Nethermind.Consensus.AuRa.Transactions
+namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 {
-    public class CompareTxByPermissionOnSpecifiedBlock : CompareTxByPermissionBase
+    public class SortedListContractDataStoreCollection<T> : DictionaryBasedContractDataStoreCollection<T>
     {
-        public CompareTxByPermissionOnSpecifiedBlock(
-            IContractDataStore<Address> sendersWhitelist, 
-            IDictionaryContractDataStore<TxPriorityContract.Destination> priorities, 
-            BlockHeader blockHeader) : base(sendersWhitelist, priorities)
+        private readonly IComparer<T> _comparer;
+
+        public SortedListContractDataStoreCollection(IComparer<T> comparer = null)
         {
-            BlockHeader = blockHeader;
+            _comparer = comparer;
         }
 
-        protected override BlockHeader BlockHeader { get; }
+        protected override IDictionary<T, T> CreateDictionary() => new SortedList<T, T>(_comparer);
     }
 }

@@ -24,6 +24,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Contracts;
+using Nethermind.Consensus.AuRa.Contracts.DataStore;
 using Nethermind.Consensus.AuRa.Rewards;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
@@ -227,8 +228,15 @@ namespace Nethermind.Runner.Ethereum.Steps
                 ReadOnlyTxProcessorSource readOnlyTransactionProcessorSource = new ReadOnlyTxProcessorSource(_api.DbProvider, _api.BlockTree, _api.SpecProvider, _api.LogManager);
                 var txPriorityContract = new TxPriorityContract(_api.AbiEncoder, txPriorityContractAddress, readOnlyTransactionProcessorSource);
                 IBlockProcessor? blockProcessor = _api.MainBlockProcessor;
-                var whitelistContractDataStore = new HashSetContractDataStore<Address>(txPriorityContract.SendersWhitelist, blockProcessor);
-                var prioritiesContractDataStore = new SortedListContractDataStore<TxPriorityContract.Destination>(txPriorityContract.Priorities, blockProcessor, TxPriorityContract.DestinationMethodComparer.Instance);
+                var whitelistContractDataStore = new ContractDataStore<Address>(
+                    new HashSetContractDataStoreCollection<Address>(), 
+                    txPriorityContract.SendersWhitelist, 
+                    blockProcessor);
+                
+                var prioritiesContractDataStore = new DictionaryContractDataStore<TxPriorityContract.Destination>(
+                    new SortedListContractDataStoreCollection<TxPriorityContract.Destination>(TxPriorityContract.DestinationMethodComparer.Instance), 
+                    txPriorityContract.Priorities, 
+                    blockProcessor);
                 
                 _api.DisposeStack.Push(whitelistContractDataStore);
                 _api.DisposeStack.Push(prioritiesContractDataStore);

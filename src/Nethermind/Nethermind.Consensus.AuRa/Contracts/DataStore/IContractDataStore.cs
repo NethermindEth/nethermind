@@ -18,7 +18,7 @@
 using System.Collections.Generic;
 using Nethermind.Core;
 
-namespace Nethermind.Consensus.AuRa.Contracts
+namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 {
     public interface IContractDataStore<out T>
     {

@@ -15,25 +15,26 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
-using Nethermind.Consensus.AuRa.Contracts;
-using Nethermind.Consensus.AuRa.Contracts.DataStore;
-using Nethermind.Core;
-using Nethermind.Core.Extensions;
-using Nethermind.Int256;
+using System.Collections.Generic;
 
-namespace Nethermind.Consensus.AuRa.Transactions
+namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 {
-    public class CompareTxByPermissionOnSpecifiedBlock : CompareTxByPermissionBase
+    public class ListIContractDataStoreCollection<T> : IContractDataStoreCollection<T>
     {
-        public CompareTxByPermissionOnSpecifiedBlock(
-            IContractDataStore<Address> sendersWhitelist, 
-            IDictionaryContractDataStore<TxPriorityContract.Destination> priorities, 
-            BlockHeader blockHeader) : base(sendersWhitelist, priorities)
+        private List<T> _items;
+
+        private List<T> Items => _items ??= new List<T>();
+
+        public void ClearItems()
         {
-            BlockHeader = blockHeader;
+            Items.Clear();
         }
 
-        protected override BlockHeader BlockHeader { get; }
+        public IEnumerable<T> GetSnapshot() => Items.ToArray();
+
+        public void InsertItems(IEnumerable<T> items)
+        {
+            Items.AddRange(items);
+        }
     }
 }

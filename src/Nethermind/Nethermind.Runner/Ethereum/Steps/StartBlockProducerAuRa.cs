@@ -26,6 +26,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Contracts;
+using Nethermind.Consensus.AuRa.Contracts.DataStore;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Transactions;
@@ -48,7 +49,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         
         private IAuraConfig? _auraConfig;
         private IAuRaValidator? _validator;
-        private DictionaryBasedContractDataStore<TxPriorityContract.Destination>? _minGasPricesContractDataStore;
+        private IDictionaryContractDataStore<TxPriorityContract.Destination>? _minGasPricesContractDataStore;
         private TxPriorityContract? _txPriorityContract;
 
         public StartBlockProducerAuRa(AuRaNethermindApi api) : base(api)
@@ -146,12 +147,24 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (txPriorityContractAddress != null)
             {
                 _txPriorityContract = new TxPriorityContract(_api.AbiEncoder, txPriorityContractAddress, readOnlyTxProcessorSource);
-                _minGasPricesContractDataStore = new DictionaryContractDataStore<TxPriorityContract.Destination>(_txPriorityContract.MinGasPrices, _api.MainBlockProcessor, comparer);
-                _api.DisposeStack.Push(_minGasPricesContractDataStore);
+                var minGasPricesContractDataStore = new DictionaryContractDataStore<TxPriorityContract.Destination>(
+                    new DictionaryContractDataStoreCollection<TxPriorityContract.Destination>(comparer),
+                    _txPriorityContract.MinGasPrices,
+                    _api.MainBlockProcessor);
+
+                _minGasPricesContractDataStore = minGasPricesContractDataStore;
+                _api.DisposeStack.Push(minGasPricesContractDataStore);
 
                 IBlockProcessor? blockProcessor = _api.MainBlockProcessor;
-                var whitelistContractDataStore = new HashSetContractDataStore<Address>(_txPriorityContract!.SendersWhitelist, blockProcessor);
-                var prioritiesContractDataStore = new SortedListContractDataStore<TxPriorityContract.Destination>(_txPriorityContract.Priorities, blockProcessor, comparer);
+                var whitelistContractDataStore = new ContractDataStore<Address>(
+                    new HashSetContractDataStoreCollection<Address>(), 
+                    _txPriorityContract!.SendersWhitelist, 
+                    blockProcessor);
+                
+                var prioritiesContractDataStore = new DictionaryContractDataStore<TxPriorityContract.Destination>(
+                    new SortedListContractDataStoreCollection<TxPriorityContract.Destination>(comparer),
+                    _txPriorityContract.Priorities,
+                    blockProcessor);
                 
                 _api.DisposeStack.Push(whitelistContractDataStore);
                 _api.DisposeStack.Push(prioritiesContractDataStore);

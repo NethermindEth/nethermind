@@ -21,6 +21,7 @@ using System.Linq;
 using FluentAssertions;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Consensus.AuRa.Contracts;
+using Nethermind.Consensus.AuRa.Contracts.DataStore;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -188,8 +189,8 @@ namespace Nethermind.AuRa.Test.Contract
                     DataContract = dataContract,
                     BlockProcessor = blockProcessor,
                     ContractDataStore = comparer == null
-                        ? (IContractDataStore<T>)new HashSetContractDataStore<T>(dataContract, blockProcessor)
-                        : new SortedListContractDataStore<T>(dataContract, blockProcessor, comparer)
+                        ? (IContractDataStore<T>)new ContractDataStore<T>(new HashSetContractDataStoreCollection<T>(), dataContract, blockProcessor)
+                        : new DictionaryContractDataStore<T>(new SortedListContractDataStoreCollection<T>(comparer), dataContract, blockProcessor)
                 };
             }
 

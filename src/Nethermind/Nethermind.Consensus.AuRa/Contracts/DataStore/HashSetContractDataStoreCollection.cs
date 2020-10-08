@@ -15,12 +15,32 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Core;
+using System.Collections.Generic;
+using System.Linq;
 
-namespace Nethermind.Consensus.AuRa.Contracts
+namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 {
-    public interface IDictionaryContractDataStore<T> : IContractDataStore<T>
+    public class HashSetContractDataStoreCollection<T> : IContractDataStoreCollection<T>
     {
-        bool TryGetValue(BlockHeader header, T key, out T value);
+        private HashSet<T> _items;
+
+        private ISet<T> Items => _items ??= new HashSet<T>();
+
+        public void ClearItems()
+        {
+            Items.Clear();
+        }
+
+        public IEnumerable<T> GetSnapshot() => Items.ToArray();
+
+        public void InsertItems(IEnumerable<T> items)
+        {
+            ISet<T> set = Items;
+            
+            foreach (T item in items)
+            {
+                set.Add(item);
+            }
+        }
     }
 }

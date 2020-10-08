@@ -17,32 +17,34 @@
 
 using System.Collections.Generic;
 using System.Linq;
-using Nethermind.Blockchain.Processing;
 
-namespace Nethermind.Consensus.AuRa.Contracts
+namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 {
-    public class HashSetContractDataStore<T> : ContractDataStore<T, HashSet<T>>
+    public abstract class DictionaryBasedContractDataStoreCollection<T> : IContractDataStoreCollection<T>
     {
-        public HashSetContractDataStore(IDataContract<T> dataContract, IBlockProcessor blockProcessor)
-            : base(dataContract, blockProcessor)
+        private IDictionary<T, T> _items;
+
+        private IDictionary<T, T> Items => _items ??= CreateDictionary();
+
+        protected abstract IDictionary<T, T> CreateDictionary();
+
+        public void ClearItems()
         {
+            Items.Clear();
         }
 
-        protected override HashSet<T> CreateItems() => new HashSet<T>();
+        public IEnumerable<T> GetSnapshot() => Items.Values.ToArray();
 
-        protected override void ClearItems(HashSet<T> collection)
+        public void InsertItems(IEnumerable<T> items)
         {
-            collection.Clear();
-        }
-
-        protected override IEnumerable<T> GetSnapshot(HashSet<T> collection) => collection.ToHashSet();
-
-        protected override void InsertItems(HashSet<T> collection, IEnumerable<T> items)
-        {
+            IDictionary<T,T> dictionary = Items;
+            
             foreach (T item in items)
             {
-                collection.Add(item);
+                dictionary[item] = item;
             }
         }
+
+        public bool TryGetValue(T key, out T value) => Items.TryGetValue(key, out value);
     }
 }
