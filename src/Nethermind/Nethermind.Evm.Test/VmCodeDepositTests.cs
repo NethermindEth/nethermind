@@ -27,6 +27,7 @@ namespace Nethermind.Evm.Test
 {
     [TestFixture(true)]
     [TestFixture(false)]
+    [Parallelizable(ParallelScope.Self)]
     public class VmCodeDepositTests : VirtualMachineTestsBase
     {
         private long _blockNumber = MainnetSpecProvider.ByzantiumBlockNumber;

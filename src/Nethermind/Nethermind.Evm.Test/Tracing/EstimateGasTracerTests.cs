@@ -27,6 +27,7 @@ namespace Nethermind.Evm.Test.Tracing
 {
     [TestFixture(true)]
     [TestFixture(false)]
+    [Parallelizable(ParallelScope.All)]
     public class EstimateGasTracerTests
     {
         private readonly ExecutionType _executionType;

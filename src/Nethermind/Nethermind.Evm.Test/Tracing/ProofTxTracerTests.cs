@@ -26,6 +26,7 @@ namespace Nethermind.Evm.Test.Tracing
 {
     [TestFixture(true)]
     [TestFixture(false)]
+    [Parallelizable(ParallelScope.Self)]
     public class ProofTxTracerTests : VirtualMachineTestsBase
     {
         private readonly bool _treatSystemAccountDifferently;
