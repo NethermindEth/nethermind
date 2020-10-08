@@ -15,7 +15,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        language: ['csharp', 'javascript', 'python']
+        language: ['csharp']
     steps:
     - name: Checkout repository
       uses: actions/checkout@v2
@@ -37,7 +37,7 @@ jobs:
     #    uses a compiled language
   
     - run: |
-        cd nethermind/src/Nethermind
+        cd src/Nethermind
         dotnet build Nethermind.sln -c Release
 
     - name: Perform CodeQL Analysis
