@@ -37,8 +37,8 @@ jobs:
     #    uses a compiled language
   
     - run: |
-        make bootstrap
-        make release
+        cd nethermind/src/Nethermind
+        dotnet build Nethermind.sln -c Release
 
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v1
