@@ -17,12 +17,12 @@
 
 using System;
 using System.Collections.Generic;
-using Nethermind.Core;
 
 namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 {
-    public interface IContractDataStore<out T>
+    public interface ILocalData<T>
     {
-        IEnumerable<T> GetItemsFromContractAtBlock(BlockHeader blockHeader);
+        IEnumerable<T> GetItems();
+        event EventHandler Changed;
     }
 }

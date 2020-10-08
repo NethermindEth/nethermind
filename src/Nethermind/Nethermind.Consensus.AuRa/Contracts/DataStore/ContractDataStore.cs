@@ -24,29 +24,29 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 {
-    public class ContractDataStore<T> : IDisposable, IContractDataStore<T>
+    public class ContractDataStore<T, TCollection> : IDisposable, IContractDataStore<T> where TCollection : IContractDataStoreCollection<T>
     {
-        private readonly IContractDataStoreCollection<T> _collection;
+        internal TCollection Collection { get; }
         private readonly IDataContract<T> _dataContract;
         private readonly IBlockProcessor _blockProcessor;
         private Keccak _lastHash;
-        
-        public ContractDataStore(
-            IContractDataStoreCollection<T> collection,
+
+        protected internal ContractDataStore(
+            TCollection collection,
             IDataContract<T> dataContract,
             IBlockProcessor blockProcessor)
         {
-            _collection = collection;
+            Collection = collection;
             _dataContract = dataContract ?? throw new ArgumentNullException(nameof(dataContract));
             _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));;
             _blockProcessor.BlockProcessed += OnBlockProcessed;
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public IEnumerable<T> GetItemsFromContractAtBlock(BlockHeader parent)
+        public IEnumerable<T> GetItemsFromContractAtBlock(BlockHeader blockHeader)
         {
-            GetItemsFromContractAtBlock(parent, parent.Hash == _lastHash);
-            return _collection.GetSnapshot();
+            GetItemsFromContractAtBlock(blockHeader, blockHeader.Hash == _lastHash);
+            return Collection.GetSnapshot();
         }
         
         
@@ -72,10 +72,10 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 
                 if (!fromReceipts || !isConsecutiveBlock || !incrementalChanges)
                 {
-                    _collection.ClearItems();
+                    Collection.ClearItems();
                 }
 
-                _collection.InsertItems(items);
+                Collection.InsertItems(items);
 
                 _lastHash = blockHeader.Hash;
             }
@@ -86,24 +86,15 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
             _blockProcessor.BlockProcessed -= OnBlockProcessed;
         }
     }
-
-    public class DictionaryContractDataStore<T> : ContractDataStore<T>, IDictionaryContractDataStore<T>
+    
+    public class ContractDataStore<T> : ContractDataStore<T, IContractDataStoreCollection<T>>
     {
-        private readonly DictionaryBasedContractDataStoreCollection<T> _collection;
-
-        public DictionaryContractDataStore(
-            DictionaryBasedContractDataStoreCollection<T> collection,
-            IDataContract<T> dataContract,
+        public ContractDataStore(
+            IContractDataStoreCollection<T> collection, 
+            IDataContract<T> dataContract, 
             IBlockProcessor blockProcessor) 
             : base(collection, dataContract, blockProcessor)
         {
-            _collection = collection;
-        }
-
-        public bool TryGetValue(BlockHeader header, T key, out T value)
-        {
-            GetItemsFromContractAtBlock(header);
-            return _collection.TryGetValue(key, out value);
         }
     }
 }
