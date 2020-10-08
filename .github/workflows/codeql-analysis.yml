@@ -22,7 +22,7 @@ jobs:
       with:
         fetch-depth: 2
     - name: Updating submodules
-      run: git submodule update --init src/int256 src/rocksdb-sharp src/Dirichlet
+      run: git submodule update --init src/int256 src/rocksdb-sharp src/Dirichlet src/tests
     # If this run was triggered by a pull request event, then checkout
     # the head of the pull request instead of the merge commit.
     - run: git checkout HEAD^2
