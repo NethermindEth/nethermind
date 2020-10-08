@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -17,7 +17,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO.Abstractions;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using NSubstitute;
@@ -27,11 +26,33 @@ using System.Security;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.KeyStore;
+using System.IO;
 
 namespace Nethermind.Wallet.Test
 {
     public class AccountUnlockerTests
     {
+        private static List<(string Name, string Content)> _files = new List<(string Name, string Content)>()
+        {
+            ("TestingFileF1", "PF1"),
+            ("TestingFileF2", "PF2")
+        };
+        
+        [SetUp]
+        public void SetUp()
+        {
+            var resourcePath = PathUtils.GetApplicationResourcePath(string.Empty);
+            foreach (var file in _files)
+            {
+                var filePath = Path.Combine(resourcePath, file.Name);
+                if (!File.Exists(filePath))
+                {
+                    File.Create(filePath).Close();
+                    File.WriteAllText(filePath, file.Content);
+                }
+            }
+        }
         public static IEnumerable<UnlockAccountsTest> UnlockAccountsTestCases
         {
             get
@@ -40,31 +61,22 @@ namespace Nethermind.Wallet.Test
                 {
                     UnlockAccounts = new [] {TestItem.AddressA, TestItem.AddressB},
                     Passwords = new []{"A", "B"},
-                    PasswordFiles = new []{new UnlockAccountsTest.PasswordFile() {Name = "./F1", Content = "PF1", Exists = true}},
-                    ExpectedPasswords = new []{"PF1", "PF1"}, 
+                    PasswordFiles = new List<string> { _files[0].Name },
+                    ExpectedPasswords = new []{ _files[0].Content, _files[0].Content }, 
                 };
 
                 yield return new UnlockAccountsTest()
                 {
                     UnlockAccounts = new [] {TestItem.AddressA, TestItem.AddressB},
                     Passwords = new []{"A", "B"},
-                    PasswordFiles = new []
-                    {
-                        new UnlockAccountsTest.PasswordFile() {Name = "./F1", Content = "PF1", Exists = true},
-                        new UnlockAccountsTest.PasswordFile() {Name = "./F2", Content = "PF2", Exists = true},
-                    },
-                    ExpectedPasswords = new []{"PF1", "PF2"}, 
+                    PasswordFiles = new List<string> { _files[0].Name, _files[1].Name },
+                    ExpectedPasswords = new []{ _files[0].Content, _files[1].Content }, 
                 };
                 
                 yield return new UnlockAccountsTest()
                 {
                     UnlockAccounts = new [] {TestItem.AddressA, TestItem.AddressB},
                     Passwords = new []{"A", "B"},
-                    PasswordFiles = new []
-                    {
-                        new UnlockAccountsTest.PasswordFile() {Name = "./F1", Content = "PF1", Exists = false},
-                        new UnlockAccountsTest.PasswordFile() {Name = "./F2", Content = "PF2", Exists = false},
-                    },
                     ExpectedPasswords = new []{"A", "B"}, 
                 };
                 
@@ -76,25 +88,32 @@ namespace Nethermind.Wallet.Test
                 };
             }
         }
-        
+
+        [TearDown]
+        public void TearDown()
+        {
+            var resourcePath = PathUtils.GetApplicationResourcePath(string.Empty);
+            foreach (var file in _files)
+            {
+                var filePath = Path.Combine(resourcePath, file.Name);
+                if (File.Exists(filePath))
+                {
+                    File.Delete(filePath);
+                }
+            }
+        }
+
         [Test]
         public void UnlockAccounts([ValueSource(nameof(UnlockAccountsTestCases))] UnlockAccountsTest test)
         {
             IKeyStoreConfig keyStoreConfig = Substitute.For<IKeyStoreConfig>();
             keyStoreConfig.Passwords.Returns(test.Passwords);
-            keyStoreConfig.PasswordFiles.Returns(test.PasswordFiles.Select(f => f.Name).ToArray());
+            keyStoreConfig.PasswordFiles.Returns(_files.Where(x => test.PasswordFiles.Contains(x.Name)).Select(x => x.Name).ToArray());
             keyStoreConfig.UnlockAccounts.Returns(test.UnlockAccounts.Select(a => a.ToString()).ToArray());
-            
-            IFileSystem fileSystem = Substitute.For<IFileSystem>();
-            foreach (var passwordFile in test.PasswordFiles)
-            {
-                fileSystem.File.Exists(passwordFile.Name).Returns(passwordFile.Exists);
-                fileSystem.File.ReadAllText(passwordFile.Name).Returns(passwordFile.Content);
-            }
             
             IWallet wallet = Substitute.For<IWallet>();
             
-            var unlocker = new AccountUnlocker(keyStoreConfig, wallet, fileSystem, LimboLogs.Instance);
+            var unlocker = new AccountUnlocker(keyStoreConfig, wallet, LimboLogs.Instance, new PasswordProvider(keyStoreConfig));
             unlocker.UnlockAccounts();
 
             for (var index = 0; index < test.UnlockAccounts.Length; index++)
@@ -108,16 +127,9 @@ namespace Nethermind.Wallet.Test
         public class UnlockAccountsTest
         {
             public string[] Passwords { get; set; } = Array.Empty<string>();
-            public PasswordFile[] PasswordFiles { get; set; } = Array.Empty<PasswordFile>();
+            public List<string> PasswordFiles { get; set; } = new List<string>();
             public Address[] UnlockAccounts { get; set; } = Array.Empty<Address>();
             public string[] ExpectedPasswords { get; set; } = Array.Empty<string>();
-
-            public class PasswordFile
-            {
-                public string Name { get; set; }
-                public string Content { get; set; }
-                public bool Exists { get; set; }
-            }
             
             public override string ToString() => string.Join("; ", ExpectedPasswords);
         }
