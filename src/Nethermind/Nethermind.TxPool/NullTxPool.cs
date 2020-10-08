@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -32,6 +33,7 @@ namespace Nethermind.TxPool
         public Transaction[] GetPendingTransactions() => Array.Empty<Transaction>();
         
         public Transaction[] GetOwnPendingTransactions() => Array.Empty<Transaction>();
+        public IDictionary<Address, Transaction[]> GetPendingTransactionsBySender() => new Dictionary<Address, Transaction[]>();
 
         public void AddPeer(ITxPoolPeer peer)
         {

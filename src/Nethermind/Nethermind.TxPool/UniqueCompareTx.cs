@@ -13,20 +13,29 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 
 namespace Nethermind.TxPool
 {
-    public class PendingTransactionComparer : IEqualityComparer<Transaction>
+    /// <summary>
+    /// Compares <see cref="Transaction"/>s based on <see cref="Transaction.Hash"/> identity. No two different signed transactions will be same.
+    /// </summary>
+    public class UniqueCompareTx : IComparer<Transaction>
     {
-        public static readonly PendingTransactionComparer Default = new PendingTransactionComparer();
+        public static readonly UniqueCompareTx Instance = new UniqueCompareTx();
         
-        public bool Equals(Transaction x, Transaction y) =>
-            ReferenceEquals(x, y) || !ReferenceEquals(x, null) && !ReferenceEquals(y, null) && x.SenderAddress == y.SenderAddress && x.Nonce == y.Nonce;
+        private UniqueCompareTx() { }
 
-        public int GetHashCode(Transaction obj) => HashCode.Combine(obj?.SenderAddress, obj?.Nonce);
+        public int Compare(Transaction x, Transaction y)
+        {
+            if (ReferenceEquals(x, y)) return 0;
+            if (ReferenceEquals(null, y)) return 1;
+            if (ReferenceEquals(null, x)) return -1;
+            
+            return x.Hash.CompareTo(y.Hash);
+        }
     }
 }
