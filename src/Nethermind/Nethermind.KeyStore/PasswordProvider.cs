@@ -58,7 +58,7 @@ namespace Nethermind.KeyStore
                     : null;
             }
 
-            password ??= GetPasswordN(keyStoreConfigPasswordIndex, _keyStoreConfig.Passwords).Secure();
+            password ??= GetPasswordN(keyStoreConfigPasswordIndex, _keyStoreConfig.Passwords)?.Secure();
             return password;
         }
 
