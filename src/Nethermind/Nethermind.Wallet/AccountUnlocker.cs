@@ -16,8 +16,6 @@
 // 
 
 using System;
-using System.IO.Abstractions;
-using System.Security;
 using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.KeyStore;

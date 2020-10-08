@@ -34,7 +34,8 @@ namespace Nethermind.KeyStore.Test
         private static List<(string Name, string Content)> _files = new List<(string Name, string Content)>()
         {
             ("TestingPasswordProviderFileF1", "PF1"),
-            ("TestingPasswordProviderFileF2", "PF2")
+            ("TestingPasswordProviderFileF2", "P    F2"),
+            ("TestingPasswordProviderFileF3", "P    F3    ")
         };
 
         [SetUp]
@@ -75,9 +76,9 @@ namespace Nethermind.KeyStore.Test
                     UnlockAccounts = new[] { TestItem.AddressA, TestItem.AddressB },
                     Passwords = new[] { "A", "B" },
                     PasswordFiles = new List<string> { _files[0].Name },
-                    ExpectedPasswords = new[] { _files[0].Content, _files[0].Content },
+                    ExpectedPasswords = new[] { _files[0].Content.Trim(), _files[0].Content.Trim() },
                     BlockAuthorAccount = TestItem.AddressA,
-                    ExpectectedBlockAuthorAccountPassword = _files[0].Content
+                    ExpectectedBlockAuthorAccountPassword = _files[0].Content.Trim()
                 };
 
                 yield return new PasswordProviderTest()
@@ -85,9 +86,9 @@ namespace Nethermind.KeyStore.Test
                     UnlockAccounts = new[] { TestItem.AddressA, TestItem.AddressB },
                     Passwords = new[] { "A", "B" },
                     PasswordFiles = new List<string> { _files[0].Name, _files[1].Name },
-                    ExpectedPasswords = new[] { _files[0].Content, _files[1].Content },
+                    ExpectedPasswords = new[] { _files[0].Content.Trim(), _files[1].Content.Trim() },
                     BlockAuthorAccount = TestItem.AddressB,
-                    ExpectectedBlockAuthorAccountPassword = _files[1].Content
+                    ExpectectedBlockAuthorAccountPassword = _files[1].Content.Trim()
                 };
 
                 yield return new PasswordProviderTest()
@@ -97,6 +98,16 @@ namespace Nethermind.KeyStore.Test
                     ExpectedPasswords = new[] { "A", "B" },
                     BlockAuthorAccount = TestItem.AddressB,
                     ExpectectedBlockAuthorAccountPassword = "B"
+                };
+
+                yield return new PasswordProviderTest()
+                {
+                    UnlockAccounts = new[] { TestItem.AddressA },
+                    Passwords = new[] { "A", "B" },
+                    PasswordFiles = new List<string> { _files[2].Name },
+                    ExpectedPasswords = new[] { _files[2].Content.Trim() },
+                    BlockAuthorAccount = TestItem.AddressA,
+                    ExpectectedBlockAuthorAccountPassword = _files[2].Content.Trim()
                 };
             }
         }

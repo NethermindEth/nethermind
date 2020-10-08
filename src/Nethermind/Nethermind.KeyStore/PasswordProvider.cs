@@ -16,6 +16,7 @@
 // 
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Security;
 using Nethermind.Crypto;
@@ -68,17 +69,39 @@ namespace Nethermind.KeyStore
 
         private SecureString ReadFromFileToSecureString(string filePath)
         {
+            var whitespaces = new List<char>();
             var secureString = new SecureString();
             using (StreamReader stream = new StreamReader(filePath))
             {
                 while (stream.Peek() >= 0)
                 {
                     var character = (char)stream.Read();
-                    secureString.AppendChar(character);
+                    if (char.IsWhiteSpace(character))
+                    {
+                        whitespaces.Add(character);
+                    }
+                    else
+                    {
+                        if (whitespaces.Count != 0)
+                        {
+                            FillWhitespaceList(secureString, whitespaces);
+                            whitespaces = new List<char>();
+                        }
+
+                        secureString.AppendChar(character);
+                    }
                 }
             }
 
             return secureString;
+        }
+
+        private void FillWhitespaceList(SecureString secureString, List<char> whitespaces)
+        {
+            foreach (var whitespace in whitespaces)
+            {
+                secureString.AppendChar(whitespace);
+            }
         }
     }
 }
