@@ -17,6 +17,7 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Blockchain.Data;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Core;
 
@@ -30,9 +31,33 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
             DictionaryBasedContractDataStoreCollection<T> collection,
             IDataContract<T> dataContract,
             IBlockProcessor blockProcessor)
-            : this(new ContractDataStore<T, DictionaryBasedContractDataStoreCollection<T>>(collection, dataContract, blockProcessor))
+            : this(CreateContractDataStore(collection, dataContract, blockProcessor))
         {
         }
+
+        public DictionaryContractDataStore(
+            DictionaryBasedContractDataStoreCollection<T> collection,
+            IDataContract<T> dataContract,
+            IBlockProcessor blockProcessor,
+            ILocalDataSource<IEnumerable<T>> localDataSource)
+            : this(localDataSource == null 
+                ? CreateContractDataStore(collection, dataContract, blockProcessor) 
+                : CreateContractDataStoreWithLocalData(collection, dataContract, blockProcessor, localDataSource))
+        {
+        }
+        
+        private static ContractDataStore<T, DictionaryBasedContractDataStoreCollection<T>> CreateContractDataStore(
+            DictionaryBasedContractDataStoreCollection<T> collection, 
+            IDataContract<T> dataContract, 
+            IBlockProcessor blockProcessor) => 
+            new ContractDataStore<T, DictionaryBasedContractDataStoreCollection<T>>(collection, dataContract, blockProcessor);
+
+        private static ContractDataStoreWithLocalData<T, DictionaryBasedContractDataStoreCollection<T>> CreateContractDataStoreWithLocalData(
+            DictionaryBasedContractDataStoreCollection<T> collection, 
+            IDataContract<T> dataContract, 
+            IBlockProcessor blockProcessor, 
+            ILocalDataSource<IEnumerable<T>> localDataSource) => 
+            new ContractDataStoreWithLocalData<T, DictionaryBasedContractDataStoreCollection<T>>(collection, dataContract ?? new EmptyDataContract<T>(), blockProcessor, localDataSource);
 
         private DictionaryContractDataStore(ContractDataStore<T, DictionaryBasedContractDataStoreCollection<T>> contractDataStore)
         {
