@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -16,10 +16,9 @@
 // 
 
 using System;
-using System.IO.Abstractions;
-using System.Security;
 using Nethermind.Core;
 using Nethermind.Crypto;
+using Nethermind.KeyStore;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 
@@ -29,36 +28,19 @@ namespace Nethermind.Wallet
     {
         private readonly IKeyStoreConfig _config;
         private readonly IWallet _wallet;
-        private readonly IFileSystem _fileSystem;
         private readonly ILogger _logger;
+        private readonly IPasswordProvider _passwordProvider;
 
-        public AccountUnlocker(IKeyStoreConfig config, IWallet wallet, IFileSystem fileSystem, ILogManager logManager)
+        public AccountUnlocker(IKeyStoreConfig config, IWallet wallet, ILogManager logManager, IPasswordProvider passwordProvider)
         {
             _config = config ?? throw new ArgumentNullException(nameof(config));
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
-            _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
             _logger = logManager?.GetClassLogger<AccountUnlocker>() ?? throw new ArgumentNullException(nameof(logManager));
+            _passwordProvider = passwordProvider ?? throw new ArgumentNullException(nameof(passwordProvider));
         }
         
         public void UnlockAccounts()
-        {
-            string GetPasswordN(int n, string[] passwords) => passwords?.Length > 0 ? passwords[Math.Min(n, passwords.Length - 1)] : null;
-            SecureString GetPassword(int n)
-            {
-                string password = GetPasswordN(n, _config.PasswordFiles);
-                if (password != null)
-                {
-                    string passwordPath = password.GetApplicationResourcePath();
-                    password = _fileSystem.File.Exists(passwordPath)
-                        ? _fileSystem.File.ReadAllText(passwordPath).Trim()
-                        : null;
-                }
-                
-                password ??= GetPasswordN(n, _config.Passwords) ?? string.Empty;
-
-                return password.Secure();
-            }
-
+        { 
             for (int i = 0; i < _config.UnlockAccounts.Length; i++)
             {
                 string unlockAccount = _config.UnlockAccounts[i];
@@ -67,7 +49,7 @@ namespace Nethermind.Wallet
                     try
                     {
                         Address address = new Address(unlockAccount);
-                        if (_wallet.UnlockAccount(address, GetPassword(i), TimeSpan.FromDays(1000)))
+                        if (_wallet.UnlockAccount(address, _passwordProvider.GetPassword(i) ?? string.Empty.Secure(), TimeSpan.FromDays(1000)))
                         {
                             if (_logger.IsInfo) _logger.Info($"Unlocked account: {unlockAccount}");
                         }
