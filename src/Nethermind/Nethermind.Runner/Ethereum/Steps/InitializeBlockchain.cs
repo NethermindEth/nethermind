@@ -60,7 +60,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         }
 
         [Todo(Improve.Refactor, "Use chain spec for all chain configuration")]
-        private Task InitBlockchain()
+        protected virtual Task InitBlockchain()
         {
             if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
             if (_api.DbProvider == null) throw new StepDependencyException(nameof(_api.DbProvider));
