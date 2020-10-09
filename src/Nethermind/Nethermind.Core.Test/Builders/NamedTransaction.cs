@@ -13,20 +13,17 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System;
-using System.Collections.Generic;
-using Nethermind.Core;
+using System.Diagnostics;
 
-namespace Nethermind.TxPool
+namespace Nethermind.Core.Test.Builders
 {
-    public class PendingTransactionComparer : IEqualityComparer<Transaction>
+    [DebuggerDisplay(nameof(Name))]
+    public class NamedTransaction : Transaction
     {
-        public static readonly PendingTransactionComparer Default = new PendingTransactionComparer();
-        
-        public bool Equals(Transaction x, Transaction y) =>
-            ReferenceEquals(x, y) || !ReferenceEquals(x, null) && !ReferenceEquals(y, null) && x.SenderAddress == y.SenderAddress && x.Nonce == y.Nonce;
+        public string Name { get; set; }
 
-        public int GetHashCode(Transaction obj) => HashCode.Combine(obj?.SenderAddress, obj?.Nonce);
+        public override string ToString() => Name;
     }
 }

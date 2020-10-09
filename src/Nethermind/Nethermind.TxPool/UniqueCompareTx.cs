@@ -13,25 +13,29 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System;
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 
-namespace Nethermind.Consensus.AuRa.Contracts
+namespace Nethermind.TxPool
 {
-    public class LogEntryAddressAndTopicEqualityComparer : IEqualityComparer<LogEntry>
+    /// <summary>
+    /// Compares <see cref="Transaction"/>s based on <see cref="Transaction.Hash"/> identity. No two different signed transactions will be same.
+    /// </summary>
+    public class UniqueCompareTx : IComparer<Transaction>
     {
-        public bool Equals(LogEntry x, LogEntry y)
-        {
-            return ReferenceEquals(x, y) || (x != null && x.LoggersAddress == y?.LoggersAddress && x.Topics.SequenceEqual(y?.Topics ?? Array.Empty<Keccak>()));
-        }
+        public static readonly UniqueCompareTx Instance = new UniqueCompareTx();
+        
+        private UniqueCompareTx() { }
 
-        public int GetHashCode(LogEntry obj)
+        public int Compare(Transaction x, Transaction y)
         {
-            return obj.Topics.Aggregate(obj.LoggersAddress.GetHashCode(), (i, keccak) => i ^ keccak.GetHashCode());
+            if (ReferenceEquals(x, y)) return 0;
+            if (ReferenceEquals(null, y)) return 1;
+            if (ReferenceEquals(null, x)) return -1;
+            
+            return x.Hash.CompareTo(y.Hash);
         }
     }
 }

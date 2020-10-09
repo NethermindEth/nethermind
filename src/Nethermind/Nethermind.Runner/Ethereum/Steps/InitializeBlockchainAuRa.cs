@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Api;
 using Nethermind.Blockchain.Processing;
@@ -27,6 +28,7 @@ using Nethermind.Consensus.AuRa.Rewards;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Core;
 using Nethermind.Evm;
 using Nethermind.Runner.Ethereum.Api;
 using Nethermind.TxPool;
@@ -215,6 +217,27 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _api.LogManager,
                     blockGasLimitContractTransitions.Keys.ToArray())
                 : base.CreateHeaderValidator();
+        }
+
+        protected override IComparer<Transaction> CreateTxPoolTxComparer()
+        {
+            Address? txPriorityContractAddress = _api.ConfigProvider.GetConfig<IAuraConfig>()?.TxPriorityContractAddress;
+            if (txPriorityContractAddress != null)
+            {
+                ReadOnlyTxProcessorSource readOnlyTransactionProcessorSource = new ReadOnlyTxProcessorSource(_api.DbProvider, _api.BlockTree, _api.SpecProvider, _api.LogManager);
+                var txPriorityContract = new TxPriorityContract(_api.AbiEncoder, txPriorityContractAddress, readOnlyTransactionProcessorSource);
+                IBlockProcessor? blockProcessor = _api.MainBlockProcessor;
+                var whitelistContractDataStore = new HashSetContractDataStore<Address>(txPriorityContract.SendersWhitelist, blockProcessor);
+                var prioritiesContractDataStore = new SortedListContractDataStore<TxPriorityContract.Destination>(txPriorityContract.Priorities, blockProcessor, TxPriorityContract.DestinationMethodComparer.Instance);
+                
+                _api.DisposeStack.Push(whitelistContractDataStore);
+                _api.DisposeStack.Push(prioritiesContractDataStore);
+                
+                return new CompareTxByPermissionOnHead(whitelistContractDataStore, prioritiesContractDataStore, _api.BlockTree)
+                    .ThenBy(CompareTxByGas.Instance);
+            }
+            
+            return base.CreateTxPoolTxComparer();
         }
     }
 }

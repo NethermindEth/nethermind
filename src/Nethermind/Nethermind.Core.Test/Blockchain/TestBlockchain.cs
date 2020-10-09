@@ -25,6 +25,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -106,7 +107,6 @@ namespace Nethermind.Core.Test.Blockchain
 
             TxPool = new TxPool.TxPool(
                 txStorage,
-                Timestamper,
                 EthereumEcdsa,
                 SpecProvider,
                 new TxPoolConfig(),
@@ -127,7 +127,7 @@ namespace Nethermind.Core.Test.Blockchain
             chainProcessor.Start();
 
             StateReader = new StateReader(StateDb, CodeDb, LimboLogs.Instance);
-            TxPoolTxSource txPoolTxSource = new TxPoolTxSource(TxPool, StateReader, LimboLogs.Instance);
+            TxPoolTxSource txPoolTxSource = CreateTxPoolTxSource();
             ISealer sealer = new NethDevSealEngine(TestItem.AddressD);
             BlockProducer = new TestBlockProducer(txPoolTxSource, chainProcessor, State, sealer, BlockTree, chainProcessor, Timestamper, LimboLogs.Instance);
             BlockProducer.Start();
@@ -140,10 +140,18 @@ namespace Nethermind.Core.Test.Blockchain
 
             var genesis = GetGenesisBlock();
             BlockTree.SuggestBlock(genesis);
-            await _resetEvent.WaitAsync(CancellationToken.None);
+            if (!await _resetEvent.WaitAsync(1000))
+            {
+                throw new InvalidOperationException("Failed to process genesis in 1s.");
+            }
 
             await AddBlocksOnStart();
             return this;
+        }
+
+        protected virtual TxPoolTxSource CreateTxPoolTxSource()
+        {
+            return new TxPoolTxSource(TxPool, StateReader, LimboLogs.Instance);
         }
 
         protected virtual Block GetGenesisBlock()

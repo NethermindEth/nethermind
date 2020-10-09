@@ -86,7 +86,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             _stateProvider.Commit(specProvider.GenesisSpec);
             _stateProvider.CommitTree();
 
-            ITxPool txPool = new TxPool.TxPool(txStorage, Timestamper.Default, ethereumEcdsa, specProvider, new TxPoolConfig(), _stateProvider, LimboLogs.Instance);
+            ITxPool txPool = new TxPool.TxPool(txStorage, ethereumEcdsa, specProvider, new TxPoolConfig(), _stateProvider, LimboLogs.Instance);
             IChainLevelInfoRepository chainLevels = new ChainLevelInfoRepository(dbProvider);
             IBlockTree blockTree = new BlockTree(dbProvider, chainLevels, specProvider, txPool, NullBloomStorage.Instance, LimboLogs.Instance);
 

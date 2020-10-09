@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Blockchain.Producers;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Specs.Forks;
 using Nethermind.Core.Test.Builders;
@@ -89,23 +90,23 @@ namespace Nethermind.Blockchain.Test
                     Transactions =
                     {
                         // A
-                        Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(1).WithValue(10).WithGasPrice(10).WithGasLimit(10).TestObject,
-                        Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(3).WithValue(1).WithGasPrice(10).WithGasLimit(10).TestObject,
-                        Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(2).WithValue(10).WithGasPrice(10).WithGasLimit(10).TestObject,
+                        Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(1).WithValue(10).WithGasPrice(10).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+                        Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(3).WithValue(1).WithGasPrice(10).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+                        Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(2).WithValue(10).WithGasPrice(10).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
                         
                         //B
-                        Build.A.Transaction.WithSenderAddress(TestItem.AddressB).WithNonce(0).WithValue(1).WithGasPrice(10).WithGasLimit(10).TestObject,
-                        Build.A.Transaction.WithSenderAddress(TestItem.AddressB).WithNonce(1).WithValue(1).WithGasPrice(10).WithGasLimit(9).TestObject,
-                        Build.A.Transaction.WithSenderAddress(TestItem.AddressB).WithNonce(3).WithValue(1).WithGasPrice(10).WithGasLimit(9).TestObject,
+                        Build.A.Transaction.WithSenderAddress(TestItem.AddressB).WithNonce(0).WithValue(1).WithGasPrice(10).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyB).TestObject,
+                        Build.A.Transaction.WithSenderAddress(TestItem.AddressB).WithNonce(1).WithValue(1).WithGasPrice(10).WithGasLimit(9).SignedAndResolved(TestItem.PrivateKeyB).TestObject,
+                        Build.A.Transaction.WithSenderAddress(TestItem.AddressB).WithNonce(3).WithValue(1).WithGasPrice(10).WithGasLimit(9).SignedAndResolved(TestItem.PrivateKeyB).TestObject,
                         
                         //C
-                        Build.A.Transaction.WithSenderAddress(TestItem.AddressC).WithNonce(3).WithValue(500).WithGasPrice(19).WithGasLimit(9).TestObject,
-                        Build.A.Transaction.WithSenderAddress(TestItem.AddressC).WithNonce(3).WithValue(500).WithGasPrice(20).WithGasLimit(9).TestObject,
-                        Build.A.Transaction.WithSenderAddress(TestItem.AddressC).WithNonce(4).WithValue(500).WithGasPrice(20).WithGasLimit(9).TestObject,
+                        Build.A.Transaction.WithSenderAddress(TestItem.AddressC).WithNonce(3).WithValue(500).WithGasPrice(19).WithGasLimit(9).SignedAndResolved(TestItem.PrivateKeyC).TestObject,
+                        Build.A.Transaction.WithSenderAddress(TestItem.AddressC).WithNonce(3).WithValue(500).WithGasPrice(20).WithGasLimit(9).SignedAndResolved(TestItem.PrivateKeyC).TestObject,
+                        Build.A.Transaction.WithSenderAddress(TestItem.AddressC).WithNonce(4).WithValue(500).WithGasPrice(20).WithGasLimit(9).SignedAndResolved(TestItem.PrivateKeyC).TestObject,
                     },
                     GasLimit = 10000000
                 };
-                complexCase.ExpectedSelectedTransactions.AddRange(new[] {3, 4, 0, 2, 7, 1 }.Select(i => complexCase.Transactions[i]));
+                complexCase.ExpectedSelectedTransactions.AddRange(new[] {7, 0, 3, 4, 2, 1 }.Select(i => complexCase.Transactions[i]));
                 yield return new TestCaseData(complexCase).SetName("Complex case");
             }
         }
@@ -136,10 +137,18 @@ namespace Nethermind.Blockchain.Test
             }
 
             ITxPool transactionPool = Substitute.For<ITxPool>();
-            transactionPool.GetPendingTransactions().Returns(testCase.Transactions.ToArray());
+            IComparer<Transaction> comparer = CompareTxByNonce.Instance.ThenBy(CompareTxByGas.Instance);
+            transactionPool.GetPendingTransactionsBySender().Returns(
+                testCase.Transactions
+                    .Where(t => t?.SenderAddress != null)
+                    .GroupBy(t => t.SenderAddress)
+                    .ToDictionary(
+                    g => g.Key, 
+                    g => g.OrderBy(t => t, comparer).ToArray()));
+            
             SetAccountStates(testCase.MissingAddresses);
 
-            TxPoolTxSource poolTxSource = new TxPoolTxSource(transactionPool, stateReader, LimboLogs.Instance, testCase.MinGasPriceForMining);
+            TxPoolTxSource poolTxSource = new TxPoolTxSource(transactionPool, stateReader, LimboLogs.Instance, new MinGasPriceTxFilter(testCase.MinGasPriceForMining));
             
             IEnumerable<Transaction> selectedTransactions = poolTxSource.GetTransactions(Build.A.BlockHeader.WithStateRoot(stateProvider.StateRoot).TestObject, testCase.GasLimit);
             selectedTransactions.Should().BeEquivalentTo(testCase.ExpectedSelectedTransactions);
@@ -153,7 +162,7 @@ namespace Nethermind.Blockchain.Test
         public long GasLimit { get; set; }
         public List<Transaction> ExpectedSelectedTransactions { get; } = new List<Transaction>();
 
-        public long MinGasPriceForMining { get; set; } = 1;
+        public UInt256 MinGasPriceForMining { get; set; } = 1;
 
         public static ProperTransactionsSelectedTestCase Default =>
             new ProperTransactionsSelectedTestCase()
@@ -161,9 +170,9 @@ namespace Nethermind.Blockchain.Test
                 AccountStates = { {TestItem.AddressA, (1000, 1)} },
                 Transactions =
                 {
-                    Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(3).WithValue(1).WithGasPrice(10).WithGasLimit(10).TestObject,
-                    Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(1).WithValue(10).WithGasPrice(10).WithGasLimit(10).TestObject,
-                    Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(2).WithValue(10).WithGasPrice(10).WithGasLimit(10).TestObject
+                    Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(3).WithValue(1).WithGasPrice(10).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+                    Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(1).WithValue(10).WithGasPrice(10).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+                    Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(2).WithValue(10).WithGasPrice(10).WithGasLimit(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject
                 },
                 GasLimit = 10000000
             };

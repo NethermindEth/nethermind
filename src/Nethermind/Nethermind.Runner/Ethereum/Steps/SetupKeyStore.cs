@@ -64,9 +64,11 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _ => new ProtectedKeyStoreWallet(_api.KeyStore, new ProtectedPrivateKeyFactory(_api.CryptoRandom, _api.Timestamper), _api.Timestamper, _api.LogManager),
                 };
 
-                new AccountUnlocker(keyStoreConfig, _api.Wallet, new FileSystem(), _api.LogManager).UnlockAccounts();
+                _api.PasswordProvider = new PasswordProvider(keyStoreConfig);
 
-                INodeKeyManager nodeKeyManager = new NodeKeyManager(_api.CryptoRandom, _api.KeyStore, keyStoreConfig, _api.LogManager);
+                new AccountUnlocker(keyStoreConfig, _api.Wallet, _api.LogManager, _api.PasswordProvider).UnlockAccounts();
+
+                INodeKeyManager nodeKeyManager = new NodeKeyManager(_api.CryptoRandom, _api.KeyStore, keyStoreConfig, _api.LogManager, _api.PasswordProvider);
                 _api.NodeKey = nodeKeyManager.LoadNodeKey();
                 _api.OriginalSignerKey = nodeKeyManager.LoadSignerKey();
                 _api.Enode = new Enode(_api.NodeKey.PublicKey, IPAddress.Parse(networkConfig.ExternalIp), networkConfig.P2PPort);
