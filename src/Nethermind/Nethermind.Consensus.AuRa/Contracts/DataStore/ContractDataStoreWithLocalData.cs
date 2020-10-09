@@ -48,7 +48,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
         private void LoadLocalData()
         {
             var oldData = _localData;
-            _localData = _localDataSource.Data.ToArray();
+            _localData = _localDataSource.Data?.ToArray() ?? Array.Empty<T>();
             Collection.Remove(_localData.Except(_localData));
             Collection.Insert(_localData.Except(oldData));
         }
