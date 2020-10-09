@@ -174,7 +174,10 @@ namespace Nethermind.Core.Crypto
             return Core.Extensions.Bytes.AreEqual(other.Bytes, Bytes);
         }
 
-        public int CompareTo(Keccak other) => Extensions.Bytes.Comparer.Compare(Bytes, other.Bytes);
+        public int CompareTo(Keccak other)
+        {
+            return Extensions.Bytes.Comparer.Compare(Bytes, other?.Bytes);  
+        } 
 
         public override bool Equals(object obj)
         {
