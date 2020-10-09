@@ -34,10 +34,11 @@ namespace Nethermind.Consensus.AuRa.Contracts
                 : base(filePath, jsonSerializer, logManager)
             {
             }
-            
+
             public ILocalDataSource<IEnumerable<Address>> GetWhitelistLocalDataSource() => new LocalDataSource<Address>(this, LocalData.GetWhitelist);
             public ILocalDataSource<IEnumerable<Destination>> GetPrioritiesLocalDataSource() => new LocalDataSource<Destination>(this, LocalData.GetPriorities);
             public ILocalDataSource<IEnumerable<Destination>> GetMinGasPricesLocalDataSource() => new LocalDataSource<Destination>(this, LocalData.GetMinGasPrices);
+            protected override LocalData GetDefaultValue() => new LocalData();
         }
 
         private class LocalDataSource<T> : ILocalDataSource<IEnumerable<T>>
@@ -64,9 +65,9 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
         public class LocalData
         {
-            public Address[] Whitelist { get; set; }
-            public Destination[] Priorities { get; set; }
-            public Destination[] MinGasPrices { get; set; }
+            public Address[] Whitelist { get; set; } = Array.Empty<Address>();
+            public Destination[] Priorities { get; set; } = Array.Empty<Destination>();
+            public Destination[] MinGasPrices { get; set; } = Array.Empty<Destination>();
 
             internal static Address[] GetWhitelist(LocalData localData) => localData.Whitelist;
             internal static Destination[] GetPriorities(LocalData localData) => localData.Priorities;

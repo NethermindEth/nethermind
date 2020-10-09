@@ -38,7 +38,6 @@ namespace Nethermind.Blockchain.Data
             _logger = logManager?.GetClassLogger<FileLocalDataSource<T>>() ?? throw new ArgumentNullException(nameof(logManager));
             SetupWatcher(filePath);
             LoadFile();
-            _data = GetDefaultValue();
         }
 
         protected virtual T GetDefaultValue() => default;
@@ -49,6 +48,7 @@ namespace Nethermind.Blockchain.Data
 
         public void Dispose()
         {
+            _fileSystemWatcher.Changed -= OnFileChanged;
             _fileSystemWatcher?.Dispose();
         }
 
@@ -58,7 +58,10 @@ namespace Nethermind.Blockchain.Data
             string fileName = Path.GetFileName(_filePath);
             if (fileName != null)
             {
-                _fileSystemWatcher = new FileSystemWatcher(directoryName, fileName);
+                _fileSystemWatcher = new FileSystemWatcher(directoryName, fileName)
+                {
+                    EnableRaisingEvents = true
+                };
                 _fileSystemWatcher.Changed += OnFileChanged;
             }
             else
@@ -78,7 +81,7 @@ namespace Nethermind.Blockchain.Data
                 }
                 catch (JsonSerializationException e)
                 {
-                    if (_logger.IsError) _logger.Error($"Couldn't deserialize {typeof(T)} from {_filePath}.");
+                    if (_logger.IsError) _logger.Error($"Couldn't deserialize {typeof(T)} from {_filePath}.", e);
                 }
             }
             else
