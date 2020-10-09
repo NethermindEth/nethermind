@@ -21,9 +21,11 @@ using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using Nethermind.Abi;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Logging;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
@@ -32,13 +34,15 @@ namespace Nethermind.Consensus.AuRa.Contracts
         private readonly IDataContract<T> _dataContract;
         private readonly IBlockProcessor _blockProcessor;
         private Keccak _lastHash;
-        
+        private readonly ILogger _logger;
+
         protected TCollection Items { get; private set; }
         
-        protected ContractDataStore(IDataContract<T> dataContract, IBlockProcessor blockProcessor)
+        protected ContractDataStore(IDataContract<T> dataContract, IBlockProcessor blockProcessor, ILogManager logManager)
         {
             _dataContract = dataContract ?? throw new ArgumentNullException(nameof(dataContract));
             _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));;
+            _logger = logManager?.GetClassLogger<ContractDataStore<T, TCollection>>() ?? throw new ArgumentNullException(nameof(logManager));
             _blockProcessor.BlockProcessed += OnBlockProcessed;
         }
 
@@ -67,18 +71,25 @@ namespace Nethermind.Consensus.AuRa.Contracts
                 bool incrementalChanges = _dataContract.IncrementalChanges;
                 bool canGetFullStateFromReceipts = fromReceipts && (isConsecutiveBlock || !incrementalChanges) && !blockHeader.IsGenesis;
 
-                IEnumerable<T> items = canGetFullStateFromReceipts
-                    ? _dataContract.GetItemsChangedFromBlock(blockHeader, receipts)
-                    : _dataContract.GetAllItemsFromBlock(blockHeader);
-
-                if (!fromReceipts || !isConsecutiveBlock || !incrementalChanges)
+                try
                 {
-                    ClearItems(Items);
+                    IEnumerable<T> items = canGetFullStateFromReceipts
+                        ? _dataContract.GetItemsChangedFromBlock(blockHeader, receipts)
+                        : _dataContract.GetAllItemsFromBlock(blockHeader);
+
+                    if (!fromReceipts || !isConsecutiveBlock || !incrementalChanges)
+                    {
+                        ClearItems(Items);
+                    }
+
+                    InsertItems(Items, items);
+
+                    _lastHash = blockHeader.Hash;
                 }
-
-                InsertItems(Items, items);
-
-                _lastHash = blockHeader.Hash;
+                catch (AbiException e)
+                {
+                    if (_logger.IsError) _logger.Error("Failed to update data from contract.", e);
+                }
             }
         }
 

@@ -19,13 +19,14 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Core;
+using Nethermind.Logging;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
     public abstract class DictionaryBasedContractDataStore<T> : ContractDataStore<T, IDictionary<T, T>>, IDictionaryContractDataStore<T>
     {
-        protected DictionaryBasedContractDataStore(IDataContract<T> dataContract, IBlockProcessor blockProcessor)
-            : base(dataContract, blockProcessor)
+        protected DictionaryBasedContractDataStore(IDataContract<T> dataContract, IBlockProcessor blockProcessor, ILogManager logManager)
+            : base(dataContract, blockProcessor, logManager)
         {
         }
         
