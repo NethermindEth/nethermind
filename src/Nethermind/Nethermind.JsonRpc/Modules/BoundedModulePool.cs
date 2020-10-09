@@ -22,12 +22,14 @@ namespace Nethermind.JsonRpc.Modules
 {
     public class BoundedModulePool<T> : IRpcModulePool<T> where T : IModule
     {
+        private readonly int _timeout;
         private T _shared;
         private ConcurrentBag<T> _bag = new ConcurrentBag<T>();
         private SemaphoreSlim _semaphore;
 
-        public BoundedModulePool(IRpcModuleFactory<T> factory, int exclusiveCapacity)
+        public BoundedModulePool(IRpcModuleFactory<T> factory, int exclusiveCapacity, int timeout)
         {
+            _timeout = timeout;
             Factory = factory;
             
             _semaphore = new SemaphoreSlim(exclusiveCapacity);
@@ -46,7 +48,7 @@ namespace Nethermind.JsonRpc.Modules
                 return _shared;
             }
             
-            if (!_semaphore.Wait(1000))
+            if (!_semaphore.Wait(_timeout))
             {
                 throw new TimeoutException($"Unable to rent an instance of {typeof(T).Name}. Too many concurrent requests.");
             }
