@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -89,6 +89,16 @@ namespace Nethermind.KeyStore
         public Result DeleteKey(Address address)
         {
             throw new System.NotImplementedException();
+        }
+
+        public Result StoreKey(Address address, byte[] keyContent, SecureString password)
+        {
+            throw new NotImplementedException();
+        }
+
+        public (byte[] Key, Result Result) GetKeyBytes(Address address, SecureString password)
+        {
+            throw new NotImplementedException();
         }
 
         public int Version { get; }

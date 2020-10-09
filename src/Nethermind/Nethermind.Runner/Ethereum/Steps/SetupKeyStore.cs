@@ -55,7 +55,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _api.EthereumJsonSerializer,
                     encrypter,
                     _api.CryptoRandom,
-                    _api.LogManager);
+                    _api.LogManager,
+                    new PrivateKeyStoreIOSettingsProvider(keyStoreConfig));
 
                 _api.Wallet = _api.Config<IInitConfig>() switch
                 {
