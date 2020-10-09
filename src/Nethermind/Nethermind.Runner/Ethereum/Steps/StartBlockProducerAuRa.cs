@@ -51,6 +51,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         private IAuRaValidator? _validator;
         private IDictionaryContractDataStore<TxPriorityContract.Destination>? _minGasPricesContractDataStore;
         private TxPriorityContract? _txPriorityContract;
+        private TxPriorityContract.LocalDataSource? _localDataSource;
 
         public StartBlockProducerAuRa(AuRaNethermindApi api) : base(api)
         {
@@ -142,33 +143,51 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         protected override TxPoolTxSource CreateTxPoolTxSource(ReadOnlyTxProcessingEnv processingEnv, ReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
-            var comparer = TxPriorityContract.DestinationMethodComparer.Instance;
             Address? txPriorityContractAddress = _auraConfig?.TxPriorityContractAddress;
-            if (txPriorityContractAddress != null)
+            bool usesTxPriorityContract = txPriorityContractAddress != null;
+            
+            if (usesTxPriorityContract)
             {
-                _txPriorityContract = new TxPriorityContract(_api.AbiEncoder, txPriorityContractAddress, readOnlyTxProcessorSource);
-                var minGasPricesContractDataStore = new DictionaryContractDataStore<TxPriorityContract.Destination>(
+                _txPriorityContract = new TxPriorityContract(_api.AbiEncoder, txPriorityContractAddress, readOnlyTxProcessorSource); 
+            }
+            
+            string? auraConfigTxPriorityConfigFilePath = _auraConfig?.TxPriorityConfigFilePath;
+            bool usesTxPriorityLocalData = auraConfigTxPriorityConfigFilePath != null;
+            if (usesTxPriorityLocalData)
+            {
+                _localDataSource = new TxPriorityContract.LocalDataSource(auraConfigTxPriorityConfigFilePath, _api.EthereumJsonSerializer, _api.LogManager);
+            }
+
+            if (usesTxPriorityLocalData || usesTxPriorityLocalData)
+            {
+                var comparer = TxPriorityContract.DestinationMethodComparer.Instance;
+                
+                DictionaryContractDataStore<TxPriorityContract.Destination> minGasPricesContractDataStore = new DictionaryContractDataStore<TxPriorityContract.Destination>(
                     new DictionaryContractDataStoreCollection<TxPriorityContract.Destination>(comparer),
-                    _txPriorityContract.MinGasPrices,
-                    _api.MainBlockProcessor);
+                    _txPriorityContract?.MinGasPrices,
+                    _api.MainBlockProcessor,
+                    _localDataSource?.GetMinGasPricesLocalDataSource());
 
                 _minGasPricesContractDataStore = minGasPricesContractDataStore;
-                _api.DisposeStack.Push(minGasPricesContractDataStore);
+                _api.DisposeStack.Push(minGasPricesContractDataStore);                
 
                 IBlockProcessor? blockProcessor = _api.MainBlockProcessor;
-                var whitelistContractDataStore = new ContractDataStore<Address>(
-                    new HashSetContractDataStoreCollection<Address>(), 
-                    _txPriorityContract!.SendersWhitelist, 
-                    blockProcessor);
+                ContractDataStore<Address, IContractDataStoreCollection<Address>> whitelistContractDataStore = new ContractDataStoreWithLocalData<Address>(
+                    new HashSetContractDataStoreCollection<Address>(),
+                    _txPriorityContract?.SendersWhitelist,
+                    blockProcessor,
+                    _localDataSource?.GetWhitelistLocalDataSource());
                 
-                var prioritiesContractDataStore = new DictionaryContractDataStore<TxPriorityContract.Destination>(
+                DictionaryContractDataStore<TxPriorityContract.Destination> prioritiesContractDataStore = new DictionaryContractDataStore<TxPriorityContract.Destination>(
                     new SortedListContractDataStoreCollection<TxPriorityContract.Destination>(comparer),
-                    _txPriorityContract.Priorities,
-                    blockProcessor);
+                    _txPriorityContract?.Priorities,
+                    blockProcessor,
+                    _localDataSource?.GetPrioritiesLocalDataSource());
                 
                 _api.DisposeStack.Push(whitelistContractDataStore);
                 _api.DisposeStack.Push(prioritiesContractDataStore);
 
+                
                 return new TxPriorityTxSource(
                     _api.TxPool,
                     processingEnv.StateReader, 
