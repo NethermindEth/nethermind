@@ -35,7 +35,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
     /// Permission contract for <see cref="ITxPool"/> transaction ordering
     /// <seealso cref="https://github.com/poanetwork/posdao-contracts/blob/master/contracts/TxPriority.sol"/> 
     /// </summary>
-    public class TxPriorityContract : Contract
+    public partial class TxPriorityContract : Contract
     {
         private ConstantContract Constant { get; }
         
@@ -100,66 +100,6 @@ namespace Nethermind.Consensus.AuRa.Contracts
                 log.Topics[2].Bytes.Slice(0, 4), 
                 AbiType.UInt256.DecodeUInt(log.Data, 0, false).Item1);
 
-        public readonly struct Destination
-        {
-            public static byte[] FnSignatureEmpty = new byte[4];
-
-            public Destination(Address target, byte[] fnSignature, UInt256 value)
-            {
-                Target = target;
-                FnSignature = fnSignature;
-                Value = value;
-            }
-
-            public Address Target { get; }
-            public byte[] FnSignature { get; }
-            public UInt256 Value { get; }
-
-            public static implicit operator Destination(DestinationTuple tuple) => 
-                new Destination(tuple.Item1, tuple.Item2, tuple.Item3);
-
-            public static implicit operator DestinationTuple(Destination destination) => 
-                (destination.Target, destination.FnSignature, destination.Value);
-            
-            public static implicit operator Destination(Transaction tx) => GetTransactionKey(tx);
-
-            public static Destination GetTransactionKey(Transaction tx)
-            {
-                byte[] fnSignature = tx.Data.Length >= 4 ? AbiSignature.GetAddress(tx.Data) : FnSignatureEmpty;
-                return new Destination(tx.To, fnSignature,UInt256.Zero);
-            }
-        }
-
-        public class DestinationMethodComparer : IComparer<Destination>, IEqualityComparer<Destination>
-        {
-            public static readonly DestinationMethodComparer Instance = new DestinationMethodComparer();
-
-            public int Compare(Destination x, Destination y)
-            {
-                bool sameTargetMethod = SameTargetMethod(x, y);
-                return sameTargetMethod 
-                    ? 0 // if same method, we want to treat destinations as same - to be unique 
-                    : y.Value.CompareTo(x.Value); // if not we want to sort destinations by priority descending order
-            }
-
-            private static bool SameTargetMethod(in Destination x, in Destination y)
-            {
-                int targetComparison = Comparer<Address>.Default.Compare(x.Target, y.Target);
-
-                if (targetComparison == 0)
-                {
-                    targetComparison = Bytes.Comparer.Compare(x.FnSignature, y.FnSignature);
-                }
-
-                return targetComparison == 0;
-            }
-
-            public bool Equals(Destination x, Destination y) => 
-                Equals(x.Target, y.Target) && Bytes.EqualityComparer.Equals(x.FnSignature, y.FnSignature);
-
-            public int GetHashCode(Destination obj) => HashCode.Combine(obj.Target, Bytes.EqualityComparer.GetHashCode(obj.FnSignature));
-        }
-        
         public IDataContract<Address> SendersWhitelist { get; }
         public IDataContract<Destination> MinGasPrices { get; }
         public IDataContract<Destination> Priorities { get; }
