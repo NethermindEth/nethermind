@@ -21,13 +21,18 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 {
     public class SortedListContractDataStoreCollection<T> : DictionaryBasedContractDataStoreCollection<T>
     {
-        private readonly IComparer<T> _comparer;
+        private readonly IComparer<T> _valueComparer;
+        private readonly IComparer<T> _keyComparer;
 
-        public SortedListContractDataStoreCollection(IComparer<T> comparer = null)
+        public SortedListContractDataStoreCollection(IComparer<T> keyComparer = null, IComparer<T> valueComparer = null)
         {
-            _comparer = comparer;
+            _valueComparer = valueComparer;
+            _keyComparer = keyComparer;
         }
 
-        protected override IDictionary<T, T> CreateDictionary() => new SortedList<T, T>(_comparer);
+        protected override IDictionary<T, T> CreateDictionary() => new SortedList<T, T>(_keyComparer);
+        
+        protected override bool CanReplace(T replaced, T replacing) => 
+            (_valueComparer?.Compare(replacing, replaced) ?? 1) >= 0; // allow replacing only if new value is >= old value
     }
 }

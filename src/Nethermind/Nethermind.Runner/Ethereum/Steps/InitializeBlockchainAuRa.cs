@@ -234,7 +234,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     blockProcessor);
                 
                 var prioritiesContractDataStore = new DictionaryContractDataStore<TxPriorityContract.Destination>(
-                    new SortedListContractDataStoreCollection<TxPriorityContract.Destination>(TxPriorityContract.DestinationMethodComparer.Instance), 
+                    new TxPriorityContract.DestinationSortedListContractDataStoreCollection(), 
                     txPriorityContract.Priorities, 
                     blockProcessor);
                 

@@ -196,7 +196,7 @@ namespace Nethermind.Core.Test.Blockchain
             TxPool.AddTransaction(testObject, TxHandlingOptions.None);
         }
 
-        public void Dispose()
+        public virtual void Dispose()
         {
             BlockProducer?.StopAsync();
             CodeDb?.Dispose();

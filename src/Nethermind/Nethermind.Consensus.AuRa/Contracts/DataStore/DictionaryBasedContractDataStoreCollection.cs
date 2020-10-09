@@ -41,9 +41,15 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
             
             foreach (T item in items)
             {
-                dictionary[item] = item;
+                bool keyAlreadyPresent = dictionary.TryGetValue(item, out T value);
+                if (!keyAlreadyPresent || CanReplace(item, value))
+                {
+                    dictionary[item] = item;
+                }
             }
         }
+
+        protected abstract bool CanReplace(T replaced, T replacing);
 
         public void Remove(IEnumerable<T> items)
         {

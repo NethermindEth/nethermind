@@ -147,7 +147,9 @@ namespace Nethermind.AuRa.Test.Contract
         [Test]
         public void returns_data_from_receipts_on_consecutive_with_incremental_changes_with_identity()
         {
-            TestCase<TxPriorityContract.Destination> testCase = BuildTestCase(TxPriorityContract.DestinationMethodComparer.Instance);
+            TestCase<TxPriorityContract.Destination> testCase = BuildTestCase(
+                TxPriorityContract.DistinctDestinationMethodComparer.Instance, 
+                TxPriorityContract.ValueDestinationMethodComparer.Instance);
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(1).WithHash(TestItem.KeccakA).TestObject;
             testCase.DataContract.GetAllItemsFromBlock(blockHeader).Returns(
                 new[]
@@ -175,7 +177,7 @@ namespace Nethermind.AuRa.Test.Contract
             }, o => o.ComparingByMembers<TxPriorityContract.Destination>());
         }
 
-        protected virtual TestCase<T> BuildTestCase<T>(IComparer<T> comparer = null)
+        protected virtual TestCase<T> BuildTestCase<T>(IComparer<T> keyComparer = null, IComparer<T> valueComparer = null)
         {
             var dataContract = Substitute.For<IDataContract<T>>();
             dataContract.IncrementalChanges.Returns(true);
@@ -186,9 +188,9 @@ namespace Nethermind.AuRa.Test.Contract
             {
                 DataContract = dataContract,
                 BlockProcessor = blockProcessor,
-                ContractDataStore = comparer == null
+                ContractDataStore = keyComparer == null
                     ? (IContractDataStore<T>)new ContractDataStore<T>(new HashSetContractDataStoreCollection<T>(), dataContract, blockProcessor)
-                    : new DictionaryContractDataStore<T>(new SortedListContractDataStoreCollection<T>(comparer), dataContract, blockProcessor)
+                    : new DictionaryContractDataStore<T>(new SortedListContractDataStoreCollection<T>(keyComparer, valueComparer), dataContract, blockProcessor)
             };
         }
 

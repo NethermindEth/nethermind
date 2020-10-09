@@ -18,6 +18,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Abi;
+using Nethermind.Consensus.AuRa.Contracts.DataStore;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
@@ -64,34 +65,52 @@ namespace Nethermind.Consensus.AuRa.Contracts
             public override int GetHashCode() => HashCode.Combine(Target, FnSignature);
         }
 
-        public class DestinationMethodComparer : IComparer<Destination>, IEqualityComparer<Destination>
+        public class ValueDestinationMethodComparer : IComparer<Destination>
         {
-            public static readonly DestinationMethodComparer Instance = new DestinationMethodComparer();
+            public static readonly ValueDestinationMethodComparer Instance = new ValueDestinationMethodComparer();
+            
+            public int Compare(Destination x, Destination y)
+            {
+                // we want to sort destinations by priority descending order
+                return y.Value.CompareTo(x.Value);  
+            }
+            
+        }
+
+        public class DistinctDestinationMethodComparer : IComparer<Destination>, IEqualityComparer<Destination>
+        {
+            public static readonly DistinctDestinationMethodComparer Instance = new DistinctDestinationMethodComparer();
 
             public int Compare(Destination x, Destination y)
             {
-                bool sameTargetMethod = SameTargetMethod(x, y);
-                return sameTargetMethod 
-                    ? 0 // if same method, we want to treat destinations as same - to be unique 
-                    : y.Value.CompareTo(x.Value); // if not we want to sort destinations by priority descending order
-            }
-
-            private static bool SameTargetMethod(in Destination x, in Destination y)
-            {
+                // if same method, we want to treat destinations as same - to be unique
                 int targetComparison = Comparer<Address>.Default.Compare(x.Target, y.Target);
-
-                if (targetComparison == 0)
+                if (targetComparison != 0) return targetComparison;
+                targetComparison = Bytes.Comparer.Compare(x.FnSignature, y.FnSignature);
+                if (targetComparison != 0)
                 {
-                    targetComparison = Bytes.Comparer.Compare(x.FnSignature, y.FnSignature);
+                    int valueCompare = y.Value.CompareTo(x.Value); // if not we want to sort destinations by priority descending order
+                    if (valueCompare != 0) return valueCompare;
+
+                    return targetComparison; // if we can't sort by value, lets sort by destination
                 }
 
-                return targetComparison == 0;
+                return 0; 
             }
 
             public bool Equals(Destination x, Destination y) => 
                 Equals(x.Target, y.Target) && Bytes.EqualityComparer.Equals(x.FnSignature, y.FnSignature);
 
             public int GetHashCode(Destination obj) => HashCode.Combine(obj.Target, Bytes.EqualityComparer.GetHashCode(obj.FnSignature));
-        }        
+        }
+
+        public class DestinationSortedListContractDataStoreCollection : SortedListContractDataStoreCollection<Destination>
+        {
+            public DestinationSortedListContractDataStoreCollection()
+                : base(DistinctDestinationMethodComparer.Instance, ValueDestinationMethodComparer.Instance)
+            {
+            }
+                    
+        }
     }
 }

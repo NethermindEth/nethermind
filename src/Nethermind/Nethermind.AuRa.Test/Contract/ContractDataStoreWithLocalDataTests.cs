@@ -106,9 +106,10 @@ namespace Nethermind.AuRa.Test.Contract
             testCase.ContractDataStore.GetItemsFromContractAtBlock(secondBlock.Header).Should().BeEquivalentTo(expected.Cast<object>());
         }
         
-        protected override TestCase<T> BuildTestCase<T>(IComparer<T> comparer = null) => BuildTestCase(new EmptyLocalDataSource<IEnumerable<T>>(), comparer: comparer);
+        protected override TestCase<T> BuildTestCase<T>(IComparer<T> keyComparer = null, IComparer<T> valueComparer = null) => 
+            BuildTestCase(new EmptyLocalDataSource<IEnumerable<T>>(), keyComparer: keyComparer, valueComparer:valueComparer);
 
-        private TestCase<T> BuildTestCase<T>(ILocalDataSource<IEnumerable<T>> localDataSource, bool withContractSource = true, IComparer<T> comparer = null)
+        private TestCase<T> BuildTestCase<T>(ILocalDataSource<IEnumerable<T>> localDataSource, bool withContractSource = true, IComparer<T> keyComparer = null, IComparer<T> valueComparer = null)
         {
             IDataContract<T> dataContract = null;
             if (withContractSource)
@@ -123,9 +124,9 @@ namespace Nethermind.AuRa.Test.Contract
             {
                 DataContract = dataContract,
                 BlockProcessor = blockProcessor,
-                ContractDataStore = comparer == null
+                ContractDataStore = keyComparer == null
                     ? (IContractDataStore<T>)new ContractDataStoreWithLocalData<T>(new HashSetContractDataStoreCollection<T>(), dataContract, blockProcessor, localDataSource)
-                    : new DictionaryContractDataStore<T>(new SortedListContractDataStoreCollection<T>(comparer), dataContract, blockProcessor, localDataSource)
+                    : new DictionaryContractDataStore<T>(new SortedListContractDataStoreCollection<T>(keyComparer, valueComparer), dataContract, blockProcessor, localDataSource)
             };
         }
         

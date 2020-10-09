@@ -160,10 +160,8 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             if (usesTxPriorityLocalData || usesTxPriorityLocalData)
             {
-                var comparer = TxPriorityContract.DestinationMethodComparer.Instance;
-                
                 DictionaryContractDataStore<TxPriorityContract.Destination> minGasPricesContractDataStore = new DictionaryContractDataStore<TxPriorityContract.Destination>(
-                    new DictionaryContractDataStoreCollection<TxPriorityContract.Destination>(comparer),
+                    new TxPriorityContract.DestinationSortedListContractDataStoreCollection(),
                     _txPriorityContract?.MinGasPrices,
                     _api.MainBlockProcessor,
                     _localDataSource?.GetMinGasPricesLocalDataSource());
@@ -179,7 +177,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _localDataSource?.GetWhitelistLocalDataSource());
                 
                 DictionaryContractDataStore<TxPriorityContract.Destination> prioritiesContractDataStore = new DictionaryContractDataStore<TxPriorityContract.Destination>(
-                    new SortedListContractDataStoreCollection<TxPriorityContract.Destination>(comparer),
+                    new TxPriorityContract.DestinationSortedListContractDataStoreCollection(),
                     _txPriorityContract?.Priorities,
                     blockProcessor,
                     _localDataSource?.GetPrioritiesLocalDataSource());

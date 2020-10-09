@@ -29,5 +29,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
         }
 
         protected override IDictionary<T, T> CreateDictionary() => new Dictionary<T, T>(_comparer);
+        protected override bool CanReplace(T replaced, T replacing) => true;
+        
     }
 }

@@ -53,10 +53,10 @@ namespace Nethermind.Blockchain.Test.Data
                 changedRaised = true;
                 handle.Set();
             }; 
-            File.WriteAllText(tempFile.Path, GenerateStringJson("A", "B"));
+            File.WriteAllText(tempFile.Path, GenerateStringJson("C", "B"));
             handle.Wait(TimeSpan.FromMilliseconds(100));
             changedRaised.Should().BeTrue();
-            fileLocalDataSource.Data.Should().BeEquivalentTo("A", "B");
+            fileLocalDataSource.Data.Should().BeEquivalentTo("C", "B");
         }
 
         [Test]
