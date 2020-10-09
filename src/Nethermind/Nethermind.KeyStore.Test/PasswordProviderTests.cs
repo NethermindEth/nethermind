@@ -35,13 +35,13 @@ namespace Nethermind.KeyStore.Test
         {
             ("TestingPasswordProviderFileF1", "PF1"),
             ("TestingPasswordProviderFileF2", "P    F2"),
-            ("TestingPasswordProviderFileF3", "P    F3    ")
+            ("TestingPasswordProviderFileF3", "   P    F3    ")
         };
 
         [SetUp]
         public void SetUp()
         {
-            var resourcePath = PathUtils.GetApplicationResourcePath(string.Empty);
+            var resourcePath = string.Empty.GetApplicationResourcePath();
             foreach (var file in _files)
             {
                 var filePath = Path.Combine(resourcePath, file.Name);
@@ -56,7 +56,7 @@ namespace Nethermind.KeyStore.Test
         [TearDown]
         public void TearDown()
         {
-            var resourcePath = PathUtils.GetApplicationResourcePath(string.Empty);
+            var resourcePath = string.Empty.GetApplicationResourcePath();
             foreach (var file in _files)
             {
                 var filePath = Path.Combine(resourcePath, file.Name);
@@ -78,7 +78,7 @@ namespace Nethermind.KeyStore.Test
                     PasswordFiles = new List<string> { _files[0].Name },
                     ExpectedPasswords = new[] { _files[0].Content.Trim(), _files[0].Content.Trim() },
                     BlockAuthorAccount = TestItem.AddressA,
-                    ExpectectedBlockAuthorAccountPassword = _files[0].Content.Trim()
+                    ExpectedBlockAuthorAccountPassword = _files[0].Content.Trim()
                 };
 
                 yield return new PasswordProviderTest()
@@ -88,7 +88,7 @@ namespace Nethermind.KeyStore.Test
                     PasswordFiles = new List<string> { _files[0].Name, _files[1].Name },
                     ExpectedPasswords = new[] { _files[0].Content.Trim(), _files[1].Content.Trim() },
                     BlockAuthorAccount = TestItem.AddressB,
-                    ExpectectedBlockAuthorAccountPassword = _files[1].Content.Trim()
+                    ExpectedBlockAuthorAccountPassword = _files[1].Content.Trim()
                 };
 
                 yield return new PasswordProviderTest()
@@ -97,7 +97,7 @@ namespace Nethermind.KeyStore.Test
                     Passwords = new[] { "A", "B" },
                     ExpectedPasswords = new[] { "A", "B" },
                     BlockAuthorAccount = TestItem.AddressB,
-                    ExpectectedBlockAuthorAccountPassword = "B"
+                    ExpectedBlockAuthorAccountPassword = "B"
                 };
 
                 yield return new PasswordProviderTest()
@@ -107,7 +107,7 @@ namespace Nethermind.KeyStore.Test
                     PasswordFiles = new List<string> { _files[2].Name },
                     ExpectedPasswords = new[] { _files[2].Content.Trim() },
                     BlockAuthorAccount = TestItem.AddressA,
-                    ExpectectedBlockAuthorAccountPassword = _files[2].Content.Trim()
+                    ExpectedBlockAuthorAccountPassword = _files[2].Content.Trim()
                 };
             }
         }
@@ -138,7 +138,7 @@ namespace Nethermind.KeyStore.Test
             keyStoreConfig.UnlockAccounts.Returns(test.UnlockAccounts.Select(a => a.ToString()).ToArray());
             var passwordProvider = new PasswordProvider(keyStoreConfig);
             var blockAuthorPassword = passwordProvider.GetBlockAuthorPassword().Unsecure();
-            Assert.AreEqual(test.ExpectectedBlockAuthorAccountPassword, blockAuthorPassword);
+            Assert.AreEqual(test.ExpectedBlockAuthorAccountPassword, blockAuthorPassword);
         }
     }
 
@@ -149,7 +149,7 @@ namespace Nethermind.KeyStore.Test
         public string[] ExpectedPasswords { get; set; } = Array.Empty<string>();
         public Address[] UnlockAccounts { get; set; } = Array.Empty<Address>();
         public Address BlockAuthorAccount { get; set; }
-        public string ExpectectedBlockAuthorAccountPassword { get; set; }
+        public string ExpectedBlockAuthorAccountPassword { get; set; }
 
         public override string ToString() => string.Join("; ", ExpectedPasswords);
     }
