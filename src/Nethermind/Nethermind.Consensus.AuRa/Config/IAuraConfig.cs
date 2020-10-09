@@ -34,6 +34,6 @@ namespace Nethermind.Consensus.AuRa.Config
                                   "See more at https://github.com/poanetwork/posdao-contracts/blob/master/contracts/TxPriority.sol",
             DefaultValue = "null")]
         
-        Address TxPriorityContractAddress { get; set; }
+        string TxPriorityContractAddress { get; set; }
     }
 }

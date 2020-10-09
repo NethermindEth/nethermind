@@ -221,7 +221,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         protected override IComparer<Transaction> CreateTxPoolTxComparer()
         {
-            Address? txPriorityContractAddress = _api.ConfigProvider.GetConfig<IAuraConfig>()?.TxPriorityContractAddress;
+            Address.TryParse(_api.ConfigProvider.GetConfig<IAuraConfig>()?.TxPriorityContractAddress, out Address? txPriorityContractAddress);
             if (txPriorityContractAddress != null)
             {
                 ReadOnlyTxProcessorSource readOnlyTransactionProcessorSource = new ReadOnlyTxProcessorSource(_api.DbProvider, _api.BlockTree, _api.SpecProvider, _api.LogManager);
