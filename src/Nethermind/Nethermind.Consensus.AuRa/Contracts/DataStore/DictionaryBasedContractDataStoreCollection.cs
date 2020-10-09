@@ -28,20 +28,30 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 
         protected abstract IDictionary<T, T> CreateDictionary();
 
-        public void ClearItems()
+        public void Clear()
         {
             Items.Clear();
         }
 
         public IEnumerable<T> GetSnapshot() => Items.Values.ToArray();
 
-        public void InsertItems(IEnumerable<T> items)
+        public void Insert(IEnumerable<T> items)
         {
             IDictionary<T,T> dictionary = Items;
             
             foreach (T item in items)
             {
                 dictionary[item] = item;
+            }
+        }
+
+        public void Remove(IEnumerable<T> items)
+        {
+            IDictionary<T,T> dictionary = Items;
+            
+            foreach (T item in items)
+            {
+                dictionary.Remove(item);
             }
         }
 

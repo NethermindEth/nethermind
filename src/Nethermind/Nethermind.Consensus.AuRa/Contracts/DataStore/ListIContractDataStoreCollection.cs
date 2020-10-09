@@ -16,6 +16,7 @@
 // 
 
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 {
@@ -24,17 +25,23 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
         private List<T> _items;
 
         private List<T> Items => _items ??= new List<T>();
-
-        public void ClearItems()
+        
+        public void Clear()
         {
             Items.Clear();
         }
 
         public IEnumerable<T> GetSnapshot() => Items.ToArray();
 
-        public void InsertItems(IEnumerable<T> items)
+        public void Insert(IEnumerable<T> items)
         {
             Items.AddRange(items);
+        }
+
+        public void Remove(IEnumerable<T> items)
+        {
+            ISet<T> set = items.ToHashSet();
+            Items.RemoveAll(i => set.Contains(i));
         }
     }
 }

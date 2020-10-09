@@ -21,10 +21,12 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 {
     public interface IContractDataStoreCollection<T>
     {
-        void ClearItems();
-            
+        void Clear();
+
         IEnumerable<T> GetSnapshot();
             
-        void InsertItems(IEnumerable<T> items);
+        void Insert(IEnumerable<T> items);
+        
+        void Remove(IEnumerable<T> items);
     }
 }

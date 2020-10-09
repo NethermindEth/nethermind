@@ -72,21 +72,26 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 
                 if (!fromReceipts || !isConsecutiveBlock || !incrementalChanges)
                 {
-                    Collection.ClearItems();
+                    RemoveOldContractItemsFromCollection();
                 }
 
-                Collection.InsertItems(items);
+                Collection.Insert(items);
 
                 _lastHash = blockHeader.Hash;
             }
         }
 
-        public void Dispose()
+        protected virtual void RemoveOldContractItemsFromCollection()
+        {
+            Collection.Clear();
+        }
+
+        public virtual void Dispose()
         {
             _blockProcessor.BlockProcessed -= OnBlockProcessed;
         }
     }
-    
+
     public class ContractDataStore<T> : ContractDataStore<T, IContractDataStoreCollection<T>>
     {
         public ContractDataStore(

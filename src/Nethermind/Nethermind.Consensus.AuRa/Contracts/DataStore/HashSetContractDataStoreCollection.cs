@@ -26,14 +26,14 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 
         private ISet<T> Items => _items ??= new HashSet<T>();
 
-        public void ClearItems()
+        public void Clear()
         {
             Items.Clear();
         }
 
         public IEnumerable<T> GetSnapshot() => Items.ToArray();
 
-        public void InsertItems(IEnumerable<T> items)
+        public void Insert(IEnumerable<T> items)
         {
             ISet<T> set = Items;
             
@@ -41,6 +41,16 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
             {
                 set.Add(item);
             }
+        }
+
+        public void Remove(IEnumerable<T> items)
+        {
+            ISet<T> set = Items;
+            
+            foreach (T item in items)
+            {
+                set.Remove(item);
+            }            
         }
     }
 }
