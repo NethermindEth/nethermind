@@ -46,7 +46,7 @@ namespace Nethermind.Core.Test.IO
             }
             else if (Directory.Exists(Path))
             {
-                Directory.Delete(Path);
+                Directory.Delete(Path, true);
             }
         }
     }
