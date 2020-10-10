@@ -20,6 +20,7 @@ using System.Linq;
 using Nethermind.Abi;
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Data;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus;
@@ -158,7 +159,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _localDataSource = new TxPriorityContract.LocalDataSource(auraConfigTxPriorityConfigFilePath, _api.EthereumJsonSerializer, _api.LogManager);
             }
 
-            if (usesTxPriorityLocalData || usesTxPriorityLocalData)
+            if (usesTxPriorityContract || usesTxPriorityLocalData)
             {
                 DictionaryContractDataStore<TxPriorityContract.Destination> minGasPricesContractDataStore = new DictionaryContractDataStore<TxPriorityContract.Destination>(
                     new TxPriorityContract.DestinationSortedListContractDataStoreCollection(),
@@ -176,7 +177,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _txPriorityContract?.SendersWhitelist,
                     blockProcessor,
                     _api.LogManager,
-                    _localDataSource?.GetWhitelistLocalDataSource());
+                    _localDataSource?.GetWhitelistLocalDataSource() ?? new EmptyLocalDataSource<IEnumerable<Address>>());
                 
                 DictionaryContractDataStore<TxPriorityContract.Destination> prioritiesContractDataStore = new DictionaryContractDataStore<TxPriorityContract.Destination>(
                     new TxPriorityContract.DestinationSortedListContractDataStoreCollection(),
