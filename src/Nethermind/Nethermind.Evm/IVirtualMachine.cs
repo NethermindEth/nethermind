@@ -22,6 +22,8 @@ namespace Nethermind.Evm
 {
     public interface IVirtualMachine
     {
+        public static Address BlockhashStorage = new Address("0xfffffffffffffffffffffffffffffffffffffffe");
+        
         TransactionSubstate Run(EvmState state, ITxTracer tracer);
         
         CodeInfo GetCachedCodeInfo(Address codeSource, IReleaseSpec releaseSpec);

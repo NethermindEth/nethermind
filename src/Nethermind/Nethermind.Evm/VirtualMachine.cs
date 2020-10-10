@@ -1462,7 +1462,23 @@ namespace Nethermind.Evm
 
                         stack.PopUInt256(out UInt256 a);
                         long number = a > long.MaxValue ? long.MaxValue : (long) a;
-                        Keccak blockHash = _blockhashProvider.GetBlockhash(env.CurrentBlock, number);
+
+                        Keccak blockHash;
+                        long currentNumber = env.CurrentBlock.Number;
+                        if (currentNumber - spec.Eip2935BlockNumber <= 256)
+                        {
+                            blockHash = _blockhashProvider.GetBlockhash(env.CurrentBlock, number);
+                        }
+                        else if (spec.Eip2935BlockNumber <= number)
+                        {
+                            StorageCell storageCell = new StorageCell(IVirtualMachine.BlockhashStorage, (UInt256) number);
+                            blockHash = new Keccak(_storage.Get(storageCell).PadLeft(32));
+                        }
+                        else
+                        {
+                            blockHash = Keccak.Zero;
+                        }
+
                         stack.PushBytes(blockHash?.Bytes ?? BytesZero32);
 
                         if (isTrace)

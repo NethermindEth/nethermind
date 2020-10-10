@@ -59,6 +59,7 @@ namespace Nethermind.Evm.Test
         protected static PrivateKey RecipientKey { get; } = TestItem.PrivateKeyB;
         protected static PrivateKey MinerKey { get; } = TestItem.PrivateKeyD;
 
+        protected IBlockhashProvider BlockhashProvider { get; private set; }
         protected virtual long BlockNumber => MainnetSpecProvider.ByzantiumBlockNumber;
         protected virtual ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
         protected IReleaseSpec Spec => SpecProvider.GetSpec(BlockNumber);
@@ -76,8 +77,8 @@ namespace Nethermind.Evm.Test
             TestState = new StateProvider(_stateDb, codeDb, logger);
             Storage = new StorageProvider(_stateDb, TestState, logger);
             _ethereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId, logger);
-            IBlockhashProvider blockhashProvider = TestBlockhashProvider.Instance;
-            Machine = new VirtualMachine(TestState, Storage, blockhashProvider, SpecProvider, logger);
+            BlockhashProvider = TestBlockhashProvider.Instance;
+            Machine = new VirtualMachine(TestState, Storage, BlockhashProvider, SpecProvider, logger);
             _processor = new TransactionProcessor(SpecProvider, TestState, Storage, Machine, logger);
         }
 
@@ -235,7 +236,7 @@ namespace Nethermind.Evm.Test
         }
 
         private static int _callIndex = -1;
-        
+
         protected void AssertStorage(StorageCell storageCell, UInt256 expectedValue)
         {
             _callIndex++;

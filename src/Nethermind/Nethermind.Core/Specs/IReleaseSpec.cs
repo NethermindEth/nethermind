@@ -209,6 +209,19 @@ namespace Nethermind.Core.Specs
         bool IsEip158IgnoredAccount(Address address);
 
         /// <summary>
+        /// Blockhash history storage
+        /// </summary>
+        /// <remarks>https://eips.ethereum.org/EIPS/eip-2935</remarks>
+        /// <returns></returns>
+        long Eip2935BlockNumber
+        {
+            get => _eip2935BlockNumber;
+            set => _eip2935BlockNumber = value;
+        }
+
+        private static long _eip2935BlockNumber;
+
+        /// <summary>
         /// Should transactions be validated against chainId.
         /// </summary>
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>

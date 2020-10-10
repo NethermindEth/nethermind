@@ -235,8 +235,9 @@ namespace Nethermind.Blockchain.Processing
         protected virtual TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options)
         {
             IReleaseSpec releaseSpec = _specProvider.GetSpec(block.Number);
+
+            StoreBlockhash(block.Header, releaseSpec);
             TxReceipt[] receipts = ProcessTransactions(block, options, blockTracer);
-            
             block.Header.ReceiptsRoot = GetReceiptsRoot(releaseSpec, receipts);
             ApplyMinerRewards(block, blockTracer);
 
@@ -247,6 +248,15 @@ namespace Nethermind.Blockchain.Processing
             block.Header.Hash = block.Header.CalculateHash();
 
             return receipts;
+        }
+
+        private void StoreBlockhash(BlockHeader header, IReleaseSpec releaseSpec)
+        {
+            if (header.Number > releaseSpec.Eip2935BlockNumber)
+            {
+                StorageCell hashCell = new StorageCell(IVirtualMachine.BlockhashStorage, (UInt256)(header.Number - 1));
+                _storageProvider.Set(hashCell, header.ParentHash.Bytes);
+            }
         }
 
         private Keccak GetReceiptsRoot(IReleaseSpec releaseSpec, TxReceipt[] txReceipts) => 
