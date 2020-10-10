@@ -131,7 +131,7 @@ namespace Nethermind.Core.Test.Blockchain
             chainProcessor.Start();
             
             StateReader = new StateReader(new ReadOnlyTrieStore(TrieStore), CodeDb, LimboLogs.Instance);
-            TxPoolTxSource txPoolTxSource = new TxPoolTxSource(TxPool, StateReader, LimboLogs.Instance);
+            TxPoolTxSource txPoolTxSource = CreateTxPoolTxSource();
             ISealer sealer = new NethDevSealEngine(TestItem.AddressD);
             IStateProvider producerStateProvider = new StateProvider(new ReadOnlyTrieStore(TrieStore), CodeDb, LimboLogs.Instance);
             BlockProducer = new TestBlockProducer(txPoolTxSource, chainProcessor, producerStateProvider, sealer, BlockTree, chainProcessor, Timestamper, LimboLogs.Instance);
