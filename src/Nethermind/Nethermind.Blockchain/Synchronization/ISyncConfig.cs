@@ -67,7 +67,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         long PivotNumberParsed => LongConverter.FromString(PivotNumber ?? "0");
 
-        UInt256 PivotTotalDifficultyParsed => UInt256.Parse(PivotTotalDifficulty ?? "0", NumberStyles.HexNumber);
+        UInt256 PivotTotalDifficultyParsed => UInt256.Parse(PivotTotalDifficulty ?? "0");
 
         Keccak PivotHashParsed => PivotHash == null ? null : new Keccak(Bytes.FromHexString(PivotHash));
         
