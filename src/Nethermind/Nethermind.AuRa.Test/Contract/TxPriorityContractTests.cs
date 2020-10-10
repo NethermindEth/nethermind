@@ -124,7 +124,7 @@ namespace Nethermind.AuRa.Test.Contract
                 : await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocksAndLocalData, TxPriorityContractTests>();
             
             object[] expected = {TestItem.AddressD, TestItem.AddressB, TestItem.AddressA, TestItem.AddressC};
-            await Task.Delay(10);
+            await Task.Delay(100);
             var whiteList = chain.SendersWhitelist.GetItemsFromContractAtBlock(chain.BlockTree.Head.Header);
             whiteList.Should().BeEquivalentTo(expected);
         }
@@ -143,7 +143,7 @@ namespace Nethermind.AuRa.Test.Contract
                 new TxPriorityContract.Destination(TestItem.AddressA, TxPriorityContract.Destination.FnSignatureEmpty, UInt256.One),
             };
 
-            await Task.Delay(10);
+            await Task.Delay(100);
             var priorities = chain.Priorities.GetItemsFromContractAtBlock(chain.BlockTree.Head.Header);
             priorities.Should().BeEquivalentTo(expected, o => o.ComparingByMembers<TxPriorityContract.Destination>());
         }
@@ -161,7 +161,7 @@ namespace Nethermind.AuRa.Test.Contract
                 new TxPriorityContract.Destination(TestItem.AddressC, FnSignature, 1)
             };
 
-            await Task.Delay(10);
+            await Task.Delay(100);
             var minGasPrices = chain.MinGasPrices.GetItemsFromContractAtBlock(chain.BlockTree.Head.Header);
             minGasPrices.Should().BeEquivalentTo(expected, o => o.ComparingByMembers<TxPriorityContract.Destination>());
             
