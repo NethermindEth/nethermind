@@ -90,7 +90,7 @@ namespace Nethermind.KeyStore
                         if (whitespaces.Count != 0)
                         {
                             FillWhitespaceList(secureString, whitespaces);
-                            whitespaces = new List<char>();
+                            whitespaces.Clear();
                         }
 
                         secureString.AppendChar(character);
