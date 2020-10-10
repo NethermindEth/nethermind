@@ -142,7 +142,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         protected override TxPoolTxSource CreateTxPoolTxSource(ReadOnlyTxProcessingEnv processingEnv, ReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
             var comparer = TxPriorityContract.DestinationMethodComparer.Instance;
-            Address? txPriorityContractAddress = _auraConfig?.TxPriorityContractAddress;
+            Address.TryParse(_auraConfig?.TxPriorityContractAddress, out Address? txPriorityContractAddress);
             if (txPriorityContractAddress != null)
             {
                 _txPriorityContract = new TxPriorityContract(_api.AbiEncoder, txPriorityContractAddress, readOnlyTxProcessorSource);

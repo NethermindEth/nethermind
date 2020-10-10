@@ -46,6 +46,8 @@ namespace Nethermind.Runner.Ethereum.Steps
     {
         private readonly INethermindApi _api;
 
+        private int _cpuCount = Environment.ProcessorCount;
+        
         public RegisterRpcModules(INethermindApi api)
         {
             _api = api;
@@ -58,7 +60,8 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_api.BloomStorage == null) throw new StepDependencyException(nameof(_api.BloomStorage));
             if (_api.LogManager == null) throw new StepDependencyException(nameof(_api.LogManager));
             
-
+            
+            
             LogFinder logFinder = new LogFinder(
                 _api.BlockTree,
                 _api.ReceiptFinder,
@@ -112,7 +115,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.LogManager,
                 _api.StateReader,
                 _api);
-            _api.RpcModuleProvider.Register(new BoundedModulePool<IEthModule>(ethModuleFactory, 8));
+            _api.RpcModuleProvider.Register(new BoundedModulePool<IEthModule>(ethModuleFactory, _cpuCount, rpcConfig.Timeout));
             
             if (_api.DbProvider == null) throw new StepDependencyException(nameof(_api.DbProvider));
             if (_api.RecoveryStep == null) throw new StepDependencyException(nameof(_api.RecoveryStep));
@@ -120,7 +123,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_api.RewardCalculatorSource == null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
             
             ProofModuleFactory proofModuleFactory = new ProofModuleFactory(_api.DbProvider, _api.BlockTree, _api.RecoveryStep, _api.ReceiptFinder, _api.SpecProvider, _api.LogManager);
-            _api.RpcModuleProvider.Register(new BoundedModulePool<IProofModule>(proofModuleFactory, 2));
+            _api.RpcModuleProvider.Register(new BoundedModulePool<IProofModule>(proofModuleFactory, 2, rpcConfig.Timeout));
 
             DebugModuleFactory debugModuleFactory = new DebugModuleFactory(
                 _api.DbProvider, 
@@ -134,7 +137,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.ConfigProvider, 
                 _api.SpecProvider, 
                 _api.LogManager);
-            _api.RpcModuleProvider.Register(new BoundedModulePool<IDebugModule>(debugModuleFactory, 8));
+            _api.RpcModuleProvider.Register(new BoundedModulePool<IDebugModule>(debugModuleFactory, _cpuCount, rpcConfig.Timeout));
 
             TraceModuleFactory traceModuleFactory = new TraceModuleFactory(
                 _api.DbProvider,
@@ -145,7 +148,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.ReceiptStorage,
                 _api.SpecProvider,
                 _api.LogManager);
-            _api.RpcModuleProvider.Register(new BoundedModulePool<ITraceModule>(traceModuleFactory, 8));
+            _api.RpcModuleProvider.Register(new BoundedModulePool<ITraceModule>(traceModuleFactory, _cpuCount, rpcConfig.Timeout));
             
             if (_api.EthereumEcdsa == null) throw new StepDependencyException(nameof(_api.EthereumEcdsa));
             if (_api.Wallet == null) throw new StepDependencyException(nameof(_api.Wallet));
