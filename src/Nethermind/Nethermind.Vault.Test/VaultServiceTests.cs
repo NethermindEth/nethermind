@@ -39,8 +39,7 @@ namespace Nethermind.Vault.Test
             _config.Scheme = "http";
             _config.Path = "api/v1";
             _config.Token = $"bearer  {TestContext.Parameters["token"]}";
-            var unsealTask = VaultUnsealHelper.UnsealVault(_config);
-            unsealTask.Wait();
+            VaultSealingForTestsHelper.Unseal(_config);
             _vaultService = new VaultService(_config, LimboLogs.Instance);
         }
 

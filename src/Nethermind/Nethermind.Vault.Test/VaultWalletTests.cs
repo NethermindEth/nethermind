@@ -40,8 +40,8 @@ namespace Nethermind.Vault.Test
             config.Scheme = "http";
             config.Path = "api/v1";
             config.Token = $"bearer  {TestContext.Parameters["token"]}";
-            var unsealTask = VaultUnsealHelper.UnsealVault(config);
-            unsealTask.Wait();
+            
+            VaultSealingForTestsHelper.Unseal(config);
             _vaultService = new VaultService(
                 config,
                 new TestLogManager(LogLevel.Trace)

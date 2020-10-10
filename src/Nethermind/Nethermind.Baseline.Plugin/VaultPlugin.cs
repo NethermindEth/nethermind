@@ -7,6 +7,7 @@ using Nethermind.TxPool;
 using Nethermind.Vault;
 using Nethermind.Vault.Config;
 using Nethermind.Vault.JsonRpc;
+using Nethermind.Vault.KeyStore;
 
 namespace Nethermind.Plugin.Baseline
 {
@@ -18,8 +19,12 @@ namespace Nethermind.Plugin.Baseline
 
         private IVaultConfig _vaultConfig;
         private VaultService _vaultService;
+        private IVaultSealingHelper _vaultSealingHelper;
 
-        public void Dispose() { }
+        public void Dispose() 
+        {
+            _vaultSealingHelper?.Seal();
+        }
 
         public string Name => "Vault";
 
@@ -30,8 +35,11 @@ namespace Nethermind.Plugin.Baseline
         public Task Init(INethermindApi api)
         {
             _vaultConfig = api.Config<IVaultConfig>();
+            var vaultKeyStoreFacade = new VaultKeyStoreFacade();
+            _vaultSealingHelper = new VaultSealingHelper(vaultKeyStoreFacade, _vaultConfig);
             _api = api;
             _logger = api.LogManager.GetClassLogger();
+            _vaultSealingHelper.Unseal();
             _vaultService = new VaultService(_vaultConfig, _api.LogManager);
             
             IVaultWallet wallet = new VaultWallet(_vaultService, _vaultConfig.VaultId, _api.LogManager);

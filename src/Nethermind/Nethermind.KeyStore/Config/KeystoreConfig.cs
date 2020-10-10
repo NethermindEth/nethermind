@@ -38,5 +38,8 @@ namespace Nethermind.KeyStore.Config
         public string[] Passwords { get; set; } = Array.Empty<string>();
         public string[] PasswordFiles { get; set; } = Array.Empty<string>();
         public string[] UnlockAccounts { get; set; } = Array.Empty<string>();
+
+        public string VaultKeyStoreDirectory { get; set; } = "vault_keystore";
+        public string VaultAccount { get; set; }
     }
 }
