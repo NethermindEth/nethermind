@@ -1471,6 +1471,12 @@ namespace Nethermind.Evm
                         }
                         else if (spec.Eip2935BlockNumber <= number)
                         {
+                            if (!UpdateGas(GasCostOf.SLoadEip1884 - GasCostOf.BlockHash, ref gasAvailable))
+                            {
+                                EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                                return CallResult.OutOfGasException;
+                            }
+                            
                             StorageCell storageCell = new StorageCell(IVirtualMachine.BlockhashStorage, (UInt256) number);
                             blockHash = new Keccak(_storage.Get(storageCell).PadLeft(32));
                         }
