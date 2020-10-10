@@ -347,7 +347,7 @@ namespace Nethermind.Baseline.Test
                 baselineTree.Insert(_testLeaves[0]);
                 Keccak newRoot = baselineTree.Root;
                 Console.WriteLine(newRoot);
-                newRoot.Should().NotBeEquivalentTo(root);
+                newRoot.Should().NotBe(root);
                 root = newRoot;
             }
         }
@@ -366,7 +366,7 @@ namespace Nethermind.Baseline.Test
                 baselineTree.Insert(_testLeaves[i]);
                 Keccak newRoot = baselineTree.Root;
                 Console.WriteLine(newRoot);
-                newRoot.Should().NotBeEquivalentTo(root);
+                newRoot.Should().NotBe(root);
                 root = newRoot;
                 var proof0 = baselineTree.GetProof(0);
                 var proof1 = baselineTree.GetProof(1);

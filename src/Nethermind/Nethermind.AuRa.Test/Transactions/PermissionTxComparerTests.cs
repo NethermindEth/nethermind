@@ -22,20 +22,23 @@ using System.ComponentModel.Design;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using FluentAssertions;
+using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
+using Nethermind.TxPool;
+using Nethermind.TxPool.Collections;
 using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.AuRa.Test.Transactions
 {
-    public class PermissionTxPoolOrderingStrategyTests
+    public class PermissionTxComparerTests
     {
-        private static Address[] WhiteListedSenders = new[] {TestItem.AddressC, TestItem.AddressD};
+        private static Address[] WhitelistedSenders = new[] {TestItem.AddressC, TestItem.AddressD};
 
         public static IEnumerable OrderingTests
         {
@@ -46,8 +49,8 @@ namespace Nethermind.AuRa.Test.Transactions
 
                 
                 yield return new TestCaseData(null).SetName("All");
-                yield return new TestCaseData(Select(t => t.Where(tx => !WhiteListedSenders.Contains(tx.SenderAddress)))).SetName("Not whitelisted");
-                yield return new TestCaseData(Select(t => t.Where(tx => WhiteListedSenders.Contains(tx.SenderAddress)))).SetName("Only whitelisted");
+                yield return new TestCaseData(Select(t => t.Where(tx => !WhitelistedSenders.Contains(tx.SenderAddress)))).SetName("Not whitelisted");
+                yield return new TestCaseData(Select(t => t.Where(tx => WhitelistedSenders.Contains(tx.SenderAddress)))).SetName("Only whitelisted");
                 yield return new TestCaseData(Select(t => t.Where(tx => tx.To != TestItem.AddressB))).SetName("No priority");
                 yield return new TestCaseData(Select(t => t.Where(tx => tx.To == TestItem.AddressB))).SetName("Only priority");
             }
@@ -63,7 +66,7 @@ namespace Nethermind.AuRa.Test.Transactions
             byte[] p5Signature = {0, 1, 2, 3};
             byte[] p6Signature = {0, 0, 0, 2};
             byte[] p0signature = {0, 0, 0, 1};
-            sendersWhitelist.GetItemsFromContractAtBlock(blockHeader).Returns(WhiteListedSenders);
+            sendersWhitelist.GetItemsFromContractAtBlock(blockHeader).Returns(WhitelistedSenders);
             
             SetPriority(priorities, blockHeader, TestItem.AddressB, p5Signature, 5);
             SetPriority(priorities, blockHeader, TestItem.AddressB, p6Signature, 6);
@@ -263,9 +266,20 @@ namespace Nethermind.AuRa.Test.Transactions
 
             transactions = transactionSelect?.Invoke(transactions) ?? transactions;
             expectation = transactionSelect?.Invoke(expectation) ?? expectation;
+
+            IComparer<Transaction> comparer = new CompareTxByPermissionOnSpecifiedBlock(sendersWhitelist, priorities, blockHeader)
+                .ThenBy(CompareTxByGas.Instance); 
             
-            var selectionStrategy = new PermissionTxPoolOrderingStrategy(sendersWhitelist, priorities);
-            var orderedTransactions = selectionStrategy.Order(blockHeader, transactions).ToArray();
+
+            var txBySender = transactions.GroupBy(t => t.SenderAddress)
+                .ToDictionary(
+                    g => g.Key,
+                    g => g.OrderBy(t => t,
+                        // to simulate order coming from TxPool
+                        TxSortedPool.GetPoolUniqueTxComparerByNonce(comparer)).ToArray());
+            
+            
+            var orderedTransactions = TxPoolTxSource.Order(txBySender, comparer).ToArray();
             orderedTransactions.Should().BeEquivalentTo(expectation, o => o.WithStrictOrdering());
         }
 

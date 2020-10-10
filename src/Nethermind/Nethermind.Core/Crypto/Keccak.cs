@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Extensions;
@@ -60,7 +61,7 @@ namespace Nethermind.Core.Crypto
     }
 
     [DebuggerStepThrough]
-    public class Keccak : IEquatable<Keccak>
+    public class Keccak : IEquatable<Keccak>, IComparable<Keccak>
     {
         public const int Size = 32;
 
@@ -177,6 +178,11 @@ namespace Nethermind.Core.Crypto
 
             return Core.Extensions.Bytes.AreEqual(other.Bytes, Bytes);
         }
+
+        public int CompareTo(Keccak other)
+        {
+            return Extensions.Bytes.Comparer.Compare(Bytes, other?.Bytes);  
+        } 
 
         public override bool Equals(object obj)
         {

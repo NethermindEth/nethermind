@@ -115,9 +115,11 @@ namespace Ethereum.Test.Base
             IRewardCalculator rewardCalculator = new RewardCalculator(specProvider);
 
             IEthereumEcdsa ecdsa = new EthereumEcdsa(specProvider.ChainId, _logManager);
+
             TrieStore trieStore = new TrieStore(stateDb, _logManager);
             IStateProvider stateProvider = new StateProvider(trieStore, codeDb, _logManager);
-            ITxPool transactionPool = new TxPool(NullTxStorage.Instance, new Timestamper(), ecdsa, specProvider, new TxPoolConfig(), stateProvider, _logManager);
+            ITxPool transactionPool = new TxPool(NullTxStorage.Instance, ecdsa, specProvider, new TxPoolConfig(), stateProvider, _logManager);
+
             IReceiptStorage receiptStorage = NullReceiptStorage.Instance;
             var blockInfoDb = new MemDb();
             IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), specProvider, transactionPool, NullBloomStorage.Instance,  _logManager);

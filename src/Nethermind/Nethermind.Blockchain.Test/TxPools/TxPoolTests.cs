@@ -305,8 +305,7 @@ namespace Nethermind.Blockchain.Test.TxPools
         }
 
         private TxPool.TxPool CreatePool(ITxStorage txStorage)
-            => new TxPool.TxPool(txStorage,
-                Timestamper.Default, _ethereumEcdsa, _specProvider, new TxPoolConfig(), _stateProvider, _logManager);
+            => new TxPool.TxPool(txStorage, _ethereumEcdsa, _specProvider, new TxPoolConfig(), _stateProvider, _logManager);
 
         private ITxPoolPeer GetPeer(PublicKey publicKey)
         {

@@ -16,6 +16,7 @@
 // 
 
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Blockchain.Processing;
 
 namespace Nethermind.Consensus.AuRa.Contracts
@@ -34,7 +35,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             collection.Clear();
         }
 
-        protected override IEnumerable<T> GetItemsFromContractAtBlock(HashSet<T> collection) => collection;
+        protected override IEnumerable<T> GetSnapshot(HashSet<T> collection) => collection.ToHashSet();
 
         protected override void InsertItems(HashSet<T> collection, IEnumerable<T> items)
         {

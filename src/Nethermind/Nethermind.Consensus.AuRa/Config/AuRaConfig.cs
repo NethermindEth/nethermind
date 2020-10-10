@@ -27,6 +27,6 @@ namespace Nethermind.Consensus.AuRa.Config
         
         public bool Minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract { get; set; }
         
-        public Address TransactionPriorityContractAddress { get; set; }
+        public string TxPriorityContractAddress { get; set; }
     }
 }

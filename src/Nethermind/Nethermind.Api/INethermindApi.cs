@@ -94,6 +94,7 @@ namespace Nethermind.Api
         IIPResolver? IpResolver { get; set; }
         IJsonSerializer EthereumJsonSerializer { get; }
         IKeyStore? KeyStore { get; set; }
+        IPasswordProvider? PasswordProvider { get; set; }
         ILogFinder LogFinder { get; set; }
         ILogManager LogManager { get; }
         IMessageSerializationService MessageSerializationService { get; }

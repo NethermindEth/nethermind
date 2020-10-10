@@ -47,7 +47,7 @@ using BlockTree = Nethermind.Blockchain.BlockTree;
 namespace Nethermind.Synchronization.Test.FastSync
 {
     [TestFixture]
-    [Parallelizable(ParallelScope.None)]
+    [Parallelizable(ParallelScope.All)]
     public class StateSyncFeedTests
     {
         private static IBlockTree _blockTree;

@@ -48,7 +48,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             var trieStore = new TrieStore(memDbProvider.StateDb, LimboLogs.Instance);
             StateProvider stateProvider = new StateProvider(trieStore, memDbProvider.CodeDb, LimboLogs.Instance);
             IEthereumEcdsa ecdsa = new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance);
-            ITxPool txPool = new TxPool.TxPool(new InMemoryTxStorage(), Timestamper.Default, ecdsa, MainnetSpecProvider.Instance, new TxPoolConfig(), stateProvider, LimboLogs.Instance);
+            ITxPool txPool = new TxPool.TxPool(new InMemoryTxStorage(), ecdsa, MainnetSpecProvider.Instance, new TxPoolConfig(), stateProvider, LimboLogs.Instance);
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(1).TestObject;
             IWallet wallet = new DevWallet(new WalletConfig(), LimboLogs.Instance);
             LogFinder logFinder = new LogFinder(blockTree, new InMemoryReceiptStorage(), NullBloomStorage.Instance, LimboLogs.Instance, new ReceiptsRecovery(), 1024);

@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using NUnit.Framework;
@@ -87,6 +88,22 @@ namespace Nethermind.Core.Test
         {
             string result = Keccak.Zero.ToString();
             Assert.AreEqual("0x0000000000000000000000000000000000000000000000000000000000000000", result);
+        }
+        
+        [TestCase("0x0000000000000000000000000000000000000000000000000000000000000000", null, -1)]
+        [TestCase("0x0000000000000000000000000000000000000000000000000000000000000000", "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470", -1)]
+        [TestCase("0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470", "0x0000000000000000000000000000000000000000000000000000000000000000", 1)]
+        public void Compare(string a, string b, int result)
+        {
+            Keccak keccakA = a == null ? null : new Keccak(a);
+            Keccak keccakB = b == null ? null : new Keccak(b);
+            Math.Sign(keccakA.CompareTo(keccakB)).Should().Be(result);
+        }
+        
+        [Test]
+        public void CompareSameInstance()
+        {
+            Keccak.Zero.CompareTo(Keccak.Zero).Should().Be(0);
         }
 
         [Test]

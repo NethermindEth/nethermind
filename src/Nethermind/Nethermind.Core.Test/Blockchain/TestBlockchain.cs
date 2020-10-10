@@ -111,7 +111,6 @@ namespace Nethermind.Core.Test.Blockchain
 
             TxPool = new TxPool.TxPool(
                 txStorage,
-                Timestamper,
                 EthereumEcdsa,
                 SpecProvider,
                 new TxPoolConfig(),
