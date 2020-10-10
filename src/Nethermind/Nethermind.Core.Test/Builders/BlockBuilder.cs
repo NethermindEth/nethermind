@@ -193,7 +193,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public BlockBuilder Genesis => WithNumber(0).WithParentHash(Keccak.Zero).WithMixHash(Keccak.Zero);
+        public BlockBuilder Genesis => WithNumber(0).WithTotalDifficulty(0L).WithParentHash(Keccak.Zero).WithMixHash(Keccak.Zero);
 
         protected override void BeforeReturn()
         {
