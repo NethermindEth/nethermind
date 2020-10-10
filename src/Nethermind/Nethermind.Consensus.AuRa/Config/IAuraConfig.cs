@@ -34,7 +34,7 @@ namespace Nethermind.Consensus.AuRa.Config
                                   "See more at https://github.com/poanetwork/posdao-contracts/blob/master/contracts/TxPriority.sol",
             DefaultValue = "null")]
         
-        Address TxPriorityContractAddress { get; set; }
+        string TxPriorityContractAddress { get; set; }
 
         [ConfigItem(Description = "If set then transaction priority rules are used when selecting transactions from transaction pool. This has higher priority then on chain contract rules. " +
                                   "See more at contract details https://github.com/poanetwork/posdao-contracts/blob/master/contracts/TxPriority.sol",

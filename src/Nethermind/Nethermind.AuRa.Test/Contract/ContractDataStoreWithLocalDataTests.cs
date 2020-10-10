@@ -26,6 +26,7 @@ using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Contracts.DataStore;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -125,8 +126,8 @@ namespace Nethermind.AuRa.Test.Contract
                 DataContract = dataContract,
                 BlockProcessor = blockProcessor,
                 ContractDataStore = keyComparer == null
-                    ? (IContractDataStore<T>)new ContractDataStoreWithLocalData<T>(new HashSetContractDataStoreCollection<T>(), dataContract, blockProcessor, localDataSource)
-                    : new DictionaryContractDataStore<T>(new SortedListContractDataStoreCollection<T>(keyComparer, valueComparer), dataContract, blockProcessor, localDataSource)
+                    ? (IContractDataStore<T>)new ContractDataStoreWithLocalData<T>(new HashSetContractDataStoreCollection<T>(), dataContract, blockProcessor, LimboLogs.Instance, localDataSource)
+                    : new DictionaryContractDataStore<T>(new SortedListContractDataStoreCollection<T>(keyComparer, valueComparer), dataContract, blockProcessor, LimboLogs.Instance, localDataSource)
             };
         }
         

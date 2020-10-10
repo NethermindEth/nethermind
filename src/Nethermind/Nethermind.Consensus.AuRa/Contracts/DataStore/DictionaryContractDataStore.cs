@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using Nethermind.Blockchain.Data;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Core;
+using Nethermind.Logging;
 
 namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 {
@@ -30,8 +31,9 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
         public DictionaryContractDataStore(
             DictionaryBasedContractDataStoreCollection<T> collection,
             IDataContract<T> dataContract,
-            IBlockProcessor blockProcessor)
-            : this(CreateContractDataStore(collection, dataContract, blockProcessor))
+            IBlockProcessor blockProcessor,
+            ILogManager logManager)
+            : this(CreateContractDataStore(collection, dataContract, blockProcessor, logManager))
         {
         }
 
@@ -39,25 +41,33 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
             DictionaryBasedContractDataStoreCollection<T> collection,
             IDataContract<T> dataContract,
             IBlockProcessor blockProcessor,
+            ILogManager logManager,
             ILocalDataSource<IEnumerable<T>> localDataSource)
             : this(localDataSource == null 
-                ? CreateContractDataStore(collection, dataContract, blockProcessor) 
-                : CreateContractDataStoreWithLocalData(collection, dataContract, blockProcessor, localDataSource))
+                ? CreateContractDataStore(collection, dataContract, blockProcessor, logManager) 
+                : CreateContractDataStoreWithLocalData(collection, dataContract, blockProcessor, logManager, localDataSource))
         {
         }
         
         private static ContractDataStore<T, DictionaryBasedContractDataStoreCollection<T>> CreateContractDataStore(
             DictionaryBasedContractDataStoreCollection<T> collection, 
             IDataContract<T> dataContract, 
-            IBlockProcessor blockProcessor) => 
-            new ContractDataStore<T, DictionaryBasedContractDataStoreCollection<T>>(collection, dataContract, blockProcessor);
+            IBlockProcessor blockProcessor,
+            ILogManager logManager) => 
+            new ContractDataStore<T, DictionaryBasedContractDataStoreCollection<T>>(collection, dataContract, blockProcessor, logManager);
 
         private static ContractDataStoreWithLocalData<T, DictionaryBasedContractDataStoreCollection<T>> CreateContractDataStoreWithLocalData(
             DictionaryBasedContractDataStoreCollection<T> collection, 
             IDataContract<T> dataContract, 
             IBlockProcessor blockProcessor, 
+            ILogManager logManager,
             ILocalDataSource<IEnumerable<T>> localDataSource) => 
-            new ContractDataStoreWithLocalData<T, DictionaryBasedContractDataStoreCollection<T>>(collection, dataContract ?? new EmptyDataContract<T>(), blockProcessor, localDataSource);
+            new ContractDataStoreWithLocalData<T, DictionaryBasedContractDataStoreCollection<T>>(
+                collection, 
+                dataContract ?? new EmptyDataContract<T>(), 
+                blockProcessor, 
+                logManager, 
+                localDataSource);
 
         private DictionaryContractDataStore(ContractDataStore<T, DictionaryBasedContractDataStoreCollection<T>> contractDataStore)
         {

@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain.Data;
 using Nethermind.Blockchain.Processing;
+using Nethermind.Logging;
 
 namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 {
@@ -32,8 +33,9 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
             TCollection collection, 
             IDataContract<T> dataContract, 
             IBlockProcessor blockProcessor,
+            ILogManager logManager,
             ILocalDataSource<IEnumerable<T>> localDataSource) 
-            : base(collection, dataContract, blockProcessor)
+            : base(collection, dataContract, blockProcessor, logManager)
         {
             _localDataSource = localDataSource ?? throw new ArgumentNullException(nameof(localDataSource));
             _localDataSource.Changed += OnChanged;
@@ -72,8 +74,9 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
             IContractDataStoreCollection<T> collection, 
             IDataContract<T> dataContract, 
             IBlockProcessor blockProcessor,
+            ILogManager logManager,
             ILocalDataSource<IEnumerable<T>> localDataSource) 
-            : base(collection, dataContract ?? new EmptyDataContract<T>(), blockProcessor, localDataSource)
+            : base(collection, dataContract ?? new EmptyDataContract<T>(), blockProcessor, logManager, localDataSource)
         {
         }
     }
