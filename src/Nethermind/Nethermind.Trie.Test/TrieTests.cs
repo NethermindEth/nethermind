@@ -919,7 +919,8 @@ namespace Nethermind.Trie.Test
                 {
                     try
                     {
-                        trieStore.UndoOneBlock();
+                        // no longer need undo?
+                        // trieStore.UndoOneBlock();
                     }
                     catch (InvalidOperationException)
                     {

@@ -24,8 +24,6 @@ namespace Nethermind.Trie.Pruning
         
         void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root);
 
-        public void UndoOneBlock();
-
         public event EventHandler<BlockNumberEventArgs> SnapshotTaken;
     }
 }

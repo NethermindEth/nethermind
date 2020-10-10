@@ -17,7 +17,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 
@@ -30,9 +29,11 @@ namespace Nethermind.Trie.Pruning
     /// </summary>
     public class TrieStore : ITrieStore
     {
-        public TrieStore(IKeyValueStore? keyValueStore, ILogManager? logManager) 
-            :this(keyValueStore, No.Pruning, Full.Archive, logManager) { }
-        
+        public TrieStore(IKeyValueStore? keyValueStore, ILogManager? logManager)
+            : this(keyValueStore, No.Pruning, Full.Archive, logManager)
+        {
+        }
+
         public TrieStore(
             IKeyValueStore? keyValueStore,
             IPruningStrategy? pruningStrategy,
@@ -76,11 +77,8 @@ namespace Nethermind.Trie.Pruning
 
         public void CommitOneNode(long blockNumber, NodeCommitInfo nodeCommitInfo)
         {
-            if (blockNumber < 0)
-                throw new ArgumentOutOfRangeException(nameof(blockNumber));
-
-            bool shouldBeginNewPackage = CurrentPackage == null || CurrentPackage.BlockNumber != blockNumber;
-            if (shouldBeginNewPackage)
+            if (blockNumber < 0) throw new ArgumentOutOfRangeException(nameof(blockNumber));
+            if (CurrentPackage is null)
             {
                 BeginNewPackage(blockNumber);
             }
@@ -128,12 +126,6 @@ namespace Nethermind.Trie.Pruning
 
         public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root)
         {
-            bool shouldBeginNewPackage = CurrentPackage == null || CurrentPackage.BlockNumber != blockNumber;
-            if (shouldBeginNewPackage)
-            {
-                BeginNewPackage(blockNumber);
-            }
-
             if (trieType == TrieType.State) // storage tries happen before state commits
             {
                 if (_logger.IsTrace) _logger.Trace($"Enqueued packages {_blockCommitsQueue.Count}");
@@ -152,20 +144,9 @@ namespace Nethermind.Trie.Pruning
 
                     TryRemovingOldBlock();
                 }
+                
+                CurrentPackage = null;
             }
-        }
-
-        public void UndoOneBlock()
-        {
-            if (!_blockCommitsQueue.Any())
-            {
-                throw new InvalidOperationException(
-                    $"Trying to unwind a {nameof(BlockCommitPackage)} when the queue is empty.");
-            }
-
-            if (_logger.IsDebug) _logger.Debug($"Unwinding {CurrentPackage}");
-
-            _blockCommitsQueue.RemoveLast();
         }
 
         public event EventHandler<BlockNumberEventArgs>? SnapshotTaken;
@@ -271,7 +252,7 @@ namespace Nethermind.Trie.Pruning
             {
                 _trieNodeCache.Remove(keccak);
             }
-            
+
             Metrics.CachedNodesCount = _trieNodeCache.Count;
         }
 
@@ -298,7 +279,7 @@ namespace Nethermind.Trie.Pruning
 
         private int _persistedNodesCount;
 
-        private BlockCommitPackage? CurrentPackage => _blockCommitsQueue.Last?.Value;
+        private BlockCommitPackage? CurrentPackage { get; set; }
 
         private bool IsCurrentPackageSealed => CurrentPackage == null || CurrentPackage.IsSealed;
 
@@ -319,13 +300,14 @@ namespace Nethermind.Trie.Pruning
             BlockCommitPackage newPackage = new BlockCommitPackage(blockNumber);
             _blockCommitsQueue.AddLast(newPackage);
             NewestKeptBlockNumber = Math.Max(blockNumber, NewestKeptBlockNumber);
-            
+
             // TODO: memory should be taken from the cache now
             while (_pruningStrategy.ShouldPrune(OldestKeptBlockNumber, NewestKeptBlockNumber, 0))
             {
                 TryRemovingOldBlock();
             }
 
+            CurrentPackage = newPackage;
             Debug.Assert(CurrentPackage == newPackage,
                 "Current package is not equal the new package just after adding");
         }
@@ -352,7 +334,7 @@ namespace Nethermind.Trie.Pruning
         private void RemoveOldBlock(BlockCommitPackage commitPackage)
         {
             _blockCommitsQueue.RemoveFirst();
-            
+
             if (_logger.IsDebug)
                 _logger.Debug($"Start pruning {nameof(BlockCommitPackage)} - {commitPackage.BlockNumber}");
 
@@ -362,13 +344,13 @@ namespace Nethermind.Trie.Pruning
             bool shouldPersistSnapshot = _snapshotStrategy.ShouldPersistSnapshot(commitPackage.BlockNumber);
             if (shouldPersistSnapshot)
             {
-                if(_logger.IsDebug) _logger.Debug($"Persisting from root {commitPackage.Root} in {commitPackage.BlockNumber}");
-                
+                if (_logger.IsDebug) _logger.Debug($"Persisting from root {commitPackage.Root} in {commitPackage.BlockNumber}");
+
                 Stopwatch stopwatch = Stopwatch.StartNew();
                 commitPackage.Root?.PersistRecursively(tn => Persist(tn, commitPackage.BlockNumber), this, _logger);
                 stopwatch.Stop();
                 Metrics.SnapshotPersistenceTime = stopwatch.ElapsedMilliseconds;
-                
+
                 stopwatch.Restart();
                 Prune(commitPackage.BlockNumber); // for now can only prune on snapshot?
                 stopwatch.Stop();
@@ -381,7 +363,7 @@ namespace Nethermind.Trie.Pruning
             Dump();
             if (shouldPersistSnapshot)
             {
-                if(_logger.IsDebug) _logger.Debug($"Snapshot taken {commitPackage.Root} in {commitPackage.BlockNumber}");
+                if (_logger.IsDebug) _logger.Debug($"Snapshot taken {commitPackage.Root} in {commitPackage.BlockNumber}");
                 SnapshotTaken?.Invoke(this, new BlockNumberEventArgs(commitPackage.BlockNumber));
             }
         }
