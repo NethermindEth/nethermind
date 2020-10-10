@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -72,7 +72,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 new JsonRpcConfig(),
                 LimboLogs.Instance,
                 Substitute.For<IStateReader>(),
-                Substitute.For<IBlockchainBridgeFactory>()), 1);
+                Substitute.For<IBlockchainBridgeFactory>()), 1, 1000);
         }
 
         [Test]
