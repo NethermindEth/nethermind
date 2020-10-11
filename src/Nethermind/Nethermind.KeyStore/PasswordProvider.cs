@@ -58,6 +58,7 @@ namespace Nethermind.KeyStore
                     : null;
             }
 
+            password?.MakeReadOnly();
             password ??= GetPasswordN(keyStoreConfigPasswordIndex, _keyStoreConfig.Passwords)?.Secure();
             return password;
         }
@@ -90,7 +91,7 @@ namespace Nethermind.KeyStore
                         if (whitespaces.Count != 0)
                         {
                             FillWhitespaceList(secureString, whitespaces);
-                            whitespaces = new List<char>();
+                            whitespaces.Clear();
                         }
 
                         secureString.AppendChar(character);
