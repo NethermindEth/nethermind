@@ -126,6 +126,12 @@ namespace Nethermind.Trie.Pruning
 
         public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root)
         {
+            if (blockNumber < 0) throw new ArgumentOutOfRangeException(nameof(blockNumber));
+            if (CurrentPackage is null)
+            {
+                BeginNewPackage(blockNumber);
+            }
+            
             if (trieType == TrieType.State) // storage tries happen before state commits
             {
                 if (_logger.IsTrace) _logger.Trace($"Enqueued packages {_blockCommitsQueue.Count}");
