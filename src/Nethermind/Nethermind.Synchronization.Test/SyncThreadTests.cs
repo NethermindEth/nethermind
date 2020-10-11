@@ -92,7 +92,7 @@ namespace Nethermind.Synchronization.Test
         {
             foreach (SyncTestContext peer in _peers)
             {
-                Assert.AreEqual(_genesis.Header, peer.SyncServer.Head);
+                Assert.AreEqual(_genesis.Header.Hash, peer.SyncServer.Head?.Hash);
             }
         }
 
