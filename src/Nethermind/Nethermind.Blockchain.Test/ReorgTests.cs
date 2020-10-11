@@ -110,7 +110,7 @@ namespace Nethermind.Blockchain.Test
         [Test]
         public void Test()
         {
-            Block block0 = Build.A.Block.Genesis.TestObject;
+            Block block0 = Build.A.Block.Genesis.WithTotalDifficulty(0L).TestObject;
             Block block1 = Build.A.Block.WithParent(block0).WithDifficulty(1).WithTotalDifficulty(1L).TestObject;
             Block block2 = Build.A.Block.WithParent(block1).WithDifficulty(2).WithTotalDifficulty(3L).TestObject;
             Block block3 = Build.A.Block.WithParent(block2).WithDifficulty(3).WithTotalDifficulty(6L).TestObject;
@@ -124,7 +124,7 @@ namespace Nethermind.Blockchain.Test
             _blockTree.SuggestBlock(block3);
             _blockTree.SuggestBlock(block1B);
 
-            Thread.Sleep(50000);
+            Thread.Sleep(200);
             _blockTree.Head.Should().Be(block1B);
         }
     }
