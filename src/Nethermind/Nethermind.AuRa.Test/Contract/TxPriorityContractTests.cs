@@ -51,7 +51,6 @@ using NUnit.Framework;
 
 namespace Nethermind.AuRa.Test.Contract
 {
-    [NonParallelizable]
     public class TxPriorityContractTests
     {
         private static readonly byte[] FnSignature = {0, 1, 2, 3};
@@ -343,7 +342,7 @@ namespace Nethermind.AuRa.Test.Contract
                 {
                     SendersWhitelist.Loaded += (sender, args) => Semaphore.Release();
                     WriteFile(LocalData);
-                    await Semaphore.WaitAsync(1000);
+                    await Semaphore.WaitAsync(3000);
                 }
                 
                 if (!await Semaphore.WaitAsync(1000))
