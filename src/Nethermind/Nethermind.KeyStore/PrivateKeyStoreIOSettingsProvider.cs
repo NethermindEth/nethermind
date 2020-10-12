@@ -9,11 +9,13 @@ namespace Nethermind.KeyStore
     public class PrivateKeyStoreIOSettingsProvider : IKeyStoreIOSettingsProvider
     {
         private readonly IKeyStoreConfig _config;
+
         public PrivateKeyStoreIOSettingsProvider(
             IKeyStoreConfig keyStoreConfig)
         {
             _config = keyStoreConfig ?? throw new ArgumentNullException(nameof(keyStoreConfig));
         }
+
         public string StoreDirectory
         {
             get

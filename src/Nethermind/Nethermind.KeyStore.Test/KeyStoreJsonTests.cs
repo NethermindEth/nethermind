@@ -18,7 +18,6 @@ using System.IO;
 using System.Linq;
 using System.Security;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
