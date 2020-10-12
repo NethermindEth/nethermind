@@ -144,7 +144,14 @@ namespace Nethermind.AuRa.Test.Contract
                 }
             };
             
-            await semaphoreSlim.WaitAsync(2000);
+            if (!await semaphoreSlim.WaitAsync(2000))
+            {
+                if (chain.LocalDataSource.Data == null)
+                {
+                    Assert.Fail("Local file rule storage wasn't loaded.");
+                }
+            }
+            
             object[] expected = {TestItem.AddressD, TestItem.AddressB, TestItem.AddressA, TestItem.AddressC};
 
             var whiteList = chain.SendersWhitelist.GetItemsFromContractAtBlock(chain.BlockTree.Head.Header);
@@ -178,7 +185,14 @@ namespace Nethermind.AuRa.Test.Contract
                     semaphoreSlim.Release();
                 }
             };
-            await semaphoreSlim.WaitAsync(5000);
+            
+            if (!await semaphoreSlim.WaitAsync(2000))
+            {
+                if (chain.LocalDataSource.Data == null)
+                {
+                    Assert.Fail("Local file rule storage wasn't loaded.");
+                }
+            }
 
             var priorities = chain.Priorities.GetItemsFromContractAtBlock(chain.BlockTree.Head.Header);
             priorities.Should().BeEquivalentTo(expected, o => o.ComparingByMembers<TxPriorityContract.Destination>());
@@ -210,7 +224,14 @@ namespace Nethermind.AuRa.Test.Contract
                     semaphoreSlim.Release();
                 }
             };
-            await semaphoreSlim.WaitAsync(2000);
+            
+            if (!await semaphoreSlim.WaitAsync(2000))
+            {
+                if (chain.LocalDataSource.Data == null)
+                {
+                    Assert.Fail("Local file rule storage wasn't loaded.");
+                }
+            }
             
             var minGasPrices = chain.MinGasPrices.GetItemsFromContractAtBlock(chain.BlockTree.Head.Header);
             minGasPrices.Should().BeEquivalentTo(expected, o => o.ComparingByMembers<TxPriorityContract.Destination>());
