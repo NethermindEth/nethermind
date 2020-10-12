@@ -19,6 +19,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.Data;
 using Nethermind.Core.Test.IO;
@@ -33,48 +34,58 @@ namespace Nethermind.Blockchain.Test.Data
         [Test]
         public void correctly_reads_existing_file()
         {
-            using var tempFile = TempPath.GetTempFile();
-            File.WriteAllText(tempFile.Path, GenerateStringJson("A", "B", "C"));
-            // var x = new EthereumJsonSerializer().Serialize(new string []{"A", "B", "C"});
-            var fileLocalDataSource = new FileLocalDataSource<string[]>(tempFile.Path, new EthereumJsonSerializer(), LimboLogs.Instance);
-            fileLocalDataSource.Data.Should().BeEquivalentTo("A", "B", "C");
+            using (var tempFile = TempPath.GetTempFile())
+            {
+                File.WriteAllText(tempFile.Path, GenerateStringJson("A", "B", "C"));
+                // var x = new EthereumJsonSerializer().Serialize(new string []{"A", "B", "C"});
+                using var fileLocalDataSource = new FileLocalDataSource<string[]>(tempFile.Path, new EthereumJsonSerializer(), LimboLogs.Instance);
+                fileLocalDataSource.Data.Should().BeEquivalentTo("A", "B", "C");
+            }
         }
         
         [Test]
-        public void correctly_updates_from_existing_file()
+        public async Task correctly_updates_from_existing_file()
         {
-            using var tempFile = TempPath.GetTempFile();
-            File.WriteAllText(tempFile.Path, GenerateStringJson("A"));
-            var fileLocalDataSource = new FileLocalDataSource<string[]>(tempFile.Path, new EthereumJsonSerializer(), LimboLogs.Instance);
-            bool changedRaised = false;
-            var handle = new ManualResetEventSlim(false);
-            fileLocalDataSource.Changed += (sender, args) =>
+            using (var tempFile = TempPath.GetTempFile())
             {
-                changedRaised = true;
-                handle.Set();
-            }; 
-            File.WriteAllText(tempFile.Path, GenerateStringJson("C", "B"));
-            handle.Wait(TimeSpan.FromMilliseconds(100));
-            changedRaised.Should().BeTrue();
-            fileLocalDataSource.Data.Should().BeEquivalentTo("C", "B");
+                await File.WriteAllTextAsync(tempFile.Path, GenerateStringJson("A"));
+                using (var fileLocalDataSource = new FileLocalDataSource<string[]>(tempFile.Path, new EthereumJsonSerializer(), LimboLogs.Instance))
+                {
+                    bool changedRaised = false;
+                    var handle = new SemaphoreSlim(0);
+                    fileLocalDataSource.Changed += (sender, args) =>
+                    {
+                        changedRaised = true;
+                        handle.Release();
+                    };
+                    await File.WriteAllTextAsync(tempFile.Path, GenerateStringJson("C", "B"));
+                    await handle.WaitAsync(TimeSpan.FromMilliseconds(1000));
+                    await handle.WaitAsync(TimeSpan.FromMilliseconds(1000));
+                    changedRaised.Should().BeTrue();
+                    fileLocalDataSource.Data.Should().BeEquivalentTo("C", "B");
+                }
+            }
         }
 
         [Test]
-        public void correctly_updates_from_new_file()
+        public async Task correctly_updates_from_new_file()
         {
-            using var tempFile = TempPath.GetTempFile();
-            var fileLocalDataSource = new FileLocalDataSource<string[]>(tempFile.Path, new EthereumJsonSerializer(), LimboLogs.Instance);
-            bool changedRaised = false;
-            var handle = new ManualResetEventSlim(false);
-            fileLocalDataSource.Changed += (sender, args) =>
+            using (var tempFile = TempPath.GetTempFile())
+            using (var fileLocalDataSource = new FileLocalDataSource<string[]>(tempFile.Path, new EthereumJsonSerializer(), LimboLogs.Instance))
             {
-                changedRaised = true;
-                handle.Set();
-            };  
-            File.WriteAllText(tempFile.Path, GenerateStringJson("A", "B"));
-            handle.Wait(TimeSpan.FromMilliseconds(100));
-            fileLocalDataSource.Data.Should().BeEquivalentTo("A", "B");
-            changedRaised.Should().BeTrue();
+                bool changedRaised = false;
+                var handle = new SemaphoreSlim(0);
+                fileLocalDataSource.Changed += (sender, args) =>
+                {
+                    changedRaised = true;
+                    handle.Release();
+                };
+                await File.WriteAllTextAsync(tempFile.Path, GenerateStringJson("A", "B"));
+                await handle.WaitAsync(TimeSpan.FromMilliseconds(1000));
+                await handle.WaitAsync(TimeSpan.FromMilliseconds(1000));
+                fileLocalDataSource.Data.Should().BeEquivalentTo("A", "B");
+                changedRaised.Should().BeTrue();
+            }
         }
 
         private static string GenerateStringJson(params string[] items) => $"[{string.Join(", ", items.Select(i => $"\"{i}\""))}]";

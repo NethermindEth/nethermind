@@ -74,14 +74,17 @@ namespace Nethermind.Blockchain.Data
         {
             if (File.Exists(_filePath))
             {
-                string json = File.ReadAllText(_filePath);
                 try
                 {
-                    _data = _jsonSerializer.Deserialize<T>(json);
+                    _data = _jsonSerializer.Deserialize<T>(File.ReadAllText(_filePath));
                 }
                 catch (JsonSerializationException e)
                 {
                     if (_logger.IsError) _logger.Error($"Couldn't deserialize {typeof(T)} from {_filePath}.", e);
+                }
+                catch (IOException e)
+                {
+                    if (_logger.IsError) _logger.Error($"Couldn't load {typeof(T)} from {_filePath}.", e);
                 }
             }
             else
