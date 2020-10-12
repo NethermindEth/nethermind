@@ -31,6 +31,8 @@ namespace Nethermind.Vault.KeyStore
             }
         }
 
+        public string KeyName => "vault key";
+
         public string GetFileName(Address address)
         {
             // $"Vault_UTC--{utcNow:yyyy-MM-dd}T{utcNow:HH-mm-ss.ffffff}000Z--{address.ToString(false, false)}";

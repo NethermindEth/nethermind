@@ -7,5 +7,7 @@ namespace Nethermind.KeyStore
         public string StoreDirectory { get; }
 
         public string GetFileName(Address address);
+
+        public string KeyName { get; }
     }
 }

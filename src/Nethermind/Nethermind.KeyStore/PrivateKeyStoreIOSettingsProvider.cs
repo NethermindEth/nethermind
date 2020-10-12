@@ -30,6 +30,8 @@ namespace Nethermind.KeyStore
             }
         }
 
+        public string KeyName => "private key";
+
         public string GetFileName(Address address)
         {
             // "UTC--2018-12-30T14-04-11.699600594Z--1a959a04db22b9f4360db07125f690449fa97a83"

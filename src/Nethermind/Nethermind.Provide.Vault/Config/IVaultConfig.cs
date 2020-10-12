@@ -40,6 +40,8 @@ namespace Nethermind.Vault.Config
 
         string VaultKeyStoreDirectory { get; set; }
 
+        string VaultKeyStoreEncoding { get; set; }
+
         string VaultAccount { get; set; }
     }
 }

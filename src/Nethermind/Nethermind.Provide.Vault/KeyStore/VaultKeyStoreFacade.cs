@@ -1,9 +1,12 @@
+using Nethermind.Core;
+
 namespace Nethermind.Vault.KeyStore
 {
     public class VaultKeyStoreFacade : IVaultKeyStoreFacade
     {
         public string GetKey()
         {
+            var vaultAddress = new Address(_config.BlockAuthorAccount)
             // get password
             // get address
             // get key
