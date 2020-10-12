@@ -135,6 +135,8 @@ namespace Nethermind.AuRa.Test.Contract
             
             object[] expected = {TestItem.AddressD, TestItem.AddressB, TestItem.AddressA, TestItem.AddressC};
 
+            chain.LocalDataSource.Data.Whitelist.Should().BeEquivalentTo(new object[] {TestItem.AddressD, TestItem.AddressB});
+            
             var whiteList = chain.SendersWhitelist.GetItemsFromContractAtBlock(chain.BlockTree.Head.Header);
             whiteList.Should().BeEquivalentTo(expected);
         }
@@ -146,7 +148,7 @@ namespace Nethermind.AuRa.Test.Contract
                 ? await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocksAndLocalDataBeforeStart, TxPriorityContractTests>()
                 : await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocksAndLocalData, TxPriorityContractTests>();
 
-            object[] expected =
+            TxPriorityContract.Destination[] expected =
             {
                 new TxPriorityContract.Destination(TestItem.AddressB, FnSignature, 5, TxPriorityContract.DestinationSource.Local),
                 new TxPriorityContract.Destination(TestItem.AddressC, FnSignature, 1, TxPriorityContract.DestinationSource.Local),
@@ -154,6 +156,10 @@ namespace Nethermind.AuRa.Test.Contract
                 new TxPriorityContract.Destination(TestItem.AddressA, TxPriorityContract.Destination.FnSignatureEmpty, UInt256.One, TxPriorityContract.DestinationSource.Contract, 1),
             };
 
+            chain.LocalDataSource.Data.Priorities.Should().BeEquivalentTo(
+                expected.Where(e => e.Source == TxPriorityContract.DestinationSource.Local), 
+                o => o.ComparingByMembers<TxPriorityContract.Destination>());
+            
             var priorities = chain.Priorities.GetItemsFromContractAtBlock(chain.BlockTree.Head.Header);
             priorities.Should().BeEquivalentTo(expected, o => o.ComparingByMembers<TxPriorityContract.Destination>());
         }
@@ -165,12 +171,16 @@ namespace Nethermind.AuRa.Test.Contract
                 ? await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocksAndLocalDataBeforeStart, TxPriorityContractTests>()
                 : await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocksAndLocalData, TxPriorityContractTests>();
 
-            object[] expected =
+            TxPriorityContract.Destination[] expected =
             {
                 new TxPriorityContract.Destination(TestItem.AddressB, FnSignature, 5, TxPriorityContract.DestinationSource.Local),
                 new TxPriorityContract.Destination(TestItem.AddressB, FnSignature2, 1, TxPriorityContract.DestinationSource.Local),
                 new TxPriorityContract.Destination(TestItem.AddressC, FnSignature, 1, TxPriorityContract.DestinationSource.Local),
             };
+            
+            chain.LocalDataSource.Data.MinGasPrices.Should().BeEquivalentTo(
+                expected.Where(e => e.Source == TxPriorityContract.DestinationSource.Local), 
+                o => o.ComparingByMembers<TxPriorityContract.Destination>());
 
             var minGasPrices = chain.MinGasPrices.GetItemsFromContractAtBlock(chain.BlockTree.Head.Header);
             minGasPrices.Should().BeEquivalentTo(expected, o => o.ComparingByMembers<TxPriorityContract.Destination>());
@@ -178,7 +188,7 @@ namespace Nethermind.AuRa.Test.Contract
 
         public class TxPermissionContractBlockchain : TestContractBlockchain
         {
-            public virtual TxPriorityContract TxPriorityContract { get; private set; }
+            public TxPriorityContract TxPriorityContract { get; private set; }
             public DictionaryContractDataStore<TxPriorityContract.Destination> Priorities { get; private set; }
             
             public DictionaryContractDataStore<TxPriorityContract.Destination> MinGasPrices { get; private set; }
@@ -269,7 +279,7 @@ namespace Nethermind.AuRa.Test.Contract
 
         public class TxPermissionContractBlockchainWithBlocksAndLocalData : TxPermissionContractBlockchainWithBlocks
         {
-            private TxPriorityContract.LocalDataSource LocalDataSource { get; set; }
+            public TxPriorityContract.LocalDataSource LocalDataSource { get; private set; }
 
             private TempPath TempFile { get; set; }
 
