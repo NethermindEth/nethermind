@@ -19,6 +19,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using Nethermind.Blockchain.Data;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Logging;
@@ -49,6 +50,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
         private void OnChanged(object sender, EventArgs e)
         {
             LoadLocalData();
+            Thread.MemoryBarrier();
             Loaded?.Invoke(this, EventArgs.Empty);
         }
 
