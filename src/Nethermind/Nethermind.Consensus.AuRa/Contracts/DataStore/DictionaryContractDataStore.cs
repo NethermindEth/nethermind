@@ -26,7 +26,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 {
     public class DictionaryContractDataStore<T> : IDictionaryContractDataStore<T>, IDisposable
     {
-        private readonly ContractDataStore<T, DictionaryBasedContractDataStoreCollection<T>> _contractDataStore;
+        public ContractDataStore<T, DictionaryBasedContractDataStoreCollection<T>> ContractDataStore { get; private set; }
 
         public DictionaryContractDataStore(
             DictionaryBasedContractDataStoreCollection<T> collection,
@@ -71,20 +71,20 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 
         private DictionaryContractDataStore(ContractDataStore<T, DictionaryBasedContractDataStoreCollection<T>> contractDataStore)
         {
-            _contractDataStore = contractDataStore;
+            ContractDataStore = contractDataStore;
         }
 
         public bool TryGetValue(BlockHeader header, T key, out T value)
         {
             GetItemsFromContractAtBlock(header);
-            return _contractDataStore.Collection.TryGetValue(key, out value);
+            return ContractDataStore.Collection.TryGetValue(key, out value);
         }
 
-        public IEnumerable<T> GetItemsFromContractAtBlock(BlockHeader blockHeader) => _contractDataStore.GetItemsFromContractAtBlock(blockHeader);
+        public IEnumerable<T> GetItemsFromContractAtBlock(BlockHeader blockHeader) => ContractDataStore.GetItemsFromContractAtBlock(blockHeader);
 
         public void Dispose()
         {
-            _contractDataStore?.Dispose();
+            ContractDataStore?.Dispose();
         }
     }
 }

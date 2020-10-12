@@ -179,9 +179,9 @@ namespace Nethermind.AuRa.Test.Contract
         public class TxPermissionContractBlockchain : TestContractBlockchain
         {
             public virtual TxPriorityContract TxPriorityContract { get; private set; }
-            public IDictionaryContractDataStore<TxPriorityContract.Destination> Priorities { get; private set; }
+            public DictionaryContractDataStore<TxPriorityContract.Destination> Priorities { get; private set; }
             
-            public IDictionaryContractDataStore<TxPriorityContract.Destination> MinGasPrices { get; private set; }
+            public DictionaryContractDataStore<TxPriorityContract.Destination> MinGasPrices { get; private set; }
             
             public ContractDataStoreWithLocalData<Address> SendersWhitelist { get; private set; }
             
@@ -340,9 +340,15 @@ namespace Nethermind.AuRa.Test.Contract
 
                 if (!FileFirst)
                 {
-                    SendersWhitelist.Loaded += (sender, args) => Semaphore.Release();
+                    EventHandler realeseHandler = (sender, args) => Semaphore.Release();
+                    SendersWhitelist.Loaded += realeseHandler;
+                    ((ContractDataStoreWithLocalData<TxPriorityContract.Destination, DictionaryBasedContractDataStoreCollection<TxPriorityContract.Destination>>)MinGasPrices.ContractDataStore).Loaded += realeseHandler;
+                    ((ContractDataStoreWithLocalData<TxPriorityContract.Destination, DictionaryBasedContractDataStoreCollection<TxPriorityContract.Destination>>)Priorities.ContractDataStore).Loaded += realeseHandler;
+                    
                     WriteFile(LocalData);
-                    await Semaphore.WaitAsync(3000);
+                    await Semaphore.WaitAsync(1000);
+                    await Semaphore.WaitAsync(1000);
+                    await Semaphore.WaitAsync(1000);
                 }
                 
                 if (!await Semaphore.WaitAsync(1000))
