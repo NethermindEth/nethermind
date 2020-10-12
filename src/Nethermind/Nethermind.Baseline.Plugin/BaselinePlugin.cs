@@ -1,4 +1,4 @@
-﻿using System.Threading.Tasks;
+using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Baseline;
@@ -50,7 +50,7 @@ namespace Nethermind.Plugin.Baseline
                     _api.FileSystem,
                     _api.LogManager);
 
-                var modulePool = new BoundedModulePool<IBaselineModule>(baselineModuleFactory, 2);
+                var modulePool = new BoundedModulePool<IBaselineModule>(baselineModuleFactory, 2, 1000);
                 _api.RpcModuleProvider!.Register(modulePool);
                 
                 if (_logger.IsInfo) _logger.Info("Baseline RPC Module has been enabled");
