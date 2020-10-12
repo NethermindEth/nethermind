@@ -45,13 +45,13 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 
         public event EventHandler Loaded;
         
+        [MethodImpl(MethodImplOptions.Synchronized)]
         private void OnChanged(object sender, EventArgs e)
         {
             LoadLocalData();
             Loaded?.Invoke(this, EventArgs.Empty);
         }
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
         private void LoadLocalData()
         {
             var oldData = _localData;
