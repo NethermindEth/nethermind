@@ -37,5 +37,9 @@ namespace Nethermind.Vault.Config
 
         [ConfigItem(Description = "VaultId of the Vault that will be used for key/secrets storage", DefaultValue = "null")]
         string VaultId { get; set; }
+
+        string VaultKeyStoreDirectory { get; set; }
+
+        string VaultAccount { get; set; }
     }
 }

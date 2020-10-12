@@ -30,16 +30,6 @@ namespace Nethermind.KeyStore
 
         public string GetFileName(Address address)
         {
-            //var keyDestinyStr = string.Empty;
-            //if (keyDestiny != KeyDestiny.PrivateKey)
-            //{
-            //    keyDestinyStr = "--" + keyDestiny.ToString();
-            //}
-            //// "UTC--2018-12-30T14-04-11.699600594Z--1a959a04db22b9f4360db07125f690449fa97a83"
-            //// "UTC--2018-12-30T14-04-11.699600594Z--1a959a04db22b9f4360db07125f690449fa97a83--Vault"
-            //DateTime utcNow = DateTime.UtcNow;
-            //string keyFileName = $"UTC--{utcNow:yyyy-MM-dd}T{utcNow:HH-mm-ss.ffffff}000Z--{address.ToString(false, false)}{keyDestinyStr}";
-
             // "UTC--2018-12-30T14-04-11.699600594Z--1a959a04db22b9f4360db07125f690449fa97a83"
             DateTime utcNow = DateTime.UtcNow;
             return $"UTC--{utcNow:yyyy-MM-dd}T{utcNow:HH-mm-ss.ffffff}000Z--{address.ToString(false, false)}";

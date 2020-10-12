@@ -39,9 +39,5 @@ namespace Nethermind.KeyStore.Config
         string[] Passwords { get; set; }
         string[] PasswordFiles { get; set; }
         string[] UnlockAccounts { get; set; }
-
-        string VaultKeyStoreDirectory { get; set; }
-
-        string VaultAccount { get; set; }
     }
 }
