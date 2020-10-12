@@ -54,10 +54,10 @@ namespace Nethermind.Consensus.AuRa.Contracts
         public Address[] GetSendersWhitelist(BlockHeader parentHeader) => Constant.Call<Address[]>(parentHeader, nameof(GetSendersWhitelist), ContractAddress);
 
         public Destination[] GetMinGasPrices(BlockHeader parentHeader) => Constant.Call<DestinationTuple[]>(parentHeader, nameof(GetMinGasPrices), ContractAddress)
-            .Select(x => (Destination)x).ToArray();
+            .Select(x => Destination.FromAbiTuple(x, parentHeader.Number)).ToArray();
         
         public Destination[] GetPriorities(BlockHeader parentHeader) => Constant.Call<DestinationTuple[]>(parentHeader, nameof(GetPriorities), ContractAddress)
-            .Select(x => (Destination)x).ToArray();
+            .Select(x => Destination.FromAbiTuple(x, parentHeader.Number)).ToArray();
         
         public IEnumerable<Destination> PrioritySet(BlockHeader blockHeader, TxReceipt[] receipts)
         {
@@ -65,7 +65,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
             foreach (LogEntry log in blockHeader.FindLogs(receipts, logEntry))
             {
-                yield return DecodeDestination(log);
+                yield return DecodeDestination(log, blockHeader);
             }
         }
         
@@ -75,7 +75,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
             foreach (LogEntry log in blockHeader.FindLogs(receipts, logEntry))
             {
-                yield return DecodeDestination(log);
+                yield return DecodeDestination(log, blockHeader);
             }
         }
         
@@ -94,11 +94,13 @@ namespace Nethermind.Consensus.AuRa.Contracts
             return (Address[]) objects[0];
         }
 
-        private Destination DecodeDestination(LogEntry log) =>
+        private Destination DecodeDestination(LogEntry log, BlockHeader blockHeader) =>
             new Destination(
                 new Address(log.Topics[1]), 
                 log.Topics[2].Bytes.Slice(0, 4), 
-                AbiType.UInt256.DecodeUInt(log.Data, 0, false).Item1);
+                AbiType.UInt256.DecodeUInt(log.Data, 0, false).Item1,
+                DestinationSource.Contract,
+                blockHeader.Number);
 
         public IDataContract<Address> SendersWhitelist { get; }
         public IDataContract<Destination> MinGasPrices { get; }

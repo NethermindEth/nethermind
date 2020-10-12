@@ -28,23 +28,38 @@ namespace Nethermind.Consensus.AuRa.Contracts
 {
     public partial class TxPriorityContract
     {
-        public readonly struct Destination : IEquatable<Destination>
+        public enum DestinationSource
+        {
+            Local,
+            Contract
+        }
+        
+        public struct Destination : IEqualityComparer<Destination>
         {
             public static byte[] FnSignatureEmpty = new byte[4];
 
-            public Destination(Address target, byte[] fnSignature, UInt256 value)
+            public Destination(
+                Address target, 
+                byte[] fnSignature, 
+                UInt256 value, 
+                DestinationSource source = DestinationSource.Contract, 
+                long blockNumber = 0)
             {
                 Target = target;
                 FnSignature = fnSignature;
                 Value = value;
+                Source = source;
+                BlockNumber = blockNumber;
             }
 
-            public Address Target { get; }
-            public byte[] FnSignature { get; }
-            public UInt256 Value { get; }
+            public Address Target { get; set; }
+            public byte[] FnSignature { get; set; }
+            public UInt256 Value { get; set; }
+            public long BlockNumber { get; set; }
+            public DestinationSource Source { get; set; }
 
-            public static implicit operator Destination(DestinationTuple tuple) => 
-                new Destination(tuple.Item1, tuple.Item2, tuple.Item3);
+            public static Destination FromAbiTuple(DestinationTuple tuple, long blockNumber) => 
+                new Destination(tuple.Item1, tuple.Item2, tuple.Item3, DestinationSource.Contract, blockNumber);
 
             public static implicit operator DestinationTuple(Destination destination) => 
                 (destination.Target, destination.FnSignature, destination.Value);
@@ -57,12 +72,9 @@ namespace Nethermind.Consensus.AuRa.Contracts
                 return new Destination(tx.To, fnSignature,UInt256.Zero);
             }
 
-            public bool Equals(Destination other) =>
-                Equals(Target, other.Target) && Equals(FnSignature, other.FnSignature);
+            public bool Equals(Destination x, Destination y) => Equals(x.Target, y.Target) && Equals(x.FnSignature, y.FnSignature);
 
-            public override bool Equals(object obj) => obj is Destination other && Equals(other);
-
-            public override int GetHashCode() => HashCode.Combine(Target, FnSignature);
+            public int GetHashCode(Destination obj) => HashCode.Combine(obj.Target, obj.FnSignature);
         }
 
         public class ValueDestinationMethodComparer : IComparer<Destination>
@@ -71,10 +83,17 @@ namespace Nethermind.Consensus.AuRa.Contracts
             
             public int Compare(Destination x, Destination y)
             {
+                // locals have higher priority than non-local values
+                int targetComparison = x.Source.CompareTo(y.Source);
+                if (targetComparison != 0) return targetComparison;
+
+                // then if value is overridden in later block we want the value from later block
+                targetComparison = y.BlockNumber.CompareTo(x.BlockNumber);
+                if (targetComparison != 0) return targetComparison;
+                
                 // we want to sort destinations by priority descending order
-                return y.Value.CompareTo(x.Value);  
+                return y.Value.CompareTo(x.Value);
             }
-            
         }
 
         public class DistinctDestinationMethodComparer : IComparer<Destination>, IEqualityComparer<Destination>
@@ -86,16 +105,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
                 // if same method, we want to treat destinations as same - to be unique
                 int targetComparison = Comparer<Address>.Default.Compare(x.Target, y.Target);
                 if (targetComparison != 0) return targetComparison;
-                targetComparison = Bytes.Comparer.Compare(x.FnSignature, y.FnSignature);
-                if (targetComparison != 0)
-                {
-                    int valueCompare = y.Value.CompareTo(x.Value); // if not we want to sort destinations by priority descending order
-                    if (valueCompare != 0) return valueCompare;
-
-                    return targetComparison; // if we can't sort by value, lets sort by destination
-                }
-
-                return 0; 
+                return Bytes.Comparer.Compare(x.FnSignature, y.FnSignature);
             }
 
             public bool Equals(Destination x, Destination y) => 

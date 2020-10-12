@@ -24,7 +24,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
     {
         private IDictionary<T, T> _items;
 
-        private IDictionary<T, T> Items => _items ??= CreateDictionary();
+        protected IDictionary<T, T> Items => _items ??= CreateDictionary();
 
         protected abstract IDictionary<T, T> CreateDictionary();
 
@@ -33,12 +33,12 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
             Items.Clear();
         }
 
-        public IEnumerable<T> GetSnapshot() => Items.Values.ToArray();
+        public virtual IEnumerable<T> GetSnapshot() => Items.Values.ToArray();
 
         public void Insert(IEnumerable<T> items)
         {
             IDictionary<T,T> dictionary = Items;
-            
+
             foreach (T item in items)
             {
                 bool keyAlreadyPresent = dictionary.TryGetValue(item, out T value);

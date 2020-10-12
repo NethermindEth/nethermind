@@ -65,9 +65,32 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
         public class LocalData
         {
-            public Address[] Whitelist { get; set; } = Array.Empty<Address>();
-            public Destination[] Priorities { get; set; } = Array.Empty<Destination>();
-            public Destination[] MinGasPrices { get; set; } = Array.Empty<Destination>();
+            private Address[] _whitelist = Array.Empty<Address>();
+            private Destination[] _priorities = Array.Empty<Destination>();
+            private Destination[] _minGasPrices = Array.Empty<Destination>();
+
+            public Address[] Whitelist
+            {
+                get => _whitelist;
+                set => _whitelist = value ?? Array.Empty<Address>();
+            }
+
+            public Destination[] Priorities
+            {
+                get => _priorities;
+                set => _priorities = (value ?? Array.Empty<Destination>()).Select(
+                    d => new Destination(d.Target, d.FnSignature, d.Value, DestinationSource.Local)).ToArray();
+            }
+
+            public Destination[] MinGasPrices
+            {
+                get => _minGasPrices;
+                set
+                {
+                    _minGasPrices = (value ?? Array.Empty<Destination>()).Select(
+                        d => new Destination(d.Target, d.FnSignature, d.Value, DestinationSource.Local)).ToArray();
+                }
+            }
 
             internal static Address[] GetWhitelist(LocalData localData) => localData.Whitelist;
             internal static Destination[] GetPriorities(LocalData localData) => localData.Priorities;
