@@ -132,9 +132,14 @@ namespace Nethermind.AuRa.Test.Contract
             var chain = fileFirst 
                 ? await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocksAndLocalDataBeforeStart, TxPriorityContractTests>()
                 : await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocksAndLocalData, TxPriorityContractTests>();
+
+            var semaphoreSlim = new SemaphoreSlim(chain.LocalDataSource.Data != null ? 1 : 0);
+            chain.LocalDataSource.Changed += (sender, args) => semaphoreSlim.Release();
             
             object[] expected = {TestItem.AddressD, TestItem.AddressB, TestItem.AddressA, TestItem.AddressC};
 
+            await semaphoreSlim.WaitAsync(2000);
+            
             chain.LocalDataSource.Data.Whitelist.Should().BeEquivalentTo(new object[] {TestItem.AddressD, TestItem.AddressB});
             
             var whiteList = chain.SendersWhitelist.GetItemsFromContractAtBlock(chain.BlockTree.Head.Header);
