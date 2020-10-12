@@ -16,12 +16,17 @@
 // 
 
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public interface IContractDataStore<out T>
+    internal class EmptyDataContract<T> : IDataContract<T>
     {
-        IEnumerable<T> GetItemsFromContractAtBlock(BlockHeader parent);
+        public IEnumerable<T> GetAllItemsFromBlock(BlockHeader blockHeader) => Enumerable.Empty<T>();
+
+        public IEnumerable<T> GetItemsChangedFromBlock(BlockHeader header, TxReceipt[] receipts) => Enumerable.Empty<T>();
+
+        public bool IncrementalChanges => true;
     }
 }

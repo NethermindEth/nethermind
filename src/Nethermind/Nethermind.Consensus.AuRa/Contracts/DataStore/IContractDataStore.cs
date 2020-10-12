@@ -15,30 +15,14 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Collections.Generic;
-using Nethermind.Blockchain.Processing;
+using Nethermind.Core;
 
-namespace Nethermind.Consensus.AuRa.Contracts
+namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 {
-    public class ListContractDataStore<T> : ContractDataStore<T, List<T>>
+    public interface IContractDataStore<out T>
     {
-        public ListContractDataStore(IDataContract<T> dataContract, IBlockProcessor blockProcessor)
-            : base(dataContract, blockProcessor)
-        {
-        }
-
-        protected override List<T> CreateItems() => new List<T>();
-
-        protected override void ClearItems(List<T> collection)
-        {
-            collection.Clear();
-        }
-
-        protected override IEnumerable<T> GetSnapshot(List<T> collection) => collection.ToArray();
-
-        protected override void InsertItems(List<T> collection, IEnumerable<T> items)
-        {
-            collection.AddRange(items);
-        }
+        IEnumerable<T> GetItemsFromContractAtBlock(BlockHeader blockHeader);
     }
 }

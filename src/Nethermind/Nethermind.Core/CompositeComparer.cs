@@ -22,9 +22,9 @@ namespace Nethermind.Core
 {
     public class CompositeComparer<T> : IComparer<T>
     {
-        private readonly IList<IComparer<T>> _comparers;
+        private IList<IComparer<T>> _comparers;
 
-        internal CompositeComparer(params IComparer<T>[] comparers)
+        public CompositeComparer(params IComparer<T>[] comparers)
         {
             _comparers = new List<IComparer<T>>(comparers);
         }
