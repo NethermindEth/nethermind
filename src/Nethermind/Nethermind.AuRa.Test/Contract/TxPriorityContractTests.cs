@@ -144,7 +144,7 @@ namespace Nethermind.AuRa.Test.Contract
                 }
             };
             
-            if (!await semaphoreSlim.WaitAsync(2000))
+            if (!await semaphoreSlim.WaitAsync(10000))
             {
                 if (chain.LocalDataSource.Data == null)
                 {
@@ -186,7 +186,7 @@ namespace Nethermind.AuRa.Test.Contract
                 }
             };
             
-            if (!await semaphoreSlim.WaitAsync(2000))
+            if (!await semaphoreSlim.WaitAsync(10000))
             {
                 if (chain.LocalDataSource.Data == null)
                 {
@@ -225,7 +225,7 @@ namespace Nethermind.AuRa.Test.Contract
                 }
             };
             
-            if (!await semaphoreSlim.WaitAsync(2000))
+            if (!await semaphoreSlim.WaitAsync(10000))
             {
                 if (chain.LocalDataSource.Data == null)
                 {
