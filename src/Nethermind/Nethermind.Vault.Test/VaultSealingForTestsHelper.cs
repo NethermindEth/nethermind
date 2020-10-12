@@ -13,7 +13,6 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-//
 
 using Nethermind.Vault.Config;
 using Nethermind.Vault.KeyStore;
@@ -27,6 +26,13 @@ namespace Nethermind.Vault.Test
             var vaultKeyStoreFacade = new VaultKeyStoreFacade();
             var vaultSealingHelper = new VaultSealingHelper(vaultKeyStoreFacade, config);
             vaultSealingHelper.Unseal();
+        }
+
+        public static void Seal(IVaultConfig config)
+        {
+            var vaultKeyStoreFacade = new VaultKeyStoreFacade();
+            var vaultSealingHelper = new VaultSealingHelper(vaultKeyStoreFacade, config);
+            vaultSealingHelper.Seal();
         }
     }
 }

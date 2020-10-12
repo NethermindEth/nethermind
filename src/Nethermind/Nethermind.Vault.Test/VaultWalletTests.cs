@@ -31,19 +31,20 @@ namespace Nethermind.Vault.Test
         private VaultWallet _wallet;
         private VaultService _vaultService;
         private Guid _vaultId;
+        private VaultConfig _config;
 
         [SetUp]
         public async Task SetUp()
         {
-            VaultConfig config = new VaultConfig();
-            config.Host = "localhost:8082";
-            config.Scheme = "http";
-            config.Path = "api/v1";
-            config.Token = $"bearer  {TestContext.Parameters["token"]}";
+            _config = new VaultConfig();
+            _config.Host = "localhost:8082";
+            _config.Scheme = "http";
+            _config.Path = "api/v1";
+            _config.Token = $"bearer  {TestContext.Parameters["token"]}";
             
-            VaultSealingForTestsHelper.Unseal(config);
+            VaultSealingForTestsHelper.Unseal(_config);
             _vaultService = new VaultService(
-                config,
+                _config,
                 new TestLogManager(LogLevel.Trace)
             );
 
@@ -60,7 +61,14 @@ namespace Nethermind.Vault.Test
         }
 
         [TearDown]
-        public async Task TearDown()
+        public void TearDown()
+        {
+            var cleanupTask = CleanUpVault();
+            cleanupTask.Wait();
+            VaultSealingForTestsHelper.Seal(_config);
+        }
+
+        private async Task CleanUpVault()
         {
             var accounts = await _wallet.GetAccounts();
             foreach (Address acc in accounts)

@@ -44,7 +44,14 @@ namespace Nethermind.Vault.Test
         }
 
         [TearDown]
-        public async Task TearDown()
+        public void TearDown()
+        {
+            var cleanupTask = CleanUpVault();
+            cleanupTask.Wait();
+            VaultSealingForTestsHelper.Seal(_config);
+        }
+
+        private async Task CleanUpVault()
         {
             var vaults = await _vaultService.ListVaultIds();
             foreach (Guid vault in vaults)

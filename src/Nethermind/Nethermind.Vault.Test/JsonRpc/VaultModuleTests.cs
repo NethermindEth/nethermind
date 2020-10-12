@@ -63,9 +63,15 @@ namespace Nethermind.Vault.Test.JsonRpc
             _vaultId = res.Data.Id.Value;
         }
 
-
         [TearDown]
-        public async Task TearDown()
+        public void TearDown()
+        {
+            var cleanupTask = CleanUpVault();
+            cleanupTask.Wait();
+            VaultSealingForTestsHelper.Seal(_config);
+        }
+
+        private async Task CleanUpVault()
         {
             await _vaultModule.vault_deleteVault(_vaultId.ToString());
         }
