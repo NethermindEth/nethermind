@@ -39,6 +39,8 @@ namespace Nethermind.Evm.Tracing
         private bool _isTracingStack;
         private bool _isTracingState;
         private bool _isTracingBlockHash;
+        
+        public ITxTracer InnerTracer => _innerTracer;
 
         public CancellationTxTracer(ITxTracer innerTracer, CancellationToken token = default)
         {

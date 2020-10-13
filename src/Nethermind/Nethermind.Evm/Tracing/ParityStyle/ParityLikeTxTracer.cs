@@ -49,11 +49,13 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             _parityTraceTypes = parityTraceTypes;
 
             _tx = tx;
-            _trace = new ParityLikeTxTrace();
-            _trace.TransactionHash = tx?.Hash;
-            _trace.TransactionPosition = tx == null ? (int?)null : Array.IndexOf(block.Transactions, tx);
-            _trace.BlockNumber = block.Number;
-            _trace.BlockHash = block.Hash;
+            _trace = new ParityLikeTxTrace
+            {
+                TransactionHash = tx?.Hash, 
+                TransactionPosition = tx == null ? (int?)null : Array.IndexOf(block.Transactions, tx), 
+                BlockNumber = block.Number, 
+                BlockHash = block.Hash
+            };
 
             if ((_parityTraceTypes & ParityTraceTypes.StateDiff) != 0)
             {

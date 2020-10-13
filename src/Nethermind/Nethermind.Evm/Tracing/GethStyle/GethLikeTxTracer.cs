@@ -32,9 +32,9 @@ namespace Nethermind.Evm.Tracing.GethStyle
 
         public GethLikeTxTracer(GethTraceOptions options) 
         {
-            IsTracingStack = options.DisableStack;
-            IsTracingMemory = options.DisableMemory;
-            IsTracingOpLevelStorage = options.DisableStorage;
+            IsTracingStack = !options.DisableStack;
+            IsTracingMemory = !options.DisableMemory;
+            IsTracingOpLevelStorage = !options.DisableStorage;
         }
         
         public bool IsTracingReceipt => true;

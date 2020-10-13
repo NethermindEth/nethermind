@@ -147,7 +147,7 @@ namespace Nethermind.Facade.Test
             _transactionProcessor.Received().CallAndRestore(
                 tx,
                 Arg.Is<BlockHeader>(bh => bh.Number == 11 && bh.Timestamp == ((ITimestamper) _timestamper).EpochSeconds),
-                Arg.Any<EstimateGasTracer>());
+                Arg.Is<CancellationTxTracer>(t => t.InnerTracer is EstimateGasTracer));
         }
 
         [Test]
