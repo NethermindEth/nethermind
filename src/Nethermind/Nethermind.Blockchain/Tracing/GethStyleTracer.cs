@@ -22,6 +22,7 @@ using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Serialization.Rlp;
 
@@ -88,8 +89,8 @@ namespace Nethermind.Blockchain.Tracing
             if (block == null) throw new InvalidOperationException("Only historical blocks");
             
             block.Body = new BlockBody(new[] {tx}, new BlockHeader[] { });
-            GethLikeBlockTracer blockTracer = new GethLikeBlockTracer(tx.Hash, options, cancellationToken);
-            _processor.Process(block, ProcessingOptions.Trace, blockTracer);
+            GethLikeBlockTracer blockTracer = new GethLikeBlockTracer(tx.Hash, options);
+            _processor.Process(block, ProcessingOptions.Trace, blockTracer.WithCancellation(cancellationToken));
             return blockTracer.BuildResult().SingleOrDefault();
         }
 
@@ -112,8 +113,8 @@ namespace Nethermind.Blockchain.Tracing
 
         private GethLikeTxTrace Trace(Block block, Keccak txHash, CancellationToken cancellationToken, GethTraceOptions options)
         {
-            GethLikeBlockTracer listener = new GethLikeBlockTracer(txHash, options, cancellationToken);
-            _processor.Process(block, ProcessingOptions.Trace, listener);
+            GethLikeBlockTracer listener = new GethLikeBlockTracer(txHash, options);
+            _processor.Process(block, ProcessingOptions.Trace, listener.WithCancellation(cancellationToken));
             return listener.BuildResult().SingleOrDefault();
         }
 
@@ -127,8 +128,8 @@ namespace Nethermind.Blockchain.Tracing
                 if (!_blockTree.IsMainChain(parent.Hash)) throw new InvalidOperationException("Cannot trace orphaned blocks");
             }
 
-            GethLikeBlockTracer listener = txHash == null ? new GethLikeBlockTracer(options, cancellationToken) : new GethLikeBlockTracer(txHash, options, cancellationToken);
-            _processor.Process(block, ProcessingOptions.Trace, listener);
+            GethLikeBlockTracer listener = txHash == null ? new GethLikeBlockTracer(options) : new GethLikeBlockTracer(txHash, options);
+            _processor.Process(block, ProcessingOptions.Trace, listener.WithCancellation(cancellationToken));
             return listener.BuildResult().ToArray();
         }
 

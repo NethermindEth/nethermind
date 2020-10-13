@@ -128,12 +128,12 @@ namespace Nethermind.Evm.Tracing
             _currentTxTracer.SetOperationMemorySize(newSize);
         }
 
-        public void ReportMemoryChange(long offset, Span<byte> data)
+        public void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
         {
             _currentTxTracer.ReportMemoryChange(offset, data);
         }
 
-        public void ReportStorageChange(Span<byte> key, Span<byte> value)
+        public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
         {
             _currentTxTracer.ReportStorageChange(key, value);
         }
@@ -223,7 +223,7 @@ namespace Nethermind.Evm.Tracing
             _currentTxTracer.SetOperationStack(stackTrace);
         }
 
-        public void ReportStackPush(Span<byte> stackItem)
+        public void ReportStackPush(in ReadOnlySpan<byte> stackItem)
         {
             _currentTxTracer.ReportStackPush(stackItem);
         }

@@ -47,7 +47,7 @@ namespace Nethermind.Evm
         private Span<byte> _bytes;
 
         private ITxTracer _tracer;
-
+        
         public void PushBytes(in Span<byte> value)
         {
             if (_tracer.IsTracingInstructions) _tracer.ReportStackPush(value);
@@ -72,7 +72,7 @@ namespace Nethermind.Evm
 
         public void PushBytes(in ZeroPaddedSpan value)
         {
-            if (_tracer.IsTracingInstructions) _tracer.ReportStackPush(value.ToArray().AsSpan());
+            if (_tracer.IsTracingInstructions) _tracer.ReportStackPush(value);
 
             Span<byte> word = _bytes.Slice(Head * 32, 32);
             if (value.Span.Length != 32)
@@ -94,7 +94,7 @@ namespace Nethermind.Evm
 
         public void PushByte(byte value)
         {
-            if (_tracer.IsTracingInstructions) _tracer.ReportStackPush(new[] {value});
+            if (_tracer.IsTracingInstructions) _tracer.ReportStackPush(value);
 
             Span<byte> word = _bytes.Slice(Head * 32, 32);
             word.Clear();
@@ -107,9 +107,11 @@ namespace Nethermind.Evm
             }
         }
 
+        private static readonly byte[] OneStackItem = {1};
+        
         public void PushOne()
         {
-            if (_tracer.IsTracingInstructions) _tracer.ReportStackPush(new byte[] {1});
+            if (_tracer.IsTracingInstructions) _tracer.ReportStackPush(OneStackItem);
 
             int start = Head * 32;
             Span<byte> word = _bytes.Slice(start, 32);
@@ -123,9 +125,14 @@ namespace Nethermind.Evm
             }
         }
 
+        private static readonly byte[] ZeroStackItem = {0};
+        
         public void PushZero()
         {
-            if (_tracer.IsTracingInstructions) _tracer.ReportStackPush(new byte[] {0});
+            if (_tracer.IsTracingInstructions)
+            {
+                _tracer.ReportStackPush(ZeroStackItem);
+            }
 
             _bytes.Slice(Head * 32, 32).Clear();
 

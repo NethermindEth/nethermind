@@ -25,6 +25,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Rlp;
@@ -187,8 +188,8 @@ namespace Nethermind.JsonRpc.Modules.Trace
             using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource(_cancellationTokenTimeout);
             CancellationToken cancellationToken = cancellationTokenSource.Token;
 
-            ParityLikeBlockTracer listener = new ParityLikeBlockTracer(traceTypes, cancellationToken);
-            _tracer.Trace(block, listener);
+            ParityLikeBlockTracer listener = new ParityLikeBlockTracer(traceTypes);
+            _tracer.Trace(block, listener.WithCancellation(cancellationToken));
 
             return listener.BuildResult();
         }
@@ -198,8 +199,8 @@ namespace Nethermind.JsonRpc.Modules.Trace
             using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource(_cancellationTokenTimeout);
             CancellationToken cancellationToken = cancellationTokenSource.Token;
 
-            ParityLikeBlockTracer listener = new ParityLikeBlockTracer(txHash, traceTypes, cancellationToken);
-            _tracer.Trace(block, listener);
+            ParityLikeBlockTracer listener = new ParityLikeBlockTracer(txHash, traceTypes);
+            _tracer.Trace(block, listener.WithCancellation(cancellationToken));
 
             return listener.BuildResult().SingleOrDefault();
         }

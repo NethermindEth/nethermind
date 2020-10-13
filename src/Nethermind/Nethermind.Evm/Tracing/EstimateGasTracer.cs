@@ -27,11 +27,8 @@ namespace Nethermind.Evm.Tracing
 {
     public class EstimateGasTracer : ITxTracer
     {
-        private readonly CancellationToken _cancellationToken; 
-
-        public EstimateGasTracer(CancellationToken cancellationToken = default)
+        public EstimateGasTracer()
         {
-            _cancellationToken = cancellationToken;
             _currentGasAndNesting.Push(new GasAndNesting(0, -1));
         }
 
@@ -95,7 +92,7 @@ namespace Nethermind.Evm.Tracing
             throw new NotSupportedException();
         }
 
-        public void ReportStackPush(Span<byte> stackItem)
+        public void ReportStackPush(in ReadOnlySpan<byte> stackItem)
         {
             throw new NotSupportedException();
         }
@@ -110,12 +107,12 @@ namespace Nethermind.Evm.Tracing
             throw new NotSupportedException();
         }
 
-        public void ReportMemoryChange(long offset, Span<byte> data)
+        public void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
         {
             throw new NotSupportedException();
         }
 
-        public void ReportStorageChange(Span<byte> key, Span<byte> value)
+        public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
         {
             throw new NotSupportedException();
         }
@@ -187,14 +184,12 @@ namespace Nethermind.Evm.Tracing
 
         internal long CalculateAdditionalGasRequired(Transaction tx)
         {
-            _cancellationToken.ThrowIfCancellationRequested();
             long intrinsicGas = tx.GasLimit - IntrinsicGasAt;
             return _currentGasAndNesting.Peek().AdditionalGasRequired + RefundHelper.CalculateClaimableRefund(intrinsicGas + NonIntrinsicGasSpentBeforeRefund, TotalRefund);
         }
 
         public long CalculateEstimate(Transaction tx)
         {
-            _cancellationToken.ThrowIfCancellationRequested();
             long intrinsicGas = tx.GasLimit - IntrinsicGasAt;
             return Math.Max(intrinsicGas, GasSpent + CalculateAdditionalGasRequired(tx));
         }
@@ -254,7 +249,6 @@ namespace Nethermind.Evm.Tracing
 
         private void UpdateAdditionalGas(long gas)
         {
-            _cancellationToken.ThrowIfCancellationRequested();
             var current = _currentGasAndNesting.Pop();
             current.GasLeft = gas;
             _currentGasAndNesting.Peek().GasUsageFromChildren += current.AdditionalGasRequired;

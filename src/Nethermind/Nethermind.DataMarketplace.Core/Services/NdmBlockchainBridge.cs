@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
@@ -97,7 +98,7 @@ namespace Nethermind.DataMarketplace.Core.Services
 
         public Task<byte[]> CallAsync(Transaction transaction)
         {
-            var callOutput = _blockchainBridge.Call(_blockchainBridge.BeamHead?.Header, transaction);
+            var callOutput = _blockchainBridge.Call(_blockchainBridge.BeamHead?.Header, transaction, CancellationToken.None);
             return Task.FromResult(callOutput.OutputData ?? new byte[] {0});
         }
 
@@ -109,7 +110,7 @@ namespace Nethermind.DataMarketplace.Core.Services
                 return Task.FromResult(Array.Empty<byte>());
             }
 
-            var callOutput = _blockchainBridge.Call(block.Header, transaction);
+            var callOutput = _blockchainBridge.Call(block.Header, transaction, CancellationToken.None);
 
             return Task.FromResult(callOutput.OutputData ?? new byte[] {0});
         }
