@@ -58,7 +58,7 @@ namespace Nethermind.Evm.Tracing
         public ITxTracer StartNewTxTrace(Keccak txHash)
         {
             _token.ThrowIfCancellationRequested();
-            return new CancellationTxTracer(_innerTracer.StartNewTxTrace(txHash), _token);
+            return _innerTracer.StartNewTxTrace(txHash).WithCancellation(_token);
         }
 
         public void EndTxTrace()

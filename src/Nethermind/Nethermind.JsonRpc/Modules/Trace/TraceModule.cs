@@ -189,7 +189,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             CancellationToken cancellationToken = cancellationTokenSource.Token;
 
             ParityLikeBlockTracer listener = new ParityLikeBlockTracer(traceTypes);
-            _tracer.Trace(block, new CancellationBlockTracer(listener, cancellationToken));
+            _tracer.Trace(block, listener.WithCancellation(cancellationToken));
 
             return listener.BuildResult();
         }
@@ -200,7 +200,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             CancellationToken cancellationToken = cancellationTokenSource.Token;
 
             ParityLikeBlockTracer listener = new ParityLikeBlockTracer(txHash, traceTypes);
-            _tracer.Trace(block, new CancellationBlockTracer(listener, cancellationToken));
+            _tracer.Trace(block, listener.WithCancellation(cancellationToken));
 
             return listener.BuildResult().SingleOrDefault();
         }

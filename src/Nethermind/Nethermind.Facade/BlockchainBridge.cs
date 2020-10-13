@@ -184,7 +184,7 @@ namespace Nethermind.Facade
                 header.Number + 1,
                 UInt256.Max(header.Timestamp + 1, _timestamper.EpochSeconds),
                 tx,
-                new CancellationTxTracer(estimateGasTracer, cancellationToken));
+                estimateGasTracer.WithCancellation(cancellationToken));
             
             long estimate = estimateGasTracer.CalculateEstimate(tx);
             return new CallOutput {Error = estimateGasTracer.Error, GasSpent = estimate};

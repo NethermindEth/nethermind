@@ -90,7 +90,7 @@ namespace Nethermind.Blockchain.Tracing
             
             block.Body = new BlockBody(new[] {tx}, new BlockHeader[] { });
             GethLikeBlockTracer blockTracer = new GethLikeBlockTracer(tx.Hash, options);
-            _processor.Process(block, ProcessingOptions.Trace, new CancellationBlockTracer(blockTracer, cancellationToken));
+            _processor.Process(block, ProcessingOptions.Trace, blockTracer.WithCancellation(cancellationToken));
             return blockTracer.BuildResult().SingleOrDefault();
         }
 
@@ -114,7 +114,7 @@ namespace Nethermind.Blockchain.Tracing
         private GethLikeTxTrace Trace(Block block, Keccak txHash, CancellationToken cancellationToken, GethTraceOptions options)
         {
             GethLikeBlockTracer listener = new GethLikeBlockTracer(txHash, options);
-            _processor.Process(block, ProcessingOptions.Trace, new CancellationBlockTracer(listener, cancellationToken));
+            _processor.Process(block, ProcessingOptions.Trace, listener.WithCancellation(cancellationToken));
             return listener.BuildResult().SingleOrDefault();
         }
 
@@ -129,7 +129,7 @@ namespace Nethermind.Blockchain.Tracing
             }
 
             GethLikeBlockTracer listener = txHash == null ? new GethLikeBlockTracer(options) : new GethLikeBlockTracer(txHash, options);
-            _processor.Process(block, ProcessingOptions.Trace, new CancellationBlockTracer(listener, cancellationToken));
+            _processor.Process(block, ProcessingOptions.Trace, listener.WithCancellation(cancellationToken));
             return listener.BuildResult().ToArray();
         }
 
