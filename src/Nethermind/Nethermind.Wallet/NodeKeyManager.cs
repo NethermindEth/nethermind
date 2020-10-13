@@ -105,7 +105,7 @@ namespace Nethermind.Wallet
         {
             if(_config.BlockAuthorAccount != null)
             {
-                SecureString password = _passwordProvider.GetBlockAuthorPassword();
+                SecureString password = _passwordProvider.GetPassword();
 
                 try
                 {

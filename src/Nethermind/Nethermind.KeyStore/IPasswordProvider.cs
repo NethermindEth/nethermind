@@ -20,10 +20,6 @@ namespace Nethermind.KeyStore
 {
     public interface IPasswordProvider
     {
-        SecureString GetBlockAuthorPassword();
-
-        SecureString GetPassword(int keyStoreConfigPasswordIndex);
-
-        SecureString GetPasswordFromConsole();
+        SecureString GetPassword(int? passwordIndex = null);
     }
 }

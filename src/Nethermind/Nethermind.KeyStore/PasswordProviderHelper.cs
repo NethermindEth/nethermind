@@ -24,50 +24,32 @@ using Nethermind.Logging;
 
 namespace Nethermind.KeyStore
 {
-    public class PasswordProvider : IPasswordProvider
+    public class PasswordProviderHelper
     {
-        private readonly IKeyStoreConfig _keyStoreConfig;
-        public PasswordProvider(IKeyStoreConfig keyStoreConfig)
-        {
-            _keyStoreConfig = keyStoreConfig ?? throw new ArgumentNullException(nameof(keyStoreConfig));
-        }
-        public SecureString GetBlockAuthorPassword()
-        {
-            SecureString passwordFromFile = null;
-            var index = Array.IndexOf(_keyStoreConfig.UnlockAccounts, _keyStoreConfig.BlockAuthorAccount);
-            if (index >= 0)
-            {
-                passwordFromFile = GetPassword(index);
-            }
-
-            return passwordFromFile != null ? passwordFromFile : GetPasswordFromConsole();
-        }
-
-        public SecureString GetPassword(int keyStoreConfigPasswordIndex)
+        public SecureString GetPasswordBasedOnKeyStore(IKeyStoreConfig keyStoreConfig, int keyStoreConfigPasswordIndex)
         {
             string GetPasswordN(int n, string[] passwordsCollection) => passwordsCollection?.Length > 0 ? passwordsCollection[Math.Min(n, passwordsCollection.Length - 1)] : null;
 
             SecureString password = null;
-            var passwordFile = GetPasswordN(keyStoreConfigPasswordIndex, _keyStoreConfig.PasswordFiles);
+            var passwordFile = GetPasswordN(keyStoreConfigPasswordIndex, keyStoreConfig.PasswordFiles);
             if (passwordFile != null)
             {
                 string blockAuthorPasswordFilePath = passwordFile.GetApplicationResourcePath();
                 password = File.Exists(blockAuthorPasswordFilePath)
-                    ? ReadFromFileToSecureString(blockAuthorPasswordFilePath)
+                    ? GetPasswordFromFile(blockAuthorPasswordFilePath)
                     : null;
             }
 
-            password?.MakeReadOnly();
-            password ??= GetPasswordN(keyStoreConfigPasswordIndex, _keyStoreConfig.Passwords)?.Secure();
+            password ??= GetPasswordN(keyStoreConfigPasswordIndex, keyStoreConfig.Passwords)?.Secure();
             return password;
         }
 
-        public SecureString GetPasswordFromConsole()
+        public SecureString GetPasswordFromConsole(string message)
         {
-            return ConsoleUtils.ReadSecret($"Provide password for validator account {_keyStoreConfig.BlockAuthorAccount}");
+            return ConsoleUtils.ReadSecret(message);
         }
 
-        private SecureString ReadFromFileToSecureString(string filePath)
+        public SecureString GetPasswordFromFile(string filePath)
         {
             var whitespaces = new List<char>();
             var secureString = new SecureString();
@@ -98,6 +80,7 @@ namespace Nethermind.KeyStore
                 }
             }
 
+            secureString.MakeReadOnly();
             return secureString;
         }
 
