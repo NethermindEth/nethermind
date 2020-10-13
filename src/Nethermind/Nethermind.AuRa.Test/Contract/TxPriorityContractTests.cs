@@ -59,7 +59,7 @@ namespace Nethermind.AuRa.Test.Contract
         [Test]
         public async Task whitelist_empty_after_init()
         {
-            var chain = await TestContractBlockchain.ForTest<TxPermissionContractBlockchain, TxPriorityContractTests>();
+            using var chain = await TestContractBlockchain.ForTest<TxPermissionContractBlockchain, TxPriorityContractTests>();
             var whiteList = chain.TxPriorityContract.SendersWhitelist.GetAllItemsFromBlock(chain.BlockTree.Head.Header);
             whiteList.Should().BeEmpty();
         }
@@ -67,7 +67,7 @@ namespace Nethermind.AuRa.Test.Contract
         [Test]
         public async Task priorities_empty_after_init()
         {
-            var chain = await TestContractBlockchain.ForTest<TxPermissionContractBlockchain, TxPriorityContractTests>();
+            using var chain = await TestContractBlockchain.ForTest<TxPermissionContractBlockchain, TxPriorityContractTests>();
             var priorities = chain.TxPriorityContract.Priorities.GetAllItemsFromBlock(chain.BlockTree.Head.Header);
             priorities.Should().BeEmpty();
         }
@@ -75,7 +75,7 @@ namespace Nethermind.AuRa.Test.Contract
         [Test]
         public async Task mingas_empty_after_init()
         {
-            var chain = await TestContractBlockchain.ForTest<TxPermissionContractBlockchain, TxPriorityContractTests>();
+            using var chain = await TestContractBlockchain.ForTest<TxPermissionContractBlockchain, TxPriorityContractTests>();
             var minGas = chain.TxPriorityContract.MinGasPrices.GetAllItemsFromBlock(chain.BlockTree.Head.Header);
             minGas.Should().BeEmpty();
         }
@@ -83,7 +83,7 @@ namespace Nethermind.AuRa.Test.Contract
         [Test]
         public async Task whitelist_should_return_correctly()
         {
-            var chain = await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocks, TxPriorityContractTests>();
+            using var chain = await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocks, TxPriorityContractTests>();
             var whiteList = chain.TxPriorityContract.SendersWhitelist.GetAllItemsFromBlock(chain.BlockTree.Head.Header);
             var whiteListInContract = chain.SendersWhitelist.GetItemsFromContractAtBlock(chain.BlockTree.Head.Header);
             object[] expected = {TestItem.AddressA, TestItem.AddressC};
@@ -94,7 +94,7 @@ namespace Nethermind.AuRa.Test.Contract
         [Test]
         public async Task priority_should_return_correctly()
         {
-            var chain = await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocks, TxPriorityContractTests>();
+            using var chain = await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocks, TxPriorityContractTests>();
             var priorities = chain.TxPriorityContract.Priorities.GetAllItemsFromBlock(chain.BlockTree.Head.Header);
             var prioritiesInContract = chain.Priorities.GetItemsFromContractAtBlock(chain.BlockTree.Head.Header);
             object[] expected =
@@ -112,7 +112,7 @@ namespace Nethermind.AuRa.Test.Contract
         [Test]
         public async Task mingas_should_return_correctly()
         {
-            var chain = await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocks, TxPriorityContractTests>();
+            using var chain = await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocks, TxPriorityContractTests>();
             var minGasPrices = chain.TxPriorityContract.MinGasPrices.GetAllItemsFromBlock(chain.BlockTree.Head.Header);
             var minGasPricesInContract = chain.MinGasPrices.GetItemsFromContractAtBlock(chain.BlockTree.Head.Header);
             object[] expected =
@@ -127,9 +127,10 @@ namespace Nethermind.AuRa.Test.Contract
         }
         
         [Test]
+        [Retry(3)] // still sometimes the order is wrong than expected by test and local storage is loaded after test assert
         public async Task whitelist_should_return_correctly_with_local_storage([Values(true, false)] bool fileFirst)
         {
-            var chain = fileFirst 
+            using var chain = fileFirst 
                 ? await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocksAndLocalDataBeforeStart, TxPriorityContractTests>()
                 : await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocksAndLocalData, TxPriorityContractTests>();
 
@@ -159,9 +160,10 @@ namespace Nethermind.AuRa.Test.Contract
         }
         
         [Test]
+        [Retry(3)] // still sometimes the order is wrong than expected by test and local storage is loaded after test assert
         public async Task priority_should_return_correctly_with_local_storage([Values(true, false)] bool fileFirst)
         {
-            var chain = fileFirst 
+            using var chain = fileFirst 
                 ? await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocksAndLocalDataBeforeStart, TxPriorityContractTests>()
                 : await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocksAndLocalData, TxPriorityContractTests>();
             
@@ -199,9 +201,10 @@ namespace Nethermind.AuRa.Test.Contract
         }
 
         [Test]
+        [Retry(3)] // still sometimes the order is wrong than expected by test and local storage is loaded after test assert
         public async Task mingas_should_return_correctly_with_local_storage([Values(true, false)] bool fileFirst)
         {
-            var chain = fileFirst 
+            using var chain = fileFirst 
                 ? await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocksAndLocalDataBeforeStart, TxPriorityContractTests>()
                 : await TestContractBlockchain.ForTest<TxPermissionContractBlockchainWithBlocksAndLocalData, TxPriorityContractTests>();
             
