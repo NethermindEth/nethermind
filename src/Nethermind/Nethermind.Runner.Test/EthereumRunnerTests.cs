@@ -25,6 +25,7 @@ using FluentAssertions.Execution;
 using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Core.Test.IO;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.EthStats;
 using Nethermind.JsonRpc;
@@ -98,14 +99,14 @@ namespace Nethermind.Runner.Test
             Console.WriteLine(type8.Name);
             Console.WriteLine(type9.Name);
 
-            var tempPath = Path.Combine(Path.GetTempPath(), "test_" + Guid.NewGuid());
-            Directory.CreateDirectory(tempPath);
+            var tempPath = TempPath.GetTempDirectory();
+            Directory.CreateDirectory(tempPath.Path);
 
             Exception exception = null;
             try
             {
                 IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
-                initConfig.BaseDbPath = tempPath;
+                initConfig.BaseDbPath = tempPath.Path;
                 initConfig.ChainSpecPath = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location)!, initConfig.ChainSpecPath);
 
                 INetworkConfig networkConfig = configProvider.GetConfig<INetworkConfig>();
@@ -156,7 +157,7 @@ namespace Nethermind.Runner.Test
             {
                 try
                 {
-                    Directory.Delete(tempPath, true);
+                    tempPath.Dispose();
                 }
                 catch (Exception e)
                 {

@@ -177,7 +177,7 @@ namespace Nethermind.AuRa.Test.Transactions
 
         private static async Task<(bool IsAllowed, bool Cache)> ChainTest(Func<Task<TestTxPermissionsBlockchain>> chainFactory, Transaction tx, UInt256 version)
         {
-            var chain = await chainFactory();
+            using var chain = await chainFactory();
             var head = chain.BlockTree.Head;
             var isAllowed = chain.PermissionBasedTxFilter.IsAllowed(tx, head.Header);
             chain.TransactionPermissionContractVersions.Get(head.Header.Hash).Should().Be(version);

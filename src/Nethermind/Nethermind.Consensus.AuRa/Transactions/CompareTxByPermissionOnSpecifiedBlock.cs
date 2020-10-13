@@ -17,6 +17,7 @@
 
 using System;
 using Nethermind.Consensus.AuRa.Contracts;
+using Nethermind.Consensus.AuRa.Contracts.DataStore;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;

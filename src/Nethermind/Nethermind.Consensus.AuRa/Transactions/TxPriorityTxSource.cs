@@ -19,6 +19,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus.AuRa.Contracts;
+using Nethermind.Consensus.AuRa.Contracts.DataStore;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -40,8 +41,8 @@ namespace Nethermind.Consensus.AuRa.Transactions
             IStateReader stateReader, 
             ILogManager logManager, 
             ITxFilter minGasPriceFilter,
-            HashSetContractDataStore<Address> sendersWhitelist, // expected HashSet based
-            SortedListContractDataStore<TxPriorityContract.Destination> priorities) // expected SortedList based
+            IContractDataStore<Address> sendersWhitelist, // expected HashSet based
+            IDictionaryContractDataStore<TxPriorityContract.Destination> priorities) // expected SortedList based
             : base(transactionPool, stateReader, logManager, minGasPriceFilter)
         {
             _sendersWhitelist = sendersWhitelist ?? throw new ArgumentNullException(nameof(sendersWhitelist));

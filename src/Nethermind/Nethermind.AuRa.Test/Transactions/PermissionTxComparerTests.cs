@@ -24,6 +24,7 @@ using System.Linq;
 using FluentAssertions;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus.AuRa.Contracts;
+using Nethermind.Consensus.AuRa.Contracts.DataStore;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
