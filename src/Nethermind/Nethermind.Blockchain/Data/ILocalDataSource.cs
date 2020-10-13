@@ -15,12 +15,13 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Core;
+using System;
 
-namespace Nethermind.Consensus.AuRa.Contracts
+namespace Nethermind.Blockchain.Data
 {
-    public interface IDictionaryContractDataStore<T> : IContractDataStore<T>
+    public interface ILocalDataSource<out T>
     {
-        bool TryGetValue(BlockHeader header, T key, out T value);
+        T Data { get; }
+        event EventHandler Changed;
     }
 }

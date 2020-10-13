@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Validators;
@@ -24,6 +25,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Contracts;
+using Nethermind.Consensus.AuRa.Contracts.DataStore;
 using Nethermind.Consensus.AuRa.Rewards;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
@@ -43,6 +45,8 @@ namespace Nethermind.Runner.Ethereum.Steps
         
         private ReadOnlyTxProcessorSource? _readOnlyTransactionProcessorSource;
         private AuRaSealValidator? _sealValidator;
+        private CompositeComparer<Transaction>? _txPoolComparer = null;
+        private Address? _txPriorityContractAddress = null;
 
         public InitializeBlockchainAuRa(AuRaNethermindApi api) : base(api)
         {
@@ -221,23 +225,39 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         protected override IComparer<Transaction> CreateTxPoolTxComparer()
         {
-            Address.TryParse(_api.ConfigProvider.GetConfig<IAuraConfig>()?.TxPriorityContractAddress, out Address? txPriorityContractAddress);
-            if (txPriorityContractAddress != null)
+            Address.TryParse(_api.ConfigProvider.GetConfig<IAuraConfig>()?.TxPriorityContractAddress, out _txPriorityContractAddress);
+            return _txPriorityContractAddress != null ? _txPoolComparer = new CompositeComparer<Transaction>() : base.CreateTxPoolTxComparer();
+        }
+
+        protected override Task InitBlockchain()
+        {
+            var task = base.InitBlockchain();
+            if (_txPoolComparer != null)
             {
                 ReadOnlyTxProcessorSource readOnlyTransactionProcessorSource = new ReadOnlyTxProcessorSource(_api.DbProvider, _api.BlockTree, _api.SpecProvider, _api.LogManager);
-                var txPriorityContract = new TxPriorityContract(_api.AbiEncoder, txPriorityContractAddress, readOnlyTransactionProcessorSource);
+                var txPriorityContract = new TxPriorityContract(_api.AbiEncoder, _txPriorityContractAddress, readOnlyTransactionProcessorSource);
                 IBlockProcessor? blockProcessor = _api.MainBlockProcessor;
-                var whitelistContractDataStore = new HashSetContractDataStore<Address>(txPriorityContract.SendersWhitelist, blockProcessor);
-                var prioritiesContractDataStore = new SortedListContractDataStore<TxPriorityContract.Destination>(txPriorityContract.Priorities, blockProcessor, TxPriorityContract.DestinationMethodComparer.Instance);
+                var whitelistContractDataStore = new ContractDataStore<Address>(
+                    new HashSetContractDataStoreCollection<Address>(), 
+                    txPriorityContract.SendersWhitelist, 
+                    blockProcessor,
+                    _api.LogManager);
                 
+                var prioritiesContractDataStore = new DictionaryContractDataStore<TxPriorityContract.Destination>(
+                    new TxPriorityContract.DestinationSortedListContractDataStoreCollection(), 
+                    txPriorityContract.Priorities, 
+                    blockProcessor,
+                    _api.LogManager);
+
                 _api.DisposeStack.Push(whitelistContractDataStore);
                 _api.DisposeStack.Push(prioritiesContractDataStore);
-                
-                return new CompareTxByPermissionOnHead(whitelistContractDataStore, prioritiesContractDataStore, _api.BlockTree)
+
+                _txPoolComparer
+                    .ThenBy(new CompareTxByPermissionOnHead(whitelistContractDataStore, prioritiesContractDataStore, _api.BlockTree))
                     .ThenBy(CompareTxByGas.Instance);
             }
-            
-            return base.CreateTxPoolTxComparer();
+
+            return task;
         }
     }
 }

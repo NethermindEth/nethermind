@@ -16,6 +16,7 @@
 
 using System.IO;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.IO;
 using Nethermind.Logging;
 using NUnit.Framework;
 
@@ -28,8 +29,9 @@ namespace Nethermind.Network.Test
         [Test]
         public void Save_and_load()
         {
-            File.Delete(Path.Combine(Path.GetTempPath(), SimpleFilePublicKeyDb.DbFileName));
-            
+            using var tempPath = TempPath.GetTempFile(SimpleFilePublicKeyDb.DbFileName);
+            tempPath.Dispose();
+
             SimpleFilePublicKeyDb filePublicKeyDb = new SimpleFilePublicKeyDb("Test", Path.GetTempPath(), LimboLogs.Instance);
             filePublicKeyDb[TestItem.PublicKeyA.Bytes] = new byte[] {1, 2, 3};
             filePublicKeyDb[TestItem.PublicKeyB.Bytes] = new byte[] {4, 5, 6};

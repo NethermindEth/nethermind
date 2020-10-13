@@ -372,7 +372,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             if (transactionCall.Gas == null || transactionCall.Gas == 0)
             {
-                transactionCall.Gas = Math.Min(_rpcConfig.GasCap ?? long.MaxValue, header.GasLimit);
+                transactionCall.Gas = _rpcConfig.GasCap ?? long.MaxValue;
             }
             else
             {

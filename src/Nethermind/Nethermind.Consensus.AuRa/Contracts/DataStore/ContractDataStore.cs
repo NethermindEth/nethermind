@@ -16,37 +16,38 @@
 // 
 
 using System;
-using System.Collections;
 using System.Collections.Generic;
-using System.Collections.Specialized;
-using System.Linq;
 using System.Runtime.CompilerServices;
+using Nethermind.Abi;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Logging;
 
-namespace Nethermind.Consensus.AuRa.Contracts
+namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 {
-    public abstract class ContractDataStore<T, TCollection> : IDisposable, IContractDataStore<T>
+    public class ContractDataStore<T, TCollection> : IDisposable, IContractDataStore<T> where TCollection : IContractDataStoreCollection<T>
     {
+        internal TCollection Collection { get; }
         private readonly IDataContract<T> _dataContract;
         private readonly IBlockProcessor _blockProcessor;
         private Keccak _lastHash;
-        
-        protected TCollection Items { get; private set; }
-        
-        protected ContractDataStore(IDataContract<T> dataContract, IBlockProcessor blockProcessor)
+        private readonly ILogger _logger;
+
+        protected internal ContractDataStore(TCollection collection, IDataContract<T> dataContract, IBlockProcessor blockProcessor, ILogManager logManager)
         {
+            Collection = collection;
             _dataContract = dataContract ?? throw new ArgumentNullException(nameof(dataContract));
             _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));;
+            _logger = logManager?.GetClassLogger<ContractDataStore<T, TCollection>>() ?? throw new ArgumentNullException(nameof(logManager));
             _blockProcessor.BlockProcessed += OnBlockProcessed;
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public IEnumerable<T> GetItemsFromContractAtBlock(BlockHeader parent)
+        public IEnumerable<T> GetItemsFromContractAtBlock(BlockHeader blockHeader)
         {
-            GetItemsFromContractAtBlock(parent, parent.Hash == _lastHash);
-            return GetSnapshot(Items);
+            GetItemsFromContractAtBlock(blockHeader, blockHeader.Hash == _lastHash);
+            return Collection.GetSnapshot();
         }
         
         
@@ -59,7 +60,6 @@ namespace Nethermind.Consensus.AuRa.Contracts
         
         private void GetItemsFromContractAtBlock(BlockHeader blockHeader, bool isConsecutiveBlock, TxReceipt[] receipts = null)
         {
-            Items ??= CreateItems();
             bool fromReceipts = receipts != null;
 
             if (fromReceipts || !isConsecutiveBlock)
@@ -67,32 +67,48 @@ namespace Nethermind.Consensus.AuRa.Contracts
                 bool incrementalChanges = _dataContract.IncrementalChanges;
                 bool canGetFullStateFromReceipts = fromReceipts && (isConsecutiveBlock || !incrementalChanges) && !blockHeader.IsGenesis;
 
-                IEnumerable<T> items = canGetFullStateFromReceipts
-                    ? _dataContract.GetItemsChangedFromBlock(blockHeader, receipts)
-                    : _dataContract.GetAllItemsFromBlock(blockHeader);
-
-                if (!fromReceipts || !isConsecutiveBlock || !incrementalChanges)
+                try
                 {
-                    ClearItems(Items);
+                    IEnumerable<T> items = canGetFullStateFromReceipts
+                        ? _dataContract.GetItemsChangedFromBlock(blockHeader, receipts)
+                        : _dataContract.GetAllItemsFromBlock(blockHeader);
+
+                    if (!fromReceipts || !isConsecutiveBlock || !incrementalChanges)
+                    {
+	                    RemoveOldContractItemsFromCollection();
+                    }
+
+    	            Collection.Insert(items);
+
+                    _lastHash = blockHeader.Hash;
                 }
-
-                InsertItems(Items, items);
-
-                _lastHash = blockHeader.Hash;
+                catch (AbiException e)
+                {
+                    if (_logger.IsError) _logger.Error("Failed to update data from contract.", e);
+                }
             }
         }
 
-        public void Dispose()
+        protected virtual void RemoveOldContractItemsFromCollection()
+        {
+            Collection.Clear();
+        }
+
+        public virtual void Dispose()
         {
             _blockProcessor.BlockProcessed -= OnBlockProcessed;
         }
-        
-        protected abstract IEnumerable<T> GetSnapshot(TCollection collection);
-        
-        protected abstract TCollection CreateItems();
-        
-        protected abstract void ClearItems(TCollection collection);
-        
-        protected abstract void InsertItems(TCollection collection, IEnumerable<T> items);
+    }
+
+    public class ContractDataStore<T> : ContractDataStore<T, IContractDataStoreCollection<T>>
+    {
+        public ContractDataStore(
+            IContractDataStoreCollection<T> collection, 
+            IDataContract<T> dataContract, 
+            IBlockProcessor blockProcessor,
+            ILogManager logManager) 
+            : base(collection, dataContract, blockProcessor, logManager)
+        {
+        }
     }
 }

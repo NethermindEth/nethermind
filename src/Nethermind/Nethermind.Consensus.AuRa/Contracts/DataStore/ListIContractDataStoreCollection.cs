@@ -16,20 +16,32 @@
 // 
 
 using System.Collections.Generic;
-using Nethermind.Blockchain.Processing;
+using System.Linq;
 
-namespace Nethermind.Consensus.AuRa.Contracts
+namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 {
-    public class SortedListContractDataStore<T> : DictionaryBasedContractDataStore<T>
+    public class ListIContractDataStoreCollection<T> : IContractDataStoreCollection<T>
     {
-        private readonly IComparer<T> _comparer;
+        private List<T> _items;
 
-        public SortedListContractDataStore(IDataContract<T> dataContract, IBlockProcessor blockProcessor, IComparer<T> comparer = null)
-            : base(dataContract, blockProcessor)
+        private List<T> Items => _items ??= new List<T>();
+        
+        public void Clear()
         {
-            _comparer = comparer;
+            Items.Clear();
         }
 
-        protected override IDictionary<T, T> CreateItems() => new SortedList<T, T>(_comparer);
+        public IEnumerable<T> GetSnapshot() => Items.ToArray();
+
+        public void Insert(IEnumerable<T> items)
+        {
+            Items.AddRange(items);
+        }
+
+        public void Remove(IEnumerable<T> items)
+        {
+            ISet<T> set = items.ToHashSet();
+            Items.RemoveAll(i => set.Contains(i));
+        }
     }
 }

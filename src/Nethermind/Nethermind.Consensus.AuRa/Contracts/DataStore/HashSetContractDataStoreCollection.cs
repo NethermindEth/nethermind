@@ -17,37 +17,40 @@
 
 using System.Collections.Generic;
 using System.Linq;
-using Nethermind.Blockchain.Processing;
-using Nethermind.Core;
 
-namespace Nethermind.Consensus.AuRa.Contracts
+namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 {
-    public abstract class DictionaryBasedContractDataStore<T> : ContractDataStore<T, IDictionary<T, T>>, IDictionaryContractDataStore<T>
+    public class HashSetContractDataStoreCollection<T> : IContractDataStoreCollection<T>
     {
-        protected DictionaryBasedContractDataStore(IDataContract<T> dataContract, IBlockProcessor blockProcessor)
-            : base(dataContract, blockProcessor)
+        private HashSet<T> _items;
+
+        private ISet<T> Items => _items ??= new HashSet<T>();
+
+        public void Clear()
         {
-        }
-        
-        protected override void ClearItems(IDictionary<T, T> collection)
-        {
-            collection.Clear();
+            Items.Clear();
         }
 
-        protected override IEnumerable<T> GetSnapshot(IDictionary<T, T> collection) => collection.Values.ToArray();
+        public IEnumerable<T> GetSnapshot() => Items.ToArray();
 
-        protected override void InsertItems(IDictionary<T, T> collection, IEnumerable<T> items)
+        public void Insert(IEnumerable<T> items)
         {
+            ISet<T> set = Items;
+            
             foreach (T item in items)
             {
-                collection[item] = item;
+                set.Add(item);
             }
         }
 
-        public bool TryGetValue(BlockHeader header, T key, out T value)
+        public void Remove(IEnumerable<T> items)
         {
-            GetItemsFromContractAtBlock(header);
-            return Items.TryGetValue(key, out value);
+            ISet<T> set = Items;
+            
+            foreach (T item in items)
+            {
+                set.Remove(item);
+            }            
         }
     }
 }

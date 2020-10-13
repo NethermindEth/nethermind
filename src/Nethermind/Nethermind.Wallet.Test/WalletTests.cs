@@ -21,6 +21,7 @@ using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.IO;
 using Nethermind.Crypto;
 using Nethermind.Specs;
 using Nethermind.KeyStore;
@@ -45,24 +46,16 @@ namespace Nethermind.Wallet.Test
         [SetUp]
         public void SetUp()
         {
-            DeleteTestKeyStore();
-        }
-
-        private void DeleteTestKeyStore()
-        {
-            if (Directory.Exists(_keyStorePath))
-            {
-                Directory.Delete(_keyStorePath, true);
-            }
+            _keyStorePath.Dispose();
         }
 
         [TearDown]
         public void TearDown()
         {
-            DeleteTestKeyStore();
+            _keyStorePath.Dispose();
         }
 
-        private readonly string _keyStorePath = Path.Combine(Path.GetTempPath(), "TestWalletTests_keystore");
+        private readonly TempPath _keyStorePath = TempPath.GetTempDirectory("TestWalletTests_keystore");
 
         private IWallet SetupWallet(WalletType walletType)
         {
@@ -71,7 +64,7 @@ namespace Nethermind.Wallet.Test
                 case WalletType.KeyStore:
                 {
                     IKeyStoreConfig config = new KeyStoreConfig();
-                    config.KeyStoreDirectory = _keyStorePath;
+                    config.KeyStoreDirectory = _keyStorePath.Path;
                     ISymmetricEncrypter encrypter = new AesEncrypter(config, LimboLogs.Instance);
                     return new DevKeyStoreWallet(
                         new FileKeyStore(config, new EthereumJsonSerializer(), encrypter, new CryptoRandom(), LimboLogs.Instance, new PrivateKeyStoreIOSettingsProvider(config)),
@@ -82,7 +75,7 @@ namespace Nethermind.Wallet.Test
                 case WalletType.ProtectedKeyStore:
                 {
                     IKeyStoreConfig config = new KeyStoreConfig();
-                    config.KeyStoreDirectory = _keyStorePath;
+                    config.KeyStoreDirectory = _keyStorePath.Path;
                     ISymmetricEncrypter encrypter = new AesEncrypter(config, LimboLogs.Instance);
                     var wallet = new ProtectedKeyStoreWallet(
                         new FileKeyStore(config, new EthereumJsonSerializer(), encrypter, new CryptoRandom(), LimboLogs.Instance, new PrivateKeyStoreIOSettingsProvider(config)),

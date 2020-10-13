@@ -157,7 +157,7 @@ services:
     restart: always
 
   vault:
-    image: provide/vault
+    image: provide/vault:v0.9.1
     container_name: vault
     depends_on:
       - postgres

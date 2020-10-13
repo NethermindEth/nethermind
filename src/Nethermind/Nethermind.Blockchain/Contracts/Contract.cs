@@ -175,8 +175,18 @@ namespace Nethermind.Blockchain.Contracts
             return DecodeData(abiEncodingInfo, data);
         }
 
-        protected object[] DecodeData(AbiEncodingInfo abiEncodingInfo, byte[] data) => AbiEncoder.Decode(abiEncodingInfo, data);
-        
+        protected object[] DecodeData(AbiEncodingInfo abiEncodingInfo, byte[] data)
+        {
+            try
+            {
+                return AbiEncoder.Decode(abiEncodingInfo, data);
+            }
+            catch (Exception e)
+            {
+                throw new AbiException($"Cannot decode return data for function {abiEncodingInfo.Signature} for contract {ContractAddress}.", e);
+            }
+        }
+
         protected LogEntry GetSearchLogEntry(string eventName, byte[] data = null, params Keccak[] topics)
         {
             Keccak[] eventNameTopic = {AbiDefinition.GetEvent(eventName).GetHash()};
