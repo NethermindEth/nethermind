@@ -159,7 +159,7 @@ namespace Nethermind.Facade.Test
             Transaction tx = new Transaction();
             tx.GasLimit = Transaction.BaseTxGasCost;
 
-            _blockchainBridge.Call(header, tx);
+            _blockchainBridge.Call(header, tx, CancellationToken.None);
             _transactionProcessor.Received().CallAndRestore(
                 tx,
                 Arg.Is<BlockHeader>(bh => bh.Number == 10),

@@ -65,12 +65,12 @@ namespace Nethermind.Evm.Tracing
 
         public void SetOperationMemorySize(ulong newSize) => throw new OperationCanceledException(ErrorMessage);
         
-        public void ReportMemoryChange(long offset, Span<byte> data) => throw new OperationCanceledException(ErrorMessage);
-        public void ReportStorageChange(Span<byte> key, Span<byte> value) => throw new OperationCanceledException(ErrorMessage);
+        public void ReportMemoryChange(long offset, in Span<byte> data) => throw new OperationCanceledException(ErrorMessage);
+        public void ReportStorageChange(in Span<byte> key, in Span<byte> value) => throw new OperationCanceledException(ErrorMessage);
 
         public void SetOperationStack(List<string> stackTrace) => throw new OperationCanceledException(ErrorMessage);
         
-        public void ReportStackPush(Span<byte> stackItem) => throw new OperationCanceledException(ErrorMessage);
+        public void ReportStackPush(in Span<byte> stackItem) => throw new OperationCanceledException(ErrorMessage);
 
         public void SetOperationMemory(List<string> memoryTrace) => throw new OperationCanceledException(ErrorMessage);
 

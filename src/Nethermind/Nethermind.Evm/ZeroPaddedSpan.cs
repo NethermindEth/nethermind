@@ -20,14 +20,16 @@ namespace Nethermind.Evm
 {
     public ref struct ZeroPaddedSpan
     {
-        public static ZeroPaddedSpan Empty => new ZeroPaddedSpan(Span<byte>.Empty, 0);
+        public static ZeroPaddedSpan Empty => new ZeroPaddedSpan(Span<byte>.Empty, 0, PadDirection.Right);
         
-        public ZeroPaddedSpan(Span<byte> span, int paddingLength)
+        public ZeroPaddedSpan(Span<byte> span, int paddingLength, PadDirection padDirection)
         {
+            PadDirection = padDirection;
             Span = span;
             PaddingLength = paddingLength;
         }
-        
+
+        public PadDirection PadDirection;
         public Span<byte> Span;
         public int PaddingLength;
         public int Length => Span.Length + PaddingLength;
@@ -39,7 +41,7 @@ namespace Nethermind.Evm
         public readonly byte[] ToArray()
         {
             byte[] result = new byte[Span.Length + PaddingLength];
-            Span.CopyTo(result.AsSpan().Slice(0, Span.Length));
+            Span.CopyTo(result.AsSpan().Slice(PadDirection == PadDirection.Right ? 0 : PaddingLength, Span.Length));
             return result;
         }
     }

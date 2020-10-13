@@ -79,7 +79,7 @@ namespace Nethermind.Evm.Tracing
             throw new NotSupportedException();
         }
 
-        public void ReportStackPush(Span<byte> stackItem)
+        public void ReportStackPush(in Span<byte> stackItem)
         {
             throw new NotSupportedException();
         }
@@ -94,12 +94,12 @@ namespace Nethermind.Evm.Tracing
             throw new NotSupportedException();
         }
 
-        public void ReportMemoryChange(long offset, Span<byte> data)
+        public void ReportMemoryChange(long offset, in Span<byte> data)
         {
             throw new NotSupportedException();
         }
 
-        public void ReportStorageChange(Span<byte> key, Span<byte> value)
+        public void ReportStorageChange(in Span<byte> key, in Span<byte> value)
         {
             throw new NotSupportedException();
         }
@@ -139,7 +139,7 @@ namespace Nethermind.Evm.Tracing
             throw new NotSupportedException();
         }
 
-        public void ReportAction(long gas, UInt256 value, Address @from, Address to, byte[] input, ExecutionType callType, bool isPrecompileCall = false)
+        public void ReportAction(long gas, UInt256 value, Address from, Address to, byte[] input, ExecutionType callType, bool isPrecompileCall = false)
         {
             throw new NotSupportedException();
         }

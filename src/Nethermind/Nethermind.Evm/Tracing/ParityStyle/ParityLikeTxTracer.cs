@@ -30,26 +30,24 @@ namespace Nethermind.Evm.Tracing.ParityStyle
     {
         private readonly Transaction _tx;
         private readonly ParityTraceTypes _parityTraceTypes;
-        private readonly CancellationToken _cancellationToken; 
-        private ParityLikeTxTrace _trace;
+        private readonly ParityLikeTxTrace _trace;
         
-        private Stack<ParityTraceAction> _actionStack = new Stack<ParityTraceAction>();
+        private readonly Stack<ParityTraceAction> _actionStack = new Stack<ParityTraceAction>();
         private ParityTraceAction _currentAction;
         
         private ParityVmOperationTrace _currentOperation;
-        private List<byte[]> _currentPushList = new List<byte[]>();
+        private readonly List<byte[]> _currentPushList = new List<byte[]>();
         
-        private Stack<(ParityVmTrace VmTrace, List<ParityVmOperationTrace> Ops)> _vmTraceStack = new Stack<(ParityVmTrace VmTrace, List<ParityVmOperationTrace> Ops)>();
+        private readonly Stack<(ParityVmTrace VmTrace, List<ParityVmOperationTrace> Ops)> _vmTraceStack = new Stack<(ParityVmTrace VmTrace, List<ParityVmOperationTrace> Ops)>();
         private (ParityVmTrace VmTrace, List<ParityVmOperationTrace> Ops) _currentVmTrace;
         
         private bool _treatGasParityStyle; // strange cost calculation from parity
         private bool _gasAlreadySetForCurrentOp; // workaround for jump destination errors
 
-        public ParityLikeTxTracer(Block block, Transaction tx, ParityTraceTypes parityTraceTypes, CancellationToken cancellationToken = default(CancellationToken))
+        public ParityLikeTxTracer(Block block, Transaction tx, ParityTraceTypes parityTraceTypes)
         {
             _parityTraceTypes = parityTraceTypes;
-            _cancellationToken = cancellationToken;
-            
+
             _tx = tx;
             _trace = new ParityLikeTxTrace();
             _trace.TransactionHash = tx?.Hash;
@@ -178,8 +176,6 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         
         private void PushAction(ParityTraceAction action)
         {
-            _cancellationToken.ThrowIfCancellationRequested();
-
             if (_currentAction != null)
             {
                 action.TraceAddress = new int[_currentAction.TraceAddress.Length + 1];
@@ -219,8 +215,6 @@ namespace Nethermind.Evm.Tracing.ParityStyle
 
         private void PopAction()
         {
-            _cancellationToken.ThrowIfCancellationRequested();
-
             if (IsTracingInstructions)
             {
                 _currentVmTrace.VmTrace.Operations = _currentVmTrace.Ops.ToArray();
@@ -279,8 +273,6 @@ namespace Nethermind.Evm.Tracing.ParityStyle
 
         public void StartOperation(int depth, long gas, Instruction opcode, int pc)
         {
-            _cancellationToken.ThrowIfCancellationRequested();
-
             ParityVmOperationTrace operationTrace = new ParityVmOperationTrace();
             _gasAlreadySetForCurrentOp = false;
             operationTrace.Pc = pc;
@@ -320,9 +312,8 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             }
         }
 
-        public void ReportStackPush(Span<byte> stackItem)
+        public void ReportStackPush(in Span<byte> stackItem)
         {
-            _cancellationToken.ThrowIfCancellationRequested();
             _currentPushList.Add(stackItem.ToArray());
         }
 
@@ -332,7 +323,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
 
         public void SetOperationMemorySize(ulong newSize) => throw new NotSupportedException();
         
-        public void ReportMemoryChange(long offset, Span<byte> data)
+        public void ReportMemoryChange(long offset, in Span<byte> data)
         {
             if (data.Length != 0)
             {
@@ -340,7 +331,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             }
         }
 
-        public void ReportStorageChange(Span<byte> key, Span<byte> value)
+        public void ReportStorageChange(in Span<byte> key, in Span<byte> value)
         {
             _currentOperation.Store = new ParityStorageChangeTrace{Key = key.ToArray(), Value = value.ToArray()};
         }
