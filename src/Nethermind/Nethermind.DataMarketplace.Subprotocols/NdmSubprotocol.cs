@@ -210,7 +210,14 @@ namespace Nethermind.DataMarketplace.Subprotocols
             }
             
             Logger.Warn($"GETTING MESSAGE: ndm.{NdmMessageCode.GetDescription(message.PacketType)}");
-            MessageHandlers[message.PacketType](message);
+            try
+            {
+                MessageHandlers[message.PacketType](message);
+            }
+            catch(KeyNotFoundException)
+            {
+                Logger.Error("$There is no handler registered for this message");
+            }
         }
 
         protected virtual void Handle(HiMessage message)

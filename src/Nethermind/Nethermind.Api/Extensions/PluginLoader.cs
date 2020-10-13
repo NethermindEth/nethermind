@@ -43,7 +43,7 @@ namespace Nethermind.Api.Extensions
         {
             ILogger logger = logManager.GetClassLogger();
             string baseDir = string.Empty.GetApplicationResourcePath();
-            string pluginAssembliesDir = _pluginsDirectory.GetApplicationResourcePath();;
+            string pluginAssembliesDir = _pluginsDirectory.GetApplicationResourcePath();
             if (!_fileSystem.Directory.Exists(pluginAssembliesDir))
             {
                 if (logger.IsWarn) logger.Warn($"Plugin assemblies folder {pluginAssembliesDir} was not found. Skipping.");
@@ -58,7 +58,7 @@ namespace Nethermind.Api.Extensions
             foreach (string path in assemblies)
             {
                 string pluginAssembly = _fileSystem.Path.GetFileNameWithoutExtension(path);
-                
+
                 try
                 {
                     if (logger.IsInfo) logger.Warn($"Loading assembly {pluginAssembly}");

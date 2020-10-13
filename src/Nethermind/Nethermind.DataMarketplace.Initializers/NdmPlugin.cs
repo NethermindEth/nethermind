@@ -59,7 +59,7 @@ namespace Nethermind.DataMarketplace.Initializers
                                 _ndmApi.LogManager,
                                 new ReceiptsRecovery(),
                                 1024);
-            
+
             INdmCapabilityConnector capabilityConnector = await _ndmInitializer.InitAsync(_ndmApi);
 
             capabilityConnector.Init();
@@ -79,6 +79,7 @@ namespace Nethermind.DataMarketplace.Initializers
                 _ndmApi.RpcModuleProvider.Register(new SingletonModulePool<IEthModule>(proxyFactory, true));
                 if (logger.IsInfo) logger.Info("Enabled JSON RPC Proxy for NDM.");
             }
+
             var ndmConsumerModule = new NdmConsumersModule();
             ndmConsumerModule.Init(_ndmApi);
             _ndmApi.RpcModuleProvider.Register(new SingletonModulePool<INdmConsumersModule>(ndmConsumerModule));
@@ -99,9 +100,10 @@ namespace Nethermind.DataMarketplace.Initializers
             ILogger logger = api.LogManager.GetClassLogger();
             INdmConfig ndmConfig = api.ConfigProvider.GetConfig<INdmConfig>();
             bool ndmEnabled = ndmConfig.Enabled;
+
             if (ndmEnabled)
             {
-                INdmDataPublisher? ndmDataPublisher = new NdmDataPublisher();
+                _ndmApi.NdmDataPublisher = new NdmDataPublisher();
                 INdmConsumerChannelManager? ndmConsumerChannelManager = new NdmConsumerChannelManager();
                 string initializerName = ndmConfig.InitializerName;
                 if (logger.IsInfo) logger.Info($"NDM initializer: {initializerName}");
@@ -109,13 +111,14 @@ namespace Nethermind.DataMarketplace.Initializers
                     .SelectMany(a => a.GetTypes())
                     .FirstOrDefault(t =>
                         t.GetCustomAttribute<NdmInitializerAttribute>()?.Name == initializerName);
+
                 if (ndmInitializerType == null)
                 {
                     if(logger.IsError) logger.Error(
                         $"NDM enabled but the initializer {initializerName} has not been found. Ensure that a plugin exists with the properly set {nameof(NdmInitializerAttribute)}");
                 }
 
-                NdmModule ndmModule = new NdmModule();
+                NdmModule ndmModule = new NdmModule(_ndmApi);
                 NdmConsumersModule ndmConsumersModule = new NdmConsumersModule();
                 _ndmInitializer =
                     new NdmInitializerFactory(ndmInitializerType, ndmModule, ndmConsumersModule, api.LogManager)
@@ -130,7 +133,7 @@ namespace Nethermind.DataMarketplace.Initializers
                 NdmWebSocketsModule ndmWebSocketsModule =
                     new NdmWebSocketsModule(
                         ndmConsumerChannelManager,
-                        ndmDataPublisher,
+                        _ndmApi.NdmDataPublisher,
                         api.EthereumJsonSerializer); 
                 api.WebSocketsManager.AddModule(ndmWebSocketsModule);
             }
