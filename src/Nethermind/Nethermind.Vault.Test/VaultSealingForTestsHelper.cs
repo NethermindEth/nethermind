@@ -45,16 +45,8 @@ namespace Nethermind.Vault.Test
 
         public void Seal()
         {
-            var vaultSealingHelper = InitHelper();
             _vaultSealingHelper.Seal();
             TearDown();
-        }
-
-        private VaultSealingHelper InitHelper()
-        {
-            var passwordProvider = new VaultPasswordProvider(_vaultConfig, new Nethermind.KeyStore.PasswordProviderHelper());
-            var vaultKeyStoreFacade = new VaultKeyStoreFacade(passwordProvider);
-            return new VaultSealingHelper(vaultKeyStoreFacade, _vaultConfig);
         }
 
         private void SetUp()

@@ -30,6 +30,7 @@ namespace Nethermind.KeyStore
         {
             _keyStoreConfig = keyStoreConfig ?? throw new ArgumentNullException(nameof(keyStoreConfig));
             _passwordProviderHelper = passwordProviderHelper ?? throw new ArgumentNullException(nameof(passwordProviderHelper));
+            _keyStorePasswordProvider = new KeyStorePasswordProvider(keyStoreConfig, passwordProviderHelper);
         }
         public SecureString GetPassword(int? passwordIndex = null)
         {
