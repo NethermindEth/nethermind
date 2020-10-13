@@ -59,6 +59,7 @@ namespace Nethermind.Vault.Test
 
         private void SetUp()
         {
+            _vaultConfig.VaultKeyFile = VaultConfigFileName;
             var vaultFilePath = _vaultConfig.VaultKeyFile.GetApplicationResourcePath();
             if (!File.Exists(vaultFilePath))
             {
