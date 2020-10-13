@@ -67,7 +67,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.ReceiptFinder,
                 _api.BloomStorage,
                 _api.LogManager,
-                new ReceiptsRecovery(), 
+                new ReceiptsRecovery(_api.EthereumEcdsa, _api.SpecProvider), 
                 1024);
 
             _api.LogFinder = logFinder;
