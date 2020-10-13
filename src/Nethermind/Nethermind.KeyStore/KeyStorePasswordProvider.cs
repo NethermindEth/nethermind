@@ -33,13 +33,13 @@ namespace Nethermind.KeyStore
         public KeyStorePasswordProvider(IKeyStoreConfig keyStoreConfig, PasswordProviderHelper passwordProviderHelper)
         {
             _keyStoreConfig = keyStoreConfig ?? throw new ArgumentNullException(nameof(keyStoreConfig));
-            _passwordProviderHelper = passwordProviderHelper;
+            _passwordProviderHelper = passwordProviderHelper ?? throw new ArgumentNullException(nameof(passwordProviderHelper));
         }
         public SecureString GetPassword(int? passwordIndex)
         {
             if (passwordIndex == null)
             {
-                throw new ArgumentNullException("KeyStorePasswordProvider does not allow null as password index value");
+                throw new ArgumentNullException("KeyStorePasswordProvider does not allow null as a password index value");
             }
 
             var keyStoreConfigPasswordIndex = passwordIndex.Value;

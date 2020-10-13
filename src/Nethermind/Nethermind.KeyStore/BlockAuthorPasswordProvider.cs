@@ -29,8 +29,7 @@ namespace Nethermind.KeyStore
         public BlockAuthorPasswordProvider(IKeyStoreConfig keyStoreConfig, PasswordProviderHelper passwordProviderHelper)
         {
             _keyStoreConfig = keyStoreConfig ?? throw new ArgumentNullException(nameof(keyStoreConfig));
-            _passwordProviderHelper = passwordProviderHelper;
-            _keyStorePasswordProvider = new KeyStorePasswordProvider(keyStoreConfig, _passwordProviderHelper);
+            _passwordProviderHelper = passwordProviderHelper ?? throw new ArgumentNullException(nameof(passwordProviderHelper));
         }
         public SecureString GetPassword(int? passwordIndex = null)
         {
@@ -41,7 +40,9 @@ namespace Nethermind.KeyStore
                 passwordFromFile = _keyStorePasswordProvider.GetPassword(index);
             }
 
-            return passwordFromFile != null ? passwordFromFile : _passwordProviderHelper.GetPasswordFromConsole($"Provide password for validator account { _keyStoreConfig.BlockAuthorAccount}");
+            return passwordFromFile != null ?
+                   passwordFromFile 
+                   : _passwordProviderHelper.GetPasswordFromConsole($"Provide password for validator account { _keyStoreConfig.BlockAuthorAccount}");
         }
     }
 }

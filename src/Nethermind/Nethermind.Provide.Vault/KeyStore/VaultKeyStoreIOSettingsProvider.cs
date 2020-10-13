@@ -25,6 +25,8 @@ namespace Nethermind.Vault.KeyStore
 {
     public class VaultKeyStoreIOSettingsProvider : IKeyStoreIOSettingsProvider
     {
+        // move that consts to config if we will use KeyStore for Vault
+        private const string VaultKeyStoreDirectory = "vaultkeystore";
         private readonly IVaultConfig _config;
 
         public VaultKeyStoreIOSettingsProvider(
@@ -37,7 +39,7 @@ namespace Nethermind.Vault.KeyStore
         {
             get
             {
-                var directory = _config.VaultKeyStoreDirectory.GetApplicationResourcePath();
+                var directory = VaultKeyStoreDirectory.GetApplicationResourcePath();
                 if (!Directory.Exists(directory))
                 {
                     Directory.CreateDirectory(directory);

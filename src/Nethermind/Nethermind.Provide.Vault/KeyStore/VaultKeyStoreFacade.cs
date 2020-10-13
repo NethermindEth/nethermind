@@ -14,18 +14,24 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core;
+using System;
+using Nethermind.Crypto;
+using Nethermind.KeyStore;
 
 namespace Nethermind.Vault.KeyStore
 {
     public class VaultKeyStoreFacade : IVaultKeyStoreFacade
     {
+        private readonly IPasswordProvider _passwordProvider;
+        public VaultKeyStoreFacade(IPasswordProvider passwordProvider)
+        {
+            _passwordProvider = passwordProvider ?? throw new ArgumentNullException(nameof(passwordProvider));
+        }
+
         public string GetKey()
         {
-            // get password
-            // get address
-            // get key
-            return "fragile potato army dinner inch enrich decline under scrap soup audit worth trend point cheese sand online parrot faith catch olympic dignity mail crouch";
+            var password = _passwordProvider.GetPassword();
+            return password.Unsecure();
         }
     }
 }

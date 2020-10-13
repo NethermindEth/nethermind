@@ -35,7 +35,8 @@ namespace Nethermind.Plugin.Baseline
         public Task Init(INethermindApi api)
         {
             _vaultConfig = api.Config<IVaultConfig>();
-            var vaultKeyStoreFacade = new VaultKeyStoreFacade();
+            var passwordProvider = new VaultPasswordProvider(_vaultConfig, new KeyStore.PasswordProviderHelper());
+            var vaultKeyStoreFacade = new VaultKeyStoreFacade(passwordProvider);
             _vaultSealingHelper = new VaultSealingHelper(vaultKeyStoreFacade, _vaultConfig);
             _api = api;
             _logger = api.LogManager.GetClassLogger();

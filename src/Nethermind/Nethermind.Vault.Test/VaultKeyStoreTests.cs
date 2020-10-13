@@ -44,8 +44,6 @@ namespace Nethermind.KeyStore.Test
         public void Initialize()
         {
             var config = new VaultConfig();
-            var vaultKeyStore = "vaultkeystore";
-            config.VaultKeyStoreDirectory = vaultKeyStore;
             _keyStoreConfig = new KeyStoreConfig();
             _keyStoreIOSettingsProvider = new VaultKeyStoreIOSettingsProvider(config);
 
