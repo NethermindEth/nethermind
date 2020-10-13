@@ -169,7 +169,7 @@ namespace Nethermind.Evm.Tracing.Proofs
             throw new NotSupportedException();
         }
 
-        public void ReportStackPush(in Span<byte> stackItem)
+        public void ReportStackPush(in ReadOnlySpan<byte> stackItem)
         {
             throw new NotSupportedException();
         }
@@ -184,12 +184,12 @@ namespace Nethermind.Evm.Tracing.Proofs
             throw new NotSupportedException();
         }
 
-        public void ReportMemoryChange(long offset, in Span<byte> data)
+        public void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
         {
             throw new NotSupportedException();
         }
 
-        public void ReportStorageChange(in Span<byte> key, in Span<byte> value)
+        public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
         {
             throw new NotSupportedException();
         }

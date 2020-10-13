@@ -22,7 +22,7 @@ namespace Nethermind.Evm
     {
         public static ZeroPaddedSpan Empty => new ZeroPaddedSpan(Span<byte>.Empty, 0, PadDirection.Right);
         
-        public ZeroPaddedSpan(Span<byte> span, int paddingLength, PadDirection padDirection)
+        public ZeroPaddedSpan(ReadOnlySpan<byte> span, int paddingLength, PadDirection padDirection)
         {
             PadDirection = padDirection;
             Span = span;
@@ -30,7 +30,7 @@ namespace Nethermind.Evm
         }
 
         public PadDirection PadDirection;
-        public Span<byte> Span;
+        public ReadOnlySpan<byte> Span;
         public int PaddingLength;
         public int Length => Span.Length + PaddingLength;
 

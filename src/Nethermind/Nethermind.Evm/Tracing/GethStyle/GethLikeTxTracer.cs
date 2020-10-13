@@ -140,11 +140,11 @@ namespace Nethermind.Evm.Tracing.GethStyle
             _traceEntry.UpdateMemorySize(newSize);
         }
 
-        public void ReportMemoryChange(long offset, in Span<byte> data)
+        public void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
         {
         }
 
-        public void ReportStorageChange(in Span<byte> key, in Span<byte> value)
+        public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
         {
         }
 
@@ -233,7 +233,7 @@ namespace Nethermind.Evm.Tracing.GethStyle
             _traceEntry.Stack = stackTrace;
         }
 
-        public void ReportStackPush(in Span<byte> stackItem)
+        public void ReportStackPush(in ReadOnlySpan<byte> stackItem)
         {
         }
 

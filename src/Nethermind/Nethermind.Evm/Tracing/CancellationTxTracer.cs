@@ -216,7 +216,7 @@ namespace Nethermind.Evm.Tracing
             }
         }
 
-        public void ReportStackPush(in Span<byte> stackItem)
+        public void ReportStackPush(in ReadOnlySpan<byte> stackItem)
         {
             _token.ThrowIfCancellationRequested();
             if (_innerTracer.IsTracingInstructions)
@@ -261,7 +261,7 @@ namespace Nethermind.Evm.Tracing
             }
         }
 
-        public void ReportMemoryChange(long offset, in Span<byte> data)
+        public void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
         {
             _token.ThrowIfCancellationRequested();
             if (_innerTracer.IsTracingInstructions)
@@ -288,7 +288,7 @@ namespace Nethermind.Evm.Tracing
             }
         }
 
-        public void ReportStorageChange(in Span<byte> key, in Span<byte> value)
+        public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
         {
             _token.ThrowIfCancellationRequested();
             if (_innerTracer.IsTracingInstructions)

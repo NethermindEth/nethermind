@@ -76,7 +76,7 @@ namespace Nethermind.Evm.Tracing
 
         void SetOperationStack(List<string> stackTrace);
 
-        void ReportStackPush(in Span<byte> stackItem);
+        void ReportStackPush(in ReadOnlySpan<byte> stackItem);
         
         void ReportStackPush(byte stackItem)
         {
@@ -92,7 +92,7 @@ namespace Nethermind.Evm.Tracing
 
         void SetOperationMemorySize(ulong newSize);
 
-        void ReportMemoryChange(long offset, in Span<byte> data);
+        void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data);
 
         void ReportMemoryChange(long offset, byte data)
         {
@@ -104,7 +104,7 @@ namespace Nethermind.Evm.Tracing
             ReportMemoryChange(offset, data.ToArray());
         }
 
-        void ReportStorageChange(in Span<byte> key, in Span<byte> value);
+        void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value);
 
         void SetOperationStorage(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue);
 

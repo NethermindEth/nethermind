@@ -77,7 +77,7 @@ namespace Nethermind.Evm.Test
         {
         }
 
-        public void ReportStackPush(in Span<byte> stackItem)
+        public void ReportStackPush(in ReadOnlySpan<byte> stackItem)
         {
         }
 
@@ -89,11 +89,11 @@ namespace Nethermind.Evm.Test
         {
         }
 
-        public void ReportMemoryChange(long offset, in Span<byte> data)
+        public void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
         {
         }
 
-        public void ReportStorageChange(in Span<byte> key, in Span<byte> value)
+        public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
         {
         }
 

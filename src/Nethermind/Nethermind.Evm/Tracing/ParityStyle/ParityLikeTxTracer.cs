@@ -314,7 +314,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             }
         }
 
-        public void ReportStackPush(in Span<byte> stackItem)
+        public void ReportStackPush(in ReadOnlySpan<byte> stackItem)
         {
             _currentPushList.Add(stackItem.ToArray());
         }
@@ -325,7 +325,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
 
         public void SetOperationMemorySize(ulong newSize) => throw new NotSupportedException();
         
-        public void ReportMemoryChange(long offset, in Span<byte> data)
+        public void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
         {
             if (data.Length != 0)
             {
@@ -333,7 +333,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             }
         }
 
-        public void ReportStorageChange(in Span<byte> key, in Span<byte> value)
+        public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
         {
             _currentOperation.Store = new ParityStorageChangeTrace{Key = key.ToArray(), Value = value.ToArray()};
         }
