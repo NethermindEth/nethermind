@@ -83,7 +83,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_api.TxSender == null) throw new StepDependencyException(nameof(_api.TxSender));
             if (_api.StateReader == null) throw new StepDependencyException(nameof(_api.StateReader));
             
-            _api.RpcModuleProvider ??= jsonRpcConfig.Enabled
+            _api.RpcModuleProvider = jsonRpcConfig.Enabled
                 ? new RpcModuleProvider(_api.FileSystem, jsonRpcConfig, _api.LogManager)
                 : (IRpcModuleProvider)NullModuleProvider.Instance;
 

@@ -211,7 +211,7 @@ namespace Nethermind.DataMarketplace.Initializers
             return capabilityConnector;
         }
 
-        public void InitRpcModules()
+        public virtual void InitRpcModules()
         {
             _ndmConsumersModule.InitRpcModules();
         }
