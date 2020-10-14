@@ -72,7 +72,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
         private IConsumerTransactionsService consumerTransactionsService;
         private IConsumerGasLimitsService gasLimitsService;
         private IWallet wallet;
-        private Timestamper timestamper;
+        private ITimestamper timestamper;
 
         public NdmConsumersModule(INdmApi api)
         {
@@ -174,7 +174,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
             jsonRpcNdmConsumerChannel = _api.JsonRpcNdmConsumerChannel;
             INdmNotifier ndmNotifier = _api.NdmNotifier;
             PublicKey nodePublicKey = _api.Enode.PublicKey;
-            ITimestamper timestamper = _api.Timestamper;
+            timestamper = _api.Timestamper;
             IWallet wallet = _api.Wallet;
             IHttpClient httpClient = _api.HttpClient;
             IJsonRpcClientProxy? jsonRpcClientProxy = _api.JsonRpcClientProxy;
@@ -259,7 +259,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
 
         public void InitRpcModules()
         {
-            _api.RpcModuleProvider.Register(new SingletonModulePool<INdmRpcConsumerModule>(new NdmRpcConsumerModule(_api.ConsumerService, depositReportService, jsonRpcNdmConsumerChannel, ethRequestService, ethPriceService, gasPriceService, consumerTransactionsService, gasLimitsService, wallet, timestamper), true));
+            _api.RpcModuleProvider.Register(new SingletonModulePool<INdmRpcConsumerModule>(new NdmRpcConsumerModule(_api.ConsumerService, depositReportService, jsonRpcNdmConsumerChannel, ethRequestService, ethPriceService, gasPriceService, consumerTransactionsService, gasLimitsService, _api.Wallet, timestamper), true));
         }
 
         private static void AddDecoders()
