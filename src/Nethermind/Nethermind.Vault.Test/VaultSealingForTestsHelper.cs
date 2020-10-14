@@ -24,7 +24,7 @@ namespace Nethermind.Vault.Test
 {
     public class VaultSealingForTestsHelper
     {
-        private const string Key = "fragile potato army dinner inch enrich decline under scrap soup audit worth trend point cheese sand online parrot faith catch olympic dignity mail";
+        private const string Key = "fragile potato army dinner inch enrich decline under scrap soup audit worth trend point cheese sand online parrot faith catch olympic dignity mail crouch";
         private const string VaultConfigFileName = "TestingVaultFile";
         private readonly IVaultConfig _vaultConfig;
         private readonly VaultSealingHelper _vaultSealingHelper;
