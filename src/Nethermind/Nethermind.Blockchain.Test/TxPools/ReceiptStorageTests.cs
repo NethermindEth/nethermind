@@ -60,14 +60,14 @@ namespace Nethermind.Blockchain.Test.TxPools
         [Test]
         public void should_not_update_lowest_when_not_needed_in_memory()
             => TestAddAndCheckLowest(_inMemoryStorage, false);
-        
+
         [Test]
         public void should_add_and_fetch_receipt_from_in_memory_storage()
-            => TestAddAndGetReceipt(_inMemoryStorage);
+            => TestAddAndGetReceipt(_inMemoryStorage, false);
 
         [Test]
         public void should_add_and_fetch_receipt_from_persistent_storage()
-            => TestAddAndGetReceipt(_persistentStorage);
+            => TestAddAndGetReceipt(_persistentStorage, true);
         
         [Test]
         public void should_add_and_fetch_receipt_from_persistent_storage_with_eip_658()
@@ -87,9 +87,10 @@ namespace Nethermind.Blockchain.Test.TxPools
             storage.LowestInsertedReceiptBlockNumber.Should().Be(updateLowest ? (long?)0 : null);
         }
         
-        private void TestAddAndGetReceipt(IReceiptStorage storage)
+        private void TestAddAndGetReceipt(IReceiptStorage storage, bool recoverSender)
         {
             var transaction = GetSignedTransaction();
+            transaction.SenderAddress = null;
             var block = GetBlock(transaction);
             var receipt = GetReceipt(transaction, block);
             storage.Insert(block, receipt);
@@ -99,6 +100,10 @@ namespace Nethermind.Blockchain.Test.TxPools
             receipt.StatusCode.Should().Be(fetchedReceipt.StatusCode);
             receipt.PostTransactionState.Should().Be(fetchedReceipt.PostTransactionState);
             receipt.TxHash.Should().Be(transaction.Hash);
+            if (recoverSender)
+            {
+                receipt.Sender.Should().BeEquivalentTo(TestItem.AddressA);
+            }
         }
 
         private void TestAddAndGetReceiptEip658(IReceiptStorage storage)
