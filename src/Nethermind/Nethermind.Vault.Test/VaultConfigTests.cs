@@ -33,6 +33,7 @@ namespace Nethermind.Vault.Test
             var path = "api/v2";
             var token = "12345";
             var vaultId = "vaultId";
+            var vaultKeyFile = "vault_key";
             VaultConfig config = new VaultConfig();
             config.Enabled.Should().BeFalse();
             config.Enabled = true;
@@ -49,6 +50,8 @@ namespace Nethermind.Vault.Test
             config.Token.Should().Be(token);
             config.VaultId = vaultId;
             config.VaultId.Should().Be(vaultId);
+            config.VaultKeyFile = vaultKeyFile;
+            config.VaultKeyFile.Should().Be(vaultKeyFile);
         }
         [Test]
         public void defaults_are_fine()
