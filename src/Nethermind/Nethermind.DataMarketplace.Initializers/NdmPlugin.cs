@@ -80,9 +80,12 @@ namespace Nethermind.DataMarketplace.Initializers
                 if (logger.IsInfo) logger.Info("Enabled JSON RPC Proxy for NDM.");
             }
 
-            var ndmConsumerModule = new NdmConsumersModule();
-            ndmConsumerModule.Init(_ndmApi);
-            _ndmApi.RpcModuleProvider.Register(new SingletonModulePool<INdmConsumersModule>(ndmConsumerModule));
+            if(_ndmInitializer == null)
+            {
+                throw new NullReferenceException("Ndm initializer is not created yet, can't start the rpc modules");
+            }
+
+            _ndmInitializer.InitRpcModules();
 
             return Task.CompletedTask;
         }
@@ -119,7 +122,7 @@ namespace Nethermind.DataMarketplace.Initializers
                 }
 
                 NdmModule ndmModule = new NdmModule(_ndmApi);
-                NdmConsumersModule ndmConsumersModule = new NdmConsumersModule();
+                NdmConsumersModule ndmConsumersModule = new NdmConsumersModule(_ndmApi);
                 _ndmInitializer =
                     new NdmInitializerFactory(ndmInitializerType, ndmModule, ndmConsumersModule, api.LogManager)
                         .CreateOrFail();

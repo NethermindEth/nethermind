@@ -127,7 +127,7 @@ namespace Nethermind.DataMarketplace.Initializers
             
             ndmApi.BaseDbPath = DbPath = Path.Combine(baseDbPath, ndmApi.NdmConfig.DatabasePath);
 
-            _ndmModule.Init(ndmApi);
+            _ndmModule.Init();
             
             if (ndmApi.NdmConfig.FaucetEnabled)
             {
@@ -165,7 +165,7 @@ namespace Nethermind.DataMarketplace.Initializers
                 ? Address.Zero
                 : new Address(ndmApi.NdmConfig.ProviderAddress);
             
-            _ndmConsumersModule.Init(ndmApi);
+            _ndmConsumersModule.Init();
         }
 
         public virtual async Task<INdmCapabilityConnector> InitAsync(INdmApi api)
@@ -209,6 +209,11 @@ namespace Nethermind.DataMarketplace.Initializers
                 ndmConfig.ProviderAddress == null ? Address.Zero : new Address(ndmConfig.ProviderAddress));
 
             return capabilityConnector;
+        }
+
+        public void InitRpcModules()
+        {
+            _ndmConsumersModule.InitRpcModules();
         }
     }
 }

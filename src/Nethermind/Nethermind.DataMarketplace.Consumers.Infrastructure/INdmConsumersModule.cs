@@ -22,6 +22,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
     [RpcModule(ModuleType.NdmConsumer)]
     public interface INdmConsumersModule : IModule
     {
-        void Init(INdmApi api);
+        void Init();
+        void InitRpcModules();
     }
 }
