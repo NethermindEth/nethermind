@@ -39,9 +39,7 @@ namespace Nethermind.Blockchain
                     FileMode.Create,
                     FileAccess.Write);
 
-            GethLikeBlockTracer gethTracer = blockTracer as GethLikeBlockTracer;
-            ParityLikeBlockTracer parityTracer = blockTracer as ParityLikeBlockTracer;
-            if (gethTracer != null)
+            if (blockTracer is GethLikeBlockTracer gethTracer)
             {
                 using FileStream diagnosticFile = GetFileStream($"gethStyle_{blockHash}.txt");
                 EthereumJsonSerializer serializer = new EthereumJsonSerializer();
@@ -51,7 +49,7 @@ namespace Nethermind.Blockchain
                     logger.Info($"Created a Geth-style trace of block {blockHash} in file {diagnosticFile.Name}");
             }
 
-            if (parityTracer != null)
+            if (blockTracer is ParityLikeBlockTracer parityTracer)
             {
                 using FileStream diagnosticFile = GetFileStream($"parityStyle_{blockHash}.txt");
                 EthereumJsonSerializer serializer = new EthereumJsonSerializer();

@@ -157,10 +157,17 @@ namespace Nethermind.Facade
             public long GasSpent { get; set; }
         }
 
-        public CallOutput Call(BlockHeader blockHeader, Transaction transaction)
+        public CallOutput Call(BlockHeader blockHeader, Transaction transaction, CancellationToken cancellationToken)
         {
             CallOutputTracer callOutputTracer = new CallOutputTracer();
-            CallAndRestore(blockHeader, blockHeader.Number, blockHeader.Timestamp,  transaction, callOutputTracer);
+            CallAndRestore(blockHeader, blockHeader.Number, blockHeader.Timestamp, transaction,
+                new CancellationTxTracer(callOutputTracer, cancellationToken)
+                {
+                    IsTracingActions = true, 
+                    IsTracingOpLevelStorage = true,
+                    IsTracingInstructions = true, // a little bit costly but almost all are simple calls
+                    IsTracingRefunds = true
+                });
             return new CallOutput
             {
                 Error = callOutputTracer.Error,
@@ -171,13 +178,13 @@ namespace Nethermind.Facade
 
         public CallOutput EstimateGas(BlockHeader header, Transaction tx, CancellationToken cancellationToken)
         {
-            EstimateGasTracer estimateGasTracer = new EstimateGasTracer(cancellationToken);
+            EstimateGasTracer estimateGasTracer = new EstimateGasTracer();
             CallAndRestore(
                 header,
                 header.Number + 1,
                 UInt256.Max(header.Timestamp + 1, _timestamper.EpochSeconds),
                 tx,
-                estimateGasTracer);
+                estimateGasTracer.WithCancellation(cancellationToken));
             
             long estimate = estimateGasTracer.CalculateEstimate(tx);
             return new CallOutput {Error = estimateGasTracer.Error, GasSpent = estimate};

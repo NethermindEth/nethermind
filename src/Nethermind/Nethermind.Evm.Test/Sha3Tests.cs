@@ -22,6 +22,7 @@ using NUnit.Framework;
 namespace Nethermind.Evm.Test
 {
     [TestFixture]
+    [Parallelizable(ParallelScope.All)]
     public class Sha3Tests : VirtualMachineTestsBase
     {
         protected override long BlockNumber => RinkebySpecProvider.ConstantinopleFixBlockNumber;

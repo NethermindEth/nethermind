@@ -27,18 +27,14 @@ namespace Nethermind.Evm.Tracing.GethStyle
 {
     public class GethLikeTxTracer : ITxTracer
     {
-        private readonly GethTraceOptions _options;
         private GethTxTraceEntry _traceEntry;
-        private GethLikeTxTrace _trace = new GethLikeTxTrace();
-        private readonly CancellationToken _cancellationToken;  
+        private readonly GethLikeTxTrace _trace = new GethLikeTxTrace();
 
-        public GethLikeTxTracer(GethTraceOptions options, CancellationToken cancellationToken = default(CancellationToken)) 
+        public GethLikeTxTracer(GethTraceOptions options) 
         {
-            _options = options;
-            _cancellationToken = cancellationToken;            
-            IsTracingStack = !_options.DisableStack;
-            IsTracingMemory = !_options.DisableMemory;
-            IsTracingOpLevelStorage = !_options.DisableStorage;
+            IsTracingStack = !options.DisableStack;
+            IsTracingMemory = !options.DisableMemory;
+            IsTracingOpLevelStorage = !options.DisableStorage;
         }
         
         public bool IsTracingReceipt => true;
@@ -67,8 +63,6 @@ namespace Nethermind.Evm.Tracing.GethStyle
 
         public void StartOperation(int depth, long gas, Instruction opcode, int pc)
         {
-            _cancellationToken.ThrowIfCancellationRequested();
-
             var previousTraceEntry = _traceEntry;
             _traceEntry = new GethTxTraceEntry();
             _traceEntry.Pc = pc;
@@ -138,30 +132,24 @@ namespace Nethermind.Evm.Tracing.GethStyle
 
         public void ReportOperationRemainingGas(long gas)
         {
-            _cancellationToken.ThrowIfCancellationRequested();
-
             _traceEntry.GasCost = _traceEntry.Gas - gas;
         }
 
         public void SetOperationMemorySize(ulong newSize)
         {
-            _cancellationToken.ThrowIfCancellationRequested();
-
             _traceEntry.UpdateMemorySize(newSize);
         }
 
-        public void ReportMemoryChange(long offset, Span<byte> data)
+        public void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
         {
         }
 
-        public void ReportStorageChange(Span<byte> key, Span<byte> value)
+        public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
         {
         }
 
         public void SetOperationStorage(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue)
         {
-            _cancellationToken.ThrowIfCancellationRequested();
-
             byte[] bigEndian = new byte[32];
             storageIndex.ToBigEndian(bigEndian);
             _traceEntry.Storage[bigEndian.ToHexString(false)] = newValue.PadLeft(32).ToHexString(false);
@@ -245,7 +233,7 @@ namespace Nethermind.Evm.Tracing.GethStyle
             _traceEntry.Stack = stackTrace;
         }
 
-        public void ReportStackPush(Span<byte> stackItem)
+        public void ReportStackPush(in ReadOnlySpan<byte> stackItem)
         {
         }
 

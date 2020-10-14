@@ -16,12 +16,20 @@
 // 
 
 using System.Collections.Generic;
-using Nethermind.Core;
 
-namespace Nethermind.Consensus.AuRa.Contracts
+namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 {
-    public interface IContractDataStore<out T>
+    public class DictionaryContractDataStoreCollection<T> : DictionaryBasedContractDataStoreCollection<T>
     {
-        IEnumerable<T> GetItemsFromContractAtBlock(BlockHeader parent);
+        private readonly IEqualityComparer<T> _comparer;
+
+        public DictionaryContractDataStoreCollection(IEqualityComparer<T> comparer = null)
+        {
+            _comparer = comparer;
+        }
+
+        protected override IDictionary<T, T> CreateDictionary() => new Dictionary<T, T>(_comparer);
+        protected override bool CanReplace(T replaced, T replacing) => true;
+        
     }
 }

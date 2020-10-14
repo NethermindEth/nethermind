@@ -15,33 +15,29 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Collections.Generic;
-using Nethermind.Blockchain.Processing;
+using Nethermind.Core;
 
-namespace Nethermind.Consensus.AuRa.Contracts
+namespace Nethermind.TxPool
 {
-    public class HashSetContractDataStore<T> : ContractDataStore<T, HashSet<T>>
+    /// <summary>
+    /// Orders first by <see cref="Transaction.Nonce"/> asc and then by inner comparer
+    /// </summary>
+    public class CompareTxByNonce : IComparer<Transaction>
     {
-        public HashSetContractDataStore(IDataContract<T> dataContract, IBlockProcessor blockProcessor)
-            : base(dataContract, blockProcessor)
+        public static readonly CompareTxByNonce Instance = new CompareTxByNonce();
+        
+        private CompareTxByNonce() { }
+
+        public int Compare(Transaction x, Transaction y)
         {
-        }
-
-        protected override HashSet<T> CreateItems() => new HashSet<T>();
-
-        protected override void ClearItems(HashSet<T> collection)
-        {
-            collection.Clear();
-        }
-
-        protected override IEnumerable<T> GetItemsFromContractAtBlock(HashSet<T> collection) => collection;
-
-        protected override void InsertItems(HashSet<T> collection, IEnumerable<T> items)
-        {
-            foreach (T item in items)
-            {
-                collection.Add(item);
-            }
+            if (ReferenceEquals(x, y)) return 0;
+            if (ReferenceEquals(null, y)) return 1;
+            if (ReferenceEquals(null, x)) return -1;
+                
+            // compare by nonce ascending
+            return x.Nonce.CompareTo(y.Nonce);
         }
     }
 }

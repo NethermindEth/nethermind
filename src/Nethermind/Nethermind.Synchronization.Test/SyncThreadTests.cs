@@ -48,7 +48,7 @@ using BlockTree = Nethermind.Blockchain.BlockTree;
 
 namespace Nethermind.Synchronization.Test
 {
-    [Parallelizable(ParallelScope.None)]
+    [Parallelizable(ParallelScope.All)]
     [TestFixture(SynchronizerType.Fast)]
     [TestFixture(SynchronizerType.Full)]
     public class SyncThreadsTests
@@ -87,6 +87,7 @@ namespace Nethermind.Synchronization.Test
         }
 
         [Test]
+        [Retry(3)] // experiencing some flakiness
         public void Setup_is_correct()
         {
             foreach (SyncTestContext peer in _peers)
@@ -263,7 +264,7 @@ namespace Nethermind.Synchronization.Test
             var receiptStorage = new InMemoryReceiptStorage();
 
             var ecdsa = new EthereumEcdsa(specProvider.ChainId, logManager);
-            var txPool = new TxPool.TxPool(new InMemoryTxStorage(), Timestamper.Default, ecdsa, specProvider, new TxPoolConfig(), stateProvider, logManager);
+            var txPool = new TxPool.TxPool(new InMemoryTxStorage(), ecdsa, specProvider, new TxPoolConfig(), stateProvider, logManager);
             var tree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), specProvider, txPool, NullBloomStorage.Instance, logManager);
             var blockhashProvider = new BlockhashProvider(tree, LimboLogs.Instance);
             var virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, specProvider, logManager);

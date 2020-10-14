@@ -13,20 +13,27 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
 using System;
-using System.Collections.Generic;
+using Nethermind.Consensus.AuRa.Contracts;
+using Nethermind.Consensus.AuRa.Contracts.DataStore;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
+using Nethermind.Int256;
 
-namespace Nethermind.TxPool
+namespace Nethermind.Consensus.AuRa.Transactions
 {
-    public class PendingTransactionComparer : IEqualityComparer<Transaction>
+    public class CompareTxByPermissionOnSpecifiedBlock : CompareTxByPermissionBase
     {
-        public static readonly PendingTransactionComparer Default = new PendingTransactionComparer();
-        
-        public bool Equals(Transaction x, Transaction y) =>
-            ReferenceEquals(x, y) || !ReferenceEquals(x, null) && !ReferenceEquals(y, null) && x.SenderAddress == y.SenderAddress && x.Nonce == y.Nonce;
+        public CompareTxByPermissionOnSpecifiedBlock(
+            IContractDataStore<Address> sendersWhitelist, 
+            IDictionaryContractDataStore<TxPriorityContract.Destination> priorities, 
+            BlockHeader blockHeader) : base(sendersWhitelist, priorities)
+        {
+            BlockHeader = blockHeader;
+        }
 
-        public int GetHashCode(Transaction obj) => HashCode.Combine(obj?.SenderAddress, obj?.Nonce);
+        protected override BlockHeader BlockHeader { get; }
     }
 }

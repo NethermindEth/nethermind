@@ -32,7 +32,8 @@ namespace Nethermind.Evm.Tracing.Proofs
         
         protected override ProofTxTracer OnStart(Keccak txHash)
         {
-            return _txTracer = new ProofTxTracer(_treatSystemAccountDifferently);
+            _txTracer = new ProofTxTracer(_treatSystemAccountDifferently);
+            return _txTracer;
         }
 
         /// <summary>

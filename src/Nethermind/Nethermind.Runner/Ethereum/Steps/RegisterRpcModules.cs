@@ -46,6 +46,8 @@ namespace Nethermind.Runner.Ethereum.Steps
     {
         private readonly INethermindApi _api;
 
+        private int _cpuCount = Environment.ProcessorCount;
+        
         public RegisterRpcModules(INethermindApi api)
         {
             _api = api;
@@ -58,7 +60,8 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_api.BloomStorage == null) throw new StepDependencyException(nameof(_api.BloomStorage));
             if (_api.LogManager == null) throw new StepDependencyException(nameof(_api.LogManager));
             
-
+            
+            
             LogFinder logFinder = new LogFinder(
                 _api.BlockTree,
                 _api.ReceiptFinder,
@@ -82,10 +85,15 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_api.SpecProvider == null) throw new StepDependencyException(nameof(_api.SpecProvider));
             if (_api.TxSender == null) throw new StepDependencyException(nameof(_api.TxSender));
             if (_api.StateReader == null) throw new StepDependencyException(nameof(_api.StateReader));
-            
-            _api.RpcModuleProvider = jsonRpcConfig.Enabled
-                ? new RpcModuleProvider(_api.FileSystem, jsonRpcConfig, _api.LogManager)
-                : (IRpcModuleProvider)NullModuleProvider.Instance;
+
+            if (jsonRpcConfig.Enabled)
+            {
+                _api.RpcModuleProvider = new RpcModuleProvider(_api.FileSystem, jsonRpcConfig, _api.LogManager);
+            }
+            else
+            {
+                _api.RpcModuleProvider ??= NullModuleProvider.Instance;
+            }
 
             // the following line needs to be called in order to make sure that the CLI library is referenced from runner and built alongside
             ILogger logger = _api.LogManager.GetClassLogger();
@@ -107,11 +115,15 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.LogManager,
                 _api.StateReader,
                 _api);
-            _api.RpcModuleProvider.Register(new BoundedModulePool<IEthModule>(ethModuleFactory, 8));
+            _api.RpcModuleProvider.Register(new BoundedModulePool<IEthModule>(ethModuleFactory, _cpuCount, rpcConfig.Timeout));
             
-
+            if (_api.DbProvider == null) throw new StepDependencyException(nameof(_api.DbProvider));
+            if (_api.RecoveryStep == null) throw new StepDependencyException(nameof(_api.RecoveryStep));
+            if (_api.BlockValidator == null) throw new StepDependencyException(nameof(_api.BlockValidator));
+            if (_api.RewardCalculatorSource == null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
+            
             ProofModuleFactory proofModuleFactory = new ProofModuleFactory(_api.DbProvider, _api.BlockTree, _api.RecoveryStep, _api.ReceiptFinder, _api.SpecProvider, _api.LogManager);
-            _api.RpcModuleProvider.Register(new BoundedModulePool<IProofModule>(proofModuleFactory, 2));
+            _api.RpcModuleProvider.Register(new BoundedModulePool<IProofModule>(proofModuleFactory, 2, rpcConfig.Timeout));
 
             DebugModuleFactory debugModuleFactory = new DebugModuleFactory(
                 _api.DbProvider, 
@@ -125,7 +137,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.ConfigProvider, 
                 _api.SpecProvider, 
                 _api.LogManager);
-            _api.RpcModuleProvider.Register(new BoundedModulePool<IDebugModule>(debugModuleFactory, 8));
+            _api.RpcModuleProvider.Register(new BoundedModulePool<IDebugModule>(debugModuleFactory, _cpuCount, rpcConfig.Timeout));
 
             TraceModuleFactory traceModuleFactory = new TraceModuleFactory(
                 _api.DbProvider,
@@ -136,13 +148,20 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.ReceiptStorage,
                 _api.SpecProvider,
                 _api.LogManager);
-            _api.RpcModuleProvider.Register(new BoundedModulePool<ITraceModule>(traceModuleFactory, 8));
+            _api.RpcModuleProvider.Register(new BoundedModulePool<ITraceModule>(traceModuleFactory, _cpuCount, rpcConfig.Timeout));
+            
+            if (_api.EthereumEcdsa == null) throw new StepDependencyException(nameof(_api.EthereumEcdsa));
+            if (_api.Wallet == null) throw new StepDependencyException(nameof(_api.Wallet));
             
             PersonalModule personalModule = new PersonalModule(
                 _api.EthereumEcdsa,
                 _api.Wallet,
                 _api.LogManager);
             _api.RpcModuleProvider.Register(new SingletonModulePool<IPersonalModule>(personalModule, true));
+            
+            if (_api.PeerManager == null) throw new StepDependencyException(nameof(_api.PeerManager));
+            if (_api.StaticNodesManager == null) throw new StepDependencyException(nameof(_api.StaticNodesManager));
+            if (_api.Enode == null) throw new StepDependencyException(nameof(_api.Enode));
 
             AdminModule adminModule = new AdminModule(
                 _api.BlockTree,
@@ -152,9 +171,14 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.Enode,
                 initConfig.BaseDbPath);
             _api.RpcModuleProvider.Register(new SingletonModulePool<IAdminModule>(adminModule, true));
+            
+            if (_api.TxPoolInfoProvider == null) throw new StepDependencyException(nameof(_api.TxPoolInfoProvider));
 
             TxPoolModule txPoolModule = new TxPoolModule(_api.BlockTree, _api.TxPoolInfoProvider, _api.LogManager);
             _api.RpcModuleProvider.Register(new SingletonModulePool<ITxPoolModule>(txPoolModule, true));
+            
+            if (_api.SyncServer == null) throw new StepDependencyException(nameof(_api.SyncServer));
+            if (_api.EngineSignerStore == null) throw new StepDependencyException(nameof(_api.EngineSignerStore));
 
             NetModule netModule = new NetModule(_api.LogManager, new NetBridge(_api.Enode, _api.SyncServer));
             _api.RpcModuleProvider.Register(new SingletonModulePool<INetModule>(netModule, true));

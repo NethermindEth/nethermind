@@ -20,12 +20,14 @@ using System.Linq;
 using Nethermind.Abi;
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Data;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Contracts;
+using Nethermind.Consensus.AuRa.Contracts.DataStore;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Transactions;
@@ -48,8 +50,9 @@ namespace Nethermind.Runner.Ethereum.Steps
         
         private IAuraConfig? _auraConfig;
         private IAuRaValidator? _validator;
-        private DictionaryBasedContractDataStore<TxPriorityContract.Destination>? _minGasPricesContractDataStore;
+        private IDictionaryContractDataStore<TxPriorityContract.Destination>? _minGasPricesContractDataStore;
         private TxPriorityContract? _txPriorityContract;
+        private TxPriorityContract.LocalDataSource? _localDataSource;
 
         public StartBlockProducerAuRa(AuRaNethermindApi api) : base(api)
         {
@@ -141,32 +144,64 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         protected override TxPoolTxSource CreateTxPoolTxSource(ReadOnlyTxProcessingEnv processingEnv, ReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
-            var comparer = TxPriorityContract.DestinationMethodComparer.Instance;
-            Address? transactionPriorityContractAddress = _auraConfig?.TransactionPriorityContractAddress;
-            if (transactionPriorityContractAddress != null)
+            Address.TryParse(_auraConfig?.TxPriorityContractAddress, out Address? txPriorityContractAddress);
+            bool usesTxPriorityContract = txPriorityContractAddress != null;
+            
+            if (usesTxPriorityContract)
             {
-                _txPriorityContract = new TxPriorityContract(_api.AbiEncoder, transactionPriorityContractAddress, readOnlyTxProcessorSource);
-                _minGasPricesContractDataStore = new DictionaryContractDataStore<TxPriorityContract.Destination>(_txPriorityContract.MinGasPrices, _api.MainBlockProcessor, comparer);
-                _api.DisposeStack.Push(_minGasPricesContractDataStore);
+                _txPriorityContract = new TxPriorityContract(_api.AbiEncoder, txPriorityContractAddress, readOnlyTxProcessorSource); 
+            }
+            
+            string? auraConfigTxPriorityConfigFilePath = _auraConfig?.TxPriorityConfigFilePath;
+            bool usesTxPriorityLocalData = auraConfigTxPriorityConfigFilePath != null;
+            if (usesTxPriorityLocalData)
+            {
+                _localDataSource = new TxPriorityContract.LocalDataSource(auraConfigTxPriorityConfigFilePath, _api.EthereumJsonSerializer, _api.LogManager);
             }
 
-            var txPoolTxSource = base.CreateTxPoolTxSource(processingEnv, readOnlyTxProcessorSource);
-            
-            if (transactionPriorityContractAddress != null)
+            if (usesTxPriorityContract || usesTxPriorityLocalData)
             {
+                DictionaryContractDataStore<TxPriorityContract.Destination> minGasPricesContractDataStore = new DictionaryContractDataStore<TxPriorityContract.Destination>(
+                    new TxPriorityContract.DestinationSortedListContractDataStoreCollection(),
+                    _txPriorityContract?.MinGasPrices,
+                    _api.MainBlockProcessor,
+                    _api.LogManager,
+                    _localDataSource?.GetMinGasPricesLocalDataSource());
+
+                _minGasPricesContractDataStore = minGasPricesContractDataStore;
+                _api.DisposeStack.Push(minGasPricesContractDataStore);                
+
                 IBlockProcessor? blockProcessor = _api.MainBlockProcessor;
-                var whitelistContractDataStore = new HashSetContractDataStore<Address>(_txPriorityContract!.SendersWhitelist, blockProcessor);
-                var prioritiesContractDataStore = new SortedListContractDataStore<TxPriorityContract.Destination>(_txPriorityContract.Priorities, blockProcessor, comparer);
+                ContractDataStore<Address, IContractDataStoreCollection<Address>> whitelistContractDataStore = new ContractDataStoreWithLocalData<Address>(
+                    new HashSetContractDataStoreCollection<Address>(),
+                    _txPriorityContract?.SendersWhitelist,
+                    blockProcessor,
+                    _api.LogManager,
+                    _localDataSource?.GetWhitelistLocalDataSource() ?? new EmptyLocalDataSource<IEnumerable<Address>>());
+                
+                DictionaryContractDataStore<TxPriorityContract.Destination> prioritiesContractDataStore = new DictionaryContractDataStore<TxPriorityContract.Destination>(
+                    new TxPriorityContract.DestinationSortedListContractDataStoreCollection(),
+                    _txPriorityContract?.Priorities,
+                    blockProcessor,
+                    _api.LogManager,
+                    _localDataSource?.GetPrioritiesLocalDataSource());
                 
                 _api.DisposeStack.Push(whitelistContractDataStore);
                 _api.DisposeStack.Push(prioritiesContractDataStore);
 
-                txPoolTxSource.OrderStrategy = new PermissionTxPoolOrderingStrategy(
+                
+                return new TxPriorityTxSource(
+                    _api.TxPool,
+                    processingEnv.StateReader, 
+                    _api.LogManager, 
+                    CreateGasPriceTxFilter(readOnlyTxProcessorSource),
                     whitelistContractDataStore,
                     prioritiesContractDataStore);
             }
-            
-            return txPoolTxSource;
+            else
+            {
+                return base.CreateTxPoolTxSource(processingEnv, readOnlyTxProcessorSource);
+            }
         }
 
         protected override ITxSource CreateTxSourceForProducer(ReadOnlyTxProcessingEnv processingEnv, ReadOnlyTxProcessorSource readOnlyTxProcessorSource)

@@ -511,6 +511,7 @@ namespace Nethermind.Blockchain.Test
         }
 
         [Test]
+        [Retry(3)] // some flakiness
         public void Can_change_branch_on_invalid_block()
         {
             When.ProcessingBlocks
