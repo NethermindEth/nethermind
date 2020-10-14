@@ -45,9 +45,9 @@ namespace Nethermind.DataMarketplace.Initializers
     [NdmInitializer("ndm")]
     public class NdmInitializer : INdmInitializer
     {
-        private readonly INdmModule _ndmModule;
-        private readonly INdmConsumersModule _ndmConsumersModule;
-        private ILogger _logger;
+        protected readonly INdmModule _ndmModule;
+        protected readonly INdmConsumersModule _ndmConsumersModule;
+        protected ILogger _logger;
 
         internal string? DbPath { get; private set; }
 
