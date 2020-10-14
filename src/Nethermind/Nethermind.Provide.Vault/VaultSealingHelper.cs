@@ -20,6 +20,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Threading.Tasks;
+using Nethermind.Logging;
 using Nethermind.Vault.Config;
 using Nethermind.Vault.KeyStore;
 using Newtonsoft.Json;
@@ -30,23 +31,42 @@ namespace Nethermind.Vault
     {
         private readonly IVaultKeyStoreFacade _vaultKeyStoreFacade;
         private readonly IVaultConfig _config;
+        private readonly ILogger _logger;
         public VaultSealingHelper(
             IVaultKeyStoreFacade vaultKeyStoreFacade,
-            IVaultConfig config)
+            IVaultConfig config,
+            ILogger logger)
         {
             _vaultKeyStoreFacade = vaultKeyStoreFacade ?? throw new ArgumentNullException(nameof(vaultKeyStoreFacade));
             _config = config ?? throw new ArgumentNullException(nameof(config));
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
         public void Seal()
         {
-            var sealTask = SealingUnsealingMethod("seal");
-            sealTask.Wait();
+            try
+            {
+                var sealTask = SealingUnsealingMethod("seal");
+                sealTask.Wait();
+                if (_logger.IsInfo) _logger.Info($"The vault sealing was successful");
+            }
+            catch (Exception ex)
+            {
+                throw new ApplicationException($"Failed to seal vault", ex);
+            }
         }
 
         public void Unseal()
         {
-            var unsealTask = SealingUnsealingMethod("unseal");
-            unsealTask.Wait();
+            try
+            {
+                var unsealTask = SealingUnsealingMethod("unseal");
+                unsealTask.Wait();
+                if (_logger.IsInfo) _logger.Info($"The vault unsealing was successful.");
+            }
+            catch (Exception ex)
+            {
+                throw new ApplicationException($"Failed to unseal vault", ex);
+            }
         }
 
         class SealingUnsealingRequest

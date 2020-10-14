@@ -23,7 +23,10 @@ namespace Nethermind.Plugin.Baseline
 
         public void Dispose() 
         {
-            _vaultSealingHelper?.Seal();
+            if (_vaultConfig != null && _vaultConfig.Enabled)
+            {
+                _vaultSealingHelper?.Seal();
+            }
         }
 
         public string Name => "Vault";
@@ -35,14 +38,19 @@ namespace Nethermind.Plugin.Baseline
         public Task Init(INethermindApi api)
         {
             _vaultConfig = api.Config<IVaultConfig>();
-            var passwordProvider = new VaultPasswordProvider(_vaultConfig, new KeyStore.PasswordProviderHelper());
-            var vaultKeyStoreFacade = new VaultKeyStoreFacade(passwordProvider);
-            _vaultSealingHelper = new VaultSealingHelper(vaultKeyStoreFacade, _vaultConfig);
+
             _api = api;
             _logger = api.LogManager.GetClassLogger();
-            _vaultSealingHelper.Unseal();
             _vaultService = new VaultService(_vaultConfig, _api.LogManager);
-            
+
+            if (_vaultConfig.Enabled)
+            {
+                var passwordProvider = new VaultPasswordProvider(_vaultConfig, new KeyStore.PasswordProviderHelper());
+                var vaultKeyStoreFacade = new VaultKeyStoreFacade(passwordProvider);
+                _vaultSealingHelper = new VaultSealingHelper(vaultKeyStoreFacade, _vaultConfig, _logger);
+                _vaultSealingHelper.Unseal();
+            }
+
             IVaultWallet wallet = new VaultWallet(_vaultService, _vaultConfig.VaultId, _api.LogManager);
             ITxSigner vaultSigner = new VaultTxSigner(wallet, _api.ChainSpec.ChainId);
             

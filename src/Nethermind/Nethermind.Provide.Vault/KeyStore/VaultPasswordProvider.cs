@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.IO;
 using System.Security;
 using Nethermind.KeyStore;
 using Nethermind.Logging;
@@ -35,8 +36,13 @@ namespace Nethermind.Vault.KeyStore
 
         public SecureString GetPassword(int? passwordIndex = null)
         {
+            SecureString passwordFromFile = null;
             var filePath = _vaultConfig.VaultKeyFile.GetApplicationResourcePath();
-            var passwordFromFile = _passwordProviderHelper.GetPasswordFromFile(filePath);
+            if (!string.IsNullOrWhiteSpace(_vaultConfig.VaultKeyFile) && File.Exists(filePath))
+            {
+                passwordFromFile = _passwordProviderHelper.GetPasswordFromFile(filePath);
+            }
+
             return passwordFromFile != null ?
                    passwordFromFile 
                    : _passwordProviderHelper.GetPasswordFromConsole($"Provide passsphrase to unlock Vault");
