@@ -44,7 +44,6 @@ namespace Nethermind.Runner.Ethereum.Steps
         
         public Task Execute(CancellationToken cancellationToken)
         {
-            
             _receiptStorage = _api.ReceiptStorage ?? throw new StepDependencyException(nameof(_api.ReceiptStorage));
             _blockTree = _api.BlockTree ?? throw new StepDependencyException(nameof(_api.BlockTree));
             _chainLevelInfoRepository = _api.ChainLevelInfoRepository ?? throw new StepDependencyException(nameof(_api.ChainLevelInfoRepository));
@@ -61,7 +60,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         
         private void ResetMigrationIndexIfNeeded()
         {
-            ReceiptsRecovery recovery = new ReceiptsRecovery();
+            ReceiptsRecovery recovery = new ReceiptsRecovery(_api.EthereumEcdsa, _api.SpecProvider);
             
             if (_receiptStorage.MigratedBlockNumber != long.MaxValue)
             {

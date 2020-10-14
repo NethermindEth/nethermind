@@ -22,7 +22,9 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Db;
+using Nethermind.Logging;
 using Nethermind.Specs;
 using NSubstitute;
 using NUnit.Framework;
@@ -38,8 +40,11 @@ namespace Nethermind.Blockchain.Test.Receipts
         [SetUp]
         public void SetUp()
         {
+            var specProvider = RopstenSpecProvider.Instance;
+            var ethereumEcdsa = new EthereumEcdsa(specProvider.ChainId, LimboLogs.Instance);
+            ReceiptsRecovery receiptsRecovery = new ReceiptsRecovery(ethereumEcdsa, specProvider);
             _receiptsDb = new MemColumnsDb<ReceiptsColumns>();
-            _storage = new PersistentReceiptStorage(_receiptsDb, MainnetSpecProvider.Instance, new ReceiptsRecovery()) {MigratedBlockNumber = 0};
+            _storage = new PersistentReceiptStorage(_receiptsDb, MainnetSpecProvider.Instance, receiptsRecovery) {MigratedBlockNumber = 0};
             _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks).Set(Keccak.Zero, Array.Empty<byte>());
         }
 

@@ -27,6 +27,7 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.ParallelSync;
@@ -45,6 +46,7 @@ namespace Nethermind.Synchronization.Blocks
         private readonly ISyncReport _syncReport;
         private readonly IReceiptStorage _receiptStorage;
         private readonly ISpecProvider _specProvider;
+        private readonly ILogManager _logManager;
         private readonly ILogger _logger;
 
         private bool _cancelDueToBetterPeer;
@@ -72,7 +74,8 @@ namespace Nethermind.Synchronization.Blocks
             _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager.GetClassLogger();
 
             _syncBatchSize = new SyncBatchSize(logManager);
             _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
@@ -227,15 +230,15 @@ namespace Nethermind.Synchronization.Blocks
 
         public async Task<long> DownloadBlocks(PeerInfo bestPeer, BlocksRequest blocksRequest, CancellationToken cancellation)
         {
-            IReceiptsRecovery receiptsRecovery = new ReceiptsRecovery();
-
             if (bestPeer == null)
             {
                 string message = $"Not expecting best peer to be null inside the {nameof(BlockDownloader)}";
                 if (_logger.IsError) _logger.Error(message);
                 throw new ArgumentNullException(message);
             }
-
+            
+            var receiptsRecovery = new ReceiptsRecovery(new EthereumEcdsa(_specProvider.ChainId, _logManager), _specProvider);
+            
             DownloaderOptions options = blocksRequest.Options;
             bool downloadReceipts = (options & DownloaderOptions.WithReceipts) == DownloaderOptions.WithReceipts;
             bool shouldProcess = (options & DownloaderOptions.Process) == DownloaderOptions.Process;
