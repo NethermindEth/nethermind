@@ -82,7 +82,7 @@ namespace Nethermind.DataMarketplace.Initializers
 
             if(_ndmInitializer == null)
             {
-                throw new NullReferenceException("Ndm initializer is not created yet, can't start the rpc modules");
+                throw new InvalidOperationException("Ndm initializer is not created yet, can't start the rpc modules");
             }
 
             _ndmInitializer.InitRpcModules();

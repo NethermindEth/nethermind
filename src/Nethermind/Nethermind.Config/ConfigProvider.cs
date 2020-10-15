@@ -104,21 +104,14 @@ namespace Nethermind.Config
 
             foreach (Type @interface in interfaces)
             {
-                Type implementation; 
+                Type directImplementation; 
 
-                try
-                {
-                    implementation = _typeDiscovery.FindNethermindTypes(@interface).SingleOrDefault();
-                }
-                catch(InvalidOperationException)
-                {
-                    implementation = @interface.GetDirectInterfaceImplementation();
-                }
+                directImplementation = @interface.GetDirectInterfaceImplementation();
 
-                if (implementation != null)
+                if (directImplementation != null)
                 {
-                    Categories.Add(@interface.Name.Substring(1), Activator.CreateInstance(implementation));
-                    _implementations[@interface] = implementation;
+                    Categories.Add(@interface.Name.Substring(1), Activator.CreateInstance(directImplementation));
+                    _implementations[@interface] = directImplementation;
                 }
             }
         }

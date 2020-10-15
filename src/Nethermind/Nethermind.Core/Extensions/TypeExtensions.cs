@@ -10,20 +10,18 @@ namespace Nethermind.Core.Extensions
         {
             if (!interfaceType.IsInterface)
             {
-                throw new NotSupportedException("This method is only allowed to use on interface types");
+                throw new NotSupportedException($"GetDirectInterfaceImplementation method is only allowed to use on interface types, got {interfaceType} instead");
             }
 
             TypeDiscovery typeDiscovery = new TypeDiscovery();
-            Type[] derivedInterfaces = interfaceType.GetInterfaces();
+            Type[] baseInterfaces = interfaceType.GetInterfaces();
             IEnumerable<Type> implementations = typeDiscovery.FindNethermindTypes(interfaceType).Where(i => i.IsClass);
 
             foreach(Type implementation in implementations)
             {
                 List<Type> interfaces = implementation.GetInterfaces().ToList();
-                foreach(Type derivedInterface in derivedInterfaces)
-                {
-                    interfaces.Remove(derivedInterface);
-                }
+
+                interfaces.RemoveAll(i => baseInterfaces.Contains(i));
 
                 if(interfaces.Contains(interfaceType) && interfaces.Count() == 1)
                 {
@@ -31,7 +29,7 @@ namespace Nethermind.Core.Extensions
                 }
             }
 
-            return null;
+            throw new InvalidOperationException($"Couldn't find direct implementation of {interfaceType} interface");
         }
     }
 }
