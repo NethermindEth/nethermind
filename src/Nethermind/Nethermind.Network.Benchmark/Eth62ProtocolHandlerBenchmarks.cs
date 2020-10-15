@@ -62,7 +62,13 @@ namespace Nethermind.Network.Benchmarks
             NodeStatsManager stats = new NodeStatsManager(new StatsConfig(), LimboLogs.Instance);
 
             var ecdsa = new EthereumEcdsa(ChainId.Mainnet, LimboLogs.Instance);
-            TxPool.TxPool txPool = new TxPool.TxPool(NullTxStorage.Instance, Timestamper.Default, ecdsa, MainnetSpecProvider.Instance, new TxPoolConfig(), Substitute.For<IStateProvider>(), LimboLogs.Instance);
+            TxPool.TxPool txPool = new TxPool.TxPool(
+                NullTxStorage.Instance,
+                ecdsa,
+                MainnetSpecProvider.Instance,
+                new TxPoolConfig(),
+                Substitute.For<IStateProvider>(),
+                LimboLogs.Instance);
             ISyncServer syncSrv = Substitute.For<ISyncServer>();
             BlockHeader head = Build.A.BlockHeader.WithNumber(1).TestObject;
             syncSrv.Head.Returns(head);
