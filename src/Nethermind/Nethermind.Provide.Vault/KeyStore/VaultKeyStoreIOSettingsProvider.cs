@@ -15,15 +15,13 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.IO;
 using Nethermind.Core;
 using Nethermind.KeyStore;
-using Nethermind.Logging;
 using Nethermind.Vault.Config;
 
 namespace Nethermind.Vault.KeyStore
 {
-    public class VaultKeyStoreIOSettingsProvider : IKeyStoreIOSettingsProvider
+    public class VaultKeyStoreIOSettingsProvider : BaseKeyStoreIOSettingsProvider, IKeyStoreIOSettingsProvider
     {
         // move that consts to config if we will use KeyStore for Vault
         private const string VaultKeyStoreDirectory = "vaultkeystore";
@@ -35,19 +33,7 @@ namespace Nethermind.Vault.KeyStore
             _config = vaultConfig ?? throw new ArgumentNullException(nameof(vaultConfig));
         }
 
-        public string StoreDirectory
-        {
-            get
-            {
-                var directory = VaultKeyStoreDirectory.GetApplicationResourcePath();
-                if (!Directory.Exists(directory))
-                {
-                    Directory.CreateDirectory(directory);
-                }
-
-                return directory;
-            }
-        }
+        public string StoreDirectory => GetStoreDirectory(VaultKeyStoreDirectory);
 
         public string KeyName => "vault key";
 

@@ -15,12 +15,14 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 //
 
+using System.Threading.Tasks;
+
 namespace Nethermind.Vault
 {
     public interface IVaultSealingHelper
     {
-        public void Seal();
+        void Seal();
 
-        public void Unseal();
+        void Unseal();
     }
 }

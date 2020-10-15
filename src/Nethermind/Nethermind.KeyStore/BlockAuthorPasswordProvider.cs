@@ -26,11 +26,11 @@ namespace Nethermind.KeyStore
         private readonly PasswordProviderHelper _passwordProviderHelper;
         private readonly KeyStorePasswordProvider _keyStorePasswordProvider;
 
-        public BlockAuthorPasswordProvider(IKeyStoreConfig keyStoreConfig, PasswordProviderHelper passwordProviderHelper)
+        public BlockAuthorPasswordProvider(IKeyStoreConfig keyStoreConfig)
         {
             _keyStoreConfig = keyStoreConfig ?? throw new ArgumentNullException(nameof(keyStoreConfig));
-            _passwordProviderHelper = passwordProviderHelper ?? throw new ArgumentNullException(nameof(passwordProviderHelper));
-            _keyStorePasswordProvider = new KeyStorePasswordProvider(keyStoreConfig, passwordProviderHelper);
+            _passwordProviderHelper = new PasswordProviderHelper();
+            _keyStorePasswordProvider = new KeyStorePasswordProvider(keyStoreConfig);
         }
         public SecureString GetPassword(int? passwordIndex = null)
         {

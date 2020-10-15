@@ -22,7 +22,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.KeyStore
 {
-    public class PrivateKeyStoreIOSettingsProvider : IKeyStoreIOSettingsProvider
+    public class PrivateKeyStoreIOSettingsProvider : BaseKeyStoreIOSettingsProvider, IKeyStoreIOSettingsProvider
     {
         private readonly IKeyStoreConfig _config;
 
@@ -32,19 +32,7 @@ namespace Nethermind.KeyStore
             _config = keyStoreConfig ?? throw new ArgumentNullException(nameof(keyStoreConfig));
         }
 
-        public string StoreDirectory
-        {
-            get
-            {
-                var directory = _config.KeyStoreDirectory.GetApplicationResourcePath();
-                if (!Directory.Exists(directory))
-                {
-                    Directory.CreateDirectory(directory);
-                }
-
-                return directory;
-            }
-        }
+        public string StoreDirectory => GetStoreDirectory(_config.KeyStoreDirectory);
 
         public string KeyName => "private key";
 

@@ -1,4 +1,4 @@
-//  Copyright (c) 2020 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,16 +14,22 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core;
+using System.IO;
+using Nethermind.Logging;
 
 namespace Nethermind.KeyStore
 {
-    public interface IKeyStoreIOSettingsProvider
+    public class BaseKeyStoreIOSettingsProvider
     {
-        string StoreDirectory { get; }
+        public string GetStoreDirectory(string keyStoreFolderName)
+        {
+            var directory = keyStoreFolderName.GetApplicationResourcePath();
+            if (!Directory.Exists(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
 
-        string GetFileName(Address address);
-
-        string KeyName { get; }
+            return directory;
+        }
     }
 }

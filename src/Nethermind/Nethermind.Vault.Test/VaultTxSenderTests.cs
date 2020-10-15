@@ -14,6 +14,8 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+using FluentAssertions;
 using Nethermind.Logging;
 using Nethermind.TxPool;
 using Nethermind.Vault.Config;
@@ -32,8 +34,7 @@ namespace Nethermind.Vault.Test
 
             IVaultWallet wallet = new VaultWallet(_vaultService, vaultConfig.VaultId, LimboLogs.Instance);
             ITxSigner vaultSigner = new VaultTxSigner(wallet, 1);
-
-            var txSender = new VaultTxSender(vaultSigner, vaultConfig, 1);
+            Assert.DoesNotThrow(() => { new VaultTxSender(vaultSigner, vaultConfig, 1); });
         }
     }
 }

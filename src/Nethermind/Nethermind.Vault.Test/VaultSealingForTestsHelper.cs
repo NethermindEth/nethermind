@@ -31,7 +31,7 @@ namespace Nethermind.Vault.Test
         public VaultSealingForTestsHelper(IVaultConfig vaultConfig)
         {
             _vaultConfig = vaultConfig ?? throw new ArgumentNullException(nameof(vaultConfig));
-            var passwordProvider = new VaultPasswordProvider(_vaultConfig, new Nethermind.KeyStore.PasswordProviderHelper());
+            var passwordProvider = new VaultPasswordProvider(_vaultConfig);
             var vaultKeyStoreFacade = new VaultKeyStoreFacade(passwordProvider);
             _vaultSealingHelper = new VaultSealingHelper(vaultKeyStoreFacade, _vaultConfig, LimboLogs.Instance.GetClassLogger<VaultSealingHelper>());
         }

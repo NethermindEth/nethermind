@@ -18,6 +18,7 @@
 using System;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Security;
 using System.Text;
 using System.Threading.Tasks;
 using Nethermind.Logging;
@@ -45,7 +46,7 @@ namespace Nethermind.Vault
         {
             try
             {
-                var sealResult = SealingUnsealingMethod("seal");
+                var sealResult = Task.Run(() => SendSealingRequest("seal")).Result;
                 if (sealResult.Success)
                 {
                     if (_logger.IsInfo) _logger.Info($"The vault sealing was successful.");
@@ -57,7 +58,7 @@ namespace Nethermind.Vault
             }
             catch (Exception ex)
             {
-                throw new ApplicationException($"Failed to seal vault", ex);
+                throw new SecurityException($"Failed to seal vault", ex);
             }
         }
 
@@ -65,7 +66,7 @@ namespace Nethermind.Vault
         {
             try
             {
-                var unsealResult = SealingUnsealingMethod("unseal");
+                var unsealResult = Task.Run(() => SendSealingRequest("unseal")).Result;
                 if (unsealResult.Success)
                 {
                     if (_logger.IsInfo) _logger.Info($"The vault unsealing was successful.");
@@ -77,7 +78,7 @@ namespace Nethermind.Vault
             }
             catch (Exception ex)
             {
-                throw new ApplicationException($"Failed to unseal vault", ex);
+                throw new SecurityException($"Failed to unseal vault", ex);
             }
         }
 
@@ -85,7 +86,7 @@ namespace Nethermind.Vault
         {
             public string key { get; set; }
         }
-        public (bool Success, string Error) SealingUnsealingMethod(string methodName)
+        public async Task<(bool Success, string Error)> SendSealingRequest(string methodName)
         {
             var request = new SealingUnsealingRequest()
             {
@@ -98,7 +99,7 @@ namespace Nethermind.Vault
                 httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("bearer", _config.Token);
                 StringContent content = new StringContent(JsonConvert.SerializeObject(request), Encoding.UTF8, "application/json");
                 var url = ConstructUrl(methodName);
-                var response = httpClient.PostAsync(url, content).Result;
+                var response = await httpClient.PostAsync(url, content);
                 var responseStr = $"Status code: {response.StatusCode}, ResaonPhrase: {response.ReasonPhrase} Content: {response.Content.ReadAsStringAsync().Result}";
                 return (response.IsSuccessStatusCode, responseStr);
             }

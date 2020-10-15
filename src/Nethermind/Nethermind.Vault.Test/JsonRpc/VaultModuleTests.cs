@@ -65,10 +65,9 @@ namespace Nethermind.Vault.Test.JsonRpc
         }
 
         [TearDown]
-        public void TearDown()
+        public async Task TearDown()
         {
-            var cleanupTask = CleanUpVault();
-            cleanupTask.Wait();
+            await CleanUpVault();
             var vaultSealingForTestsHelper = new VaultSealingForTestsHelper(_config);
             vaultSealingForTestsHelper.Seal();
         }

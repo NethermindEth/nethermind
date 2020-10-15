@@ -45,7 +45,7 @@ namespace Nethermind.Plugin.Baseline
 
             if (_vaultConfig.Enabled)
             {
-                var passwordProvider = new VaultPasswordProvider(_vaultConfig, new KeyStore.PasswordProviderHelper());
+                var passwordProvider = new VaultPasswordProvider(_vaultConfig);
                 var vaultKeyStoreFacade = new VaultKeyStoreFacade(passwordProvider);
                 _vaultSealingHelper = new VaultSealingHelper(vaultKeyStoreFacade, _vaultConfig, _logger);
                 _vaultSealingHelper.Unseal();

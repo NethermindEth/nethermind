@@ -28,10 +28,10 @@ namespace Nethermind.Vault.KeyStore
         private readonly IVaultConfig _vaultConfig;
         private readonly PasswordProviderHelper _passwordProviderHelper;
         
-        public VaultPasswordProvider(IVaultConfig vaultConfig, PasswordProviderHelper passwordProviderHelper)
+        public VaultPasswordProvider(IVaultConfig vaultConfig)
         {
             _vaultConfig = vaultConfig ?? throw new ArgumentNullException(nameof(vaultConfig));
-            _passwordProviderHelper = passwordProviderHelper ?? throw new ArgumentNullException(nameof(passwordProviderHelper));
+            _passwordProviderHelper = new PasswordProviderHelper();
         }
 
         public SecureString GetPassword(int? passwordIndex = null)
