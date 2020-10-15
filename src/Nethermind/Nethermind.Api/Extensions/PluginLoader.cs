@@ -43,25 +43,26 @@ namespace Nethermind.Api.Extensions
         {
             ILogger logger = logManager.GetClassLogger();
             string baseDir = string.Empty.GetApplicationResourcePath();
-            string fullPluginsDir = _pluginsDirectory.GetApplicationResourcePath();;
-            if (!_fileSystem.Directory.Exists(fullPluginsDir))
+            string pluginAssembliesDir = _pluginsDirectory.GetApplicationResourcePath();
+            if (!_fileSystem.Directory.Exists(pluginAssembliesDir))
             {
-                if (logger.IsWarn) logger.Warn($"Plugins folder {fullPluginsDir} was not found. Skipping.");
+                if (logger.IsWarn) logger.Warn($"Plugin assemblies folder {pluginAssembliesDir} was not found. Skipping.");
             }
 
-            string[] pluginFiles = _fileSystem.Directory.GetFiles(fullPluginsDir).Where(p => p.EndsWith("dll")).ToArray();
-            if (pluginFiles.Length > 0)
+            string[] assemblies = _fileSystem.Directory.GetFiles(baseDir, "*.dll");
+            if (assemblies.Length > 0)
             {
-                if (logger.IsInfo) logger.Info($"Loading {pluginFiles.Length} plugins from {fullPluginsDir}");
+                if (logger.IsInfo) logger.Info($"Loading {assemblies.Length} assemblies from {baseDir}");
             }
 
-            foreach (string path in pluginFiles)
+            foreach (string assemblyName in assemblies)
             {
-                string pluginAssembly = _fileSystem.Path.GetFileNameWithoutExtension(path);
+                string pluginAssembly = _fileSystem.Path.GetFileNameWithoutExtension(assemblyName);
+
                 try
                 {
-                    if (logger.IsInfo) logger.Warn($"  Loading assembly {pluginAssembly}");
-                    string assemblyPath = _fileSystem.Path.Combine(fullPluginsDir, path);
+                    if (logger.IsInfo) logger.Warn($"Loading assembly {pluginAssembly}");
+                    string assemblyPath = _fileSystem.Path.Combine(pluginAssembliesDir, assemblyName);
                     Assembly assembly = AssemblyLoadContext.Default.LoadFromAssemblyPath(assemblyPath);
                     AssemblyLoadContext.Default.Resolving += (context, name) =>
                     {
@@ -75,7 +76,6 @@ namespace Nethermind.Api.Extensions
                             return AssemblyLoadContext.Default.LoadFromAssemblyPath(_fileSystem.Path.Combine(_pluginsDirectory, fileName));
                         }
                     };
-                        
 
                     foreach (Type type in assembly.GetExportedTypes().Where(t => !t.IsInterface))
                     {

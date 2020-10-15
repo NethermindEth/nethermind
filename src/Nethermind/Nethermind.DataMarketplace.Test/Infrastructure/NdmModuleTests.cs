@@ -30,23 +30,24 @@ namespace Nethermind.DataMarketplace.Test.Infrastructure
         private string _baseDbPath;
         private bool _enableUnsecuredDevWallet;
         private INdmModule _ndmModule;
+        private INdmApi _ndmApi;
 
         [SetUp]
         public void Setup()
         {
             _baseDbPath = "db";
             _enableUnsecuredDevWallet = false;
-            _ndmModule = new NdmModule();
+            _ndmApi = new NdmApi(Substitute.For<INethermindApi>());
+            _ndmModule = new NdmModule(_ndmApi);
         }
 
         [Test]
         public void init_should_return_services()
         {
-            NdmApi ndmApi = new NdmApi(Substitute.For<INethermindApi>());
-            ndmApi.HttpClient = Substitute.For<IHttpClient>();
-            ndmApi.ConfigManager = Substitute.For<IConfigManager>();
-            ndmApi.NdmConfig = new NdmConfig();
-            _ndmModule.Init(ndmApi);
+            _ndmApi.HttpClient = Substitute.For<IHttpClient>();
+            _ndmApi.ConfigManager = Substitute.For<IConfigManager>();
+            _ndmApi.NdmConfig = new NdmConfig();
+            _ndmModule.Init();
         }
     }
 }
