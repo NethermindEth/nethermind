@@ -26,7 +26,7 @@ namespace Nethermind.Plugin.Baseline
         {
             if (_vaultConfig != null && _vaultConfig.Enabled)
             {
-                _vaultSealingHelper?.Seal().Wait();
+                _vaultSealingHelper?.Seal();
             }
         }
 
