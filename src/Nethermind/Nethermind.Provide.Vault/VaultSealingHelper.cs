@@ -98,16 +98,24 @@ namespace Nethermind.Vault
             {
                 httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("bearer", _config.Token);
                 StringContent content = new StringContent(JsonConvert.SerializeObject(request), Encoding.UTF8, "application/json");
-                var url = ConstructUrl(methodName);
-                var response = await httpClient.PostAsync(url, content);
+                var url = BuildUrl(methodName);
+                var response = await httpClient.PostAsync(url.ToString(), content);
                 var responseStr = $"Status code: {response.StatusCode}, ResaonPhrase: {response.ReasonPhrase} Content: {response.Content.ReadAsStringAsync().Result}";
                 return (response.IsSuccessStatusCode, responseStr);
             }
         }
 
-        private string ConstructUrl(string methodName)
+        private UriBuilder BuildUrl(string methodName)
         {
-            return _config.Scheme + "://" + _config.Host + "/" + _config.Path + $"/{methodName}";
+            int port = -1;
+            var host = _config.Host;
+            if (host.IndexOf(":") != -1)
+            {
+                var splittedHost = host.Split(":");
+                host = splittedHost[0];
+                port = Convert.ToInt32(splittedHost[1]);
+            }
+            return new UriBuilder(_config.Scheme, host, port, _config.Path + $"/{methodName}");
         }
     }
 }
