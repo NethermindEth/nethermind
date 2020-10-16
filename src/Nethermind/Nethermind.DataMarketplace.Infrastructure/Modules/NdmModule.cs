@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.IO;
 using Nethermind.Core;
 using Nethermind.DataMarketplace.Channels;
@@ -24,49 +25,55 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
 {
     public class NdmModule : INdmModule
     {
-        public void Init(INdmApi api)
+        private readonly INdmApi _api;
+        public NdmModule(INdmApi api)
+        {
+            _api = api ?? throw new ArgumentNullException(nameof(api)); 
+        }
+
+        public void Init()
         {
             AddDecoders();
-            var config = api.NdmConfig;
-            api.ConsumerAddress = string.IsNullOrWhiteSpace(config.ConsumerAddress)
+            var config = _api.NdmConfig;
+            _api.ConsumerAddress = string.IsNullOrWhiteSpace(config.ConsumerAddress)
                 ? Address.Zero
                 : new Address(config.ConsumerAddress);
-            api.ContractAddress = string.IsNullOrWhiteSpace(config.ContractAddress)
+            _api.ContractAddress = string.IsNullOrWhiteSpace(config.ContractAddress)
                 ? Address.Zero
                 : new Address(config.ContractAddress);
 
             if (config.ProxyEnabled)
             {
-                if (config.JsonRpcUrlProxies == null || api.EthJsonRpcClientProxy == null)
+                if (config.JsonRpcUrlProxies == null || _api.EthJsonRpcClientProxy == null)
                 {
                     throw new InvalidDataException("JSON RPC proxy is enabled but the proxies were not initialized properly.");
                 }
                 
-                api.JsonRpcClientProxy!.SetUrls(config.JsonRpcUrlProxies!);
-                api.BlockchainBridge = new NdmBlockchainBridgeProxy(
-                    api.EthJsonRpcClientProxy);
+                _api.JsonRpcClientProxy!.SetUrls(config.JsonRpcUrlProxies!);
+                _api.BlockchainBridge = new NdmBlockchainBridgeProxy(
+                    _api.EthJsonRpcClientProxy);
             }
             else
             {
-                api.BlockchainBridge = new NdmBlockchainBridge(
-                    api.CreateBlockchainBridge(),
-                    api.BlockTree,
-                    api.StateReader,
-                    api.TxSender);
+                _api.BlockchainBridge = new NdmBlockchainBridge(
+                    _api.CreateBlockchainBridge(),
+                    _api.BlockTree,
+                    _api.StateReader,
+                    _api.TxSender);
             }
 
-            api.GasPriceService
-                = new GasPriceService(api.HttpClient, api.ConfigManager, config.Id, api.Timestamper, api.LogManager);
-            api.TransactionService
-                = new TransactionService(api.BlockchainBridge, api.Wallet, api.ConfigManager, config.Id, api.LogManager);
-            api.DepositService
-                = new DepositService(api.BlockchainBridge, api.AbiEncoder, api.Wallet, api.ContractAddress);
-            api.JsonRpcNdmConsumerChannel
-                = new JsonRpcNdmConsumerChannel(api.LogManager);
+            _api.GasPriceService
+                = new GasPriceService(_api.HttpClient, _api.ConfigManager, config.Id, _api.Timestamper, _api.LogManager);
+            _api.TransactionService
+                = new TransactionService(_api.BlockchainBridge, _api.Wallet, _api.ConfigManager, config.Id, _api.LogManager);
+            _api.DepositService
+                = new DepositService(_api.BlockchainBridge, _api.AbiEncoder, _api.Wallet, _api.ContractAddress);
+            _api.JsonRpcNdmConsumerChannel
+                = new JsonRpcNdmConsumerChannel(_api.LogManager);
             
             if (config.JsonRpcDataChannelEnabled)
             {
-                api.NdmConsumerChannelManager.Add(api.JsonRpcNdmConsumerChannel);
+                _api.NdmConsumerChannelManager.Add(_api.JsonRpcNdmConsumerChannel);
             }
         }
 

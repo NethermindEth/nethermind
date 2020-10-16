@@ -13,34 +13,19 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
 using System.Threading;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 
-namespace Nethermind.Evm.Tracing.GethStyle
+namespace Nethermind.Evm.Tracing
 {
-    public class GethLikeBlockTracer : BlockTracerBase<GethLikeTxTrace, GethLikeTxTracer>
+    public static class TracerExtensions
     {
-        private readonly GethTraceOptions _options;
-
-        public GethLikeBlockTracer(GethTraceOptions options)
-        {
-            _options = options;
-        }
+        public static CancellationTxTracer WithCancellation(this ITxTracer txTracer, CancellationToken cancellationToken) =>
+            new CancellationTxTracer(txTracer, cancellationToken);
         
-        public GethLikeBlockTracer(Keccak txHash, GethTraceOptions options)
-            : base(txHash)
-        {
-            _options = options;
-        }
-
-        protected override GethLikeTxTracer OnStart(Keccak txHash) => new GethLikeTxTracer(_options);
-
-        protected override GethLikeTxTrace OnEnd(GethLikeTxTracer txTracer) => txTracer.BuildResult();
-
-        public override void StartNewBlockTrace(Block block)
-        {
-        }
+        public static CancellationBlockTracer WithCancellation(this IBlockTracer txTracer, CancellationToken cancellationToken) =>
+            new CancellationBlockTracer(txTracer, cancellationToken);
     }
 }

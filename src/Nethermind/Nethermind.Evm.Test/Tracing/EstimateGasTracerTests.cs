@@ -15,12 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Threading;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing
@@ -176,32 +174,6 @@ namespace Nethermind.Evm.Test.Tracing
             }
 
             tracer.CalculateEstimate(Build.A.Transaction.WithGasLimit(1000).TestObject).Should().Be(17);
-        }
-
-        [Test]
-        public void Throw_operation_canceled_after_given_timeout()
-        {
-            TimeSpan timeout = TimeSpan.FromMilliseconds(10);
-            using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource(timeout);
-            CancellationToken cancellationToken = cancellationTokenSource.Token;
-            Transaction transactionMock = Substitute.For<Transaction>();
-            EstimateGasTracer tracer = new EstimateGasTracer(cancellationToken);
-
-            Thread.Sleep(timeout.Add(TimeSpan.FromMilliseconds(100)));
-
-            Assert.Throws<OperationCanceledException>(() => tracer.CalculateEstimate(transactionMock));
-        }
-
-        [Test]
-        public void Does_not_throw_if_cancellation_token_is_default()
-        {
-            CancellationToken cancellationToken = default;
-            EstimateGasTracer tracer = new EstimateGasTracer(cancellationToken);
-            Transaction transactionMock = Substitute.For<Transaction>();
-            
-            Thread.Sleep(TimeSpan.FromSeconds(2));
-
-            Assert.DoesNotThrow(() => tracer.CalculateEstimate(transactionMock)); 
         }
     }
 }

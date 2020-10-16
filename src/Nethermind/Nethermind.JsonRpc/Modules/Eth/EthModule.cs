@@ -362,8 +362,10 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             FixCallTx(transactionCall, header);
 
+            using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource(_cancellationTokenTimeout);
+            CancellationToken cancellationToken = cancellationTokenSource.Token;
             Transaction tx = transactionCall.ToTransaction();
-            BlockchainBridge.CallOutput result = _blockchainBridge.Call(header, tx);
+            BlockchainBridge.CallOutput result = _blockchainBridge.Call(header, tx, cancellationToken);
 
             return result.Error != null ? ResultWrapper<string>.Fail("VM execution error.", ErrorCodes.ExecutionError, result.Error) : ResultWrapper<string>.Success(result.OutputData.ToHexString(true));
         }

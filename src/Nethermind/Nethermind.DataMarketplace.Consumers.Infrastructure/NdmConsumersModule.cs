@@ -57,15 +57,32 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Monitoring;
 using Nethermind.Wallet;
+using Nethermind.DataMarketplace.Consumers.Shared;
 
 namespace Nethermind.DataMarketplace.Consumers.Infrastructure
 {
     public class NdmConsumersModule : INdmConsumersModule
     {
-        public void Init(INdmApi api)
+        private readonly INdmApi _api;
+        private IDepositReportService depositReportService;
+        private IJsonRpcNdmConsumerChannel jsonRpcNdmConsumerChannel;
+        private IEthRequestService ethRequestService;
+        private IEthPriceService ethPriceService;
+        private IGasPriceService gasPriceService;
+        private IConsumerTransactionsService consumerTransactionsService;
+        private IConsumerGasLimitsService gasLimitsService;
+        private IWallet wallet;
+        private ITimestamper timestamper;
+
+        public NdmConsumersModule(INdmApi api)
+        {
+           _api = api ?? throw new ArgumentNullException(nameof(api)); 
+        }
+
+        public void Init()
         {
             AddDecoders();
-            ILogManager logManager = api.LogManager;
+            ILogManager logManager = _api.LogManager;
             ILogger logger = logManager.GetClassLogger();
 
             bool disableSendingDepositTransaction = HasEnabledVariable("SENDING_DEPOSIT_TRANSACTION_DISABLED");
@@ -86,13 +103,13 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
                 if (logger.IsWarn) logger.Warn("*** NDM background services are disabled ***");
             }
 
-            INdmConfig ndmConfig = api.NdmConfig;
+            INdmConfig ndmConfig = _api.NdmConfig;
             string configId = ndmConfig.Id;
-            IDbConfig dbConfig = api.ConfigProvider.GetConfig<IDbConfig>();
+            IDbConfig dbConfig = _api.ConfigProvider.GetConfig<IDbConfig>();
             Address contractAddress = string.IsNullOrWhiteSpace(ndmConfig.ContractAddress)
                 ? Address.Zero
                 : new Address(ndmConfig.ContractAddress);
-            ConsumerRocksDbProvider rocksDbProvider = new ConsumerRocksDbProvider(api.BaseDbPath, dbConfig,
+            ConsumerRocksDbProvider rocksDbProvider = new ConsumerRocksDbProvider(_api.BaseDbPath, dbConfig,
                 logManager);
             DepositDetailsDecoder depositDetailsRlpDecoder = new DepositDetailsDecoder();
             DepositApprovalDecoder depositApprovalRlpDecoder = new DepositApprovalDecoder();
@@ -108,7 +125,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
             switch (ndmConfig.Persistence?.ToLowerInvariant())
             {
                 case "mongo":
-                    IMongoDatabase? database = api.MongoProvider.GetDatabase();
+                    IMongoDatabase? database = _api.MongoProvider.GetDatabase();
                     if (database == null)
                     {
                         throw new ApplicationException("Failed to initialize Mongo DB.");
@@ -144,26 +161,26 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
             }
 
             uint requiredBlockConfirmations = ndmConfig.BlockConfirmations;
-            IAbiEncoder abiEncoder = api.AbiEncoder;
-            INdmBlockchainBridge blockchainBridge = api.BlockchainBridge;
-            IBlockProcessor blockProcessor = api.MainBlockProcessor;
-            IConfigManager configManager = api.ConfigManager;
-            Address consumerAddress = api.ConsumerAddress;
-            ICryptoRandom cryptoRandom = api.CryptoRandom;
-            IDepositService depositService = api.DepositService;
-            GasPriceService gasPriceService = api.GasPriceService;
-            IEthereumEcdsa ecdsa = api.EthereumEcdsa;
-            IEthRequestService ethRequestService = api.EthRequestService;
-            IJsonRpcNdmConsumerChannel jsonRpcNdmConsumerChannel = api.JsonRpcNdmConsumerChannel;
-            INdmNotifier ndmNotifier = api.NdmNotifier;
-            PublicKey nodePublicKey = api.Enode.PublicKey;
-            ITimestamper timestamper = api.Timestamper;
-            IWallet wallet = api.Wallet;
-            IHttpClient httpClient = api.HttpClient;
-            IJsonRpcClientProxy? jsonRpcClientProxy = api.JsonRpcClientProxy;
-            IEthJsonRpcClientProxy? ethJsonRpcClientProxy = api.EthJsonRpcClientProxy;
-            TransactionService transactionService = api.TransactionService;
-            IMonitoringService monitoringService = api.MonitoringService;
+            IAbiEncoder abiEncoder = _api.AbiEncoder;
+            INdmBlockchainBridge blockchainBridge = _api.BlockchainBridge;
+            IBlockProcessor blockProcessor = _api.MainBlockProcessor;
+            IConfigManager configManager = _api.ConfigManager;
+            Address consumerAddress = _api.ConsumerAddress;
+            ICryptoRandom cryptoRandom = _api.CryptoRandom;
+            IDepositService depositService = _api.DepositService;
+            gasPriceService = _api.GasPriceService;
+            IEthereumEcdsa ecdsa = _api.EthereumEcdsa;
+            ethRequestService = _api.EthRequestService;
+            jsonRpcNdmConsumerChannel = _api.JsonRpcNdmConsumerChannel;
+            INdmNotifier ndmNotifier = _api.NdmNotifier;
+            PublicKey nodePublicKey = _api.Enode.PublicKey;
+            timestamper = _api.Timestamper;
+            IWallet wallet = _api.Wallet;
+            IHttpClient httpClient = _api.HttpClient;
+            IJsonRpcClientProxy? jsonRpcClientProxy = _api.JsonRpcClientProxy;
+            IEthJsonRpcClientProxy? ethJsonRpcClientProxy = _api.EthJsonRpcClientProxy;
+            TransactionService transactionService = _api.TransactionService;
+            IMonitoringService monitoringService = _api.MonitoringService;
             monitoringService?.RegisterMetrics(typeof(Metrics));
 
             DataRequestFactory dataRequestFactory = new DataRequestFactory(wallet, nodePublicKey);
@@ -200,7 +217,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
                     requiredBlockConfirmations);
             }
 
-            DepositReportService depositReportService = new DepositReportService(depositRepository, receiptRepository, sessionRepository,
+            depositReportService = new DepositReportService(depositRepository, receiptRepository, sessionRepository,
                 timestamper);
             ReceiptService receiptService = new ReceiptService(depositProvider, providerService, receiptRequestValidator,
                 sessionService, timestamper, receiptRepository, sessionRepository, abiEncoder, wallet, ecdsa,
@@ -209,34 +226,28 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
                 contractAddress, logManager);
             RefundClaimant refundClaimant = new RefundClaimant(refundService, blockchainBridge, depositRepository,
                 transactionVerifier, gasPriceService, timestamper, logManager);
-            api.AccountService = new AccountService(configManager, dataStreamService, providerService,
+            _api.AccountService = new AccountService(configManager, dataStreamService, providerService,
                 sessionService, consumerNotifier, wallet, configId, consumerAddress, logManager);
             ProxyService proxyService = new ProxyService(jsonRpcClientProxy, configManager, configId, logManager);
-            api.ConsumerService = new ConsumerService(api.AccountService, dataAssetService, dataRequestService,
+            _api.ConsumerService = new ConsumerService(_api.AccountService, dataAssetService, dataRequestService,
                 dataConsumerService, dataStreamService, depositManager, depositApprovalService, providerService,
                 receiptService, refundService, sessionService, proxyService);
-            EthPriceService ethPriceService = new EthPriceService(httpClient, timestamper, logManager);
-            ConsumerTransactionsService consumerTransactionsService = new ConsumerTransactionsService(transactionService, depositRepository,
+            ethPriceService = new EthPriceService(httpClient, timestamper, logManager);
+            consumerTransactionsService = new ConsumerTransactionsService(transactionService, depositRepository,
                 timestamper, logManager);
-            ConsumerGasLimitsService gasLimitService = new ConsumerGasLimitsService(depositService, refundService);
-
-
-            api.RpcModuleProvider.Register(
-                new SingletonModulePool<INdmRpcConsumerModule>(new NdmRpcConsumerModule(api.ConsumerService,
-                    depositReportService, jsonRpcNdmConsumerChannel, ethRequestService, ethPriceService,
-                    gasPriceService, consumerTransactionsService, gasLimitService, wallet, timestamper), true));
+            gasLimitsService = new ConsumerGasLimitsService(depositService, refundService);
 
             if (!backgroundServicesDisabled)
             {
                 bool useDepositTimer = ndmConfig.ProxyEnabled;
                 ConsumerServicesBackgroundProcessor consumerServicesBackgroundProcessor =
                     new ConsumerServicesBackgroundProcessor(
-                        api.AccountService,
+                        _api.AccountService,
                         refundClaimant,
                         depositConfirmationService,
                         ethPriceService,
-                        api.GasPriceService,
-                        api.MainBlockProcessor,
+                        _api.GasPriceService,
+                        _api.MainBlockProcessor,
                         depositRepository,
                         consumerNotifier,
                         logManager,
@@ -244,6 +255,11 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
                         ethJsonRpcClientProxy);
                 consumerServicesBackgroundProcessor.Init();
             }
+        }
+
+        public void InitRpcModules()
+        {
+            _api.RpcModuleProvider.Register(new SingletonModulePool<INdmRpcConsumerModule>(new NdmRpcConsumerModule(_api.ConsumerService, depositReportService, jsonRpcNdmConsumerChannel, ethRequestService, ethPriceService, gasPriceService, consumerTransactionsService, gasLimitsService, _api.Wallet, timestamper), true));
         }
 
         private static void AddDecoders()
