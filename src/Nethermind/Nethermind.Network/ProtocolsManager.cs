@@ -28,6 +28,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Network.P2P.Subprotocols.Eth.V64;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.P2P.Subprotocols.Les;
+using Nethermind.Network.P2P.Subprotocols.Wit;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -186,6 +187,16 @@ namespace Nethermind.Network
 
                     InitSyncPeerProtocol(session, ethHandler);
                     return ethHandler;
+                },
+                [Protocol.Wit] = (session, version) =>
+                {
+                    var witHandler = version switch
+                    {
+                        0 => new WitProtocolHandler(session, _serializer, _stats, _syncServer, _logManager),
+                        _ => throw new NotSupportedException($"Eth protocol version {version} is not supported.")
+                    };
+                    
+                    return witHandler;
                 },
                 [Protocol.Les] = (session, version) =>
                 {

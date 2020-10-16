@@ -239,6 +239,11 @@ namespace Nethermind.Synchronization.Test
                 throw new NotImplementedException();
             }
 
+            public Task<Keccak[]> GetWitness(Keccak blockHash, CancellationToken token)
+            {
+                throw new NotImplementedException();
+            }
+
             public void AddBlocksUpTo(int i, int branchStart = 0, byte branchIndex = 0)
             {
                 Block block = Blocks.Last();

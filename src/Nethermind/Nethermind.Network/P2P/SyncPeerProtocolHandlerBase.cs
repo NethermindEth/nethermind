@@ -30,6 +30,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
+using Nethermind.Network.P2P.Subprotocols.Wit;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -215,6 +216,11 @@ namespace Nethermind.Network.P2P
         public virtual Task<byte[][]> GetNodeData(IList<Keccak> hashes, CancellationToken token)
         {
             throw new NotSupportedException("Fast sync not supported by eth62 protocol");
+        }
+
+        public virtual Task<Keccak[]> GetWitness(Keccak blockHash, CancellationToken token)
+        {
+            throw new NotSupportedException();
         }
 
         public abstract void NotifyOfNewBlock(Block block, SendBlockPriority priority);
@@ -406,9 +412,15 @@ namespace Nethermind.Network.P2P
             return headers;
         }
 
+        internal void SetWitHandler(WitProtocolHandler witProtocolHandler)
+        {
+            _witProtocolHandler = witProtocolHandler;
+        }
+        
         #region Cleanup
 
         private int _isDisposed;
+        private WitProtocolHandler _witProtocolHandler;
         protected abstract void OnDisposed();
 
         public override void DisconnectProtocol(DisconnectReason disconnectReason, string details)

@@ -550,6 +550,11 @@ namespace Nethermind.Synchronization.Test
             {
                 throw new NotImplementedException();
             }
+
+            public Task<Keccak[]> GetWitness(Keccak blockHash, CancellationToken token)
+            {
+                throw new NotImplementedException();
+            }
         }
 
         [Test]

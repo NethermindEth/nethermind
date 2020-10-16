@@ -617,7 +617,7 @@ namespace Nethermind.State
                 }
             }
         }
-
+        
         private Account GetState(Address address)
         {
             Metrics.StateTreeReads++;
