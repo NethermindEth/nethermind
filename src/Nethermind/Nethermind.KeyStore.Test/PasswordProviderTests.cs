@@ -117,12 +117,14 @@ namespace Nethermind.KeyStore.Test
         {
             IKeyStoreConfig keyStoreConfig = Substitute.For<IKeyStoreConfig>();
             keyStoreConfig.Passwords.Returns(test.Passwords);
+            keyStoreConfig.UnlockAccounts.Returns(test.UnlockAccounts.Select(a => a.ToString()).ToArray());
             keyStoreConfig.PasswordFiles.Returns(_files.Where(x => test.PasswordFiles.Contains(x.Name)).Select(x => x.Name).ToArray());
-            var passwordProvider = new KeyStorePasswordProvider(keyStoreConfig, new PasswordProviderHelper());
+            var passwordProvider = new KeyStorePasswordProvider(keyStoreConfig);
 
             for (var index = 0; index < test.PasswordFiles.Count; ++index)
             {
-                var actualPassword = passwordProvider.GetPassword(index).Unsecure();
+                passwordProvider.Account = test.UnlockAccounts[index].ToString();
+                var actualPassword = passwordProvider.GetPassword().Unsecure();
                 var expectedPassword = test.ExpectedPasswords[index];
                 Assert.AreEqual(expectedPassword, actualPassword);
             }
@@ -136,7 +138,7 @@ namespace Nethermind.KeyStore.Test
             keyStoreConfig.PasswordFiles.Returns(_files.Where(x => test.PasswordFiles.Contains(x.Name)).Select(x => x.Name).ToArray());
             keyStoreConfig.BlockAuthorAccount.Returns(test.BlockAuthorAccount.ToString());
             keyStoreConfig.UnlockAccounts.Returns(test.UnlockAccounts.Select(a => a.ToString()).ToArray());
-            var passwordProvider = new BlockAuthorPasswordProvider(keyStoreConfig, new PasswordProviderHelper());
+            var passwordProvider = new KeyStorePasswordProvider(keyStoreConfig) { Account = keyStoreConfig.BlockAuthorAccount };
             var blockAuthorPassword = passwordProvider.GetPassword().Unsecure();
             Assert.AreEqual(test.ExpectedBlockAuthorAccountPassword, blockAuthorPassword);
         }

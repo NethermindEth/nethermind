@@ -2,6 +2,7 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.KeyStore;
 using Nethermind.Logging;
 using Nethermind.TxPool;
 using Nethermind.Vault;
@@ -25,7 +26,7 @@ namespace Nethermind.Plugin.Baseline
         {
             if (_vaultConfig != null && _vaultConfig.Enabled)
             {
-                _vaultSealingHelper?.Seal();
+                _vaultSealingHelper?.Seal().Wait();
             }
         }
 
@@ -35,7 +36,7 @@ namespace Nethermind.Plugin.Baseline
 
         public string Author => "Nethermind";
 
-        public Task Init(INethermindApi api)
+        public async Task Init(INethermindApi api)
         {
             _vaultConfig = api.Config<IVaultConfig>();
 
@@ -45,10 +46,11 @@ namespace Nethermind.Plugin.Baseline
 
             if (_vaultConfig.Enabled)
             {
-                var passwordProvider = new VaultPasswordProvider(_vaultConfig);
+                var passwordProvider = new FilePasswordProvider() { FileName = _vaultConfig.VaultKeyFile.GetApplicationResourcePath() }
+                                            .OrReadFromConsole("Provide passsphrase to unlock Vault");
                 var vaultKeyStoreFacade = new VaultKeyStoreFacade(passwordProvider);
                 _vaultSealingHelper = new VaultSealingHelper(vaultKeyStoreFacade, _vaultConfig, _logger);
-                _vaultSealingHelper.Unseal();
+                await _vaultSealingHelper.Unseal();
             }
 
             IVaultWallet wallet = new VaultWallet(_vaultService, _vaultConfig.VaultId, _api.LogManager);
@@ -57,8 +59,6 @@ namespace Nethermind.Plugin.Baseline
             // TODO: change vault to provide, use sealer to set the gas price as well
             // TODO: need to verify the timing of initializations so the TxSender replacement works fine
             _api.TxSender = new VaultTxSender(vaultSigner, _vaultConfig, _api.ChainSpec.ChainId);
-            
-            return Task.CompletedTask;
         }
 
         public Task InitNetworkProtocol()

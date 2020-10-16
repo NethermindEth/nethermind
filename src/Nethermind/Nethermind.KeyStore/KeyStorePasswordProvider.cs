@@ -15,47 +15,49 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Collections.Generic;
-using System.IO;
 using System.Security;
-using System.Text;
 using Nethermind.Crypto;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 
 namespace Nethermind.KeyStore
 {
-    public class KeyStorePasswordProvider : IPasswordProvider
+    public class KeyStorePasswordProvider : BasePasswordProvider, IKeyStorePasswordProvider
     {
         private readonly IKeyStoreConfig _keyStoreConfig;
-        private readonly PasswordProviderHelper _passwordProviderHelper;
+        private readonly FilePasswordProvider _filePasswordProvider;
 
         public KeyStorePasswordProvider(IKeyStoreConfig keyStoreConfig)
         {
             _keyStoreConfig = keyStoreConfig ?? throw new ArgumentNullException(nameof(keyStoreConfig));
-            _passwordProviderHelper = new PasswordProviderHelper();
+            _filePasswordProvider = new FilePasswordProvider();
         }
-        public SecureString GetPassword(int? passwordIndex)
+
+        public string Account { private get; set; }
+
+        public override SecureString GetPassword()
         {
-            if (passwordIndex == null)
-            {
-                throw new ArgumentNullException("KeyStorePasswordProvider does not allow null as a password index value");
-            }
-
-            var keyStoreConfigPasswordIndex = passwordIndex.Value;
             string GetPasswordN(int n, string[] passwordsCollection) => passwordsCollection?.Length > 0 ? passwordsCollection[Math.Min(n, passwordsCollection.Length - 1)] : null;
-
             SecureString password = null;
-            var passwordFile = GetPasswordN(keyStoreConfigPasswordIndex, _keyStoreConfig.PasswordFiles);
-            if (passwordFile != null)
+            var keyStoreConfigPasswordIndex = Array.IndexOf(_keyStoreConfig.UnlockAccounts, Account);
+            if (keyStoreConfigPasswordIndex >= 0)
             {
-                string blockAuthorPasswordFilePath = passwordFile.GetApplicationResourcePath();
-                password = File.Exists(blockAuthorPasswordFilePath)
-                    ? _passwordProviderHelper.GetPasswordFromFile(blockAuthorPasswordFilePath)
-                    : null;
+                var passwordFile = GetPasswordN(keyStoreConfigPasswordIndex, _keyStoreConfig.PasswordFiles);
+                if (passwordFile != null)
+                {
+                    string passwordFilePath = passwordFile.GetApplicationResourcePath();
+                    _filePasswordProvider.FileName = passwordFilePath;
+                    password = _filePasswordProvider.GetPassword();
+                }
+
+                password ??= GetPasswordN(keyStoreConfigPasswordIndex, _keyStoreConfig.Passwords)?.Secure();
             }
 
-            password ??= GetPasswordN(keyStoreConfigPasswordIndex, _keyStoreConfig.Passwords)?.Secure();
+            if (password == null && _alternativeProvider != null)
+            {
+                password = _alternativeProvider.GetPassword();
+            }
+
             return password;
         }
     }

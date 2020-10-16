@@ -14,39 +14,27 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Security;
-using Nethermind.Crypto;
-using Nethermind.KeyStore.Config;
-using Nethermind.Logging;
 
 namespace Nethermind.KeyStore
 {
-    public class PasswordProviderHelper
+    public class FilePasswordProvider : BasePasswordProvider, IPasswordProvider
     {
-        public SecureString GetPasswordBasedOnKeyStore(IKeyStoreConfig keyStoreConfig, int keyStoreConfigPasswordIndex)
+        public string FileName { get; set; }
+        public override SecureString GetPassword()
         {
-            string GetPasswordN(int n, string[] passwordsCollection) => passwordsCollection?.Length > 0 ? passwordsCollection[Math.Min(n, passwordsCollection.Length - 1)] : null;
-
-            SecureString password = null;
-            var passwordFile = GetPasswordN(keyStoreConfigPasswordIndex, keyStoreConfig.PasswordFiles);
-            if (passwordFile != null)
+            if (string.IsNullOrWhiteSpace(FileName) || !File.Exists(FileName))
             {
-                string blockAuthorPasswordFilePath = passwordFile.GetApplicationResourcePath();
-                password = File.Exists(blockAuthorPasswordFilePath)
-                    ? GetPasswordFromFile(blockAuthorPasswordFilePath)
-                    : null;
+                return null;
             }
 
-            password ??= GetPasswordN(keyStoreConfigPasswordIndex, keyStoreConfig.Passwords)?.Secure();
-            return password;
-        }
+            var password = GetPasswordFromFile(FileName);
+            if (password == null)
+                password = _alternativeProvider.GetPassword();
 
-        public SecureString GetPasswordFromConsole(string message)
-        {
-            return ConsoleUtils.ReadSecret(message);
+            return password;
         }
 
         public SecureString GetPasswordFromFile(string filePath)

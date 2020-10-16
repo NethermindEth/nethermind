@@ -14,12 +14,35 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Collections.Generic;
+using System.IO;
 using System.Security;
+using Nethermind.Crypto;
 
 namespace Nethermind.KeyStore
 {
-    public interface IPasswordProvider
+    
+
+    public abstract class BasePasswordProvider : IPasswordProvider
     {
-        SecureString GetPassword();
+        protected IPasswordProvider _alternativeProvider;
+
+        private void SetSuccessor(IPasswordProvider alternativeProvider)
+        {
+            _alternativeProvider = alternativeProvider;
+        }
+
+        public IPasswordProvider OrReadFromConsole(string message)
+        {
+            SetSuccessor(new ConsolePasswordProvider() { Message = message });
+            return this;
+        }
+
+        public abstract SecureString GetPassword();
+
+        public SecureString GetPasswordFromConsole(string message)
+        {
+            return ConsoleUtils.ReadSecret(message);
+        }
     }
 }

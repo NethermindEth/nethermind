@@ -21,8 +21,8 @@ namespace Nethermind.Vault
 {
     public interface IVaultSealingHelper
     {
-        void Seal();
+        Task Seal();
 
-        void Unseal();
+        Task Unseal();
     }
 }

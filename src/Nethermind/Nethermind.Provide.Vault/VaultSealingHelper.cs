@@ -42,11 +42,11 @@ namespace Nethermind.Vault
             _config = config ?? throw new ArgumentNullException(nameof(config));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
-        public void Seal()
+        public async Task Seal()
         {
             try
             {
-                var sealResult = Task.Run(() => SendSealingRequest("seal")).Result;
+                var sealResult = await SendSealingRequest("seal");
                 if (sealResult.Success)
                 {
                     if (_logger.IsInfo) _logger.Info($"The vault sealing was successful.");
@@ -62,11 +62,11 @@ namespace Nethermind.Vault
             }
         }
 
-        public void Unseal()
+        public async Task Unseal()
         {
             try
             {
-                var unsealResult = Task.Run(() => SendSealingRequest("unseal")).Result;
+                var unsealResult = await SendSealingRequest("unseal");
                 if (unsealResult.Success)
                 {
                     if (_logger.IsInfo) _logger.Info($"The vault unsealing was successful.");

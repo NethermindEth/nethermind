@@ -15,11 +15,20 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Security;
+using Nethermind.Crypto;
 
 namespace Nethermind.KeyStore
 {
-    public interface IPasswordProvider
+    public class ConsolePasswordProvider : BasePasswordProvider, IPasswordProvider
     {
-        SecureString GetPassword();
+        public string Message { get; set; }
+        public override SecureString GetPassword()
+        {
+            var password = ConsoleUtils.ReadSecret(Message);
+            if (password == null)
+                password = _alternativeProvider.GetPassword();
+
+            return password;
+        }
     }
 }
