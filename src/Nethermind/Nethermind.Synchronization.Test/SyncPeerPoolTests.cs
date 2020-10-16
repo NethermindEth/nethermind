@@ -136,6 +136,11 @@ namespace Nethermind.Synchronization.Test
                 return Task.FromResult(Array.Empty<byte[]>());
             }
 
+            public Task<Keccak[]> GetWitness(Keccak blockHash, CancellationToken token)
+            {
+                throw new NotImplementedException();
+            }
+
             private int? _headerResponseTime;
 
             private bool _shouldFail;

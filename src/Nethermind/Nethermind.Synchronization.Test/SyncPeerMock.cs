@@ -185,5 +185,10 @@ namespace Nethermind.Synchronization.Test
         {
             return Task.FromResult(_remoteSyncServer.GetNodeData(hashes));
         }
+
+        public Task<Keccak[]> GetWitness(Keccak blockHash, CancellationToken token)
+        {
+            throw new NotImplementedException();
+        }
     }
 }

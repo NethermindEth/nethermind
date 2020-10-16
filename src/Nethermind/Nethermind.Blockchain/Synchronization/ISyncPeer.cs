@@ -43,5 +43,7 @@ namespace Nethermind.Blockchain.Synchronization
         void NotifyOfNewBlock(Block block, SendBlockPriority priority);
         Task<TxReceipt[][]> GetReceipts(IList<Keccak> blockHash, CancellationToken token);
         Task<byte[][]> GetNodeData(IList<Keccak> hashes, CancellationToken token);
+        
+        Task<Keccak[]> GetWitness(Keccak blockHash, CancellationToken token);
     }
 }

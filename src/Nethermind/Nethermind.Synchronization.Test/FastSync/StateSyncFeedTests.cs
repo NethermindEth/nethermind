@@ -262,6 +262,11 @@ namespace Nethermind.Synchronization.Test.FastSync
                 return Task.FromResult(responses);
             }
 
+            public Task<Keccak[]> GetWitness(Keccak blockHash, CancellationToken token)
+            {
+                throw new NotImplementedException();
+            }
+
             public void SetFilter(Keccak[] availableHashes)
             {
                 _filter = availableHashes;

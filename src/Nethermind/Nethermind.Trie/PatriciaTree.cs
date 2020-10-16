@@ -279,6 +279,8 @@ namespace Nethermind.Trie
             return cachedRlp;
         }
 
+        // TODO: witness collector here
+        // then store witness in DB and serve it via SyncServer
         private byte[] Run(Span<byte> updatePath, int nibblesCount, byte[] updateValue, bool isUpdate, bool ignoreMissingDelete = true, Keccak rootHash = null)
         {
             if (isUpdate && rootHash != null)

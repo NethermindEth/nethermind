@@ -201,6 +201,11 @@ namespace Nethermind.Synchronization.Test
             {
                 throw new NotImplementedException();
             }
+
+            public Task<Keccak[]> GetWitness(Keccak blockHash, CancellationToken token)
+            {
+                throw new NotImplementedException();
+            }
         }
 
         private class ResponseBuilder
@@ -852,6 +857,11 @@ namespace Nethermind.Synchronization.Test
             }
 
             public Task<byte[][]> GetNodeData(IList<Keccak> hashes, CancellationToken token)
+            {
+                throw new NotImplementedException();
+            }
+
+            public Task<Keccak[]> GetWitness(Keccak blockHash, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
