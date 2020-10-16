@@ -43,18 +43,20 @@ namespace Nethermind.Network.P2P.Subprotocols.Wit
         }
 
         public override byte ProtocolVersion { get; protected set; } = 0;
+        
         public override string ProtocolCode => Protocol.Wit;
+        
         public override int MessageIdSpaceSize => 2;
+        
         public override string Name => "wit0";
+        
         protected override TimeSpan InitTimeout => Timeouts.Eth;
 
         public override bool HasAvailableCapability(Capability capability) => false;
 
         public override bool HasAgreedCapability(Capability capability) => false;
 
-        public override void AddSupportedCapability(Capability capability)
-        {
-        }
+        public override void AddSupportedCapability(Capability capability) { }
 
         public override event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
 
@@ -159,9 +161,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Wit
 
         public override void Dispose()
         {
-            if (Interlocked.Exchange(ref _isDisposed, 1) == 0)
-            {
-            }
+            if (Interlocked.Exchange(ref _isDisposed, 1) == 0) { }
         }
 
         #endregion
