@@ -28,6 +28,7 @@ using Nethermind.Blockchain.Processing;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Evm.Tracing;
@@ -50,6 +51,7 @@ namespace Nethermind.Consensus.Clique
         private readonly IBlockchainProcessor _processor;
         private readonly ISealer _sealer;
         private readonly IGasLimitCalculator _gasLimitCalculator;
+        private readonly ISpecProvider _specProvider;
         private readonly ISnapshotManager _snapshotManager;
         private readonly ICliqueConfig _config;
         private readonly ConcurrentDictionary<Address, bool> _proposals = new ConcurrentDictionary<Address, bool>();
@@ -67,6 +69,7 @@ namespace Nethermind.Consensus.Clique
             ISnapshotManager snapshotManager,
             ISealer cliqueSealer,
             IGasLimitCalculator gasLimitCalculator,
+            ISpecProvider specProvider,
             ICliqueConfig config,
             ILogManager logManager)
         {
@@ -79,6 +82,7 @@ namespace Nethermind.Consensus.Clique
             _cryptoRandom = cryptoRandom ?? throw new ArgumentNullException(nameof(cryptoRandom));
             _sealer = cliqueSealer ?? throw new ArgumentNullException(nameof(cliqueSealer));
             _gasLimitCalculator = gasLimitCalculator ?? throw new ArgumentNullException(nameof(gasLimitCalculator));
+            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
             _config = config ?? throw new ArgumentNullException(nameof(config));
             _wiggle = new WiggleRandomizer(_cryptoRandom, _snapshotManager);
@@ -357,6 +361,7 @@ namespace Nethermind.Consensus.Clique
             }
 
             // Set the correct difficulty
+            header.BaseFee = BlockHeader.CalculateBaseFee(parentHeader, _specProvider.GetSpec(header.Number));
             header.Difficulty = CalculateDifficulty(snapshot, _sealer.Address);
             header.TotalDifficulty = parentBlock.TotalDifficulty + header.Difficulty;
             if (_logger.IsDebug) _logger.Debug($"Setting total difficulty to {parentBlock.TotalDifficulty} + {header.Difficulty}.");

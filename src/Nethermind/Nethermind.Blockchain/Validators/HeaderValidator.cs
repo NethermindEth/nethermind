@@ -29,7 +29,6 @@ namespace Nethermind.Blockchain.Validators
     public class HeaderValidator : IHeaderValidator
     {
         private static readonly byte[] DaoExtraData = Bytes.FromHexString("0x64616f2d686172642d666f726b");
-        private static readonly UInt256 BaseFeeMaxChangeDenominator = 8;
 
         private readonly ISealValidator _sealValidator;
         private readonly ISpecProvider _specProvider;
@@ -138,54 +137,11 @@ namespace Nethermind.Blockchain.Validators
             if (_logger.IsTrace) _logger.Trace($"Validating block {header.ToString(BlockHeader.Format.Short)}, extraData {header.ExtraData.ToHexString(true)}");
 
             bool baseFeeIsCorrect = true;
+            
+            UInt256 expectedBaseFee = BlockHeader.CalculateBaseFee(parent, spec);
             if (spec.IsEip1559Enabled)
             {
-                long gasDelta;
-                UInt256 feeDelta;
-                UInt256 expectedBaseFee;
-                long gasTarget = parent.GetGasTarget1559(spec);
-
-                // # check if the base fee is correct
-                //   if parent_gas_used == parent_gas_target:
-                //   expected_base_fee = parent_base_fee
-                //   elif parent_gas_used > parent_gas_target:
-                //   gas_delta = parent_gas_used - parent_gas_target
-                //   fee_delta = max(parent_base_fee * gas_delta // parent_gas_target // BASE_FEE_MAX_CHANGE_DENOMINATOR, 1)
-                //   expected_base_fee = parent_base_fee + fee_delta
-                //   else:
-                //   gas_delta = parent_gas_target - parent_gas_used
-                //   fee_delta = parent_base_fee * gas_delta // parent_gas_target // BASE_FEE_MAX_CHANGE_DENOMINATOR
-                //   expected_base_fee = parent_base_fee - fee_delta
-                //   assert expected_base_fee == block.base_fee, 'invalid block: base fee not correct'
-
-                if (parent.GasUsed == gasTarget)
-                {
-                    expectedBaseFee = parent.BaseFee;
-                }
-                else if (parent.GasUsed > gasTarget)
-                {
-                    gasDelta = parent.GasUsed - gasTarget;
-                    feeDelta = UInt256.Max(
-                        parent.BaseFee * (UInt256) gasDelta / (UInt256) gasTarget / BaseFeeMaxChangeDenominator,
-                        UInt256.One);
-                    expectedBaseFee = parent.BaseFee + feeDelta;
-                }
-                else
-                {
-                    gasDelta = gasTarget - parent.GasUsed;
-                    feeDelta = parent.BaseFee * (UInt256) gasDelta / (UInt256) gasTarget / BaseFeeMaxChangeDenominator;
-                    expectedBaseFee = parent.BaseFee - feeDelta;
-                }
-
-                if (spec.Eip1559TransitionBlock == header.Number)
-                {
-                    expectedBaseFee = 1.GWei();
-                }
-
                 baseFeeIsCorrect = expectedBaseFee == header.BaseFee;
-                if (!baseFeeIsCorrect)
-                {
-                }
             }
 
             return

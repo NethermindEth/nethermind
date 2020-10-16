@@ -21,6 +21,7 @@ using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -53,7 +54,8 @@ namespace Nethermind.Clique.Test
                 Substitute.For<ICryptoRandom>(),
                 Substitute.For<ISnapshotManager>(),
                 new CliqueSealer(signer, cliqueConfig, Substitute.For<ISnapshotManager>(), LimboLogs.Instance),
-                new TargetAdjustedGasLimitCalculator(GoerliSpecProvider.Instance, new MiningConfig()), 
+                new TargetAdjustedGasLimitCalculator(GoerliSpecProvider.Instance, new MiningConfig()),
+                MainnetSpecProvider.Instance, 
                 cliqueConfig,
                 LimboLogs.Instance);
             

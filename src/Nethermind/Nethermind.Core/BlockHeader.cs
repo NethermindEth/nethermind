@@ -155,5 +155,57 @@ namespace Nethermind.Core
             Short,
             FullHashAndNumber
         }
+        
+        private static readonly UInt256 BaseFeeMaxChangeDenominator = 8;
+        
+        public static UInt256 CalculateBaseFee(BlockHeader parent, IReleaseSpec spec)
+        {
+            UInt256 expectedBaseFee = UInt256.Zero;
+            if (spec.IsEip1559Enabled)
+            {
+                long gasDelta;
+                UInt256 feeDelta;
+                long gasTarget = parent.GetGasTarget1559(spec);
+
+                // # check if the base fee is correct
+                //   if parent_gas_used == parent_gas_target:
+                //   expected_base_fee = parent_base_fee
+                //   elif parent_gas_used > parent_gas_target:
+                //   gas_delta = parent_gas_used - parent_gas_target
+                //   fee_delta = max(parent_base_fee * gas_delta // parent_gas_target // BASE_FEE_MAX_CHANGE_DENOMINATOR, 1)
+                //   expected_base_fee = parent_base_fee + fee_delta
+                //   else:
+                //   gas_delta = parent_gas_target - parent_gas_used
+                //   fee_delta = parent_base_fee * gas_delta // parent_gas_target // BASE_FEE_MAX_CHANGE_DENOMINATOR
+                //   expected_base_fee = parent_base_fee - fee_delta
+                //   assert expected_base_fee == block.base_fee, 'invalid block: base fee not correct'
+
+                if (parent.GasUsed == gasTarget)
+                {
+                    expectedBaseFee = parent.BaseFee;
+                }
+                else if (parent.GasUsed > gasTarget)
+                {
+                    gasDelta = parent.GasUsed - gasTarget;
+                    feeDelta = UInt256.Max(
+                        parent.BaseFee * (UInt256) gasDelta / (UInt256) gasTarget / BaseFeeMaxChangeDenominator,
+                        UInt256.One);
+                    expectedBaseFee = parent.BaseFee + feeDelta;
+                }
+                else
+                {
+                    gasDelta = gasTarget - parent.GasUsed;
+                    feeDelta = parent.BaseFee * (UInt256) gasDelta / (UInt256) gasTarget / BaseFeeMaxChangeDenominator;
+                    expectedBaseFee = parent.BaseFee - feeDelta;
+                }
+
+                if (spec.Eip1559TransitionBlock == parent.Number + 1)
+                {
+                    expectedBaseFee = 1.GWei();
+                }
+            }
+
+            return expectedBaseFee;
+        }
     }
 }

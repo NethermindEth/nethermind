@@ -53,7 +53,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _api.CryptoRandom,
                 _api.SnapshotManager,
                 _api.Sealer,
-                new TargetAdjustedGasLimitCalculator(GoerliSpecProvider.Instance, new MiningConfig()), 
+                new TargetAdjustedGasLimitCalculator(GoerliSpecProvider.Instance, new MiningConfig()),
+                _api.SpecProvider,
                 cliqueConfig,
                 _api.LogManager);
         }
