@@ -16,7 +16,9 @@
 
 using System.Linq;
 using FluentAssertions;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -37,7 +39,7 @@ namespace Nethermind.Store.Test
         {
             MemDb memDb = new MemDb();
             ISnapshotableDb stateDb = new StateDb(memDb);
-            TrieStore trieStore = new TrieStore(stateDb, LimboLogs.Instance);
+            TrieStore trieStore = new TrieStore(stateDb, new MemoryLimit(0.MB()), Full.Archive, LimboLogs.Instance);
             StateProvider stateProvider = new StateProvider(trieStore, stateDb, LimboLogs.Instance);
             StorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, LimboLogs.Instance);
 
@@ -60,6 +62,8 @@ namespace Nethermind.Store.Test
 
             storageProvider.CommitTrees(0);
             stateProvider.CommitTree(0);
+            storageProvider.CommitTrees(1);
+            stateProvider.CommitTree(1);
             
             stateDb.Commit();
             
@@ -74,7 +78,7 @@ namespace Nethermind.Store.Test
             stats.CodeCount.Should().Be(1);
             stats.MissingCode.Should().Be(1);
             
-            stats.NodesCount.Should().Be(1351);
+            stats.NodesCount.Should().Be(1348);
             
             stats.StateBranchCount.Should().Be(1);
             stats.StateExtensionCount.Should().Be(1);
@@ -85,7 +89,6 @@ namespace Nethermind.Store.Test
             stats.StorageExtensionCount.Should().Be(12);
             stats.StorageLeafCount.Should().Be(994);
             stats.MissingStorage.Should().Be(1);
-            
         }
     }
 }
