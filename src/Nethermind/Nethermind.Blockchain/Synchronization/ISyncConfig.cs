@@ -14,7 +14,6 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Globalization;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -36,8 +35,15 @@ namespace Nethermind.Blockchain.Synchronization
         
         [ConfigItem(Description = "Pruning cache size in MB (beta).", DefaultValue = "512")]
         long PruningCacheMb { get; set; }
+        
+        [ConfigItem(
+            Description = "Defines how often blocks will be persisted even if not required by cache memory usage (beta)",
+            DefaultValue = "8192")]
+        long PruningPersistenceInterval { get; set; }
 
-        [ConfigItem(Description = "If set to 'true' then the Fast Sync (eth/63) synchronization algorithm will be used.", DefaultValue = "false")]
+        [ConfigItem(
+            Description = "If set to 'true' then the Fast Sync (eth/63) synchronization algorithm will be used.",
+            DefaultValue = "false")]
         bool FastSync { get; set; }
         
         // Minimum is taken from MultiSyncModeSelector.StickyStateNodesDelta
