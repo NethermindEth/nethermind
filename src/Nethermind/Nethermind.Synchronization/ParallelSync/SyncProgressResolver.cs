@@ -58,7 +58,14 @@ namespace Nethermind.Synchronization.ParallelSync
                 return true;
             }
 
-            return _stateDb.Innermost.Get(stateRoot) != null;
+            if (_syncConfig.BeamSync)
+            {
+                return _stateDb.Innermost.Get(stateRoot) != null;
+            }
+            else
+            {
+                return _stateDb.Get(stateRoot) != null;
+            }
         }
 
         // ReSharper disable once UnusedMember.Local

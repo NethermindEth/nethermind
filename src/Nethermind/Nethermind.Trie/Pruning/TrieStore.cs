@@ -189,21 +189,6 @@ namespace Nethermind.Trie.Pruning
 
         public event EventHandler<BlockNumberEventArgs>? TriePersisted;
 
-        public void Flush()
-        {
-            if (_logger.IsDebug)
-                _logger.Debug($"Flushing trie cache - in memory {_nodeCache.Count} " +
-                              $"| commit count {CommittedNodesCount} " +
-                              $"| save count {PersistedNodesCount}");
-
-            CurrentPackage?.Seal();
-
-            if (_logger.IsDebug)
-                _logger.Debug($"Flushed trie cache - in memory {_nodeCache.Count} " +
-                              $"| commit count {CommittedNodesCount} " +
-                              $"| save count {PersistedNodesCount}");
-        }
-
         public byte[]? LoadRlp(Keccak keccak, bool allowCaching)
         {
             byte[] rlp = null;
