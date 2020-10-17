@@ -278,7 +278,7 @@ namespace Nethermind.Trie.Pruning
                     break;
                 }
 
-                if (_logger.IsWarn) _logger.Warn($"Pruning nodes {MemoryUsedByCache / 1.MB()}MB {LastPersistedBlockNumber}/{NewestKeptBlockNumber}.");
+                if (_logger.IsWarn) _logger.Warn($"Pruning nodes {MemoryUsedByCache / 1.MB()}MB , last persisted block: {LastPersistedBlockNumber} current: {NewestKeptBlockNumber}.");
 
                 Stopwatch stopwatch = Stopwatch.StartNew();
                 List<TrieNode> toRemove = new List<TrieNode>(); // TODO: resettable
@@ -334,11 +334,11 @@ namespace Nethermind.Trie.Pruning
                 stopwatch.Stop();
                 Metrics.PruningTime = stopwatch.ElapsedMilliseconds;
 
-                if (_logger.IsWarn) _logger.Warn($"Finished pruning nodes in {stopwatch.ElapsedMilliseconds}ms {MemoryUsedByCache / 1.MB()}MB {LastPersistedBlockNumber}/{NewestKeptBlockNumber}.");
+                if (_logger.IsWarn) _logger.Warn($"Finished pruning nodes in {stopwatch.ElapsedMilliseconds}ms {MemoryUsedByCache / 1.MB()}MB, last persisted block: {LastPersistedBlockNumber} current: {NewestKeptBlockNumber}.");
 
                 if (_pruningStrategy.ShouldPrune(MemoryUsedByCache))
                 {
-                    if (_logger.IsWarn) _logger.Warn("Elevated pruning starting");
+                    if (_logger.IsDebug) _logger.Debug("Elevated pruning starting");
 
                     BlockCommitSet? candidateSet = null;
                     while (_commitSetQueue.TryDequeue(out BlockCommitSet? frontSet))
