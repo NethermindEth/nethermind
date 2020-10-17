@@ -174,7 +174,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             TrieStore trieStore = new TrieStore(memDb, new DepthAndMemoryBased(4, 16.MB()), new ConstantInterval(4), _logManager);
 
-            trieStore.CommitOneNode(0, new NodeCommitInfo(a));
+            trieStore.CommitNode(0, new NodeCommitInfo(a));
             trieStore.FinishBlockCommit(TrieType.State, 0, a);
             trieStore.FinishBlockCommit(TrieType.State, 1, a);
             trieStore.FinishBlockCommit(TrieType.State, 2, a);
@@ -182,7 +182,7 @@ namespace Nethermind.Trie.Test.Pruning
             trieStore.FinishBlockCommit(TrieType.State, 4, a);
 
             memDb[a.Keccak!.Bytes].Should().NotBeNull();
-            trieStore.IsInMemory(a.Keccak).Should().BeFalse();
+            trieStore.IsNodeCached(a.Keccak).Should().BeFalse();
         }
 
         [Test]
@@ -195,7 +195,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             TrieStore trieStore = new TrieStore(memDb, new DepthAndMemoryBased(4, 16.MB()), No.Persistence, _logManager);
 
-            trieStore.CommitOneNode(0, new NodeCommitInfo(a));
+            trieStore.CommitNode(0, new NodeCommitInfo(a));
             trieStore.FinishBlockCommit(TrieType.State, 0, a);
             trieStore.FinishBlockCommit(TrieType.State, 1, a);
             trieStore.FinishBlockCommit(TrieType.State, 2, a);
@@ -203,7 +203,7 @@ namespace Nethermind.Trie.Test.Pruning
             //  <- do not persist in this test
 
             memDb[a.Keccak!.Bytes].Should().BeNull();
-            trieStore.IsInMemory(a.Keccak).Should().BeTrue();
+            trieStore.IsNodeCached(a.Keccak).Should().BeTrue();
         }
 
         [Test]
@@ -227,7 +227,7 @@ namespace Nethermind.Trie.Test.Pruning
             TrieStore trieStore = new TrieStore(memDb, new DepthAndMemoryBased(4, 16.MB()), new ConstantInterval(4), _logManager);
 
             trieStore.FinishBlockCommit(TrieType.State, 0, null);
-            trieStore.CommitOneNode(1, new NodeCommitInfo(a));
+            trieStore.CommitNode(1, new NodeCommitInfo(a));
             trieStore.FinishBlockCommit(TrieType.State, 1, a);
             trieStore.FinishBlockCommit(TrieType.State, 2, a);
             trieStore.FinishBlockCommit(TrieType.State, 3, a);
@@ -238,7 +238,7 @@ namespace Nethermind.Trie.Test.Pruning
             trieStore.FinishBlockCommit(TrieType.State, 8, a);
 
             memDb[a.Keccak!.Bytes].Should().NotBeNull();
-            trieStore.IsInMemory(a.Keccak).Should().BeFalse();
+            trieStore.IsNodeCached(a.Keccak).Should().BeFalse();
         }
 
         [Test]
@@ -255,19 +255,19 @@ namespace Nethermind.Trie.Test.Pruning
             TrieStore trieStore = new TrieStore(memDb, new DepthAndMemoryBased(4, 16.MB()), new ConstantInterval(4), _logManager);
 
             trieStore.FinishBlockCommit(TrieType.State, 0, null);
-            trieStore.CommitOneNode(1, new NodeCommitInfo(a));
+            trieStore.CommitNode(1, new NodeCommitInfo(a));
             trieStore.FinishBlockCommit(TrieType.State, 1, a);
             trieStore.FinishBlockCommit(TrieType.State, 2, a);
             trieStore.FinishBlockCommit(TrieType.State, 3, a);
             trieStore.FinishBlockCommit(TrieType.State, 4, a);
             trieStore.FinishBlockCommit(TrieType.State, 5, a);
             trieStore.FinishBlockCommit(TrieType.State, 6, a);
-            trieStore.CommitOneNode(7, new NodeCommitInfo(b));
+            trieStore.CommitNode(7, new NodeCommitInfo(b));
             trieStore.FinishBlockCommit(TrieType.State, 7, b);
             trieStore.FinishBlockCommit(TrieType.State, 8, b);
 
             memDb[a.Keccak!.Bytes].Should().NotBeNull();
-            trieStore.IsInMemory(a.Keccak).Should().BeFalse();
+            trieStore.IsNodeCached(a.Keccak).Should().BeFalse();
         }
 
         [Test]
@@ -284,10 +284,10 @@ namespace Nethermind.Trie.Test.Pruning
             TrieStore trieStore = new TrieStore(memDb, new DepthAndMemoryBased(4, 16.MB()), new ConstantInterval(4), _logManager);
 
             trieStore.FinishBlockCommit(TrieType.State, 0, null);
-            trieStore.CommitOneNode(1, new NodeCommitInfo(a));
+            trieStore.CommitNode(1, new NodeCommitInfo(a));
             trieStore.FinishBlockCommit(TrieType.State, 1, a);
             trieStore.FinishBlockCommit(TrieType.State, 2, a);
-            trieStore.CommitOneNode(3, new NodeCommitInfo(b)); // <- new root
+            trieStore.CommitNode(3, new NodeCommitInfo(b)); // <- new root
             trieStore.FinishBlockCommit(TrieType.State, 3, b);
             trieStore.FinishBlockCommit(TrieType.State, 4, b); // should be 'a' to test properly
             trieStore.FinishBlockCommit(TrieType.State, 5, b); // should be 'a' to test properly
@@ -296,7 +296,7 @@ namespace Nethermind.Trie.Test.Pruning
             trieStore.FinishBlockCommit(TrieType.State, 8, b); // should be 'a' to test properly
 
             memDb[a.Keccak!.Bytes].Should().BeNull();
-            trieStore.IsInMemory(a.Keccak).Should().BeFalse();
+            trieStore.IsNodeCached(a.Keccak).Should().BeFalse();
         }
 
         private AccountDecoder _accountDecoder = new AccountDecoder();
@@ -317,8 +317,8 @@ namespace Nethermind.Trie.Test.Pruning
 
             TrieStore trieStore = new TrieStore(memDb, new DepthAndMemoryBased(4, 16.MB()), new ConstantInterval(4), _logManager);
             trieStore.FinishBlockCommit(TrieType.State, 0, null);
-            trieStore.CommitOneNode(1, new NodeCommitInfo(a));
-            trieStore.CommitOneNode(1, new NodeCommitInfo(storage1));
+            trieStore.CommitNode(1, new NodeCommitInfo(a));
+            trieStore.CommitNode(1, new NodeCommitInfo(storage1));
             trieStore.FinishBlockCommit(TrieType.Storage, 1, storage1);
             trieStore.FinishBlockCommit(TrieType.State, 1, a);
             trieStore.FinishBlockCommit(TrieType.State, 2, a);
@@ -331,7 +331,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             memDb[a.Keccak!.Bytes].Should().NotBeNull();
             memDb[storage1.Keccak!.Bytes].Should().NotBeNull();
-            trieStore.IsInMemory(a.Keccak).Should().BeFalse();
+            trieStore.IsNodeCached(a.Keccak).Should().BeFalse();
             // trieStore.IsInMemory(storage1.Keccak).Should().BeFalse();
         }
 
@@ -355,12 +355,12 @@ namespace Nethermind.Trie.Test.Pruning
             TrieStore trieStore = new TrieStore(memDb, new DepthAndMemoryBased(4, 16.MB()), new ConstantInterval(4), _logManager);
 
             trieStore.FinishBlockCommit(TrieType.State, 0, null);
-            trieStore.CommitOneNode(1, new NodeCommitInfo(a));
-            trieStore.CommitOneNode(1, new NodeCommitInfo(storage1));
+            trieStore.CommitNode(1, new NodeCommitInfo(a));
+            trieStore.CommitNode(1, new NodeCommitInfo(storage1));
             trieStore.FinishBlockCommit(TrieType.Storage, 1, storage1);
             trieStore.FinishBlockCommit(TrieType.State, 1, a);
             trieStore.FinishBlockCommit(TrieType.State, 2, a);
-            trieStore.CommitOneNode(3, new NodeCommitInfo(b)); // <- new root
+            trieStore.CommitNode(3, new NodeCommitInfo(b)); // <- new root
             trieStore.FinishBlockCommit(TrieType.State, 3, b);
             trieStore.FinishBlockCommit(TrieType.State, 4, b); // should be 'a' to test properly
             trieStore.FinishBlockCommit(TrieType.State, 5, b); // should be 'a' to test properly
@@ -370,8 +370,8 @@ namespace Nethermind.Trie.Test.Pruning
 
             memDb[a.Keccak!.Bytes].Should().BeNull();
             memDb[storage1.Keccak!.Bytes].Should().BeNull();
-            trieStore.IsInMemory(a.Keccak).Should().BeFalse();
-            trieStore.IsInMemory(storage1.Keccak).Should().BeFalse();
+            trieStore.IsNodeCached(a.Keccak).Should().BeFalse();
+            trieStore.IsNodeCached(storage1.Keccak).Should().BeFalse();
         }
 
         [Test]
@@ -405,13 +405,13 @@ namespace Nethermind.Trie.Test.Pruning
             TrieStore trieStore = new TrieStore(memDb, new DepthAndMemoryBased(4, 16.MB()), new ConstantInterval(4), _logManager);
 
             trieStore.FinishBlockCommit(TrieType.State, 0, null);
-            trieStore.CommitOneNode(1, new NodeCommitInfo(storage1));
+            trieStore.CommitNode(1, new NodeCommitInfo(storage1));
             trieStore.FinishBlockCommit(TrieType.Storage, 1, storage1);
-            trieStore.CommitOneNode(1, new NodeCommitInfo(storage2));
+            trieStore.CommitNode(1, new NodeCommitInfo(storage2));
             trieStore.FinishBlockCommit(TrieType.Storage, 1, storage2);
-            trieStore.CommitOneNode(1, new NodeCommitInfo(a));
-            trieStore.CommitOneNode(1, new NodeCommitInfo(b));
-            trieStore.CommitOneNode(1, new NodeCommitInfo(branch));
+            trieStore.CommitNode(1, new NodeCommitInfo(a));
+            trieStore.CommitNode(1, new NodeCommitInfo(b));
+            trieStore.CommitNode(1, new NodeCommitInfo(branch));
             trieStore.FinishBlockCommit(TrieType.State, 1, branch);
             trieStore.FinishBlockCommit(TrieType.State, 2, branch);
             trieStore.FinishBlockCommit(TrieType.State, 3, branch);
@@ -423,8 +423,8 @@ namespace Nethermind.Trie.Test.Pruning
 
             memDb[a.Keccak!.Bytes].Should().NotBeNull();
             memDb[storage1.Keccak!.Bytes].Should().NotBeNull();
-            trieStore.IsInMemory(a.Keccak).Should().BeFalse();
-            trieStore.IsInMemory(storage1.Keccak).Should().BeFalse();
+            trieStore.IsNodeCached(a.Keccak).Should().BeFalse();
+            trieStore.IsNodeCached(storage1.Keccak).Should().BeFalse();
         }
     }
 }

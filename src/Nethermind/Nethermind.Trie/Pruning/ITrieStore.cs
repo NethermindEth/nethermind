@@ -20,7 +20,7 @@ namespace Nethermind.Trie.Pruning
 {
     public interface ITrieStore : ITrieNodeResolver
     {
-        void CommitOneNode(long blockNumber, NodeCommitInfo nodeCommitInfo);
+        void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo);
         
         void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root);
 

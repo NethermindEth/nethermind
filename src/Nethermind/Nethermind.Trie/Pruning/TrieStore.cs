@@ -30,9 +30,7 @@ namespace Nethermind.Trie.Pruning
     public class TrieStore : ITrieStore
     {
         public TrieStore(IKeyValueStore? keyValueStore, ILogManager? logManager)
-            : this(keyValueStore, No.Pruning, Full.Archive, logManager)
-        {
-        }
+            : this(keyValueStore, No.Pruning, Full.Archive, logManager) { }
 
         public TrieStore(
             IKeyValueStore? keyValueStore,
@@ -46,13 +44,13 @@ namespace Nethermind.Trie.Pruning
             _snapshotStrategy = snapshotStrategy ?? throw new ArgumentNullException(nameof(snapshotStrategy));
         }
 
-        public int CommittedNodeCount
+        public int CommittedNodesCount
         {
-            get => _committedNodeCount;
+            get => _committedNodesCount;
             private set
             {
                 Metrics.CommittedNodesCount = value;
-                _committedNodeCount = value;
+                _committedNodesCount = value;
             }
         }
 
@@ -70,83 +68,80 @@ namespace Nethermind.Trie.Pruning
         {
             get
             {
-                Metrics.CachedNodesCount = _trieNodeCache.Count;
-                return _trieNodeCache.Count;
+                Metrics.CachedNodesCount = _nodeCache.Count;
+                return _nodeCache.Count;
             }
         }
 
-        public void CommitOneNode(long blockNumber, NodeCommitInfo nodeCommitInfo)
+        public void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo)
         {
             if (blockNumber < 0) throw new ArgumentOutOfRangeException(nameof(blockNumber));
-            if (CurrentPackage is null)
-            {
-                BeginNewPackage(blockNumber);
-            }
+            EnsureCommitListExistsForBlock(blockNumber);
 
-            if (_logger.IsTrace) _logger.Trace($"Committing {blockNumber} {nodeCommitInfo}");
-
+            if (_logger.IsTrace) _logger.Trace($"Committing {nodeCommitInfo} at {blockNumber}");
             if (!nodeCommitInfo.IsEmptyBlockMarker)
             {
-                Debug.Assert(CurrentPackage != null, "Current package is null when enqueing a trie node.");
-                Debug.Assert(!nodeCommitInfo.Node!.LastSeen.HasValue, "Committing a block.");
-
-                TrieNode trieNode = nodeCommitInfo.Node;
-                if (trieNode!.Keccak == null)
+                TrieNode node = nodeCommitInfo.Node!;
+                if (node!.Keccak == null)
                 {
-                    throw new InvalidOperationException(
-                        $"Hash of the node {trieNode} should be known at the time of committing.");
+                    throw new PruningException($"The hash of {node} should be known at the time of committing.");
+                }
+                
+                if (CurrentPackage == null)
+                {
+                    throw new PruningException($"{nameof(CurrentPackage)} is NULL when committing {node} at {blockNumber}.");
+                }
+                
+                if (node!.LastSeen.HasValue)
+                {
+                    throw new PruningException($"{nameof(TrieNode.LastSeen)} not set on {node} committed at {blockNumber}.");
                 }
 
-                if (IsInMemory(trieNode.Keccak))
+                if (IsNodeCached(node.Keccak))
                 {
-                    TrieNode cachedReplacement = FindCachedOrUnknown(trieNode.Keccak);
-                    if (!ReferenceEquals(cachedReplacement, trieNode))
+                    TrieNode cachedNodeCopy = FindCachedOrUnknown(node.Keccak);
+                    if (!ReferenceEquals(cachedNodeCopy, node))
                     {
-                        if (_logger.IsTrace)
-                            _logger.Trace(
-                                $"Replacing a {nameof(trieNode)} object {trieNode} with its cached representation {cachedReplacement}.");
+                        if (_logger.IsTrace) _logger.Trace($"Replacing {node} with its cached copy {cachedNodeCopy}.");
                         if (!nodeCommitInfo.IsRoot)
                         {
-                            nodeCommitInfo.NodeParent!.ReplaceChildRef(nodeCommitInfo.ChildPositionAtParent, cachedReplacement);
+                            nodeCommitInfo.NodeParent!.ReplaceChildRef(nodeCommitInfo.ChildPositionAtParent, cachedNodeCopy);
                         }
 
-                        trieNode = cachedReplacement;
+                        node = cachedNodeCopy;
                         Metrics.ReplacedNodesCount++;
                     }
                 }
                 else
                 {
-                    SaveInCache(trieNode);
+                    SaveInCache(node);
                 }
 
-                trieNode.LastSeen = blockNumber;
-                CommittedNodeCount++;
+                node.LastSeen = blockNumber;
+                CommittedNodesCount++;
             }
         }
 
         public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root)
         {
             if (blockNumber < 0) throw new ArgumentOutOfRangeException(nameof(blockNumber));
-            if (CurrentPackage is null)
-            {
-                BeginNewPackage(blockNumber);
-            }
+            EnsureCommitListExistsForBlock(blockNumber);
             
             if (trieType == TrieType.State) // storage tries happen before state commits
             {
                 if (_logger.IsTrace) _logger.Trace($"Enqueued packages {_blockCommitsQueue.Count}");
-                BlockCommitPackage package = CurrentPackage;
-                if (package != null)
+                BlockCommitList list = CurrentPackage;
+                if (list != null)
                 {
-                    package.Root = root;
+                    list.Root = root;
                     if (_logger.IsTrace)
                         _logger.Trace(
-                            $"Current root (block {blockNumber}): {package.Root}, block {package.BlockNumber}");
+                            $"Current root (block {blockNumber}): {list.Root}, block {list.BlockNumber}");
                     if (_logger.IsTrace)
                         _logger.Trace(
-                            $"Incrementing refs from block {blockNumber} root {package.Root?.ToString() ?? "NULL"} ");
+                            $"Incrementing refs from block {blockNumber} root {list.Root?.ToString() ?? "NULL"} ");
 
-                    package.Seal();
+                    list.Seal();
 
                     TryRemovingOldBlock();
                 }
@@ -160,8 +155,8 @@ namespace Nethermind.Trie.Pruning
         public void Flush()
         {
             if (_logger.IsDebug)
-                _logger.Debug($"Flushing trie cache - in memory {_trieNodeCache.Count} " +
-                              $"| commit count {CommittedNodeCount} " +
+                _logger.Debug($"Flushing trie cache - in memory {_nodeCache.Count} " +
+                              $"| commit count {CommittedNodesCount} " +
                               $"| save count {PersistedNodesCount}");
 
             CurrentPackage?.Seal();
@@ -170,8 +165,8 @@ namespace Nethermind.Trie.Pruning
             }
 
             if (_logger.IsDebug)
-                _logger.Debug($"Flushed trie cache - in memory {_trieNodeCache.Count} " +
-                              $"| commit count {CommittedNodeCount} " +
+                _logger.Debug($"Flushed trie cache - in memory {_nodeCache.Count} " +
+                              $"| commit count {CommittedNodesCount} " +
                               $"| save count {PersistedNodesCount}");
         }
 
@@ -203,16 +198,16 @@ namespace Nethermind.Trie.Pruning
             return rlp;
         }
 
-        public bool IsInMemory(Keccak hash) => _trieNodeCache.ContainsKey(hash);
+        public bool IsNodeCached(Keccak hash) => _nodeCache.ContainsKey(hash);
 
         public TrieNode FindCachedOrUnknown(Keccak hash)
         {
-            bool isMissing = !_trieNodeCache.TryGetValue(hash, out TrieNode trieNode);
+            bool isMissing = !_nodeCache.TryGetValue(hash, out TrieNode trieNode);
             if (isMissing)
             {
                 trieNode = new TrieNode(NodeType.Unknown, hash);
                 if (_logger.IsTrace) _logger.Trace($"Creating new node {trieNode}");
-                _trieNodeCache.TryAdd(trieNode.Keccak!, trieNode);
+                _nodeCache.TryAdd(trieNode.Keccak!, trieNode);
             }
             else
             {
@@ -226,9 +221,9 @@ namespace Nethermind.Trie.Pruning
         {
             if (_logger.IsTrace)
             {
-                _logger.Trace($"Trie node cache ({_trieNodeCache.Count})");
+                _logger.Trace($"Trie node cache ({_nodeCache.Count})");
                 // return;
-                foreach (KeyValuePair<Keccak, TrieNode> keyValuePair in _trieNodeCache)
+                foreach (KeyValuePair<Keccak, TrieNode> keyValuePair in _nodeCache)
                 {
                     _logger.Trace($"  {keyValuePair.Value}");
                 }
@@ -238,7 +233,7 @@ namespace Nethermind.Trie.Pruning
         public void Prune(long snapshotId)
         {
             List<Keccak> toRemove = new List<Keccak>(); // TODO: resettable
-            foreach ((Keccak key, TrieNode value) in _trieNodeCache)
+            foreach ((Keccak key, TrieNode value) in _nodeCache)
             {
                 if (value.IsPersisted)
                 {
@@ -256,22 +251,22 @@ namespace Nethermind.Trie.Pruning
 
             foreach (Keccak keccak in toRemove)
             {
-                _trieNodeCache.Remove(keccak);
+                _nodeCache.Remove(keccak);
             }
 
-            Metrics.CachedNodesCount = _trieNodeCache.Count;
+            Metrics.CachedNodesCount = _nodeCache.Count;
         }
 
         public void ClearCache()
         {
-            _trieNodeCache.Clear();
+            _nodeCache.Clear();
         }
 
         #region Private
 
         private readonly IKeyValueStore _keyValueStore;
 
-        private Dictionary<Keccak, TrieNode> _trieNodeCache = new Dictionary<Keccak, TrieNode>();
+        private Dictionary<Keccak, TrieNode> _nodeCache = new Dictionary<Keccak, TrieNode>();
 
         private readonly IPruningStrategy _pruningStrategy;
 
@@ -279,13 +274,13 @@ namespace Nethermind.Trie.Pruning
 
         private readonly ILogger _logger;
 
-        private LinkedList<BlockCommitPackage> _blockCommitsQueue = new LinkedList<BlockCommitPackage>();
+        private LinkedList<BlockCommitList> _blockCommitsQueue = new LinkedList<BlockCommitList>();
 
-        private int _committedNodeCount;
+        private int _committedNodesCount;
 
         private int _persistedNodesCount;
 
-        private BlockCommitPackage? CurrentPackage { get; set; }
+        private BlockCommitList? CurrentPackage { get; set; }
 
         private bool IsCurrentPackageSealed => CurrentPackage == null || CurrentPackage.IsSealed;
 
@@ -293,18 +288,18 @@ namespace Nethermind.Trie.Pruning
 
         private long NewestKeptBlockNumber { get; set; }
 
-        private void BeginNewPackage(long blockNumber)
+        private void CreateCommitList(long blockNumber)
         {
             if (_logger.IsDebug)
-                _logger.Debug($"Beginning new {nameof(BlockCommitPackage)} - {blockNumber}");
+                _logger.Debug($"Beginning new {nameof(BlockCommitList)} - {blockNumber}");
 
             Debug.Assert(CurrentPackage == null || blockNumber == CurrentPackage.BlockNumber + 1,
                 "Newly begun block is not a successor of the last one");
 
             Debug.Assert(IsCurrentPackageSealed, "Not sealed when beginning new block");
 
-            BlockCommitPackage newPackage = new BlockCommitPackage(blockNumber);
-            _blockCommitsQueue.AddLast(newPackage);
+            BlockCommitList newList = new BlockCommitList(blockNumber);
+            _blockCommitsQueue.AddLast(newList);
             NewestKeptBlockNumber = Math.Max(blockNumber, NewestKeptBlockNumber);
 
             // TODO: memory should be taken from the cache now
@@ -313,14 +308,14 @@ namespace Nethermind.Trie.Pruning
                 TryRemovingOldBlock();
             }
 
-            CurrentPackage = newPackage;
-            Debug.Assert(CurrentPackage == newPackage,
+            CurrentPackage = newList;
+            Debug.Assert(CurrentPackage == newList,
                 "Current package is not equal the new package just after adding");
         }
 
         internal bool TryRemovingOldBlock()
         {
-            BlockCommitPackage? blockCommit = _blockCommitsQueue.First?.Value;
+            BlockCommitList? blockCommit = _blockCommitsQueue.First?.Value;
             bool hasAnySealedBlockInQueue = blockCommit != null && blockCommit.IsSealed;
             if (hasAnySealedBlockInQueue)
             {
@@ -330,47 +325,47 @@ namespace Nethermind.Trie.Pruning
             return hasAnySealedBlockInQueue;
         }
 
-        private void SaveInCache(TrieNode trieNode)
+        private void SaveInCache(TrieNode node)
         {
-            Debug.Assert(trieNode.Keccak != null, "Cannot store in cache nodes without resolved key.");
-            _trieNodeCache[trieNode.Keccak!] = trieNode;
-            Metrics.CachedNodesCount = _trieNodeCache.Count;
+            Debug.Assert(node.Keccak != null, "Cannot store in cache nodes without resolved key.");
+            _nodeCache[node.Keccak!] = node;
+            Metrics.CachedNodesCount = _nodeCache.Count;
         }
 
-        private void RemoveOldBlock(BlockCommitPackage commitPackage)
+        private void RemoveOldBlock(BlockCommitList commitList)
         {
             _blockCommitsQueue.RemoveFirst();
 
             if (_logger.IsDebug)
-                _logger.Debug($"Start pruning {nameof(BlockCommitPackage)} - {commitPackage.BlockNumber}");
+                _logger.Debug($"Start pruning {nameof(BlockCommitList)} - {commitList.BlockNumber}");
 
-            Debug.Assert(commitPackage != null && commitPackage.IsSealed,
-                $"Invalid {nameof(commitPackage)} - {commitPackage} received for pruning.");
+            Debug.Assert(commitList != null && commitList.IsSealed,
+                $"Invalid {nameof(commitList)} - {commitList} received for pruning.");
 
-            bool shouldPersistSnapshot = _snapshotStrategy.ShouldPersistSnapshot(commitPackage.BlockNumber);
+            bool shouldPersistSnapshot = _snapshotStrategy.ShouldPersistSnapshot(commitList.BlockNumber);
             if (shouldPersistSnapshot)
             {
-                if (_logger.IsDebug) _logger.Debug($"Persisting from root {commitPackage.Root} in {commitPackage.BlockNumber}");
+                if (_logger.IsDebug) _logger.Debug($"Persisting from root {commitList.Root} in {commitList.BlockNumber}");
 
                 Stopwatch stopwatch = Stopwatch.StartNew();
-                commitPackage.Root?.PersistRecursively(tn => Persist(tn, commitPackage.BlockNumber), this, _logger);
+                commitList.Root?.PersistRecursively(tn => Persist(tn, commitList.BlockNumber), this, _logger);
                 stopwatch.Stop();
                 Metrics.SnapshotPersistenceTime = stopwatch.ElapsedMilliseconds;
 
                 stopwatch.Restart();
-                Prune(commitPackage.BlockNumber); // for now can only prune on snapshot?
+                Prune(commitList.BlockNumber); // for now can only prune on snapshot?
                 stopwatch.Stop();
                 Metrics.PruningTime = stopwatch.ElapsedMilliseconds;
             }
 
             if (_logger.IsDebug)
-                _logger.Debug($"End pruning {nameof(BlockCommitPackage)} - {commitPackage.BlockNumber}");
+                _logger.Debug($"End pruning {nameof(BlockCommitList)} - {commitList.BlockNumber}");
 
             Dump();
             if (shouldPersistSnapshot)
             {
-                if (_logger.IsDebug) _logger.Debug($"Snapshot taken {commitPackage.Root} in {commitPackage.BlockNumber}");
-                SnapshotTaken?.Invoke(this, new BlockNumberEventArgs(commitPackage.BlockNumber));
+                if (_logger.IsDebug) _logger.Debug($"Snapshot taken {commitList.Root} in {commitList.BlockNumber}");
+                SnapshotTaken?.Invoke(this, new BlockNumberEventArgs(commitList.BlockNumber));
             }
         }
 
@@ -403,10 +398,18 @@ namespace Nethermind.Trie.Pruning
             }
         }
 
-        private static bool HasBeenRemoved(TrieNode trieNode, long snapshotId)
+        private static bool HasBeenRemoved(TrieNode node, long snapshotId)
         {
-            Debug.Assert(trieNode.LastSeen.HasValue, $"Any node that is cache should have {nameof(TrieNode.LastSeen)} set.");
-            return trieNode.LastSeen < snapshotId;
+            Debug.Assert(node.LastSeen.HasValue, $"Any node that is cache should have {nameof(TrieNode.LastSeen)} set.");
+            return node.LastSeen < snapshotId;
+        }
+        
+        private void EnsureCommitListExistsForBlock(long blockNumber)
+        {
+            if (CurrentPackage is null)
+            {
+                CreateCommitList(blockNumber);
+            }
         }
 
         #endregion

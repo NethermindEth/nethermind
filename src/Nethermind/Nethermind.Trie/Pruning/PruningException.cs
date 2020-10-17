@@ -13,30 +13,25 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
+
+using System;
 
 namespace Nethermind.Trie.Pruning
 {
-    internal class BlockCommitList
+    [Serializable]
+    public class PruningException : TrieException
     {
-        public long BlockNumber { get; }
-        
-        public TrieNode? Root { get; set; }
-
-        public bool IsSealed { get; private set; }
-
-        public BlockCommitList(long blockNumber)
+        public PruningException()
         {
-            BlockNumber = blockNumber;
         }
 
-        public void Seal()
+        public PruningException(string message) : base(message)
         {
-            IsSealed = true;
         }
 
-        public override string ToString()
+        public PruningException(string message, Exception inner) : base(message, inner)
         {
-            return $"{BlockNumber}({Root})";
         }
     }
 }

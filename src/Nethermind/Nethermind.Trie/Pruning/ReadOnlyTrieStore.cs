@@ -39,7 +39,7 @@ namespace Nethermind.Trie.Pruning
             return _trieStore.LoadRlp(hash, allowCaching);
         }
 
-        public void CommitOneNode(long blockNumber, NodeCommitInfo nodeCommitInfo)
+        public void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo)
         {
         }
 
