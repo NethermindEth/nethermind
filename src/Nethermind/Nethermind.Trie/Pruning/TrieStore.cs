@@ -124,12 +124,7 @@ namespace Nethermind.Trie.Pruning
                 {
                     throw new PruningException($"{nameof(TrieNode.LastSeen)} not set on {node} committed at {blockNumber}.");
                 }
-
-                if (node.FullRlp.Length < 32)
-                {
-                    throw new InvalidOperationException();
-                }
-
+                
                 if (IsNodeCached(node.Keccak))
                 {
                     TrieNode cachedNodeCopy = FindCachedOrUnknown(node.Keccak);

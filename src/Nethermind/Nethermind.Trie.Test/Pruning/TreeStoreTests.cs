@@ -181,7 +181,7 @@ namespace Nethermind.Trie.Test.Pruning
             trieStore.FinishBlockCommit(TrieType.State, 4, a);
 
             memDb[a.Keccak!.Bytes].Should().NotBeNull();
-            trieStore.IsNodeCached(a.Keccak).Should().BeFalse();
+            trieStore.IsNodeCached(a.Keccak).Should().BeTrue();
         }
 
         [Test]
@@ -237,7 +237,7 @@ namespace Nethermind.Trie.Test.Pruning
             trieStore.FinishBlockCommit(TrieType.State, 8, a);
 
             memDb[a.Keccak!.Bytes].Should().NotBeNull();
-            trieStore.IsNodeCached(a.Keccak).Should().BeFalse();
+            trieStore.IsNodeCached(a.Keccak).Should().BeTrue();
         }
 
         [Test]
@@ -266,7 +266,7 @@ namespace Nethermind.Trie.Test.Pruning
             trieStore.FinishBlockCommit(TrieType.State, 8, b);
 
             memDb[a.Keccak!.Bytes].Should().NotBeNull();
-            trieStore.IsNodeCached(a.Keccak).Should().BeFalse();
+            trieStore.IsNodeCached(a.Keccak).Should().BeTrue();
         }
 
         [Test]
@@ -295,7 +295,7 @@ namespace Nethermind.Trie.Test.Pruning
             trieStore.FinishBlockCommit(TrieType.State, 8, b); // should be 'a' to test properly
 
             memDb[a.Keccak!.Bytes].Should().BeNull();
-            trieStore.IsNodeCached(a.Keccak).Should().BeFalse();
+            trieStore.IsNodeCached(a.Keccak).Should().BeTrue();
         }
 
         private AccountDecoder _accountDecoder = new AccountDecoder();
@@ -330,7 +330,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             memDb[a.Keccak!.Bytes].Should().NotBeNull();
             memDb[storage1.Keccak!.Bytes].Should().NotBeNull();
-            trieStore.IsNodeCached(a.Keccak).Should().BeFalse();
+            trieStore.IsNodeCached(a.Keccak).Should().BeTrue();
             // trieStore.IsInMemory(storage1.Keccak).Should().BeFalse();
         }
 
@@ -369,8 +369,8 @@ namespace Nethermind.Trie.Test.Pruning
 
             memDb[a.Keccak!.Bytes].Should().BeNull();
             memDb[storage1.Keccak!.Bytes].Should().BeNull();
-            trieStore.IsNodeCached(a.Keccak).Should().BeFalse();
-            trieStore.IsNodeCached(storage1.Keccak).Should().BeFalse();
+            trieStore.IsNodeCached(a.Keccak).Should().BeTrue();
+            trieStore.IsNodeCached(storage1.Keccak).Should().BeTrue();
         }
 
         [Test]
@@ -422,8 +422,8 @@ namespace Nethermind.Trie.Test.Pruning
 
             memDb[a.Keccak!.Bytes].Should().NotBeNull();
             memDb[storage1.Keccak!.Bytes].Should().NotBeNull();
-            trieStore.IsNodeCached(a.Keccak).Should().BeFalse();
-            trieStore.IsNodeCached(storage1.Keccak).Should().BeFalse();
+            trieStore.IsNodeCached(a.Keccak).Should().BeTrue();
+            trieStore.IsNodeCached(storage1.Keccak).Should().BeTrue();
         }
     }
 }

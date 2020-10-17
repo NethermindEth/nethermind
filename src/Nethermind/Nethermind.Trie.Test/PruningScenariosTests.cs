@@ -213,8 +213,7 @@ namespace Nethermind.Trie.Test
                 .CommitEmptyBlock()
                 .PruneOldBlock()
                 .PruneOldBlock()
-                // .VerifyPersisted(9) // this can be 9 if we merge the storage and state tries
-                .VerifyPersisted(12);
+                .VerifyPersisted(9);
         }
         
         [Test]
@@ -255,7 +254,7 @@ namespace Nethermind.Trie.Test
         }
         
         [Test]
-        public void Delete_storage_before_persisting()
+        public void Do_not_delete_storage_before_persisting()
         {
             PruningContext.SnapshotEveryOtherBlockWithManualPruning
                 .CreateAccount(1)
@@ -268,7 +267,7 @@ namespace Nethermind.Trie.Test
                 .PruneOldBlock()
                 .PruneOldBlock()
                 .VerifyPersisted(1)
-                .VerifyCached(0);
+                .VerifyCached(4);
         }
         
         [Test]
@@ -306,7 +305,7 @@ namespace Nethermind.Trie.Test
                 .PruneOldBlock()
                 .PruneOldBlock()
                 .VerifyPersisted(6)
-                .VerifyCached(0);
+                .VerifyCached(2);
         }
         
         [Test]
