@@ -69,7 +69,7 @@ namespace Nethermind.Blockchain.Contracts
             var function = AbiDefinition.GetFunction(functionName);
             var transaction = GenerateTransaction<SystemTransaction>(functionName, sender, gasLimit, header, arguments);
             var result = Call(header, transaction);
-            var objects = AbiEncoder.Decode(function.GetReturnInfo(), result);
+            var objects = DecodeData(function.GetReturnInfo(), result);
             return objects;
         }
 
@@ -118,7 +118,7 @@ namespace Nethermind.Blockchain.Contracts
             var transaction = GenerateTransaction<SystemTransaction>(functionName, sender, gasLimit, header, arguments);
             if (TryCall(header, transaction, out var bytes))
             {
-                result = AbiEncoder.Decode(function.GetReturnInfo(), bytes);
+                result = DecodeData(function.GetReturnInfo(), bytes);
                 return true;
             }
 

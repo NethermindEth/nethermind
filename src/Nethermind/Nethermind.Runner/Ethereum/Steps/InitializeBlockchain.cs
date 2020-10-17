@@ -64,7 +64,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         }
 
         [Todo(Improve.Refactor, "Use chain spec for all chain configuration")]
-        private Task InitBlockchain()
+        protected virtual Task InitBlockchain()
         {
             if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
             if (_api.DbProvider == null) throw new StepDependencyException(nameof(_api.DbProvider));
@@ -166,9 +166,10 @@ namespace Nethermind.Runner.Ethereum.Steps
             {
                 _api.StateProvider.StateRoot = _api.BlockTree.Head.StateRoot;
             }
-
-            _api.ReceiptStorage = initConfig.StoreReceipts ? (IReceiptStorage?) new PersistentReceiptStorage(_api.DbProvider.ReceiptsDb, _api.SpecProvider, new ReceiptsRecovery()) : NullReceiptStorage.Instance;
-            _api.ReceiptFinder = new FullInfoReceiptFinder(_api.ReceiptStorage, new ReceiptsRecovery(), _api.BlockTree);
+            
+            ReceiptsRecovery receiptsRecovery = new ReceiptsRecovery(_api.EthereumEcdsa, _api.SpecProvider);
+            _api.ReceiptStorage = initConfig.StoreReceipts ? (IReceiptStorage?) new PersistentReceiptStorage(_api.DbProvider.ReceiptsDb, _api.SpecProvider, receiptsRecovery) : NullReceiptStorage.Instance;
+            _api.ReceiptFinder = new FullInfoReceiptFinder(_api.ReceiptStorage, receiptsRecovery, _api.BlockTree);
             
             _api.RecoveryStep = new TxSignaturesRecoveryStep(_api.EthereumEcdsa, _api.TxPool, _api.SpecProvider, _api.LogManager);
             _api.StorageProvider = new StorageProvider(

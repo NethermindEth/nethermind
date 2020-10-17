@@ -15,21 +15,11 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Collections.Generic;
-using Nethermind.Blockchain.Processing;
-
-namespace Nethermind.Consensus.AuRa.Contracts
+namespace Nethermind.Evm
 {
-    public class DictionaryContractDataStore<T> : DictionaryBasedContractDataStore<T>
+    public enum PadDirection : byte
     {
-        private readonly IEqualityComparer<T> _comparer;
-
-        public DictionaryContractDataStore(IDataContract<T> dataContract, IBlockProcessor blockProcessor, IEqualityComparer<T> comparer = null)
-            : base(dataContract, blockProcessor)
-        {
-            _comparer = comparer;
-        }
-
-        protected override IDictionary<T, T> CreateItems() => new Dictionary<T, T>(_comparer);
+        Right = 0,
+        Left = 1
     }
 }

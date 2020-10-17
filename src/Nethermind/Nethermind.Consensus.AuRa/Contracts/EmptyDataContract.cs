@@ -16,29 +16,17 @@
 // 
 
 using System.Collections.Generic;
-using Nethermind.Blockchain.Processing;
+using System.Linq;
+using Nethermind.Core;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public class ListContractDataStore<T> : ContractDataStore<T, List<T>>
+    internal class EmptyDataContract<T> : IDataContract<T>
     {
-        public ListContractDataStore(IDataContract<T> dataContract, IBlockProcessor blockProcessor)
-            : base(dataContract, blockProcessor)
-        {
-        }
+        public IEnumerable<T> GetAllItemsFromBlock(BlockHeader blockHeader) => Enumerable.Empty<T>();
 
-        protected override List<T> CreateItems() => new List<T>();
+        public IEnumerable<T> GetItemsChangedFromBlock(BlockHeader header, TxReceipt[] receipts) => Enumerable.Empty<T>();
 
-        protected override void ClearItems(List<T> collection)
-        {
-            collection.Clear();
-        }
-
-        protected override IEnumerable<T> GetSnapshot(List<T> collection) => collection.ToArray();
-
-        protected override void InsertItems(List<T> collection, IEnumerable<T> items)
-        {
-            collection.AddRange(items);
-        }
+        public bool IncrementalChanges => true;
     }
 }

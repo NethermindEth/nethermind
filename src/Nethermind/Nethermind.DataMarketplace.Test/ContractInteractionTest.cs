@@ -244,7 +244,7 @@ namespace Nethermind.DataMarketplace.Test
 
             public TxReceipt GetReceipt(Keccak txHash) => _receiptsTracer.TxReceipts.Single(r => r?.TxHash == txHash);
 
-            public Facade.BlockchainBridge.CallOutput Call(BlockHeader blockHeader, Transaction transaction)
+            public Facade.BlockchainBridge.CallOutput Call(BlockHeader blockHeader, Transaction transaction, CancellationToken cancellationToken)
             {
                 CallOutputTracer tracer = new CallOutputTracer();
                 _processor.Execute(transaction, Head?.Header, tracer);

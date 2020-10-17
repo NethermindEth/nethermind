@@ -19,6 +19,7 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Core.Test.IO;
 using Nethermind.Logging;
 using Nethermind.Network.StaticNodes;
 using NUnit.Framework;
@@ -75,18 +76,11 @@ namespace Nethermind.Network.Test
         [Test]
         public async Task init_should_load_static_nodes_from_empty_file()
         {
-            var path = Path.GetTempFileName();
-            await File.WriteAllTextAsync(path, string.Empty);
-            try
-            {
-                _staticNodesManager = new StaticNodesManager(path, LimboLogs.Instance);
-                await _staticNodesManager.InitAsync();
-                _staticNodesManager.Nodes.Count().Should().Be(0);
-            }
-            finally
-            {
-                File.Delete(path);
-            }
+            using var tempFile = TempPath.GetTempFile();
+            await File.WriteAllTextAsync(tempFile.Path, string.Empty);
+            _staticNodesManager = new StaticNodesManager(tempFile.Path, LimboLogs.Instance);
+            await _staticNodesManager.InitAsync();
+            _staticNodesManager.Nodes.Count().Should().Be(0);
         }
     }
 }

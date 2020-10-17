@@ -51,7 +51,8 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             ITxPool txPool = new TxPool.TxPool(new InMemoryTxStorage(), ecdsa, MainnetSpecProvider.Instance, new TxPoolConfig(), stateProvider, LimboLogs.Instance);
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(1).TestObject;
             IWallet wallet = new DevWallet(new WalletConfig(), LimboLogs.Instance);
-            LogFinder logFinder = new LogFinder(blockTree, new InMemoryReceiptStorage(), NullBloomStorage.Instance, LimboLogs.Instance, new ReceiptsRecovery(), 1024);
+            ReceiptsRecovery receiptsRecovery = new ReceiptsRecovery(ecdsa, MainnetSpecProvider.Instance);
+            LogFinder logFinder = new LogFinder(blockTree, new InMemoryReceiptStorage(), NullBloomStorage.Instance, LimboLogs.Instance, receiptsRecovery, 1024);
 
             ReadOnlyTxProcessingEnv processingEnv = new ReadOnlyTxProcessingEnv(
                 new ReadOnlyDbProvider(memDbProvider, false),

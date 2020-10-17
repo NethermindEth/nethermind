@@ -32,6 +32,7 @@
       <ProjectReference Include="..\Nethermind.DataMarketplace.Initializers\Nethermind.DataMarketplace.Initializers.csproj" />
       <ProjectReference Include="..\Nethermind.Evm\Nethermind.Evm.csproj" />
       <ProjectReference Include="..\Nethermind.Facade\Nethermind.Facade.csproj" />
+      <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
     </ItemGroup>
 
     <ItemGroup>

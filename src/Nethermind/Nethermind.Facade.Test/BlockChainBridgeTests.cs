@@ -149,7 +149,7 @@ namespace Nethermind.Facade.Test
             _transactionProcessor.Received().CallAndRestore(
                 tx,
                 Arg.Is<BlockHeader>(bh => bh.Number == 11 && bh.Timestamp == ((ITimestamper) _timestamper).EpochSeconds),
-                Arg.Any<EstimateGasTracer>());
+                Arg.Is<CancellationTxTracer>(t => t.InnerTracer is EstimateGasTracer));
         }
 
         [Test]
@@ -161,7 +161,7 @@ namespace Nethermind.Facade.Test
             Transaction tx = new Transaction();
             tx.GasLimit = Transaction.BaseTxGasCost;
 
-            _blockchainBridge.Call(header, tx);
+            _blockchainBridge.Call(header, tx, CancellationToken.None);
             _transactionProcessor.Received().CallAndRestore(
                 tx,
                 Arg.Is<BlockHeader>(bh => bh.Number == 10),

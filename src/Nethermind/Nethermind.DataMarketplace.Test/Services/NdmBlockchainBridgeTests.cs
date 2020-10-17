@@ -176,9 +176,9 @@ namespace Nethermind.DataMarketplace.Test.Services
             var data = new byte[] {0, 1, 2};
             _blockchainBridge.BeamHead.Returns(head);
             var output = new BlockchainBridge.CallOutput(data, 0, null);
-            _blockchainBridge.Call(head?.Header, transaction).Returns(output);
+            _blockchainBridge.Call(head?.Header, transaction, default).Returns(output);
             var result = await _ndmBridge.CallAsync(transaction);
-            _blockchainBridge.Received().Call(head?.Header, transaction);
+            _blockchainBridge.Received().Call(head?.Header, transaction, default);
             result.Should().BeSameAs(data);
         }
         
@@ -189,7 +189,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             var transaction = Build.A.Transaction.TestObject;
             var result = await _ndmBridge.CallAsync(transaction, blockNumber);
             _blockFinder.Received().FindBlock(blockNumber);
-            _blockchainBridge.DidNotReceiveWithAnyArgs().Call(null, null);
+            _blockchainBridge.DidNotReceiveWithAnyArgs().Call(null, null, default);
             result.Should().BeSameAs(Array.Empty<byte>());
         }
         
@@ -201,10 +201,10 @@ namespace Nethermind.DataMarketplace.Test.Services
             var data = new byte[] {0, 1, 2};
             _blockFinder.FindBlock(block.Number).Returns(block);
             var output = new BlockchainBridge.CallOutput(data, 0, null);
-            _blockchainBridge.Call(block.Header, transaction).Returns(output);
+            _blockchainBridge.Call(block.Header, transaction, default).Returns(output);
             var result = await _ndmBridge.CallAsync(transaction, block.Number);
             _blockFinder.Received().FindBlock(block.Number);
-            _blockchainBridge.Received().Call(block.Header, transaction);
+            _blockchainBridge.Received().Call(block.Header, transaction, default);
             result.Should().BeSameAs(data);
         }
         

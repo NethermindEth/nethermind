@@ -15,13 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Collections.Generic;
 using Nethermind.Core;
 
-namespace Nethermind.Consensus.AuRa.Contracts
+namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 {
-    public interface IContractDataStore<out T>
+    public interface IDictionaryContractDataStore<T> : IContractDataStore<T>
     {
-        IEnumerable<T> GetItemsFromContractAtBlock(BlockHeader parent);
+        bool TryGetValue(BlockHeader header, T key, out T value);
     }
 }

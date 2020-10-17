@@ -145,10 +145,11 @@ namespace Nethermind.Core.Test.Blockchain
 
             var genesis = GetGenesisBlock();
             BlockTree.SuggestBlock(genesis);
-            if (!await _resetEvent.WaitAsync(1000))
-            {
-                throw new InvalidOperationException("Failed to process genesis in 1s.");
-            }
+            await _resetEvent.WaitAsync();
+            //if (!await _resetEvent.WaitAsync(1000))
+            // {
+            //     throw new InvalidOperationException("Failed to process genesis in 1s.");
+            // }
 
             await AddBlocksOnStart();
             return this;
@@ -201,7 +202,7 @@ namespace Nethermind.Core.Test.Blockchain
             TxPool.AddTransaction(testObject, TxHandlingOptions.None);
         }
 
-        public void Dispose()
+        public virtual void Dispose()
         {
             BlockProducer?.StopAsync();
             CodeDb?.Dispose();

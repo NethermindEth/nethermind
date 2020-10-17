@@ -120,10 +120,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
             }
         }
         
-        private bool CanMigrate(SyncMode syncMode)
-        {
-            return (syncMode & SyncMode.Full) == SyncMode.Full;
-        }
+        private bool CanMigrate(SyncMode syncMode) => syncMode == SyncMode.None;
 
         private void OnSyncModeChanged(object? sender, SyncModeChangedEventArgs e)
         {
@@ -275,7 +272,7 @@ namespace Nethermind.Runner.Ethereum.Steps.Migrations
 
         private long MigrateToBlockNumber =>
             _receiptStorage.MigratedBlockNumber == long.MaxValue
-                ? _syncModeSelector.Current == SyncMode.Full 
+                ? _syncModeSelector.Current == SyncMode.None 
                     ? _blockTree.Head?.Number ?? 0
                     : _blockTree.BestKnownNumber
                 : _receiptStorage.MigratedBlockNumber - 1;
