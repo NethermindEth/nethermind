@@ -50,6 +50,9 @@ namespace Nethermind.Runner.Ethereum
         
         public async Task StopAsync()
         {
+            if (_logger.IsInfo) _logger.Info("Persisting trie...");
+            _api.TrieStore?.HackPersistOnShutdown();
+            
             if (_logger.IsInfo) _logger.Info("Stopping session monitor...");
             _api.SessionMonitor?.Stop();
 

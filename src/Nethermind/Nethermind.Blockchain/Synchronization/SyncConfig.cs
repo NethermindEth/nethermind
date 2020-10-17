@@ -32,6 +32,7 @@ namespace Nethermind.Blockchain.Synchronization
         public bool UseGethLimitsInFastBlocks { get; set; } = true;
         public bool BeamSync { get; set; }
         public bool Pruning { get; set; }
+        public long PruningCacheMb { get; set; } = 512;
         public bool FastSync { get; set; }
         public bool DownloadHeadersInFastSync { get; set; } = true;
         public bool DownloadBodiesInFastSync { get; set; } = true;

@@ -641,7 +641,7 @@ namespace Nethermind.Trie
         // TODO: I believe this is no longer ever valid since we made our nodes immutable
         private void UnresolveKey()
         {
-            // Keccak = null;
+            Keccak = null;
         }
 
         private void InitData()

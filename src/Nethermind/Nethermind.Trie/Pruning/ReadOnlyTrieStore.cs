@@ -39,17 +39,13 @@ namespace Nethermind.Trie.Pruning
             return _trieStore.LoadRlp(hash, allowCaching);
         }
 
-        public void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo)
-        {
-        }
+        public void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo) { }
 
-        public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root)
-        {
-        }
+        public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root) { }
 
-        public void UndoOneBlock()
-        {
-        }
+        public void HackPersistOnShutdown() { }
+
+        public void UndoOneBlock() { }
 
         public event EventHandler<BlockNumberEventArgs> TriePersisted
         {

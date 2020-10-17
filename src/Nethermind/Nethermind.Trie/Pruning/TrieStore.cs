@@ -17,7 +17,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
@@ -170,14 +169,21 @@ namespace Nethermind.Trie.Pruning
                             $"Incrementing refs from block {blockNumber} root {set.Root?.ToString() ?? "NULL"} ");
 
                     set.Seal();
-
-                    // TODO: if I understand properly there is no queue any more - we always keep only one previous block
-                    Debug.Assert(_commitSetQueue.Count <= 2, "Failed to prove that the queue has at most 2 items");
-                    TryRemovingOldBlock();
                 }
 
+                bool shouldPersistSnapshot = _persistenceStrategy.ShouldPersist(set.BlockNumber);
+                if (shouldPersistSnapshot)
+                {
+                    Persist(set);
+                }
+                
                 CurrentPackage = null;
             }
+        }
+
+        public void HackPersistOnShutdown()
+        {
+            PersistOnShutdown();
         }
 
         public event EventHandler<BlockNumberEventArgs>? TriePersisted;
@@ -190,9 +196,6 @@ namespace Nethermind.Trie.Pruning
                               $"| save count {PersistedNodesCount}");
 
             CurrentPackage?.Seal();
-            while (TryRemovingOldBlock())
-            {
-            }
 
             if (_logger.IsDebug)
                 _logger.Debug($"Flushed trie cache - in memory {_nodeCache.Count} " +
@@ -267,8 +270,12 @@ namespace Nethermind.Trie.Pruning
 
         public void Prune()
         {
+            if (_logger.IsWarn) _logger.Warn($"Pruning nodes {MemoryUsedByCache/1024/1024}MB {LastPersistedBlockNumber}/{NewestKeptBlockNumber}.");
+            
             Stopwatch stopwatch = Stopwatch.StartNew();
             List<TrieNode> toRemove = new List<TrieNode>(); // TODO: resettable
+
+            long newMemory = 0;
             foreach ((Keccak key, TrieNode value) in _nodeCache)
             {
                 if (value.IsPersisted)
@@ -277,7 +284,11 @@ namespace Nethermind.Trie.Pruning
                     toRemove.Add(value);
                     if (value.Keccak == null)
                     {
-                        throw new InvalidOperationException($"Parsisted {value} {key}");
+                        value.ResolveKey(this, true); // TODO: hack
+                        if(value.Keccak != key)
+                        {
+                            throw new InvalidOperationException($"Persisted {value} {key} != {value.Keccak}");
+                        }
                     }
                     
                     Metrics.PrunedPersistedNodesCount++;
@@ -292,23 +303,57 @@ namespace Nethermind.Trie.Pruning
                     }
                     Metrics.PrunedTransientNodesCount++;
                 }
+                else
+                {
+                    newMemory += value.GetMemorySize(false);
+                }
             }
 
             foreach (TrieNode trieNode in toRemove)
             {
                 if (trieNode.Keccak == null)
                 {
-                    throw new InvalidOperationException($"{trieNode}");
+                    throw new InvalidOperationException($"{trieNode} has a null key");
                 }
                 
                 _nodeCache.Remove(trieNode.Keccak!);
-                MemoryUsedByCache -= trieNode.GetMemorySize(false);
             }
 
+            MemoryUsedByCache = newMemory;
             Metrics.CachedNodesCount = _nodeCache.Count;
 
             stopwatch.Stop();
             Metrics.PruningTime = stopwatch.ElapsedMilliseconds;
+            
+            if (_logger.IsWarn) _logger.Warn(
+                $"Finished pruning nodes in {stopwatch.ElapsedMilliseconds} {MemoryUsedByCache/1024/1024}MB {LastPersistedBlockNumber}/{NewestKeptBlockNumber}.");
+
+            if (_pruningStrategy.ShouldPrune(MemoryUsedByCache))
+            {
+                if (_logger.IsWarn) _logger.Warn("Elevated pruning starting");
+
+                BlockCommitSet? candidateSet = null;
+                while (_commitSetQueue.TryDequeue(out BlockCommitSet? frontSet))
+                {
+                    if (frontSet!.BlockNumber >= NewestKeptBlockNumber - Reorganization.MaxDepth)
+                    {
+                        break;
+                    }
+                    
+                    candidateSet = frontSet;
+                }
+
+                if (candidateSet != null)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Elevated pruning for candidate {candidateSet.BlockNumber}");
+                    Persist(candidateSet);
+                    Prune();
+                }
+                else
+                {
+                    if (_logger.IsWarn) _logger.Warn("Found no candidate for elevated pruning");
+                }
+            }
         }
 
         public void ClearCache()
@@ -367,27 +412,20 @@ namespace Nethermind.Trie.Pruning
             _commitSetQueue.Enqueue(commitSet);
             NewestKeptBlockNumber = Math.Max(blockNumber, NewestKeptBlockNumber);
 
-            TryRemovingOldBlock();
-
+            bool shouldPersistSnapshot = _persistenceStrategy.ShouldPersist(commitSet.BlockNumber);
+            if (shouldPersistSnapshot)
+            {
+                Persist(commitSet);
+            }
+            
+            if (_pruningStrategy.ShouldPrune(MemoryUsedByCache))
+            {
+                Prune();
+            }
+            
             CurrentPackage = commitSet;
             Debug.Assert(ReferenceEquals(CurrentPackage, commitSet),
                 $"Current {nameof(BlockCommitSet)} is not same as the new package just after adding");
-        }
-
-        internal bool TryRemovingOldBlock()
-        {
-            _commitSetQueue.TryPeek(out BlockCommitSet? blockCommit);
-            bool hasAnySealedBlockInQueue = blockCommit != null && blockCommit.IsSealed;
-            if (hasAnySealedBlockInQueue)
-            {
-                RemoveOldCommitSet(blockCommit);
-                if (_pruningStrategy.ShouldPrune(MemoryUsedByCache))
-                {
-                    Prune();
-                }
-            }
-
-            return hasAnySealedBlockInQueue;
         }
 
         private void SaveInCache(TrieNode node)
@@ -396,25 +434,6 @@ namespace Nethermind.Trie.Pruning
             _nodeCache[node.Keccak!] = node;
             MemoryUsedByCache += node.GetMemorySize(false);
             Metrics.CachedNodesCount = _nodeCache.Count;
-        }
-
-        private void RemoveOldCommitSet(BlockCommitSet commitSet)
-        {
-            _commitSetQueue.Dequeue();
-
-            if (_logger.IsDebug)
-                _logger.Debug($"Start pruning {nameof(BlockCommitSet)} - {commitSet.BlockNumber}");
-
-            Debug.Assert(commitSet != null && commitSet.IsSealed,
-                $"Invalid {nameof(commitSet)} - {commitSet} received for pruning.");
-
-            bool shouldPersistSnapshot = _persistenceStrategy.ShouldPersist(commitSet.BlockNumber);
-            if (shouldPersistSnapshot)
-            {
-                Persist(commitSet);
-            }
-
-            Dump();
         }
 
         private void Persist(BlockCommitSet commitSet)
@@ -426,7 +445,9 @@ namespace Nethermind.Trie.Pruning
             stopwatch.Stop();
             Metrics.SnapshotPersistenceTime = stopwatch.ElapsedMilliseconds;
 
-            if (_logger.IsDebug) _logger.Debug($"Persisted trie from {commitSet.Root} in {commitSet.BlockNumber}");
+            if (_logger.IsWarn) _logger.Warn($"Persisted trie from {commitSet.Root} in {commitSet.BlockNumber} (cache memory {MemoryUsedByCache})");
+
+            RemoveHistorical();
             LastPersistedBlockNumber = commitSet.BlockNumber;
         }
 
@@ -478,15 +499,38 @@ namespace Nethermind.Trie.Pruning
 
         public void Dispose()
         {
+            _logger.Warn("Disposing trie");
+            PersistOnShutdown();
+        }
+
+        public void RemoveHistorical()
+        {
+            while (_commitSetQueue.TryPeek(out BlockCommitSet blockCommitSet))
+            {
+                if (blockCommitSet.BlockNumber < LastPersistedBlockNumber - Reorganization.MaxDepth)
+                {
+                    _commitSetQueue.Dequeue();
+                }
+                else
+                {
+                    break;
+                }
+            }
+        }
+
+        private void PersistOnShutdown()
+        {
             BlockCommitSet? persistenceCandidate = null;
             while (_commitSetQueue.TryDequeue(out BlockCommitSet blockCommitSet))
             {
                 if (NewestKeptBlockNumber - blockCommitSet.BlockNumber > Reorganization.MaxDepth)
                 {
                     persistenceCandidate = blockCommitSet;
+                    _logger.Warn($"New persistence candidate {persistenceCandidate}");
                 }
             }
 
+            _logger.Warn($"Persisting on disposal {persistenceCandidate} (cache memory at {MemoryUsedByCache})");
             if (persistenceCandidate != null)
             {
                 Persist(persistenceCandidate);

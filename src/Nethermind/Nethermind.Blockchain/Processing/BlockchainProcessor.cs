@@ -386,6 +386,8 @@ namespace Nethermind.Blockchain.Processing
             {
                 foreach (Block block in processingBranch.Blocks)
                 {
+                    _loopCancellationSource.Token.ThrowIfCancellationRequested();
+
                     if (block.Hash != null && _blockTree.WasProcessed(block.Number, block.Hash))
                     {
                         if (_logger.IsInfo) _logger.Info($"Rerunning block after reorg or pruning: {block.ToString(Block.Format.FullHashAndNumber)}");

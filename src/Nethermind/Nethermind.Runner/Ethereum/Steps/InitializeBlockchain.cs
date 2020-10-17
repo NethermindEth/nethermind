@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -98,7 +99,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             {
                 _api.TrieStore = new TrieStore(
                     _api.DbProvider.StateDb.Innermost,
-                    new MemoryLimit(512.MB()), // TODO: memory hint should define this
+                    new MemoryLimit(_api.Config<ISyncConfig>().PruningCacheMb * 1.MB()), // TODO: memory hint should define this
                     new ConstantInterval(8192), // TODO: this should be based on time
                     _api.LogManager);
             }
@@ -275,18 +276,28 @@ namespace Nethermind.Runner.Ethereum.Steps
         {
             // the kind of hacks when you run out of time...
             long blockNumber = e.BlockNumber;
+            _api.LogManager.GetClassLogger().Warn($"on persisted {blockNumber}");
             _triePersistenceHistory.Enqueue(blockNumber);
 
             long firstInQueue = _triePersistenceHistory.Peek();
+            _api.LogManager.GetClassLogger().Warn($"first in queue is {firstInQueue}");
             if (firstInQueue <= _api.BlockTree!.Head.Number - Reorganization.MaxDepth)
             {
+                _api.LogManager.GetClassLogger().Warn($"first in queue {firstInQueue} should be remembered");
                 // it is important to keep the queue, otherwise we may lose ability
                 // to either reorganize after restarting or persisting at all
                 Keccak? stateHeadHash = _api.BlockTree!.FindHash(firstInQueue);
                 if (stateHeadHash != null)
                 {
+                    _api.LogManager.GetClassLogger().Warn($"first in queue {firstInQueue} is remembered");
                     (_api.BlockTree as BlockTree)!.SaveStateHead(stateHeadHash);
-                }                
+                }
+                else
+                {
+                    throw new InvalidAsynchronousStateException($"Missing block hash for {firstInQueue}");
+                }
+                
+                _triePersistenceHistory.Dequeue();
             }
         }
         

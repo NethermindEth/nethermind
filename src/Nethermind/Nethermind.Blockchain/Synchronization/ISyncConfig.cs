@@ -33,6 +33,9 @@ namespace Nethermind.Blockchain.Synchronization
         
         [ConfigItem(Description = "Enables pruning (beta).", DefaultValue = "false")]
         bool Pruning { get; set; }
+        
+        [ConfigItem(Description = "Pruning cache size in MB (beta).", DefaultValue = "512")]
+        long PruningCacheMb { get; set; }
 
         [ConfigItem(Description = "If set to 'true' then the Fast Sync (eth/63) synchronization algorithm will be used.", DefaultValue = "false")]
         bool FastSync { get; set; }
