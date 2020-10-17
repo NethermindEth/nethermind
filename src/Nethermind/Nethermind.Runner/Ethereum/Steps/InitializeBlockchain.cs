@@ -110,11 +110,11 @@ namespace Nethermind.Runner.Ethereum.Steps
                     Full.Archive,
                     _api.LogManager);
             }
-
+            
+            _api.DisposeStack.Push(_api.TrieStore);
             _api.ReadOnlyTrieStore = new ReadOnlyTrieStore(_api.TrieStore);
             _api.TrieStore.TriePersisted += TreeStoreOnStored;
-            
-            
+
             _api.StateProvider = new StateProvider(
                 _api.TrieStore,
                 _api.DbProvider.CodeDb,

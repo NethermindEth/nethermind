@@ -18,7 +18,7 @@ using System;
 
 namespace Nethermind.Trie.Pruning
 {
-    public interface ITrieStore : ITrieNodeResolver
+    public interface ITrieStore : ITrieNodeResolver, IDisposable
     {
         void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo);
         

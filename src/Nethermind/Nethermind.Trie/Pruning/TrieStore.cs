@@ -17,6 +17,8 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 
@@ -288,7 +290,7 @@ namespace Nethermind.Trie.Pruning
 
         private readonly ILogger _logger;
 
-        private LinkedList<BlockCommitSet> _commitSetQueue = new LinkedList<BlockCommitSet>();
+        private Queue<BlockCommitSet> _commitSetQueue = new Queue<BlockCommitSet>();
 
         private int _committedNodesCount;
 
@@ -300,7 +302,14 @@ namespace Nethermind.Trie.Pruning
 
         private bool IsCurrentListSealed => CurrentPackage == null || CurrentPackage.IsSealed;
 
-        private long OldestKeptBlockNumber => _commitSetQueue.First!.Value.BlockNumber;
+        private long OldestKeptBlockNumber
+        {
+            get
+            {
+                _commitSetQueue.TryPeek(out BlockCommitSet commitSet);
+                return commitSet?.BlockNumber ?? 0;
+            }
+        }
 
         private long NewestKeptBlockNumber { get; set; }
 
@@ -314,7 +323,7 @@ namespace Nethermind.Trie.Pruning
             Debug.Assert(IsCurrentListSealed, "Not sealed when beginning new block");
 
             BlockCommitSet commitSet = new BlockCommitSet(blockNumber);
-            _commitSetQueue.AddLast(commitSet);
+            _commitSetQueue.Enqueue(commitSet);
             NewestKeptBlockNumber = Math.Max(blockNumber, NewestKeptBlockNumber);
 
             // TODO: memory should be taken from the cache now
@@ -330,7 +339,7 @@ namespace Nethermind.Trie.Pruning
 
         internal bool TryRemovingOldBlock()
         {
-            BlockCommitSet? blockCommit = _commitSetQueue.First?.Value;
+            _commitSetQueue.TryPeek(out BlockCommitSet? blockCommit);
             bool hasAnySealedBlockInQueue = blockCommit != null && blockCommit.IsSealed;
             if (hasAnySealedBlockInQueue)
             {
@@ -349,7 +358,7 @@ namespace Nethermind.Trie.Pruning
 
         private void RemoveOldBlock(BlockCommitSet commitSet)
         {
-            _commitSetQueue.RemoveFirst();
+            _commitSetQueue.Dequeue();
 
             if (_logger.IsDebug)
                 _logger.Debug($"Start pruning {nameof(BlockCommitSet)} - {commitSet.BlockNumber}");
@@ -434,7 +443,19 @@ namespace Nethermind.Trie.Pruning
 
         public void Dispose()
         {
-            
+            BlockCommitSet? persistenceCandidate = null;
+            while (_commitSetQueue.TryDequeue(out BlockCommitSet blockCommitSet))
+            {
+                if (NewestKeptBlockNumber - blockCommitSet.BlockNumber > Reorganization.MaxDepth)
+                {
+                    persistenceCandidate = blockCommitSet;
+                }
+            }
+
+            if (persistenceCandidate != null)
+            {
+                Persist(persistenceCandidate);
+            }
         }
     }
 }
