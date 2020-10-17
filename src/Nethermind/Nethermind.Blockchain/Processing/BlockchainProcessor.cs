@@ -386,7 +386,7 @@ namespace Nethermind.Blockchain.Processing
             {
                 foreach (Block block in processingBranch.Blocks)
                 {
-                    _loopCancellationSource.Token.ThrowIfCancellationRequested();
+                    _loopCancellationSource?.Token.ThrowIfCancellationRequested();
 
                     if (block.Hash != null && _blockTree.WasProcessed(block.Number, block.Hash))
                     {
