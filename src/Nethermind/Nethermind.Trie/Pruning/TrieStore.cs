@@ -23,11 +23,10 @@ using Nethermind.Logging;
 namespace Nethermind.Trie.Pruning
 {
     /// <summary>
-    /// Currently the responsibility of this class is to decide how many blocks should be kept as active roots,
-    /// manage the reorgs, snapshotting, and some of the cache pruning decision making.
-    /// (does it sound like single responsibility to you?) 
+    /// Trie store helps to manage trie commits block by block.
+    /// If persistence and pruning are needed they have a chance to execute their behaviour on commits.  
     /// </summary>
-    public class TrieStore : ITrieStore
+    public class TrieStore : ITrieStore, IDisposable
     {
         public TrieStore(IKeyValueStore? keyValueStore, ILogManager? logManager)
             : this(keyValueStore, No.Pruning, Full.Archive, logManager) { }
@@ -35,15 +34,29 @@ namespace Nethermind.Trie.Pruning
         public TrieStore(
             IKeyValueStore? keyValueStore,
             IPruningStrategy? pruningStrategy,
-            IPersistenceStrategy? snapshotStrategy,
+            IPersistenceStrategy? persistenceStrategy,
             ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger<TrieStore>() ?? throw new ArgumentNullException(nameof(logManager));
             _keyValueStore = keyValueStore ?? throw new ArgumentNullException(nameof(keyValueStore));
             _pruningStrategy = pruningStrategy ?? throw new ArgumentNullException(nameof(pruningStrategy));
-            _snapshotStrategy = snapshotStrategy ?? throw new ArgumentNullException(nameof(snapshotStrategy));
+            _persistenceStrategy = persistenceStrategy ?? throw new ArgumentNullException(nameof(persistenceStrategy));
         }
 
+        public long LastPersistedBlockNumber
+        {
+            get => _lastPersistedBlockNumber;
+            private set
+            {
+                if (value != _lastPersistedBlockNumber)
+                {
+                    Metrics.LastPersistedBlockNumber = value;
+                    _lastPersistedBlockNumber = value;
+                    TriePersisted?.Invoke(this, new BlockNumberEventArgs(_lastPersistedBlockNumber));
+                }
+            }
+        }
+        
         public int CommittedNodesCount
         {
             get => _committedNodesCount;
@@ -129,19 +142,17 @@ namespace Nethermind.Trie.Pruning
             
             if (trieType == TrieType.State) // storage tries happen before state commits
             {
-                if (_logger.IsTrace) _logger.Trace($"Enqueued packages {_blockCommitsQueue.Count}");
-                BlockCommitList list = CurrentPackage;
-                if (list != null)
+                if (_logger.IsTrace) _logger.Trace($"Enqueued blocks {_commitSetQueue.Count}");
+                BlockCommitSet set = CurrentPackage;
+                if (set != null)
                 {
-                    list.Root = root;
-                    if (_logger.IsTrace)
-                        _logger.Trace(
-                            $"Current root (block {blockNumber}): {list.Root}, block {list.BlockNumber}");
-                    if (_logger.IsTrace)
-                        _logger.Trace(
-                            $"Incrementing refs from block {blockNumber} root {list.Root?.ToString() ?? "NULL"} ");
+                    set.Root = root;
+                    if (_logger.IsTrace) _logger.Trace(
+                        $"Current root (block {blockNumber}): {set.Root}, block {set.BlockNumber}");
+                    if (_logger.IsTrace) _logger.Trace(
+                        $"Incrementing refs from block {blockNumber} root {set.Root?.ToString() ?? "NULL"} ");
 
-                    list.Seal();
+                    set.Seal();
 
                     TryRemovingOldBlock();
                 }
@@ -150,7 +161,7 @@ namespace Nethermind.Trie.Pruning
             }
         }
 
-        public event EventHandler<BlockNumberEventArgs>? SnapshotTaken;
+        public event EventHandler<BlockNumberEventArgs>? TriePersisted;
 
         public void Flush()
         {
@@ -230,8 +241,11 @@ namespace Nethermind.Trie.Pruning
             }
         }
 
-        public void Prune(long snapshotId)
+        public void Prune(long blockNumber)
         {
+            // TODO: cannot prune nodes that are younger than max reorg
+            // TODO: cannot prune nodes that are younger than last persisted
+            
             List<Keccak> toRemove = new List<Keccak>(); // TODO: resettable
             foreach ((Keccak key, TrieNode value) in _nodeCache)
             {
@@ -241,7 +255,7 @@ namespace Nethermind.Trie.Pruning
                     toRemove.Add(key);
                     Metrics.PrunedPersistedNodesCount++;
                 }
-                else if (HasBeenRemoved(value, snapshotId))
+                else if (HasBeenRemoved(value, blockNumber))
                 {
                     if (_logger.IsTrace) _logger.Trace($"Removing {value} from memory (no longer referenced).");
                     toRemove.Add(key);
@@ -270,36 +284,37 @@ namespace Nethermind.Trie.Pruning
 
         private readonly IPruningStrategy _pruningStrategy;
 
-        private readonly IPersistenceStrategy _snapshotStrategy;
+        private readonly IPersistenceStrategy _persistenceStrategy;
 
         private readonly ILogger _logger;
 
-        private LinkedList<BlockCommitList> _blockCommitsQueue = new LinkedList<BlockCommitList>();
+        private LinkedList<BlockCommitSet> _commitSetQueue = new LinkedList<BlockCommitSet>();
 
         private int _committedNodesCount;
 
         private int _persistedNodesCount;
+        
+        private long _lastPersistedBlockNumber;
 
-        private BlockCommitList? CurrentPackage { get; set; }
+        private BlockCommitSet? CurrentPackage { get; set; }
 
-        private bool IsCurrentPackageSealed => CurrentPackage == null || CurrentPackage.IsSealed;
+        private bool IsCurrentListSealed => CurrentPackage == null || CurrentPackage.IsSealed;
 
-        private long OldestKeptBlockNumber => _blockCommitsQueue.First!.Value.BlockNumber;
+        private long OldestKeptBlockNumber => _commitSetQueue.First!.Value.BlockNumber;
 
         private long NewestKeptBlockNumber { get; set; }
 
         private void CreateCommitList(long blockNumber)
         {
-            if (_logger.IsDebug)
-                _logger.Debug($"Beginning new {nameof(BlockCommitList)} - {blockNumber}");
+            if (_logger.IsDebug) _logger.Debug($"Beginning new {nameof(BlockCommitSet)} - {blockNumber}");
 
+            // TODO: this throws on reorgs, does it not? let us recreate it in test
             Debug.Assert(CurrentPackage == null || blockNumber == CurrentPackage.BlockNumber + 1,
                 "Newly begun block is not a successor of the last one");
+            Debug.Assert(IsCurrentListSealed, "Not sealed when beginning new block");
 
-            Debug.Assert(IsCurrentPackageSealed, "Not sealed when beginning new block");
-
-            BlockCommitList newList = new BlockCommitList(blockNumber);
-            _blockCommitsQueue.AddLast(newList);
+            BlockCommitSet commitSet = new BlockCommitSet(blockNumber);
+            _commitSetQueue.AddLast(commitSet);
             NewestKeptBlockNumber = Math.Max(blockNumber, NewestKeptBlockNumber);
 
             // TODO: memory should be taken from the cache now
@@ -308,14 +323,14 @@ namespace Nethermind.Trie.Pruning
                 TryRemovingOldBlock();
             }
 
-            CurrentPackage = newList;
-            Debug.Assert(CurrentPackage == newList,
-                "Current package is not equal the new package just after adding");
+            CurrentPackage = commitSet;
+            Debug.Assert(ReferenceEquals(CurrentPackage, commitSet),
+                $"Current {nameof(BlockCommitSet)} is not same as the new package just after adding");
         }
 
         internal bool TryRemovingOldBlock()
         {
-            BlockCommitList? blockCommit = _blockCommitsQueue.First?.Value;
+            BlockCommitSet? blockCommit = _commitSetQueue.First?.Value;
             bool hasAnySealedBlockInQueue = blockCommit != null && blockCommit.IsSealed;
             if (hasAnySealedBlockInQueue)
             {
@@ -332,44 +347,47 @@ namespace Nethermind.Trie.Pruning
             Metrics.CachedNodesCount = _nodeCache.Count;
         }
 
-        private void RemoveOldBlock(BlockCommitList commitList)
+        private void RemoveOldBlock(BlockCommitSet commitSet)
         {
-            _blockCommitsQueue.RemoveFirst();
+            _commitSetQueue.RemoveFirst();
 
             if (_logger.IsDebug)
-                _logger.Debug($"Start pruning {nameof(BlockCommitList)} - {commitList.BlockNumber}");
+                _logger.Debug($"Start pruning {nameof(BlockCommitSet)} - {commitSet.BlockNumber}");
 
-            Debug.Assert(commitList != null && commitList.IsSealed,
-                $"Invalid {nameof(commitList)} - {commitList} received for pruning.");
+            Debug.Assert(commitSet != null && commitSet.IsSealed,
+                $"Invalid {nameof(commitSet)} - {commitSet} received for pruning.");
 
-            bool shouldPersistSnapshot = _snapshotStrategy.ShouldPersistSnapshot(commitList.BlockNumber);
+            bool shouldPersistSnapshot = _persistenceStrategy.ShouldPersist(commitSet.BlockNumber);
             if (shouldPersistSnapshot)
             {
-                if (_logger.IsDebug) _logger.Debug($"Persisting from root {commitList.Root} in {commitList.BlockNumber}");
-
-                Stopwatch stopwatch = Stopwatch.StartNew();
-                commitList.Root?.PersistRecursively(tn => Persist(tn, commitList.BlockNumber), this, _logger);
-                stopwatch.Stop();
-                Metrics.SnapshotPersistenceTime = stopwatch.ElapsedMilliseconds;
-
-                stopwatch.Restart();
-                Prune(commitList.BlockNumber); // for now can only prune on snapshot?
-                stopwatch.Stop();
-                Metrics.PruningTime = stopwatch.ElapsedMilliseconds;
+                Persist(commitSet);
             }
 
             if (_logger.IsDebug)
-                _logger.Debug($"End pruning {nameof(BlockCommitList)} - {commitList.BlockNumber}");
+                _logger.Debug($"End pruning {nameof(BlockCommitSet)} - {commitSet.BlockNumber}");
 
             Dump();
-            if (shouldPersistSnapshot)
-            {
-                if (_logger.IsDebug) _logger.Debug($"Snapshot taken {commitList.Root} in {commitList.BlockNumber}");
-                SnapshotTaken?.Invoke(this, new BlockNumberEventArgs(commitList.BlockNumber));
-            }
         }
 
-        private void Persist(TrieNode currentNode, long snapshotId)
+        private void Persist(BlockCommitSet commitSet)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Persisting from root {commitSet.Root} in {commitSet.BlockNumber}");
+
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            commitSet.Root?.PersistRecursively(tn => Persist(tn, commitSet.BlockNumber), this, _logger);
+            stopwatch.Stop();
+            Metrics.SnapshotPersistenceTime = stopwatch.ElapsedMilliseconds;
+
+            stopwatch.Restart();
+            Prune(commitSet.BlockNumber); // TODO: need to prune independently
+            stopwatch.Stop();
+            Metrics.PruningTime = stopwatch.ElapsedMilliseconds;
+            
+            if (_logger.IsDebug) _logger.Debug($"Persisted trie from {commitSet.Root} in {commitSet.BlockNumber}");
+            LastPersistedBlockNumber = commitSet.BlockNumber;
+        }
+
+        private void Persist(TrieNode currentNode, long blockNumber)
         {
             if (currentNode == null)
             {
@@ -379,15 +397,15 @@ namespace Nethermind.Trie.Pruning
             if (currentNode.Keccak != null)
             {
                 Debug.Assert(currentNode.LastSeen.HasValue, $"Cannot persist a dangling node (without {(nameof(TrieNode.LastSeen))} value set).");
-                // Note that the LastSeen value here can be 'in the future' (greater than snapshotId
+                // Note that the LastSeen value here can be 'in the future' (greater than block number
                 // if we replaced a newly added node with an older copy and updated the LastSeen value.
                 // Here we reach it from the old root so it appears to be out of place but it is correct as we need
                 // to prevent it from being removed from cache and also want to have it persisted.
 
-                if (_logger.IsTrace) _logger.Trace($"Persisting {nameof(TrieNode)} {currentNode} in snapshot {snapshotId}.");
+                if (_logger.IsTrace) _logger.Trace($"Persisting {nameof(TrieNode)} {currentNode} in snapshot {blockNumber}.");
                 _keyValueStore[currentNode.Keccak.Bytes] = currentNode.FullRlp;
                 currentNode.IsPersisted = true;
-                currentNode.LastSeen = snapshotId;
+                currentNode.LastSeen = blockNumber;
 
                 PersistedNodesCount++;
             }
@@ -398,10 +416,10 @@ namespace Nethermind.Trie.Pruning
             }
         }
 
-        private static bool HasBeenRemoved(TrieNode node, long snapshotId)
+        private static bool HasBeenRemoved(TrieNode node, long blockNumber)
         {
             Debug.Assert(node.LastSeen.HasValue, $"Any node that is cache should have {nameof(TrieNode.LastSeen)} set.");
-            return node.LastSeen < snapshotId;
+            return node.LastSeen < blockNumber;
         }
         
         private void EnsureCommitListExistsForBlock(long blockNumber)
@@ -413,5 +431,10 @@ namespace Nethermind.Trie.Pruning
         }
 
         #endregion
+
+        public void Dispose()
+        {
+            
+        }
     }
 }

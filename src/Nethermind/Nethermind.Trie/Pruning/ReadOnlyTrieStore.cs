@@ -51,7 +51,7 @@ namespace Nethermind.Trie.Pruning
         {
         }
 
-        public event EventHandler<BlockNumberEventArgs> SnapshotTaken
+        public event EventHandler<BlockNumberEventArgs> TriePersisted
         {
             add { }
             remove { }

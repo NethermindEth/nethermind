@@ -9,9 +9,9 @@ namespace Nethermind.Trie.Pruning
             _snapshotInterval = snapshotInterval;
         }
         
-        public bool ShouldPersistSnapshot(long blockNumber)
+        public bool ShouldPersist(long blockNumber)
         {
-            return blockNumber% _snapshotInterval == 0;
+            return blockNumber % _snapshotInterval == 0;
         }
     }
 }

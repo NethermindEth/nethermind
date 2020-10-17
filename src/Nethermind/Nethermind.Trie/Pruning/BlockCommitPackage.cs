@@ -16,7 +16,7 @@
 
 namespace Nethermind.Trie.Pruning
 {
-    internal class BlockCommitList
+    internal class BlockCommitSet
     {
         public long BlockNumber { get; }
         
@@ -24,7 +24,7 @@ namespace Nethermind.Trie.Pruning
 
         public bool IsSealed { get; private set; }
 
-        public BlockCommitList(long blockNumber)
+        public BlockCommitSet(long blockNumber)
         {
             BlockNumber = blockNumber;
         }

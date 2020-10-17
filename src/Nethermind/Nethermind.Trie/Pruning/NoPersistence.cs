@@ -8,7 +8,7 @@ namespace Nethermind.Trie.Pruning
 
         public static NoPersistence Instance { get; } = new NoPersistence();
 
-        public bool ShouldPersistSnapshot(long blockNumber)
+        public bool ShouldPersist(long blockNumber)
         {
             return false;
         }

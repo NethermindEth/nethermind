@@ -112,7 +112,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
 
             _api.ReadOnlyTrieStore = new ReadOnlyTrieStore(_api.TrieStore);
-            _api.TrieStore.SnapshotTaken += TreeStoreOnStored;
+            _api.TrieStore.TriePersisted += TreeStoreOnStored;
             
             
             _api.StateProvider = new StateProvider(
@@ -265,6 +265,8 @@ namespace Nethermind.Runner.Ethereum.Steps
             return Task.CompletedTask;
         }
         
+        private Queue<long> _triePersistenceHistory = new Queue<long>();
+        
         /// <summary>
         /// Used to save info when closing the app to remember the pruning state
         /// </summary>
@@ -272,10 +274,18 @@ namespace Nethermind.Runner.Ethereum.Steps
         {
             // the kind of hacks when you run out of time...
             long blockNumber = e.BlockNumber;
-            Keccak? stateHeadHash = _api.BlockTree!.FindHash(blockNumber);
-            if (stateHeadHash != null)
+            _triePersistenceHistory.Enqueue(blockNumber);
+
+            long firstInQueue = _triePersistenceHistory.Peek();
+            if (firstInQueue <= _api.BlockTree!.Head.Number - Reorganization.MaxDepth)
             {
-                (_api.BlockTree as BlockTree)!.SaveStateHead(stateHeadHash);
+                // it is important to keep the queue, otherwise we may lose ability
+                // to either reorganize after restarting or persisting at all
+                Keccak? stateHeadHash = _api.BlockTree!.FindHash(firstInQueue);
+                if (stateHeadHash != null)
+                {
+                    (_api.BlockTree as BlockTree)!.SaveStateHead(stateHeadHash);
+                }                
             }
         }
         

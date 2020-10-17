@@ -24,6 +24,6 @@ namespace Nethermind.Trie.Pruning
         
         void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root);
 
-        public event EventHandler<BlockNumberEventArgs> SnapshotTaken;
+        public event EventHandler<BlockNumberEventArgs> TriePersisted;
     }
 }

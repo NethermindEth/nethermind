@@ -40,5 +40,7 @@ namespace Nethermind.Trie.Pruning
         public static long SnapshotPersistenceTime { get; set; }
         
         public static long PruningTime { get; set; }
+        
+        public static long LastPersistedBlockNumber { get; set; }
     }
 }

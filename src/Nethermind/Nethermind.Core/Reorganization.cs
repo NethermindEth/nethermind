@@ -15,19 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-namespace Nethermind.Trie.Pruning
+namespace Nethermind.Core
 {
-    public class Archive : IPersistenceStrategy
+    public static class Reorganization
     {
-        private Archive()
-        {
-        }
-
-        public static Archive Instance { get; } = new Archive();
-
-        public bool ShouldPersist(long blockNumber)
-        {
-            return true;
-        }
+        public static long MaxDepth = 512;
     }
 }
