@@ -98,8 +98,8 @@ namespace Nethermind.Runner.Ethereum.Steps
             {
                 _api.TrieStore = new TrieStore(
                     _api.DbProvider.StateDb.Innermost,
-                    new DepthAndMemoryBased(1024, 256.MB()),
-                    new ConstantInterval(8192),
+                    new MemoryLimit(512.MB()), // TODO: memory hint should define this
+                    new ConstantInterval(8192), // TODO: this should be based on time
                     _api.LogManager);
             }
             else

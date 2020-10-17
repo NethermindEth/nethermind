@@ -12,7 +12,7 @@ namespace Nethermind.Trie.Pruning
             _memoryLimit = memoryLimit;
         }
 
-        public bool ShouldPrune(in long blockNumber, in long highestBlockNumber, in long currentMemory)
+        public bool ShouldPrune(in long currentMemory)
         {
             return currentMemory >= _memoryLimit;
         }

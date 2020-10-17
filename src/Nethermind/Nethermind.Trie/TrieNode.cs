@@ -37,7 +37,6 @@ namespace Nethermind.Trie
         private static int _idCounter;
 
         public int Id = Interlocked.Increment(ref _idCounter);
-
 #endif
 
         public TrieNode(NodeType nodeType)
@@ -48,6 +47,11 @@ namespace Nethermind.Trie
 
         public TrieNode(NodeType nodeType, Keccak keccak)
         {
+            if (keccak == null)
+            {
+                throw new ArgumentNullException(nameof(keccak));
+            }
+            
             NodeType = nodeType;
             Keccak = keccak;
             if (nodeType == NodeType.Unknown)
@@ -634,9 +638,10 @@ namespace Nethermind.Trie
 
         private object?[]? _data;
 
+        // TODO: I believe this is no longer ever valid since we made our nodes immutable
         private void UnresolveKey()
         {
-            Keccak = null;
+            // Keccak = null;
         }
 
         private void InitData()

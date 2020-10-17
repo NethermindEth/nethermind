@@ -8,7 +8,7 @@ namespace Nethermind.Trie.Pruning
 
         public static NoPruning Instance { get; } = new NoPruning();
 
-        public bool ShouldPrune(in long blockNumber, in long highestBlockNumber, in long currentMemory)
+        public bool ShouldPrune(in long currentMemory)
         {
             return false;
         }

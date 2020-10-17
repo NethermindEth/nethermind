@@ -3,7 +3,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -172,7 +171,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             MemDb memDb = new MemDb();
 
-            TrieStore trieStore = new TrieStore(memDb, new DepthAndMemoryBased(4, 16.MB()), new ConstantInterval(4), _logManager);
+            TrieStore trieStore = new TrieStore(memDb, new MemoryLimit(16.MB()), new ConstantInterval(4), _logManager);
 
             trieStore.CommitNode(0, new NodeCommitInfo(a));
             trieStore.FinishBlockCommit(TrieType.State, 0, a);
@@ -193,7 +192,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             MemDb memDb = new MemDb();
 
-            TrieStore trieStore = new TrieStore(memDb, new DepthAndMemoryBased(4, 16.MB()), No.Persistence, _logManager);
+            TrieStore trieStore = new TrieStore(memDb, new MemoryLimit(16.MB()), No.Persistence, _logManager);
 
             trieStore.CommitNode(0, new NodeCommitInfo(a));
             trieStore.FinishBlockCommit(TrieType.State, 0, a);
@@ -224,7 +223,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             MemDb memDb = new MemDb();
 
-            TrieStore trieStore = new TrieStore(memDb, new DepthAndMemoryBased(4, 16.MB()), new ConstantInterval(4), _logManager);
+            TrieStore trieStore = new TrieStore(memDb, new MemoryLimit(16.MB()), new ConstantInterval(4), _logManager);
 
             trieStore.FinishBlockCommit(TrieType.State, 0, null);
             trieStore.CommitNode(1, new NodeCommitInfo(a));
@@ -252,7 +251,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             MemDb memDb = new MemDb();
 
-            TrieStore trieStore = new TrieStore(memDb, new DepthAndMemoryBased(4, 16.MB()), new ConstantInterval(4), _logManager);
+            TrieStore trieStore = new TrieStore(memDb, new MemoryLimit(16.MB()), new ConstantInterval(4), _logManager);
 
             trieStore.FinishBlockCommit(TrieType.State, 0, null);
             trieStore.CommitNode(1, new NodeCommitInfo(a));
@@ -281,7 +280,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             MemDb memDb = new MemDb();
 
-            TrieStore trieStore = new TrieStore(memDb, new DepthAndMemoryBased(4, 16.MB()), new ConstantInterval(4), _logManager);
+            TrieStore trieStore = new TrieStore(memDb, new MemoryLimit(16.MB()), new ConstantInterval(4), _logManager);
 
             trieStore.FinishBlockCommit(TrieType.State, 0, null);
             trieStore.CommitNode(1, new NodeCommitInfo(a));
@@ -315,7 +314,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             MemDb memDb = new MemDb();
 
-            TrieStore trieStore = new TrieStore(memDb, new DepthAndMemoryBased(4, 16.MB()), new ConstantInterval(4), _logManager);
+            TrieStore trieStore = new TrieStore(memDb, new MemoryLimit(16.MB()), new ConstantInterval(4), _logManager);
             trieStore.FinishBlockCommit(TrieType.State, 0, null);
             trieStore.CommitNode(1, new NodeCommitInfo(a));
             trieStore.CommitNode(1, new NodeCommitInfo(storage1));
@@ -352,7 +351,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             MemDb memDb = new MemDb();
 
-            TrieStore trieStore = new TrieStore(memDb, new DepthAndMemoryBased(4, 16.MB()), new ConstantInterval(4), _logManager);
+            TrieStore trieStore = new TrieStore(memDb, new MemoryLimit(16.MB()), new ConstantInterval(4), _logManager);
 
             trieStore.FinishBlockCommit(TrieType.State, 0, null);
             trieStore.CommitNode(1, new NodeCommitInfo(a));
@@ -402,7 +401,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             MemDb memDb = new MemDb();
 
-            TrieStore trieStore = new TrieStore(memDb, new DepthAndMemoryBased(4, 16.MB()), new ConstantInterval(4), _logManager);
+            TrieStore trieStore = new TrieStore(memDb, new MemoryLimit(16.MB()), new ConstantInterval(4), _logManager);
 
             trieStore.FinishBlockCommit(TrieType.State, 0, null);
             trieStore.CommitNode(1, new NodeCommitInfo(storage1));
