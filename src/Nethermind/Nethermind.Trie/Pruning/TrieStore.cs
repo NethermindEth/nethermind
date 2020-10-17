@@ -284,37 +284,37 @@ namespace Nethermind.Trie.Pruning
                 List<TrieNode> toRemove = new List<TrieNode>(); // TODO: resettable
 
                 long newMemory = 0;
-                foreach ((Keccak key, TrieNode value) in _nodeCache)
+                foreach ((Keccak key, TrieNode node) in _nodeCache)
                 {
-                    if (value.IsPersisted)
+                    if (node.IsPersisted)
                     {
-                        if (_logger.IsTrace) _logger.Trace($"Removing persisted {value} from memory.");
-                        toRemove.Add(value);
-                        if (value.Keccak == null)
+                        if (_logger.IsTrace) _logger.Trace($"Removing persisted {node} from memory.");
+                        toRemove.Add(node);
+                        if (node.Keccak == null)
                         {
-                            value.ResolveKey(this, true); // TODO: hack
-                            if (value.Keccak != key)
+                            node.ResolveKey(this, true); // TODO: hack
+                            if (node.Keccak != key)
                             {
-                                throw new InvalidOperationException($"Persisted {value} {key} != {value.Keccak}");
+                                throw new InvalidOperationException($"Persisted {node} {key} != {node.Keccak}");
                             }
                         }
 
                         Metrics.PrunedPersistedNodesCount++;
                     }
-                    else if (HasBeenRemoved(value))
+                    else if (IsNoLongerNeeded(node))
                     {
-                        if (_logger.IsTrace) _logger.Trace($"Removing {value} from memory (no longer referenced).");
-                        toRemove.Add(value);
-                        if (value.Keccak == null)
+                        if (_logger.IsTrace) _logger.Trace($"Removing {node} from memory (no longer referenced).");
+                        toRemove.Add(node);
+                        if (node.Keccak == null)
                         {
-                            throw new InvalidOperationException($"Removed {value}");
+                            throw new InvalidOperationException($"Removed {node}");
                         }
 
                         Metrics.PrunedTransientNodesCount++;
                     }
                     else
                     {
-                        newMemory += value.GetMemorySize(false);
+                        newMemory += node.GetMemorySize(false);
                     }
                 }
 
@@ -480,7 +480,7 @@ namespace Nethermind.Trie.Pruning
             }
         }
 
-        private bool HasBeenRemoved(TrieNode node)
+        private bool IsNoLongerNeeded(TrieNode node)
         {
             Debug.Assert(node.LastSeen.HasValue, $"Any node that is cache should have {nameof(TrieNode.LastSeen)} set.");
             return node.LastSeen < LastPersistedBlockNumber
