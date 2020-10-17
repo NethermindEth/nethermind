@@ -57,7 +57,7 @@ namespace Nethermind.DataMarketplace.Initializers
                                 _ndmApi.ReceiptFinder,
                                 _ndmApi.BloomStorage,
                                 _ndmApi.LogManager,
-                                new ReceiptsRecovery(),
+                                new ReceiptsRecovery(_ndmApi.EthereumEcdsa, _ndmApi.SpecProvider),
                                 1024);
 
             INdmCapabilityConnector capabilityConnector = await _ndmInitializer.InitAsync(_ndmApi);
