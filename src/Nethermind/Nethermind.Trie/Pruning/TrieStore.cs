@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 
 namespace Nethermind.Trie.Pruning
@@ -272,7 +273,12 @@ namespace Nethermind.Trie.Pruning
         {
             while (true)
             {
-                if (_logger.IsWarn) _logger.Warn($"Pruning nodes {MemoryUsedByCache / 1024 / 1024}MB {LastPersistedBlockNumber}/{NewestKeptBlockNumber}.");
+                if (!_pruningStrategy.ShouldPrune(MemoryUsedByCache))
+                {
+                    break;
+                }
+
+                if (_logger.IsWarn) _logger.Warn($"Pruning nodes {MemoryUsedByCache / 1.MB()}MB {LastPersistedBlockNumber}/{NewestKeptBlockNumber}.");
 
                 Stopwatch stopwatch = Stopwatch.StartNew();
                 List<TrieNode> toRemove = new List<TrieNode>(); // TODO: resettable
@@ -328,7 +334,7 @@ namespace Nethermind.Trie.Pruning
                 stopwatch.Stop();
                 Metrics.PruningTime = stopwatch.ElapsedMilliseconds;
 
-                if (_logger.IsWarn) _logger.Warn($"Finished pruning nodes in {stopwatch.ElapsedMilliseconds}ms {MemoryUsedByCache / 1024 / 1024}MB {LastPersistedBlockNumber}/{NewestKeptBlockNumber}.");
+                if (_logger.IsWarn) _logger.Warn($"Finished pruning nodes in {stopwatch.ElapsedMilliseconds}ms {MemoryUsedByCache / 1.MB()}MB {LastPersistedBlockNumber}/{NewestKeptBlockNumber}.");
 
                 if (_pruningStrategy.ShouldPrune(MemoryUsedByCache))
                 {
@@ -415,10 +421,7 @@ namespace Nethermind.Trie.Pruning
             _commitSetQueue.Enqueue(commitSet);
             NewestKeptBlockNumber = Math.Max(blockNumber, NewestKeptBlockNumber);
 
-            if (_pruningStrategy.ShouldPrune(MemoryUsedByCache))
-            {
-                Prune();
-            }
+            Prune();
 
             CurrentPackage = commitSet;
             Debug.Assert(ReferenceEquals(CurrentPackage, commitSet),

@@ -74,7 +74,7 @@ namespace Nethermind.Store.Test
             stats.CodeCount.Should().Be(1);
             stats.MissingCode.Should().Be(1);
             
-            stats.NodesCount.Should().Be(1348);
+            stats.NodesCount.Should().Be(1351);
             
             stats.StateBranchCount.Should().Be(1);
             stats.StateExtensionCount.Should().Be(1);

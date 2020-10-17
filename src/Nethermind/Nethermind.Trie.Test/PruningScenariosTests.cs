@@ -266,7 +266,7 @@ namespace Nethermind.Trie.Test
                 .PruneOldBlock()
                 .PruneOldBlock()
                 .VerifyPersisted(1)
-                .VerifyCached(4);
+                .VerifyCached(5);
         }
         
         [Test]
@@ -284,7 +284,7 @@ namespace Nethermind.Trie.Test
                 .PruneOldBlock()
                 .PruneOldBlock()
                 .VerifyPersisted(6)
-                .VerifyCached(0);
+                .VerifyCached(6);
         }
         
         [Test]
@@ -304,7 +304,7 @@ namespace Nethermind.Trie.Test
                 .PruneOldBlock()
                 .PruneOldBlock()
                 .VerifyPersisted(6)
-                .VerifyCached(2);
+                .VerifyCached(8);
         }
         
         [Test]
