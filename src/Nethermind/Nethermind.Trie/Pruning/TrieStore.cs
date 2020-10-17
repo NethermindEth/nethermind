@@ -415,12 +415,6 @@ namespace Nethermind.Trie.Pruning
             _commitSetQueue.Enqueue(commitSet);
             NewestKeptBlockNumber = Math.Max(blockNumber, NewestKeptBlockNumber);
 
-            bool shouldPersistSnapshot = _persistenceStrategy.ShouldPersist(commitSet.BlockNumber);
-            if (shouldPersistSnapshot)
-            {
-                Persist(commitSet);
-            }
-
             if (_pruningStrategy.ShouldPrune(MemoryUsedByCache))
             {
                 Prune();
