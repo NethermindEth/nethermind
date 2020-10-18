@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
@@ -376,9 +377,10 @@ namespace Nethermind.Trie.Pruning
         {
             while (_commitSetQueue.TryPeek(out BlockCommitSet blockCommitSet))
             {
-                if (blockCommitSet.BlockNumber < NewestKeptBlockNumber - Reorganization.MaxDepth)
+                const int safety = 8;
+                if (blockCommitSet.BlockNumber < NewestKeptBlockNumber - Reorganization.MaxDepth - safety)
                 {
-                    _commitSetQueue.Dequeue();
+                    _commitSetQueue.TryDequeue(out _);
                 }
                 else
                 {
@@ -399,7 +401,7 @@ namespace Nethermind.Trie.Pruning
 
         private readonly ILogger _logger;
 
-        private Queue<BlockCommitSet> _commitSetQueue = new Queue<BlockCommitSet>();
+        private ConcurrentQueue<BlockCommitSet> _commitSetQueue = new ConcurrentQueue<BlockCommitSet>();
 
         private long _memoryUsedByCache;
 
