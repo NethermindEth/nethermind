@@ -62,6 +62,7 @@ namespace Nethermind.Trie.Pruning
                 {
                     Metrics.LastPersistedBlockNumber = value;
                     _lastPersistedBlockNumber = value;
+                    _lastPersistedReachedReorgBoundary = false;
                 }
             }
         }
@@ -367,6 +368,27 @@ namespace Nethermind.Trie.Pruning
             _nodeCache.Clear();
             MemoryUsedByCache = 0;
         }
+        
+        public void Dispose()
+        {
+            _logger.Warn("Disposing trie");
+            PersistOnShutdown();
+        }
+
+        public void RemoveHistorical()
+        {
+            while (_commitSetQueue.TryPeek(out BlockCommitSet blockCommitSet))
+            {
+                if (blockCommitSet.BlockNumber < LastPersistedBlockNumber - Reorganization.MaxDepth)
+                {
+                    _commitSetQueue.Dequeue();
+                }
+                else
+                {
+                    break;
+                }
+            }
+        }
 
         #region Private
 
@@ -486,50 +508,40 @@ namespace Nethermind.Trie.Pruning
 
         private void EnsureCommitSetExistsForBlock(long blockNumber)
         {
-            bool isFirstCommit = Interlocked.Exchange(ref _isFirst, 1) == 0;
-            if (isFirstCommit)
-            {
-                long baseBlock = Math.Max(0, blockNumber - 1);
-                LastPersistedBlockNumber = baseBlock;
-                ReorgBoundaryPersisted?.Invoke(this, new ReorgBoundaryReached(LastPersistedBlockNumber));
-            }
-            else
-            {
-                if (blockNumber > LastPersistedBlockNumber + Reorganization.MaxDepth)
-                {
-                    ReorgBoundaryPersisted?.Invoke(this, new ReorgBoundaryReached(LastPersistedBlockNumber));
-                }
-            }
-            
+            AnnounceReorgBoundaries(blockNumber);
             if (CurrentPackage is null)
             {
                 CreateCommitSet(blockNumber);
             }
         }
 
-        #endregion
-
-        public void Dispose()
+        private void AnnounceReorgBoundaries(long blockNumber)
         {
-            _logger.Warn("Disposing trie");
-            PersistOnShutdown();
-        }
-
-        public void RemoveHistorical()
-        {
-            while (_commitSetQueue.TryPeek(out BlockCommitSet blockCommitSet))
+            bool announceReorgBoundary = false;
+            bool isFirstCommit = Interlocked.Exchange(ref _isFirst, 1) == 0;
+            if (isFirstCommit)
             {
-                if (blockCommitSet.BlockNumber < LastPersistedBlockNumber - Reorganization.MaxDepth)
+                long baseBlock = Math.Max(0, blockNumber - 1);
+                LastPersistedBlockNumber = baseBlock;
+                announceReorgBoundary = true;
+            }
+            else if (!_lastPersistedReachedReorgBoundary)
+            {
+                if (blockNumber > LastPersistedBlockNumber + Reorganization.MaxDepth)
                 {
-                    _commitSetQueue.Dequeue();
+                    announceReorgBoundary = true;
                 }
-                else
-                {
-                    break;
-                }
+            }
+
+            if (announceReorgBoundary)
+            {
+                ReorgBoundaryPersisted?.Invoke(this, new ReorgBoundaryReached(LastPersistedBlockNumber));
+                _lastPersistedReachedReorgBoundary = true;
             }
         }
 
+        private bool _lastPersistedReachedReorgBoundary;
+        
         private void PersistOnShutdown()
         {
             BlockCommitSet? persistenceCandidate = null;
@@ -548,5 +560,7 @@ namespace Nethermind.Trie.Pruning
                 Persist(persistenceCandidate);
             }
         }
+
+        #endregion
     }
 }

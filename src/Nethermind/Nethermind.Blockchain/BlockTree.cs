@@ -1408,9 +1408,12 @@ namespace Nethermind.Blockchain
             Interlocked.Decrement(ref _canAcceptNewBlocksCounter);
         }
 
-        public void SavePersistedNumber(long blockNumber)
+        public void SavePruningReorganizationBoundary(long blockNumber)
         {
-            _blockInfoDb.Set(StateHeadHashDbEntryAddress, Rlp.Encode(blockNumber).Bytes);
+            if (_syncConfig.Pruning)
+            {
+                _blockInfoDb.Set(StateHeadHashDbEntryAddress, Rlp.Encode(blockNumber).Bytes);
+            }
         }
     }
 }

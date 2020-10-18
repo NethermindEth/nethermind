@@ -114,7 +114,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             _api.DisposeStack.Push(_api.TrieStore);
             _api.ReadOnlyTrieStore = new ReadOnlyTrieStore(_api.TrieStore);
-            _api.TrieStore.ReorgBoundaryPersisted += TreeStoreOnPersisted;
+            _api.TrieStore.ReorgBoundaryPersisted += ReorgBoundaryReached;
 
             _api.StateProvider = new StateProvider(
                 _api.TrieStore,
@@ -267,9 +267,10 @@ namespace Nethermind.Runner.Ethereum.Steps
             return Task.CompletedTask;
         }
         
-        private void TreeStoreOnPersisted(object? sender, ReorgBoundaryReached e)
+        private void ReorgBoundaryReached(object? sender, ReorgBoundaryReached e)
         {
-            (_api.BlockTree as BlockTree)!.SavePersistedNumber(e.BlockNumber);
+            _api.LogManager.GetClassLogger().Warn($"Saving reorg boundary {e.BlockNumber}");
+            (_api.BlockTree as BlockTree)!.SavePruningReorganizationBoundary(e.BlockNumber);
         }
 
         protected virtual IComparer<Transaction> CreateTxPoolTxComparer() => CompareTxByGas.Instance;
