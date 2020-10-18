@@ -41,7 +41,7 @@ namespace Nethermind.Blockchain.Processing
             ISpecProvider specProvider,
             ILogManager logManager)
         {
-            IDb codeDb = readOnlyDbProvider.CodeDb;
+            ISnapshotableDb codeDb = readOnlyDbProvider.CodeDb;
 
             ReadOnlyTrieStore readOnlyTrieStore = new ReadOnlyTrieStore(trieStore);
             StateReader = new StateReader(readOnlyTrieStore, codeDb, logManager);

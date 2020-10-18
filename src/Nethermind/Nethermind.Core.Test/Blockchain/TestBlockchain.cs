@@ -25,7 +25,6 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -40,7 +39,6 @@ using Nethermind.Specs;
 using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
-using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
@@ -57,7 +55,7 @@ namespace Nethermind.Core.Test.Blockchain
         public IStorageProvider Storage { get; set; }
         public IReceiptStorage ReceiptStorage { get; set; }
         public ITxPool TxPool { get; set; }
-        public IDb CodeDb => DbProvider.CodeDb;
+        public ISnapshotableDb CodeDb => DbProvider.CodeDb;
         public IBlockProcessor BlockProcessor { get; set; }
         public IBlockTree BlockTree { get; set; }
         public IBlockFinder BlockFinder { get; set; }
@@ -82,7 +80,7 @@ namespace Nethermind.Core.Test.Blockchain
 
         public ManualTimestamper Timestamper { get; private set; }
 
-        public static TransactionBuilder<Transaction> BuildSimpleTransaction => Core.Test.Builders.Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).To(AccountB);
+        public static TransactionBuilder<Transaction> BuildSimpleTransaction => Builders.Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).To(AccountB);
 
         protected virtual async Task<TestBlockchain> Build(ISpecProvider specProvider = null, UInt256? initialValues = null)
         {
@@ -162,7 +160,7 @@ namespace Nethermind.Core.Test.Blockchain
 
         protected virtual Block GetGenesisBlock()
         {
-            var genesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.WithStateRoot(State.StateRoot);
+            var genesisBlockBuilder = Builders.Build.A.Block.Genesis.WithStateRoot(State.StateRoot);
             if (_sealEngineType == SealEngineType.AuRa)
             {
                 genesisBlockBuilder.WithAura(0, new byte[65]);

@@ -158,6 +158,7 @@ namespace Nethermind.Blockchain.Processing
         
         private void CommitBranch()
         {
+            _stateProvider.CommitCode();
             // nowadays we could commit branch via TrieStore or similar (after this responsibility has been moved
         }
 

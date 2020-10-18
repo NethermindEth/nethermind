@@ -72,7 +72,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             ITxStorage txStorage = new InMemoryTxStorage();
             _stateDb = new StateDb();
             ITrieStore trieStore = new ReadOnlyTrieStore(new TrieStore(_stateDb, LimboLogs.Instance));
-            _stateProvider = new StateProvider(trieStore, new MemDb(), LimboLogs.Instance);
+            _stateProvider = new StateProvider(trieStore, new StateDb(), LimboLogs.Instance);
             _stateProvider.CreateAccount(TestItem.AddressA, 1000.Ether());
             _stateProvider.CreateAccount(TestItem.AddressB, 1000.Ether());
             _stateProvider.CreateAccount(TestItem.AddressC, 1000.Ether());

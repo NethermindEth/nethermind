@@ -1016,7 +1016,7 @@ namespace Nethermind.Trie.Test
             MemDb memDb = new MemDb();
 
             TrieStore trieStore = new TrieStore(memDb, new MemoryLimit(1.MB()), new ConstantInterval(lookupLimit), _logManager);
-            StateProvider stateProvider = new StateProvider(trieStore, new MemDb(), _logManager);
+            StateProvider stateProvider = new StateProvider(trieStore, new StateDb(), _logManager);
             StorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, _logManager);
 
             Account[] accounts = new Account[accountsCount];

@@ -18,15 +18,10 @@ using System;
 
 namespace Nethermind.Db
 {
-    public interface IReadOnlyDbProvider : IDbProvider
-    {
-        void ClearTempChanges();
-    }
-    
     public interface IDbProvider : IDisposable
     {
         ISnapshotableDb StateDb { get; }
-        IDb CodeDb { get; }
+        ISnapshotableDb CodeDb { get; }
         IColumnsDb<ReceiptsColumns> ReceiptsDb { get; }
         IDb BlocksDb { get; }
         IDb HeadersDb { get; }

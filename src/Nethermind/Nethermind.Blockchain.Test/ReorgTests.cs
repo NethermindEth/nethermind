@@ -52,7 +52,7 @@ namespace Nethermind.Blockchain.Test
         {
             MemDbProvider memDbProvider = new MemDbProvider();
             TrieStore trieStore = new TrieStore(new MemDb(), LimboLogs.Instance);
-            StateProvider stateProvider = new StateProvider(trieStore, new MemDb(), LimboLogs.Instance);
+            StateProvider stateProvider = new StateProvider(trieStore, new StateDb(), LimboLogs.Instance);
             StorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, LimboLogs.Instance);
             ChainLevelInfoRepository chainLevelInfoRepository = new ChainLevelInfoRepository(memDbProvider);
             ISpecProvider specProvider = MainnetSpecProvider.Instance;

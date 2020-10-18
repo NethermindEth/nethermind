@@ -61,7 +61,7 @@ namespace Nethermind.Evm.Test
         {
             StateDb stateDb = new StateDb();
             var trieStore = new TrieStore(stateDb, LimboLogs.Instance);
-            _stateProvider = new StateProvider(trieStore, new MemDb(), LimboLogs.Instance);
+            _stateProvider = new StateProvider(trieStore, new StateDb(), LimboLogs.Instance);
             _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
             _stateProvider.Commit(_specProvider.GenesisSpec);
             _stateProvider.CommitTree(0);

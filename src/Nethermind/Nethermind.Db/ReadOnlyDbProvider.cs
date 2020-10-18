@@ -51,7 +51,7 @@ namespace Nethermind.Db
         }
 
         public ISnapshotableDb StateDb { get; }
-        public IDb CodeDb => NestedCodeDb;
+        public ISnapshotableDb CodeDb => NestedCodeDb;
         public IColumnsDb<ReceiptsColumns> ReceiptsDb => NestedReceiptsDb;
         public IDb BlocksDb => NestedBlocksDb;
         public IDb HeadersDb => NestedHeadersDb;
