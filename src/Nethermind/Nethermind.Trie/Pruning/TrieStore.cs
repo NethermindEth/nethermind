@@ -379,7 +379,7 @@ namespace Nethermind.Trie.Pruning
         {
             while (_commitSetQueue.TryPeek(out BlockCommitSet blockCommitSet))
             {
-                if (blockCommitSet.BlockNumber < LastPersistedBlockNumber - Reorganization.MaxDepth)
+                if (blockCommitSet.BlockNumber < NewestKeptBlockNumber - Reorganization.MaxDepth)
                 {
                     _commitSetQueue.Dequeue();
                 }
@@ -439,7 +439,8 @@ namespace Nethermind.Trie.Pruning
             BlockCommitSet commitSet = new BlockCommitSet(blockNumber);
             _commitSetQueue.Enqueue(commitSet);
             NewestKeptBlockNumber = Math.Max(blockNumber, NewestKeptBlockNumber);
-
+            AnnounceReorgBoundaries();
+            RemoveHistorical();
             Prune();
 
             CurrentPackage = commitSet;
@@ -466,7 +467,6 @@ namespace Nethermind.Trie.Pruning
 
             if (_logger.IsWarn) _logger.Warn($"Persisted trie from {commitSet.Root} in {commitSet.BlockNumber} (cache memory {MemoryUsedByCache})");
 
-            RemoveHistorical();
             LastPersistedBlockNumber = commitSet.BlockNumber;
         }
 
@@ -508,26 +508,25 @@ namespace Nethermind.Trie.Pruning
 
         private void EnsureCommitSetExistsForBlock(long blockNumber)
         {
-            AnnounceReorgBoundaries(blockNumber);
             if (CurrentPackage is null)
             {
                 CreateCommitSet(blockNumber);
             }
         }
 
-        private void AnnounceReorgBoundaries(long blockNumber)
+        private void AnnounceReorgBoundaries()
         {
             bool announceReorgBoundary = false;
             bool isFirstCommit = Interlocked.Exchange(ref _isFirst, 1) == 0;
             if (isFirstCommit)
             {
-                long baseBlock = Math.Max(0, blockNumber - 1);
+                long baseBlock = Math.Max(0, NewestKeptBlockNumber - 1);
                 LastPersistedBlockNumber = baseBlock;
                 announceReorgBoundary = true;
             }
             else if (!_lastPersistedReachedReorgBoundary)
             {
-                if (blockNumber > LastPersistedBlockNumber + Reorganization.MaxDepth)
+                if (NewestKeptBlockNumber > LastPersistedBlockNumber + Reorganization.MaxDepth)
                 {
                     announceReorgBoundary = true;
                 }
@@ -547,7 +546,7 @@ namespace Nethermind.Trie.Pruning
             BlockCommitSet? persistenceCandidate = null;
             while (_commitSetQueue.TryDequeue(out BlockCommitSet blockCommitSet))
             {
-                if (NewestKeptBlockNumber - blockCommitSet.BlockNumber > Reorganization.MaxDepth)
+                if (blockCommitSet.BlockNumber <= NewestKeptBlockNumber - Reorganization.MaxDepth)
                 {
                     persistenceCandidate = blockCommitSet;
                     _logger.Warn($"New persistence candidate {persistenceCandidate}");
@@ -558,6 +557,7 @@ namespace Nethermind.Trie.Pruning
             if (persistenceCandidate != null)
             {
                 Persist(persistenceCandidate);
+                AnnounceReorgBoundaries();
             }
         }
 
