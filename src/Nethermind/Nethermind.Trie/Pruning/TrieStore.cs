@@ -160,7 +160,7 @@ namespace Nethermind.Trie.Pruning
         {
             if (Interlocked.Exchange(ref _isFirst, 1) == 0)
             {
-                TriePersisted?.Invoke(this, new TriePersistedEventArgs(blockNumber, true));
+                TriePersisted?.Invoke(this, new TriePersistedEventArgs(blockNumber));
             }
 
             if (blockNumber < 0) throw new ArgumentOutOfRangeException(nameof(blockNumber));

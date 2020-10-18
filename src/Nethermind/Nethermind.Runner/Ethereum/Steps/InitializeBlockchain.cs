@@ -70,7 +70,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
             if (_api.DbProvider == null) throw new StepDependencyException(nameof(_api.DbProvider));
             if (_api.SpecProvider == null) throw new StepDependencyException(nameof(_api.SpecProvider));
-            
+
             // TODO: can engine signer be just initialized in some block producer related step?
             ISigner signer = NullSigner.Instance;
             ISignerStore signerStore = NullSigner.Instance;
@@ -111,7 +111,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     Full.Archive,
                     _api.LogManager);
             }
-            
+
             _api.DisposeStack.Push(_api.TrieStore);
             _api.ReadOnlyTrieStore = new ReadOnlyTrieStore(_api.TrieStore);
             _api.TrieStore.TriePersisted += TreeStoreOnPersisted;
@@ -167,11 +167,11 @@ namespace Nethermind.Runner.Ethereum.Steps
             {
                 _api.StateProvider.StateRoot = _api.BlockTree.Head.StateRoot;
             }
-            
+
             ReceiptsRecovery receiptsRecovery = new ReceiptsRecovery(_api.EthereumEcdsa, _api.SpecProvider);
             _api.ReceiptStorage = initConfig.StoreReceipts ? (IReceiptStorage?) new PersistentReceiptStorage(_api.DbProvider.ReceiptsDb, _api.SpecProvider, receiptsRecovery) : NullReceiptStorage.Instance;
             _api.ReceiptFinder = new FullInfoReceiptFinder(_api.ReceiptStorage, receiptsRecovery, _api.BlockTree);
-            
+
             _api.RecoveryStep = new TxSignaturesRecoveryStep(_api.EthereumEcdsa, _api.TxPool, _api.SpecProvider, _api.LogManager);
             _api.StorageProvider = new StorageProvider(
                 _api.TrieStore,
@@ -263,51 +263,44 @@ namespace Nethermind.Runner.Ethereum.Steps
             // TODO: possibly hide it (but need to confirm that NDM does not really need it)
             _api.FilterStore = new FilterStore();
             _api.FilterManager = new FilterManager(_api.FilterStore, _api.MainBlockProcessor, _api.TxPool, _api.LogManager);
-            
+
             return Task.CompletedTask;
         }
-        
+
         private Queue<long> _triePersistenceHistory = new Queue<long>();
-        
+
         /// <summary>
-        /// Used to save info when closing the app to remember the pruning state
+        /// Used to save info when closing the app to remember the pruning state.
+        /// TODO: I think this should be internal to trie store maybe?
         /// </summary>
         private void TreeStoreOnPersisted(object? sender, TriePersistedEventArgs e)
         {
             void RememberPersistedHash(long blockNumberLocal)
             {
-                Keccak? stateHeadHash = _api.BlockTree!.FindHash(blockNumberLocal);
-                if (stateHeadHash != null)
-                {
-                    _api.LogManager.GetClassLogger().Warn($"Marking block {blockNumberLocal} as a pruning checkpoint");
-                    (_api.BlockTree as BlockTree)!.SaveStateHead(stateHeadHash);
-                }
-                else
-                {
-                    throw new InvalidAsynchronousStateException($"Missing block hash for {blockNumberLocal}");
-                }
+                _api.LogManager.GetClassLogger().Warn($"Marking block {blockNumberLocal} as a pruning checkpoint");
+                (_api.BlockTree as BlockTree)!.SavePersistedNumber(blockNumberLocal);
             }
 
             if (e.IsReorganizationBoundary)
             {
                 RememberPersistedHash(e.BlockNumber);
             }
-            
+
             // the kind of hacks when you run out of time...
             long blockNumber = e.BlockNumber;
-            
+
             // it is important to keep the queue, otherwise we may lose ability
             // to either reorganize after restarting or persisting at all
             _triePersistenceHistory.Enqueue(blockNumber);
 
             long firstInQueue = _triePersistenceHistory.Peek();
-            if (firstInQueue <= _api.BlockTree!.Head.Number - Reorganization.MaxDepth)
+            if (firstInQueue <= (_api.BlockTree!.Head?.Number ?? 0) - Reorganization.MaxDepth)
             {
                 RememberPersistedHash(firstInQueue);
                 _triePersistenceHistory.Dequeue();
             }
         }
-        
+
         protected virtual IComparer<Transaction> CreateTxPoolTxComparer() => CompareTxByGas.Instance;
 
         protected virtual HeaderValidator CreateHeaderValidator() =>

@@ -1052,20 +1052,33 @@ namespace Nethermind.Blockchain
 
         private void LoadHeadBlockAtStart()
         {
-            byte[] data = _blockInfoDb.Get(StateHeadHashDbEntryAddress) ?? _blockInfoDb.Get(HeadAddressInDb);
-            if (data != null)
+            Block startBlock = null;
+            byte[] persistedNumberData = _blockInfoDb.Get(StateHeadHashDbEntryAddress);
+            long? persistedNumber = persistedNumberData == null ? (long?)null : new RlpStream(persistedNumberData).DecodeLong();
+            if (persistedNumber != null)
             {
-                Block headBlock = FindBlock(new Keccak(data), BlockTreeLookupOptions.None);
-
-                ChainLevelInfo level = LoadLevel(headBlock.Number);
-                int? index = FindIndex(headBlock.Hash, level);
+                startBlock = FindBlock(persistedNumber.Value, BlockTreeLookupOptions.None);
+            }
+            else
+            {
+                byte[] data = _blockInfoDb.Get(HeadAddressInDb);
+                if (data != null)
+                {
+                    startBlock = FindBlock(new Keccak(data), BlockTreeLookupOptions.None);
+                }
+            }
+            
+            if (startBlock != null)
+            {
+                ChainLevelInfo level = LoadLevel(startBlock.Number);
+                int? index = FindIndex(startBlock.Hash, level);
                 if (!index.HasValue)
                 {
                     throw new InvalidDataException("Head block data missing from chain info");
                 }
 
-                headBlock.Header.TotalDifficulty = level.BlockInfos[index.Value].TotalDifficulty;
-                Head = headBlock;
+                startBlock.Header.TotalDifficulty = level.BlockInfos[index.Value].TotalDifficulty;
+                Head = startBlock;
             }
         }
 
@@ -1395,9 +1408,9 @@ namespace Nethermind.Blockchain
             Interlocked.Decrement(ref _canAcceptNewBlocksCounter);
         }
 
-        public void SaveStateHead(Keccak stateHeadHash)
+        public void SavePersistedNumber(long blockNumber)
         {
-            _blockInfoDb.Set(StateHeadHashDbEntryAddress, stateHeadHash.Bytes);
+            _blockInfoDb.Set(StateHeadHashDbEntryAddress, Rlp.Encode(blockNumber).Bytes);
         }
     }
 }
