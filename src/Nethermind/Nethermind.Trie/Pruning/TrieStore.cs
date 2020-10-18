@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -30,6 +31,11 @@ namespace Nethermind.Trie.Pruning
     /// </summary>
     public class TrieStore : ITrieStore
     {
+        /// <summary>
+        /// So it invokes after initial fast sync
+        /// </summary>
+        private int _isFirst;
+        
         public TrieStore(IKeyValueStore? keyValueStore, ILogManager? logManager)
             : this(keyValueStore, No.Pruning, Full.Archive, logManager)
         {
@@ -56,7 +62,7 @@ namespace Nethermind.Trie.Pruning
                 {
                     Metrics.LastPersistedBlockNumber = value;
                     _lastPersistedBlockNumber = value;
-                    TriePersisted?.Invoke(this, new BlockNumberEventArgs(_lastPersistedBlockNumber));
+                    TriePersisted?.Invoke(this, new TriePersistedEventArgs(_lastPersistedBlockNumber));
                 }
             }
         }
@@ -152,6 +158,11 @@ namespace Nethermind.Trie.Pruning
 
         public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root)
         {
+            if (Interlocked.Exchange(ref _isFirst, 1) == 0)
+            {
+                TriePersisted?.Invoke(this, new TriePersistedEventArgs(blockNumber, true));
+            }
+
             if (blockNumber < 0) throw new ArgumentOutOfRangeException(nameof(blockNumber));
             EnsureCommitSetExistsForBlock(blockNumber);
 
@@ -187,7 +198,7 @@ namespace Nethermind.Trie.Pruning
             PersistOnShutdown();
         }
 
-        public event EventHandler<BlockNumberEventArgs>? TriePersisted;
+        public event EventHandler<TriePersistedEventArgs>? TriePersisted;
 
         public byte[]? LoadRlp(Keccak keccak, bool allowCaching)
         {

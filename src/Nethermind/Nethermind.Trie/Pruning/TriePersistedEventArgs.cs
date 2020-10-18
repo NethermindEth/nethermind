@@ -19,13 +19,19 @@ using System;
 
 namespace Nethermind.Trie.Pruning
 {
-    public class BlockNumberEventArgs : EventArgs
+    public class TriePersistedEventArgs : EventArgs
     {
-        public BlockNumberEventArgs(long blockNumber)
+        public TriePersistedEventArgs(long blockNumber, bool isReorganizationBoundary = false)
         {
             BlockNumber = blockNumber;
+            IsReorganizationBoundary = isReorganizationBoundary;
         }
 
         public long BlockNumber { get; }
+        
+        /// <summary>
+        /// Tells whether the reorg can go before this.
+        /// </summary>
+        public bool IsReorganizationBoundary { get; }
     }
 }

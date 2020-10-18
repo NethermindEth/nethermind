@@ -348,7 +348,7 @@ namespace Nethermind.Synchronization.FastSync
                     {
                         _lastReview = DateTime.UtcNow;
                         string reviewMessage = _pendingItems.RecalculatePriorities();
-                        if (_logger.IsInfo) _logger.Info(reviewMessage);
+                        if (_logger.IsDebug) _logger.Debug(reviewMessage);
                     }
 
                     _handleWatch.Restart();

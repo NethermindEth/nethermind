@@ -43,7 +43,7 @@ namespace Nethermind.Trie.Pruning
 
         public void UndoOneBlock() { }
 
-        public event EventHandler<BlockNumberEventArgs> TriePersisted
+        public event EventHandler<TriePersistedEventArgs> TriePersisted
         {
             add { }
             remove { }

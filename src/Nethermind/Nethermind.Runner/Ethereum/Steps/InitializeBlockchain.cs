@@ -114,7 +114,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             
             _api.DisposeStack.Push(_api.TrieStore);
             _api.ReadOnlyTrieStore = new ReadOnlyTrieStore(_api.TrieStore);
-            _api.TrieStore.TriePersisted += TreeStoreOnStored;
+            _api.TrieStore.TriePersisted += TreeStoreOnPersisted;
 
             _api.StateProvider = new StateProvider(
                 _api.TrieStore,
@@ -272,28 +272,38 @@ namespace Nethermind.Runner.Ethereum.Steps
         /// <summary>
         /// Used to save info when closing the app to remember the pruning state
         /// </summary>
-        private void TreeStoreOnStored(object? sender, BlockNumberEventArgs e)
+        private void TreeStoreOnPersisted(object? sender, TriePersistedEventArgs e)
         {
+            void RememberPersistedHash(long blockNumberLocal)
+            {
+                Keccak? stateHeadHash = _api.BlockTree!.FindHash(blockNumberLocal);
+                if (stateHeadHash != null)
+                {
+                    _api.LogManager.GetClassLogger().Warn($"Marking block {blockNumberLocal} as a pruning checkpoint");
+                    (_api.BlockTree as BlockTree)!.SaveStateHead(stateHeadHash);
+                }
+                else
+                {
+                    throw new InvalidAsynchronousStateException($"Missing block hash for {blockNumberLocal}");
+                }
+            }
+
+            if (e.IsReorganizationBoundary)
+            {
+                RememberPersistedHash(e.BlockNumber);
+            }
+            
             // the kind of hacks when you run out of time...
             long blockNumber = e.BlockNumber;
+            
+            // it is important to keep the queue, otherwise we may lose ability
+            // to either reorganize after restarting or persisting at all
             _triePersistenceHistory.Enqueue(blockNumber);
 
             long firstInQueue = _triePersistenceHistory.Peek();
             if (firstInQueue <= _api.BlockTree!.Head.Number - Reorganization.MaxDepth)
             {
-                // it is important to keep the queue, otherwise we may lose ability
-                // to either reorganize after restarting or persisting at all
-                Keccak? stateHeadHash = _api.BlockTree!.FindHash(firstInQueue);
-                if (stateHeadHash != null)
-                {
-                    _api.LogManager.GetClassLogger().Warn($"Marking block {firstInQueue} as a pruning checkpoint");
-                    (_api.BlockTree as BlockTree)!.SaveStateHead(stateHeadHash);
-                }
-                else
-                {
-                    throw new InvalidAsynchronousStateException($"Missing block hash for {firstInQueue}");
-                }
-                
+                RememberPersistedHash(firstInQueue);
                 _triePersistenceHistory.Dequeue();
             }
         }
