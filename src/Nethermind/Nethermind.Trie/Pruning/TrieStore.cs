@@ -31,9 +31,6 @@ namespace Nethermind.Trie.Pruning
     /// </summary>
     public class TrieStore : ITrieStore
     {
-        /// <summary>
-        /// So it invokes after initial fast sync
-        /// </summary>
         private int _isFirst;
         
         public TrieStore(IKeyValueStore? keyValueStore, ILogManager? logManager)
@@ -416,15 +413,6 @@ namespace Nethermind.Trie.Pruning
 
         private bool IsCurrentListSealed => CurrentPackage == null || CurrentPackage.IsSealed;
 
-        private long OldestKeptBlockNumber
-        {
-            get
-            {
-                _commitSetQueue.TryPeek(out BlockCommitSet commitSet);
-                return commitSet?.BlockNumber ?? 0;
-            }
-        }
-
         private long NewestKeptBlockNumber { get; set; }
 
         private void CreateCommitSet(long blockNumber)
@@ -520,12 +508,20 @@ namespace Nethermind.Trie.Pruning
             bool isFirstCommit = Interlocked.Exchange(ref _isFirst, 1) == 0;
             if (isFirstCommit)
             {
+                // this is important when transitioning from fast sync
+                // imagine that we transition at block 1200000
+                // and then we close the app at 1200010
+                // in such case we would try to continue at Head - 1200010
+                // because head is loaded if there is no persistence checkpoint
+                // so we need to force the persistence checkpoint
                 long baseBlock = Math.Max(0, NewestKeptBlockNumber - 1);
                 LastPersistedBlockNumber = baseBlock;
                 announceReorgBoundary = true;
             }
             else if (!_lastPersistedReachedReorgBoundary)
             {
+                // even after we persist a block we do not really remember it as a safe checkpoint
+                // until max reorgs blocks after
                 if (NewestKeptBlockNumber >= LastPersistedBlockNumber + Reorganization.MaxDepth)
                 {
                     announceReorgBoundary = true;
@@ -543,6 +539,10 @@ namespace Nethermind.Trie.Pruning
         
         private void PersistOnShutdown()
         {
+            // here we try to shorten the number of blocks recalculated when restarting (so we force persist)
+            // and we need to speed up the standard announcement procedure so we persists a block
+            // from the past (by going max reorg back)
+            
             BlockCommitSet? persistenceCandidate = null;
             while (_commitSetQueue.TryDequeue(out BlockCommitSet? blockCommitSet))
             {
