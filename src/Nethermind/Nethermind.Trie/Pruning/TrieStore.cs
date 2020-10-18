@@ -354,7 +354,7 @@ namespace Nethermind.Trie.Pruning
                         continue;
                     }
 
-                    if (_logger.IsWarn) _logger.Warn("Found no candidate for elevated pruning");
+                    if (_logger.IsWarn) _logger.Warn($"Found no candidate for elevated pruning ({_commitSetQueue.Count})");
                 }
 
                 break;
@@ -378,13 +378,14 @@ namespace Nethermind.Trie.Pruning
             while (_commitSetQueue.TryPeek(out BlockCommitSet blockCommitSet))
             {
                 // safety
-                if (_commitSetQueue.Count <= 3)
+                if (_commitSetQueue.Count <= Reorganization.MaxDepth + 3)
                 {
                     break;
                 }
                 
                 if (blockCommitSet.BlockNumber < NewestKeptBlockNumber - Reorganization.MaxDepth)
                 {
+                    // if (_logger.IsWarn) _logger.Warn($"Removing historical ({_commitSetQueue.Count}) {blockCommitSet.BlockNumber} < {NewestKeptBlockNumber} - 512");    
                     _commitSetQueue.TryDequeue(out _);
                 }
                 else
@@ -511,6 +512,11 @@ namespace Nethermind.Trie.Pruning
 
         private void AnnounceReorgBoundaries()
         {
+            if (NewestKeptBlockNumber < 1)
+            {
+                return;
+            }
+            
             bool announceReorgBoundary = false;
             bool isFirstCommit = Interlocked.Exchange(ref _isFirst, 1) == 0;
             if (isFirstCommit)
