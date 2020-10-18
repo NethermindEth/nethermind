@@ -332,15 +332,21 @@ namespace Nethermind.Trie.Pruning
                         {
                             break;
                         }
-                        
-                        candidateSet = frontSet;
+
+                        if (_commitSetQueue.TryDequeue(out frontSet))
+                        {
+                            candidateSet = frontSet;
+                        }
+                        else
+                        {
+                            break;
+                        }
                     }
 
                     if (candidateSet != null)
                     {
                         if (_logger.IsWarn) _logger.Warn($"Elevated pruning for candidate {candidateSet.BlockNumber}");
                         Persist(candidateSet);
-                        _commitSetQueue.Dequeue();
                         continue;
                     }
 
