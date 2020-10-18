@@ -42,7 +42,13 @@ namespace Nethermind.Store.Test
         private readonly Address _address1 = new Address(Hash1);
         private static readonly ILogManager Logger = LimboLogs.Instance;
         private ISnapshotableDb _codeDb;
-
+        
+        [SetUp]
+        public void Setup()
+        {
+            _codeDb = new StateDb();
+        }
+        
         [Test]
         public void Eip_158_zero_value_transfer_deletes()
         {
