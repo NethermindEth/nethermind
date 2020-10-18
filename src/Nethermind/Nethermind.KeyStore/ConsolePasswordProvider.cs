@@ -26,7 +26,7 @@ namespace Nethermind.KeyStore
         {
             var password = ConsoleUtils.ReadSecret(Message);
             if (password == null)
-                password = _alternativeProvider.GetPassword();
+                password = AlternativeProvider.GetPassword();
 
             return password;
         }

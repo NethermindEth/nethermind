@@ -25,14 +25,14 @@ namespace Nethermind.KeyStore
         public string FileName { get; set; }
         public override SecureString GetPassword()
         {
-            if (string.IsNullOrWhiteSpace(FileName) || !File.Exists(FileName))
+            SecureString password = null;
+            if (!string.IsNullOrWhiteSpace(FileName) && File.Exists(FileName))
             {
-                return null;
+                password = GetPasswordFromFile(FileName);
             }
 
-            var password = GetPasswordFromFile(FileName);
-            if (password == null)
-                password = _alternativeProvider.GetPassword();
+            if (password == null && AlternativeProvider != null)
+                password = AlternativeProvider.GetPassword();
 
             return password;
         }
