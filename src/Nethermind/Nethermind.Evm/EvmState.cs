@@ -61,7 +61,7 @@ namespace Nethermind.Evm
                     Interlocked.Increment(ref _dataStackPoolDepth);
                     if (_dataStackPoolDepth > _maxCallStackDepth)
                     {
-                        throw new Exception();
+                        throw new Exception($"Trying to rent a data stack at depth {_dataStackPoolDepth}/{_maxCallStackDepth} at thread {Thread.CurrentThread.ManagedThreadId}");
                     }
 
                     _dataStackPool.Push(new byte[(EvmStack.MaxStackSize + EvmStack.RegisterLength) * 32]);
