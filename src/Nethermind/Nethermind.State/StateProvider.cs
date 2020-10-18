@@ -66,7 +66,7 @@ namespace Nethermind.State
 
         public void CommitCode()
         {
-            _codeDb.CommitBatch();
+            _codeDb.Commit();
         }
 
         private bool _needsStateRootUpdate;
