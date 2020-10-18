@@ -173,7 +173,7 @@ namespace Nethermind.Blockchain
                 {
                     BlockHeader genesisHeader = FindHeader(genesisLevel.BlockInfos[0].BlockHash, BlockTreeLookupOptions.None);
                     Genesis = genesisHeader;
-                    LoadHeadBlockAtStart();
+                    LoadStartBlock();
                 }
 
                 RecalculateTreeLevels();
@@ -1050,7 +1050,7 @@ namespace Nethermind.Blockchain
             if (_logger.IsTrace) _logger.Trace($"Block {block.ToString(Block.Format.Short)} added to main chain");
         }
 
-        private void LoadHeadBlockAtStart()
+        private void LoadStartBlock()
         {
             Block startBlock = null;
             byte[] persistedNumberData = _blockInfoDb.Get(StateHeadHashDbEntryAddress);
@@ -1058,6 +1058,7 @@ namespace Nethermind.Blockchain
             if (persistedNumber != null)
             {
                 startBlock = FindBlock(persistedNumber.Value, BlockTreeLookupOptions.None);
+                _logger.Warn($"Start block loaded from reorg boundary - {persistedNumber} - {startBlock?.ToString(Block.Format.Short)}");
             }
             else
             {
@@ -1065,6 +1066,7 @@ namespace Nethermind.Blockchain
                 if (data != null)
                 {
                     startBlock = FindBlock(new Keccak(data), BlockTreeLookupOptions.None);
+                    _logger.Warn($"Start block loaded from HEAD - {startBlock?.ToString(Block.Format.Short)}");
                 }
             }
             
@@ -1078,6 +1080,8 @@ namespace Nethermind.Blockchain
                 }
 
                 startBlock.Header.TotalDifficulty = level.BlockInfos[index.Value].TotalDifficulty;
+                
+                _logger.Warn($"Setting head to - {startBlock?.ToString(Block.Format.Short)}");
                 Head = startBlock;
             }
         }
