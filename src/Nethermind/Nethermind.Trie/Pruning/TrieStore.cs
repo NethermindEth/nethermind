@@ -377,8 +377,13 @@ namespace Nethermind.Trie.Pruning
         {
             while (_commitSetQueue.TryPeek(out BlockCommitSet blockCommitSet))
             {
-                const int safety = 8;
-                if (blockCommitSet.BlockNumber < NewestKeptBlockNumber - Reorganization.MaxDepth - safety)
+                // safety
+                if (_commitSetQueue.Count <= 3)
+                {
+                    break;
+                }
+                
+                if (blockCommitSet.BlockNumber < NewestKeptBlockNumber - Reorganization.MaxDepth)
                 {
                     _commitSetQueue.TryDequeue(out _);
                 }
