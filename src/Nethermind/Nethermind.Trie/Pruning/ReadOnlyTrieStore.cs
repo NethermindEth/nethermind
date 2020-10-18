@@ -45,7 +45,7 @@ namespace Nethermind.Trie.Pruning
 
         public void HackPersistOnShutdown() { }
         
-        public event EventHandler<ReorgBoundaryReached> ReorgBoundaryPersisted
+        public event EventHandler<ReorgBoundaryReached> ReorgBoundaryReached
         {
             add { }
             remove { }

@@ -191,7 +191,7 @@ namespace Nethermind.Trie.Pruning
             PersistOnShutdown();
         }
 
-        public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryPersisted;
+        public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
         public byte[]? LoadRlp(Keccak keccak, bool allowCaching)
         {
@@ -461,7 +461,8 @@ namespace Nethermind.Trie.Pruning
             stopwatch.Stop();
             Metrics.SnapshotPersistenceTime = stopwatch.ElapsedMilliseconds;
 
-            if (_logger.IsWarn) _logger.Warn($"Persisted trie from {commitSet.Root} in {commitSet.BlockNumber} (cache memory {MemoryUsedByCache})");
+            if (_logger.IsWarn) _logger.Warn(
+                $"Persisted trie from {commitSet.Root} at {commitSet.BlockNumber} in {stopwatch.ElapsedMilliseconds}ms (cache memory {MemoryUsedByCache})");
 
             LastPersistedBlockNumber = commitSet.BlockNumber;
         }
@@ -521,6 +522,8 @@ namespace Nethermind.Trie.Pruning
             bool isFirstCommit = Interlocked.Exchange(ref _isFirst, 1) == 0;
             if (isFirstCommit)
             {
+                _logger.Warn(
+                    $"Reached first commit - newest {NewestKeptBlockNumber}, last persisted {LastPersistedBlockNumber}");
                 // this is important when transitioning from fast sync
                 // imagine that we transition at block 1200000
                 // and then we close the app at 1200010
@@ -543,7 +546,7 @@ namespace Nethermind.Trie.Pruning
 
             if (announceReorgBoundary)
             {
-                ReorgBoundaryPersisted?.Invoke(this, new ReorgBoundaryReached(LastPersistedBlockNumber));
+                ReorgBoundaryReached?.Invoke(this, new ReorgBoundaryReached(LastPersistedBlockNumber));
                 _lastPersistedReachedReorgBoundary = true;
             }
         }

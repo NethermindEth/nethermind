@@ -114,7 +114,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             _api.DisposeStack.Push(_api.TrieStore);
             _api.ReadOnlyTrieStore = new ReadOnlyTrieStore(_api.TrieStore);
-            _api.TrieStore.ReorgBoundaryPersisted += ReorgBoundaryReached;
+            _api.TrieStore.ReorgBoundaryReached += ReorgBoundaryReached;
 
             _api.StateProvider = new StateProvider(
                 _api.TrieStore,
