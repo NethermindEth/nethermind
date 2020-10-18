@@ -32,7 +32,7 @@ namespace Nethermind.Vault.Test
         private VaultService _vaultService;
 
         [SetUp]
-        public void SetUp()
+        public async Task SetUp()
         {
             _config = new VaultConfig();
             _config.Host = "localhost:8082";
@@ -40,7 +40,7 @@ namespace Nethermind.Vault.Test
             _config.Path = "api/v1";
             _config.Token = $"bearer  {TestContext.Parameters["token"]}";
             var vaultSealingForTestsHelper = new VaultSealingForTestsHelper(_config);
-            vaultSealingForTestsHelper.Unseal();
+            await vaultSealingForTestsHelper.Unseal();
             _vaultService = new VaultService(_config, LimboLogs.Instance);
         }
 
@@ -49,7 +49,7 @@ namespace Nethermind.Vault.Test
         {
             await CleanUpVault();
             var vaultSealingForTestsHelper = new VaultSealingForTestsHelper(_config);
-            vaultSealingForTestsHelper.Seal();
+            await vaultSealingForTestsHelper.Seal();
         }
 
         private async Task CleanUpVault()

@@ -39,10 +39,5 @@ namespace Nethermind.KeyStore
         }
 
         public abstract SecureString GetPassword();
-
-        public SecureString GetPasswordFromConsole(string message)
-        {
-            return ConsoleUtils.ReadSecret(message);
-        }
     }
 }

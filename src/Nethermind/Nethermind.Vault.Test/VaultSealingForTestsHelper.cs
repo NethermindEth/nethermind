@@ -16,6 +16,7 @@
 
 using System;
 using System.IO;
+using System.Threading.Tasks;
 using Nethermind.KeyStore;
 using Nethermind.Logging;
 using Nethermind.Vault.Config;
@@ -32,27 +33,27 @@ namespace Nethermind.Vault.Test
         public VaultSealingForTestsHelper(IVaultConfig vaultConfig)
         {
             _vaultConfig = vaultConfig ?? throw new ArgumentNullException(nameof(vaultConfig));
+            _vaultConfig.VaultKeyFile = VaultConfigFileName;
             var passwordProvider = new FilePasswordProvider() { FileName = _vaultConfig.VaultKeyFile.GetApplicationResourcePath() };
             var vaultKeyStoreFacade = new VaultKeyStoreFacade(passwordProvider);
             _vaultSealingHelper = new VaultSealingHelper(vaultKeyStoreFacade, _vaultConfig, LimboLogs.Instance.GetClassLogger<VaultSealingHelper>());
         }
 
 
-        public void Unseal()
+        public async Task Unseal()
         {
             SetUp();
-            _vaultSealingHelper.Unseal();
+            await _vaultSealingHelper.Unseal();
         }
 
-        public void Seal()
+        public async Task Seal()
         {
-            _vaultSealingHelper.Seal();
+            await _vaultSealingHelper.Seal();
             TearDown();
         }
 
         private void SetUp()
         {
-            _vaultConfig.VaultKeyFile = VaultConfigFileName;
             var vaultFilePath = _vaultConfig.VaultKeyFile.GetApplicationResourcePath();
             if (!File.Exists(vaultFilePath))
             {

@@ -42,7 +42,7 @@ namespace Nethermind.Vault.Test
             _config.Path = "api/v1";
             _config.Token = $"bearer  {TestContext.Parameters["token"]}";
             var vaultSealingForTestsHelper = new VaultSealingForTestsHelper(_config);
-            vaultSealingForTestsHelper.Unseal();
+            await vaultSealingForTestsHelper.Unseal();
             _vaultService = new VaultService(
                 _config,
                 new TestLogManager(LogLevel.Trace)
@@ -65,7 +65,7 @@ namespace Nethermind.Vault.Test
         {
             await CleanUpVault();
             var vaultSealingForTestsHelper = new VaultSealingForTestsHelper(_config);
-            vaultSealingForTestsHelper.Seal();
+            await vaultSealingForTestsHelper.Seal();
         }
 
         private async Task CleanUpVault()
