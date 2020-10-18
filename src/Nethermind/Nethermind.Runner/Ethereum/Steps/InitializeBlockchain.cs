@@ -275,28 +275,27 @@ namespace Nethermind.Runner.Ethereum.Steps
         /// </summary>
         private void TreeStoreOnPersisted(object? sender, TriePersistedEventArgs e)
         {
-            void RememberPersistedHash(long blockNumberLocal)
-            {
-                _api.LogManager.GetClassLogger().Warn($"Marking block {blockNumberLocal} as a pruning checkpoint");
-                (_api.BlockTree as BlockTree)!.SavePersistedNumber(blockNumberLocal);
-            }
-
+            long blockNumber = e.BlockNumber;
+            long reorganizationBoundary;
             if (e.IsReorganizationBoundary)
             {
-                RememberPersistedHash(e.BlockNumber);
+                reorganizationBoundary = e.BlockNumber;
+                _triePersistenceHistory.Clear();
             }
-
-            // the kind of hacks when you run out of time...
-            long blockNumber = e.BlockNumber;
+            else
+            {
+                reorganizationBoundary = (_api.BlockTree!.Head?.Number ?? 0) - Reorganization.MaxDepth;
+            }
 
             // it is important to keep the queue, otherwise we may lose ability
             // to either reorganize after restarting or persisting at all
             _triePersistenceHistory.Enqueue(blockNumber);
 
             long firstInQueue = _triePersistenceHistory.Peek();
-            if (firstInQueue <= (_api.BlockTree!.Head?.Number ?? 0) - Reorganization.MaxDepth)
+            if (firstInQueue <= reorganizationBoundary)
             {
-                RememberPersistedHash(firstInQueue);
+                _api.LogManager.GetClassLogger().Warn($"Marking block {blockNumber} as a pruning checkpoint");
+                (_api.BlockTree as BlockTree)!.SavePersistedNumber(blockNumber);
                 _triePersistenceHistory.Dequeue();
             }
         }
