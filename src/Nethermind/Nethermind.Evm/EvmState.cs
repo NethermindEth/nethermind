@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Threading;
 using Nethermind.Core;
@@ -28,40 +29,20 @@ namespace Nethermind.Evm
     {
         private class StackPool
         {
-            private readonly int _maxCallStackDepth;
-
-            // TODO: we have wrong call depth calculation somewhere
-            public StackPool(int maxCallStackDepth = VirtualMachine.MaxCallDepth * 2)
+            public (byte[], int[]) RentStacks()
             {
-                _maxCallStackDepth = maxCallStackDepth;
+                return (RentDataStack(), RentReturnStack());
             }
-
-            private readonly ConcurrentStack<byte[]> _dataStackPool = new ConcurrentStack<byte[]>();
-            private readonly ConcurrentStack<int[]> _returnStackPool = new ConcurrentStack<int[]>();
-
-            private int _dataStackPoolDepth;
-            private int _returnStackPoolDepth;
-
-            /// <summary>
-            /// The word 'return' acts here once as a verb 'to return stack to the pool' and once as a part of the
-            /// compound noun 'return stack' which is a stack of subroutine return values.  
-            /// </summary>
-            /// <param name="dataStack"></param>
-            /// <param name="returnStack"></param>
-            public void ReturnStacks(byte[] dataStack, int[] returnStack)
-            {
-                _dataStackPool.Push(dataStack);
-                _returnStackPool.Push(returnStack);
-            }
-
+            
             private byte[] RentDataStack()
             {
                 if (_dataStackPool.Count == 0)
                 {
-                    Interlocked.Increment(ref _dataStackPoolDepth);
-                    if (_dataStackPoolDepth > _maxCallStackDepth)
+                    _dataStackPoolDepth++;
+                    if (_dataStackPoolDepth > MaxCallStackDepth)
                     {
-                        throw new Exception($"Trying to rent a data stack at depth {_dataStackPoolDepth}/{_maxCallStackDepth} at thread {Thread.CurrentThread.ManagedThreadId}");
+                        throw new InvalidAsynchronousStateException(
+                            $"Trying to rent a data stack at depth {_dataStackPoolDepth}/{MaxCallStackDepth} at thread {Thread.CurrentThread.ManagedThreadId}");
                     }
 
                     _dataStackPool.Push(new byte[(EvmStack.MaxStackSize + EvmStack.RegisterLength) * 32]);
@@ -75,10 +56,11 @@ namespace Nethermind.Evm
             {
                 if (_returnStackPool.Count == 0)
                 {
-                    Interlocked.Increment(ref _returnStackPoolDepth);
-                    if (_returnStackPoolDepth > _maxCallStackDepth)
+                    _returnStackPoolDepth++;
+                    if (_returnStackPoolDepth > MaxCallStackDepth)
                     {
-                        throw new Exception();
+                        throw new InvalidAsynchronousStateException(
+                            $"Trying to rent a return stack at depth {_dataStackPoolDepth}/{MaxCallStackDepth} at thread {Thread.CurrentThread.ManagedThreadId}");
                     }
 
                     _returnStackPool.Push(new int[EvmStack.ReturnStackSize]);
@@ -88,10 +70,24 @@ namespace Nethermind.Evm
                 return result;
             }
             
-            public (byte[], int[]) RentStacks()
+            /// <summary>
+            /// The word 'return' acts here once as a verb 'to return stack to the pool' and once as a part of the
+            /// compound noun 'return stack' which is a stack of subroutine return values.  
+            /// </summary>
+            /// <param name="dataStack"></param>
+            /// <param name="returnStack"></param>
+            public void ReturnStacks(byte[] dataStack, int[] returnStack)
             {
-                return (RentDataStack(), RentReturnStack());
+                _dataStackPool.Push(dataStack);
+                _returnStackPool.Push(returnStack);
             }
+
+            // TODO: we have wrong call depth calculation somewhere
+            private const int MaxCallStackDepth = VirtualMachine.MaxCallDepth * 2;
+            private readonly Stack<byte[]> _dataStackPool = new Stack<byte[]>();
+            private readonly Stack<int[]> _returnStackPool = new Stack<int[]>();
+            private int _dataStackPoolDepth;
+            private int _returnStackPoolDepth;
         }
 
         private static readonly ThreadLocal<StackPool> _stackPool = new ThreadLocal<StackPool>(() => new StackPool());
@@ -163,7 +159,6 @@ namespace Nethermind.Evm
         }
 
         public Address To => Env.CodeSource;
-        
         public ExecutionEnvironment Env { get; }
         public long GasAvailable { get; set; }
         public int ProgramCounter { get; set; }
