@@ -294,8 +294,8 @@ namespace Nethermind.Runner.Ethereum.Steps
             long firstInQueue = _triePersistenceHistory.Peek();
             if (firstInQueue <= reorganizationBoundary)
             {
-                _api.LogManager.GetClassLogger().Warn($"Marking block {blockNumber} as a pruning checkpoint");
-                (_api.BlockTree as BlockTree)!.SavePersistedNumber(blockNumber);
+                _api.LogManager.GetClassLogger().Warn($"Marking block {firstInQueue} < {reorganizationBoundary} as the new pruning checkpoint");
+                (_api.BlockTree as BlockTree)!.SavePersistedNumber(firstInQueue);
                 _triePersistenceHistory.Dequeue();
             }
         }
