@@ -457,7 +457,7 @@ namespace Nethermind.Blockchain.Processing
                 {
                     break;
                 }
-            } while (!_blockTree.IsMainChain(branchingPoint.Hash));
+            } while (!_blockTree.IsMainChain(branchingPoint.Hash) && branchingPoint.Number > (_blockTree.Head?.Header.Number ?? 0));
 
             if (branchingPoint != null && branchingPoint.Hash != _blockTree.Head?.Hash)
             {
