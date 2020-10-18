@@ -326,13 +326,13 @@ namespace Nethermind.Trie.Pruning
                     if (_logger.IsDebug) _logger.Debug("Elevated pruning starting");
 
                     BlockCommitSet? candidateSet = null;
-                    while (_commitSetQueue.TryDequeue(out BlockCommitSet? frontSet))
+                    while (_commitSetQueue.TryPeek(out BlockCommitSet? frontSet))
                     {
                         if (frontSet!.BlockNumber >= NewestKeptBlockNumber - Reorganization.MaxDepth)
                         {
                             break;
                         }
-
+                        
                         candidateSet = frontSet;
                     }
 
@@ -340,6 +340,7 @@ namespace Nethermind.Trie.Pruning
                     {
                         if (_logger.IsWarn) _logger.Warn($"Elevated pruning for candidate {candidateSet.BlockNumber}");
                         Persist(candidateSet);
+                        _commitSetQueue.Dequeue();
                         continue;
                     }
 
