@@ -30,6 +30,12 @@ namespace Nethermind.Trie.Pruning
         public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root) { }
         
         public void HackPersistOnShutdown() { }
+        
+        public event EventHandler<ReorgBoundaryReached> ReorgBoundaryPersisted
+        {
+            add { }
+            remove { }
+        }
 
         public TrieNode FindCachedOrUnknown(Keccak hash)
         {
@@ -42,12 +48,6 @@ namespace Nethermind.Trie.Pruning
         }
 
         public void UndoOneBlock() { }
-
-        public event EventHandler<TriePersistedEventArgs> TriePersisted
-        {
-            add { }
-            remove { }
-        }
 
         public void Dispose() { }
     }

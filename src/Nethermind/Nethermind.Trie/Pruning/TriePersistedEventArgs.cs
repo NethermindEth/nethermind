@@ -34,4 +34,17 @@ namespace Nethermind.Trie.Pruning
         /// </summary>
         public bool IsReorganizationBoundary { get; }
     }
+    
+    /// <summary>
+    /// Tells which number is safe to mark as a checkpoint if it was persisted before.
+    /// </summary>
+    public class ReorgBoundaryReached : EventArgs
+    {
+        public ReorgBoundaryReached(long blockNumber)
+        {
+            BlockNumber = blockNumber;
+        }
+
+        public long BlockNumber { get; }
+    }
 }

@@ -44,14 +44,14 @@ namespace Nethermind.Trie.Pruning
         public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root) { }
 
         public void HackPersistOnShutdown() { }
-
-        public void UndoOneBlock() { }
-
-        public event EventHandler<TriePersistedEventArgs> TriePersisted
+        
+        public event EventHandler<ReorgBoundaryReached> ReorgBoundaryPersisted
         {
             add { }
             remove { }
         }
+
+        public void UndoOneBlock() { }
 
         public void Dispose() { }
     }

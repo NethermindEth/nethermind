@@ -62,7 +62,6 @@ namespace Nethermind.Trie.Pruning
                 {
                     Metrics.LastPersistedBlockNumber = value;
                     _lastPersistedBlockNumber = value;
-                    TriePersisted?.Invoke(this, new TriePersistedEventArgs(_lastPersistedBlockNumber));
                 }
             }
         }
@@ -158,11 +157,6 @@ namespace Nethermind.Trie.Pruning
 
         public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root)
         {
-            if (Interlocked.Exchange(ref _isFirst, 1) == 0)
-            {
-                TriePersisted?.Invoke(this, new TriePersistedEventArgs(blockNumber));
-            }
-
             if (blockNumber < 0) throw new ArgumentOutOfRangeException(nameof(blockNumber));
             EnsureCommitSetExistsForBlock(blockNumber);
 
@@ -198,7 +192,7 @@ namespace Nethermind.Trie.Pruning
             PersistOnShutdown();
         }
 
-        public event EventHandler<TriePersistedEventArgs>? TriePersisted;
+        public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryPersisted;
 
         public byte[]? LoadRlp(Keccak keccak, bool allowCaching)
         {
@@ -492,6 +486,21 @@ namespace Nethermind.Trie.Pruning
 
         private void EnsureCommitSetExistsForBlock(long blockNumber)
         {
+            bool isFirstCommit = Interlocked.Exchange(ref _isFirst, 1) == 0;
+            if (isFirstCommit)
+            {
+                long baseBlock = Math.Max(0, blockNumber - 1);
+                LastPersistedBlockNumber = baseBlock;
+                ReorgBoundaryPersisted?.Invoke(this, new ReorgBoundaryReached(LastPersistedBlockNumber));
+            }
+            else
+            {
+                if (blockNumber > LastPersistedBlockNumber + Reorganization.MaxDepth)
+                {
+                    ReorgBoundaryPersisted?.Invoke(this, new ReorgBoundaryReached(LastPersistedBlockNumber));
+                }
+            }
+            
             if (CurrentPackage is null)
             {
                 CreateCommitSet(blockNumber);

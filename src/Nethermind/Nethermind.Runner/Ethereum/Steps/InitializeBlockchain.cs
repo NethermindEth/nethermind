@@ -114,7 +114,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             _api.DisposeStack.Push(_api.TrieStore);
             _api.ReadOnlyTrieStore = new ReadOnlyTrieStore(_api.TrieStore);
-            _api.TrieStore.TriePersisted += TreeStoreOnPersisted;
+            _api.TrieStore.ReorgBoundaryPersisted += TreeStoreOnPersisted;
 
             _api.StateProvider = new StateProvider(
                 _api.TrieStore,
@@ -266,38 +266,10 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             return Task.CompletedTask;
         }
-
-        private Queue<long> _triePersistenceHistory = new Queue<long>();
-
-        /// <summary>
-        /// Used to save info when closing the app to remember the pruning state.
-        /// TODO: I think this should be internal to trie store maybe?
-        /// </summary>
-        private void TreeStoreOnPersisted(object? sender, TriePersistedEventArgs e)
+        
+        private void TreeStoreOnPersisted(object? sender, ReorgBoundaryReached e)
         {
-            long blockNumber = e.BlockNumber;
-            long reorganizationBoundary;
-            if (e.IsReorganizationBoundary)
-            {
-                reorganizationBoundary = e.BlockNumber;
-                _triePersistenceHistory.Clear();
-            }
-            else
-            {
-                reorganizationBoundary = (_api.BlockTree!.Head?.Number ?? 0) - Reorganization.MaxDepth;
-            }
-
-            // it is important to keep the queue, otherwise we may lose ability
-            // to either reorganize after restarting or persisting at all
-            _triePersistenceHistory.Enqueue(blockNumber);
-
-            long firstInQueue = _triePersistenceHistory.Peek();
-            if (firstInQueue <= reorganizationBoundary)
-            {
-                _api.LogManager.GetClassLogger().Warn($"Marking block {firstInQueue} < {reorganizationBoundary} as the new pruning checkpoint");
-                (_api.BlockTree as BlockTree)!.SavePersistedNumber(firstInQueue);
-                _triePersistenceHistory.Dequeue();
-            }
+            (_api.BlockTree as BlockTree)!.SavePersistedNumber(e.BlockNumber);
         }
 
         protected virtual IComparer<Transaction> CreateTxPoolTxComparer() => CompareTxByGas.Instance;

@@ -26,6 +26,6 @@ namespace Nethermind.Trie.Pruning
 
         void HackPersistOnShutdown();
         
-        public event EventHandler<TriePersistedEventArgs> TriePersisted;
+        public event EventHandler<ReorgBoundaryReached> ReorgBoundaryPersisted;
     }
 }
