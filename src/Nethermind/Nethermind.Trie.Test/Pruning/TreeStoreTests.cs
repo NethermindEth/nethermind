@@ -3,6 +3,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -22,146 +23,137 @@ namespace Nethermind.Trie.Test.Pruning
         {
         }
 
-        // [Test]
-        // public void Initial_memory_is_96()
-        // {
-        //     TrieStore trieStore = new TrieStore(_trieNodeCache, new MemDb(), No.Pruning, No.Persistence, _logManager);
-        //     trieStore.MemorySize.Should().Be(96);
-        // }
-        //
-        // [Test]
-        // public void Memory_with_one_node_is_288()
-        // {
-        //     TrieNode trieNode = new TrieNode(NodeType.Leaf, Keccak.Zero); // 56B
-        //
-        //     TrieStore trieStore = new TrieStore(_trieNodeCache, new MemDb(), No.Pruning, No.Persistence, _logManager);
-        //     trieStore.CommitOneNode(1234, new NodeCommitInfo(trieNode));
-        //     trieStore.MemorySize.Should().Be(
-        //         96 /* committer */ +
-        //         88 /* block package */ +
-        //         48 /* linked list node size */ +
-        //         trieNode.GetMemorySize(false));
-        // }
-        //
-        // [Test]
-        // public void Memory_with_two_nodes_is_correct()
-        // {
-        //     TrieNode trieNode1 = new TrieNode(NodeType.Leaf, TestItem.KeccakA);
-        //     TrieNode trieNode2 = new TrieNode(NodeType.Leaf, TestItem.KeccakB);
-        //
-        //     TrieStore trieStore = new TrieStore(_trieNodeCache, new MemDb(), No.Pruning, No.Persistence, _logManager);
-        //     trieStore.CommitOneNode(1234, new NodeCommitInfo(trieNode1));
-        //     trieStore.CommitOneNode(1234, new NodeCommitInfo(trieNode2));
-        //     trieStore.MemorySize.Should().Be(
-        //         96 /* committer */ +
-        //         88 /* block package */ +
-        //         48 /* linked list node size */ +
-        //         trieNode1.GetMemorySize(false) +
-        //         trieNode2.GetMemorySize(false));
-        // }
-        //
-        // [Test]
-        // public void Memory_with_two_times_two_nodes_is_correct()
-        // {
-        //     TrieNode trieNode1 = new TrieNode(NodeType.Leaf, TestItem.KeccakA);
-        //     TrieNode trieNode2 = new TrieNode(NodeType.Leaf, TestItem.KeccakB);
-        //
-        //     TrieStore trieStore = new TrieStore(_trieNodeCache, new MemDb(), No.Pruning, No.Persistence, _logManager);
-        //     trieStore.CommitOneNode(1234, new NodeCommitInfo(trieNode1));
-        //     trieStore.CommitOneNode(1234, new NodeCommitInfo(trieNode2));
-        //     trieStore.FinishBlockCommit(TrieType.State, 1234, trieNode2);
-        //     trieStore.CommitOneNode(1235, new NodeCommitInfo(trieNode1));
-        //     trieStore.CommitOneNode(1235, new NodeCommitInfo(trieNode2));
-        //     
-        //     // depending on whether the node gets resolved it gives different values here in debugging and run
-        //     // needs some attention
-        //     trieStore.MemorySize.Should().BeLessThan(
-        //         96 /* committer */ +
-        //         2 * 88 /* block package */ +
-        //         2 * 48 /* linked list node size */ +
-        //         trieNode1.GetMemorySize(false) +
-        //         trieNode2.GetMemorySize(false));
-        // }
+        [Test]
+        public void Initial_memory_is_0()
+        {
+            TrieStore trieStore = new TrieStore(new MemDb(), No.Pruning, No.Persistence, _logManager);
+            trieStore.MemoryUsedByCache.Should().Be(0);
+        }
+        
+        [Test]
+        public void Memory_with_one_node_is_288()
+        {
+            TrieNode trieNode = new TrieNode(NodeType.Leaf, Keccak.Zero); // 56B
+        
+            TrieStore trieStore = new TrieStore(new MemDb(), No.Pruning, No.Persistence, _logManager);
+            trieStore.CommitNode(1234, new NodeCommitInfo(trieNode));
+            trieStore.MemoryUsedByCache.Should().Be(
+                trieNode.GetMemorySize(false));
+        }
+        
+        [Test]
+        public void Memory_with_two_nodes_is_correct()
+        {
+            TrieNode trieNode1 = new TrieNode(NodeType.Leaf, TestItem.KeccakA);
+            TrieNode trieNode2 = new TrieNode(NodeType.Leaf, TestItem.KeccakB);
+        
+            TrieStore trieStore = new TrieStore(new MemDb(), No.Pruning, No.Persistence, _logManager);
+            trieStore.CommitNode(1234, new NodeCommitInfo(trieNode1));
+            trieStore.CommitNode(1234, new NodeCommitInfo(trieNode2));
+            trieStore.MemoryUsedByCache.Should().Be(
+                trieNode1.GetMemorySize(false) +
+                trieNode2.GetMemorySize(false));
+        }
+        
+        [Test]
+        public void Memory_with_two_times_two_nodes_is_correct()
+        {
+            TrieNode trieNode1 = new TrieNode(NodeType.Leaf, TestItem.KeccakA);
+            TrieNode trieNode2 = new TrieNode(NodeType.Leaf, TestItem.KeccakB);
+            TrieNode trieNode3 = new TrieNode(NodeType.Leaf, TestItem.KeccakA);
+            TrieNode trieNode4 = new TrieNode(NodeType.Leaf, TestItem.KeccakB);
+        
+            TrieStore trieStore = new TrieStore(new MemDb(), No.Pruning, No.Persistence, _logManager);
+            trieStore.CommitNode(1234, new NodeCommitInfo(trieNode1));
+            trieStore.CommitNode(1234, new NodeCommitInfo(trieNode2));
+            trieStore.FinishBlockCommit(TrieType.State, 1234, trieNode2);
+            trieStore.CommitNode(1235, new NodeCommitInfo(trieNode3));
+            trieStore.CommitNode(1235, new NodeCommitInfo(trieNode4));
+            
+            // depending on whether the node gets resolved it gives different values here in debugging and run
+            // needs some attention
+            trieStore.MemoryUsedByCache.Should().BeLessOrEqualTo(
+                trieNode1.GetMemorySize(false) +
+                trieNode2.GetMemorySize(false));
+        }
 
-        // [Test]
-        // public void Dispatcher_will_try_to_clear_memory()
-        // {
-        //     TrieNode trieNode1 = new TrieNode(NodeType.Leaf, new byte[0]);
-        //     trieNode1.ResolveKey(null!, true);
-        //     TrieNode trieNode2 = new TrieNode(NodeType.Leaf, new byte[1]);
-        //     trieNode2.ResolveKey(null!, true);
-        //
-        //     TrieNode trieNode3 = new TrieNode(NodeType.Leaf, new byte[2]);
-        //     trieNode3.ResolveKey(null!, true);
-        //
-        //     TrieNode trieNode4 = new TrieNode(NodeType.Leaf, new byte[3]);
-        //     trieNode4.ResolveKey(null!, true);
-        //
-        //     TrieStore trieStore = new TrieStore(_trieNodeCache, new MemDb(), new MemoryLimit(640), No.Persistence, _logManager);
-        //     trieStore.CommitOneNode(1234, new NodeCommitInfo(trieNode1));
-        //     trieStore.CommitOneNode(1234, new NodeCommitInfo(trieNode2));
-        //     trieStore.FinishBlockCommit(TrieType.State, 1234, trieNode2);
-        //     trieStore.CommitOneNode(1235, new NodeCommitInfo(trieNode3));
-        //     trieStore.CommitOneNode(1235, new NodeCommitInfo(trieNode4));
-        //     trieStore.FinishBlockCommit(TrieType.State, 1235, trieNode2);
-        //     trieStore.FinishBlockCommit(TrieType.State, 1236, trieNode2);
-        //     trieStore.MemorySize.Should().Be(
-        //         96 /* committer */ +
-        //         1 * 88 /* block package */ +
-        //         1 * 48 /* linked list node size */ +
-        //         trieNode3.GetMemorySize(false) +
-        //         trieNode4.GetMemorySize(false) +
-        //         1 * 88 /* block package */ +
-        //         1 * 48 /* linked list node size */);
-        // }
+        [Test]
+        public void Dispatcher_will_try_to_clear_memory()
+        {
+            TrieNode trieNode1 = new TrieNode(NodeType.Leaf, new byte[0]);
+            trieNode1.ResolveKey(null!, true);
+            TrieNode trieNode2 = new TrieNode(NodeType.Leaf, new byte[1]);
+            trieNode2.ResolveKey(null!, true);
+        
+            TrieNode trieNode3 = new TrieNode(NodeType.Leaf, new byte[2]);
+            trieNode3.ResolveKey(null!, true);
+        
+            TrieNode trieNode4 = new TrieNode(NodeType.Leaf, new byte[3]);
+            trieNode4.ResolveKey(null!, true);
+        
+            TrieStore trieStore = new TrieStore(new MemDb(), new MemoryLimit(640), No.Persistence, _logManager);
+            trieStore.CommitNode(1234, new NodeCommitInfo(trieNode1));
+            trieStore.CommitNode(1234, new NodeCommitInfo(trieNode2));
+            trieStore.FinishBlockCommit(TrieType.State, 1234, trieNode2);
+            trieStore.CommitNode(1235, new NodeCommitInfo(trieNode3));
+            trieStore.CommitNode(1235, new NodeCommitInfo(trieNode4));
+            trieStore.FinishBlockCommit(TrieType.State, 1235, trieNode2);
+            trieStore.FinishBlockCommit(TrieType.State, 1236, trieNode2);
+            trieStore.MemoryUsedByCache.Should().Be(
+                trieNode1.GetMemorySize(false) +
+                trieNode2.GetMemorySize(false) +
+                trieNode3.GetMemorySize(false) +
+                trieNode4.GetMemorySize(false));
+        }
 
-        // [Test]
-        // public void Dispatcher_will_try_to_clear_memory_the_soonest_possible()
-        // {
-        //     TrieNode trieNode1 = new TrieNode(NodeType.Leaf, new byte[0]);
-        //     trieNode1.ResolveKey(null!, true);
-        //     TrieNode trieNode2 = new TrieNode(NodeType.Leaf, new byte[1]);
-        //     trieNode2.ResolveKey(null!, true);
-        //
-        //     TrieNode trieNode3 = new TrieNode(NodeType.Leaf, new byte[2]);
-        //     trieNode3.ResolveKey(null!, true);
-        //
-        //     TrieNode trieNode4 = new TrieNode(NodeType.Leaf, new byte[3]);
-        //     trieNode4.ResolveKey(null!, true);
-        //
-        //     TrieStore trieStore = new TrieStore(_trieNodeCache, new MemDb(), new MemoryLimit(512), No.Persistence, _logManager);
-        //     trieStore.CommitOneNode(1234, new NodeCommitInfo(trieNode1));
-        //     trieStore.CommitOneNode(1234, new NodeCommitInfo(trieNode2));
-        //     trieStore.FinishBlockCommit(TrieType.State, 1234, trieNode2);
-        //     trieStore.CommitOneNode(1235, new NodeCommitInfo(trieNode3));
-        //     trieStore.CommitOneNode(1235, new NodeCommitInfo(trieNode4));
-        //     trieStore.MemorySize.Should().Be(
-        //         96 /* committer */ +
-        //         1 * 88 /* block package */ +
-        //         1 * 48 /* linked list node size */ +
-        //         trieNode3.GetMemorySize(false) +
-        //         trieNode4.GetMemorySize(false));
-        // }
+        [Test]
+        public void Dispatcher_will_try_to_clear_memory_the_soonest_possible()
+        {
+            TrieNode trieNode1 = new TrieNode(NodeType.Leaf, new byte[0]);
+            trieNode1.ResolveKey(null!, true);
+            TrieNode trieNode2 = new TrieNode(NodeType.Leaf, new byte[1]);
+            trieNode2.ResolveKey(null!, true);
+        
+            TrieNode trieNode3 = new TrieNode(NodeType.Leaf, new byte[2]);
+            trieNode3.ResolveKey(null!, true);
+        
+            TrieNode trieNode4 = new TrieNode(NodeType.Leaf, new byte[3]);
+            trieNode4.ResolveKey(null!, true);
+        
+            TrieStore trieStore = new TrieStore(new MemDb(), new MemoryLimit(512), No.Persistence, _logManager);
+            trieStore.CommitNode(1234, new NodeCommitInfo(trieNode1));
+            trieStore.CommitNode(1234, new NodeCommitInfo(trieNode2));
+            trieStore.FinishBlockCommit(TrieType.State, 1234, trieNode2);
+            trieStore.CommitNode(1235, new NodeCommitInfo(trieNode3));
+            trieStore.CommitNode(1235, new NodeCommitInfo(trieNode4));
+            trieStore.MemoryUsedByCache.Should().Be(
+                trieNode1.GetMemorySize(false) +
+                trieNode2.GetMemorySize(false) +
+                trieNode3.GetMemorySize(false) +
+                trieNode4.GetMemorySize(false));
+        }
 
-        // [Test]
-        // public void Dispatcher_will_always_try_to_clear_memory()
-        // {
-        //     TrieNode trieNode = new TrieNode(NodeType.Leaf, new byte[0]); // 192B
-        //     trieNode.ResolveKey(NullTrieNodeResolver.Instance, true);
-        //
-        //     TrieStore trieStore = new TrieStore(_trieNodeCache, new MemDb(), new MemoryLimit(512), No.Persistence, _logManager);
-        //     for (int i = 0; i < 1024; i++)
-        //     {
-        //         for (int j = 0; j < 1 + i % 3; j++)
-        //         {
-        //             trieStore.CommitOneNode(i, new NodeCommitInfo(trieNode));
-        //         }
-        //
-        //         trieStore.FinishBlockCommit(TrieType.State, i, trieNode);
-        //     }
-        //
-        //     trieStore.MemorySize.Should().BeLessThan(512 * 2);
-        // }
+        [Test]
+        public void Dispatcher_will_always_try_to_clear_memory()
+        {
+
+            TrieStore trieStore = new TrieStore(new MemDb(), new MemoryLimit(512), No.Persistence, _logManager);
+            for (int i = 0; i < 1024; i++)
+            {
+                for (int j = 0; j < 1 + i % 3; j++)
+                {
+                    TrieNode trieNode = new TrieNode(NodeType.Leaf, new byte[0]); // 192B
+                    trieNode.ResolveKey(NullTrieNodeResolver.Instance, true);
+                    trieStore.CommitNode(i, new NodeCommitInfo(trieNode));
+                }
+        
+                TrieNode fakeRoot = new TrieNode(NodeType.Leaf, new byte[0]); // 192B
+                fakeRoot.ResolveKey(NullTrieNodeResolver.Instance, true);
+                trieStore.FinishBlockCommit(TrieType.State, i, fakeRoot);
+            }
+        
+            trieStore.MemoryUsedByCache.Should().BeLessThan(512 * 2);
+        }
 
         [Test]
         public void Dispatcher_will_save_to_db_everything_from_snapshot_blocks()

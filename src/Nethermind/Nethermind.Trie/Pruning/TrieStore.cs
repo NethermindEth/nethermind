@@ -126,7 +126,7 @@ namespace Nethermind.Trie.Pruning
 
                 if (node!.LastSeen.HasValue)
                 {
-                    throw new PruningException($"{nameof(TrieNode.LastSeen)} not set on {node} committed at {blockNumber}.");
+                    throw new PruningException($"{nameof(TrieNode.LastSeen)} set on {node} committed at {blockNumber}.");
                 }
 
                 if (IsNodeCached(node.Keccak))
