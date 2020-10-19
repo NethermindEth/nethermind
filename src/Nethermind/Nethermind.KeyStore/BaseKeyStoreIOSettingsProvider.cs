@@ -14,12 +14,22 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Security;
+using System.IO;
+using Nethermind.Logging;
 
 namespace Nethermind.KeyStore
 {
-    public interface IPasswordProvider
+    public class BaseKeyStoreIOSettingsProvider
     {
-        SecureString GetPassword();
+        public string GetStoreDirectory(string keyStoreFolderName)
+        {
+            var directory = keyStoreFolderName.GetApplicationResourcePath();
+            if (!Directory.Exists(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            return directory;
+        }
     }
 }

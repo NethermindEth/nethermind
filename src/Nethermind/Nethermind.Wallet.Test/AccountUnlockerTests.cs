@@ -113,7 +113,7 @@ namespace Nethermind.Wallet.Test
             
             IWallet wallet = Substitute.For<IWallet>();
             
-            var unlocker = new AccountUnlocker(keyStoreConfig, wallet, LimboLogs.Instance, new PasswordProvider(keyStoreConfig));
+            var unlocker = new AccountUnlocker(keyStoreConfig, wallet, LimboLogs.Instance, new KeyStorePasswordProvider(keyStoreConfig));
             unlocker.UnlockAccounts();
 
             for (var index = 0; index < test.UnlockAccounts.Length; index++)

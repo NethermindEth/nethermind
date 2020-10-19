@@ -29,9 +29,9 @@ namespace Nethermind.Wallet
         private readonly IKeyStoreConfig _config;
         private readonly IWallet _wallet;
         private readonly ILogger _logger;
-        private readonly IPasswordProvider _passwordProvider;
+        private readonly IKeyStorePasswordProvider _passwordProvider;
 
-        public AccountUnlocker(IKeyStoreConfig config, IWallet wallet, ILogManager logManager, IPasswordProvider passwordProvider)
+        public AccountUnlocker(IKeyStoreConfig config, IWallet wallet, ILogManager logManager, IKeyStorePasswordProvider passwordProvider)
         {
             _config = config ?? throw new ArgumentNullException(nameof(config));
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
@@ -49,7 +49,8 @@ namespace Nethermind.Wallet
                     try
                     {
                         Address address = new Address(unlockAccount);
-                        if (_wallet.UnlockAccount(address, _passwordProvider.GetPassword(i) ?? string.Empty.Secure(), TimeSpan.FromDays(1000)))
+                        _passwordProvider.Account = unlockAccount;
+                        if (_wallet.UnlockAccount(address, _passwordProvider.GetPassword() ?? string.Empty.Secure(), TimeSpan.FromDays(1000)))
                         {
                             if (_logger.IsInfo) _logger.Info($"Unlocked account: {unlockAccount}");
                         }

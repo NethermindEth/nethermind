@@ -29,7 +29,7 @@ using NUnit.Framework;
 
 namespace Nethermind.KeyStore.Test
 {
-    public class PasswordProviderTests
+    public class KeyStorePasswordProviderTests
     {
         private static List<(string Name, string Content)> _files = new List<(string Name, string Content)>()
         {
@@ -67,11 +67,11 @@ namespace Nethermind.KeyStore.Test
             }
         }
 
-        public static IEnumerable<PasswordProviderTest> PasswordProviderTestCases
+        public static IEnumerable<KeyStorePasswordProviderTest> PasswordProviderTestCases
         {
             get
             {
-                yield return new PasswordProviderTest()
+                yield return new KeyStorePasswordProviderTest()
                 {
                     UnlockAccounts = new[] { TestItem.AddressA, TestItem.AddressB },
                     Passwords = new[] { "A", "B" },
@@ -81,7 +81,7 @@ namespace Nethermind.KeyStore.Test
                     ExpectedBlockAuthorAccountPassword = _files[0].Content.Trim()
                 };
 
-                yield return new PasswordProviderTest()
+                yield return new KeyStorePasswordProviderTest()
                 {
                     UnlockAccounts = new[] { TestItem.AddressA, TestItem.AddressB },
                     Passwords = new[] { "A", "B" },
@@ -91,7 +91,7 @@ namespace Nethermind.KeyStore.Test
                     ExpectedBlockAuthorAccountPassword = _files[1].Content.Trim()
                 };
 
-                yield return new PasswordProviderTest()
+                yield return new KeyStorePasswordProviderTest()
                 {
                     UnlockAccounts = new[] { TestItem.AddressA, TestItem.AddressB },
                     Passwords = new[] { "A", "B" },
@@ -100,7 +100,7 @@ namespace Nethermind.KeyStore.Test
                     ExpectedBlockAuthorAccountPassword = "B"
                 };
 
-                yield return new PasswordProviderTest()
+                yield return new KeyStorePasswordProviderTest()
                 {
                     UnlockAccounts = new[] { TestItem.AddressA },
                     Passwords = new[] { "A", "B" },
@@ -113,36 +113,40 @@ namespace Nethermind.KeyStore.Test
         }
 
         [Test]
-        public void GetPassword([ValueSource(nameof(PasswordProviderTestCases))] PasswordProviderTest test)
+        public void GetPassword([ValueSource(nameof(PasswordProviderTestCases))] KeyStorePasswordProviderTest test)
         {
             IKeyStoreConfig keyStoreConfig = Substitute.For<IKeyStoreConfig>();
             keyStoreConfig.Passwords.Returns(test.Passwords);
+            keyStoreConfig.UnlockAccounts.Returns(test.UnlockAccounts.Select(a => a.ToString()).ToArray());
             keyStoreConfig.PasswordFiles.Returns(_files.Where(x => test.PasswordFiles.Contains(x.Name)).Select(x => x.Name).ToArray());
-            var passwordProvider = new PasswordProvider(keyStoreConfig);
+            var passwordProvider = new KeyStorePasswordProvider(keyStoreConfig);
 
             for (var index = 0; index < test.PasswordFiles.Count; ++index)
             {
-                var actualPassword = passwordProvider.GetPassword(index).Unsecure();
+                passwordProvider.Account = test.UnlockAccounts[index].ToString();
+                var actualPassword = passwordProvider.GetPassword();
                 var expectedPassword = test.ExpectedPasswords[index];
-                Assert.AreEqual(expectedPassword, actualPassword);
+                Assert.IsTrue(actualPassword.IsReadOnly());
+                Assert.AreEqual(expectedPassword, actualPassword.Unsecure());
             }
         }
 
         [Test]
-        public void GetBlockAuthorPassword([ValueSource(nameof(PasswordProviderTestCases))] PasswordProviderTest test)
+        public void GetBlockAuthorPassword([ValueSource(nameof(PasswordProviderTestCases))] KeyStorePasswordProviderTest test)
         {
             IKeyStoreConfig keyStoreConfig = Substitute.For<IKeyStoreConfig>();
             keyStoreConfig.Passwords.Returns(test.Passwords);
             keyStoreConfig.PasswordFiles.Returns(_files.Where(x => test.PasswordFiles.Contains(x.Name)).Select(x => x.Name).ToArray());
             keyStoreConfig.BlockAuthorAccount.Returns(test.BlockAuthorAccount.ToString());
             keyStoreConfig.UnlockAccounts.Returns(test.UnlockAccounts.Select(a => a.ToString()).ToArray());
-            var passwordProvider = new PasswordProvider(keyStoreConfig);
-            var blockAuthorPassword = passwordProvider.GetBlockAuthorPassword().Unsecure();
-            Assert.AreEqual(test.ExpectedBlockAuthorAccountPassword, blockAuthorPassword);
+            var passwordProvider = new KeyStorePasswordProvider(keyStoreConfig) { Account = keyStoreConfig.BlockAuthorAccount };
+            var blockAuthorPassword = passwordProvider.GetPassword();
+            Assert.IsTrue(blockAuthorPassword.IsReadOnly());
+            Assert.AreEqual(test.ExpectedBlockAuthorAccountPassword, blockAuthorPassword.Unsecure());
         }
     }
 
-    public class PasswordProviderTest
+    public class KeyStorePasswordProviderTest
     {
         public string[] Passwords { get; set; } = Array.Empty<string>();
         public List<string> PasswordFiles { get; set; } = new List<string>();

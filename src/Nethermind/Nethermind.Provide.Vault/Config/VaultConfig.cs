@@ -24,5 +24,6 @@ namespace Nethermind.Vault.Config
         public string Scheme { get; set; } = "https";
         public string Path { get; set; } = "api/v1";
         public string VaultId { get; set;}
+        public string VaultKeyFile { get; set; }
     }
 }
