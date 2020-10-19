@@ -19,22 +19,6 @@ using System;
 
 namespace Nethermind.Trie.Pruning
 {
-    public class TriePersistedEventArgs : EventArgs
-    {
-        public TriePersistedEventArgs(long blockNumber, bool isReorganizationBoundary = false)
-        {
-            BlockNumber = blockNumber;
-            IsReorganizationBoundary = isReorganizationBoundary;
-        }
-
-        public long BlockNumber { get; }
-        
-        /// <summary>
-        /// Tells whether the reorg can go before this.
-        /// </summary>
-        public bool IsReorganizationBoundary { get; }
-    }
-    
     /// <summary>
     /// Tells which number is safe to mark as a checkpoint if it was persisted before.
     /// </summary>
