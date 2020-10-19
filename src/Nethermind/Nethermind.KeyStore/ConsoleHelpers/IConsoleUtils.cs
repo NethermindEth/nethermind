@@ -16,10 +16,10 @@
 
 using System.Security;
 
-namespace Nethermind.KeyStore
+namespace Nethermind.KeyStore.ConsoleHelpers
 {
-    public interface IPasswordProvider
+    public interface IConsoleUtils
     {
-        SecureString GetPassword();
+        SecureString ReadSecret(string secretDisplayName);
     }
 }

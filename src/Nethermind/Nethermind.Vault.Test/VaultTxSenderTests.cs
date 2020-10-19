@@ -14,12 +14,27 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Security;
+using System;
+using FluentAssertions;
+using Nethermind.Logging;
+using Nethermind.TxPool;
+using Nethermind.Vault.Config;
+using NUnit.Framework;
 
-namespace Nethermind.KeyStore
+namespace Nethermind.Vault.Test
 {
-    public interface IPasswordProvider
+    public class VaultTxSenderTests
     {
-        SecureString GetPassword();
+        [Test]
+        public void Can_Initialize_VaultTxSender_without_exceptions()
+        {
+            var vaultConfig = new VaultConfig();
+            vaultConfig.VaultId = "deca2436-21ba-4ff5-b225-ad1b0b2f5c59";
+            var _vaultService = new VaultService(vaultConfig, LimboLogs.Instance);
+
+            IVaultWallet wallet = new VaultWallet(_vaultService, vaultConfig.VaultId, LimboLogs.Instance);
+            ITxSigner vaultSigner = new VaultTxSigner(wallet, 1);
+            Assert.DoesNotThrow(() => { new VaultTxSender(vaultSigner, vaultConfig, 1); });
+        }
     }
 }

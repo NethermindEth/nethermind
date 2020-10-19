@@ -14,12 +14,25 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Security;
+using System;
 
-namespace Nethermind.KeyStore
+namespace Nethermind.KeyStore.ConsoleHelpers
 {
-    public interface IPasswordProvider
+    public class ConsoleWrapper : IConsoleWrapper
     {
-        SecureString GetPassword();
+        public ConsoleKeyInfo ReadKey(bool intercept)
+        {
+            return Console.ReadKey(intercept);
+        }
+
+        public void Write(string message)
+        {
+            Console.Write(message);
+        }
+
+        public void WriteLine(string message = null)
+        {
+            Console.WriteLine(message);
+        }
     }
 }

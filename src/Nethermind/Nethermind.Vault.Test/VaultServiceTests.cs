@@ -32,18 +32,27 @@ namespace Nethermind.Vault.Test
         private VaultService _vaultService;
 
         [SetUp]
-        public void SetUp()
+        public async Task SetUp()
         {
             _config = new VaultConfig();
             _config.Host = "localhost:8082";
             _config.Scheme = "http";
             _config.Path = "api/v1";
             _config.Token = $"bearer  {TestContext.Parameters["token"]}";
+            var vaultSealingForTestsHelper = new VaultSealingForTestsHelper(_config);
+            await vaultSealingForTestsHelper.Unseal();
             _vaultService = new VaultService(_config, LimboLogs.Instance);
         }
 
         [TearDown]
         public async Task TearDown()
+        {
+            await CleanUpVault();
+            var vaultSealingForTestsHelper = new VaultSealingForTestsHelper(_config);
+            await vaultSealingForTestsHelper.Seal();
+        }
+
+        private async Task CleanUpVault()
         {
             var vaults = await _vaultService.ListVaultIds();
             foreach (Guid vault in vaults)
@@ -58,10 +67,10 @@ namespace Nethermind.Vault.Test
             provide.Model.Vault.Vault vault = new provide.Model.Vault.Vault();
             vault.Name = "Wallet Vault Test";
             vault.Description = "Test Vault used for test purposes";
-            
+
             provide.Model.Vault.Vault createdVault = await _vaultService.CreateVault(vault);
             createdVault.Id.Should().NotBeNull();
-            
+
             IEnumerable<Guid> result = await _vaultService.ListVaultIds();
             result.Should().Contain(createdVault.Id!.Value);
         }
@@ -73,7 +82,7 @@ namespace Nethermind.Vault.Test
             provide.Model.Vault.Vault vault = new provide.Model.Vault.Vault();
             vault.Name = "Wallet Vault Test";
             vault.Description = "Test Vault used for test purposes";
-            
+
             provide.Model.Vault.Vault result = await _vaultService.CreateVault(vault);
             result.Should().NotBeNull();
             result.Id.Should().NotBeNull();
@@ -86,7 +95,7 @@ namespace Nethermind.Vault.Test
             provide.Model.Vault.Vault vault = new provide.Model.Vault.Vault();
             vault.Name = "Wallet Vault Test";
             vault.Description = "Test Vault used for test purposes";
-            
+
             provide.Model.Vault.Vault createdVault = await _vaultService.CreateVault(vault);
             createdVault.Id.Should().NotBeNull();
 
@@ -94,16 +103,16 @@ namespace Nethermind.Vault.Test
             IEnumerable<Guid> vaults = await _vaultService.ListVaultIds();
             vaults.Should().NotContain(createdVault.Id.Value);
         }
-        
+
         [Test]
         public async Task can_delete_key()
         {
             provide.Model.Vault.Vault vault = new provide.Model.Vault.Vault();
             vault.Name = "Wallet Vault Test";
             vault.Description = "Test Vault used for test purposes";
-            
+
             provide.Model.Vault.Vault createdVault = await _vaultService.CreateVault(vault);
-            
+
             Key key = new Key();
             key.Name = "Test Key";
             key.Description = "Test Key used for test purposes";
@@ -113,23 +122,23 @@ namespace Nethermind.Vault.Test
             Key createdKey = await _vaultService.CreateKey(createdVault.Id.Value, key);
             await _vaultService.DeleteKey(createdVault.Id.Value, createdKey.Id.Value);
         }
-        
+
         [Test]
         public async Task can_delete_key_via_listed()
         {
             provide.Model.Vault.Vault vault = new provide.Model.Vault.Vault();
             vault.Name = "Wallet Vault Test";
             vault.Description = "Test Vault used for test purposes";
-            
+
             provide.Model.Vault.Vault createdVault = await _vaultService.CreateVault(vault);
-            
+
             Key key = new Key();
             key.Name = "Test Key";
             key.Description = "Test Key used for test purposes";
             key.Type = "asymmetric";
             key.Spec = "secp256k1";
             key.Usage = "sign/verify";
-            
+
             _ = await _vaultService.CreateKey(createdVault.Id.Value, key);
             var keys = await _vaultService.ListKeys(createdVault.Id.Value);
             foreach (var listedKey in keys)

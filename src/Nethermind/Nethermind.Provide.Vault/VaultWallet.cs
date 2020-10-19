@@ -114,7 +114,7 @@ namespace Nethermind.Vault
                 throw new KeyNotFoundException($"Account with the given address {address} could not be found");
             }
             
-            string signature = await _vaultService.Sign(_vaultId, keyId.Value, message.ToString());
+            string signature = await _vaultService.Sign(_vaultId, keyId.Value, message.ToString(false));
             return new Signature(signature);
         }
 
@@ -137,7 +137,7 @@ namespace Nethermind.Vault
             }
             
             string sig = Convert.ToString(signature)!.Remove(0, 2);
-            bool result = await _vaultService.Verify(_vaultId, keyId.Value, message.ToString(), sig);
+            bool result = await _vaultService.Verify(_vaultId, keyId.Value, message.ToString(false), sig);
             return result;
         }
 
