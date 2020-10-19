@@ -19,9 +19,7 @@ namespace Nethermind.Trie.Pruning
 {
     public class Archive : IPersistenceStrategy
     {
-        private Archive()
-        {
-        }
+        private Archive() { }
 
         public static Archive Instance { get; } = new Archive();
 

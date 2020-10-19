@@ -20,10 +20,7 @@ namespace Nethermind.Trie.Pruning
 {
     public class NullTrieNodeResolver : ITrieNodeResolver
     {
-        private NullTrieNodeResolver()
-        {
-            
-        }
+        private NullTrieNodeResolver() { }
         
         public static NullTrieNodeResolver Instance = new NullTrieNodeResolver();
 

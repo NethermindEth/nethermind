@@ -18,9 +18,7 @@ namespace Nethermind.Trie.Pruning
 {
     public class NoPruning : IPruningStrategy
     {
-        private NoPruning()
-        {
-        }
+        private NoPruning() { }
 
         public static NoPruning Instance { get; } = new NoPruning();
 

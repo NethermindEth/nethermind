@@ -18,9 +18,7 @@ namespace Nethermind.Trie.Pruning
 {
     public class NoPersistence : IPersistenceStrategy
     {
-        private NoPersistence()
-        {
-        }
+        private NoPersistence() { }
 
         public static NoPersistence Instance { get; } = new NoPersistence();
 

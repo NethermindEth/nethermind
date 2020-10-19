@@ -15,7 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-namespace Nethermind.Trie.Pruning
+namespace Nethermind.Trie
 {
     public enum TrieType
     {

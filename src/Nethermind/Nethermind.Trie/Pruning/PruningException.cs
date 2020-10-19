@@ -22,16 +22,10 @@ namespace Nethermind.Trie.Pruning
     [Serializable]
     public class PruningException : TrieException
     {
-        public PruningException()
-        {
-        }
+        public PruningException() { }
 
-        public PruningException(string message) : base(message)
-        {
-        }
+        public PruningException(string message) : base(message) { }
 
-        public PruningException(string message, Exception inner) : base(message, inner)
-        {
-        }
+        public PruningException(string message, Exception inner) : base(message, inner) { }
     }
 }
