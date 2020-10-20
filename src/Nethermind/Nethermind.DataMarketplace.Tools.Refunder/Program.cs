@@ -146,7 +146,8 @@ namespace Nethermind.DataMarketplace.Tools.Refunder
                 new EthereumJsonSerializer(),
                 new AesEncrypter(keyStoreConfig, logManager),
                 new CryptoRandom(),
-                logManager);
+                logManager,
+                new PrivateKeyStoreIOSettingsProvider(keyStoreConfig));
         }
     }
 }
