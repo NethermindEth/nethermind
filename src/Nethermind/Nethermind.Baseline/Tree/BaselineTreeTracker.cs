@@ -62,6 +62,7 @@ namespace Nethermind.Baseline.Tree
         private void OnBlockProcessed(object? sender, BlockProcessedEventArgs e)
         {
             // ToDo concurrent events
+            // nie równa się
             if (_currentBlock == null || _currentBlock.Hash == e.Block.ParentHash)
             {
                 _currentBlock = e.Block;
@@ -77,6 +78,7 @@ namespace Nethermind.Baseline.Tree
                     if (filterLog.Data.Length == 96)
                     {
                         Keccak leafHash = new Keccak(filterLog.Data.Slice(32, 32).ToArray());
+                        //zrzucac hashe liscie
                         _baselineTree.Insert(leafHash);
                     }
                     else

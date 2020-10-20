@@ -36,10 +36,10 @@ namespace Nethermind.Baseline.Test
         {
             var spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
-            testRpc.TestWallet.UnlockAccount(TestItem.Addresses[0], new SecureString());
+            testRpc.TestWallet.UnlockAccount(TestItem.AddressB, new SecureString());
             BaselineTree baselineTree = BuildATree();
-            new BaselineTreeTracker(TestItem.Addresses[0], baselineTree, testRpc.LogFinder, testRpc.BlockFinder, testRpc.BlockProcessor);
-            await testRpc.AddBlock(TestRpcBlockchain.BuildSimpleTransaction.WithNonce(0).TestObject);
+            new BaselineTreeTracker(TestItem.AddressB, baselineTree, testRpc.LogFinder, testRpc.BlockFinder, testRpc.BlockProcessor);
+            await testRpc.AddBlock(Core.Test.Builders.Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).To(TestItem.AddressB).TestObject);
             await testRpc.AddBlock(TestRpcBlockchain.BuildSimpleTransaction.WithNonce(1).TestObject, TestRpcBlockchain.BuildSimpleTransaction.WithNonce(2).TestObject);
         }
 
