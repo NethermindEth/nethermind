@@ -13,9 +13,9 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Timers;
 using Nethermind.Blockchain.Filters;
@@ -35,7 +35,10 @@ namespace Nethermind.Baseline.Tree
         private readonly ILogFinder _logFinder;
         private readonly IBlockFinder _blockFinder;
         private readonly IBlockProcessor _blockProcessor;
-        private Timer _timer;
+        private const int MaxBlockSize = 1000;
+        private Block _currentBlock;
+        // ToDo concurrent stack?
+        private Stack<Block> _blocksStack = new Stack<Block>();
 
         /// <summary>
         /// This class should smoothly react to new blocks and logs
@@ -54,52 +57,46 @@ namespace Nethermind.Baseline.Tree
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
             _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
             _blockProcessor.BlockProcessed += OnBlockProcessed;
-
-            _timer = InitTimer();
         }
 
         private void OnBlockProcessed(object? sender, BlockProcessedEventArgs e)
         {
-            var block = e.Block;
-            // check if current parent block = e.Block
-            Keccak[] leavesAndLeafTopics = new Keccak[]
+            // ToDo concurrent events
+            if (_currentBlock == null || _currentBlock.Hash == e.Block.ParentHash)
             {
+                _currentBlock = e.Block;
+                Keccak[] leavesAndLeafTopics = new Keccak[]
+                {
                 new Keccak("0x8ec50f97970775682a68d3c6f9caedf60fd82448ea40706b8b65d6c03648b922"),
                 new Keccak("0x6a82ba2aa1d2c039c41e6e2b5a5a1090d09906f060d32af9c1ac0beff7af75c0")
-            };
-            var logs = e.Block.Header.FindLogs(e.TxReceipts, new LogEntry(_address, Array.Empty<byte>(), leavesAndLeafTopics), FindOrder.Ascending, FindOrder.Ascending, BaselineLogEntryEqualityComparer.Instance);
-            foreach (var filterLog in logs)
-            {
-                // ToDo write a comment here?
-                if (filterLog.Data.Length == 96)
+                };
+                var logs = _currentBlock.Header.FindLogs(e.TxReceipts, new LogEntry(_address, Array.Empty<byte>(), leavesAndLeafTopics), FindOrder.Ascending, FindOrder.Ascending, BaselineLogEntryEqualityComparer.Instance);
+                foreach (var filterLog in logs)
                 {
-                    Keccak leafHash = new Keccak(filterLog.Data.Slice(32, 32).ToArray());
-                    _baselineTree.Insert(leafHash);
-                }
-                else
-                {
-                    for (int i = 0; i < (filterLog.Data.Length - 128) / 32; i++)
+                    // ToDo write a comment here?
+                    if (filterLog.Data.Length == 96)
                     {
-                        Keccak leafHash = new Keccak(filterLog.Data.Slice(128 + 32 * i, 32).ToArray());
+                        Keccak leafHash = new Keccak(filterLog.Data.Slice(32, 32).ToArray());
                         _baselineTree.Insert(leafHash);
+                    }
+                    else
+                    {
+                        for (int i = 0; i < (filterLog.Data.Length - 128) / 32; i++)
+                        {
+                            Keccak leafHash = new Keccak(filterLog.Data.Slice(128 + 32 * i, 32).ToArray());
+                            _baselineTree.Insert(leafHash);
+                        }
                     }
                 }
             }
-
-        }
-
-        private Timer InitTimer()
-        {
-            Timer timer = new Timer();
-            timer.Interval = 1000;
-            timer.Elapsed += TimerOnElapsed;
-            timer.AutoReset = false;
-            return timer;
-        }
-
-        private void TimerOnElapsed(object sender, ElapsedEventArgs e)
-        {
-            _timer.Enabled = true;
+            else if (_blocksStack.Count <= MaxBlockSize)
+            {
+                // ToDo reorganize tree
+            }
+            else
+            {
+                // RebuildEntireTree
+            }
         }
     }
 }
