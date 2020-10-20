@@ -18,6 +18,7 @@ using System;
 using System.IO.Abstractions;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Processing;
 using Nethermind.Db;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
@@ -35,6 +36,7 @@ namespace Nethermind.Baseline
         private readonly IStateReader _stateReader;
         private readonly ILogManager _logManager;
         private readonly IAbiEncoder _abiEncoder;
+        private readonly IBlockProcessor _blockProcessor;
         
         public BaselineModuleFactory(
             ITxSender txSender,
@@ -43,7 +45,8 @@ namespace Nethermind.Baseline
             IBlockFinder blockFinder,
             IAbiEncoder abiEncoder,
             IFileSystem fileSystem,
-            ILogManager logManager)
+            ILogManager logManager,
+            IBlockProcessor blockProcessor)
         {
             _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
             _logFinder = logFinder ?? throw new ArgumentNullException(nameof(logFinder));
@@ -52,6 +55,7 @@ namespace Nethermind.Baseline
             _abiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
             _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
         }
         
         public override IBaselineModule Create()
@@ -64,7 +68,8 @@ namespace Nethermind.Baseline
                 _abiEncoder,
                 _fileSystem,
                 new MemDb(),
-                _logManager);
+                _logManager,
+                _blockProcessor);
         }
     }
 }

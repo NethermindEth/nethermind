@@ -25,6 +25,7 @@ using Nethermind.Baseline.Tree;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -49,7 +50,8 @@ namespace Nethermind.Baseline
             IAbiEncoder abiEncoder,
             IFileSystem fileSystem,
             IDb baselineDb,
-            ILogManager logManager)
+            ILogManager logManager,
+            IBlockProcessor blockProcessor)
         {
             _abiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
             _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
@@ -59,6 +61,7 @@ namespace Nethermind.Baseline
             _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
             _logFinder = logFinder ?? throw new ArgumentNullException(nameof(logFinder));
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
+            _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
 
             _metadata = LoadMetadata();
             InitTrees();
@@ -463,6 +466,7 @@ namespace Nethermind.Baseline
         private readonly IStateReader _stateReader;
         private readonly ILogFinder _logFinder;
         private readonly IBlockFinder _blockFinder;
+        private readonly IBlockProcessor _blockProcessor;
 
         private BaselineMetadata _metadata;
         private byte[] _metadataKey = {0};
@@ -531,6 +535,7 @@ namespace Nethermind.Baseline
                 .Union(insertLeafLogs)
                 .OrderBy(fl => fl.BlockNumber).ThenBy(fl => fl.LogIndex))
             {
+                // okomentować
                 if (filterLog.Data.Length == 96)
                 {
                     Keccak leafHash = new Keccak(filterLog.Data.Slice(32, 32).ToArray());
@@ -640,6 +645,7 @@ namespace Nethermind.Baseline
             }
 
             ShaBaselineTree tree = new ShaBaselineTree(_baselineDb, trackedTree.Bytes, TruncationLength);
+            new BaselineTreeTracker(trackedTree, tree, _logFinder, _blockFinder, _blockProcessor);
             return _baselineTrees.TryAdd(trackedTree, tree);
         }
 

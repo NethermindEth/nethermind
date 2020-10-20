@@ -63,7 +63,8 @@ namespace Nethermind.Baseline.Test.JsonRpc
                 _abiEncoder,
                 _fileSystem,
                 new MemDb(),
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                testRpc.BlockProcessor);
 
             var result = await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA");
             result.Data.Should().NotBe(null);
@@ -98,7 +99,8 @@ namespace Nethermind.Baseline.Test.JsonRpc
                 _abiEncoder,
                 _fileSystem,
                 new MemDb(),
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                testRpc.BlockProcessor);
 
             var result = await baselineModule.baseline_deployBytecode(
                 TestItem.Addresses[0],
@@ -141,7 +143,8 @@ namespace Nethermind.Baseline.Test.JsonRpc
                 _abiEncoder,
                 _fileSystem,
                 new MemDb(),
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                testRpc.BlockProcessor);
 
             var result = await baselineModule.baseline_deployBytecode(
                 TestItem.Addresses[0],
@@ -178,7 +181,8 @@ namespace Nethermind.Baseline.Test.JsonRpc
                 _abiEncoder,
                 _fileSystem,
                 new MemDb(),
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                testRpc.BlockProcessor);
 
             var result = await baselineModule.baseline_deploy(TestItem.Addresses[0], "MissingContract");
             result.Data.Should().Be(null);
@@ -200,7 +204,8 @@ namespace Nethermind.Baseline.Test.JsonRpc
                 _abiEncoder,
                 _fileSystem,
                 new MemDb(),
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                testRpc.BlockProcessor);
 
             await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
             await testRpc.AddFunds(TestItem.Addresses[1], 1.Ether());
@@ -236,7 +241,8 @@ namespace Nethermind.Baseline.Test.JsonRpc
                 _abiEncoder,
                 _fileSystem,
                 new MemDb(),
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                testRpc.BlockProcessor);
 
             await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
             await testRpc.AddFunds(TestItem.Addresses[1], 1.Ether());
@@ -271,7 +277,8 @@ namespace Nethermind.Baseline.Test.JsonRpc
                 _abiEncoder,
                 _fileSystem,
                 new MemDb(),
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                testRpc.BlockProcessor);
 
             await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
             await testRpc.AddFunds(TestItem.Addresses[1], 1.Ether());
@@ -318,7 +325,8 @@ namespace Nethermind.Baseline.Test.JsonRpc
                 _abiEncoder,
                 _fileSystem,
                 new MemDb(),
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                testRpc.BlockProcessor);
 
             await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
             Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
@@ -348,7 +356,8 @@ namespace Nethermind.Baseline.Test.JsonRpc
                 _abiEncoder,
                 _fileSystem,
                 new MemDb(),
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                testRpc.BlockProcessor);
 
             await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
             Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
@@ -380,7 +389,8 @@ namespace Nethermind.Baseline.Test.JsonRpc
                 _abiEncoder,
                 _fileSystem,
                 new MemDb(),
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                testRpc.BlockProcessor);
 
             await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
             await testRpc.AddFunds(TestItem.Addresses[1], 1.Ether());
@@ -415,7 +425,8 @@ namespace Nethermind.Baseline.Test.JsonRpc
                 _abiEncoder,
                 _fileSystem,
                 new MemDb(),
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                testRpc.BlockProcessor);
 
             await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
             await testRpc.AddFunds(TestItem.Addresses[1], 1.Ether());
@@ -451,7 +462,8 @@ namespace Nethermind.Baseline.Test.JsonRpc
                 _abiEncoder,
                 _fileSystem,
                 new MemDb(),
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                testRpc.BlockProcessor);
 
             await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
             Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
@@ -482,7 +494,8 @@ namespace Nethermind.Baseline.Test.JsonRpc
                 _abiEncoder,
                 _fileSystem,
                 new MemDb(),
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                testRpc.BlockProcessor);
 
             await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
             Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
@@ -515,7 +528,8 @@ namespace Nethermind.Baseline.Test.JsonRpc
                 _abiEncoder,
                 _fileSystem,
                 new MemDb(),
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                testRpc.BlockProcessor);
 
             await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
             await testRpc.AddFunds(TestItem.Addresses[1], 1.Ether());
@@ -594,7 +608,8 @@ namespace Nethermind.Baseline.Test.JsonRpc
                 _abiEncoder,
                 _fileSystem,
                 new MemDb(),
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                testRpc.BlockProcessor);
 
             await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
 
@@ -621,7 +636,8 @@ namespace Nethermind.Baseline.Test.JsonRpc
                 _abiEncoder,
                 _fileSystem,
                 new MemDb(),
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                testRpc.BlockProcessor);
 
             int iterationsPerTask = 1000;
             Action trackAction = () =>
@@ -662,7 +678,8 @@ namespace Nethermind.Baseline.Test.JsonRpc
                 _abiEncoder,
                 _fileSystem,
                 new MemDb(),
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                testRpc.BlockProcessor);
 
             await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
 
@@ -687,7 +704,8 @@ namespace Nethermind.Baseline.Test.JsonRpc
                 _abiEncoder,
                 _fileSystem,
                 new MemDb(),
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                testRpc.BlockProcessor);
 
             await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
 
@@ -715,7 +733,8 @@ namespace Nethermind.Baseline.Test.JsonRpc
                 _abiEncoder,
                 _fileSystem,
                 new MemDb(),
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                testRpc.BlockProcessor);
 
             for (int i = 0; i < trackedCount; i++)
             {
@@ -745,7 +764,8 @@ namespace Nethermind.Baseline.Test.JsonRpc
                 _abiEncoder,
                 _fileSystem,
                 memDb,
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                testRpc.BlockProcessor);
 
             for (int i = 0; i < trackedCount; i++)
             {
@@ -761,7 +781,8 @@ namespace Nethermind.Baseline.Test.JsonRpc
                 _abiEncoder,
                 _fileSystem,
                 memDb,
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                testRpc.BlockProcessor);
 
             var resultRestored = await restored.baseline_getTracked();
             resultRestored.Data.Length.Should().Be((int) trackedCount);
@@ -780,7 +801,8 @@ namespace Nethermind.Baseline.Test.JsonRpc
                 _abiEncoder,
                 _fileSystem,
                 new MemDb(),
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                testRpc.BlockProcessor);
 
             await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
             Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
@@ -814,7 +836,8 @@ namespace Nethermind.Baseline.Test.JsonRpc
                 _abiEncoder,
                 _fileSystem,
                 new MemDb(),
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                testRpc.BlockProcessor);
 
             await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
             Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
@@ -898,7 +921,8 @@ namespace Nethermind.Baseline.Test.JsonRpc
                 _abiEncoder,
                 _fileSystem,
                 new MemDb(),
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                testRpc.BlockProcessor);
             
             for (int i = 0; i < 255; i++)
             {

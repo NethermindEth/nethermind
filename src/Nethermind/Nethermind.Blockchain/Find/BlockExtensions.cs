@@ -19,7 +19,7 @@ using System.Collections.Generic;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
 
-namespace Nethermind.Consensus.AuRa
+namespace Nethermind.Blockchain.Find
 {
     public static class BlockExtensions
     {

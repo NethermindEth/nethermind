@@ -48,7 +48,8 @@ namespace Nethermind.Plugin.Baseline
                     _api.BlockTree!,
                     _api.AbiEncoder,
                     _api.FileSystem,
-                    _api.LogManager);
+                    _api.LogManager,
+                    _api.MainBlockProcessor);
 
                 var modulePool = new BoundedModulePool<IBaselineModule>(baselineModuleFactory, 2, 1000);
                 _api.RpcModuleProvider!.Register(modulePool);
