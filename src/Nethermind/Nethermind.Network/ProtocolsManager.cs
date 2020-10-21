@@ -193,9 +193,9 @@ namespace Nethermind.Network
                     var witHandler = version switch
                     {
                         0 => new WitProtocolHandler(session, _serializer, _stats, _syncServer, _logManager),
-                        _ => throw new NotSupportedException($"Eth protocol version {version} is not supported.")
+                        _ => throw new NotSupportedException($"{Protocol.Wit}.{version} is not supported.")
                     };
-                    
+
                     return witHandler;
                 },
                 [Protocol.Les] = (session, version) =>
