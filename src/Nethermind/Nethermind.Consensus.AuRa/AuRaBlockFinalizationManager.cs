@@ -267,6 +267,38 @@ namespace Nethermind.Consensus.AuRa
             
             return 0;
         }
+        
+        public long? GetFinalizationLevel(long level)
+        {
+            var block = _blockTree.FindHeader(level, BlockTreeLookupOptions.None);
+            var validators = new HashSet<Address>();
+            var minSealersForFinalization = GetMinSealersForFinalization(level);
+
+            // this can only happen when we are fast syncing headers before pivot
+            if (block == null)
+            {
+                // in that case check if it has enough blocks to best known to be finalized
+                // as everything before pivot should be finalized
+                long blocksAfter = _blockTree.BestKnownNumber - level + 1;
+                if (blocksAfter >= minSealersForFinalization)
+                {
+                    return level + minSealersForFinalization - 1;
+                }
+            }
+            
+            while (block != null)
+            {
+                validators.Add(block.Beneficiary);
+                if (validators.Count >= minSealersForFinalization)
+                {
+                    return block.Number;
+                }
+
+                block = _blockTree.FindHeader(block.Number + 1, BlockTreeLookupOptions.None);
+            }
+            
+            return null;
+        }
 
         private int GetMinSealersForFinalization(long blockNumber) =>
             blockNumber == 0
