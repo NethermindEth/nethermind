@@ -206,11 +206,14 @@ namespace Nethermind.Baseline.Test.JsonRpc
                 new MemDb(),
                 LimboLogs.Instance,
                 testRpc.BlockProcessor);
-
+            BaselineTree baselineTree = new ShaBaselineTree(new MemDb(), new byte[] { }, 0);
             await testRpc.AddFunds(TestItem.Addresses[0], 1.Ether());
             await testRpc.AddFunds(TestItem.Addresses[1], 1.Ether());
             Keccak txHash = (await baselineModule.baseline_deploy(TestItem.Addresses[0], "MerkleTreeSHA")).Data;
             await testRpc.AddBlock();
+
+
+            new BaselineTreeTracker(TestItem.Addresses[0], baselineTree, testRpc.LogFinder, testRpc.BlockFinder, testRpc.BlockProcessor);
 
             ReceiptForRpc receipt = (await testRpc.EthModule.eth_getTransactionReceipt(txHash)).Data;
 
