@@ -115,6 +115,11 @@ namespace Nethermind.Synchronization
             }
         }
 
+        public Keccak[] GetBlockWitnessHashes()
+        {
+            throw new NotImplementedException();
+        }
+
         public int GetPeerCount()
         {
             return _pool.PeerCount;
