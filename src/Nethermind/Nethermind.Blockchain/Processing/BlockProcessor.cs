@@ -252,7 +252,7 @@ namespace Nethermind.Blockchain.Processing
 
         private void StoreBlockhash(BlockHeader header, IReleaseSpec releaseSpec)
         {
-            if (header.Number > releaseSpec.Eip2935BlockNumber)
+            if (header.Number > releaseSpec.Eip2935TransitionBlockNumber)
             {
                 StorageCell hashCell = new StorageCell(IVirtualMachine.BlockhashStorage, (UInt256)(header.Number - 1));
                 _storageProvider.Set(hashCell, header.ParentHash.Bytes);

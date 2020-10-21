@@ -84,7 +84,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.SSTORE)
                 .Done;
 
-            Spec.Eip2935BlockNumber = transitionBlock;
+            Spec.Eip2935TransitionBlockNumber = transitionBlock;
             var result = Execute(currentNumber, 100000, code);
             result.StatusCode.Should().Be(1);
 

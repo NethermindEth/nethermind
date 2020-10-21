@@ -1461,15 +1461,15 @@ namespace Nethermind.Evm
                         }
 
                         stack.PopUInt256(out UInt256 a);
-                        long number = a > long.MaxValue ? long.MaxValue : (long) a;
+                        long requestedBlockNumber = a > long.MaxValue ? long.MaxValue : (long) a;
 
                         Keccak blockHash;
-                        long currentNumber = env.CurrentBlock.Number;
-                        if (currentNumber - spec.Eip2935BlockNumber <= 256)
+                        long currentBlockNumber = env.CurrentBlock.Number;
+                        if (currentBlockNumber - spec.Eip2935TransitionBlockNumber <= 256)
                         {
-                            blockHash = _blockhashProvider.GetBlockhash(env.CurrentBlock, number);
+                            blockHash = _blockhashProvider.GetBlockhash(env.CurrentBlock, requestedBlockNumber);
                         }
-                        else if (spec.Eip2935BlockNumber <= number)
+                        else if (spec.Eip2935TransitionBlockNumber <= requestedBlockNumber)
                         {
                             if (!UpdateGas(GasCostOf.SLoadEip1884 - GasCostOf.BlockHash, ref gasAvailable))
                             {
@@ -1477,7 +1477,7 @@ namespace Nethermind.Evm
                                 return CallResult.OutOfGasException;
                             }
                             
-                            StorageCell storageCell = new StorageCell(IVirtualMachine.BlockhashStorage, (UInt256) number);
+                            StorageCell storageCell = new StorageCell(IVirtualMachine.BlockhashStorage, (UInt256) requestedBlockNumber);
                             blockHash = new Keccak(_storage.Get(storageCell).PadLeft(32));
                         }
                         else

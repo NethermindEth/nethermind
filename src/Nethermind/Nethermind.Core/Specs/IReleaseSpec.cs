@@ -213,13 +213,13 @@ namespace Nethermind.Core.Specs
         /// </summary>
         /// <remarks>https://eips.ethereum.org/EIPS/eip-2935</remarks>
         /// <returns></returns>
-        long Eip2935BlockNumber
+        long Eip2935TransitionBlockNumber
         {
-            get => _eip2935BlockNumber;
-            set => _eip2935BlockNumber = value;
+            get => _eip2935TransitionBlockNumber;
+            set => _eip2935TransitionBlockNumber = value;
         }
 
-        private static long _eip2935BlockNumber;
+        private static long _eip2935TransitionBlockNumber;
 
         /// <summary>
         /// Should transactions be validated against chainId.
