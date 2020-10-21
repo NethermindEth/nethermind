@@ -27,7 +27,7 @@ namespace Nethermind.Vault.Test
         public void Can_Initialize_VaultTxSender_without_exceptions()
         {
             var vaultConfig = new VaultConfig();
-            vaultConfig.VaultId = "deca2436-21ba-4ff5-b225-ad1b0b2f5c59";
+            vaultConfig.VaultId = "1b16996e-3595-4985-816c-043345d22f8c";
             var _vaultService = new VaultService(vaultConfig, LimboLogs.Instance);
 
             IVaultWallet wallet = new VaultWallet(_vaultService, vaultConfig.VaultId, LimboLogs.Instance);
