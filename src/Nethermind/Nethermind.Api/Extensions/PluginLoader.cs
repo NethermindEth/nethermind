@@ -49,10 +49,10 @@ namespace Nethermind.Api.Extensions
                 if (logger.IsWarn) logger.Warn($"Plugin assemblies folder {pluginAssembliesDir} was not found. Skipping.");
             }
 
-            string[] assemblies = _fileSystem.Directory.GetFiles(baseDir, "*.dll");
+            string[] assemblies = _fileSystem.Directory.GetFiles(pluginAssembliesDir, "*.dll");
             if (assemblies.Length > 0)
             {
-                if (logger.IsInfo) logger.Info($"Loading {assemblies.Length} assemblies from {baseDir}");
+                if (logger.IsInfo) logger.Info($"Loading {assemblies.Length} assemblies from {pluginAssembliesDir}");
             }
 
             foreach (string assemblyName in assemblies)
@@ -69,11 +69,11 @@ namespace Nethermind.Api.Extensions
                         string fileName = name.Name + ".dll";
                         try
                         {
-                            return AssemblyLoadContext.Default.LoadFromAssemblyPath(_fileSystem.Path.Combine(baseDir, fileName));
+                            return AssemblyLoadContext.Default.LoadFromAssemblyPath(_fileSystem.Path.Combine(pluginAssembliesDir, fileName));
                         }
                         catch (FileNotFoundException)
                         {
-                            return AssemblyLoadContext.Default.LoadFromAssemblyPath(_fileSystem.Path.Combine(_pluginsDirectory, fileName));
+                            return AssemblyLoadContext.Default.LoadFromAssemblyPath(_fileSystem.Path.Combine(baseDir, fileName));
                         }
                     };
 
