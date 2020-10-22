@@ -104,8 +104,7 @@ namespace Nethermind.Blockchain.Test
                         /*7*/ Build.A.Transaction.WithSenderAddress(TestItem.AddressC).WithNonce(3).WithValue(500).WithGasPrice(20).WithGasLimit(9).SignedAndResolved(TestItem.PrivateKeyC).TestObject,
                         /*8*/ Build.A.Transaction.WithSenderAddress(TestItem.AddressC).WithNonce(4).WithValue(500).WithGasPrice(20).WithGasLimit(9).SignedAndResolved(TestItem.PrivateKeyC).TestObject,
                     },
-                    GasLimit = 10000000,
-                    StrictOrder = true
+                    GasLimit = 10000000
                 };
                 complexCase.ExpectedSelectedTransactions.AddRange(new[] {7, 3, 4, 0, 2, 1 }.Select(i => complexCase.Transactions[i]));
                 yield return new TestCaseData(complexCase).SetName("Complex case");
