@@ -35,10 +35,10 @@ namespace Nethermind.Baseline.Tree
         private readonly ILogFinder _logFinder;
         private readonly IBlockFinder _blockFinder;
         private readonly IBlockProcessor _blockProcessor;
-        private const int MaxBlockSize = 1000;
+        private const int MaxLeavesInStack = 1000;
         private Block _currentBlock;
         // ToDo concurrent stack?
-        private Stack<Block> _blocksStack = new Stack<Block>();
+        private Stack<Keccak> _leavesStack = new Stack<Keccak>();
 
         /// <summary>
         /// This class should smoothly react to new blocks and logs
@@ -61,43 +61,46 @@ namespace Nethermind.Baseline.Tree
 
         private void OnBlockProcessed(object? sender, BlockProcessedEventArgs e)
         {
-            // ToDo concurrent events
-            // nie równa się
-            if (_currentBlock == null || _currentBlock.Hash == e.Block.ParentHash)
+            if (_currentBlock != null && _currentBlock.Hash != e.Block.ParentHash)
             {
-                _currentBlock = e.Block;
-                Keccak[] leavesAndLeafTopics = new Keccak[]
+                if (_leavesStack.Count <= MaxLeavesInStack)
                 {
-                new Keccak("0x8ec50f97970775682a68d3c6f9caedf60fd82448ea40706b8b65d6c03648b922"),
-                new Keccak("0x6a82ba2aa1d2c039c41e6e2b5a5a1090d09906f060d32af9c1ac0beff7af75c0")
-                };
-                var logs = _currentBlock.Header.FindLogs(e.TxReceipts, new LogEntry(_address, Array.Empty<byte>(), leavesAndLeafTopics), FindOrder.Ascending, FindOrder.Ascending, BaselineLogEntryEqualityComparer.Instance);
-                foreach (var filterLog in logs)
+                    // ToDo reorganize tree
+                    // delete leaves from the stack
+                    // add leaves again
+                }
+                else
                 {
-                    // ToDo write a comment here?
-                    if (filterLog.Data.Length == 96)
-                    {
-                        Keccak leafHash = new Keccak(filterLog.Data.Slice(32, 32).ToArray());
-                        //zrzucac hashe liscie
-                        _baselineTree.Insert(leafHash);
-                    }
-                    else
-                    {
-                        for (int i = 0; i < (filterLog.Data.Length - 128) / 32; i++)
-                        {
-                            Keccak leafHash = new Keccak(filterLog.Data.Slice(128 + 32 * i, 32).ToArray());
-                            _baselineTree.Insert(leafHash);
-                        }
-                    }
+                    // RebuildEntireTree
+                    return;
                 }
             }
-            else if (_blocksStack.Count <= MaxBlockSize)
+
+            _currentBlock = e.Block;
+            Keccak[] leavesAndLeafTopics = new Keccak[]
             {
-                // ToDo reorganize tree
-            }
-            else
+                new Keccak("0x8ec50f97970775682a68d3c6f9caedf60fd82448ea40706b8b65d6c03648b922"),
+                new Keccak("0x6a82ba2aa1d2c039c41e6e2b5a5a1090d09906f060d32af9c1ac0beff7af75c0")
+            };
+            var logs = _currentBlock.Header.FindLogs(e.TxReceipts, new LogEntry(_address, Array.Empty<byte>(), leavesAndLeafTopics), FindOrder.Ascending, FindOrder.Ascending, BaselineLogEntryEqualityComparer.Instance);
+            foreach (var filterLog in logs)
             {
-                // RebuildEntireTree
+                // ToDo write a comment here?
+                if (filterLog.Data.Length == 96)
+                {
+                    Keccak leafHash = new Keccak(filterLog.Data.Slice(32, 32).ToArray());
+                    _leavesStack.Push(leafHash);
+                    _baselineTree.Insert(leafHash);
+                }
+                else
+                {
+                    for (int i = 0; i < (filterLog.Data.Length - 128) / 32; i++)
+                    {
+                        Keccak leafHash = new Keccak(filterLog.Data.Slice(128 + 32 * i, 32).ToArray());
+                        _leavesStack.Push(leafHash);
+                        _baselineTree.Insert(leafHash);
+                    }
+                }
             }
         }
     }

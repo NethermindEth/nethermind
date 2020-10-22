@@ -78,13 +78,13 @@ namespace Nethermind.Blockchain.Find
         {
             comparer ??= LogEntryAddressAndTopicsMatchTemplateEqualityComparer.Instance;
             
-            if (blockHeader.Bloom.Matches(matchEntry))
-            {
+            //if (blockHeader.Bloom.Matches(matchEntry))
+            //{
                 for (int i = 0; i < receipts.Length; i++)
                 {
                     TxReceipt receipt = GetItemAt(receipts, i, receiptFindOrder);
-                    if (receipt.Bloom.Matches(matchEntry))
-                    {
+                    //if (receipt.Bloom.Matches(matchEntry))
+                    //{
                         for (int j = 0; j < receipt.Logs.Length; j++)
                         {
                             var receiptLog = GetItemAt(receipt.Logs, j, logsFindOrder);
@@ -92,10 +92,10 @@ namespace Nethermind.Blockchain.Find
                             {
                                 yield return receiptLog;
                             }
-                        }
+                       // }
                     }
                 }
-            }
+            //}
         }
 
         private static T GetItemAt<T>(T[] items, int index, FindOrder findOrder) => 
