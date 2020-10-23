@@ -54,7 +54,7 @@ namespace Nethermind.Baseline.Test
         //BlockProcuderBase
 
         //BlockTree.Head?.Header
-                [Test]
+        [Test]
         public async Task Tree_tracker_should_track_blocks()
         {
             var address = TestItem.Addresses[0];
@@ -66,15 +66,15 @@ namespace Nethermind.Baseline.Test
             BaselineTree baselineTree = BuildATree();
             new BaselineTreeTracker(ContractAddress.From(address, 0), baselineTree, testRpc.LogFinder, testRpc.BlockFinder, testRpc.BlockProcessor);
             BaselineModule baselineModule = new BaselineModule(
-    testRpc.TxSender,
-    testRpc.StateReader,
-    testRpc.LogFinder,
-    testRpc.BlockTree,
-    new AbiEncoder(),
-    _fileSystem,
-    new MemDb(),
-    LimboLogs.Instance,
-    testRpc.BlockProcessor);
+                testRpc.TxSender,
+                testRpc.StateReader,
+                testRpc.LogFinder,
+                testRpc.BlockTree,
+                new AbiEncoder(),
+                _fileSystem,
+                new MemDb(),
+                LimboLogs.Instance,
+                testRpc.BlockProcessor);
             Keccak txHash = (await baselineModule.baseline_deploy(address, "MerkleTreeSHA")).Data;
             await testRpc.AddBlock();
             AbiEncoder abiEncoder = new AbiEncoder();

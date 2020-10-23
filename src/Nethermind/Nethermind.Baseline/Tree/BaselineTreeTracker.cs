@@ -75,14 +75,32 @@ namespace Nethermind.Baseline.Tree
                     return;
                 }
             }
-
-            _currentBlock = e.Block;
             Keccak[] leavesAndLeafTopics = new Keccak[]
-            {
+{
                 new Keccak("0x8ec50f97970775682a68d3c6f9caedf60fd82448ea40706b8b65d6c03648b922"),
                 new Keccak("0x6a82ba2aa1d2c039c41e6e2b5a5a1090d09906f060d32af9c1ac0beff7af75c0")
-            };
-            var logs = _currentBlock.Header.FindLogs(e.TxReceipts, new LogEntry(_address, Array.Empty<byte>(), leavesAndLeafTopics), FindOrder.Ascending, FindOrder.Ascending, BaselineLogEntryEqualityComparer.Instance);
+};
+
+
+            Keccak leavesTopic = new Keccak("0x8ec50f97970775682a68d3c6f9caedf60fd82448ea40706b8b65d6c03648b922");
+            Keccak leafTopic = new Keccak("0x6a82ba2aa1d2c039c41e6e2b5a5a1090d09906f060d32af9c1ac0beff7af75c0");
+            LogFilter insertLeavesFilter = new LogFilter(
+                0,
+                new BlockParameter(e.Block.Hash),
+                new BlockParameter(e.Block.Hash),
+                new AddressFilter(_address),
+                new TopicsFilter( new SpecificTopic(leavesTopic)));
+            LogFilter insertLeavesFilter2 = new LogFilter(
+    0,
+    new BlockParameter(_currentBlock == null ? Keccak.Zero : _currentBlock.Hash),
+    new BlockParameter(e.Block.Hash),
+    new AddressFilter(_address),
+    new TopicsFilter(new SpecificTopic(leafTopic)));
+            _currentBlock = e.Block;
+            var logs = _currentBlock.Header.FindLogs(e.TxReceipts, insertLeavesFilter, FindOrder.Ascending, FindOrder.Ascending);
+            var logs2 = _currentBlock.Header.FindLogs(e.TxReceipts, insertLeavesFilter2, FindOrder.Ascending, FindOrder.Ascending);
+            //  var logs = _currentBlock.Header.FindLogs(e.TxReceipts, new LogEntry(_address, Array.Empty<byte>(), leavesAndLeafTopics), FindOrder.Ascending, FindOrder.Ascending, BaselineLogEntryEqualityComparer.Instance);
+            var d = logs2.ToArray();
             foreach (var filterLog in logs)
             {
                 // ToDo write a comment here?

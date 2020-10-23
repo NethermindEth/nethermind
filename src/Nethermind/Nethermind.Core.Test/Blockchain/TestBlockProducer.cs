@@ -54,7 +54,25 @@ namespace Nethermind.Core.Test.Blockchain
         {
         }
 
+        public Block LastProducedBlock;
+
         private SemaphoreSlim _newBlockArrived = new SemaphoreSlim(0);
+        private BlockHeader _blockParent = null;
+        public BlockHeader BlockParent { 
+            get
+            {
+                return _blockParent ?? base.GetCurrentBlockParent();
+            }
+            set
+            {
+                _blockParent = value;
+            }
+        }
+
+        protected override BlockHeader GetCurrentBlockParent()
+        {
+            return BlockParent;
+        }
 
         public void BuildNewBlock()
         {
@@ -77,6 +95,13 @@ namespace Nethermind.Core.Test.Blockchain
         protected override UInt256 CalculateDifficulty(BlockHeader parent, UInt256 timestamp)
         {
             return 1;
+        }
+
+        protected override async Task<Block> SealBlock(Block block, BlockHeader parent, CancellationToken token)
+        {
+            var result = await base.SealBlock(block, parent, token);
+            LastProducedBlock = result;
+            return result;
         }
     }
 }

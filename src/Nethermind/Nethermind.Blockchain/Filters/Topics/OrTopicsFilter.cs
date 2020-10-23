@@ -20,13 +20,12 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.Filters.Topics
 {
-    public class TopicsFilter : TopicsFilterBase
+    public class OrTopicsFilter : TopicsFilterBase
     {
-        public static TopicsFilter AnyTopic { get; } = new TopicsFilter();
 
         private readonly TopicExpression[] _expressions;
 
-        public TopicsFilter(params TopicExpression[] expressions)
+        public OrTopicsFilter(params TopicExpression[] expressions)
         {
             _expressions = expressions;
         }
@@ -35,20 +34,15 @@ namespace Nethermind.Blockchain.Filters.Topics
 
         private bool Accepts(Keccak[] topics)
         {
-            if (_expressions.Length > topics.Length)
-            {
-                return false;
-            }
-
             for (int i = 0; i < _expressions.Length; i++)
             {
-                if (!_expressions[i].Accepts(topics[i]))
+                if (_expressions[i].Accepts(topics[i]))
                 {
-                    return false;
+                    return true;
                 }
             }
 
-            return true;
+            return false;
         }
 
         public override bool Accepts(ref LogEntryStructRef entry)
@@ -57,15 +51,15 @@ namespace Nethermind.Blockchain.Filters.Topics
             {
                 return Accepts(entry.Topics);
             }
-            
+
             var iterator = new KeccaksIterator(entry.TopicsRlp);
             for (int i = 0; i < _expressions.Length; i++)
             {
                 if (iterator.TryGetNext(out var keccak))
                 {
-                    if (!_expressions[i].Accepts(ref keccak))
+                    if (_expressions[i].Accepts(ref keccak))
                     {
-                        return false;
+                        return true;
                     }
                 }
                 else
@@ -74,17 +68,17 @@ namespace Nethermind.Blockchain.Filters.Topics
                 }
             }
 
-            return true;
+            return false;
         }
 
         public override bool Matches(Bloom bloom)
         {
             bool result = true;
-            
+
             for (int i = 0; i < _expressions.Length; i++)
             {
                 result = _expressions[i].Matches(bloom);
-                if (!result)
+                if (result)
                 {
                     break;
                 }
@@ -92,15 +86,15 @@ namespace Nethermind.Blockchain.Filters.Topics
 
             return result;
         }
-        
+
         public override bool Matches(ref BloomStructRef bloom)
         {
             bool result = true;
-            
+
             for (int i = 0; i < _expressions.Length; i++)
             {
                 result = _expressions[i].Matches(ref bloom);
-                if (!result)
+                if (result)
                 {
                     break;
                 }
