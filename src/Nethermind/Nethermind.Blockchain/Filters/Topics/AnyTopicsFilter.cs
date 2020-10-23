@@ -20,12 +20,12 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.Filters.Topics
 {
-    public class OrTopicsFilter : TopicsFilterBase
+    public class AnyTopicsFilter : TopicsFilterBase
     {
 
         private readonly TopicExpression[] _expressions;
 
-        public OrTopicsFilter(params TopicExpression[] expressions)
+        public AnyTopicsFilter(params TopicExpression[] expressions)
         {
             _expressions = expressions;
         }
@@ -36,9 +36,12 @@ namespace Nethermind.Blockchain.Filters.Topics
         {
             for (int i = 0; i < _expressions.Length; i++)
             {
-                if (_expressions[i].Accepts(topics[i]))
+                for (int j = 0; j < topics.Length; j++)
                 {
-                    return true;
+                    if (_expressions[i].Accepts(topics[j]))
+                    {
+                        return true;
+                    }
                 }
             }
 

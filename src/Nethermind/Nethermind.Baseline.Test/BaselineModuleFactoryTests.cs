@@ -20,8 +20,6 @@ using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Processing;
-using Nethermind.Consensus;
-using Nethermind.Facade;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.TxPool;

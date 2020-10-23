@@ -23,6 +23,7 @@ using Nethermind.Abi;
 using Nethermind.Baseline.Test.Contracts;
 using Nethermind.Baseline.Tree;
 using Nethermind.Blockchain.Processing;
+using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -42,6 +43,7 @@ namespace Nethermind.Baseline.Test
     public class BaselineTreeTrackerTests
     {
         private IFileSystem _fileSystem;
+        private AbiEncoder _abiEncoder;
 
         [SetUp]
         public void SetUp()
@@ -49,22 +51,55 @@ namespace Nethermind.Baseline.Test
             _fileSystem = Substitute.For<IFileSystem>();
             const string expectedFilePath = "contracts/MerkleTreeSHA.bin";
             _fileSystem.File.ReadAllLinesAsync(expectedFilePath).Returns(File.ReadAllLines(expectedFilePath));
+            _abiEncoder = new AbiEncoder();
         }
 
-        //BlockProcuderBase
-
-        //BlockTree.Head?.Header
         [Test]
         public async Task Tree_tracker_should_track_blocks()
         {
             var address = TestItem.Addresses[0];
+            var testRpc = await InitializeTestRpc(address);
+            BaselineTree baselineTree = BuildATree();
+            var fromContractAdress = ContractAddress.From(address, 0);
+            new BaselineTreeTracker(fromContractAdress, baselineTree, testRpc.LogFinder, testRpc.BlockFinder, testRpc.BlockProcessor);
+            
+            var contract = new MerkleTreeSHAContract(_abiEncoder, fromContractAdress);
+            var transaction = contract.InsertLeaf(address, TestItem.KeccakA);
+            await testRpc.TxSender.SendTransaction(transaction, TxPool.TxHandlingOptions.ManagedNonce);
+
+            await testRpc.AddBlock(transaction);
+            Assert.AreEqual(1, baselineTree.Count);
+        }
+
+        [Test]
+        public async Task Tree_tracker_should_track_blocks2()
+        {
+            var address = TestItem.Addresses[0];
+            var testRpc = await InitializeTestRpc(address);
+            BaselineTree baselineTree = BuildATree();
+            var fromContractAdress = ContractAddress.From(address, 0);
+            new BaselineTreeTracker(fromContractAdress, baselineTree, testRpc.LogFinder, testRpc.BlockFinder, testRpc.BlockProcessor);
+
+            var contract = new MerkleTreeSHAContract(_abiEncoder, fromContractAdress);
+            var hashes = new Keccak[]
+            {
+                TestItem.KeccakA, TestItem.KeccakB,  TestItem.KeccakC
+            };
+
+            var transaction = contract.InsertLeaves(address, hashes);
+            await testRpc.TxSender.SendTransaction(transaction, TxPool.TxHandlingOptions.ManagedNonce);
+
+            await testRpc.AddBlock(transaction);
+            Assert.AreEqual(3, baselineTree.Count);
+        }
+
+        private async Task<TestRpcBlockchain> InitializeTestRpc(Address address)
+        {
             var spec = new SingleReleaseSpecProvider(ConstantinopleFix.Instance, 1);
             TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(spec);
             testRpc.TestWallet.UnlockAccount(address, new SecureString());
             await testRpc.AddFunds(address, 1.Ether());
 
-            BaselineTree baselineTree = BuildATree();
-            new BaselineTreeTracker(ContractAddress.From(address, 0), baselineTree, testRpc.LogFinder, testRpc.BlockFinder, testRpc.BlockProcessor);
             BaselineModule baselineModule = new BaselineModule(
                 testRpc.TxSender,
                 testRpc.StateReader,
@@ -77,14 +112,7 @@ namespace Nethermind.Baseline.Test
                 testRpc.BlockProcessor);
             Keccak txHash = (await baselineModule.baseline_deploy(address, "MerkleTreeSHA")).Data;
             await testRpc.AddBlock();
-            AbiEncoder abiEncoder = new AbiEncoder();
-            ReadOnlyTxProcessorSource readOnlyTransactionProcessorSource = new ReadOnlyTxProcessorSource(new MemDbProvider(), testRpc.BlockTree, testRpc.SpecProvider, LimboLogs.Instance);
-            var contract = new MerkleTreeSHAContract(abiEncoder, ContractAddress.From(address, 0), readOnlyTransactionProcessorSource);
-            var hash = TestItem.KeccakA;
-            var transaction = contract.InsertLeaf(address, hash);
-            await testRpc.TxSender.SendTransaction(transaction, TxPool.TxHandlingOptions.ManagedNonce);
-
-            await testRpc.AddBlock(transaction);
+            return testRpc;
         }
 
         private BaselineTree BuildATree(IKeyValueStore keyValueStore = null)
