@@ -69,6 +69,39 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(1, processedBlocks.Length, "length");
             Assert.AreEqual(block.Author, processedBlocks[0].Author, "author");
         }
+        
+        [Test]
+        public void Can_store_a_witness()
+        {
+            ISnapshotableDb stateDb = new StateDb();
+            ISnapshotableDb codeDb = new StateDb();
+            IStateProvider stateProvider = new StateProvider(stateDb, codeDb, LimboLogs.Instance);
+            ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
+            IWitnessCollector witnessCollector = Substitute.For<IWitnessCollector>();
+            BlockProcessor processor = new BlockProcessor(
+                RinkebySpecProvider.Instance,
+                TestBlockValidator.AlwaysValid,
+                NoBlockRewards.Instance,
+                transactionProcessor,
+                stateDb,
+                codeDb,
+                stateProvider,
+                new StorageProvider(stateDb, stateProvider, LimboLogs.Instance),
+                NullTxPool.Instance,
+                NullReceiptStorage.Instance,
+                witnessCollector,
+                LimboLogs.Instance);
+
+            BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
+            Block block = Build.A.Block.WithHeader(header).TestObject;
+            Block[] processedBlocks = processor.Process(
+                Keccak.EmptyTreeHash,
+                new List<Block> {block},
+                ProcessingOptions.None,
+                NullBlockTracer.Instance);
+            
+            witnessCollector.Received(1).Persist(block.Hash);
+        }
 
         [Test]
         public void Recovers_state_on_cancel()
