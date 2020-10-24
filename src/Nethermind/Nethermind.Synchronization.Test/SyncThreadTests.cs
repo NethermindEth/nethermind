@@ -139,7 +139,7 @@ namespace Nethermind.Synchronization.Test
 
             for (int i = 0; i < _peers.Count; i++)
             {
-                Assert.AreEqual(headBlock.Header.Number, _peers[i].SyncServer.Head.Number, i.ToString());
+                Assert.AreEqual(headBlock.Header.Number, _peers[i].SyncServer.Head!.Number, i.ToString());
                 Assert.AreEqual(_originPeer.StateProvider.GetBalance(headBlock.Beneficiary), _peers[i].StateProvider.GetBalance(headBlock.Beneficiary), i + " balance");
                 Assert.AreEqual(_originPeer.StateProvider.GetBalance(TestItem.AddressB), _peers[i].StateProvider.GetBalance(TestItem.AddressB), i + " balance B");
             }
@@ -185,7 +185,7 @@ namespace Nethermind.Synchronization.Test
         {
             foreach (var peer in _peers)
             {
-                Assert.AreEqual(_genesis.Hash, peer.SyncServer.Head.Hash, "genesis hash");
+                Assert.AreEqual(_genesis.Hash, peer.SyncServer.Head!.Hash, "genesis hash");
             }
 
             var headBlock = ProduceBlocks(_chainLength);
@@ -208,7 +208,7 @@ namespace Nethermind.Synchronization.Test
 
             for (int i = 0; i < _peers.Count; i++)
             {
-                Assert.AreEqual(headBlock.Header.Number, _peers[i].SyncServer.Head.Number, i.ToString());
+                Assert.AreEqual(headBlock.Header.Number, _peers[i].SyncServer.Head!.Number, i.ToString());
                 Assert.AreEqual(_originPeer.StateProvider.GetBalance(headBlock.Beneficiary), _peers[i].StateProvider.GetBalance(headBlock.Beneficiary), i + " balance");
                 Assert.AreEqual(_originPeer.StateProvider.GetBalance(TestItem.AddressB), _peers[i].StateProvider.GetBalance(TestItem.AddressB), i + " balance B");
             }
@@ -341,7 +341,18 @@ namespace Nethermind.Synchronization.Test
                 StaticSelector.Full,
                 syncConfig,
                 logManager);
-            var syncServer = new SyncServer(stateDb, codeDb, tree, receiptStorage, Always.Valid, Always.Valid, syncPeerPool, selector, syncConfig, logManager);
+            var syncServer = new SyncServer(
+                stateDb,
+                codeDb,
+                tree,
+                receiptStorage,
+                Always.Valid,
+                Always.Valid,
+                syncPeerPool,
+                selector,
+                syncConfig,
+                NullWitnessCollector.Instance,
+                logManager);
 
             ManualResetEventSlim waitEvent = new ManualResetEventSlim();
             tree.NewHeadBlock += (s, e) => waitEvent.Set();
