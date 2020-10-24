@@ -49,6 +49,7 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.State.Repositories;
+using Nethermind.State.Witnesses;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
@@ -136,6 +137,7 @@ namespace Nethermind.Runner.Ethereum.Api
         public IProtocolsManager? ProtocolsManager { get; set; }
         public IProtocolValidator? ProtocolValidator { get; set; }
         public IReceiptStorage? ReceiptStorage { get; set; }
+        public IWitnessCollector WitnessCollector { get; } = new WitnessCollector();
         public IReceiptFinder? ReceiptFinder { get; set; }
         public IRewardCalculatorSource? RewardCalculatorSource { get; set; }
         public IRlpxPeer? RlpxPeer { get; set; }

@@ -44,7 +44,6 @@ using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
-using Nethermind.Wallet;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 
@@ -130,7 +129,19 @@ namespace Nethermind.Clique.Test
 
                 StorageProvider storageProvider = new StorageProvider(stateDb, stateProvider, nodeLogManager);
                 TransactionProcessor transactionProcessor = new TransactionProcessor(GoerliSpecProvider.Instance, stateProvider, storageProvider, new VirtualMachine(stateProvider, storageProvider, blockhashProvider, specProvider, nodeLogManager), nodeLogManager);
-                BlockProcessor blockProcessor = new BlockProcessor(GoerliSpecProvider.Instance, Always.Valid, NoBlockRewards.Instance, transactionProcessor, stateDb, codeDb, stateProvider, storageProvider, txPool, NullReceiptStorage.Instance, nodeLogManager);
+                BlockProcessor blockProcessor = new BlockProcessor(
+                    GoerliSpecProvider.Instance,
+                    Always.Valid,
+                    NoBlockRewards.Instance,
+                    transactionProcessor,
+                    stateDb,
+                    codeDb,
+                    stateProvider,
+                    storageProvider,
+                    txPool,
+                    NullReceiptStorage.Instance,
+                    NullWitnessCollector.Instance,
+                    nodeLogManager);
                 BlockchainProcessor processor = new BlockchainProcessor(blockTree, blockProcessor, new AuthorRecoveryStep(snapshotManager), nodeLogManager, BlockchainProcessor.Options.NoReceipts);
                 processor.Start();
 
@@ -138,7 +149,19 @@ namespace Nethermind.Clique.Test
                 StorageProvider minerStorageProvider = new StorageProvider(stateDb, minerStateProvider, nodeLogManager);
                 VirtualMachine minerVirtualMachine = new VirtualMachine(minerStateProvider, minerStorageProvider, blockhashProvider, specProvider, nodeLogManager);
                 TransactionProcessor minerTransactionProcessor = new TransactionProcessor(GoerliSpecProvider.Instance, minerStateProvider, minerStorageProvider, minerVirtualMachine, nodeLogManager);
-                BlockProcessor minerBlockProcessor = new BlockProcessor(GoerliSpecProvider.Instance, Always.Valid, NoBlockRewards.Instance, minerTransactionProcessor, stateDb, codeDb, minerStateProvider, minerStorageProvider, txPool, NullReceiptStorage.Instance,  nodeLogManager);
+                BlockProcessor minerBlockProcessor = new BlockProcessor(
+                    GoerliSpecProvider.Instance,
+                    Always.Valid,
+                    NoBlockRewards.Instance,
+                    minerTransactionProcessor,
+                    stateDb,
+                    codeDb,
+                    minerStateProvider,
+                    minerStorageProvider,
+                    txPool,
+                    NullReceiptStorage.Instance,
+                    NullWitnessCollector.Instance,
+                    nodeLogManager);
                 BlockchainProcessor minerProcessor = new BlockchainProcessor(blockTree, minerBlockProcessor, new AuthorRecoveryStep(snapshotManager), nodeLogManager, BlockchainProcessor.Options.NoReceipts);
 
                 if (withGenesisAlreadyProcessed)
