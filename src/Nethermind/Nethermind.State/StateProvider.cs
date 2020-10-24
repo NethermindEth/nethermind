@@ -75,12 +75,16 @@ namespace Nethermind.State
             ILogManager logManager)
             : this(
                 new StateTree(
-                    new WitnessingStore(
-                        stateDb,
-                        witnessCollector)),
-                new WitnessingStore(
-                    codeDb,
-                    witnessCollector),
+                    witnessCollector == NullWitnessCollector.Instance
+                        ? stateDb
+                        : new WitnessingStore(
+                            stateDb,
+                            witnessCollector)),
+                witnessCollector == NullWitnessCollector.Instance
+                    ? codeDb
+                    : new WitnessingStore(
+                        codeDb,
+                        witnessCollector),
                 logManager)
         {
         }
@@ -135,7 +139,7 @@ namespace Nethermind.State
         {
             if (_intraBlockCache.ContainsKey(address))
             {
-                return _changes[_intraBlockCache[address].Peek()].ChangeType != ChangeType.Delete;
+                return _changes[_intraBlockCache[address].Peek()]!.ChangeType != ChangeType.Delete;
             }
 
             return GetAndAddToCache(address) != null;
@@ -146,39 +150,39 @@ namespace Nethermind.State
             return GetThroughCache(address).IsEmpty;
         }
 
-        public Account GetAccount(Address address)
+        public Account? GetAccount(Address address)
         {
             return GetThroughCache(address);
         }
 
         public bool IsDeadAccount(Address address)
         {
-            Account account = GetThroughCache(address);
+            Account? account = GetThroughCache(address);
             return account?.IsEmpty ?? true;
         }
 
         public UInt256 GetNonce(Address address)
         {
-            Account account = GetThroughCache(address);
+            Account? account = GetThroughCache(address);
             return account?.Nonce ?? UInt256.Zero;
         }
 
         public Keccak GetStorageRoot(Address address)
         {
-            Account account = GetThroughCache(address);
+            Account? account = GetThroughCache(address);
             return account.StorageRoot;
         }
 
         public UInt256 GetBalance(Address address)
         {
-            Account account = GetThroughCache(address);
+            Account? account = GetThroughCache(address);
             return account?.Balance ?? UInt256.Zero;
         }
 
         public void UpdateCodeHash(Address address, Keccak codeHash, IReleaseSpec releaseSpec)
         {
             _needsStateRootUpdate = true;
-            Account account = GetThroughCache(address);
+            Account? account = GetThroughCache(address);
             if (account.CodeHash != codeHash)
             {
                 if (_logger.IsTrace) _logger.Trace($"  Update {address} C {account.CodeHash} -> {codeHash}");
@@ -188,7 +192,7 @@ namespace Nethermind.State
             else if (releaseSpec.IsEip158Enabled)
             {
                 if (_logger.IsTrace) _logger.Trace($"  Touch {address} (code hash)");
-                Account touched = GetThroughCache(address);
+                Account? touched = GetThroughCache(address);
                 if (touched.IsEmpty)
                 {
                     PushTouch(address, touched, releaseSpec, touched.Balance.IsZero);
@@ -263,7 +267,7 @@ namespace Nethermind.State
         public void UpdateStorageRoot(Address address, Keccak storageRoot)
         {
             _needsStateRootUpdate = true;
-            Account account = GetThroughCache(address);
+            Account? account = GetThroughCache(address);
             if (account.StorageRoot != storageRoot)
             {
                 if (_logger.IsTrace) _logger.Trace($"  Update {address} S {account.StorageRoot} -> {storageRoot}");
@@ -275,7 +279,7 @@ namespace Nethermind.State
         public void IncrementNonce(Address address)
         {
             _needsStateRootUpdate = true;
-            Account account = GetThroughCache(address);
+            Account? account = GetThroughCache(address);
             Account changedAccount = account.WithChangedNonce(account.Nonce + 1);
             if (_logger.IsTrace) _logger.Trace($"  Update {address} N {account.Nonce} -> {changedAccount.Nonce}");
             PushUpdate(address, changedAccount);
@@ -317,7 +321,7 @@ namespace Nethermind.State
 
         public byte[] GetCode(Address address)
         {
-            Account account = GetThroughCache(address);
+            Account? account = GetThroughCache(address);
             if (account == null)
             {
                 return Array.Empty<byte>();
@@ -354,7 +358,7 @@ namespace Nethermind.State
             for (int i = 0; i < _currentPosition - snapshot; i++)
             {
                 Change change = _changes[_currentPosition - i];
-                if (_intraBlockCache[change.Address].Count == 1)
+                if (_intraBlockCache[change!.Address].Count == 1)
                 {
                     if (change.ChangeType == ChangeType.JustCache)
                     {
@@ -409,20 +413,20 @@ namespace Nethermind.State
 
         private struct ChangeTrace
         {
-            public ChangeTrace(Account before, Account after)
+            public ChangeTrace(Account? before, Account? after)
             {
                 After = after;
                 Before = before;
             }
 
-            public ChangeTrace(Account after)
+            public ChangeTrace(Account? after)
             {
                 After = after;
                 Before = null;
             }
 
-            public Account Before { get; }
-            public Account After { get; }
+            public Account? Before { get; }
+            public Account? After { get; }
         }
 
         public void Commit(IReleaseSpec releaseSpec, IStateTracer? stateTracer)
@@ -454,12 +458,12 @@ namespace Nethermind.State
             for (int i = 0; i <= _currentPosition; i++)
             {
                 Change change = _changes[_currentPosition - i];
-                if (!isTracing && change.ChangeType == ChangeType.JustCache)
+                if (!isTracing && change!.ChangeType == ChangeType.JustCache)
                 {
                     continue;
                 }
 
-                if (_committedThisRound.Contains(change.Address))
+                if (_committedThisRound.Contains(change!.Address))
                 {
                     if (isTracing && change.ChangeType == ChangeType.JustCache)
                     {
@@ -584,8 +588,8 @@ namespace Nethermind.State
             {
                 bool someChangeReported = false;
 
-                Account before = change.Before;
-                Account after = change.After;
+                Account? before = change.Before;
+                Account? after = change.After;
 
                 UInt256? beforeBalance = before?.Balance;
                 UInt256? afterBalance = after?.Balance;
@@ -643,7 +647,7 @@ namespace Nethermind.State
             return account;
         }
 
-        private void SetState(Address address, Account account)
+        private void SetState(Address address, Account? account)
         {
             _needsStateRootUpdate = true;
             Metrics.StateTreeWrites++;
@@ -668,11 +672,11 @@ namespace Nethermind.State
             return account;
         }
 
-        private Account GetThroughCache(Address address)
+        private Account? GetThroughCache(Address address)
         {
             if (_intraBlockCache.ContainsKey(address))
             {
-                return _changes[_intraBlockCache[address].Peek()].Account;
+                return _changes[_intraBlockCache[address].Peek()]!.Account;
             }
 
             Account account = GetAndAddToCache(address);
@@ -700,11 +704,11 @@ namespace Nethermind.State
             Push(ChangeType.Delete, address, null);
         }
 
-        private void Push(ChangeType changeType, Address address, Account touchedAccount)
+        private void Push(ChangeType changeType, Address address, Account? touchedAccount)
         {
             SetupCache(address);
             if (changeType == ChangeType.Touch
-                && _changes[_intraBlockCache[address].Peek()].ChangeType == ChangeType.Touch)
+                && _changes[_intraBlockCache[address].Peek()]!.ChangeType == ChangeType.Touch)
             {
                 return;
             }
@@ -746,7 +750,7 @@ namespace Nethermind.State
 
         private class Change
         {
-            public Change(ChangeType type, Address address, Account account)
+            public Change(ChangeType type, Address address, Account? account)
             {
                 ChangeType = type;
                 Address = address;
@@ -755,7 +759,7 @@ namespace Nethermind.State
 
             public ChangeType ChangeType { get; }
             public Address Address { get; }
-            public Account Account { get; }
+            public Account? Account { get; }
         }
 
         public void Reset()
