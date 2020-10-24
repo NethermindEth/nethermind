@@ -53,7 +53,7 @@ namespace Nethermind.Blockchain.Test
                 stateDb,
                 codeDb,
                 stateProvider,
-                new StorageProvider(stateDb, stateProvider, LimboLogs.Instance),
+                new StorageProvider(stateDb, stateProvider, NullWitnessCollector.Instance, LimboLogs.Instance),
                 NullTxPool.Instance,
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
@@ -86,7 +86,7 @@ namespace Nethermind.Blockchain.Test
                 stateDb,
                 codeDb,
                 stateProvider,
-                new StorageProvider(stateDb, stateProvider, LimboLogs.Instance),
+                new StorageProvider(stateDb, stateProvider, NullWitnessCollector.Instance, LimboLogs.Instance),
                 NullTxPool.Instance,
                 NullReceiptStorage.Instance,
                 witnessCollector,
@@ -94,7 +94,7 @@ namespace Nethermind.Blockchain.Test
 
             BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
             Block block = Build.A.Block.WithHeader(header).TestObject;
-            Block[] processedBlocks = processor.Process(
+            _ = processor.Process(
                 Keccak.EmptyTreeHash,
                 new List<Block> {block},
                 ProcessingOptions.None,
@@ -118,7 +118,7 @@ namespace Nethermind.Blockchain.Test
                 stateDb,
                 codeDb,
                 stateProvider,
-                new StorageProvider(stateDb, stateProvider, LimboLogs.Instance),
+                new StorageProvider(stateDb, stateProvider, NullWitnessCollector.Instance, LimboLogs.Instance),
                 NullTxPool.Instance,
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,

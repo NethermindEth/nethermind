@@ -54,6 +54,7 @@ using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Trie;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.WebSockets;
@@ -81,6 +82,8 @@ namespace Nethermind.Runner.Ethereum.Api
         {
             ReadOnlyBlockTree readOnlyTree = new ReadOnlyBlockTree(BlockTree);
             IReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(DbProvider, false);
+            
+            // TODO: reuse the same trie cache here
             ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(
                 readOnlyDbProvider,
                 readOnlyTree,
@@ -131,6 +134,7 @@ namespace Nethermind.Runner.Ethereum.Api
         public IPasswordProvider? PasswordProvider { get; set; }
         public ILogFinder? LogFinder { get; set; }
         public ILogManager LogManager { get; }
+        public IKeyValueStore? MainStateDbWithCache { get; set; }
         public IMessageSerializationService MessageSerializationService { get; } = new MessageSerializationService();
         public IMonitoringService MonitoringService { get; set; } = NullMonitoringService.Instance;
         public INodeStatsManager? NodeStatsManager { get; set; }

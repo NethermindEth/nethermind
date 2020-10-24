@@ -43,14 +43,14 @@ namespace Nethermind.State
 
         private readonly List<Change> _keptInCache = new List<Change>();
         private readonly ILogger _logger;
-        private readonly IDb _codeDb;
+        private readonly IKeyValueStore _codeDb;
         private readonly ILogManager _logManager;
 
         private int _capacity = StartCapacity;
         private Change?[] _changes = new Change?[StartCapacity];
         private int _currentPosition = -1;
 
-        public StateProvider(StateTree stateTree, IDb codeDb, ILogManager logManager)
+        public StateProvider(StateTree stateTree, IKeyValueStore codeDb, ILogManager logManager)
         {
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -62,25 +62,25 @@ namespace Nethermind.State
             : this(new StateTree(dbProvider.StateDb), dbProvider.CodeDb, logManager)
         {
         }
-        
+
         public StateProvider(ISnapshotableDb stateDb, IDb codeDb, ILogManager logManager)
             : this(new StateTree(stateDb), codeDb, logManager)
         {
         }
-        
+
         public StateProvider(
-            ISnapshotableDb stateDb,
-            IDb codeDb,
+            IKeyValueStore? stateDb,
+            IKeyValueStore codeDb,
             IWitnessCollector? witnessCollector,
             ILogManager logManager)
             : this(
                 new StateTree(
                     new WitnessingStore(
-                        new CachingStore(
-                            stateDb,
-                            PatriciaTree.RlpCacheSize),
+                        stateDb,
                         witnessCollector)),
-                codeDb,
+                new WitnessingStore(
+                    codeDb,
+                    witnessCollector),
                 logManager)
         {
         }
@@ -602,12 +602,12 @@ namespace Nethermind.State
                         ? null
                         : beforeCodeHash == Keccak.OfAnEmptyString
                             ? Array.Empty<byte>()
-                            : _codeDb.Get(beforeCodeHash);
+                            : _codeDb[beforeCodeHash.Bytes];
                     byte[]? afterCode = afterCodeHash == null
                         ? null
                         : afterCodeHash == Keccak.OfAnEmptyString
                             ? Array.Empty<byte>()
-                            : _codeDb.Get(afterCodeHash);
+                            : _codeDb[afterCodeHash.Bytes];
 
                     if (!((beforeCode?.Length ?? 0) == 0 && (afterCode?.Length ?? 0) == 0))
                     {
@@ -635,7 +635,7 @@ namespace Nethermind.State
                 }
             }
         }
-        
+
         private Account? GetState(Address address)
         {
             Metrics.StateTreeReads++;

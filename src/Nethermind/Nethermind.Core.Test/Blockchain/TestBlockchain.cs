@@ -98,7 +98,7 @@ namespace Nethermind.Core.Test.Blockchain
             State.UpdateCode(code);
             State.UpdateCodeHash(TestItem.AddressA, codeHash, SpecProvider.GenesisSpec);
 
-            Storage = new StorageProvider(StateDb, State, LimboLogs.Instance);
+            Storage = new StorageProvider(StateDb, State, NullWitnessCollector.Instance, LimboLogs.Instance);
             Storage.Set(new StorageCell(TestItem.AddressA, UInt256.One), Bytes.FromHexString("0xabcdef"));
             Storage.Commit();
 

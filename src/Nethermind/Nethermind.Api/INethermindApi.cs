@@ -53,6 +53,7 @@ using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Trie;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.WebSockets;
@@ -93,12 +94,13 @@ namespace Nethermind.Api
         IIPResolver? IpResolver { get; set; }
         IJsonSerializer EthereumJsonSerializer { get; }
         IKeyStore? KeyStore { get; set; }
-        IPasswordProvider? PasswordProvider { get; set; }
         ILogFinder? LogFinder { get; set; }
         ILogManager LogManager { get; }
+        IKeyValueStore? MainStateDbWithCache { get; set; }
         IMessageSerializationService MessageSerializationService { get; }
         IMonitoringService MonitoringService { get; set; }
         INodeStatsManager? NodeStatsManager { get; set; }
+        IPasswordProvider? PasswordProvider { get; set; }
         IPeerManager? PeerManager { get; set; }
         IProtocolsManager? ProtocolsManager { get; set; }
         IProtocolValidator? ProtocolValidator { get; set; }

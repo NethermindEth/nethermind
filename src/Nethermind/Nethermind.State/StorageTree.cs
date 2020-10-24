@@ -18,7 +18,6 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
@@ -44,11 +43,11 @@ namespace Nethermind.State
             }
         }
 
-        public StorageTree(IDb db) : base(db, Keccak.EmptyTreeHash, false, true)
+        public StorageTree(IKeyValueStore db) : base(db, Keccak.EmptyTreeHash, false, true)
         {
         }
 
-        public StorageTree(IDb db, Keccak rootHash) : base(db, rootHash, false, true)
+        public StorageTree(IKeyValueStore db, Keccak rootHash) : base(db, rootHash, false, true)
         {
         }
         

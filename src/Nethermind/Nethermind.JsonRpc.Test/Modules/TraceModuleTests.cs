@@ -79,7 +79,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             _stateProvider.UpdateCode(code);
             _stateProvider.UpdateCodeHash(TestItem.AddressA, codeHash, specProvider.GenesisSpec);
 
-            IStorageProvider storageProvider = new StorageProvider(_stateDb, _stateProvider, LimboLogs.Instance);
+            IStorageProvider storageProvider = new StorageProvider(_stateDb, _stateProvider, NullWitnessCollector.Instance, LimboLogs.Instance);
             storageProvider.Set(new StorageCell(TestItem.AddressA, UInt256.One), Bytes.FromHexString("0xabcdef"));
             storageProvider.Commit();
 
