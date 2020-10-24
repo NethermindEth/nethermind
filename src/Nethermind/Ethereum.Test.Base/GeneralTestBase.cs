@@ -76,7 +76,7 @@ namespace Ethereum.Test.Base
 
             IStateProvider stateProvider = new StateProvider(stateDb, codeDb, _logManager);
             IBlockhashProvider blockhashProvider = new TestBlockhashProvider();
-            IStorageProvider storageProvider = new StorageProvider(stateDb, stateProvider, _logManager);
+            IStorageProvider storageProvider = new StorageProvider(stateDb, stateProvider, NullWitnessCollector.Instance, _logManager);
             IVirtualMachine virtualMachine = new VirtualMachine(
                 stateProvider,
                 storageProvider,
