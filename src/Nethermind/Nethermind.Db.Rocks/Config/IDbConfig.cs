@@ -89,6 +89,11 @@ namespace Nethermind.Db.Rocks.Config
         uint BloomDbWriteBufferNumber { get; set; }
         ulong BloomDbBlockCacheSize { get; set; }
         bool BloomDbCacheIndexAndFilterBlocks { get; set; }
+        
+        ulong WitnessDbWriteBufferSize { get; set; }
+        uint WitnessDbWriteBufferNumber { get; set; }
+        ulong WitnessDbBlockCacheSize { get; set; }
+        bool WitnessDbCacheIndexAndFilterBlocks { get; set; }
 
         bool DataAssetsDbCacheIndexAndFilterBlocks { get; set; }
         ulong DataAssetsDbBlockCacheSize { get; set; }
@@ -125,9 +130,7 @@ namespace Nethermind.Db.Rocks.Config
         ulong ProviderReceiptsDbWriteBufferSize { get; set; }
         uint ProviderReceiptsDbWriteBufferNumber { get; set; }
 
-
         uint RecycleLogFileNum { get; set; }
         bool WriteAheadLogSync { get; set; }
-
     }
 }

@@ -116,7 +116,7 @@ namespace Nethermind.Store.Test.Witnesses
             WitnessCollector witnessCollector = new WitnessCollector(keyValueStore, LimboLogs.Instance);
             witnessCollector.Persist(Keccak.Zero);
             var witness = keyValueStore[Keccak.Zero.Bytes];
-            witness.Length.Should().Be(0);
+            witness.Should().BeNull();
         }
         
         [Test]
