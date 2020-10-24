@@ -213,6 +213,7 @@ namespace Nethermind.Blockchain.Processing
 
         private (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer)
         {
+            _witnessCollector.Reset();
             ApplyDaoTransition(suggestedBlock);
             Block block = PrepareBlockForProcessing(suggestedBlock);
             TxReceipt[] receipts = ProcessBlock(block, blockTracer, options);
@@ -222,6 +223,7 @@ namespace Nethermind.Blockchain.Processing
                 StoreTxReceipts(block, receipts);
             }
 
+            _witnessCollector.Persist(block.Hash);
             return (block, receipts);
         }
 

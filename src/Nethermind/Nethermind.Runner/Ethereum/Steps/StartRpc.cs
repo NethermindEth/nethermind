@@ -75,7 +75,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 Bootstrap.Instance.JsonRpcLocalStats = jsonRpcLocalStats;
                 var jsonRpcRunner = new JsonRpcRunner(
                     jsonRpcProcessor,
-                    _api.WebSocketsManager,
+                    _api.WebSocketsManager!,
                     _api.ConfigProvider,
                     _api.LogManager);
 

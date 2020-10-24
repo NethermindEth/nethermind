@@ -13,16 +13,24 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-namespace Nethermind.State.Proofs
+using System.Globalization;
+using Nethermind.Db.Rocks.Config;
+using Nethermind.Logging;
+
+namespace Nethermind.Db.Rocks
 {
-    /// <summary>
-    /// EIP-1186 style storage proof
-    /// </summary>
-    public class StorageProof
+    public class WitnessDb : DbOnTheRocks
     {
-        public byte[][]? Proof { get; set; }
-        public byte[]? Key { get; set; }
-        public byte[]? Value { get; set; }
+        public override string Name { get; } = CultureInfo.CurrentUICulture.TextInfo.ToTitleCase(DbNames.Witness);
+        
+        public WitnessDb(string basePath, IDbConfig dbConfig, ILogManager logManager = null)
+            : base(basePath, DbNames.Witness, dbConfig, logManager)
+        {
+        }
+        
+        protected internal override void UpdateReadMetrics() => Metrics.OtherDbReads++;
+        protected internal override void UpdateWriteMetrics() => Metrics.OtherDbWrites++;
     }
 }

@@ -18,6 +18,7 @@ using System;
 
 namespace Nethermind.Db
 {
+    // TODO: create some nicer DB providers
     public class ReadOnlyDbProvider : IReadOnlyDbProvider
     {
         public ReadOnlyDb NestedStateDb { get; }
@@ -45,6 +46,7 @@ namespace Nethermind.Db
             NestedEthRequestsDb = new ReadOnlyDb(wrappedProvider.EthRequestsDb, createInMemoryWriteStore);
             NestedBloomDb = new ReadOnlyDb(wrappedProvider.BloomDb, createInMemoryWriteStore);
             NestedChtDb = new ReadOnlyDb(wrappedProvider.ChtDb, createInMemoryWriteStore);
+            NestedWitnessDb = new ReadOnlyDb(wrappedProvider.WitnessDb, createInMemoryWriteStore);
         }
 
         public void Dispose()
@@ -58,6 +60,7 @@ namespace Nethermind.Db
         public IDb HeadersDb => NestedHeadersDb;
         public IDb BlockInfosDb => NestedBlockInfosDb;
         public IDb PendingTxsDb => NestedPendingTxsDb;
+        public IDb WitnessDb => NestedWitnessDb;
         public IDb ConfigsDb => NestedConfigsDb;
         public IDb EthRequestsDb => NestedEthRequestsDb;
         public IDb BloomDb => NestedBloomDb;
@@ -72,6 +75,7 @@ namespace Nethermind.Db
         public ReadOnlyDb NestedEthRequestsDb { get; }
         public ReadOnlyDb NestedBloomDb { get; }
         public ReadOnlyDb NestedChtDb { get; }
+        public ReadOnlyDb NestedWitnessDb { get; }
 
         public void ClearTempChanges()
         {
@@ -87,6 +91,7 @@ namespace Nethermind.Db
             NestedBloomDb.Restore(-1);
             NestedChtDb.Restore(-1);
             BeamStateDb.Clear();
+            WitnessDb.Clear();
         }
     }
 }

@@ -137,7 +137,7 @@ namespace Nethermind.Runner.Ethereum.Api
         public IProtocolsManager? ProtocolsManager { get; set; }
         public IProtocolValidator? ProtocolValidator { get; set; }
         public IReceiptStorage? ReceiptStorage { get; set; }
-        public IWitnessCollector WitnessCollector { get; } = new WitnessCollector();
+        public IWitnessCollector? WitnessCollector { get; set; }
         public IReceiptFinder? ReceiptFinder { get; set; }
         public IRewardCalculatorSource? RewardCalculatorSource { get; set; }
         public IRlpxPeer? RlpxPeer { get; set; }

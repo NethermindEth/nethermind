@@ -19,6 +19,7 @@ using System;
 using FluentAssertions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
 using Nethermind.State;
 using Nethermind.State.Witnesses;
 using Nethermind.Trie;
@@ -101,13 +102,13 @@ namespace Nethermind.Store.Test.Witnesses
 
             public Context()
             {
-                WitnessCollector = new WitnessCollector();
+                WitnessCollector = new WitnessCollector(new MemDb());
                 Database = new WitnessingStore(Wrapped, WitnessCollector);
             }
             
             public Context(int cacheSize)
             {
-                WitnessCollector = new WitnessCollector();
+                WitnessCollector = new WitnessCollector(new MemDb());
                 Database = new WitnessingStore(new CachingStore(Wrapped, cacheSize), WitnessCollector);
             }
         }

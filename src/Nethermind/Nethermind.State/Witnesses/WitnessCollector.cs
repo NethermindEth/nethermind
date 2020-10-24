@@ -15,8 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Core.Crypto;
+using Nethermind.Trie;
 
 namespace Nethermind.State.Witnesses
 {
@@ -25,8 +27,13 @@ namespace Nethermind.State.Witnesses
     /// </summary>
     public class WitnessCollector : IWitnessCollector
     {
-        public IReadOnlyCollection<Keccak> Collected => _collected;
-        
+        public IEnumerable<Keccak> Collected => _collected;
+
+        public WitnessCollector(IKeyValueStore keyValueStore)
+        {
+            _keyValueStore = keyValueStore ?? throw new ArgumentNullException(nameof(keyValueStore));
+        }
+
         public void Add(Keccak hash)
         {
             _collected.Add(hash);
@@ -36,7 +43,40 @@ namespace Nethermind.State.Witnesses
         {
             _collected = new HashSet<Keccak>();
         }
-        
-        private HashSet<Keccak> _collected { get; set; } = new HashSet<Keccak>();
+
+        public void Persist(Keccak blockHash)
+        {
+            byte[] witness = new byte[_collected.Count * Keccak.Size];
+            Span<byte> witnessSpan = witness;
+
+            int i = 0;
+            foreach (Keccak keccak in _collected)
+            {
+                keccak.Bytes.AsSpan().CopyTo(witnessSpan.Slice(i * Keccak.Size, Keccak.Size));
+                i++;
+            }
+
+            _keyValueStore[blockHash.Bytes] = witness;
+        }
+
+        public Keccak[] Load(Keccak blockHash)
+        {
+            byte[] witnessData = _keyValueStore[blockHash.Bytes];
+            Span<byte> witnessDataSpan = witnessData.AsSpan();
+            
+            int itemCount = witnessData.Length / Keccak.Size;
+            Keccak[] witness = new Keccak[itemCount];
+            for (int i = 0; i < itemCount; i++)
+            {
+                byte[] keccakBytes = witnessDataSpan.Slice(i * Keccak.Size, Keccak.Size).ToArray();
+                witness[i] = new Keccak(keccakBytes);
+            }
+
+            return witness;
+        }
+
+        private HashSet<Keccak> _collected = new HashSet<Keccak>();
+
+        private readonly IKeyValueStore _keyValueStore;
     }
 }

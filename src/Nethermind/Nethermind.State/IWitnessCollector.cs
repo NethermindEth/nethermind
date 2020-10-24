@@ -22,10 +22,14 @@ namespace Nethermind.State
 {
     public interface IWitnessCollector
     {
-        IReadOnlyCollection<Keccak> Collected { get; }
+        IEnumerable<Keccak> Collected { get; }
         
         void Add(Keccak hash);
 
         void Reset();
+        
+        void Persist(Keccak blockHash);
+        
+        Keccak[] Load(Keccak blockHash);
     }
 }

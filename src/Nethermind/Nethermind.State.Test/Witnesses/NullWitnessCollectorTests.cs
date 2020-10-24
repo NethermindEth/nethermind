@@ -45,5 +45,18 @@ namespace Nethermind.Store.Test.Witnesses
             NullWitnessCollector.Instance.Reset();
             NullWitnessCollector.Instance.Reset();
         }
+        
+        [Test]
+        public void Persist_does_nothing()
+        {
+            NullWitnessCollector.Instance.Persist(Keccak.Zero);
+        }
+        
+        [Test]
+        public void Load_throws()
+        {
+            Assert.Throws<InvalidOperationException>(
+                () => NullWitnessCollector.Instance.Load(Keccak.Zero));
+        }
     }
 }

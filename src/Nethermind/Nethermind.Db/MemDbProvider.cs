@@ -25,6 +25,7 @@ namespace Nethermind.Db
         public IDb HeadersDb { get; } = new MemDb();
         public IDb BlockInfosDb { get; } = new MemDb();
         public IDb PendingTxsDb { get; } = new MemDb();
+        public IDb WitnessDb { get; } = new MemDb();
         public IDb ConfigsDb { get; } = new MemDb();
         public IDb EthRequestsDb { get; } = new MemDb();
         public IDb BloomDb { get; } = new MemDb();

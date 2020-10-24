@@ -58,6 +58,7 @@ namespace Nethermind.Synchronization.BeamSync
         public IDb BloomDb => _otherProvider.BloomDb;
         public IDb BeamStateDb => _otherProvider.BeamStateDb;
         public IDb ChtDb => _otherProvider.ChtDb;
+        public IDb WitnessDb => _otherProvider.WitnessDb;
 
         public void Dispose()
         {
@@ -72,6 +73,7 @@ namespace Nethermind.Synchronization.BeamSync
             EthRequestsDb?.Dispose();
             BloomDb?.Dispose();
             ChtDb?.Dispose();
+            WitnessDb?.Dispose();
         }
     }
 }

@@ -38,6 +38,7 @@ namespace Nethermind.Db.Rpc
             ConfigsDb = new ReadOnlyDb(new RpcDb(DbNames.Configs, serializer, client, logManager, recordDbProvider?.ConfigsDb), true);
             EthRequestsDb = new ReadOnlyDb(new RpcDb(DbNames.EthRequests, serializer, client, logManager, recordDbProvider?.EthRequestsDb), true);
             BloomDb = new ReadOnlyDb(new RpcDb(DbNames.EthRequests, serializer, client, logManager, recordDbProvider?.BloomDb), true);
+            WitnessDb = new ReadOnlyDb(new RpcDb(DbNames.Witness, serializer, client, logManager, recordDbProvider?.WitnessDb), true);
         }
         
         public ISnapshotableDb StateDb { get; }
@@ -47,6 +48,7 @@ namespace Nethermind.Db.Rpc
         public IDb HeadersDb { get; }
         public IDb BlockInfosDb { get; }
         public IDb PendingTxsDb { get; }
+        public IDb WitnessDb { get; }
         public IDb ConfigsDb { get; }
         public IDb EthRequestsDb { get; }
         public IDb BloomDb { get; }
@@ -67,6 +69,7 @@ namespace Nethermind.Db.Rpc
             _recordDbProvider?.Dispose();
             BloomDb?.Dispose();
             ChtDb?.Dispose();
+            WitnessDb?.Dispose();
         }
     }
 }

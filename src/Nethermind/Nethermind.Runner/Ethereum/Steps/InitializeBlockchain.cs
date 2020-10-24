@@ -36,6 +36,7 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
+using Nethermind.State.Witnesses;
 using Nethermind.Synchronization.BeamSync;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Storages;
@@ -247,6 +248,8 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (_api.DbProvider == null) throw new StepDependencyException(nameof(_api.DbProvider));
             if (_api.RewardCalculatorSource == null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
 
+            _api.WitnessCollector = new WitnessCollector(_api.DbProvider.WitnessDb);
+            
             return new BlockProcessor(
                 _api.SpecProvider,
                 _api.BlockValidator,

@@ -24,7 +24,7 @@ namespace Nethermind.State.Proofs
 {
     public static class ProofVerifier
     {
-        public static byte[] Verify(byte[][] proof, Keccak root)
+        public static byte[]? Verify(byte[][] proof, Keccak root)
         {
             if (proof.Length == 0)
             {

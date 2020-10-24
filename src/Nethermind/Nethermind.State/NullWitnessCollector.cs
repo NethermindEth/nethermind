@@ -27,7 +27,7 @@ namespace Nethermind.State
 
         public static IWitnessCollector Instance { get; } = new NullWitnessCollector();
         
-        public IReadOnlyCollection<Keccak> Collected => Array.Empty<Keccak>();
+        public IEnumerable<Keccak> Collected => Array.Empty<Keccak>();
 
         public void Add(Keccak hash)
         {
@@ -36,5 +36,13 @@ namespace Nethermind.State
         }
 
         public void Reset() { }
+        
+        public void Persist(Keccak blockHash) { }
+        
+        public Keccak[] Load(Keccak blockHash)
+        {
+            throw new InvalidOperationException(
+                $"{nameof(NullWitnessCollector)} is not expected to receive {nameof(Load)} calls.");
+        }
     }
 }

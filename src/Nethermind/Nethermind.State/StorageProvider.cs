@@ -53,7 +53,7 @@ namespace Nethermind.State
         {
         }
         
-        public StorageProvider(ISnapshotableDb stateDb, IStateProvider stateProvider, ILogManager logManager)
+        public StorageProvider(ISnapshotableDb? stateDb, IStateProvider? stateProvider, ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
@@ -160,7 +160,7 @@ namespace Nethermind.State
 
         private struct ChangeTrace
         {
-            public ChangeTrace(byte[] before, byte[] after)
+            public ChangeTrace(byte[]? before, byte[]? after)
             {
                 After = after ?? _zeroValue;
                 Before = before ?? _zeroValue;
@@ -176,7 +176,7 @@ namespace Nethermind.State
             public byte[] After { get; }
         }
 
-        public void Commit(IStorageTracer tracer)
+        public void Commit(IStorageTracer? tracer)
         {
             if (_currentPosition == -1)
             {
@@ -199,7 +199,7 @@ namespace Nethermind.State
             HashSet<Address> toUpdateRoots = new HashSet<Address>();
 
             bool isTracing = tracer != null;
-            Dictionary<StorageCell, ChangeTrace> trace = null;
+            Dictionary<StorageCell, ChangeTrace>? trace = null;
             if (isTracing)
             {
                 trace = new Dictionary<StorageCell, ChangeTrace>();
@@ -217,7 +217,7 @@ namespace Nethermind.State
                 {
                     if (isTracing && change.ChangeType == ChangeType.JustCache)
                     {
-                        trace[change.StorageCell] = new ChangeTrace(change.Value, trace[change.StorageCell].After);
+                        trace![change.StorageCell] = new ChangeTrace(change.Value, trace[change.StorageCell].After);
                     }
 
                     continue;
@@ -225,7 +225,7 @@ namespace Nethermind.State
 
                 if (isTracing && change.ChangeType == ChangeType.JustCache)
                 {
-                    tracer.ReportStorageRead(change.StorageCell);
+                    tracer!.ReportStorageRead(change.StorageCell);
                 }
 
                 _committedThisRound.Add(change.StorageCell);
@@ -259,7 +259,7 @@ namespace Nethermind.State
                         tree.Set(change.StorageCell.Index, change.Value);
                         if (isTracing)
                         {
-                            trace[change.StorageCell] = new ChangeTrace(change.Value);
+                            trace![change.StorageCell] = new ChangeTrace(change.Value);
                         }
 
                         break;
@@ -285,7 +285,7 @@ namespace Nethermind.State
 
             if (isTracing)
             {
-                ReportChanges(tracer, trace);
+                ReportChanges(tracer!, trace!);
             }
         }
 
