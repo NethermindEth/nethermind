@@ -23,6 +23,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Store.Test.Witnesses
 {
+    [TestFixture, Parallelizable(ParallelScope.All)]
     public class WitnessCollectorTests
     {
         [Test]

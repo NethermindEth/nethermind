@@ -25,16 +25,18 @@ namespace Nethermind.State.Witnesses
     /// </summary>
     public class WitnessCollector : IWitnessCollector
     {
-        public HashSet<Keccak> Collected { get; private set; } = new HashSet<Keccak>();
+        public IReadOnlyCollection<Keccak> Collected => _collected;
         
         public void Add(Keccak hash)
         {
-            Collected.Add(hash);
+            _collected.Add(hash);
         }
 
         public void Reset()
         {
-            Collected = new HashSet<Keccak>();
+            _collected = new HashSet<Keccak>();
         }
+        
+        private HashSet<Keccak> _collected { get; set; } = new HashSet<Keccak>();
     }
 }
