@@ -29,7 +29,7 @@ namespace Nethermind.Evm
         /// <summary>
         /// Transaction originator
         /// </summary>
-        public Address Originator { get; set; }
+        public Address Originator { get; set; } // TODO: move to TxEnv
 
         /// <summary>
         /// Caller
@@ -44,7 +44,7 @@ namespace Nethermind.Evm
         /// <summary>
         /// Gas price information from the transaction environment.
         /// </summary>
-        public UInt256 GasPrice { get; set; }
+        public UInt256 GasPrice { get; set; } // TODO: move to TxEnv
 
         /// <summary>
         /// Parameters / arguments of the current call.
@@ -71,7 +71,7 @@ namespace Nethermind.Evm
         /// <summary>
         /// Block within which the current transaction is executed.
         /// </summary>
-        public BlockHeader CurrentBlock { get; set; }
+        public BlockHeader CurrentBlock { get; set; } // TODO: move to TxEnv
         
         /// <example>If we call TX -> DELEGATECALL -> CALL -> STATICCALL then the call depth would be 3.</example>
         public int CallDepth { get; set; }

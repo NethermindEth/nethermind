@@ -25,85 +25,14 @@ using Nethermind.Core;
 namespace Nethermind.Evm
 {
     [DebuggerDisplay("{ExecutionType} to {Env.ExecutingAccount}, G {GasAvailable} R {Refund} PC {ProgramCounter} OUT {OutputDestination}:{OutputLength}")]
-    public class EvmState : IDisposable
+    public class EvmState : IDisposable // TODO: rename to CallState
     {
-        private class StackPool
-        {
-            public (byte[], int[]) RentStacks()
-            {
-                return (RentDataStack(), RentReturnStack());
-            }
-
-            /// <summary>
-            /// The word 'return' acts here once as a verb 'to return stack to the pool' and once as a part of the
-            /// compound noun 'return stack' which is a stack of subroutine return values.  
-            /// </summary>
-            /// <param name="dataStack"></param>
-            /// <param name="returnStack"></param>
-            public void ReturnStacks(byte[] dataStack, int[] returnStack)
-            {
-                _dataStackPool.Push(dataStack);
-                _returnStackPool.Push(returnStack);
-            }
-
-            // TODO: we have wrong call depth calculation somewhere
-            private const int MaxCallStackDepth = VirtualMachine.MaxCallDepth * 2;
-            
-            private readonly Stack<byte[]> _dataStackPool = new Stack<byte[]>();
-            
-            private readonly Stack<int[]> _returnStackPool = new Stack<int[]>();
-            
-            private int _dataStackPoolDepth;
-            
-            private int _returnStackPoolDepth;
-            
-            private byte[] RentDataStack()
-            {
-                if (_dataStackPool.Count == 0)
-                {
-                    _dataStackPoolDepth++;
-                    if (_dataStackPoolDepth > MaxCallStackDepth)
-                    {
-                        // TODO: block processor is not returning data stacks properly
-                        throw new InvalidAsynchronousStateException(
-                            $"Trying to rent a data stack at depth {_dataStackPoolDepth}/{MaxCallStackDepth} at thread {Thread.CurrentThread.ManagedThreadId}");
-                    }
-
-                    _dataStackPool.Push(new byte[(EvmStack.MaxStackSize + EvmStack.RegisterLength) * 32]);
-                }
-
-                _dataStackPool.TryPop(out byte[] result);
-                return result;
-            }
-            
-            private int[] RentReturnStack()
-            {
-                if (_returnStackPool.Count == 0)
-                {
-                    _returnStackPoolDepth++;
-                    if (_returnStackPoolDepth > MaxCallStackDepth)
-                    {
-                        throw new InvalidAsynchronousStateException(
-                            $"Trying to rent a return stack at depth {_dataStackPoolDepth}/{MaxCallStackDepth} at thread {Thread.CurrentThread.ManagedThreadId}");
-                    }
-
-                    _returnStackPool.Push(new int[EvmStack.ReturnStackSize]);
-                }
-
-                _returnStackPool.TryPop(out int[] result);
-                return result;
-            }
-        }
-
-        private static readonly ThreadLocal<StackPool> _stackPool = new ThreadLocal<StackPool>(() => new StackPool());
-
         public byte[] DataStack;
+        
         public int[] ReturnStack;
 
-        private HashSet<Address> _destroyList;
-        private List<LogEntry> _logs;
-        
         public int DataStackHead = 0;
+        
         public int ReturnStackHead = 0;
 
         public EvmState(long gasAvailable, ExecutionEnvironment env, ExecutionType executionType, bool isTopLevel, bool isContinuation)
@@ -145,12 +74,10 @@ namespace Nethermind.Evm
             {
                 switch (ExecutionType)
                 {
-                    
                     case ExecutionType.StaticCall:
                     case ExecutionType.Call:
                     case ExecutionType.CallCode:
                     case ExecutionType.Create:
-                        return Env.Sender;
                     case ExecutionType.Create2:
                         return Env.Sender;
                     case ExecutionType.DelegateCall:
@@ -163,22 +90,24 @@ namespace Nethermind.Evm
             }
         }
 
-        public Address To => Env.CodeSource;
-        public ExecutionEnvironment Env { get; }
         public long GasAvailable { get; set; }
         public int ProgramCounter { get; set; }
-        internal ExecutionType ExecutionType { get; }
-        internal bool IsPrecompile => Env.CodeInfo.IsPrecompile;
-        public bool IsTopLevel { get; }
-        internal long OutputDestination { get; }
-        internal long OutputLength { get; }
-        public bool IsStatic { get; }
-        public bool IsContinuation { get; set; }
-        public bool IsCreateOnPreExistingAccount { get; }
-        public int StateSnapshot { get; }
-        public int StorageSnapshot { get; }
         public long Refund { get; set; }
-        public EvmPooledMemory Memory { get; private set; }
+        
+        public Address To => Env.CodeSource;
+        internal bool IsPrecompile => Env.CodeInfo.IsPrecompile;
+        public ExecutionEnvironment Env { get; }
+        
+        internal ExecutionType ExecutionType { get; } // TODO: move to CallEnv
+        public bool IsTopLevel { get; } // TODO: move to CallEnv
+        internal long OutputDestination { get; } // TODO: move to CallEnv
+        internal long OutputLength { get; } // TODO: move to CallEnv
+        public bool IsStatic { get; } // TODO: move to CallEnv
+        public bool IsContinuation { get; set; } // TODO: move to CallEnv
+        public bool IsCreateOnPreExistingAccount { get; } // TODO: move to CallEnv
+        public int StateSnapshot { get; } // TODO: move to CallEnv
+        public int StorageSnapshot { get; } // TODO: move to CallEnv
+        public EvmPooledMemory Memory { get; set; } // TODO: move to CallEnv
 
         public HashSet<Address> DestroyList
         {
@@ -202,6 +131,80 @@ namespace Nethermind.Evm
             {
                 Memory = new EvmPooledMemory();
                 (DataStack, ReturnStack) = _stackPool.Value.RentStacks();
+            }
+        }
+        
+        private static readonly ThreadLocal<StackPool> _stackPool = new ThreadLocal<StackPool>(() => new StackPool());
+        
+        private HashSet<Address> _destroyList;
+        
+        private List<LogEntry> _logs;
+
+        private class StackPool
+        {
+            public (byte[], int[]) RentStacks()
+            {
+                return (RentDataStack(), RentReturnStack());
+            }
+
+            /// <summary>
+            /// The word 'return' acts here once as a verb 'to return stack to the pool' and once as a part of the
+            /// compound noun 'return stack' which is a stack of subroutine return values.  
+            /// </summary>
+            /// <param name="dataStack"></param>
+            /// <param name="returnStack"></param>
+            public void ReturnStacks(byte[] dataStack, int[] returnStack)
+            {
+                _dataStackPool.Push(dataStack);
+                _returnStackPool.Push(returnStack);
+            }
+
+            // TODO: we have wrong call depth calculation somewhere
+            private const int MaxCallStackDepth = VirtualMachine.MaxCallDepth * 2;
+
+            private readonly Stack<byte[]> _dataStackPool = new Stack<byte[]>();
+
+            private readonly Stack<int[]> _returnStackPool = new Stack<int[]>();
+
+            private int _dataStackPoolDepth;
+
+            private int _returnStackPoolDepth;
+
+            private byte[] RentDataStack()
+            {
+                if (_dataStackPool.Count == 0)
+                {
+                    _dataStackPoolDepth++;
+                    if (_dataStackPoolDepth > MaxCallStackDepth)
+                    {
+                        // TODO: block processor is not returning data stacks properly
+                        throw new InvalidAsynchronousStateException(
+                            $"Trying to rent a data stack at depth {_dataStackPoolDepth}/{MaxCallStackDepth} at thread {Thread.CurrentThread.ManagedThreadId}");
+                    }
+
+                    _dataStackPool.Push(new byte[(EvmStack.MaxStackSize + EvmStack.RegisterLength) * 32]);
+                }
+
+                _dataStackPool.TryPop(out byte[] result);
+                return result;
+            }
+
+            private int[] RentReturnStack()
+            {
+                if (_returnStackPool.Count == 0)
+                {
+                    _returnStackPoolDepth++;
+                    if (_returnStackPoolDepth > MaxCallStackDepth)
+                    {
+                        throw new InvalidAsynchronousStateException(
+                            $"Trying to rent a return stack at depth {_dataStackPoolDepth}/{MaxCallStackDepth} at thread {Thread.CurrentThread.ManagedThreadId}");
+                    }
+
+                    _returnStackPool.Push(new int[EvmStack.ReturnStackSize]);
+                }
+
+                _returnStackPool.TryPop(out int[] result);
+                return result;
             }
         }
     }
