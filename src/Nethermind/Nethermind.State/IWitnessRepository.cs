@@ -15,34 +15,15 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
 using System.Collections.Generic;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.State
 {
-    public class NullWitnessCollector : IWitnessCollector
+    public interface IWitnessRepository
     {
-        private NullWitnessCollector() { }
-
-        public static IWitnessCollector Instance { get; } = new NullWitnessCollector();
+        void Persist(Keccak blockHash);
         
-        public IReadOnlyCollection<Keccak> Collected => Array.Empty<Keccak>();
-
-        public void Add(Keccak hash)
-        {
-            throw new InvalidOperationException(
-                $"{nameof(NullWitnessCollector)} is not expected to receive {nameof(Add)} calls.");
-        }
-
-        public void Reset() { }
-        
-        public void Persist(Keccak blockHash) { }
-        
-        public IReadOnlyCollection<Keccak> Load(Keccak blockHash)
-        {
-            throw new InvalidOperationException(
-                $"{nameof(NullWitnessCollector)} is not expected to receive {nameof(Load)} calls.");
-        }
+        IReadOnlyCollection<Keccak> Load(Keccak blockHash);
     }
 }
