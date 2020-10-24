@@ -93,7 +93,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             _api.WitnessCollector = new WitnessCollector(_api.DbProvider.WitnessDb, _api.LogManager);
             _api.StateProvider = new StateProvider(
-                _api.DbProvider.StateDb,
+                _api.MainStateDbWithCache,
                 _api.DbProvider.CodeDb,
                 _api.WitnessCollector,
                 _api.LogManager);
@@ -144,8 +144,9 @@ namespace Nethermind.Runner.Ethereum.Steps
             _api.RecoveryStep = new TxSignaturesRecoveryStep(_api.EthereumEcdsa, _api.TxPool, _api.SpecProvider, _api.LogManager);
 
             _api.StorageProvider = new StorageProvider(
-                _api.DbProvider.StateDb,
+                _api.MainStateDbWithCache,
                 _api.StateProvider,
+                _api.WitnessCollector,
                 _api.LogManager);
 
             // blockchain processing

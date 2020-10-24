@@ -20,8 +20,10 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
-using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.State.Witnesses;
+using Nethermind.Trie;
+using Metrics = Nethermind.Db.Metrics;
 
 namespace Nethermind.State
 {
@@ -38,26 +40,26 @@ namespace Nethermind.State
 
         private readonly ILogger _logger;
 
-        private readonly ISnapshotableDb _stateDb;
+        private readonly IKeyValueStore _stateDb;
         private readonly IStateProvider _stateProvider;
 
         private ResettableDictionary<Address, StorageTree> _storages = new ResettableDictionary<Address, StorageTree>();
 
         private const int StartCapacity = Resettable.StartCapacity;
         private int _capacity = StartCapacity;
-        private Change[] _changes = new Change[StartCapacity];
+        private Change?[] _changes = new Change[StartCapacity];
         private int _currentPosition = -1;
 
-        public StorageProvider(IDbProvider dbProvider, IStateProvider stateProvider, ILogManager logManager) 
-            :this(dbProvider.StateDb, stateProvider, logManager)
-        {
-        }
-        
-        public StorageProvider(ISnapshotableDb? stateDb, IStateProvider? stateProvider, ILogManager? logManager)
+        public StorageProvider(
+            IKeyValueStore? stateDb,
+            IStateProvider? stateProvider,
+            IWitnessCollector? witnessCollector,
+            ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
+            _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
+            _stateDb = new WitnessingStore(_stateDb, witnessCollector);
         }
 
         public byte[] GetOriginal(StorageCell storageCell)
@@ -112,9 +114,9 @@ namespace Nethermind.State
             for (int i = 0; i < _currentPosition - snapshot; i++)
             {
                 Change change = _changes[_currentPosition - i];
-                if (_intraBlockCache[change.StorageCell].Count == 1)
+                if (_intraBlockCache[change!.StorageCell].Count == 1)
                 {
-                    if (_changes[_intraBlockCache[change.StorageCell].Peek()].ChangeType == ChangeType.JustCache)
+                    if (_changes[_intraBlockCache[change.StorageCell].Peek()]!.ChangeType == ChangeType.JustCache)
                     {
                         int actualPosition = _intraBlockCache[change.StorageCell].Pop();
                         if (actualPosition != _currentPosition - i)
@@ -166,7 +168,7 @@ namespace Nethermind.State
                 Before = before ?? _zeroValue;
             }
 
-            public ChangeTrace(byte[] after)
+            public ChangeTrace(byte[]? after)
             {
                 After = after ?? _zeroValue;
                 Before = _zeroValue;
@@ -208,12 +210,12 @@ namespace Nethermind.State
             for (int i = 0; i <= _currentPosition; i++)
             {
                 Change change = _changes[_currentPosition - i];
-                if (!isTracing && change.ChangeType == ChangeType.JustCache)
+                if (!isTracing && change!.ChangeType == ChangeType.JustCache)
                 {
                     continue;
                 }
 
-                if (_committedThisRound.Contains(change.StorageCell))
+                if (_committedThisRound.Contains(change!.StorageCell))
                 {
                     if (isTracing && change.ChangeType == ChangeType.JustCache)
                     {
@@ -342,7 +344,7 @@ namespace Nethermind.State
             if (_intraBlockCache.ContainsKey(storageCell))
             {
                 int lastChangeIndex = _intraBlockCache[storageCell].Peek();
-                return _changes[lastChangeIndex].Value;
+                return _changes[lastChangeIndex]!.Value;
             }
 
             return LoadFromTree(storageCell);

@@ -30,6 +30,7 @@ using Nethermind.JsonRpc.Client;
 using Nethermind.Logging;
 using Nethermind.Synchronization.BeamSync;
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Trie;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
@@ -65,6 +66,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                     BeamSyncDbProvider beamSyncProvider = new BeamSyncDbProvider(_api.SyncModeSelector, _api.DbProvider, _api.Config<ISyncConfig>(), _api.LogManager);
                     _api.DbProvider = beamSyncProvider;
                 }
+                
+                _api.MainStateDbWithCache = new CachingStore(_api.DbProvider.StateDb, PatriciaTree.RlpCacheSize);
             }
             catch(TypeInitializationException)
             {

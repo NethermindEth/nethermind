@@ -737,7 +737,11 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
         private void TestCallWithStorageAndCode(byte[] code, UInt256 gasPrice, Address from = null)
         {
             StateProvider stateProvider = CreateInitialState(code);
-            StorageProvider storageProvider = new StorageProvider(_dbProvider.StateDb, stateProvider, LimboLogs.Instance);
+            StorageProvider storageProvider = new StorageProvider(
+                _dbProvider.StateDb,
+                stateProvider,
+                NullWitnessCollector.Instance,
+                LimboLogs.Instance);
             for (int i = 0; i < 10000; i++)
             {
                 storageProvider.Set(new StorageCell(TestItem.AddressB, (UInt256)i), i.ToBigEndianByteArray());

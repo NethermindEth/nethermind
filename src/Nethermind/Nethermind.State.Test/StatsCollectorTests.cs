@@ -14,7 +14,6 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Linq;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -39,7 +38,7 @@ namespace Nethermind.Store.Test
             StateTree stateTree = new StateTree(stateDb);
             
             StateProvider stateProvider = new StateProvider(stateTree, stateDb, LimboLogs.Instance);
-            StorageProvider storageProvider = new StorageProvider(stateDb, stateProvider, LimboLogs.Instance);
+            StorageProvider storageProvider = new StorageProvider(stateDb, stateProvider, NullWitnessCollector.Instance, LimboLogs.Instance);
 
             stateProvider.CreateAccount(TestItem.AddressA, 1);
             Keccak codeHash = stateProvider.UpdateCode(new byte[] {1, 2, 3});

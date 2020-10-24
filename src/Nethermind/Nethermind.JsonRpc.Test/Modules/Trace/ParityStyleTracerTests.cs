@@ -62,7 +62,11 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             ISnapshotableDb stateDb = new StateDb();
             ISnapshotableDb codeDb = new StateDb();
             StateProvider stateProvider = new StateProvider(stateDb, codeDb, LimboLogs.Instance);
-            StorageProvider storageProvider = new StorageProvider(stateDb, stateProvider, LimboLogs.Instance);
+            StorageProvider storageProvider = new StorageProvider(
+                stateDb,
+                stateProvider,
+                NullWitnessCollector.Instance,
+                LimboLogs.Instance);
 
             BlockhashProvider blockhashProvider = new BlockhashProvider(_blockTree, LimboLogs.Instance);
             VirtualMachine virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, specProvider, LimboLogs.Instance);

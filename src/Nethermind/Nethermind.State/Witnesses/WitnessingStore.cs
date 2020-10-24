@@ -26,7 +26,7 @@ namespace Nethermind.State.Witnesses
         private readonly IKeyValueStore _wrapped;
         private readonly IWitnessCollector _witnessCollector;
 
-        public WitnessingStore(IKeyValueStore wrapped, IWitnessCollector? witnessCollector)
+        public WitnessingStore(IKeyValueStore? wrapped, IWitnessCollector? witnessCollector)
         {
             _wrapped = wrapped ?? throw new ArgumentNullException(nameof(wrapped));
             _witnessCollector = witnessCollector ?? throw new ArgumentNullException(nameof(witnessCollector));
