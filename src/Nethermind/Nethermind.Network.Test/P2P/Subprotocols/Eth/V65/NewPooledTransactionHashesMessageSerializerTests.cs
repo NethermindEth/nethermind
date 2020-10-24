@@ -22,8 +22,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
 {
-    [Parallelizable(ParallelScope.Self)]
-    [TestFixture]
+    [TestFixture, Parallelizable(ParallelScope.All)]
     public class NewPooledTransactionHashesMessageSerializerTests
     {
         private static void Test(Keccak[] keys)

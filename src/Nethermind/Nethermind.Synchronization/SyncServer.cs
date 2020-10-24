@@ -119,9 +119,9 @@ namespace Nethermind.Synchronization
             }
         }
 
-        public Keccak[] GetBlockWitnessHashes()
+        public IReadOnlyCollection<Keccak>? GetBlockWitnessHashes(Keccak blockHash)
         {
-            throw new NotImplementedException();
+            return _witnessRepository.Load(blockHash);
         }
 
         public int GetPeerCount()

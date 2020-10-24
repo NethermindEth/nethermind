@@ -144,6 +144,15 @@ namespace Nethermind.Store.Test.Witnesses
         }
         
         [Test]
+        public void Can_load_missing()
+        {
+            IKeyValueStore keyValueStore = new MemDb();
+            WitnessCollector witnessCollector = new WitnessCollector(keyValueStore, LimboLogs.Instance);
+            var witness = witnessCollector.Load(Keccak.Zero);
+            witness.Should().BeNull();
+        }
+        
+        [Test]
         public void Can_read_beyond_cache()
         {
             IKeyValueStore keyValueStore = new MemDb();

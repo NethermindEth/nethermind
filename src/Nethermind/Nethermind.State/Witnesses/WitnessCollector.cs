@@ -69,29 +69,37 @@ namespace Nethermind.State.Witnesses
             _witnessCache.Set(blockHash, _collected.ToArray());
         }
 
-        public IReadOnlyCollection<Keccak> Load(Keccak blockHash)
+        public IReadOnlyCollection<Keccak>? Load(Keccak blockHash)
         {
             IReadOnlyList<Keccak> witness;
             if (_witnessCache.Contains(blockHash))
             {
-                if(_logger.IsDebug) _logger.Debug($"Loading cached witness for {blockHash}");
+                if(_logger.IsTrace) _logger.Trace($"Loading cached witness for {blockHash}");
                 witness = _witnessCache.Get(blockHash);
             }
-            else
+            else // not cached
             {
                 byte[] witnessData = _keyValueStore[blockHash.Bytes];
-                Span<byte> witnessDataSpan = witnessData.AsSpan();
-            
-                int itemCount = witnessData.Length / Keccak.Size;
-                Keccak[] writableWitness = new Keccak[itemCount];
-                for (int i = 0; i < itemCount; i++)
+                if (witnessData == null)
                 {
-                    byte[] keccakBytes = witnessDataSpan.Slice(i * Keccak.Size, Keccak.Size).ToArray();
-                    writableWitness[i] = new Keccak(keccakBytes);
+                    if(_logger.IsTrace) _logger.Trace($"Missing witness for {blockHash}");
+                    witness = null;
                 }
+                else // missing from the DB
+                {
+                    if(_logger.IsTrace) _logger.Trace($"Loading non-cached witness for {blockHash}");
+                    Span<byte> witnessDataSpan = witnessData.AsSpan();
+                    int itemCount = witnessData.Length / Keccak.Size;
+                    Keccak[] writableWitness = new Keccak[itemCount];
+                    for (int i = 0; i < itemCount; i++)
+                    {
+                        byte[] keccakBytes = witnessDataSpan.Slice(i * Keccak.Size, Keccak.Size).ToArray();
+                        writableWitness[i] = new Keccak(keccakBytes);
+                    }
                 
-                _witnessCache.Set(blockHash, writableWitness);
-                witness = writableWitness;
+                    _witnessCache.Set(blockHash, writableWitness);
+                    witness = writableWitness;   
+                }
             }
 
             return witness;

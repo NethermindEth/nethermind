@@ -36,21 +36,13 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
 {
-    [TestFixture]
+    [TestFixture, Parallelizable(ParallelScope.All)]
     public class Eth63ProtocolHandlerTests
     {
-        private ISession _session = Substitute.For<ISession>();
-        
-        [SetUp]
-        public void Setup()
-        {
-            _session.Node.Returns(new Node("127.0.0.1", 1000, true));
-            NetworkDiagTracer.IsEnabled = true;
-        }
-        
         [Test]
         public async Task Can_request_and_handle_receipts()
         {
+            Context ctx = new Context();
             StatusMessageSerializer statusMessageSerializer = new StatusMessageSerializer();
             ReceiptsMessageSerializer receiptMessageSerializer
                 = new ReceiptsMessageSerializer(MainnetSpecProvider.Instance);
@@ -59,7 +51,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
             serializationService.Register(receiptMessageSerializer);
 
             Eth63ProtocolHandler protocolHandler = new Eth63ProtocolHandler(
-                _session,
+                ctx.Session,
                 serializationService,
                 Substitute.For<INodeStatsManager>(),
                 Substitute.For<ISyncServer>(),
@@ -92,6 +84,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         [Test]
         public void Will_not_serve_receipts_requests_above_512()
         {
+            Context ctx = new Context();
             StatusMessageSerializer statusMessageSerializer = new StatusMessageSerializer();
             ReceiptsMessageSerializer receiptMessageSerializer
                 = new ReceiptsMessageSerializer(MainnetSpecProvider.Instance);
@@ -104,7 +97,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
             
             ISyncServer syncServer = Substitute.For<ISyncServer>();
             Eth63ProtocolHandler protocolHandler = new Eth63ProtocolHandler(
-                _session,
+                ctx.Session,
                 serializationService,
                 Substitute.For<INodeStatsManager>(),
                 syncServer,
@@ -127,6 +120,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         [Test]
         public void Will_not_send_messages_larger_than_2MB()
         {
+            Context ctx = new Context();
             StatusMessageSerializer statusMessageSerializer = new StatusMessageSerializer();
             ReceiptsMessageSerializer receiptMessageSerializer
                 = new ReceiptsMessageSerializer(MainnetSpecProvider.Instance);
@@ -139,7 +133,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
             
             ISyncServer syncServer = Substitute.For<ISyncServer>();
             Eth63ProtocolHandler protocolHandler = new Eth63ProtocolHandler(
-                _session,
+                ctx.Session,
                 serializationService,
                 Substitute.For<INodeStatsManager>(),
                 syncServer,
@@ -160,7 +154,19 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
 
             protocolHandler.HandleMessage(statusPacket);
             protocolHandler.HandleMessage(getReceiptsPacket);
-            _session.Received().DeliverMessage(Arg.Is<ReceiptsMessage>(r => r.TxReceipts.Length == 14));
+            ctx.Session.Received().DeliverMessage(Arg.Is<ReceiptsMessage>(r => r.TxReceipts.Length == 14));
+        }
+
+        private class Context
+        {
+            public ISession Session { get; set; }
+
+            public Context()
+            {
+                Session = Substitute.For<ISession>();
+                Session.Node.Returns(new Node("127.0.0.1", 1000, true));
+                NetworkDiagTracer.IsEnabled = true;
+            }
         }
     }
 }

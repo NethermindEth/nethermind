@@ -26,16 +26,25 @@ namespace Nethermind.Network.P2P.Subprotocols.Wit
         {
             NettyRlpStream nettyRlpStream = new NettyRlpStream(byteBuffer);
 
-            int contentLength = 0;
-            contentLength += message.BlockWitnessHashes.Length * Rlp.LengthOfKeccakRlp;
-
+            int hashesContentLength = message.Hashes?.Count * Rlp.LengthOfKeccakRlp ?? 1;
+            int contentLength = Rlp.LengthOfSequence(hashesContentLength);
+            contentLength += Rlp.LengthOf(message.RequestId);
             int totalLength = Rlp.LengthOfSequence(contentLength);
-            byteBuffer.EnsureWritable(totalLength, true);
             
+            byteBuffer.EnsureWritable(totalLength, true);
             nettyRlpStream.StartSequence(contentLength);
-            for (int i = 0; i < message.BlockWitnessHashes.Length; i++)
+            nettyRlpStream.Encode(message.RequestId);
+            if (message.Hashes == null)
             {
-                nettyRlpStream.Encode(message.BlockWitnessHashes[i]);
+                nettyRlpStream.EncodeNullObject();
+            }
+            else
+            {
+                nettyRlpStream.StartSequence(hashesContentLength);
+                foreach (Keccak keccak in message.Hashes)
+                {
+                    nettyRlpStream.Encode(keccak);
+                }   
             }
         }
 
@@ -44,7 +53,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Wit
             NettyRlpStream rlpStream = new NettyRlpStream(byteBuffer);
             rlpStream.ReadSequenceLength();
             long requestId = rlpStream.DecodeLong();
-            var hashes = Rlp.DecodeArray<Keccak>(rlpStream);
+            int sequenceLength = rlpStream.ReadSequenceLength();
+            Keccak[] hashes = new Keccak[sequenceLength / Rlp.LengthOfKeccakRlp];
+            for (int i = 0; i < hashes.Length; i++)
+            {
+                hashes[i] = rlpStream.DecodeKeccak();
+            }
+
             return new BlockWitnessHashesMessage(requestId, hashes);
         }
     }
