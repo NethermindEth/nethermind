@@ -103,6 +103,7 @@ namespace Nethermind.Api
         IProtocolsManager? ProtocolsManager { get; set; }
         IProtocolValidator? ProtocolValidator { get; set; }
         IReceiptStorage? ReceiptStorage { get; set; }
+        IWitnessCollector WitnessCollector { get; }
         IReceiptFinder? ReceiptFinder { get; set; }
         IRewardCalculatorSource? RewardCalculatorSource { get; set; }
         IRlpxPeer? RlpxPeer { get; set; }

@@ -279,7 +279,19 @@ namespace Nethermind.Synchronization.Test
 
             var rewardCalculator = new RewardCalculator(specProvider);
             var txProcessor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, logManager);
-            var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, txProcessor, stateDb, codeDb, stateProvider, storageProvider, txPool, receiptStorage, logManager);
+            var blockProcessor = new BlockProcessor(
+                specProvider,
+                blockValidator,
+                rewardCalculator,
+                txProcessor,
+                stateDb,
+                codeDb,
+                stateProvider,
+                storageProvider,
+                txPool,
+                receiptStorage,
+                NullWitnessCollector.Instance,
+                logManager);
 
             var step = new TxSignaturesRecoveryStep(ecdsa, txPool, specProvider, logManager);
             var processor = new BlockchainProcessor(tree, blockProcessor, step, logManager, BlockchainProcessor.Options.Default);
@@ -291,7 +303,19 @@ namespace Nethermind.Synchronization.Test
             StorageProvider devStorage = new StorageProvider(stateDb, devState, logManager);
             var devEvm = new VirtualMachine(devState, devStorage, blockhashProvider, specProvider, logManager);
             var devTxProcessor = new TransactionProcessor(specProvider, devState, devStorage, devEvm, logManager);
-            var devBlockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, devTxProcessor, stateDb, codeDb, devState, devStorage, txPool, receiptStorage, logManager);
+            var devBlockProcessor = new BlockProcessor(
+                specProvider,
+                blockValidator,
+                rewardCalculator,
+                devTxProcessor,
+                stateDb,
+                codeDb,
+                devState,
+                devStorage,
+                txPool,
+                receiptStorage,
+                NullWitnessCollector.Instance,
+                logManager);
             var devChainProcessor = new BlockchainProcessor(tree, devBlockProcessor, step, logManager, BlockchainProcessor.Options.NoReceipts);
             var transactionSelector = new TxPoolTxSource(txPool, stateReader, logManager);
             var producer = new DevBlockProducer(

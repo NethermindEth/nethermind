@@ -16,7 +16,6 @@
 
 using System;
 using System.Collections.Generic;
-using FluentAssertions;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
@@ -57,6 +56,7 @@ namespace Nethermind.Blockchain.Test
                 new StorageProvider(stateDb, stateProvider, LimboLogs.Instance),
                 NullTxPool.Instance,
                 NullReceiptStorage.Instance,
+                NullWitnessCollector.Instance,
                 LimboLogs.Instance);
 
             BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
@@ -88,6 +88,7 @@ namespace Nethermind.Blockchain.Test
                 new StorageProvider(stateDb, stateProvider, LimboLogs.Instance),
                 NullTxPool.Instance,
                 NullReceiptStorage.Instance,
+                NullWitnessCollector.Instance,
                 LimboLogs.Instance);
 
             BlockHeader header = Build.A.BlockHeader.WithNumber(1).WithAuthor(TestItem.AddressD).TestObject;

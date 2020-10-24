@@ -31,9 +31,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
-using Nethermind.State.Proofs;
 using Nethermind.TxPool;
-using Org.BouncyCastle.Asn1;
 
 namespace Nethermind.Blockchain.Processing
 {
@@ -46,6 +44,7 @@ namespace Nethermind.Blockchain.Processing
         private readonly ISpecProvider _specProvider;
         private readonly IStateProvider _stateProvider;
         private readonly IReceiptStorage _receiptStorage;
+        private readonly IWitnessCollector _witnessCollector;
         private readonly IBlockValidator _blockValidator;
         private readonly IStorageProvider _storageProvider;
         private readonly IRewardCalculator _rewardCalculator;
@@ -68,6 +67,7 @@ namespace Nethermind.Blockchain.Processing
             IStorageProvider storageProvider,
             ITxPool txPool,
             IReceiptStorage receiptStorage,
+            IWitnessCollector witnessCollector,
             ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -77,6 +77,7 @@ namespace Nethermind.Blockchain.Processing
             _storageProvider = storageProvider ?? throw new ArgumentNullException(nameof(storageProvider));
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
+            _witnessCollector = witnessCollector ?? throw new ArgumentNullException(nameof(witnessCollector));
             _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
             _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
             _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));

@@ -26,6 +26,7 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Runner.Ethereum.Api;
+using Nethermind.State;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
@@ -136,6 +137,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 readOnlyTxProcessingEnv.StorageProvider,
                 _api.TxPool,
                 _api.ReceiptStorage,
+                NullWitnessCollector.Instance,
                 _api.LogManager);
         }
     }
