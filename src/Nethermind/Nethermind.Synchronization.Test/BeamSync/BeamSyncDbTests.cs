@@ -28,7 +28,6 @@ using Nethermind.State;
 using Nethermind.Synchronization.BeamSync;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
-using Nethermind.Trie;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -187,7 +186,6 @@ namespace Nethermind.Synchronization.Test.BeamSync
             StateSyncBatch request = await _stateBeamLocal.PrepareRequest();
             request!.Responses = new [] {_remoteState.Get(request.RequestedNodes[0].Hash)};
             _stateBeamLocal.HandleResponse(request);
-            PatriciaTree.NodeCache.Clear();
             RunRounds(1);
 
             Assert.AreEqual(1, _needMoreDataInvocations);
@@ -255,7 +253,6 @@ namespace Nethermind.Synchronization.Test.BeamSync
                     Interlocked.Increment(ref _needMoreDataInvocations);
                 }
             };
-            PatriciaTree.NodeCache.Clear();
         }
 
         [Test]

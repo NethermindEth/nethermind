@@ -94,6 +94,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             _api.StateProvider = new StateProvider(
                 _api.DbProvider.StateDb,
                 _api.DbProvider.CodeDb,
+                _api.WitnessCollector,
                 _api.LogManager);
 
             _api.EthereumEcdsa = new EthereumEcdsa(_api.SpecProvider.ChainId, _api.LogManager);
