@@ -89,9 +89,9 @@ namespace Nethermind.Db
             NestedEthRequestsDb.Restore(-1); 
             NestedReceiptsDb.Restore(-1);
             NestedBloomDb.Restore(-1);
+            NestedWitnessDb.Restore(-1);
             NestedChtDb.Restore(-1);
             BeamStateDb.Clear();
-            WitnessDb.Clear();
         }
     }
 }
